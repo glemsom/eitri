@@ -20,7 +20,8 @@ import (
 func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, error) {
 	// terminal_execute args
 	type termArgs struct {
-		Command string `json:"command" jsonschema:"required,description=Shell command to run"`
+		// jsonschema tag value is the field description; required is inferred from json tag (no omitempty).
+		Command string `json:"command" jsonschema:"Shell command to run"`
 	}
 	// terminal_execute result
 	type termResult struct {

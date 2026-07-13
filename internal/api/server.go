@@ -505,7 +505,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			}()
 
 			w := NewSSEWriter(sseCh)
-			s.config.RunManager.AppendEvent(state, w)
+			text := s.config.RunManager.AppendEvent(state, w)
+			if text != "" {
+				s.config.SessionManager.AppendMessage(id, session.Message{
+					Role:      "assistant",
+					Content:   text,
+					CreatedAt: time.Now(),
+				})
+			}
 		}()
 	}
 
@@ -551,8 +558,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	// Send initial connecting event
-	fmt.Fprintf(w, "data: %s\n\n", mustJSON(SSEEvent{Type: "connecting"}))
-	flusher.Flush()
+	if initData := mustJSON(SSEEvent{Type: "connecting"}); initData != nil {
+		fmt.Fprintf(w, "data: %s\n\n", string(initData))
+		flusher.Flush()
+	}
 
 	ctx := r.Context()
 	keepAlive := time.NewTicker(15 * time.Second)
@@ -565,6 +574,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			data := mustJSON(evt)
+			if data == nil {
+				return
+			}
 			fmt.Fprintf(w, "data: %s\n\n", string(data))
 			flusher.Flush()
 
@@ -736,11 +748,12 @@ func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<!-- component rendering not yet implemented -->")
 }
 
-// mustJSON marshals v to JSON bytes, panicking on error.
+// mustJSON marshals v to JSON bytes, logging and returning nil on error.
 func mustJSON(v interface{}) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
-		panic("json marshal: " + err.Error())
+		log.Printf("json marshal error: %v", err)
+		return nil
 	}
 	return b
 }

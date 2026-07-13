@@ -16,7 +16,8 @@ type ToolResult struct {
 
 // TerminalExecuteArgs is the argument schema for terminal_execute.
 type TerminalExecuteArgs struct {
-	Command string `json:"command" jsonschema:"required,description=Shell command to execute in the session's tmux shell"`
+	// jsonschema tag value is the field description; required is inferred from json tag (no omitempty).
+	Command string `json:"command" jsonschema:"Shell command to execute in the session's tmux shell"`
 }
 
 // NewTerminalExecuteHandler creates a handler for the terminal_execute tool.

@@ -278,4 +278,42 @@
       values: { message: message || 'An error occurred' },
     });
   }
+
+  // ————— Code block copy buttons —————
+
+  function initCodeBlockCopyButtons() {
+    document.querySelectorAll('pre > code').forEach(function (codeEl) {
+      var pre = codeEl.parentElement;
+      if (pre.querySelector('.copy-btn')) return; // already has button
+
+      var btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.setAttribute('aria-label', 'Copy code');
+
+      btn.addEventListener('click', function () {
+        var text = codeEl.textContent || '';
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+        }).catch(function () {
+          btn.textContent = 'Failed';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+        });
+      });
+
+      pre.style.position = 'relative';
+      pre.appendChild(btn);
+    });
+  }
+
+  // Run on load and after HTMX swaps
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCodeBlockCopyButtons);
+  } else {
+    initCodeBlockCopyButtons();
+  }
+  document.addEventListener('htmx:afterSwap', initCodeBlockCopyButtons);
+  document.addEventListener('htmx:afterSettle', initCodeBlockCopyButtons);
+
 })();

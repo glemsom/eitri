@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"google.golang.org/genai"
@@ -302,21 +301,15 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 // ————— stream buffer (fragment assembly) —————
 
 type streamBuf struct {
-	mu   sync.Mutex
 	text strings.Builder
 	tcs  []map[string]any
 }
 
 func (b *streamBuf) addContent(s string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.text.WriteString(s)
 }
 
 func (b *streamBuf) addToolCalls(raw json.RawMessage) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	var incoming []map[string]any
 	if err := json.Unmarshal(raw, &incoming); err != nil {
 		log.Printf("bad tool_calls in stream: %v", err)
@@ -353,9 +346,6 @@ func (b *streamBuf) addToolCalls(raw json.RawMessage) {
 }
 
 func (b *streamBuf) finalize(why genai.FinishReason) *model.LLMResponse {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	content := b.text.String()
 	var parts []*genai.Part
 	if content != "" {

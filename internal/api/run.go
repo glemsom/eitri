@@ -199,7 +199,8 @@ func (w *SSEWriter) Error(msg string) {
 }
 
 // AppendEvent processes ADK session events and sends SSE events to the writer.
-func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) {
+// Returns the accumulated assistant response text for storage in the UI session.
+func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	var fullText strings.Builder
 
@@ -207,17 +208,15 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) {
 		select {
 		case evt, ok := <-state.Events:
 			if !ok {
-				// Channel closed, run done
 				if fullText.Len() > 0 {
 					w.Done(messageID)
 				}
-				return
+				return fullText.String()
 			}
 			if evt == nil {
 				continue
 			}
 
-			// Process content parts
 			if evt.Content != nil {
 				for _, part := range evt.Content.Parts {
 					if part == nil {
@@ -236,25 +235,24 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) {
 				}
 			}
 
-			// Check for final response
 			if evt.TurnComplete || evt.IsFinalResponse() {
 				w.Done(messageID)
 				close(state.Done)
-				return
+				return fullText.String()
 			}
 
 		case err, ok := <-state.Errors:
 			if !ok {
-				return
+				return fullText.String()
 			}
 			if err != nil {
 				w.Error(formatErrorMessage(err))
 				close(state.Done)
-				return
+				return fullText.String()
 			}
 
 		case <-state.Done:
-			return
+			return fullText.String()
 		}
 	}
 }
