@@ -570,10 +570,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	// Render user bubble + OOB input state
-	// Return HTMX response with HX-Trigger for SSE connect
+	// Render user bubble + send JS events for SSE connect and run state
 	w.Header().Set("Content-Type", "text/html")
-	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`"}`)
+	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
 
 	userBubble := templates.UserBubble(message)
 	userBubble.Render(r.Context(), w)
@@ -660,7 +659,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 
 	// Return re-enabled input
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	component := templates.MessageInput(id, false)
+	component := templates.MessageInput(id, false, false)
 	component.Render(r.Context(), w)
 }
 
