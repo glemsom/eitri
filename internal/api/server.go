@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/assets"
@@ -23,13 +24,15 @@ type ServerConfig struct {
 	ConfigPath      string          // path to config file for save
 	Workspace       string          // launch workspace (process CWD)
 	SessionManager  *session.Manager
+	RunManager      *RunManager
 }
 
 // Server wraps the HTTP handler and injected dependencies.
 type Server struct {
 	config     ServerConfig
 	mux        *http.ServeMux
-	httpClient *http.Client // shared client with timeout for outbound requests
+	httpClient *http.Client
+	sses       sync.Map // sessionID -> chan SSEEvent (active stream connections)
 }
 
 // NewServer creates a new Server with routes registered.
@@ -67,6 +70,15 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	s.mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	s.mux.HandleFunc("GET /api/models", s.handleGetModels)
+
+	// Agent run + SSE streaming (issue #6)
+	s.mux.HandleFunc("POST /api/sessions/{id}/chat", s.handleChat)
+	s.mux.HandleFunc("GET /api/sessions/{id}/stream", s.handleStream)
+	s.mux.HandleFunc("POST /api/sessions/{id}/cancel", s.handleCancel)
+	s.mux.HandleFunc("POST /api/sessions/{id}/render/markdown", s.handleRenderMarkdown)
+	s.mux.HandleFunc("POST /api/sessions/{id}/render/tool-card", s.handleRenderToolCard)
+	s.mux.HandleFunc("POST /api/sessions/{id}/render/error", s.handleRenderError)
+	s.mux.HandleFunc("POST /api/sessions/{id}/render/component", s.handleRenderComponent)
 
 	// Skills (stub - full implementation in issue #7)
 	s.mux.HandleFunc("GET /skills", s.handleSkillsStub)
@@ -360,6 +372,12 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate runner cache on config change
+	if s.config.RunManager != nil {
+		s.config.RunManager.runnerMgr.Invalidate()
+		s.config.RunManager.UpdateProviderConfig(newCfg)
+	}
+
 	// Render form with models populated
 	maskedCfg := *newCfg
 	if maskedCfg.APIKey != "" {
@@ -419,6 +437,325 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 		}
 	}
 	return modelIDs, nil
+}
+
+// ————— Chat + SSE run handlers (issue #6) —————
+
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse message
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	message := r.FormValue("message")
+	if message == "" {
+		http.Error(w, "Message required", http.StatusBadRequest)
+		return
+	}
+
+	// Check for active run (concurrent run protection)
+	if s.config.RunManager.ActiveRun(id) != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusConflict)
+		component := templates.ErrorToast("This session already has an active run. Wait for it to complete or cancel it.")
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Append user message to session
+	s.config.SessionManager.AppendMessage(id, session.Message{
+		Role:    "user",
+		Content: message,
+		CreatedAt: time.Now(),
+	})
+
+	// Start run in background
+	err := s.config.RunManager.StartRun(r.Context(), id, message)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusInternalServerError)
+		component := templates.ErrorToast(err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Update session status
+	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
+
+	// Start SSE event processing in background
+	state := s.config.RunManager.ActiveRun(id)
+	if state != nil {
+		sseCh := make(chan SSEEvent, 100)
+		s.sses.Store(id, sseCh)
+
+		go func() {
+			defer func() {
+				s.sses.Delete(id)
+				close(sseCh)
+				s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
+			}()
+
+			w := NewSSEWriter(sseCh)
+			text := s.config.RunManager.AppendEvent(state, w)
+			if text != "" {
+				s.config.SessionManager.AppendMessage(id, session.Message{
+					Role:      "assistant",
+					Content:   text,
+					CreatedAt: time.Now(),
+				})
+			}
+		}()
+	}
+
+	// Render user bubble + OOB input state
+	// Return HTMX response with HX-Trigger for SSE connect
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`"}`)
+
+	userBubble := templates.UserBubble(message)
+	userBubble.Render(r.Context(), w)
+}
+
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the SSE channel for this session
+	raw, ok := s.sses.Load(id)
+	if !ok {
+		http.Error(w, "No active run for this session", http.StatusNotFound)
+		return
+	}
+	sseCh, ok := raw.(chan SSEEvent)
+	if !ok {
+		http.Error(w, "Stream error", http.StatusInternalServerError)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Send initial connecting event
+	if initData := mustJSON(SSEEvent{Type: "connecting"}); initData != nil {
+		fmt.Fprintf(w, "data: %s\n\n", string(initData))
+		flusher.Flush()
+	}
+
+	ctx := r.Context()
+	keepAlive := time.NewTicker(15 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case evt, ok := <-sseCh:
+			if !ok {
+				return
+			}
+			data := mustJSON(evt)
+			if data == nil {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
+		case <-keepAlive.C:
+			// SSE keep-alive comment
+			fmt.Fprintf(w, ":keepalive\n\n")
+			flusher.Flush()
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	s.config.RunManager.CancelRun(id)
+	s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
+
+	// Return re-enabled input
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	component := templates.MessageInput(id, false)
+	component.Render(r.Context(), w)
+}
+
+func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		MessageID string `json:"message_id"`
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Look up the last assistant message in session
+	// In v1, we render the accumulated run content from the session messages
+	var content string
+	sess = s.config.SessionManager.Get(id)
+	if sess != nil {
+		for i := len(sess.Messages) - 1; i >= 0; i-- {
+			if sess.Messages[i].Role == "assistant" {
+				content = sess.Messages[i].Content
+				break
+			}
+		}
+	}
+
+	html := renderMarkdownToHTML(content)
+	component := templates.AssistantBubble(html)
+	component.Render(r.Context(), w)
+}
+
+func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	var toolType, toolName, toolArgs, toolOutput string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		var req struct {
+			Type   string          `json:"type"`
+			Tool   string          `json:"tool"`
+			Args   json.RawMessage `json:"args,omitempty"`
+			Output string          `json:"output,omitempty"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		toolType = req.Type
+		toolName = req.Tool
+		toolArgs = string(req.Args)
+		toolOutput = req.Output
+	} else {
+		// Form-encoded (HTMX default)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		toolType = r.FormValue("type")
+		toolName = r.FormValue("tool")
+		toolArgs = r.FormValue("args")
+		toolOutput = r.FormValue("output")
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if toolType == "tool_call" {
+		component := templates.ToolCallCard(toolName, toolArgs)
+		component.Render(r.Context(), w)
+	} else {
+		component := templates.ToolResultCard(toolName, toolOutput)
+		component.Render(r.Context(), w)
+	}
+}
+
+func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
+	var msg string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		var req struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		msg = req.Message
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		msg = r.FormValue("message")
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	component := templates.ErrorToast(msg)
+	component.Render(r.Context(), w)
+}
+
+func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
+	// Stub - full generative UI implementation in issue #8
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, "<!-- component rendering not yet implemented -->")
+}
+
+// mustJSON marshals v to JSON bytes, logging and returning nil on error.
+func mustJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("json marshal error: %v", err)
+		return nil
+	}
+	return b
 }
 
 func (s *Server) handleSkillsStub(w http.ResponseWriter, r *http.Request) {

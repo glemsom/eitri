@@ -1,0 +1,18 @@
+package templates
+
+// UserBubble renders a user chat message bubble.
+templ UserBubble(content string) {
+	<div class="message message-user">
+		<div class="message-avatar">U</div>
+		<div class="message-content">{ content }</div>
+	</div>
+}
+
+// AssistantBubble renders an assistant chat message bubble with rendered HTML.
+// The content is already-rendered Markdown HTML, safe to inject.
+templ AssistantBubble(htmlContent string) {
+	<div class="message message-assistant">
+		<div class="message-avatar">E</div>
+		<div class="message-content">{ htmlContent }</div>
+	</div>
+}
