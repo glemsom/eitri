@@ -40,6 +40,15 @@
     }
   });
 
+  // Re-enable the composer after a run completes or errors
+  function reenableComposer() {
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    if (input) input.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (stopBtn) stopBtn.style.display = 'none';
+  }
   // Clean up on page unload
   document.addEventListener('htmx:beforeSwap', function (evt) {
     // If swapping away stream content, disconnect
@@ -139,12 +148,14 @@
         updateStreamIndicator(sessionId, state.status);
         finalizeMessage(sessionId, packet.message_id, packet.usage);
         disconnectStream(sessionId);
+        reenableComposer();
         break;
 
       case 'error':
         state.status = STATES.ERROR;
         renderError(sessionId, packet.message);
         disconnectStream(sessionId);
+        reenableComposer();
         break;
 
       case 'closed':

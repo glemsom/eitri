@@ -24,7 +24,7 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 			}
 			<div id="streaming" class="streaming"></div>
 		</div>
-		@MessageInput(sess.ID, !configValid)
+		@MessageInput(sess.ID, !configValid, false)
 	</div>
 }
 

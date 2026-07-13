@@ -130,19 +130,22 @@ Example:
 
 ```go
 func TestBrowser_MyFeature(t *testing.T) {
-    llmSrv := fakeLLMServer(t, "ok")
+    // Create fake LLM server ("ok" or "error" mode)
+    llmSrv := fakeChatServer(t, "ok")
     defer llmSrv.Close()
 
-    handler, _ := newTestServer(t, llmSrv.URL)
-    srv := httptest.NewServer(handler)
-    defer srv.Close()
+    // Create test server with RunManager (for chat/run features)
+    server := newTestServerWithRuns(t)
 
-    ctx, cancel := newBrowserCtx(t, srv)
+    // Configure provider to point at fake LLM server
+    configureProvider(t, server, llmSrv.URL)
+
+    ctx, cancel := newBrowserCtx(t, server.URL)
     defer cancel()
 
     var title string
     err := chromedp.Run(ctx,
-        chromedp.Navigate(srv.URL+"/"),
+        chromedp.Navigate(server.URL+"/"),
         chromedp.Title(&title),
     )
     if err != nil {
@@ -152,6 +155,12 @@ func TestBrowser_MyFeature(t *testing.T) {
         t.Errorf("title = %q", title)
     }
 }
+```
+
+For manual testing against a real server, set `EITRI_TEST_LLM_URL`:
+
+```bash
+EITRI_TEST_LLM_URL=https://my-opencode-server.example.com go test ./internal/api/ -run TestBrowser_SendMessage -v
 ```
 
 ---
