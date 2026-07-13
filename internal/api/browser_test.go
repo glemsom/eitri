@@ -68,11 +68,6 @@ func newBrowserCtx(t *testing.T, srvURL string) (context.Context, context.Cancel
 // newTestServer is already defined in server_test.go — shared via package api_test.
 
 func TestBrowser_HarnessCanary(t *testing.T) {
-	chromePath := findChrome()
-	if chromePath == "" {
-		t.Skip("Chrome/Chromium not found — skipping browser test")
-	}
-
 	server := newTestServer(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)

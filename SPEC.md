@@ -692,7 +692,7 @@ Requirements:
 
 ## 8. Testing Strategy
 
-Canonical test commands, browser coverage, fixtures, and test helpers live in [docs/TESTING.md](docs/TESTING.md). Release readiness requires the layers documented there: Go unit/integration tests, executor tests with real `tmux`, API tests with `httptest`, and chromedp browser E2E tests behind the `browser` build tag.
+Canonical test commands, browser coverage, fixtures, and test helpers live in [docs/TESTING.md](docs/TESTING.md). Release readiness requires the layers documented there: Go unit/integration tests, executor tests with real `tmux`, API tests with `httptest`, and chromedp browser E2E tests (runtime-skip if Chrome not found).
 
 ---
 
