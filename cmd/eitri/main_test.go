@@ -15,11 +15,7 @@ func TestBuild(t *testing.T) {
 	}
 
 	// Verify binary exists and is executable
-	info, err := exec.LookPath(binary)
-	if err != nil {
+	if _, err := exec.LookPath(binary); err != nil {
 		t.Fatalf("binary not found after build: %v", err)
-	}
-	if info == "" {
-		t.Fatal("binary path empty")
 	}
 }

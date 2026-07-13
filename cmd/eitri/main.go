@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 )
 
@@ -41,7 +42,7 @@ func main() {
 	fmt.Printf("Workspace: %s\n", workspace)
 	fmt.Printf("Listening on http://%s\n", addr)
 
-	// 5. Create config path (not loaded yet — feature complete in later issues)
+	// 5. Create config path
 	configPath := os.Getenv("EITRI_CONFIG")
 	if configPath == "" {
 		home, err := os.UserHomeDir()
@@ -51,9 +52,15 @@ func main() {
 		}
 		configPath = filepath.Join(home, ".eitri", "config.json")
 	}
-	_ = configPath // Will be used when config loading is wired in
+	// 6. Load config
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Config: provider=%s, model=%s\n", cfg.Provider, cfg.Model)
 
-	// 6. Create HTTP server
+	// 7. Create HTTP server
 	srvCfg := api.ServerConfig{
 		// TODO: Wire config manager, session manager, runner manager, skills service
 	}
@@ -64,18 +71,18 @@ func main() {
 		Handler: server.Handler(),
 	}
 
-	// 7. Start HTTP server in background
+	// 8. Start HTTP server in background
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
 
-	// 8. Wait for shutdown signal
+	// 9. Wait for shutdown signal
 	<-ctx.Done()
 	fmt.Println("\nShutting down...")
 
-	// 9. Graceful shutdown
+	// 10. Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	defer shutdownCancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
