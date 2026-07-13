@@ -13,6 +13,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 func main() {
@@ -60,10 +61,14 @@ func main() {
 	}
 	fmt.Printf("Config: provider=%s, model=%s\n", cfg.Provider, cfg.Model)
 
-	// 7. Create HTTP server
+	// 7. Create session manager
+	sessionMgr := session.NewManager(10)
+
+	// 8. Create HTTP server
 	srvCfg := api.ServerConfig{
 		ConfigPath: configPath,
-		// TODO: Wire session manager, runner manager, skills service
+		Workspace:  workspace,
+		SessionManager: sessionMgr,
 	}
 	server := api.NewServer(srvCfg)
 

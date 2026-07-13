@@ -1,0 +1,46 @@
+package templates
+
+// MessageInput renders the chat input form with textarea and send button.
+// disabled=true when provider config is incomplete.
+templ MessageInput(sessionID string, disabled bool) {
+	<div id="composer" class="composer">
+		<form
+			hx-post={ templ.URL("/api/sessions/" + sessionID + "/chat") }
+			hx-target="#messages"
+			hx-swap="beforeend"
+			hx-indicator="#send-btn"
+		>
+			<textarea
+				id="chat-input"
+				name="message"
+				class="chat-input"
+				rows="3"
+				placeholder="Type a message..."
+				required
+				disabled={ disabled }
+				hx-trigger="keydown[ctrl+enter||meta+enter] from:#chat-input"
+			></textarea>
+			<div class="composer-actions">
+				<button
+					id="send-btn"
+					type="submit"
+					class="send-btn"
+					disabled={ disabled }
+				>
+					Send
+				</button>
+				<button
+					id="stop-btn"
+					type="button"
+					class="stop-btn"
+					style="display:none"
+					hx-post={ templ.URL("/api/sessions/" + sessionID + "/cancel") }
+					hx-target="#composer"
+					hx-swap="outerHTML"
+				>
+					Stop
+				</button>
+			</div>
+		</form>
+	</div>
+}

@@ -1,0 +1,35 @@
+package templates
+
+import "github.com/glemsom/eitri/internal/session"
+
+// ChatView is the main chat page for a single session.
+// Renders session tabs, workspace indicator, setup banner, message list, and composer.
+templ ChatView(sess *session.UISession, workspace string, configValid bool) {
+	<div id="chat-view">
+		<div id="error-toasts"></div>
+		<div id="workspace-indicator" class="workspace-indicator">
+			Workspace: { workspace }
+		</div>
+		if !configValid {
+			<div id="setup-banner" class="setup-banner">
+				<p>Provider setup required. <a href="/settings">Open Settings</a> to configure your LLM provider.</p>
+			</div>
+		}
+		<div id="messages" class="messages">
+			for _, msg := range sess.Messages {
+				<div class={ "message", templ.KV("message-user", msg.Role == "user"), templ.KV("message-assistant", msg.Role == "assistant") }>
+					<div class="message-content">{ msg.Content }</div>
+				</div>
+			}
+			<div id="streaming" class="streaming"></div>
+		</div>
+		@MessageInput(sess.ID, !configValid)
+	</div>
+}
+
+// WorkspaceIndicator shows the launch workspace path.
+templ WorkspaceIndicator(workspace string) {
+	<div id="workspace-indicator" class="workspace-indicator">
+		Workspace: { workspace }
+	</div>
+}
