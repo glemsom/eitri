@@ -87,6 +87,7 @@ func TestOpenAIModel_Name(t *testing.T) {
 func TestOpenAIModel_StreamingText(t *testing.T) {
 	srv := fakeLLMServer(t, "ok")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
 	req := &model.LLMRequest{
 		Model: "gpt-4",
 		Contents: []*genai.Content{
@@ -118,6 +119,7 @@ func TestOpenAIModel_StreamingText(t *testing.T) {
 func TestOpenAIModel_Unauthorized(t *testing.T) {
 	srv := fakeLLMServer(t, "unauthorized")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "bad-key")
+	m.MaxRetries = 0
 	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
 		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
 	}, true))
@@ -132,6 +134,7 @@ func TestOpenAIModel_Unauthorized(t *testing.T) {
 func TestOpenAIModel_RateLimited(t *testing.T) {
 	srv := fakeLLMServer(t, "ratelimit")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
 	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
 		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
 	}, true))
@@ -146,6 +149,7 @@ func TestOpenAIModel_RateLimited(t *testing.T) {
 func TestOpenAIModel_StreamingToolCalls(t *testing.T) {
 	srv := fakeLLMServer(t, "stream-tool-calls")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
 	req := &model.LLMRequest{
 		Model: "gpt-4",
 		Contents: []*genai.Content{
@@ -180,6 +184,7 @@ func TestOpenAIModel_StreamingToolCalls(t *testing.T) {
 func TestOpenAIModel_FragmentedToolCalls(t *testing.T) {
 	srv := fakeLLMServer(t, "stream-multi-tool")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
 	req := &model.LLMRequest{
 		Model: "gpt-4",
 		Contents: []*genai.Content{
@@ -211,6 +216,7 @@ func TestOpenAIModel_FragmentedToolCalls(t *testing.T) {
 func TestOpenAIModel_ContextLengthExceeded(t *testing.T) {
 	srv := fakeLLMServer(t, "context-length")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
 	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
 		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
 	}, true))
@@ -224,6 +230,7 @@ func TestOpenAIModel_ContextLengthExceeded(t *testing.T) {
 
 func TestOpenAIModel_ConnectionRefused(t *testing.T) {
 	m := agent.NewOpenAIModel("gpt-4", "http://127.0.0.1:19876", "sk-test")
+	m.MaxRetries = 0
 	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
 		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
 	}, true))
@@ -232,5 +239,157 @@ func TestOpenAIModel_ConnectionRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connection refused") {
 		t.Errorf("error should mention connection refused, got: %v", err)
+	}
+}
+
+func TestOpenAIModel_RetryOnRateLimit(t *testing.T) {
+	t.Parallel()
+	var callCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			// First call: rate limit
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(429)
+			fmt.Fprint(w, `{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`)
+			return
+		}
+		// Second call: success
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Hello after retry!"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	resp, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls (1 retry), got %d", callCount)
+	}
+	if len(resp) < 1 {
+		t.Fatalf("expected at least 1 response, got %d", len(resp))
+	}
+	last := resp[len(resp)-1]
+	if last.Content == nil || len(last.Content.Parts) == 0 || last.Content.Parts[0].Text != "Hello after retry!" {
+		t.Errorf("expected 'Hello after retry!', got %+v", last.Content)
+	}
+}
+
+func TestOpenAIModel_RetryOnServerError(t *testing.T) {
+	t.Parallel()
+	var callCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount <= 2 {
+			// First two calls: 503
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			fmt.Fprint(w, `{"error":{"message":"Service unavailable","type":"server_error"}}`)
+			return
+		}
+		// Third call: success
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Success!"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	resp, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls (2 retries), got %d", callCount)
+	}
+	if len(resp) < 1 {
+		t.Fatalf("expected at least 1 response, got %d", len(resp))
+	}
+}
+
+func TestOpenAIModel_RetriesExhausted(t *testing.T) {
+	t.Parallel()
+	var callCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(503)
+		fmt.Fprint(w, `{"error":{"message":"Service unavailable","type":"server_error"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err == nil {
+		t.Fatal("expected error after retries exhausted")
+	}
+	if !strings.Contains(err.Error(), "after 3 retries") {
+		t.Errorf("error should mention retries exhausted, got: %v", err)
+	}
+	// Expect 4 calls: original + 3 retries
+	if callCount != 4 {
+		t.Errorf("expected 4 calls (original + 3 retries), got %d", callCount)
+	}
+}
+
+func TestOpenAIModel_NoRetryOnAuthError(t *testing.T) {
+	t.Parallel()
+	var callCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		fmt.Fprint(w, `{"error":{"message":"Invalid API key","type":"auth_error"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "bad-key")
+	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Non-retryable: should only be 1 call
+	if callCount != 1 {
+		t.Errorf("expected 1 call (no retry on auth), got %d", callCount)
+	}
+}
+
+func TestOpenAIModel_NoRetryOnContextLength(t *testing.T) {
+	t.Parallel()
+	var callCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		fmt.Fprint(w, `{"error":{"message":"maximum context length 4096 tokens exceeded","type":"invalid_request_error"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if callCount != 1 {
+		t.Errorf("expected 1 call (no retry on context length), got %d", callCount)
 	}
 }

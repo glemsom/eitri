@@ -20,18 +20,22 @@ import (
 
 // OpenAIModel implements model.LLM for OpenAI-compatible chat completions.
 type OpenAIModel struct {
-	name    string
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	name       string
+	baseURL    string
+	apiKey     string
+	client     *http.Client
+	MaxRetries int           // max retry attempts for retryable errors (default 3)
+	RetryDelay time.Duration // base delay for exponential backoff (default 1s)
 }
 
 // NewOpenAIModel creates an OpenAI-compatible model.LLM.
 func NewOpenAIModel(name, baseURL, apiKey string) *OpenAIModel {
 	return &OpenAIModel{
-		name:    name,
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
+		name:       name,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		MaxRetries: 3,
+		RetryDelay: 1 * time.Second,
 		client: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
@@ -83,6 +87,20 @@ type apiError struct {
 
 // ————— model.LLM —————
 
+// retryableStatusCodes are HTTP statuses that trigger automatic retry.
+var retryableStatusCodes = map[int]bool{
+	http.StatusTooManyRequests:      true, // 429
+	http.StatusServiceUnavailable:   true, // 503
+	http.StatusBadGateway:           true, // 502
+	http.StatusGatewayTimeout:       true, // 504
+	http.StatusInternalServerError:  true, // 500
+}
+
+// isRetryableError checks if an HTTP status code should trigger a retry.
+func isRetryableError(statusCode int) bool {
+	return retryableStatusCodes[statusCode]
+}
+
 func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
 		openAIReq := m.toOpenAIReq(req, stream)
@@ -93,30 +111,78 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 		}
 
 		endpoint := m.baseURL + "/v1/chat/completions"
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
-		if err != nil {
-			yield(nil, fmt.Errorf("failed to create request: %w", err))
+
+		var lastErr error
+		maxAttempts := m.MaxRetries + 1 // first attempt + retries
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			if attempt > 0 {
+				// Exponential backoff: delay, 2*delay, 4*delay
+				backoff := m.RetryDelay * (1 << (attempt - 1))
+				log.Printf("Retrying LLM request after %v (attempt %d/%d)", backoff, attempt, m.MaxRetries)
+				timer := time.NewTimer(backoff)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					yield(nil, ctx.Err())
+					return
+				case <-timer.C:
+				}
+			}
+
+			httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
+			if err != nil {
+				yield(nil, fmt.Errorf("failed to create request: %w", err))
+				return
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Accept", "text/event-stream")
+			if m.apiKey != "" {
+				httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
+			}
+
+			resp, err := m.client.Do(httpReq)
+			if err != nil {
+				// Network errors: connection refused, timeout, DNS failure — retryable
+				lastErr = m.classifyNetError(err)
+				if attempt < m.MaxRetries {
+					log.Printf("LLM network error (attempt %d/%d): %v", attempt+1, m.MaxRetries, err)
+					continue
+				}
+				yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
+				return
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				if isRetryableError(resp.StatusCode) {
+					lastErr = m.parseHTTPError(resp)
+					resp.Body.Close()
+					if attempt < m.MaxRetries {
+						log.Printf("LLM retryable HTTP %d (attempt %d/%d): %v", resp.StatusCode, attempt+1, m.MaxRetries, lastErr)
+						continue
+					}
+					// Exhausted retries — wrap error and yield
+					yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
+					return
+				}
+				// Non-retryable error
+				err := m.parseHTTPError(resp)
+				resp.Body.Close()
+				yield(nil, err)
+				return
+			}
+
+			// Success — start streaming
+			defer resp.Body.Close()
+			m.readStream(resp.Body, yield)
 			return
 		}
-		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("Accept", "text/event-stream")
-		if m.apiKey != "" {
-			httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
-		}
 
-		resp, err := m.client.Do(httpReq)
-		if err != nil {
-			yield(nil, m.classifyNetError(err))
-			return
+		// All retries exhausted
+		if lastErr != nil {
+			yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
+		} else {
+			yield(nil, fmt.Errorf("LLM request failed after %d retries", m.MaxRetries))
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			yield(nil, m.parseHTTPError(resp))
-			return
-		}
-
-		m.readStream(resp.Body, yield)
 	}
 }
 
