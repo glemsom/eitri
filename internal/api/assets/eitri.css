@@ -483,3 +483,62 @@ pre:hover .copy-btn {
   background: var(--accent);
   color: white;
 }
+
+/* File edit card */
+.file-edit-card .file-edit-body {
+  padding: 0.5rem 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.file-edit-card .file-edit-collapsed summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.9rem;
+  padding: 0.25rem 0;
+}
+
+.file-edit-card .file-edit-collapsed summary:hover {
+  color: var(--accent-hover);
+}
+
+.file-edit-card .file-preview pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+.file-diff pre.diff-content {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.file-diff pre.diff-content code {
+  white-space: pre-wrap;
+}
+
+/* Diff line markers */
+.file-diff .diff-added,
+.file-diff .diff-removed {
+  display: block;
+  padding: 0 0.25rem;
+}
+
+.file-diff .diff-added {
+  background: rgba(46, 204, 113, 0.1);
+}
+
+.file-diff .diff-removed {
+  background: rgba(231, 76, 60, 0.1);
+}
+
+

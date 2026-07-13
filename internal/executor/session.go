@@ -36,6 +36,11 @@ func NewSessionManager(workspace string, cmdTimeout time.Duration, idleTimeout t
 	}
 }
 
+// Workspace returns the initial working directory for executors.
+func (sm *SessionManager) Workspace() string {
+	return sm.workspace
+}
+
 // GetOrCreate returns the executor for sessionID, creating one if needed.
 func (sm *SessionManager) GetOrCreate(sessionID string) (CommandExecutor, error) {
 	sm.mu.Lock()
