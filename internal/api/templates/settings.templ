@@ -1,0 +1,102 @@
+package templates
+
+import "github.com/glemsom/eitri/internal/config"
+
+templ SettingsView(cfg *config.Config) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Eitri — Settings</title>
+			<script src="/static/htmx.min.js"></script>
+			<link rel="stylesheet" href="/static/eitri.css"/>
+		</head>
+		<body>
+			<div id="app">
+				<header>
+					<h1>Eitri</h1>
+					<span class="text-muted">Settings</span>
+					<nav>
+						<a href="/">Chat</a>
+						<a href="/settings">Settings</a>
+					</nav>
+				</header>
+				<main>
+					@SettingsForm(cfg)
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ SettingsForm(cfg *config.Config) {
+	<div id="settings-form">
+		<form hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
+			<fieldset>
+				<legend>Provider</legend>
+
+				<div class="form-group">
+					<label for="provider">Provider</label>
+					<select id="provider" name="provider" required>
+						<option value="opencode_go" if cfg.Provider == "opencode_go" { selected }>OpenCode Go</option>
+						<option value="custom_openai" if cfg.Provider == "custom_openai" { selected }>Custom OpenAI (advanced/best-effort)</option>
+					</select>
+				</div>
+
+				<div class="form-group">
+					<label for="base_url">Base URL</label>
+					<input type="url" id="base_url" name="base_url" value={ cfg.BaseURL } placeholder="https://opencode.ai/zen/go" required/>
+				</div>
+
+				<div class="form-group">
+					<label for="api_key">API Key</label>
+					<div class="api-key-row">
+						<input type="password" id="api_key" name="api_key" value={ cfg.APIKey } placeholder="sk-..." autocomplete="off"/>
+						<label class="checkbox-label">
+							<input type="checkbox" name="clear_api_key" value="true"/>
+							Clear key
+						</label>
+					</div>
+					<small class="hint">Required for OpenCode Go. Optional for custom OpenAI.</small>
+				</div>
+
+				<div class="form-group">
+					<label for="model">Model</label>
+					<select id="model" name="model">
+						<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
+					</select>
+					<small class="hint">Models are discovered on save. Save to populate model list.</small>
+				</div>
+			</fieldset>
+
+			<fieldset>
+				<legend>Timeouts & Limits</legend>
+
+				<div class="form-group">
+					<label for="session_timeout">Session Timeout (seconds)</label>
+					<input type="number" id="session_timeout" name="session_timeout" value={ cfg.SessionTimeout / 1_000_000_000 } min="60" required/>
+				</div>
+
+				<div class="form-group">
+					<label for="command_timeout">Command Timeout (seconds)</label>
+					<input type="number" id="command_timeout" name="command_timeout" value={ cfg.CommandTimeout / 1_000_000_000 } min="1" required/>
+				</div>
+
+				<div class="form-group">
+					<label for="max_turns">Max Turns</label>
+					<input type="number" id="max_turns" name="max_turns" value={ cfg.MaxTurns } min="1" required/>
+				</div>
+
+				<div class="form-group">
+					<label for="context_window_tokens">Context Window Tokens</label>
+					<input type="number" id="context_window_tokens" name="context_window_tokens" value={ cfg.ContextWindowTokens } min="1024" required/>
+				</div>
+			</fieldset>
+
+			<div class="form-actions">
+				<button type="submit">Save</button>
+			</div>
+		</form>
+	</div>
+}

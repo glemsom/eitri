@@ -62,7 +62,8 @@ func main() {
 
 	// 7. Create HTTP server
 	srvCfg := api.ServerConfig{
-		// TODO: Wire config manager, session manager, runner manager, skills service
+		ConfigPath: configPath,
+		// TODO: Wire session manager, runner manager, skills service
 	}
 	server := api.NewServer(srvCfg)
 

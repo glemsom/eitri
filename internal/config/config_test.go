@@ -138,3 +138,142 @@ func TestDefaults_ReturnsCopy(t *testing.T) {
 		t.Error("Defaults() returned shared state — must return independent copy")
 	}
 }
+
+func TestValidate_ValidOpenCodeWithAPIKey(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test-key"
+	if err := config.Validate(&cfg); err != nil {
+		t.Errorf("Validate(valid opencode_go) = %v, want nil", err)
+	}
+}
+
+func TestValidate_InvalidProvider(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Provider = "invalid_provider"
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(invalid provider) = nil, want error")
+	}
+}
+
+func TestValidate_MissingAPIKeyForOpenCode(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = ""
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(empty api_key for opencode_go) = nil, want error")
+	}
+}
+
+func TestValidate_CustomOpenAIAPIKeyOptional(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Provider = "custom_openai"
+	cfg.APIKey = ""
+	cfg.BaseURL = "https://custom.example.com"
+	if err := config.Validate(&cfg); err != nil {
+		t.Errorf("Validate(custom_openai missing key) = %v, want nil (key is optional)", err)
+	}
+}
+
+func TestValidate_SessionTimeoutMin(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.SessionTimeout = 500_000_000 // 0.5s < 1 minute
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(session_timeout < 1min) = nil, want error")
+	}
+}
+
+func TestValidate_CommandTimeoutMin(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.CommandTimeout = 500_000_000 // 0.5s < 1 second
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(command_timeout < 1s) = nil, want error")
+	}
+}
+
+func TestValidate_MaxTurnsMin(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.MaxTurns = 0
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(max_turns < 1) = nil, want error")
+	}
+}
+
+func TestValidate_ContextWindowMin(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.ContextWindowTokens = 512
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(context_window_tokens < 1024) = nil, want error")
+	}
+}
+
+func TestValidate_InvalidBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.BaseURL = "not-a-url"
+	if err := config.Validate(&cfg); err == nil {
+		t.Error("Validate(bad base_url) = nil, want error")
+	}
+}
+
+func TestMaskAPIKey(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", ""},
+		{"sk-abc", "sk-abc"}, // too short to mask
+		{"sk-abcdefghijklm", "sk-ab...klm"},
+		{"sk-abcdefghijklmnop", "sk-ab...nop"},
+	}
+	for _, tt := range tests {
+		got := config.MaskAPIKey(tt.input)
+		if got != tt.want {
+			t.Errorf("MaskAPIKey(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestMerge_OverridesProvider(t *testing.T) {
+	cfg := config.Defaults()
+	patch := map[string]interface{}{
+		"provider": "custom_openai",
+		"base_url": "https://other.example.com",
+	}
+	result := config.Merge(&cfg, patch)
+
+	if result.Provider != "custom_openai" {
+		t.Errorf("Provider = %q, want %q", result.Provider, "custom_openai")
+	}
+	if result.BaseURL != "https://other.example.com" {
+		t.Errorf("BaseURL = %q, want %q", result.BaseURL, "https://other.example.com")
+	}
+	// Unset fields should keep defaults
+	if result.APIKey != cfg.APIKey {
+		t.Errorf("APIKey changed unexpectedly: %q", result.APIKey)
+	}
+}
+
+func TestMerge_IgnoresUnknownFields(t *testing.T) {
+	cfg := config.Defaults()
+	patch := map[string]interface{}{
+		"nonexistent": "value",
+	}
+	result := config.Merge(&cfg, patch)
+	if result.Provider != cfg.Provider {
+		t.Errorf("Provider changed unexpectedly: %q", result.Provider)
+	}
+}
+
+func TestMerge_ClearAPIKey(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-secret-key-to-clear"
+	patch := map[string]interface{}{
+		"clear_api_key": "true",
+	}
+	result := config.Merge(&cfg, patch)
+	if result.APIKey != "" {
+		t.Errorf("APIKey = %q, want empty after clear", result.APIKey)
+	}
+	// Other fields should remain unchanged
+	if result.Provider != cfg.Provider {
+		t.Errorf("Provider changed unexpectedly: %q", result.Provider)
+	}
+}
