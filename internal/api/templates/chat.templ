@@ -15,6 +15,7 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 				<p>Provider setup required. <a href="/settings">Open Settings</a> to configure your LLM provider.</p>
 			</div>
 		}
+		@ActiveSkillChips(sess.ActiveSkills)
 		<div id="messages" class="messages">
 			for _, msg := range sess.Messages {
 				<div class={ "message", templ.KV("message-user", msg.Role == "user"), templ.KV("message-assistant", msg.Role == "assistant") }>

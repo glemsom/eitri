@@ -17,6 +17,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // ServerConfig holds dependencies and settings for the API server.
@@ -25,6 +26,7 @@ type ServerConfig struct {
 	Workspace       string          // launch workspace (process CWD)
 	SessionManager  *session.Manager
 	RunManager      *RunManager
+	SkillsService   *skills.Service
 }
 
 // Server wraps the HTTP handler and injected dependencies.
@@ -80,8 +82,12 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/sessions/{id}/render/error", s.handleRenderError)
 	s.mux.HandleFunc("POST /api/sessions/{id}/render/component", s.handleRenderComponent)
 
-	// Skills (stub - full implementation in issue #7)
-	s.mux.HandleFunc("GET /skills", s.handleSkillsStub)
+	// Skills routes
+	s.mux.HandleFunc("GET /skills", s.handleSkills)
+	s.mux.HandleFunc("GET /api/skills", s.handleAPISkills)
+	s.mux.HandleFunc("POST /api/skills/refresh", s.handleSkillsRefresh)
+	s.mux.HandleFunc("GET /api/sessions/{id}/complete/skills", s.handleCompleteSkills)
+	s.mux.HandleFunc("POST /api/sessions/{id}/skills/{name}/activate", s.handleActivateSessionSkill)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -462,6 +468,57 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for slash commands
+	slashResult, slashErr := skills.ParseSlashInput(message, func(name string) *skills.Skill {
+		return s.config.SkillsService.Lookup(name)
+	})
+	if slashErr != nil {
+		// Unknown slash command
+		if _, ok := slashErr.(*skills.UnknownCommandError); ok {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			w.Header().Set("Content-Type", "text/html")
+			component := templates.ErrorToast(slashErr.Error())
+			component.Render(r.Context(), w)
+			return
+		}
+	}
+
+	// Activate skills from slash command
+	if slashResult != nil && len(slashResult.ActivatedSkills) > 0 {
+		for _, skillName := range slashResult.ActivatedSkills {
+			s.config.SessionManager.ActivateSkill(id, skillName)
+		}
+	}
+
+	// Validate active skills: remove any that are no longer effective
+	if len(sess.ActiveSkills) > 0 {
+		var validSkills []string
+		for _, name := range sess.ActiveSkills {
+			if s.config.SkillsService.Lookup(name) != nil {
+				validSkills = append(validSkills, name)
+			}
+		}
+		// If some skills disappeared, update the session
+		if len(validSkills) != len(sess.ActiveSkills) {
+			sess.ActiveSkills = validSkills
+		}
+	}
+
+	// If slash-only (no prompt), return activation event without starting a run
+	if slashResult != nil && slashResult.IsSlashOnly {
+		// Render the updated active skill chips
+		w.Header().Set("Content-Type", "text/html")
+		chips := templates.ActiveSkillChips(sess.ActiveSkills)
+		chips.Render(r.Context(), w)
+		return
+	}
+
+	// Determine the actual prompt to send
+	prompt := message
+	if slashResult != nil && slashResult.Prompt != "" {
+		prompt = slashResult.Prompt
+	}
+
 	// Check for active run (concurrent run protection)
 	if s.config.RunManager.ActiveRun(id) != nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -479,7 +536,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Start run in background
-	err := s.config.RunManager.StartRun(r.Context(), id, message)
+	err := s.config.RunManager.StartRun(r.Context(), id, prompt)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -776,9 +833,140 @@ func mustJSON(v interface{}) []byte {
 	return b
 }
 
-func (s *Server) handleSkillsStub(w http.ResponseWriter, r *http.Request) {
-	component := templates.Base("Eitri — Skills")
+func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	registry := s.config.SkillsService.Registry()
+	component := templates.SkillsPage(registry)
 	component.Render(r.Context(), w)
+}
+
+func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+	_ = browserID
+
+	registry := s.config.SkillsService.Registry()
+
+	// HTMX-aware: return HTML fragment when HX-Request header is present
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Otherwise return JSON
+	effective := registry.Effective()
+	type skillJSON struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Scope       string `json:"scope"`
+		Path        string `json:"path"`
+	}
+	result := make([]skillJSON, 0, len(effective))
+	for _, s := range effective {
+		result = append(result, skillJSON{
+			Name:        s.Name,
+			Description: s.Description,
+			Scope:       string(s.Scope),
+			Path:        s.Path,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"skills": result,
+		"diagnostics": registry.Diagnostics(),
+	})
+}
+
+func (s *Server) handleSkillsRefresh(w http.ResponseWriter, r *http.Request) {
+	registry := s.config.SkillsService.Refresh()
+
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"skills": registry.Summary(),
+	})
+}
+
+func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	effective := s.config.SkillsService.Effective()
+
+	type itemJSON struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Scope       string `json:"scope"`
+	}
+	var items []itemJSON
+	for _, skill := range effective {
+		if q == "" || strings.HasPrefix(skill.Name, q) {
+			items = append(items, itemJSON{
+				Name:        skill.Name,
+				Description: skill.Description,
+				Scope:       string(skill.Scope),
+			})
+		}
+		if len(items) >= 50 {
+			break
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
+}
+
+func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	name := r.PathValue("name")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Validate skill exists and is effective
+	if s.config.SkillsService.Lookup(name) == nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.Header().Set("Content-Type", "text/html")
+		component := templates.ErrorToast("Skill \"" + name + "\" not found or not effective")
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Activate in session
+	activated := s.config.SessionManager.ActivateSkill(id, name)
+
+	// Return HTMX fragment with updated chips
+	if r.Header.Get("HX-Request") == "true" {
+		if activated {
+			// Swap the active skills section
+			chips := templates.ActiveSkillChips(sess.ActiveSkills)
+			chips.Render(r.Context(), w)
+			return
+		}
+		// Already active - return current state
+		chips := templates.ActiveSkillChips(sess.ActiveSkills)
+		chips.Render(r.Context(), w)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {

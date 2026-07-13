@@ -11,6 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/executor"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // newRunnerManager creates a test RunnerManager.
@@ -26,12 +27,15 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	runnerMgr := newRunnerManager(t)
 	runMgr := api.NewRunManager(runnerMgr, executorMgr)
+	skillsSvc := skills.NewService()
+	runMgr.SetSkillsService(skillsSvc)
 
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      t.TempDir(),
 		SessionManager: sessionMgr,
 		RunManager:     runMgr,
+		SkillsService:  skillsSvc,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())

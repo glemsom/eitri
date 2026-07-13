@@ -29,13 +29,14 @@ type Message struct {
 // UISession represents a browser-facing chat session.
 // Per SPEC §6.2: sessions store owning browser_id, title, status, messages.
 type UISession struct {
-	ID        string    `json:"id"`
-	BrowserID string    `json:"browser_id"`
-	Title     string    `json:"title"`
-	Status    Status    `json:"status"`
-	Messages  []Message `json:"messages"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	BrowserID    string    `json:"browser_id"`
+	Title        string    `json:"title"`
+	Status       Status    `json:"status"`
+	Messages     []Message `json:"messages"`
+	ActiveSkills []string  `json:"active_skills"` // names of activated skills
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Manager manages in-memory UI sessions with browser ownership.
@@ -224,4 +225,53 @@ func (m *Manager) AppendMessage(id string, msg Message) {
 		s.Messages = append(s.Messages, msg)
 		s.UpdatedAt = time.Now()
 	}
+}
+
+// ActivateSkill adds a skill name to the session's active skills. No-op if session not found.
+// Deduplicates: if skill already active, returns false.
+func (m *Manager) ActivateSkill(id, skillName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return false
+	}
+	for _, existing := range s.ActiveSkills {
+		if existing == skillName {
+			return false // already active
+		}
+	}
+	s.ActiveSkills = append(s.ActiveSkills, skillName)
+	s.UpdatedAt = time.Now()
+	return true
+}
+
+// DeactivateSkill removes a skill name from the session's active skills. No-op if session not found.
+func (m *Manager) DeactivateSkill(id, skillName string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return
+	}
+	for i, name := range s.ActiveSkills {
+		if name == skillName {
+			s.ActiveSkills = append(s.ActiveSkills[:i], s.ActiveSkills[i+1:]...)
+			s.UpdatedAt = time.Now()
+			return
+		}
+	}
+}
+
+// ActiveSkills returns the list of active skill names for a session. Returns nil if session not found.
+func (m *Manager) ActiveSkills(id string) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	result := make([]string, len(s.ActiveSkills))
+	copy(result, s.ActiveSkills)
+	return result
 }

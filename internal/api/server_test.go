@@ -11,15 +11,18 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewService()
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      t.TempDir(),
 		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -727,6 +730,63 @@ func TestSessionCapReached(t *testing.T) {
 
 	if resp2.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("POST /api/sessions at cap status = %d, want %d", resp2.StatusCode, http.StatusTooManyRequests)
+	}
+}
+
+func TestSkillsEndpoint(t *testing.T) {
+	server := newTestServer(t)
+
+	// Test GET /skills returns a page
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+
+	body := make([]byte, 4096)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+
+	if !strings.Contains(content, "Agent Skills") {
+		t.Errorf("skills page missing 'Agent Skills' heading, got: %s", content[:200])
+	}
+}
+
+func TestAPISkillsEndpoint(t *testing.T) {
+	server := newTestServer(t)
+
+	// GET /api/skills returns JSON
+	resp, err := http.Get(server.URL + "/api/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /api/skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := body["skills"]; !ok {
+		t.Errorf("response missing 'skills' field")
 	}
 }
 

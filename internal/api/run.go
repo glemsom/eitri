@@ -13,10 +13,13 @@ import (
 
 	"google.golang.org/adk/v2/session"
 
+	adkagent "google.golang.org/adk/v2/agent"
+
 	"github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // SSEEvent represents one SSE data packet sent to the browser.
@@ -43,13 +46,14 @@ type runState struct {
 
 // RunManager manages active runs per session.
 type RunManager struct {
-	mu         sync.Mutex
-	active     map[string]*runState
-	runnerMgr  *agentrunner.Manager
-	sessionMgr *executor.SessionManager
-	baseURL    string
-	apiKey     string
-	modelName  string
+	mu          sync.Mutex
+	active      map[string]*runState
+	runnerMgr   *agentrunner.Manager
+	sessionMgr  *executor.SessionManager
+	skillsSvc   *skills.Service
+	baseURL     string
+	apiKey      string
+	modelName   string
 }
 
 // NewRunManager creates a run manager.
@@ -59,6 +63,11 @@ func NewRunManager(runnerMgr *agentrunner.Manager, sessionMgr *executor.SessionM
 		runnerMgr:  runnerMgr,
 		sessionMgr: sessionMgr,
 	}
+}
+
+// SetSkillsService sets the skills service for the run manager.
+func (rm *RunManager) SetSkillsService(svc *skills.Service) {
+	rm.skillsSvc = svc
 }
 
 // UpdateProviderConfig stores provider config for creating model instances.
@@ -87,9 +96,15 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	}
 
 	llm := agent.NewOpenAIModel(modelName, baseURL, apiKey)
-	ag, err := agent.NewAgent(llm, rm.sessionMgr)
-	if err != nil {
-		return fmt.Errorf("failed to create agent: %w", err)
+	var ag adkagent.Agent
+	var agErr error
+	if rm.skillsSvc != nil {
+		ag, agErr = agent.NewAgentWithSkills(llm, rm.sessionMgr, rm.skillsSvc)
+	} else {
+		ag, agErr = agent.NewAgent(llm, rm.sessionMgr)
+	}
+	if agErr != nil {
+		return fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
 	cfg := &config.Config{Provider: "opencode_go", APIKey: apiKey, BaseURL: baseURL, Model: modelName}

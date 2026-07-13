@@ -16,6 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/executor"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 func main() {
@@ -72,12 +73,19 @@ func main() {
 	runMgr := api.NewRunManager(runnerMgr, executorMgr)
 	runMgr.UpdateProviderConfig(cfg)
 
-	// 9. Create HTTP server
+	// 9. Create skills service
+	skillsSvc := skills.NewService()
+
+	// 9a. Wire skills service to run manager
+	runMgr.SetSkillsService(skillsSvc)
+
+	// 10. Create HTTP server
 	srvCfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		RunManager:     runMgr,
+		SkillsService:  skillsSvc,
 	}
 	server := api.NewServer(srvCfg)
 

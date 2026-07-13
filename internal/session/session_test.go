@@ -271,3 +271,87 @@ func TestDefaultMaxSessions(t *testing.T) {
 		t.Error("expected cap error")
 	}
 }
+
+func TestActivateSkill(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+
+	// Activate first skill
+	ok := mgr.ActivateSkill(sess.ID, "code-review")
+	if !ok {
+		t.Error("ActivateSkill returned false for new activation")
+	}
+
+	got := mgr.Get(sess.ID)
+	if len(got.ActiveSkills) != 1 || got.ActiveSkills[0] != "code-review" {
+		t.Errorf("ActiveSkills = %v, want [code-review]", got.ActiveSkills)
+	}
+
+	// Activate second skill
+	ok = mgr.ActivateSkill(sess.ID, "debug")
+	if !ok {
+		t.Error("ActivateSkill returned false for second activation")
+	}
+
+	got = mgr.Get(sess.ID)
+	if len(got.ActiveSkills) != 2 {
+		t.Errorf("ActiveSkills length = %d, want 2", len(got.ActiveSkills))
+	}
+
+	// Dedup: activate same skill again
+	ok = mgr.ActivateSkill(sess.ID, "code-review")
+	if ok {
+		t.Error("ActivateSkill should return false for duplicate")
+	}
+
+	got = mgr.Get(sess.ID)
+	if len(got.ActiveSkills) != 2 {
+		t.Errorf("ActiveSkills length after dedup = %d, want 2", len(got.ActiveSkills))
+	}
+}
+
+func TestDeactivateSkill(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.ActivateSkill(sess.ID, "code-review")
+	mgr.ActivateSkill(sess.ID, "debug")
+
+	mgr.DeactivateSkill(sess.ID, "code-review")
+	got := mgr.Get(sess.ID)
+	if len(got.ActiveSkills) != 1 || got.ActiveSkills[0] != "debug" {
+		t.Errorf("ActiveSkills after deactivate = %v, want [debug]", got.ActiveSkills)
+	}
+
+	// Deactivate non-existent
+	mgr.DeactivateSkill(sess.ID, "nonexistent")
+	got = mgr.Get(sess.ID)
+	if len(got.ActiveSkills) != 1 {
+		t.Errorf("ActiveSkills after deactivate nonexistent = %v", got.ActiveSkills)
+	}
+}
+
+func TestActiveSkills(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+
+	// Empty initially
+	skills := mgr.ActiveSkills(sess.ID)
+	if len(skills) != 0 {
+		t.Errorf("initial ActiveSkills = %v, want empty", skills)
+	}
+
+	// After activation
+	mgr.ActivateSkill(sess.ID, "code-review")
+	skills = mgr.ActiveSkills(sess.ID)
+	if len(skills) != 1 || skills[0] != "code-review" {
+		t.Errorf("ActiveSkills = %v, want [code-review]", skills)
+	}
+
+	// Non-existent session
+	if skills := mgr.ActiveSkills("nonexistent"); skills != nil {
+		t.Errorf("ActiveSkills for nonexistent session = %v, want nil", skills)
+	}
+}

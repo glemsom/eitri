@@ -1,0 +1,122 @@
+package templates
+
+import (
+	"github.com/glemsom/eitri/internal/skills"
+)
+
+templ SkillsPage(registry *skills.Registry) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Eitri — Skills</title>
+			<script src="/static/htmx.min.js"></script>
+			<link rel="stylesheet" href="/static/eitri.css"/>
+		</head>
+		<body>
+			<div id="app">
+				<header>
+					<h1>Eitri</h1>
+					<span class="text-muted">Skills</span>
+					<nav>
+						<a href="/">Chat</a>
+						<a href="/settings">Settings</a>
+						<a href="/skills">Skills</a>
+					</nav>
+				</header>
+				<main>
+					@SkillsView(registry)
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ SkillsView(registry *skills.Registry) {
+	<div class="skills-view">
+		<h2>Agent Skills</h2>
+		<p class="text-muted">Skills provide reusable instructions for specialized tasks.</p>
+
+		<div id="skills-actions">
+			<button hx-post="/api/skills/refresh" hx-target="#skills-table" class="btn">
+				Refresh Skills
+			</button>
+		</div>
+
+		<div id="skills-table" class="skills-table">
+			@SkillsTable(registry)
+		</div>
+	</div>
+}
+
+templ SkillsTable(registry *skills.Registry) {
+	@EffectiveSkills(registry)
+	@ShadowedSkills(registry)
+	@InvalidSkills(registry)
+}
+
+templ EffectiveSkills(registry *skills.Registry) {
+	<h3>Effective Skills</h3>
+	if registry != nil {
+		for _, skill := range registry.Effective() {
+			<div class="skill-card skill-effective">
+				<div class="skill-card-header">
+					<span class="skill-name">{ skill.Name }</span>
+					<span class="skill-scope badge">{ string(skill.Scope) }</span>
+					<span class="skill-status badge badge-ok">effective</span>
+				</div>
+				<p class="skill-description">{ skill.Description }</p>
+				<p class="skill-path text-muted">{ skill.Path }</p>
+			</div>
+		}
+	}
+	if registry == nil || len(registry.Effective()) == 0 {
+		<p class="text-muted">No effective skills found.</p>
+	}
+}
+
+templ ShadowedSkills(registry *skills.Registry) {
+	if registry != nil && len(registry.Shadowed()) > 0 {
+		<h3>Shadowed Skills</h3>
+		<p class="text-muted">These skills have the same name as a higher-precedence skill and are not available.</p>
+		for _, skill := range registry.Shadowed() {
+			<div class="skill-card skill-shadowed">
+				<div class="skill-card-header">
+					<span class="skill-name">{ skill.Name }</span>
+					<span class="skill-scope badge">{ string(skill.Scope) }</span>
+					<span class="skill-status badge badge-warn">shadowed</span>
+				</div>
+				<p class="skill-description">{ skill.Description }</p>
+				<p class="skill-path text-muted">{ skill.Path }</p>
+			</div>
+		}
+	}
+}
+
+templ InvalidSkills(registry *skills.Registry) {
+	if registry != nil && len(registry.Invalid()) > 0 {
+		<h3>Invalid Skills</h3>
+		<p class="text-muted">These skills failed validation and cannot be used.</p>
+		for _, skill := range registry.Invalid() {
+			<div class="skill-card skill-invalid">
+				<div class="skill-card-header">
+					<span class="skill-name">{ skill.Name }</span>
+					<span class="skill-status badge badge-error">invalid</span>
+				</div>
+				<p class="skill-path text-muted">{ skill.Path }</p>
+			</div>
+		}
+	}
+}
+
+templ ActiveSkillChips(skillsList []string) {
+	<div id="active-skills" class="active-skills">
+		if len(skillsList) > 0 {
+			<span class="active-skills-label">Active skills:</span>
+			for _, name := range skillsList {
+				<span class="skill-chip" data-skill={ name }>{ name }</span>
+			}
+		}
+	</div>
+}

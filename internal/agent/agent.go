@@ -14,11 +14,23 @@ import (
 	"google.golang.org/adk/v2/tool/functiontool"
 
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // NewAgent creates an ADK LLMAgent with the given model and tools.
 func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, error) {
 	workspace := sessionMgr.Workspace()
+	return newAgentWithSkills(llm, sessionMgr, workspace, skills.NewService())
+}
+
+// NewAgentWithSkills creates an ADK LLMAgent with skills support.
+func NewAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, skillsSvc *skills.Service) (agent.Agent, error) {
+	workspace := sessionMgr.Workspace()
+	return newAgentWithSkills(llm, sessionMgr, workspace, skillsSvc)
+}
+
+func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, workspace string, skillsSvc *skills.Service) (agent.Agent, error) {
+	tools := make([]tool.Tool, 0)
 
 	// terminal_execute
 	type termArgs struct {
@@ -57,6 +69,7 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create terminal_execute tool: %w", err)
 	}
+	tools = append(tools, termTool)
 
 	// file_viewer
 	type fileViewerArgs struct {
@@ -70,13 +83,15 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 		Truncated bool   `json:"truncated"`
 	}
 
+	// Get skill directories for file_viewer access
+	skillDirs := skillsSvc.SkillDirectories()
 	fileViewerTool, err := functiontool.New[fileViewerArgs, fileViewerResult](
 		functiontool.Config{
 			Name:        "file_viewer",
-			Description: "Read file contents from workspace. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories. Skill directory support pending Agent Skills implementation (#8).",
+			Description: "Read file contents from workspace or active skill directories. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories.",
 		},
 		func(ctx agent.Context, args fileViewerArgs) (fileViewerResult, error) {
-			absPath, err := validateWorkspacePath(args.Path, workspace)
+			absPath, err := validatePathWithAllowed(args.Path, workspace, skillDirs)
 			if err != nil {
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
@@ -95,6 +110,7 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file_viewer tool: %w", err)
 	}
+	tools = append(tools, fileViewerTool)
 
 	// file_editor
 	type fileEditorArgs struct {
@@ -139,8 +155,41 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file_editor tool: %w", err)
 	}
+	tools = append(tools, fileEditorTool)
 
-	// Read system prompt
+	// activate_skill
+	type activateSkillArgs struct {
+		Name string `json:"name" jsonschema:"Name of the skill to activate"`
+	}
+	type activateSkillResult struct {
+		Content string `json:"content"`
+	}
+
+	activateSkillTool, err := functiontool.New[activateSkillArgs, activateSkillResult](
+		functiontool.Config{
+			Name:        "activate_skill",
+			Description: "Activate a skill by name. Skills provide reusable instructions, references, and scripts for specialized tasks. Call this when a task matches an available skill description. Returns structured skill content including instructions and resource manifest.",
+		},
+		func(ctx agent.Context, args activateSkillArgs) (activateSkillResult, error) {
+			if skillsSvc == nil {
+				return activateSkillResult{}, fmt.Errorf("skills service not available")
+			}
+			skill := skillsSvc.Lookup(args.Name)
+			if skill == nil {
+				return activateSkillResult{}, fmt.Errorf("skill %q not found in effective skills", args.Name)
+			}
+
+			resources := skills.ListResources(skill.Path)
+			content := skills.SkillContent(skill.Body, resources, skill.Path)
+			return activateSkillResult{Content: content}, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create activate_skill tool: %w", err)
+	}
+	tools = append(tools, activateSkillTool)
+
+	// Build system prompt with skills catalog
 	systemPrompt := os.Getenv("EITRI_DEFAULT_SYSTEM_PROMPT")
 	if systemPrompt == "" {
 		systemPrompt = `You are Eitri, a helpful AI coding assistant named after the Norse blacksmith who forged Mjölnir. You operate in a workspace on a Linux machine.
@@ -153,7 +202,14 @@ Guidelines:
 - When you need to run a shell command, use the terminal_execute tool.
 - To read files, use the file_viewer tool.
 - To create or edit files, use the file_editor tool.
+- When a task matches an available skill description, call activate_skill with that skill name before proceeding.
 - Prefer showing command output and explaining results.`
+	}
+
+	// Append skills catalog to system prompt if skills are available
+	catalog := skillsSvc.SkillsCatalogXML()
+	if catalog != "" {
+		systemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call activate_skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
 	}
 
 	a, err := llmagent.New(llmagent.Config{
@@ -161,7 +217,7 @@ Guidelines:
 		Description: "Eitri AI coding assistant",
 		Model:       llm,
 		Instruction: systemPrompt,
-		Tools:       []tool.Tool{termTool, fileViewerTool, fileEditorTool},
+		Tools:       tools,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
