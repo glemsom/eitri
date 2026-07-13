@@ -651,55 +651,82 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
+	var toolType, toolName, toolArgs, toolOutput string
 
-	var req struct {
-		Type string          `json:"type"`
-		Tool string          `json:"tool"`
-		Args json.RawMessage `json:"args,omitempty"`
-		Output string        `json:"output,omitempty"`
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		var req struct {
+			Type   string          `json:"type"`
+			Tool   string          `json:"tool"`
+			Args   json.RawMessage `json:"args,omitempty"`
+			Output string          `json:"output,omitempty"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		toolType = req.Type
+		toolName = req.Tool
+		toolArgs = string(req.Args)
+		toolOutput = req.Output
+	} else {
+		// Form-encoded (HTMX default)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		toolType = r.FormValue("type")
+		toolName = r.FormValue("tool")
+		toolArgs = r.FormValue("args")
+		toolOutput = r.FormValue("output")
 	}
 
-	if req.Type == "tool_call" {
-		component := templates.ToolCallCard(req.Tool, string(req.Args))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if toolType == "tool_call" {
+		component := templates.ToolCallCard(toolName, toolArgs)
 		component.Render(r.Context(), w)
 	} else {
-		component := templates.ToolResultCard(req.Tool, req.Output)
+		component := templates.ToolResultCard(toolName, toolOutput)
 		component.Render(r.Context(), w)
 	}
 }
 
 func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
-	browserID := s.browserIDFromRequest(r)
-	if browserID == "" {
-		// Allow anonymous error rendering
+	var msg string
+
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		var req struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		msg = req.Message
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		msg = r.FormValue("message")
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	var req struct {
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	component := templates.ErrorToast(req.Message)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	component := templates.ErrorToast(msg)
 	component.Render(r.Context(), w)
 }
 
