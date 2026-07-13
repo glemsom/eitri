@@ -9,10 +9,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
+	agentrunner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -64,11 +66,18 @@ func main() {
 	// 7. Create session manager
 	sessionMgr := session.NewManager(10)
 
-	// 8. Create HTTP server
+	// 8. Create runner manager + run manager
+	runnerMgr := agentrunner.NewManager()
+	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
+	runMgr := api.NewRunManager(runnerMgr, executorMgr)
+	runMgr.UpdateProviderConfig(cfg)
+
+	// 9. Create HTTP server
 	srvCfg := api.ServerConfig{
-		ConfigPath: configPath,
-		Workspace:  workspace,
+		ConfigPath:     configPath,
+		Workspace:      workspace,
 		SessionManager: sessionMgr,
+		RunManager:     runMgr,
 	}
 	server := api.NewServer(srvCfg)
 

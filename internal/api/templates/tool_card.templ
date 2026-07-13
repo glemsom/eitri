@@ -1,0 +1,29 @@
+package templates
+
+// ToolCallCard renders a tool call invocation card.
+templ ToolCallCard(toolName string, args string) {
+	<div class="tool-card tool-call">
+		<div class="tool-card-header">
+			<span class="tool-icon">🔧</span>
+			<span class="tool-name">{ toolName }</span>
+			<span class="tool-status">running...</span>
+		</div>
+		if args != "" {
+			<pre class="tool-args"><code>{ args }</code></pre>
+		}
+	</div>
+}
+
+// ToolResultCard renders a tool result card.
+templ ToolResultCard(toolName string, output string) {
+	<div class="tool-card tool-result">
+		<div class="tool-card-header">
+			<span class="tool-icon">✅</span>
+			<span class="tool-name">{ toolName }</span>
+			<span class="tool-status">done</span>
+		</div>
+		if output != "" {
+			<pre class="tool-output"><code>{ output }</code></pre>
+		}
+	</div>
+}

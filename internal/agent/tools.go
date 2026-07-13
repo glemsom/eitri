@@ -1,5 +1,4 @@
 // Package agent defines built-in tools for the ADK agent.
-// This package will be wired to ADK in issue #6.
 package agent
 
 import (
@@ -8,11 +7,6 @@ import (
 	"github.com/glemsom/eitri/internal/executor"
 )
 
-// TerminalExecuteArgs is the argument schema for terminal_execute.
-type TerminalExecuteArgs struct {
-	Command string `json:"command" jsonschema:"required,description=Shell command to execute in the session's tmux shell"`
-}
-
 // ToolResult is the result returned by a built-in tool.
 type ToolResult struct {
 	Success bool        `json:"success"`
@@ -20,8 +14,12 @@ type ToolResult struct {
 	Error   string      `json:"error,omitempty"`
 }
 
+// TerminalExecuteArgs is the argument schema for terminal_execute.
+type TerminalExecuteArgs struct {
+	Command string `json:"command" jsonschema:"required,description=Shell command to execute in the session's tmux shell"`
+}
+
 // NewTerminalExecuteHandler creates a handler for the terminal_execute tool.
-// It calls sessionMgr.GetOrCreate to get the session's executor and runs the command.
 func NewTerminalExecuteHandler(sessionMgr *executor.SessionManager) func(ctx context.Context, sessionID string, args TerminalExecuteArgs) ToolResult {
 	return func(ctx context.Context, sessionID string, args TerminalExecuteArgs) ToolResult {
 		exe, err := sessionMgr.GetOrCreate(sessionID)
@@ -46,3 +44,4 @@ func NewTerminalExecuteHandler(sessionMgr *executor.SessionManager) func(ctx con
 		}
 	}
 }
+
