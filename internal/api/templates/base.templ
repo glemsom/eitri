@@ -1,5 +1,7 @@
 package templates
 
+import "github.com/glemsom/eitri/internal/session"
+
 templ Base(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -10,17 +12,73 @@ templ Base(title string) {
 			<script src="/static/htmx.min.js"></script>
 			<link rel="stylesheet" href="/static/eitri.css"/>
 		</head>
-		<body>
+		<body hx-ext="head-support">
 			<div id="app">
 				<header>
 					<h1>Eitri</h1>
 					<span class="text-muted">AI Assistant</span>
+					<nav>
+						<a href="/">Chat</a>
+						<a href="/settings">Settings</a>
+						<a href="/skills">Skills</a>
+					</nav>
 				</header>
+				<div id="session-tabs"></div>
 				<main>
 					<noscript>
 						<p>JavaScript is required for Eitri. Please enable JavaScript.</p>
 					</noscript>
 					{ children... }
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+// ChatPage renders the full chat page layout with session tabs and chat view.
+templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Eitri — Chat</title>
+			<script src="/static/htmx.min.js"></script>
+			<link rel="stylesheet" href="/static/eitri.css"/>
+			<script>
+				// Minimal eitri-composer browser island stub.
+				// Full implementation with completions to follow.
+				if (!customElements.get('eitri-composer')) {
+					class EitriComposer extends HTMLElement {
+						connectedCallback() {
+							// Stub: no completions yet
+						}
+					}
+					customElements.define('eitri-composer', EitriComposer);
+				}
+
+				document.addEventListener('htmx:afterOnLoad', function(evt) {
+					// Re-enable input after swap if not disabled
+				});
+			</script>
+		</head>
+		<body>
+			<div id="app">
+				<header>
+					<h1>Eitri</h1>
+					<span class="text-muted">AI Assistant</span>
+					<nav>
+						<a href="/">Chat</a>
+						<a href="/settings">Settings</a>
+						<a href="/skills">Skills</a>
+					</nav>
+				</header>
+				@SessionTabs(sessions, activeID)
+				<main>
+					<noscript>
+						<p>JavaScript is required for Eitri. Please enable JavaScript.</p>
+					</noscript>
+					@ChatView(sess, workspace, configValid)
 				</main>
 			</div>
 		</body>

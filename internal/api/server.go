@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,18 +15,20 @@ import (
 	"github.com/glemsom/eitri/internal/api/assets"
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 // ServerConfig holds dependencies and settings for the API server.
 type ServerConfig struct {
-	ConfigPath string // path to config file for save
-	// Add fields as features are implemented
+	ConfigPath      string          // path to config file for save
+	Workspace       string          // launch workspace (process CWD)
+	SessionManager  *session.Manager
 }
 
 // Server wraps the HTTP handler and injected dependencies.
 type Server struct {
-	config ServerConfig
-	mux    *http.ServeMux
+	config     ServerConfig
+	mux        *http.ServeMux
 	httpClient *http.Client // shared client with timeout for outbound requests
 }
 
@@ -50,14 +54,22 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.Handle("GET /static/", http.FileServerFS(assets.Files))
 
-	// Root serves the base HTML page
+	// Root serves the base HTML page — redirects to session if browser known
 	s.mux.HandleFunc("GET /{$}", s.handleRoot)
+
+	// Sessions
+	s.mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
+	s.mux.HandleFunc("GET /sessions/{id}", s.handleGetSession)
+	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
 
 	// Settings
 	s.mux.HandleFunc("GET /settings", s.handleSettings)
 	s.mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	s.mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	s.mux.HandleFunc("GET /api/models", s.handleGetModels)
+
+	// Skills (stub - full implementation in issue #7)
+	s.mux.HandleFunc("GET /skills", s.handleSkillsStub)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +78,170 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	component := templates.Base("Eitri — AI Assistant")
+	browserID := s.ensureBrowserID(w, r)
+
+	// Try last active session
+	if last := s.config.SessionManager.LastActive(browserID); last != nil {
+		http.Redirect(w, r, "/sessions/"+last.ID, http.StatusFound)
+		return
+	}
+
+	// Try any session for browser
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	if len(sessions) > 0 {
+		http.Redirect(w, r, "/sessions/"+sessions[0].ID, http.StatusFound)
+		return
+	}
+
+	// Create first session
+	sess, err := s.config.SessionManager.Create(browserID)
+	if err != nil {
+		// Global cap: return error page
+		w.WriteHeader(http.StatusTooManyRequests)
+		component := templates.ErrorToast("Session cap reached")
+		component.Render(r.Context(), w)
+		return
+	}
+
+	http.Redirect(w, r, "/sessions/"+sess.ID, http.StatusFound)
+}
+
+// ensureBrowserID returns the browser_id cookie value, creating one if missing.
+func (s *Server) ensureBrowserID(w http.ResponseWriter, r *http.Request) string {
+	cookie, err := r.Cookie("browser_id")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+
+	// Generate new browser ID
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("failed to generate browser ID: %v", err)
+		// Fallback: use a timestamp-based ID
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	id := fmt.Sprintf("%x", b)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "browser_id",
+		Value:    id,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   0, // session cookie
+	})
+
+	return id
+}
+
+// browserIDFromRequest returns the browser_id from cookie, or empty string if missing.
+func (s *Server) browserIDFromRequest(r *http.Request) string {
+	cookie, err := r.Cookie("browser_id")
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
+// hxRedirect sends an HX-Redirect header for HTMX requests, or a standard HTTP redirect.
+func (s *Server) hxRedirect(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", path)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, path, http.StatusFound)
+}
+
+func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	browserID := s.ensureBrowserID(w, r)
+
+	sess, err := s.config.SessionManager.Create(browserID)
+	if err != nil {
+		w.WriteHeader(http.StatusTooManyRequests)
+		component := templates.ErrorToast(err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+
+	s.hxRedirect(w, r, "/sessions/"+sess.ID)
+}
+
+func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	// Ensure browser_id exists
+	if browserID == "" {
+		browserID = s.ensureBrowserID(w, r)
+	}
+
+	sess := s.config.SessionManager.Get(id)
+
+	// Check config validity for setup banner
+	cfg, err := config.Load(s.config.ConfigPath)
+	configValid := err == nil && cfg != nil && cfg.Model != "" && cfg.BaseURL != ""
+	if cfg != nil && cfg.Provider == "opencode_go" && cfg.APIKey == "" {
+		configValid = false
+	}
+
+	// Stale session (id doesn't exist at all) → redirect to /
+	if sess == nil {
+		s.hxRedirect(w, r, "/")
+		return
+	}
+
+	// Ownership mismatch → 404
+	if sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+
+	component := templates.ChatPage(sessions, id, sess, s.config.Workspace, configValid)
 	component.Render(r.Context(), w)
+}
+
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil {
+		// Session already gone — redirect
+		s.hxRedirect(w, r, "/")
+		return
+	}
+	if sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	s.config.SessionManager.Delete(id)
+
+	// Redirect to next available session or root
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	if len(sessions) > 0 {
+		s.hxRedirect(w, r, "/sessions/"+sessions[0].ID)
+		return
+	}
+
+	// No sessions left, create one
+	newSess, err := s.config.SessionManager.Create(browserID)
+	if err != nil {
+		w.WriteHeader(http.StatusTooManyRequests)
+		component := templates.ErrorToast(err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+
+	s.hxRedirect(w, r, "/sessions/"+newSess.ID)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +419,11 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 		}
 	}
 	return modelIDs, nil
+}
+
+func (s *Server) handleSkillsStub(w http.ResponseWriter, r *http.Request) {
+	component := templates.Base("Eitri — Skills")
+	component.Render(r.Context(), w)
 }
 
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,9 @@
+package templates
+
+// ErrorToast renders an inline error banner with auto-dismiss behavior.
+templ ErrorToast(message string) {
+	<div class="error-toast" role="alert" hx-trigger="load delay:3s" hx-swap="outerHTML" hx-target="this">
+		<span class="error-text">{ message }</span>
+		<button class="error-dismiss" hx-trigger="click" hx-swap="outerHTML" hx-target="closest .error-toast">&times;</button>
+	</div>
+}

@@ -1,0 +1,20 @@
+package templates
+
+import "github.com/glemsom/eitri/internal/session"
+
+// SessionTabs renders the top-bar session tab strip.
+// Shows all sessions for the browser, with active tab highlighted.
+templ SessionTabs(sessions []*session.UISession, activeID string) {
+	<div id="session-tabs" class="session-tabs">
+		for _, s := range sessions {
+			<div class={ "session-tab", templ.KV("active", s.ID == activeID) }>
+				<a href={ templ.URL("/sessions/" + s.ID) } class="session-tab-link">
+					<span class="session-title">{ s.Title }</span>
+					<span class={ "status-dot", templ.KV("status-idle", s.Status == session.StatusIdle), templ.KV("status-running", s.Status == session.StatusRunning), templ.KV("status-error", s.Status == session.StatusError) }></span>
+				</a>
+				<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
+			</div>
+		}
+		<button class="new-session-btn" hx-post="/api/sessions" hx-target="body" hx-push-url="true" title="New session">+</button>
+	</div>
+}

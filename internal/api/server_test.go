@@ -10,12 +10,16 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	sessionMgr := session.NewManager(10)
 	cfg := api.ServerConfig{
-		ConfigPath: t.TempDir() + "/config.json",
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      t.TempDir(),
+		SessionManager: sessionMgr,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -62,40 +66,101 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestRootPage(t *testing.T) {
-	server := newTestServer(t)
-
-	resp, err := http.Get(server.URL + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("GET / status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "text/html") {
-		t.Errorf("Content-Type = %q, want text/html", ct)
+// noRedirectClient returns an http.Client that does not follow redirects.
+func noRedirectClient() *http.Client {
+	return &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 }
 
-func TestRootPageTitle(t *testing.T) {
+func TestRootRedirectCreatesSession(t *testing.T) {
 	server := newTestServer(t)
+	client := noRedirectClient()
 
-	resp, err := http.Get(server.URL + "/")
+	// First request should redirect to /sessions/{id}
+	resp, err := client.Get(server.URL + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 
-	// Check title is present in body
-	body := make([]byte, 4096)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-	if !strings.Contains(content, "Eitri — AI Assistant") {
-		t.Errorf("page body missing title, got: %s", content)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("GET / status = %d, want %d (redirect)", resp.StatusCode, http.StatusFound)
+	}
+
+	loc := resp.Header.Get("Location")
+	if !strings.HasPrefix(loc, "/sessions/") {
+		t.Errorf("Location = %q, want /sessions/{id}", loc)
+	}
+
+	// Check browser_id cookie was set
+	cookies := resp.Cookies()
+	var browserID string
+	for _, c := range cookies {
+		if c.Name == "browser_id" {
+			browserID = c.Value
+			break
+		}
+	}
+	if browserID == "" {
+		t.Error("browser_id cookie was not set")
+	}
+}
+
+func TestRootRedirectExistingSession(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Make initial request to get browser_id cookie
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Extract cookie
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("no browser_id cookie set")
+	}
+
+	// Follow redirect to get session page
+	loc := resp.Header.Get("Location")
+	req, _ := http.NewRequest("GET", server.URL+loc, nil)
+	req.AddCookie(browserCookie)
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("GET %s status = %d, want %d", loc, resp2.StatusCode, http.StatusOK)
+	}
+
+	// Second root request should redirect to the same session
+	req3, _ := http.NewRequest("GET", server.URL+"/", nil)
+	req3.AddCookie(browserCookie)
+	resp3, err := client.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp3.Body.Close()
+
+	if resp3.StatusCode != http.StatusFound {
+		t.Errorf("second GET / status = %d, want redirect", resp3.StatusCode)
+	}
+	loc2 := resp3.Header.Get("Location")
+	if loc2 != loc {
+		t.Errorf("second redirect Location = %q, want %q (same session)", loc2, loc)
 	}
 }
 
@@ -449,5 +514,247 @@ func TestGetAPIAndConfigModelsEndpoint(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("GET /api/models without config status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+func TestCreateSessionEndpoint(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// First get a browser_id
+	rootResp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootResp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("no browser_id cookie")
+	}
+
+	// Create a new session via POST
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Non-HTMX request should get redirect
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("POST /api/sessions status = %d, want %d", resp.StatusCode, http.StatusFound)
+	}
+
+	loc := resp.Header.Get("Location")
+	if !strings.HasPrefix(loc, "/sessions/") {
+		t.Errorf("redirect Location = %q, want /sessions/{id}", loc)
+	}
+}
+
+func TestDeleteSessionEndpoint(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Get browser_id and session
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("no browser_id cookie")
+	}
+
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("no session ID from redirect")
+	}
+
+	// Delete session
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sessionID, nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Should redirect (create new session after delete)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("DELETE /api/sessions/%s status = %d, want %d", sessionID, resp.StatusCode, http.StatusFound)
+	}
+
+	// Verify session no longer accessible (or redirects to new one)
+	// Follow new session redirect
+	newLoc := resp.Header.Get("Location")
+	if !strings.HasPrefix(newLoc, "/sessions/") {
+		t.Errorf("redirect Location = %q, want /sessions/{id}", newLoc)
+	}
+
+	// The old session should be gone - accessing it should redirect
+	req2, _ := http.NewRequest("GET", server.URL+"/sessions/"+sessionID, nil)
+	req2.AddCookie(browserCookie)
+	resp2, err := client.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusFound {
+		t.Errorf("GET deleted session status = %d, want redirect", resp2.StatusCode)
+	}
+}
+
+func TestGetSessionPage(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Get a session
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	loc := rootResp.Header.Get("Location")
+
+	// Follow redirect to session page
+	req, _ := http.NewRequest("GET", server.URL+loc, nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET %s status = %d, want %d", loc, resp.StatusCode, http.StatusOK)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+
+	body := make([]byte, 8192)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+
+	// Should contain chat view elements
+	checks := []string{"chat-view", "messages", "composer"}
+	for _, c := range checks {
+		if !strings.Contains(content, c) {
+			t.Errorf("session page missing %q", c)
+		}
+	}
+}
+
+func TestStaleSessionRedirect(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Try accessing a non-existent session (no browser cookie)
+	req, _ := http.NewRequest("GET", server.URL+"/sessions/nonexistent-id", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Should redirect to root
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("stale session status = %d, want redirect (found)", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	if loc != "/" {
+		t.Errorf("Location = %q, want /", loc)
+	}
+}
+
+func TestSessionCapReached(t *testing.T) {
+	// Use a manager with cap of 1
+	sessionMgr := session.NewManager(1)
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      t.TempDir(),
+		SessionManager: sessionMgr,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
+
+	client := noRedirectClient()
+
+	// First request creates session
+	resp, _ := client.Get(server.URL + "/")
+	resp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	// Second request should hit cap on new session
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions", nil)
+	req.AddCookie(browserCookie)
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("POST /api/sessions at cap status = %d, want %d", resp2.StatusCode, http.StatusTooManyRequests)
+	}
+}
+
+func TestOwnershipMismatch(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Get browser_id and session
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("no session ID")
+	}
+
+	// Try accessing with a different browser_id
+	req, _ := http.NewRequest("GET", server.URL+"/sessions/"+sessionID, nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: "different-browser"})
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	// Should return 404 (ownership mismatch)
+	if resp2.StatusCode != http.StatusNotFound {
+		t.Errorf("ownership mismatch status = %d, want %d", resp2.StatusCode, http.StatusNotFound)
 	}
 }
