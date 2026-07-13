@@ -101,6 +101,14 @@ func isRetryableError(statusCode int) bool {
 	return retryableStatusCodes[statusCode]
 }
 
+// retryExhaustedError wraps lastErr with retry-exhausted message.
+func (m *OpenAIModel) retryExhaustedError(lastErr error) error {
+	if lastErr != nil {
+		return fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr)
+	}
+	return fmt.Errorf("LLM request failed after %d retries", m.MaxRetries)
+}
+
 func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
 		openAIReq := m.toOpenAIReq(req, stream)
@@ -148,7 +156,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 					log.Printf("LLM network error (attempt %d/%d): %v", attempt+1, m.MaxRetries, err)
 					continue
 				}
-				yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
+				yield(nil, m.retryExhaustedError(lastErr))
 				return
 			}
 
@@ -161,7 +169,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 						continue
 					}
 					// Exhausted retries — wrap error and yield
-					yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
+					yield(nil, m.retryExhaustedError(lastErr))
 					return
 				}
 				// Non-retryable error
@@ -178,11 +186,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 		}
 
 		// All retries exhausted
-		if lastErr != nil {
-			yield(nil, fmt.Errorf("LLM request failed after %d retries: %w", m.MaxRetries, lastErr))
-		} else {
-			yield(nil, fmt.Errorf("LLM request failed after %d retries", m.MaxRetries))
-		}
+		yield(nil, m.retryExhaustedError(lastErr))
 	}
 }
 
