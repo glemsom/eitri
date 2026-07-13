@@ -18,12 +18,12 @@ import (
 
 // NewAgent creates an ADK LLMAgent with the given model and tools.
 func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, error) {
-	// terminal_execute args
+	workspace := sessionMgr.Workspace()
+
+	// terminal_execute
 	type termArgs struct {
-		// jsonschema tag value is the field description; required is inferred from json tag (no omitempty).
 		Command string `json:"command" jsonschema:"Shell command to run"`
 	}
-	// terminal_execute result
 	type termResult struct {
 		Stdout    string `json:"stdout"`
 		ExitCode  int    `json:"exit_code"`
@@ -58,6 +58,88 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 		return nil, fmt.Errorf("failed to create terminal_execute tool: %w", err)
 	}
 
+	// file_viewer
+	type fileViewerArgs struct {
+		Path   string `json:"path" jsonschema:"File path relative to workspace root or an absolute path within the workspace"`
+		Offset int    `json:"offset,omitempty" jsonschema:"1-indexed line offset to start reading from (default: 1)"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of lines to return (default: no limit)"`
+	}
+	type fileViewerResult struct {
+		Path      string `json:"path"`
+		Content   string `json:"content"`
+		Truncated bool   `json:"truncated"`
+	}
+
+	fileViewerTool, err := functiontool.New[fileViewerArgs, fileViewerResult](
+		functiontool.Config{
+			Name:        "file_viewer",
+			Description: "Read file contents from workspace. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories. Can also read files under active skill directories.",
+		},
+		func(ctx agent.Context, args fileViewerArgs) (fileViewerResult, error) {
+			absPath, err := validateWorkspacePath(args.Path, workspace)
+			if err != nil {
+				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
+			}
+
+			vr, err := ReadFile(absPath, args.Offset, args.Limit)
+			if err != nil {
+				return fileViewerResult{}, err
+			}
+			return fileViewerResult{
+				Path:      args.Path,
+				Content:   vr.Content,
+				Truncated: vr.Truncated,
+			}, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file_viewer tool: %w", err)
+	}
+
+	// file_editor
+	type fileEditorArgs struct {
+		Path    string `json:"path" jsonschema:"File path relative to workspace root"`
+		Content string `json:"content" jsonschema:"New file content (UTF-8 text)"`
+		Mode    string `json:"mode" jsonschema:"'create' for new files, 'overwrite' for existing files"`
+	}
+	type fileEditorResult struct {
+		Path         string   `json:"path"`
+		Mode         string   `json:"mode"`
+		BytesWritten int      `json:"bytes_written"`
+		OldContent   string   `json:"old_content,omitempty"`
+		NewContent   string   `json:"new_content,omitempty"`
+		DirsCreated  []string `json:"dirs_created,omitempty"`
+	}
+
+	fileEditorTool, err := functiontool.New[fileEditorArgs, fileEditorResult](
+		functiontool.Config{
+			Name:        "file_editor",
+			Description: "Create or overwrite files in workspace. Mode 'create' creates a new file (rejects if exists), 'overwrite' replaces existing file content. Captures old content for diff display.",
+		},
+		func(ctx agent.Context, args fileEditorArgs) (fileEditorResult, error) {
+			absPath, err := validateWorkspacePath(args.Path, workspace)
+			if err != nil {
+				return fileEditorResult{}, fmt.Errorf("path validation failed: %w", err)
+			}
+
+			er, err := WriteFile(absPath, args.Content, args.Mode)
+			if err != nil {
+				return fileEditorResult{}, err
+			}
+			return fileEditorResult{
+				Path:         args.Path,
+				Mode:         er.Mode,
+				BytesWritten: er.BytesWritten,
+				OldContent:   er.OldContent,
+				NewContent:   er.NewContent,
+				DirsCreated:  er.DirsCreated,
+			}, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file_editor tool: %w", err)
+	}
+
 	// Read system prompt
 	systemPrompt := os.Getenv("EITRI_DEFAULT_SYSTEM_PROMPT")
 	if systemPrompt == "" {
@@ -69,6 +151,8 @@ Guidelines:
 - Use ` + "```mermaid" + ` fenced blocks for diagrams (architecture, sequence, flow, ER, class).
 - Wrap reasoning/thinking steps in <think>...</think> tags.
 - When you need to run a shell command, use the terminal_execute tool.
+- To read files, use the file_viewer tool.
+- To create or edit files, use the file_editor tool.
 - Prefer showing command output and explaining results.`
 	}
 
@@ -77,7 +161,7 @@ Guidelines:
 		Description: "Eitri AI coding assistant",
 		Model:       llm,
 		Instruction: systemPrompt,
-		Tools:       []tool.Tool{termTool},
+		Tools:       []tool.Tool{termTool, fileViewerTool, fileEditorTool},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)

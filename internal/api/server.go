@@ -704,6 +704,24 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 	if toolType == "tool_call" {
 		component := templates.ToolCallCard(toolName, toolArgs)
 		component.Render(r.Context(), w)
+	} else if toolName == "file_editor" && toolOutput != "" {
+		// Parse file_editor result JSON to render FileEditCard
+		var feResult struct {
+			Path         string   `json:"path"`
+			Mode         string   `json:"mode"`
+			BytesWritten int      `json:"bytes_written"`
+			OldContent   string   `json:"old_content"`
+			NewContent   string   `json:"new_content"`
+			DirsCreated  []string `json:"dirs_created"`
+		}
+		if err := json.Unmarshal([]byte(toolOutput), &feResult); err == nil {
+			component := templates.FileEditCard(feResult.Path, feResult.Mode, feResult.OldContent, feResult.NewContent, feResult.BytesWritten, feResult.DirsCreated)
+			component.Render(r.Context(), w)
+		} else {
+			// Fallback to regular tool result card
+			component := templates.ToolResultCard(toolName, toolOutput)
+			component.Render(r.Context(), w)
+		}
 	} else {
 		component := templates.ToolResultCard(toolName, toolOutput)
 		component.Render(r.Context(), w)

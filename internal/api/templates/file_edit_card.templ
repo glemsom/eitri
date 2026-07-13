@@ -1,0 +1,54 @@
+package templates
+
+// FileEditCard renders a file editor result card.
+// For overwrite mode, shows a diff between old and new content.
+// For create mode, shows a preview of the created file.
+// Large edits are collapsed by default.
+templ fileEditIcon(mode string) {
+	if mode == "overwrite" {
+		<span class="tool-icon">📝</span>
+	} else {
+		<span class="tool-icon">📄</span>
+	}
+}
+
+templ fileEditLabel(path string, mode string) {
+	if mode == "overwrite" {
+		<span class="tool-name">Edit: <code>{ path }</code></span>
+	} else {
+		<span class="tool-name">Create: <code>{ path }</code></span>
+	}
+}
+
+templ fileEditBody(mode string, oldContent string, newContent string) {
+	if len(newContent) > 50000 {
+		<details class="file-edit-collapsed">
+			<summary>Content too large ({ len(newContent) } bytes). Click to expand.</summary>
+			<div class="file-edit-content">
+				<pre><code>{ newContent }</code></pre>
+			</div>
+		</details>
+	} else if mode == "overwrite" && oldContent != "" {
+		<div class="file-diff">
+			<pre class="diff-content"><code>{ diffText(oldContent, newContent) }</code></pre>
+		</div>
+	} else {
+		<div class="file-preview">
+			<span class="text-muted">Preview:</span>
+			<pre><code>{ newContent }</code></pre>
+		</div>
+	}
+}
+
+templ FileEditCard(path string, mode string, oldContent string, newContent string, bytesWritten int, dirsCreated []string) {
+	<div class="tool-card file-edit-card">
+		<div class="tool-card-header">
+			@fileEditIcon(mode)
+			@fileEditLabel(path, mode)
+			<span class="text-muted">{ bytesWritten } bytes</span>
+		</div>
+		<div class="file-edit-body">
+			@fileEditBody(mode, oldContent, newContent)
+		</div>
+	</div>
+}
