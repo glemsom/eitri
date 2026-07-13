@@ -1,0 +1,4 @@
+eitri
+dist/
+/tmp/eitri_test_bin
+*.test
