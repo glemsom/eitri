@@ -25,14 +25,15 @@ import (
 
 // SSEEvent represents one SSE data packet sent to the browser.
 type SSEEvent struct {
-	Type    string      `json:"type"`
-	Content string      `json:"content,omitempty"`
-	Tool    string      `json:"tool,omitempty"`
-	Args    interface{} `json:"args,omitempty"`
-	Output  interface{} `json:"output,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
-	Message string      `json:"message,omitempty"`
-	MessageID string    `json:"message_id,omitempty"`
+	Type      string      `json:"type"`
+	Content   string      `json:"content,omitempty"`
+	Name      string      `json:"name,omitempty"`
+	Tool      string      `json:"tool,omitempty"`
+	Args      interface{} `json:"args,omitempty"`
+	Output    interface{} `json:"output,omitempty"`
+	Data      interface{} `json:"data,omitempty"`
+	Message   string      `json:"message,omitempty"`
+	MessageID string      `json:"message_id,omitempty"`
 }
 
 // runState tracks one active assistant run per session.
@@ -215,6 +216,11 @@ func (w *SSEWriter) Done(messageID string) {
 	w.ch <- SSEEvent{Type: "done", MessageID: messageID}
 }
 
+// Component sends a generative UI component event.
+func (w *SSEWriter) Component(data interface{}) {
+	w.ch <- SSEEvent{Type: "component", Data: data}
+}
+
 // Error sends an error event.
 func (w *SSEWriter) Error(msg string) {
 	w.ch <- SSEEvent{Type: "error", Message: msg}
@@ -249,10 +255,28 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						w.Token(part.Text)
 					}
 					if fc := part.FunctionCall; fc != nil {
-						w.ToolCall(fc.Name, fc.Args)
+						if fc.Name == "render_component" {
+							// Emit component SSE event with input args
+							argsMap := fc.Args
+							compName, _ := argsMap["name"].(string)
+							compData, _ := argsMap["data"].(map[string]interface{})
+							w.ch <- SSEEvent{
+								Type: "component",
+								Name: compName,
+								Data: compData,
+							}
+						} else {
+							w.ToolCall(fc.Name, fc.Args)
+						}
 					}
 					if fr := part.FunctionResponse; fr != nil {
-						w.ToolResult(fr.Name, fr.Response)
+						if fr.Name == "render_component" {
+							// Tool result already emitted as component event above
+							// Still emit a brief token to show in transcript
+							fullText.WriteString("[Component rendered]")
+						} else {
+							w.ToolResult(fr.Name, fr.Response)
+						}
 					}
 				}
 			}
@@ -291,6 +315,10 @@ func formatErrorMessage(err error) string {
 		return "Rate limited by provider. Please wait a moment and try again."
 	case strings.Contains(msg, "context length") || strings.Contains(msg, "maximum context"):
 		return "Context length exceeded. Try a shorter message or reduce conversation history."
+	case strings.Contains(msg, "model no longer available") || strings.Contains(msg, "model not found"):
+		return "Selected model no longer available. Choose another model in Settings."
+	case strings.Contains(msg, "streaming tool calls") || strings.Contains(msg, "streaming not supported"):
+		return "Provider does not support required streaming tool calls. Use OpenCode Go or another compatible provider."
 	case strings.Contains(msg, "timeout"):
 		return "Request timed out. The provider took too long to respond."
 	default:

@@ -541,4 +541,209 @@ pre:hover .copy-btn {
   background: rgba(231, 76, 60, 0.1);
 }
 
+/* Quick reply chips */
+.quick-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.quick-reply-chip {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-reply-chip:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Mermaid diagram */
+.mermaid-diagram {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+
+pre.mermaid {
+  background: transparent !important;
+  border: none !important;
+  text-align: center;
+}
+
+pre.mermaid.mermaid-error {
+  color: var(--error);
+  font-family: monospace;
+  text-align: left;
+}
+
+/* Diff card */
+.diff-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+
+.diff-card-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-toggle-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.diff-toggle-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.diff-view {
+  padding: 0.5rem;
+}
+
+/* Completion menu */
+.completion-menu {
+  position: absolute;
+  z-index: 1000;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.completion-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.completion-item:hover,
+.completion-item.selected {
+  background: var(--surface-alt);
+}
+
+.completion-item[aria-selected="true"] {
+  background: var(--accent);
+  color: white;
+}
+
+.completion-label {
+  font-weight: 500;
+}
+
+.completion-desc {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+.completion-item[aria-selected="true"] .completion-desc {
+  color: rgba(255,255,255,0.7);
+}
+
+/* Code block enhancements */
+.code-btn {
+  position: absolute;
+  top: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+pre:hover .code-btn {
+  opacity: 1;
+}
+
+.code-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.copy-btn {
+  right: 0.25rem;
+}
+
+.wrap-btn {
+  right: 3.5rem;
+}
+
+.show-all-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  opacity: 1;
+  background: var(--surface-alt);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.show-all-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+pre.code-collapsed {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+pre.code-wrapped code {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+}
+
+/* Token usage footer */
+.token-usage {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+  text-align: right;
+}
+
+/* eitri-composer positioning */
+eitri-composer {
+  position: relative;
+  display: block;
+}
+
 

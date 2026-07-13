@@ -250,8 +250,24 @@
   }
 
   function renderComponent(sessionId, packet) {
-    // Stub for generative UI components (full implementation in issue #8)
-    console.log('Component:', packet.name, packet.data);
+    const messages = document.getElementById('messages');
+    if (!messages) return;
+
+    // Packet shape from SSE: {type: "component", name: "MermaidDiagram", data: {code: "..."}}
+    var compName = packet.name || '';
+    var compData = packet.data || {};
+
+    if (!compName) return;
+
+    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/component', {
+      source: document.body,
+      target: '#messages',
+      swap: 'beforeend',
+      values: {
+        name: compName,
+        data: JSON.stringify(compData)
+      }
+    });
   }
 
   function finalizeMessage(sessionId, messageId) {
@@ -279,41 +295,107 @@
     });
   }
 
-  // ————— Code block copy buttons —————
+  // ————— Code block buttons: copy, line-wrap toggle, show-all —————
 
-  function initCodeBlockCopyButtons() {
+  function initCodeBlockButtons() {
     document.querySelectorAll('pre > code').forEach(function (codeEl) {
       var pre = codeEl.parentElement;
-      if (pre.querySelector('.copy-btn')) return; // already has button
+      if (pre.dataset.cbInitialized) return;
+      pre.dataset.cbInitialized = 'true';
+      pre.style.position = 'relative';
 
-      var btn = document.createElement('button');
-      btn.className = 'copy-btn';
-      btn.textContent = 'Copy';
-      btn.setAttribute('aria-label', 'Copy code');
+      // Copy button
+      var copyBtn = document.createElement('button');
+      copyBtn.className = 'code-btn copy-btn';
+      copyBtn.textContent = 'Copy';
+      copyBtn.setAttribute('aria-label', 'Copy code');
 
-      btn.addEventListener('click', function () {
+      copyBtn.addEventListener('click', function () {
         var text = codeEl.textContent || '';
         navigator.clipboard.writeText(text).then(function () {
-          btn.textContent = 'Copied!';
-          setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(function () { copyBtn.textContent = 'Copy'; }, 2000);
         }).catch(function () {
-          btn.textContent = 'Failed';
-          setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+          copyBtn.textContent = 'Failed';
+          setTimeout(function () { copyBtn.textContent = 'Copy'; }, 2000);
         });
       });
+      pre.appendChild(copyBtn);
 
-      pre.style.position = 'relative';
-      pre.appendChild(btn);
+      // Line-wrap toggle
+      var wrapBtn = document.createElement('button');
+      wrapBtn.className = 'code-btn wrap-btn';
+      wrapBtn.textContent = 'Wrap';
+      wrapBtn.setAttribute('aria-label', 'Toggle line wrap');
+      wrapBtn.addEventListener('click', function () {
+        var isWrapped = pre.classList.toggle('code-wrapped');
+        wrapBtn.textContent = isWrapped ? 'No wrap' : 'Wrap';
+      });
+      pre.appendChild(wrapBtn);
+
+      // Show-all for large blocks (>500 lines)
+      var lines = codeEl.textContent.split('\n').length;
+      if (lines > 500) {
+        pre.classList.add('code-collapsed');
+        var showAllBtn = document.createElement('button');
+        showAllBtn.className = 'code-btn show-all-btn';
+        showAllBtn.textContent = 'Show all (' + lines + ' lines)';
+        showAllBtn.setAttribute('aria-label', 'Show full content');
+        showAllBtn.addEventListener('click', function () {
+          pre.classList.remove('code-collapsed');
+          showAllBtn.textContent = 'Collapse';
+          showAllBtn.addEventListener('click', function () {
+            pre.classList.add('code-collapsed');
+            showAllBtn.textContent = 'Show all (' + lines + ' lines)';
+          }, { once: true });
+        }, { once: true });
+        pre.appendChild(showAllBtn);
+      }
     });
   }
 
   // Run on load and after HTMX swaps
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCodeBlockCopyButtons);
+    document.addEventListener('DOMContentLoaded', initCodeBlockButtons);
   } else {
-    initCodeBlockCopyButtons();
+    initCodeBlockButtons();
   }
-  document.addEventListener('htmx:afterSwap', initCodeBlockCopyButtons);
-  document.addEventListener('htmx:afterSettle', initCodeBlockCopyButtons);
+  document.addEventListener('htmx:afterSwap', initCodeBlockButtons);
+  document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
+
+  // ————— Token usage footer —————
+
+  // After the finalizeMessage renders the markdown, append a usage footer
+  function appendTokenUsage(sessionId, usage) {
+    var messages = document.getElementById('messages');
+    if (!messages) return;
+
+    // Remove any existing usage footer
+    var existing = document.getElementById('token-usage');
+    if (existing) existing.remove();
+
+    var footer = document.createElement('div');
+    footer.id = 'token-usage';
+    footer.className = 'token-usage text-muted';
+
+    if (usage && usage.total_tokens) {
+      footer.textContent = 'Tokens: ' + usage.total_tokens + ' (prompt: ' + usage.prompt_tokens + ', completion: ' + usage.completion_tokens + ')';
+    } else {
+      // Fallback: just a generic estimate
+      footer.textContent = 'Response complete';
+    }
+
+    messages.appendChild(footer);
+  }
+
+  // Hook into finalizeMessage to add usage footer
+  var _origFinalize = finalizeMessage;
+  finalizeMessage = function(sessionId, messageId) {
+    _origFinalize(sessionId, messageId);
+    // Add usage footer (no real usage data yet, just a placeholder)
+    setTimeout(function() {
+      appendTokenUsage(sessionId, null);
+    }, 500);
+  };
 
 })();
