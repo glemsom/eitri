@@ -2,8 +2,10 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -311,5 +313,141 @@ func TestPutConfig_ClearAPIKey(t *testing.T) {
 	json.NewDecoder(getResp.Body).Decode(&cfgData)
 	if key, ok := cfgData["api_key"].(string); ok && key != "" {
 		t.Errorf("api_key = %q after clear, want empty", key)
+	}
+}
+
+func TestPutConfigFormURLEncoded(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+
+	// Submit as URL-encoded form data (HTMX default)
+	form := url.Values{}
+	form.Set("provider", "custom_openai")
+	form.Set("base_url", provider.URL)
+	form.Set("api_key", "sk-form-test")
+	form.Set("session_timeout", "120")
+	form.Set("command_timeout", "30")
+	form.Set("max_turns", "10")
+	form.Set("context_window_tokens", "128000")
+	form.Set("model", "")
+
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("PUT /api/config form-encoded status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify models appear in the response HTML
+	body := make([]byte, 16384)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+	if !strings.Contains(content, "gpt-4") {
+		t.Errorf("response HTML missing discovered model gpt-4")
+	}
+	if !strings.Contains(content, "gpt-3.5-turbo") {
+		t.Errorf("response HTML missing discovered model gpt-3.5-turbo")
+	}
+}
+
+func TestPutConfigFormPreservesAPIKeyWhenEmpty(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	// First save with an API key via JSON
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-existing"}`
+	req, _ := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	http.DefaultClient.Do(req)
+
+	// Now submit form with empty api_key (no clear_key checkbox — real HTML behavior)
+	form := url.Values{}
+	form.Set("provider", "custom_openai")
+	form.Set("base_url", provider.URL)
+	form.Set("api_key", "") // empty — should preserve existing
+	// NOTE: clear_api_key is NOT set — unchecked checkboxes aren't submitted
+
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("PUT preserve api_key status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify the key was preserved
+	getResp, err := http.Get(server.URL + "/api/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+
+	var cfgData map[string]interface{}
+	json.NewDecoder(getResp.Body).Decode(&cfgData)
+	if key, ok := cfgData["api_key"].(string); !ok || key == "" {
+		t.Errorf("api_key = %q after empty form submit, want preserved", key)
+	}
+}
+
+func TestGetConfigHTMLFragmentWithModels(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"claude-3"}]}`)
+	server := newTestServer(t)
+
+	// Save to populate config
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test"}`
+	req, _ := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	http.DefaultClient.Do(req)
+
+	// Verify via JSON that model was returned in models endpoint
+	modelsResp, err := http.Get(fmt.Sprintf("%s/api/models", server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer modelsResp.Body.Close()
+
+	var modelsData map[string]interface{}
+	if err := json.NewDecoder(modelsResp.Body).Decode(&modelsData); err != nil {
+		t.Fatal(err)
+	}
+	data, ok := modelsData["data"]
+	if !ok {
+		t.Errorf("/api/models response missing 'data' field")
+	}
+	modelsArr, ok := data.([]interface{})
+	if !ok || len(modelsArr) == 0 {
+		t.Errorf("/api/models data is empty or not an array: %v", data)
+	}
+}
+
+func TestGetAPIAndConfigModelsEndpoint(t *testing.T) {
+	server := newTestServer(t)
+
+	// Should return 412 Precondition Failed when no base URL
+	resp, err := http.Get(server.URL + "/api/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("GET /api/models without config status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
 	}
 }

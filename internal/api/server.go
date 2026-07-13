@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/assets"
@@ -95,7 +96,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if r.Header.Get("HX-Request") == "true" {
-		component := templates.SettingsForm(&maskedCfg)
+		component := templates.SettingsForm(&maskedCfg, nil)
 		component.Render(r.Context(), w)
 		return
 	}
@@ -106,19 +107,37 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
-	// Read body
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	// Parse as generic map for partial update
 	var patch map[string]interface{}
-	if err := json.Unmarshal(body, &patch); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
+
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		if err := json.Unmarshal(body, &patch); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	} else {
+		// URL-encoded form data (HTMX default for form submissions)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			return
+		}
+		patch = make(map[string]interface{}, len(r.Form))
+		for k, v := range r.Form {
+			patch[k] = v[0]
+		}
+		// Preserve existing API key when form field is empty and clear is not requested
+		if v, ok := patch["api_key"]; ok && v.(string) == "" {
+			if _, hasClear := patch["clear_api_key"]; !hasClear {
+				delete(patch, "api_key")
+			}
+		}
 	}
 
 	// Load current config
@@ -152,8 +171,9 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate provider credentials by calling /v1/models
-	if err := s.validateProviderCredentials(newCfg); err != nil {
+	// Validate provider credentials by calling /v1/models and get model list
+	models, err := s.fetchModelList(newCfg)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -166,38 +186,33 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reload and render form
-	cfg, err = config.Load(s.config.ConfigPath)
-	if err != nil {
-		http.Error(w, "Failed to load config", http.StatusInternalServerError)
-		return
-	}
-	maskedCfg := *cfg
+	// Render form with models populated
+	maskedCfg := *newCfg
 	if maskedCfg.APIKey != "" {
 		maskedCfg.APIKey = config.MaskAPIKey(maskedCfg.APIKey)
 	}
-	component := templates.SettingsForm(&maskedCfg)
+	component := templates.SettingsForm(&maskedCfg, models)
 	component.Render(r.Context(), w)
 }
 
-// validateProviderCredentials calls /v1/models on the provider to verify
-// the API key and base URL are valid. Returns nil on success, error on failure.
-func (s *Server) validateProviderCredentials(cfg *config.Config) error {
+// fetchModelList calls /v1/models on the provider and returns the list of model IDs.
+// Also validates that the provider credentials work.
+func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 	if cfg.BaseURL == "" {
-		return fmt.Errorf("base_url is required")
+		return nil, fmt.Errorf("base_url is required")
 	}
 	if cfg.Provider == "opencode_go" && cfg.APIKey == "" {
-		return fmt.Errorf("api_key is required for provider %q", cfg.Provider)
+		return nil, fmt.Errorf("api_key is required for provider %q", cfg.Provider)
 	}
 
 	modelsURL, err := url.JoinPath(cfg.BaseURL, "/v1/models")
 	if err != nil {
-		return fmt.Errorf("invalid base_url: %v", err)
+		return nil, fmt.Errorf("invalid base_url: %v", err)
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), "GET", modelsURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 	if cfg.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
@@ -205,15 +220,31 @@ func (s *Server) validateProviderCredentials(cfg *config.Config) error {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Model discovery failed: %v", err)
+		return nil, fmt.Errorf("Model discovery failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Model discovery failed: provider returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("Model discovery failed: provider returned HTTP %d", resp.StatusCode)
 	}
 
-	return nil
+	// Parse OpenAI-compatible /v1/models response
+	var modelsResp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+		return nil, fmt.Errorf("failed to parse model list: %v", err)
+	}
+
+	modelIDs := make([]string, 0, len(modelsResp.Data))
+	for _, m := range modelsResp.Data {
+		if m.ID != "" {
+			modelIDs = append(modelIDs, m.ID)
+		}
+	}
+	return modelIDs, nil
 }
 
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
@@ -223,48 +254,17 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cfg.BaseURL == "" {
-		http.Error(w, "Base URL not configured", http.StatusPreconditionFailed)
-		return
-	}
-
-	// Proxy to provider's /v1/models
-	modelsURL, err := url.JoinPath(cfg.BaseURL, "/v1/models")
-	if err != nil {
-		http.Error(w, "Invalid base URL", http.StatusInternalServerError)
-		return
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), "GET", modelsURL, nil)
-	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
-	if cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-	}
-
-	resp, err := s.httpClient.Do(req)
+	models, err := s.fetchModelList(cfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Model discovery failed: %v", err),
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("Model discovery failed: provider returned %d", resp.StatusCode),
-		})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	// Stream response back
 	w.Header().Set("Content-Type", "application/json")
-	io.Copy(w, resp.Body)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"data":   models,
+	})
 }
