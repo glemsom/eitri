@@ -850,7 +850,10 @@ func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
 		req.Name = r.FormValue("name")
 		dataStr := r.FormValue("data")
 		if dataStr != "" {
-			json.Unmarshal([]byte(dataStr), &req.Data)
+			if err := json.Unmarshal([]byte(dataStr), &req.Data); err != nil {
+				// Bad JSON in data field — treat as empty
+				req.Data = nil
+			}
 		}
 	}
 
@@ -1023,8 +1026,8 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query().Get("q")
 
-	// Reject ../ and absolute paths for safety
-	if strings.Contains(q, "..") || strings.HasPrefix(q, "/") {
+	// Reject path-traversal and absolute paths for safety
+	if strings.HasPrefix(q, "..") || strings.Contains(q, "/..") || strings.HasPrefix(q, "/") {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
 		return

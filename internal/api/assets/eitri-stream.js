@@ -137,7 +137,7 @@
       case 'done':
         state.status = STATES.DONE;
         updateStreamIndicator(sessionId, state.status);
-        finalizeMessage(sessionId, packet.message_id);
+        finalizeMessage(sessionId, packet.message_id, packet.usage);
         disconnectStream(sessionId);
         break;
 
@@ -270,7 +270,7 @@
     });
   }
 
-  function finalizeMessage(sessionId, messageId) {
+  function finalizeMessage(sessionId, messageId, usage) {
     // Send message_id to render endpoint for goldmark conversion
     const streamingEl = document.getElementById('streaming');
     if (streamingEl) {
@@ -284,6 +284,11 @@
       swap: 'outerHTML',
       values: { message_id: messageId || '' },
     });
+
+    // Append token usage footer after markdown renders
+    setTimeout(function() {
+      appendTokenUsage(sessionId, usage);
+    }, 500);
   }
 
   function renderError(sessionId, message) {
@@ -365,7 +370,6 @@
 
   // ————— Token usage footer —————
 
-  // After the finalizeMessage renders the markdown, append a usage footer
   function appendTokenUsage(sessionId, usage) {
     var messages = document.getElementById('messages');
     if (!messages) return;
@@ -381,21 +385,16 @@
     if (usage && usage.total_tokens) {
       footer.textContent = 'Tokens: ' + usage.total_tokens + ' (prompt: ' + usage.prompt_tokens + ', completion: ' + usage.completion_tokens + ')';
     } else {
-      // Fallback: just a generic estimate
-      footer.textContent = 'Response complete';
+      // Estimate: ~4 chars per token as fallback
+      var msgEl = document.getElementById('messages');
+      var estimatedTotal = 1;
+      if (msgEl) {
+        estimatedTotal = Math.max(1, Math.floor((msgEl.textContent || '').length / 4));
+      }
+      footer.textContent = 'Tokens: ~' + estimatedTotal + ' (estimate)';
     }
 
     messages.appendChild(footer);
   }
-
-  // Hook into finalizeMessage to add usage footer
-  var _origFinalize = finalizeMessage;
-  finalizeMessage = function(sessionId, messageId) {
-    _origFinalize(sessionId, messageId);
-    // Add usage footer (no real usage data yet, just a placeholder)
-    setTimeout(function() {
-      appendTokenUsage(sessionId, null);
-    }, 500);
-  };
 
 })();

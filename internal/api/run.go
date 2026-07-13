@@ -34,6 +34,14 @@ type SSEEvent struct {
 	Data      interface{} `json:"data,omitempty"`
 	Message   string      `json:"message,omitempty"`
 	MessageID string      `json:"message_id,omitempty"`
+	Usage     *tokenUsage `json:"usage,omitempty"`
+}
+
+// tokenUsage holds token count information for a completed run.
+type tokenUsage struct {
+	TotalTokens    int `json:"total_tokens"`
+	PromptTokens   int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 }
 
 // runState tracks one active assistant run per session.
@@ -211,9 +219,9 @@ func (w *SSEWriter) ToolResult(name string, output interface{}) {
 	w.ch <- SSEEvent{Type: "tool_result", Tool: name, Output: outputStr}
 }
 
-// Done sends a done event.
-func (w *SSEWriter) Done(messageID string) {
-	w.ch <- SSEEvent{Type: "done", MessageID: messageID}
+// Done sends a done event with optional token usage.
+func (w *SSEWriter) Done(messageID string, usage *tokenUsage) {
+	w.ch <- SSEEvent{Type: "done", MessageID: messageID, Usage: usage}
 }
 
 // Component sends a generative UI component event.
@@ -237,7 +245,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 		case evt, ok := <-state.Events:
 			if !ok {
 				if fullText.Len() > 0 {
-					w.Done(messageID)
+					w.Done(messageID, estimateUsage(fullText.String()))
 				}
 				return fullText.String()
 			}
@@ -282,7 +290,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 			}
 
 			if evt.TurnComplete || evt.IsFinalResponse() {
-				w.Done(messageID)
+				w.Done(messageID, estimateUsage(fullText.String()))
 				close(state.Done)
 				return fullText.String()
 			}
@@ -300,6 +308,28 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 		case <-state.Done:
 			return fullText.String()
 		}
+	}
+}
+
+// estimateUsage estimates token counts from text length.
+// Uses a rough ratio: ~4 chars per token for English text.
+// This is a fallback when the provider doesn't return usage data.
+func estimateUsage(text string) *tokenUsage {
+	const charsPerToken = 4
+	totalTokens := len(text) / charsPerToken
+	if totalTokens < 1 {
+		totalTokens = 1
+	}
+	// Rough split: ~2/3 prompt tokens, ~1/3 completion tokens
+	completionTokens := totalTokens / 3
+	if completionTokens < 1 {
+		completionTokens = 1
+	}
+	promptTokens := totalTokens - completionTokens
+	return &tokenUsage{
+		TotalTokens:      totalTokens,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
 	}
 }
 
@@ -321,6 +351,10 @@ func formatErrorMessage(err error) string {
 		return "Provider does not support required streaming tool calls. Use OpenCode Go or another compatible provider."
 	case strings.Contains(msg, "timeout"):
 		return "Request timed out. The provider took too long to respond."
+	case strings.Contains(msg, "port already in use") || strings.Contains(msg, "address already in use"):
+		return "Cannot bind port: address already in use. Try EITRI_ADDR=127.0.0.1:8081 eitri."
+	case strings.Contains(msg, "no such host") || strings.Contains(msg, "lookup"):
+		return "Cannot reach provider at the configured URL. Check base_url in Settings."
 	default:
 		return fmt.Sprintf("LLM error: %s", msg)
 	}

@@ -53,12 +53,14 @@ CHECKSUM_FILE="${TMPDIR}/checksums.txt"
 if curl -sSfL "${CHECKSUM_URL}" -o "${CHECKSUM_FILE}" 2>/dev/null; then
   echo "Verifying SHA256 checksum..."
   if command -v sha256sum &>/dev/null; then
-    (cd "${TMPDIR}" && sha256sum -c --ignore-missing "${CHECKSUM_FILE}" 2>/dev/null) || {
-      echo "Warning: SHA256 verification failed. Proceeding without verification."
+    (cd "${TMPDIR}" && sha256sum -c --ignore-missing "${CHECKSUM_FILE}") || {
+      echo "Error: SHA256 verification failed."
+      exit 1
     }
   elif command -v shasum &>/dev/null; then
-    (cd "${TMPDIR}" && shasum -a 256 -c "${CHECKSUM_FILE}" 2>/dev/null) || {
-      echo "Warning: SHA256 verification failed. Proceeding without verification."
+    (cd "${TMPDIR}" && shasum -a 256 -c "${CHECKSUM_FILE}") || {
+      echo "Error: SHA256 verification failed."
+      exit 1
     }
   else
     echo "Warning: sha256sum not found. Skipping verification."
