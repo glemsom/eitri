@@ -541,25 +541,4 @@ pre:hover .copy-btn {
   background: rgba(231, 76, 60, 0.1);
 }
 
-/* Diff view toggle */
-diff-view-controls {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
 
-diff-view-controls button {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.8rem;
-  background: var(--surface-alt);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-diff-view-controls button.active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}

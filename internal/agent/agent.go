@@ -73,7 +73,7 @@ func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, 
 	fileViewerTool, err := functiontool.New[fileViewerArgs, fileViewerResult](
 		functiontool.Config{
 			Name:        "file_viewer",
-			Description: "Read file contents from workspace. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories. Can also read files under active skill directories.",
+			Description: "Read file contents from workspace. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories. Skill directory support pending Agent Skills implementation (#8).",
 		},
 		func(ctx agent.Context, args fileViewerArgs) (fileViewerResult, error) {
 			absPath, err := validateWorkspacePath(args.Path, workspace)

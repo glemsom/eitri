@@ -119,9 +119,4 @@ func escapeDiff(s string) string {
 	return s
 }
 
-// contextLimit returns a "context window" around changed regions.
-// For each changed hunk, includes `context` lines of surrounding context.
-// Not yet used - future enhancement for DiffCard.
-func contextLimit(lines []diffLine, context int) []diffLine {
-	return lines
-}
+

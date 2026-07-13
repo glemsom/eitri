@@ -103,8 +103,7 @@ func WriteFile(absPath, content, mode string) (FileEditorResult, error) {
 		}
 
 		// Record created dirs (only newly created ones)
-		// Simple approach: check which parent parts didn't exist
-		dirsCreated = recordNewDirs(parentDir)
+		// Return nil for v1 — MkdirAll's created dirs can't be easily determined post-hoc.
 
 		if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
 			return FileEditorResult{}, fmt.Errorf("failed to write file: %w", err)
@@ -154,11 +153,4 @@ func WriteFile(absPath, content, mode string) (FileEditorResult, error) {
 	return FileEditorResult{}, fmt.Errorf("unknown mode: %q", mode)
 }
 
-// recordNewDirs checks which parent directories were newly created by MkdirAll.
-// It walks up from dir and returns any that don't exist beforehand.
-func recordNewDirs(dir string) []string {
-	// Start from the deepest and work up; MkdirAll only creates missing ones.
-	// Since we can't easily know which were created, return empty for v1.
-	// The ADK and SSE path will handle empty lists gracefully.
-	return nil
-}
+

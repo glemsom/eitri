@@ -24,11 +24,6 @@ type SessionManager struct {
 }
 
 // NewSessionManager creates a new SessionManager.
-// Workspace returns the initial working directory for executors.
-func (sm *SessionManager) Workspace() string {
-	return sm.workspace
-}
-
 // workspace is the initial working directory for new executors.
 // cmdTimeout is the per-command timeout for new executors.
 // idleTimeout is how long an executor can be idle before being closed (0 = no timeout).
@@ -39,6 +34,11 @@ func NewSessionManager(workspace string, cmdTimeout time.Duration, idleTimeout t
 		idleTimeout: idleTimeout,
 		sessions:    make(map[string]*managedSession),
 	}
+}
+
+// Workspace returns the initial working directory for executors.
+func (sm *SessionManager) Workspace() string {
+	return sm.workspace
 }
 
 // GetOrCreate returns the executor for sessionID, creating one if needed.
