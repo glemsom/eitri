@@ -89,8 +89,8 @@ func defaultRoots(workspace, homeDir string) []Root {
 	}
 }
 
-// ScopeOrder maps scope to precedence level (lower = higher precedence).
-var ScopeOrder = map[Scope]int{
+// scopeOrder maps scope to precedence level (lower = higher precedence).
+var scopeOrder = map[Scope]int{
 	ScopeProjectEitri:  1,
 	ScopeProjectAgents: 2,
 	ScopeUserEitri:     3,

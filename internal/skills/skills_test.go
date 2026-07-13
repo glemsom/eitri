@@ -460,10 +460,10 @@ func TestLookupByNormalized(t *testing.T) {
 		t.Fatal("expected to find 'Code-Review'")
 	}
 
-	// Lookup with different case
+	// Lookup with different case (should be case-insensitive)
 	skill = svc.Lookup("code-review")
-	if skill != nil {
-		t.Logf("case-insensitive lookup succeeded for 'code-review'")
+	if skill == nil {
+		t.Error("case-insensitive lookup failed for 'code-review', expected to find 'Code-Review'")
 	}
 }
 

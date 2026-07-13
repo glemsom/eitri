@@ -2,7 +2,10 @@
 // and resource manifest generation as specified in SPEC §4.4.
 package skills
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Scope defines the origin scope of a skill root.
 type Scope string
@@ -68,14 +71,16 @@ type Root struct {
 
 // Skill represents a parsed Agent Skill.
 type Skill struct {
-	Name         string      `json:"name"`
-	Description  string      `json:"description"`
-	Body         string      `json:"body"`
-	Path         string      `json:"path"`
-	Scope        Scope       `json:"scope"`
-	Status       Status      `json:"status"`
-	License      string      `json:"license,omitempty"`
-	Compatibility string     `json:"compatibility,omitempty"`
+	Name          string                 `json:"name"`
+	Description   string                 `json:"description"`
+	Body          string                 `json:"body"`
+	Path          string                 `json:"path"`
+	Scope         Scope                  `json:"scope"`
+	Status        Status                 `json:"status"`
+	License       string                 `json:"license,omitempty"`
+	Compatibility string                 `json:"compatibility,omitempty"`
+	AllowedTools  []string               `json:"allowed-tools,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // SkillSummary is a lightweight representation for the skills catalog in system prompts.
@@ -93,15 +98,25 @@ type ActivatedSkill struct {
 	Directory    string   `json:"directory"`
 }
 
+// xmlEscape escapes special XML characters in a string.
+func xmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
+}
+
 // SkillContent formats skill activation content as XML for the model prompt.
 func SkillContent(instructions string, resources []string, directory string) string {
 	content := "<skill_content>\n"
-	content += "<skill_directory>" + directory + "</skill_directory>\n"
+	content += "<skill_directory>" + xmlEscape(directory) + "</skill_directory>\n"
 	content += "\n<instructions>\n" + instructions + "\n</instructions>\n"
 	if len(resources) > 0 {
 		content += "\n<skill_resources>\n"
 		for _, r := range resources {
-			content += "  <file>" + r + "</file>\n"
+			content += "  <file>" + xmlEscape(r) + "</file>\n"
 		}
 		content += "</skill_resources>\n"
 	}

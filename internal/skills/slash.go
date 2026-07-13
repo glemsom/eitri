@@ -4,6 +4,11 @@ import (
 	"strings"
 )
 
+// reservedCommands are built-in slash commands that shadow skill names.
+var reservedCommands = map[string]bool{
+	"/help": true, "/settings": true, "/skills": true, "/clear": true, "/new": true,
+}
+
 // SlashParseResult holds the parsed result of a slash command input.
 type SlashParseResult struct {
 	ActivatedSkills []string // skills activated before the prompt
@@ -28,11 +33,6 @@ func ParseSlashInput(input string, lookupFn func(name string) *Skill) (*SlashPar
 	// Not a slash command
 	if !strings.HasPrefix(input, "/") {
 		return &SlashParseResult{Prompt: input}, nil
-	}
-
-	// Check for reserved slash commands
-	reservedCommands := map[string]bool{
-		"/help": true, "/settings": true, "/skills": true, "/clear": true, "/new": true,
 	}
 
 	// Parse leading slash tokens

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // maxFrontmatterSize is the maximum allowed size for YAML frontmatter (128KB).
@@ -39,6 +41,11 @@ func ParseSKILLMD(skillDir string) (*Skill, Diagnostics) {
 		return nil, Diagnostics{{Severity: SeverityError, Message: "YAML frontmatter not found in SKILL.md", Path: skillDir}}
 	}
 
+	// Enforce frontmatter size limit
+	if len(frontmatter) > maxFrontmatterSize {
+		return nil, Diagnostics{{Severity: SeverityError, Message: fmt.Sprintf("YAML frontmatter exceeds %dKB limit", maxFrontmatterSize/1024), Path: skillDir}}
+	}
+
 	// Parse frontmatter
 	fm, fmDiags := parseFrontmatter(frontmatter, skillDir)
 	diags = append(diags, fmDiags...)
@@ -50,6 +57,8 @@ func ParseSKILLMD(skillDir string) (*Skill, Diagnostics) {
 	skill.Description = fm.Description
 	skill.License = fm.License
 	skill.Compatibility = fm.Compatibility
+	skill.AllowedTools = fm.AllowedTools
+	skill.Metadata = fm.Metadata
 	skill.Body = strings.TrimSpace(body)
 
 	// Validate required fields
@@ -84,82 +93,25 @@ type frontmatterData struct {
 	AllowedTools  []string               `yaml:"allowed-tools,omitempty"`
 }
 
-// parseFrontmatter parses YAML frontmatter content.
+// parseFrontmatter parses YAML frontmatter content using yaml.v3.
 func parseFrontmatter(fm string, skillDir string) (*frontmatterData, Diagnostics) {
 	if strings.TrimSpace(fm) == "" {
 		return nil, Diagnostics{{Severity: SeverityError, Message: "empty YAML frontmatter", Path: skillDir}}
 	}
 
-	// Simple key-value parsing for YAML frontmatter without requiring yaml library
-	// Parse basic fields
 	data := &frontmatterData{}
-	diags := parseSimpleYAML(fm, data, skillDir)
+	if err := yaml.Unmarshal([]byte(fm), data); err != nil {
+		return nil, Diagnostics{{Severity: SeverityError, Message: fmt.Sprintf("cannot parse YAML frontmatter: %v", err), Path: skillDir}}
+	}
 
 	if data.Name == "" {
-		return nil, append(diags, Diagnostic{Severity: SeverityError, Message: "name field missing or empty", Path: skillDir})
+		return nil, Diagnostics{{Severity: SeverityError, Message: "name field missing or empty", Path: skillDir}}
 	}
 	if data.Description == "" {
-		return nil, append(diags, Diagnostic{Severity: SeverityError, Message: "description field missing or empty", Path: skillDir})
+		return nil, Diagnostics{{Severity: SeverityError, Message: "description field missing or empty", Path: skillDir}}
 	}
 
-	return data, diags
-}
-
-// parseSimpleYAML does a basic line-by-line parse of simple YAML frontmatter.
-// Supports: name, description, license, compatibility, and simple string values.
-// For complex nested fields, simply records them without error.
-func parseSimpleYAML(content string, data *frontmatterData, skillDir string) Diagnostics {
-	lines := strings.Split(content, "\n")
-	var diags Diagnostics
-	inList := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		// Skip list items and complex nested values
-		if strings.HasPrefix(trimmed, "- ") {
-			if strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "\t") {
-				continue // nested list items
-			}
-			inList = true
-			continue
-		}
-		if inList && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
-			continue
-		}
-		inList = false
-
-		// Skip lines with nested colons or complex structures
-		if strings.Contains(trimmed, ": ") || strings.HasSuffix(trimmed, ":") {
-			colonIdx := strings.Index(trimmed, ": ")
-			if colonIdx < 0 {
-				// Line ending with colon (map start) — skip
-				continue
-			}
-
-			key := strings.TrimSpace(trimmed[:colonIdx])
-			value := strings.TrimSpace(trimmed[colonIdx+2:])
-
-			// Remove quotes
-			value = strings.Trim(value, "\"'")
-
-			switch key {
-			case "name":
-				data.Name = value
-			case "description":
-				data.Description = value
-			case "license":
-				data.License = value
-			case "compatibility":
-				data.Compatibility = value
-			}
-		}
-	}
-
-	return diags
+	return data, nil
 }
 
 // extractFrontmatter splits SKILL.md content into frontmatter and body.

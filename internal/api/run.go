@@ -19,6 +19,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -46,14 +47,15 @@ type runState struct {
 
 // RunManager manages active runs per session.
 type RunManager struct {
-	mu          sync.Mutex
-	active      map[string]*runState
-	runnerMgr   *agentrunner.Manager
-	sessionMgr  *executor.SessionManager
-	skillsSvc   *skills.Service
-	baseURL     string
-	apiKey      string
-	modelName   string
+	mu            sync.Mutex
+	active        map[string]*runState
+	runnerMgr     *agentrunner.Manager
+	sessionMgr    *executor.SessionManager
+	uiSessionMgr  *uisession.Manager
+	skillsSvc     *skills.Service
+	baseURL       string
+	apiKey        string
+	modelName     string
 }
 
 // NewRunManager creates a run manager.
@@ -68,6 +70,11 @@ func NewRunManager(runnerMgr *agentrunner.Manager, sessionMgr *executor.SessionM
 // SetSkillsService sets the skills service for the run manager.
 func (rm *RunManager) SetSkillsService(svc *skills.Service) {
 	rm.skillsSvc = svc
+}
+
+// SetUISessionManager sets the UI session manager for the run manager.
+func (rm *RunManager) SetUISessionManager(mgr *uisession.Manager) {
+	rm.uiSessionMgr = mgr
 }
 
 // UpdateProviderConfig stores provider config for creating model instances.
@@ -99,7 +106,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	var ag adkagent.Agent
 	var agErr error
 	if rm.skillsSvc != nil {
-		ag, agErr = agent.NewAgentWithSkills(llm, rm.sessionMgr, rm.skillsSvc)
+		ag, agErr = agent.NewAgentWithSkills(llm, rm.sessionMgr, rm.skillsSvc, rm.uiSessionMgr)
 	} else {
 		ag, agErr = agent.NewAgent(llm, rm.sessionMgr)
 	}

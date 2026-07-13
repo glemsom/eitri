@@ -79,6 +79,9 @@ func main() {
 	// 9a. Wire skills service to run manager
 	runMgr.SetSkillsService(skillsSvc)
 
+	// 9b. Wire UI session manager to run manager
+	runMgr.SetUISessionManager(sessionMgr)
+
 	// 10. Create HTTP server
 	srvCfg := api.ServerConfig{
 		ConfigPath:     configPath,

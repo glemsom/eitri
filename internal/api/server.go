@@ -490,17 +490,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Validate active skills: remove any that are no longer effective
-	if len(sess.ActiveSkills) > 0 {
-		var validSkills []string
-		for _, name := range sess.ActiveSkills {
-			if s.config.SkillsService.Lookup(name) != nil {
-				validSkills = append(validSkills, name)
-			}
-		}
-		// If some skills disappeared, update the session
-		if len(validSkills) != len(sess.ActiveSkills) {
-			sess.ActiveSkills = validSkills
+	// Remove any active skills that are no longer effective
+	for _, name := range sess.ActiveSkills {
+		if s.config.SkillsService.Lookup(name) == nil {
+			s.config.SessionManager.DeactivateSkill(id, name)
 		}
 	}
 

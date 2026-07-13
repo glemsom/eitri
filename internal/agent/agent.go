@@ -14,22 +14,23 @@ import (
 	"google.golang.org/adk/v2/tool/functiontool"
 
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
 // NewAgent creates an ADK LLMAgent with the given model and tools.
 func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, error) {
 	workspace := sessionMgr.Workspace()
-	return newAgentWithSkills(llm, sessionMgr, workspace, skills.NewService())
+	return newAgentWithSkills(llm, sessionMgr, workspace, skills.NewService(), nil)
 }
 
 // NewAgentWithSkills creates an ADK LLMAgent with skills support.
-func NewAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, skillsSvc *skills.Service) (agent.Agent, error) {
+func NewAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
 	workspace := sessionMgr.Workspace()
-	return newAgentWithSkills(llm, sessionMgr, workspace, skillsSvc)
+	return newAgentWithSkills(llm, sessionMgr, workspace, skillsSvc, uiSessionMgr)
 }
 
-func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, workspace string, skillsSvc *skills.Service) (agent.Agent, error) {
+func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, workspace string, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
 	tools := make([]tool.Tool, 0)
 
 	// terminal_execute
@@ -177,6 +178,11 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 			skill := skillsSvc.Lookup(args.Name)
 			if skill == nil {
 				return activateSkillResult{}, fmt.Errorf("skill %q not found in effective skills", args.Name)
+			}
+
+			// Record activation in session for persistence across runs
+			if uiSessionMgr != nil {
+				uiSessionMgr.ActivateSkill(ctx.SessionID(), args.Name)
 			}
 
 			resources := skills.ListResources(skill.Path)

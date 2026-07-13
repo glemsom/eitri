@@ -2,6 +2,7 @@ package skills
 
 import (
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -137,9 +138,9 @@ func (s *Service) Lookup(name string) *Skill {
 	}
 
 	// Case-insensitive fallback
-	lower := name
+	lower := strings.ToLower(name)
 	for _, skill := range s.registry.effective {
-		if skill.Name == lower {
+		if strings.ToLower(skill.Name) == lower {
 			return skill
 		}
 	}
@@ -156,16 +157,16 @@ func (s *Service) SkillsCatalogXML() string {
 		return ""
 	}
 
-	var xml string
-	xml += "<available_skills>\n"
+	var b strings.Builder
+	b.WriteString("<available_skills>\n")
 	for _, skill := range s.registry.effective {
-		xml += "  <skill>\n"
-		xml += "    <name>" + skill.Name + "</name>\n"
-		xml += "    <description>" + skill.Description + "</description>\n"
-		xml += "  </skill>\n"
+		b.WriteString("  <skill>\n")
+		b.WriteString("    <name>" + xmlEscape(skill.Name) + "</name>\n")
+		b.WriteString("    <description>" + xmlEscape(skill.Description) + "</description>\n")
+		b.WriteString("  </skill>\n")
 	}
-	xml += "</available_skills>"
-	return xml
+	b.WriteString("</available_skills>")
+	return b.String()
 }
 
 // SkillDirectories returns the list of skill directory paths effective for
@@ -219,5 +220,4 @@ func (s *Service) DiagnosticSummary() string {
 	return msg
 }
 
-// _ is a compile-time check to ensure filepath is used
 
