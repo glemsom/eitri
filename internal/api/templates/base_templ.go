@@ -44,7 +44,7 @@ func Base(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><script src=\"/static/htmx.min.js\"></script><script src=\"/static/eitri-stream.js\"></script><link rel=\"stylesheet\" href=\"/static/eitri.css\"></head><body hx-ext=\"head-support\"><div id=\"app\"><header><h1>Eitri</h1><span class=\"text-muted\">AI Assistant</span><nav><a href=\"/\">Chat</a> <a href=\"/settings\">Settings</a> <a href=\"/skills\">Skills</a></nav></header><div id=\"session-tabs\"></div><main><noscript><p>JavaScript is required for Eitri. Please enable JavaScript.</p></noscript>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><script src=\"/static/htmx.min.js\"></script><script src=\"/static/eitri-stream.js\"></script><script src=\"/static/eitri-composer.js\"></script><script src=\"/static/eitri-mermaid.js\"></script><link rel=\"stylesheet\" href=\"/static/eitri.css\"></head><body hx-ext=\"head-support\"><div id=\"app\"><header><h1>Eitri</h1><span class=\"text-muted\">AI Assistant</span><nav><a href=\"/\">Chat</a> <a href=\"/settings\">Settings</a> <a href=\"/skills\">Skills</a></nav></header><div id=\"session-tabs\"></div><main><noscript><p>JavaScript is required for Eitri. Please enable JavaScript.</p></noscript>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

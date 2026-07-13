@@ -1,0 +1,13 @@
+package templates
+
+// MermaidDiagram renders a Mermaid diagram container.
+// Client-side Mermaid.js processes the <pre class="mermaid"> element after swap.
+templ MermaidDiagram(code string) {
+	<div class="mermaid-diagram">
+		<pre class="mermaid">{ code }</pre>
+		<noscript>
+			<p class="text-muted">Mermaid diagram requires JavaScript.</p>
+			<pre>{ code }</pre>
+		</noscript>
+	</div>
+}

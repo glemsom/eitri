@@ -9,6 +9,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +90,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/skills", s.handleAPISkills)
 	s.mux.HandleFunc("POST /api/skills/refresh", s.handleSkillsRefresh)
 	s.mux.HandleFunc("GET /api/sessions/{id}/complete/skills", s.handleCompleteSkills)
+	s.mux.HandleFunc("GET /api/sessions/{id}/complete/files", s.handleCompleteFiles)
 	s.mux.HandleFunc("POST /api/sessions/{id}/skills/{name}/activate", s.handleActivateSessionSkill)
 }
 
@@ -811,9 +815,98 @@ func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
-	// Stub - full generative UI implementation in issue #8
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "<!-- component rendering not yet implemented -->")
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Name string                 `json:"name"`
+		Data map[string]interface{} `json:"data"`
+	}
+
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	} else {
+		defer r.Body.Close()
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		req.Name = r.FormValue("name")
+		dataStr := r.FormValue("data")
+		if dataStr != "" {
+			if err := json.Unmarshal([]byte(dataStr), &req.Data); err != nil {
+				// Bad JSON in data field — treat as empty
+				req.Data = nil
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	switch req.Name {
+	case "MermaidDiagram":
+		code := ""
+		if req.Data != nil {
+			if c, ok := req.Data["code"].(string); ok {
+				code = c
+			}
+		}
+		component := templates.MermaidDiagram(code)
+		component.Render(r.Context(), w)
+
+	case "QuickReplies":
+		var options []string
+		if req.Data != nil {
+			if opts, ok := req.Data["options"]; ok {
+				if optsArr, ok := opts.([]interface{}); ok {
+					for _, o := range optsArr {
+						if s, ok := o.(string); ok {
+							options = append(options, s)
+						}
+					}
+				}
+			}
+		}
+		component := templates.QuickReplies(id, options)
+		component.Render(r.Context(), w)
+
+	case "DiffCard":
+		oldCode := ""
+		newCode := ""
+		lang := ""
+		if req.Data != nil {
+			if o, ok := req.Data["old"].(string); ok {
+				oldCode = o
+			}
+			if n, ok := req.Data["new"].(string); ok {
+				newCode = n
+			}
+			if l, ok := req.Data["lang"].(string); ok {
+				lang = l
+			}
+		}
+		component := templates.DiffCard(oldCode, newCode, lang)
+		component.Render(r.Context(), w)
+
+	default:
+		http.Error(w, "Unknown component", http.StatusBadRequest)
+	}
 }
 
 // mustJSON marshals v to JSON bytes, logging and returning nil on error.
@@ -916,6 +1009,111 @@ func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
+}
+
+func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+
+	// Reject path-traversal and absolute paths for safety
+	if strings.HasPrefix(q, "..") || strings.Contains(q, "/..") || strings.HasPrefix(q, "/") {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		return
+	}
+
+	workspace := s.config.Workspace
+	searchDir := workspace
+	prefix := q
+
+	// Handle subdirectory prefix: split into dir + file prefix
+	if q != "" {
+		if strings.HasSuffix(q, "/") {
+			// q is a directory path; list its contents
+			searchDir = filepath.Join(workspace, q)
+			prefix = ""
+		} else {
+			dir := filepath.Dir(q)
+			if dir != "." {
+				searchDir = filepath.Join(workspace, dir)
+				prefix = filepath.Base(q)
+			} else {
+				prefix = q
+			}
+		}
+	}
+
+	// Skip if searchDir doesn't exist or is outside workspace
+	absSearch, err := filepath.Abs(searchDir)
+	if err != nil || !strings.HasPrefix(absSearch, workspace) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		return
+	}
+
+	entries, err := os.ReadDir(absSearch)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		return
+	}
+
+	type fileItem struct {
+		Path string `json:"path"`
+		Kind string `json:"kind"`
+	}
+	var items []fileItem
+
+	skipDirs := map[string]bool{
+		".git": true, "node_modules": true, "vendor": true,
+		"dist": true, "build": true, "target": true, ".cache": true,
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip hidden unless prefix starts with dot
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(prefix, ".") {
+			continue
+		}
+
+		// Filter by prefix
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
+		if entry.IsDir() {
+			if skipDirs[name] {
+				continue
+			}
+			items = append(items, fileItem{Path: name + "/", Kind: "dir"})
+		} else {
+			items = append(items, fileItem{Path: name, Kind: "file"})
+		}
+
+		if len(items) >= 50 {
+			break
+		}
+	}
+
+	// Sort: dirs first, then lexicographic within each group
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Kind != items[j].Kind {
+			return items[i].Kind == "dir"
+		}
+		return items[i].Path < items[j].Path
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"items": items})

@@ -158,6 +158,63 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	}
 	tools = append(tools, fileEditorTool)
 
+	// render_component
+	type renderComponentArgs struct {
+		Name string                 `json:"name" jsonschema:"Component name: MermaidDiagram, QuickReplies, or DiffCard"`
+		Data map[string]interface{} `json:"data" jsonschema:"Component data"`
+	}
+	type renderComponentResult struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+
+	renderComponentTool, err := functiontool.New[renderComponentArgs, renderComponentResult](
+		functiontool.Config{
+			Name:        "render_component",
+			Description: "Render a rich UI component in the chat. Supported components: MermaidDiagram (diagrams), QuickReplies (suggestion chips), DiffCard (code diffs). Use this for visual output instead of plain text when possible.",
+		},
+		func(ctx agent.Context, args renderComponentArgs) (renderComponentResult, error) {
+			switch args.Name {
+			case "MermaidDiagram":
+				if args.Data == nil {
+					return renderComponentResult{}, fmt.Errorf("MermaidDiagram requires 'code' field in data")
+				}
+				if _, ok := args.Data["code"]; !ok {
+					return renderComponentResult{}, fmt.Errorf("MermaidDiagram requires 'code' field in data")
+				}
+			case "QuickReplies":
+				if args.Data == nil {
+					return renderComponentResult{}, fmt.Errorf("QuickReplies requires 'options' field in data")
+				}
+				options, ok := args.Data["options"]
+				if !ok {
+					return renderComponentResult{}, fmt.Errorf("QuickReplies requires 'options' field in data")
+				}
+				optsArr, ok := options.([]interface{})
+				if !ok || len(optsArr) == 0 {
+					return renderComponentResult{}, fmt.Errorf("QuickReplies options must be a non-empty array of strings")
+				}
+			case "DiffCard":
+				if args.Data == nil {
+					return renderComponentResult{}, fmt.Errorf("DiffCard requires 'old' and 'new' fields in data")
+				}
+				if _, ok := args.Data["old"]; !ok {
+					return renderComponentResult{}, fmt.Errorf("DiffCard requires 'old' field in data")
+				}
+				if _, ok := args.Data["new"]; !ok {
+					return renderComponentResult{}, fmt.Errorf("DiffCard requires 'new' field in data")
+				}
+			default:
+				return renderComponentResult{}, fmt.Errorf("unknown component %q; supported: MermaidDiagram, QuickReplies, DiffCard", args.Name)
+			}
+			return renderComponentResult{Name: args.Name, Status: "ok"}, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create render_component tool: %w", err)
+	}
+	tools = append(tools, renderComponentTool)
+
 	// activate_skill
 	type activateSkillArgs struct {
 		Name string `json:"name" jsonschema:"Name of the skill to activate"`
@@ -204,6 +261,7 @@ Guidelines:
 - Use Markdown for all responses (headings, lists, tables, links).
 - Use fenced code blocks with language tags (e.g. ` + "```go" + `) for all code.
 - Use ` + "```mermaid" + ` fenced blocks for diagrams (architecture, sequence, flow, ER, class).
+- Use render_component tool for rich visual output: MermaidDiagram (diagrams), QuickReplies (suggestion chips), and DiffCard (code diffs).
 - Wrap reasoning/thinking steps in <think>...</think> tags.
 - When you need to run a shell command, use the terminal_execute tool.
 - To read files, use the file_viewer tool.

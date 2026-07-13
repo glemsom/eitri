@@ -1,0 +1,22 @@
+package templates
+
+import "fmt"
+
+// QuickReplies renders a row of suggestion chip buttons.
+// Each chip submits a chat message to the current session.
+templ QuickReplies(sessionID string, options []string) {
+	<div class="quick-replies">
+		for _, opt := range options {
+			<form
+				class="quick-reply-form"
+				style="display:inline"
+				hx-post={ templ.URL(fmt.Sprintf("/api/sessions/%s/chat", sessionID)) }
+				hx-target="#messages"
+				hx-swap="beforeend"
+			>
+				<input type="hidden" name="message" value={ opt }/>
+				<button type="submit" class="quick-reply-chip">{ opt }</button>
+			</form>
+		}
+	</div>
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -816,5 +817,399 @@ func TestOwnershipMismatch(t *testing.T) {
 	// Should return 404 (ownership mismatch)
 	if resp2.StatusCode != http.StatusNotFound {
 		t.Errorf("ownership mismatch status = %d, want %d", resp2.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestRenderComponent_MermaidDiagram(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	// Get a session with browser_id
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	// POST to render/component as form-encoded
+	form := url.Values{}
+	form.Set("name", "MermaidDiagram")
+	form.Set("data", `{"code":"graph TD; A-->B;"}`)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/component", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("render MermaidDiagram status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body := make([]byte, 2048)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+
+	if !strings.Contains(content, "mermaid") {
+		t.Errorf("MermaidDiagram response missing 'mermaid' class, got: %s", content[:100])
+	}
+	// Templ escapes > to &gt;
+	if !strings.Contains(content, "A--&gt;B;") && !strings.Contains(content, "A-->B;") {
+		t.Errorf("MermaidDiagram response missing code content, got: %s", content[50:150])
+	}
+}
+
+func TestRenderComponent_QuickReplies(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("name", "QuickReplies")
+	form.Set("data", `{"options":["Summarize","Make shorter"]}`)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/component", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("render QuickReplies status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body := make([]byte, 2048)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+
+	if !strings.Contains(content, "Summarize") {
+		t.Errorf("QuickReplies response missing 'Summarize', got: %s", content[:100])
+	}
+	if !strings.Contains(content, "Make shorter") {
+		t.Errorf("QuickReplies response missing 'Make shorter', got: %s", content[:100])
+	}
+	if !strings.Contains(content, "quick-reply") {
+		t.Errorf("QuickReplies response missing quick-reply class, got: %s", content[:100])
+	}
+}
+
+func TestRenderComponent_DiffCard(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("name", "DiffCard")
+	form.Set("data", `{"old":"old code","new":"new code","lang":"go"}`)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/component", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("render DiffCard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body := make([]byte, 2048)
+	n, _ := resp.Body.Read(body)
+	content := string(body[:n])
+
+	if !strings.Contains(content, "diff-card") {
+		t.Errorf("DiffCard response missing 'diff-card' class, got: %s", content[:100])
+	}
+	if !strings.Contains(content, "old code") {
+		t.Errorf("DiffCard response missing old code, got: %s", content[:100])
+	}
+	if !strings.Contains(content, "new code") {
+		t.Errorf("DiffCard response missing new code, got: %s", content[:100])
+	}
+}
+
+func TestRenderComponent_Unknown(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("name", "UnknownComponent")
+	form.Set("data", `{}`)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/component", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("unknown component status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestCompleteFiles(t *testing.T) {
+	// Create a temp workspace with test files
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewService()
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
+
+	client := noRedirectClient()
+
+	// Create some files in workspace
+	os.WriteFile(workspace+"/main.go", []byte("package main"), 0644)
+	os.WriteFile(workspace+"/README.md", []byte("# Readme"), 0644)
+	os.MkdirAll(workspace+"/internal/api", 0755)
+	os.WriteFile(workspace+"/internal/api/handler.go", []byte("package api"), 0644)
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	// Test with empty prefix — should list workspace root
+	req, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/files", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /complete/files status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Items []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should return workspace entries (at least main.go)
+	if len(body.Items) == 0 {
+		t.Errorf("expected at least one file completion item, got 0")
+	}
+
+	// Test prefix filtering — 'main' should match main.go
+	req2, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/files?q=main", nil)
+	req2.AddCookie(browserCookie)
+	resp2, err := client.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	var body2 struct {
+		Items []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	json.NewDecoder(resp2.Body).Decode(&body2)
+
+	if len(body2.Items) != 1 || body2.Items[0].Path != "main.go" {
+		t.Errorf("prefix 'main' expected 1 item 'main.go', got %d items: %+v", len(body2.Items), body2.Items)
+	}
+
+	// Test subdirectory navigation
+	req3, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/files?q=internal/", nil)
+	req3.AddCookie(browserCookie)
+	resp3, err := client.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp3.Body.Close()
+
+	var body3 struct {
+		Items []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	json.NewDecoder(resp3.Body).Decode(&body3)
+
+	if len(body3.Items) == 0 {
+		t.Errorf("expected items in subdirectory, got 0")
+	}
+}
+
+func TestCompleteFiles_RejectEscape(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	// Test with ../ escape
+	req, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/files?q=../", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("complete/files with escape status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Items []interface{} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should return empty items for escape attempts
+	if len(body.Items) != 0 {
+		t.Errorf("expected empty items for ../ escape, got %d", len(body.Items))
+	}
+}
+
+func TestCompleteSkills(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	// Test with empty query
+	req, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/skills", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /complete/skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Items []struct {
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should return at least some skills
+	if len(body.Items) == 0 {
+		t.Errorf("expected at least one skill completion item, got 0")
+	}
+}
+
+func TestRenderComponent_OwnershipMismatch(t *testing.T) {
+	server := newTestServer(t)
+
+	// Use no browser cookie — should get 404
+	form := url.Values{}
+	form.Set("name", "MermaidDiagram")
+	form.Set("data", `{}`)
+
+	resp, err := http.PostForm(server.URL+"/api/sessions/nonexistent/render/component", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// No browser_id cookie means session not found
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("render component no auth status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }

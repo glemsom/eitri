@@ -1,0 +1,17 @@
+package templates
+
+// DiffCard renders a side-by-side or unified diff view.
+// Uses server-side diff rendering (from diff.go) with eitri-diff-card for toggle/collapse.
+templ DiffCard(oldCode string, newCode string, lang string) {
+	<eitri-diff-card>
+		<div class="diff-card">
+			<div class="diff-card-toolbar">
+				<button class="diff-toggle-btn" data-view="unified" type="button">Unified</button>
+				<button class="diff-toggle-btn" data-view="side-by-side" type="button">Side-by-side</button>
+			</div>
+			<div class="diff-view unified">
+				<pre class="diff-content"><code>{ diffText(oldCode, newCode) }</code></pre>
+			</div>
+		</div>
+	</eitri-diff-card>
+}
