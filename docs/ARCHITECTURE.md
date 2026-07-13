@@ -145,8 +145,7 @@ type CommandResult struct {
 }
 
 type CommandExecutor interface {
-    ExecuteCommand(ctx context.Context, cmd string) (CommandResult, error)
-    ResizeTerminal(rows, cols int) error
+    ExecuteCommand(ctx context.Context, command string) (CommandResult, error)
     Close() error
 }
 ```
@@ -161,6 +160,7 @@ type CommandExecutor interface {
 5. Configurable timeout per command (default 60s). Concurrent commands in the same session are rejected with a clear error. Initial tmux working directory is the launch workspace; later shell `cd` persists inside that tmux session only.
 6. Output capped at 128 KiB; excess output sets `CommandResult.Truncated`.
 7. Process group killed on `Close()`.
+8. **Session death recovery** — if the tmux session is killed externally, `ExecuteCommand` recreates it automatically on the next call.
 
 **SessionManager**:
 - Map of `sessionID → managedSession` (holds `CommandExecutor` + timeout state)
