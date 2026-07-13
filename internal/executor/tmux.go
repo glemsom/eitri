@@ -91,13 +91,9 @@ func (e *TmuxExecutor) ExecuteCommand(ctx context.Context, command string) (Comm
 	wrappedCmd := fmt.Sprintf("echo '%s'; %s; echo \"%s:$?\"; echo '%s'",
 		startSentinel, command, exitSentinel, endSentinel)
 
-	// Send command as literal text
-	sendOut, err := exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "-l", wrappedCmd).CombinedOutput()
-	if err != nil {
-		return CommandResult{}, fmt.Errorf("tmux send-keys: %w\n%s", err, string(sendOut))
-	}
-	if _, err := exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "Enter").CombinedOutput(); err != nil {
-		return CommandResult{}, fmt.Errorf("tmux send-keys Enter: %w", err)
+	// Send command into the tmux session, retrying once if session is dead.
+	if err := e.sendCommand(wrappedCmd); err != nil {
+		return CommandResult{}, fmt.Errorf("send command: %w", err)
 	}
 
 	// Poll for command completion.
@@ -108,7 +104,7 @@ pollLoop:
 	for {
 		select {
 		case <-timeoutCtx.Done():
-			_ = exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "C-c").Run()
+			exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "C-c").Run()
 			time.Sleep(100 * time.Millisecond)
 			allOutput = e.capturePane()
 			break pollLoop
@@ -116,10 +112,23 @@ pollLoop:
 		}
 
 		allOutput = e.capturePane()
-		// Wait for end sentinel to appear at least 2x (echoed cmd + actual output)
 		if strings.Count(allOutput, endSentinel) >= 2 {
 			break pollLoop
 		}
+
+		// If pane is empty and session appears dead, attempt recovery once.
+		if allOutput == "" {
+			if e.recoverSession() {
+				// Session restored — re-send the command.
+				if err := e.sendCommand(wrappedCmd); err != nil {
+					return CommandResult{}, fmt.Errorf("send command after recovery: %w", err)
+				}
+				continue
+			}
+			// Recovery failed — exit poll loop.
+			break pollLoop
+		}
+
 		time.Sleep(pollInterval)
 	}
 
@@ -145,6 +154,36 @@ pollLoop:
 		DurationMs: duration.Milliseconds(),
 		Truncated:  truncated,
 	}, nil
+}
+
+// sendCommand sends a literal string and Enter key to the tmux session.
+func (e *TmuxExecutor) sendCommand(cmd string) error {
+	if out, err := exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "-l", cmd).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux send-keys: %w\n%s", err, string(out))
+	}
+	if _, err := exec.Command(TmuxPath, "send-keys", "-t", e.sessionName, "Enter").CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux send-keys Enter: %w", err)
+	}
+	return nil
+}
+
+// recoverSession recreates the tmux session if it was killed externally.
+// Returns true if recovery succeeded, false if the executor is closed.
+func (e *TmuxExecutor) recoverSession() bool {
+	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		return false
+	}
+	e.mu.Unlock()
+
+	_ = exec.Command(TmuxPath, "kill-session", "-t", e.sessionName).Run()
+	cmd := exec.Command(TmuxPath, "new-session", "-d", "-s", e.sessionName, "-c", e.workspace)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return false
+	}
+	time.Sleep(200 * time.Millisecond)
+	return true
 }
 
 // capturePane returns the current pane content for the session.
