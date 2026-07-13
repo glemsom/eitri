@@ -3,7 +3,8 @@ package templates
 // MessageInput renders the chat input form with textarea and send button.
 // disabled=true when provider config is incomplete.
 templ MessageInput(sessionID string, disabled bool) {
-	<div id="composer" class="composer">
+	<eitri-composer>
+		<div id="composer" class="composer">
 		<form
 			hx-post={ templ.URL("/api/sessions/" + sessionID + "/chat") }
 			hx-target="#messages"
@@ -43,4 +44,5 @@ templ MessageInput(sessionID string, disabled bool) {
 			</div>
 		</form>
 	</div>
+</eitri-composer>
 }

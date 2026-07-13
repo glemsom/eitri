@@ -70,13 +70,6 @@ func newID() string {
 	return fmt.Sprintf("%x", b)
 }
 
-// BrowserSession represents a session reference for a browser.
-type BrowserSession struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Num   int    `json:"num"`
-}
-
 // Create creates a new session for the given browser_id.
 // Returns the session and any error. If the browser has reached the session cap,
 // returns a CapReached error.

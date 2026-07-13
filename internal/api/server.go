@@ -143,6 +143,16 @@ func (s *Server) browserIDFromRequest(r *http.Request) string {
 	return cookie.Value
 }
 
+// hxRedirect sends an HX-Redirect header for HTMX requests, or a standard HTTP redirect.
+func (s *Server) hxRedirect(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", path)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, path, http.StatusFound)
+}
+
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	browserID := s.ensureBrowserID(w, r)
 
@@ -154,14 +164,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect to new session (full page redirect for HTMX)
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/sessions/"+sess.ID)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	http.Redirect(w, r, "/sessions/"+sess.ID, http.StatusFound)
+	s.hxRedirect(w, r, "/sessions/"+sess.ID)
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
@@ -184,12 +187,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 	// Stale session (id doesn't exist at all) → redirect to /
 	if sess == nil {
-		if r.Header.Get("HX-Request") == "true" {
-			w.Header().Set("HX-Redirect", "/")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Redirect(w, r, "/", http.StatusFound)
+		s.hxRedirect(w, r, "/")
 		return
 	}
 
@@ -217,12 +215,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	sess := s.config.SessionManager.Get(id)
 	if sess == nil {
 		// Session already gone — redirect
-		if r.Header.Get("HX-Request") == "true" {
-			w.Header().Set("HX-Redirect", "/")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Redirect(w, r, "/", http.StatusFound)
+		s.hxRedirect(w, r, "/")
 		return
 	}
 	if sess.BrowserID != browserID {
@@ -235,12 +228,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	// Redirect to next available session or root
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	if len(sessions) > 0 {
-		if r.Header.Get("HX-Request") == "true" {
-			w.Header().Set("HX-Redirect", "/sessions/"+sessions[0].ID)
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Redirect(w, r, "/sessions/"+sessions[0].ID, http.StatusFound)
+		s.hxRedirect(w, r, "/sessions/"+sessions[0].ID)
 		return
 	}
 
@@ -253,12 +241,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/sessions/"+newSess.ID)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	http.Redirect(w, r, "/sessions/"+newSess.ID, http.StatusFound)
+	s.hxRedirect(w, r, "/sessions/"+newSess.ID)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
