@@ -60,7 +60,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
-	s.mux.Handle("GET /static/", http.FileServerFS(assets.Files))
+	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.Files)))
 
 	// Root serves the base HTML page — redirects to session if browser known
 	s.mux.HandleFunc("GET /{$}", s.handleRoot)
