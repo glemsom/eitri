@@ -14,24 +14,40 @@ func TestJsFiles(t *testing.T) {
 			t.Errorf("failed to open %s: %v", name, err)
 			continue
 		}
-		data, _ := io.ReadAll(f)
+		data, err := io.ReadAll(f)
 		f.Close()
+		if err != nil {
+			t.Errorf("failed to read %s: %v", name, err)
+			continue
+		}
 		t.Logf("%s: %d bytes", name, len(data))
 	}
-	
+
 	// Verify composer JS has runStarted handler
-	f, _ := Files.Open("eitri-composer.js")
-	data, _ := io.ReadAll(f)
+	f, err := Files.Open("eitri-composer.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-composer.js: %v", err)
+	}
+	data, err := io.ReadAll(f)
 	f.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-composer.js: %v", err)
+	}
 	content := string(data)
 	if !strings.Contains(content, "eitri:runStarted") {
 		t.Error("eitri-composer.js missing eitri:runStarted handler")
 	}
-	
+
 	// Verify stream JS has reenableComposer
-	f2, _ := Files.Open("eitri-stream.js")
-	data2, _ := io.ReadAll(f2)
+	f2, err := Files.Open("eitri-stream.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-stream.js: %v", err)
+	}
+	data2, err := io.ReadAll(f2)
 	f2.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-stream.js: %v", err)
+	}
 	content2 := string(data2)
 	if !strings.Contains(content2, "reenableComposer") {
 		t.Error("eitri-stream.js missing reenableComposer function")

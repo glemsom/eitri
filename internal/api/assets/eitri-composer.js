@@ -282,8 +282,9 @@
   customElements.define('eitri-composer', EitriComposer);
 })();
 
-
-  // Listen for run-started event from HTMX HX-Trigger header
+// Listen for run-started event from HTMX HX-Trigger header
+(function () {
+  'use strict';
   document.addEventListener('eitri:runStarted', function () {
     var input = document.getElementById('chat-input');
     var sendBtn = document.getElementById('send-btn');
@@ -292,3 +293,4 @@
     if (sendBtn) sendBtn.disabled = true;
     if (stopBtn) stopBtn.setAttribute('style', '');
   });
+})();

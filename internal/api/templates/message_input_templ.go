@@ -91,7 +91,7 @@ func MessageInput(sessionID string, disabled bool, showStop bool) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"eitri-composer\" hx-swap=\"outerHTML\">Stop</button></div></form></div></eitri-composer>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"#eitri-composer\" hx-swap=\"outerHTML\">Stop</button></div></form></div></eitri-composer>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

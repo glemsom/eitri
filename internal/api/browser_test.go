@@ -320,9 +320,12 @@ func TestBrowser_CancelRun(t *testing.T) {
 	// Wait for stop button to appear (may take a moment for HTMX swap)
 	var stopBtnExists bool
 	for i := 0; i < 10; i++ {
-		chromedp.Run(ctx,
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools("document.getElementById('stop-btn') !== null && window.getComputedStyle(document.getElementById('stop-btn')).display !== 'none'", &stopBtnExists),
 		)
+		if err != nil {
+			t.Logf("stop-btn visibility check iteration %d: %v", i, err)
+		}
 		if stopBtnExists {
 			break
 		}
@@ -339,6 +342,18 @@ func TestBrowser_CancelRun(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("cancel click failed: %v", err)
+	}
+
+	// Verify partial assistant message exists (stream was cancelled)
+	var hasAssistantMsg bool
+	_ = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant') !== null`,
+			&hasAssistantMsg,
+		),
+	)
+	if !hasAssistantMsg {
+		t.Log("no .message-assistant found after cancel — stream may have ended before any chunk rendered")
 	}
 
 	// Allow HTMX settle time
@@ -374,12 +389,15 @@ func TestBrowser_CancelRun(t *testing.T) {
 	if !stopBtnHidden {
 		// Debug: check the actual style attribute
 		var styleAttr string
-		chromedp.Run(ctx,
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(
 				`(function(){var b=document.getElementById('stop-btn');return b?b.getAttribute('style')||'empty':'notfound';})()`,
 				&styleAttr,
 			),
 		)
+		if err != nil {
+			t.Logf("failed to read stop-btn style: %v", err)
+		}
 		t.Logf("actual stop-btn style attr: %s", styleAttr)
 }
 }

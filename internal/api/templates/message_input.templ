@@ -41,7 +41,7 @@ templ MessageInput(sessionID string, disabled bool, showStop bool) {
 					class="stop-btn"
 					style={ templ.KV("display:none", !showStop) }
 					hx-post={ templ.URL("/api/sessions/" + sessionID + "/cancel") }
-					hx-target="eitri-composer"
+					hx-target="#eitri-composer"
 					hx-swap="outerHTML"
 				>
 					Stop
