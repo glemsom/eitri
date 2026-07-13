@@ -36,29 +36,13 @@ go test ./internal/api/ -v -run TestHealth
 |-------|------|-------------|----------|
 | Unit + non-browser integration | `go test` | `go test ./...` | **tmux** |
 | API integration | `httptest` | `go test ./internal/api/` | Nothing |
-| **Browser E2E** | **chromedp** | `go test -tags=browser ./internal/api/` | **Chrome on Linux** |
+| **Browser E2E** | **chromedp** | `go test ./internal/api/` | **Chrome on Linux** |
 
 ---
 
 ## Browser tests (chromedp)
 
 Browser tests verify the frontend UI loads, HTMX initializes correctly, config panel works, per-run SSE streaming after chat submit, sending messages works, and other DOM-level behaviors.
-
-### Build tag
-
-All browser tests are gated behind the `browser` build tag:
-
-```go
-//go:build browser
-```
-
-This means they are **excluded** from normal `go test` runs. To include them:
-
-```bash
-go test -tags=browser ./internal/api/ -v
-# or run all browser tests in the project
-go test -tags=browser ./...
-```
 
 ### Prerequisites
 
@@ -85,21 +69,22 @@ All browser tests live in:
 internal/api/browser_test.go
 ```
 
+Browser tests are **not** gated behind a build tag. Chrome-not-found skips at runtime with a clear message.
+
 ### Running browser tests
 
 ```bash
-# Run all browser tests
-go test -tags=browser ./internal/api/ -v
-
-# Run a specific test
-go test -tags=browser ./internal/api/ -run TestBrowser_UILoads -v
-
-# Run with timeout (some tests wait for SSE responses)
-timeout 30 go test -tags=browser ./internal/api/ -run TestBrowser_InputDisabledDuringSend -v
-
-# Skip browser tests (default — no flag needed)
+# Run all tests including browser tests (skipped if Chrome not found)
 go test ./...
+
+# Run only API tests (includes browser tests)
+go test ./internal/api/ -v
+
+# Run a specific browser test
+go test ./internal/api/ -run TestBrowser_HarnessCanary -v
 ```
+
+Browser tests are included in every `go test` run. If Chrome/Chromium is not found on the system, each test skips individually with `t.Skip`. No build tag required.
 
 ### What's tested
 
