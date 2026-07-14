@@ -39,7 +39,9 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 				}
 			}
 			<div id="streaming" class="streaming"></div>
+			<div id="scroll-sentinel" aria-hidden="true"></div>
 		</div>
+		<button id="scroll-to-bottom-btn" class="scroll-to-bottom-btn" aria-label="Scroll to latest messages" title="New messages">↓ New messages</button>
 		@MessageInput(sess.ID, !configValid, false)
 	</div>
 }

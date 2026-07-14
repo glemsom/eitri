@@ -647,7 +647,162 @@ func TestBrowser_AutoScroll(t *testing.T) {
 		t.Error("assistant message should have rendered via SSE stream")
 	}
 
-	// Verify the JS source contains scrollToLatest (checked by js_test.go)
+		// Verify the JS source contains scrollToLatest (checked by js_test.go)
+}
+
+// TestBrowser_ScrollToBottomButton verifies the floating scroll-to-bottom button
+// appears when user scrolls up during streaming and scrolls down on click.
+func TestBrowser_ScrollToBottomButton(t *testing.T) {
+	llmURL := fakeBurstChatServer(t, 500, 2*time.Millisecond).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Verify sentinel element exists in the DOM
+	var sentinelExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('scroll-sentinel') !== null`,
+			&sentinelExists,
+		),
+	)
+	if err != nil {
+		t.Fatalf("sentinel check failed: %v", err)
+	}
+	if !sentinelExists {
+		t.Error("scroll sentinel element should exist in #messages")
+	}
+
+	// Verify scroll-to-bottom button exists and is hidden initially
+	var btnState string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`(() => {
+				const btn = document.getElementById('scroll-to-bottom-btn');
+				if (!btn) return 'missing';
+				return btn.classList.contains('visible') ? 'visible' : 'hidden';
+			})()`,
+			&btnState,
+		),
+	)
+	if err != nil {
+		t.Fatalf("button visibility check failed: %v", err)
+	}
+	if btnState != "hidden" {
+		t.Errorf("scroll-to-bottom button should be hidden initially, got: %v", btnState)
+	}
+
+	// Send a message to trigger streaming with many tokens (500 x's = ~500 chars)
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Test scroll button", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Wait for streaming to start and accumulate enough content
+	time.Sleep(2 * time.Second)
+
+	// Force messages container to a small fixed height to create overflow
+	// (default viewport is too large for 500 chars to overflow)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('messages').style.maxHeight = '150px'`,
+			nil,
+		),
+	)
+	if err != nil {
+		t.Fatalf("set messages height failed: %v", err)
+	}
+
+	// Scroll up to trigger the button
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('messages').scrollTop = 0`,
+			nil,
+		),
+	)
+	if err != nil {
+		t.Fatalf("scroll up failed: %v", err)
+	}
+
+	// Wait for IntersectionObserver to fire
+	time.Sleep(500 * time.Millisecond)
+
+	// Check button is now visible
+	var btnVisibleAfterScroll string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`(() => {
+				const btn = document.getElementById('scroll-to-bottom-btn');
+				if (!btn) return 'missing';
+				return btn.classList.contains('visible') ? 'visible' : 'hidden';
+			})()`,
+			&btnVisibleAfterScroll,
+		),
+	)
+	if err != nil {
+		t.Fatalf("button visibility after scroll failed: %v", err)
+	}
+	if btnVisibleAfterScroll != "visible" {
+		t.Errorf("scroll-to-bottom button should be visible after scrolling up, got: %v", btnVisibleAfterScroll)
+	}
+
+	// Click the button to scroll down
+	err = chromedp.Run(ctx,
+		chromedp.Click("#scroll-to-bottom-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("click button failed: %v", err)
+	}
+
+	// Wait for smooth scroll to complete
+	time.Sleep(500 * time.Millisecond)
+
+	// Check button is hidden again after scrolling to bottom
+	var btnVisibleAfterClick string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`(() => {
+				const btn = document.getElementById('scroll-to-bottom-btn');
+				if (!btn) return 'missing';
+				return btn.classList.contains('visible') ? 'visible' : 'hidden';
+			})()`,
+			&btnVisibleAfterClick,
+		),
+	)
+	if err != nil {
+		t.Fatalf("button visibility after click failed: %v", err)
+	}
+	if btnVisibleAfterClick != "hidden" {
+		t.Errorf("scroll-to-bottom button should hide after scrolling to bottom, got: %v", btnVisibleAfterClick)
+	}
+
+	// Verify assistant message rendered
+	var assistantMsgExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant') !== null`,
+			&assistantMsgExists,
+		),
+	)
+	if err != nil {
+		t.Fatalf("assistant message check failed: %v", err)
+	}
+	if !assistantMsgExists {
+		t.Error("assistant message should have rendered via SSE stream")
+	}
 }
 
 func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
