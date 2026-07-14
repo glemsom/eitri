@@ -94,8 +94,29 @@ func (s *Server) loadConfigState(ctx context.Context) configState {
 	return configState{cfg: cfg, models: models}
 }
 
+func isHTMXRequest(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+func maskedConfig(cfg *config.Config) *config.Config {
+	if cfg == nil {
+		return nil
+	}
+	masked := *cfg
+	if masked.APIKey != "" {
+		masked.APIKey = config.MaskAPIKey(masked.APIKey)
+	}
+	return &masked
+}
+
+func writeSettingsForm(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_ = templates.SettingsForm(cfg, models, message).Render(r.Context(), w)
+}
+
 func writeConfigError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	if r.Header.Get("HX-Request") == "true" || !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+	if isHTMXRequest(r) || !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
 		_ = templates.ErrorToast(message).Render(r.Context(), w)
@@ -469,15 +490,11 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		cfg = state.cfg
 	}
 
-	// Mask the API key for GET responses
-	maskedCfg := *cfg
-	if maskedCfg.APIKey != "" {
-		maskedCfg.APIKey = config.MaskAPIKey(maskedCfg.APIKey)
-	}
+	maskedCfg := maskedConfig(cfg)
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
-	if r.Header.Get("HX-Request") == "true" {
-		component := templates.SettingsForm(&maskedCfg, models)
+	if isHTMXRequest(r) {
+		component := templates.SettingsForm(maskedCfg, models, "")
 		component.Render(r.Context(), w)
 		return
 	}
@@ -564,6 +581,10 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Validate field-level constraints
 	if err := config.Validate(newCfg); err != nil {
+		if isHTMXRequest(r) {
+			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
+			return
+		}
 		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -571,11 +592,19 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Validate provider credentials by calling the profile's model discovery path.
 	models, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
+		if isHTMXRequest(r) {
+			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
+			return
+		}
 		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	if strings.TrimSpace(newCfg.Model) != "" {
 		if err := config.ValidateSelectedModel(newCfg, models); err != nil {
+			if isHTMXRequest(r) {
+				writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
+				return
+			}
 			writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
@@ -594,16 +623,26 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render form with models populated
-	maskedCfg := *newCfg
-	if maskedCfg.APIKey != "" {
-		maskedCfg.APIKey = config.MaskAPIKey(maskedCfg.APIKey)
-	}
-	component := templates.SettingsForm(&maskedCfg, models)
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "")
 	component.Render(r.Context(), w)
 }
 
 // fetchModelList calls the provider profile's model discovery path and returns model IDs.
 // Also validates that the provider credentials work.
+func providerValidationErrorMessage(providerID string, statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		if providerID == "github_copilot" {
+			return "Provider authentication failed. Token invalid, expired, missing Copilot entitlement, or org policy blocked access."
+		}
+		return "Provider authentication failed. Check API key or token and try again."
+	case http.StatusNotFound:
+		return "Model discovery failed. Check base URL; provider endpoint not found."
+	default:
+		return fmt.Sprintf("Model discovery failed: provider returned HTTP %d", statusCode)
+	}
+}
+
 func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("base_url is required")
@@ -625,17 +664,20 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Model discovery failed: %v", err)
+		return nil, fmt.Errorf("Provider unreachable. Check base URL and network connection: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Model discovery failed: provider returned HTTP %d", resp.StatusCode)
+		return nil, errors.New(providerValidationErrorMessage(cfg.Provider, resp.StatusCode))
 	}
 
 	modelIDs, err := prof.ParseModelList(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Model discovery failed: %v", err)
+	}
+	if len(modelIDs) == 0 {
+		return nil, fmt.Errorf("Model discovery failed: no selectable models returned")
 	}
 	return modelIDs, nil
 }

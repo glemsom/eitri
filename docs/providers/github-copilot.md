@@ -11,6 +11,7 @@ Eitri supports GitHub Copilot through provider profile `github_copilot`. MVP use
    - Token must belong to account/org with Copilot entitlement.
 4. Keep **Base URL** empty/default unless using enterprise or data-residency endpoint.
 5. Save settings.
+   - If validation fails, Settings stays in place and shows visible inline error feedback.
 6. Eitri calls `GET {base_url}/models` with bearer auth and fills model selector with picker-enabled chat models.
 7. Select model from discovered list and save.
 
