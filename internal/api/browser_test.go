@@ -619,3 +619,132 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 		t.Error("#send-btn should be absent on settings page")
 	}
 }
+
+
+// TestBrowser_ConfigSavePopulatesModels verifies the full HTMX config-save
+// roundtrip: fill form, submit, provider validates /v1/models, models populate dropdown.
+func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Navigate to settings page
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation to settings failed: %v", err)
+	}
+
+	// Set provider, clear and fill fields, submit via HTMX
+	err = chromedp.Run(ctx,
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("form fill/submit failed: %v", err)
+	}
+
+	// Wait for HTMX response to swap #settings-form with models populated.
+	// The server returns HTML with model options on success (2xx).
+	var modelOptionCount int
+	var hasGPT4 bool
+	var hasGPT35 bool
+	err = chromedp.Run(ctx,
+		// Wait for the HTMX swap (new #model element with options)
+		chromedp.WaitReady("#model option[value='gpt-4']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length", &modelOptionCount),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-4")`,
+			&hasGPT4,
+		),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-3.5-turbo")`,
+			&hasGPT35,
+		),
+	)
+	if err != nil {
+		t.Fatalf("model dropdown check failed: %v", err)
+	}
+
+	if modelOptionCount < 3 {
+		t.Errorf("model dropdown has %d options, expected at least 3 (placeholder + 2 models)", modelOptionCount)
+	}
+	if !hasGPT4 {
+		t.Error("model dropdown missing gpt-4")
+	}
+	if !hasGPT35 {
+		t.Error("model dropdown missing gpt-3.5-turbo")
+	}
+
+	// Verify no error toast is present (success state)
+	var hasErrorToast bool
+	_ = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools("document.querySelector('.error-toast') !== null", &hasErrorToast),
+	)
+	if hasErrorToast {
+		t.Error("error toast present after successful config save")
+	}
+}
+
+// TestBrowser_ConfigSaveProviderFailure verifies that provider validation failure
+// (401 from fake provider) does NOT populate models and the form stays unchanged.
+// HTMX does NOT swap error content on 4xx (responseHandling), so no error toast
+// appears in the DOM. The form simply stays as-is.
+func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Navigate to settings page
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation to settings failed: %v", err)
+	}
+
+	// Fill form with bad provider URL and submit
+	err = chromedp.Run(ctx,
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-bad", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("form fill/submit failed: %v", err)
+	}
+
+	// Wait for HTMX to process the response (will not swap on 4xx).
+	// The form remains unchanged. Verify model dropdown stayed empty.
+	time.Sleep(500 * time.Millisecond)
+
+	var modelOptionsEmpty bool
+	var providerValue string
+	err = chromedp.Run(ctx,
+		chromedp.Value("#provider", &providerValue, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length <= 1", &modelOptionsEmpty),
+	)
+	if err != nil {
+		t.Fatalf("post-submit check failed: %v", err)
+	}
+
+	if !modelOptionsEmpty {
+		t.Error("model dropdown should be empty (placeholder only) after validation failure")
+	}
+	if providerValue != "custom_openai" {
+		t.Errorf("provider should still be 'custom_openai' after error, got %q", providerValue)
+	}
+}
