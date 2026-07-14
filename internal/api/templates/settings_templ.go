@@ -368,72 +368,85 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</select> <small class=\"hint\">Models are discovered from current provider settings on load and save.</small></div></fieldset><fieldset><legend>Prompt</legend><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" rows=\"8\" placeholder=\"Leave empty to use built-in default prompt.\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</select> <small class=\"hint\">Models are discovered from current provider settings on load and save.</small></div></fieldset><details class=\"settings-details\"><summary><span>Prompt</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use built-in default prompt.\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.SystemPrompt)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 89, Col: 140}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 89, Col: 167}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</textarea> <small class=\"hint\">Applies to later runs only. Clear value to restore built-in default prompt.</small></div></fieldset><fieldset><legend>Timeouts & Limits</legend><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</textarea><div class=\"char-count-wrapper\"><small class=\"char-count\" id=\"prompt-char-count\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var20 string
-		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.SessionTimeout / 1_000_000_000)
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(len(cfg.SystemPrompt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 99, Col: 112}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 91, Col: 78}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\" min=\"60\" required></div><div class=\"form-group\"><label for=\"command_timeout\">Command Timeout (seconds)</label> <input type=\"number\" id=\"command_timeout\" name=\"command_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " / 4096 chars</small></div><small class=\"hint\">Applies to later runs only. Clear value to restore built-in default prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var21 string
-		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CommandTimeout / 1_000_000_000)
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.SessionTimeout / 1_000_000_000)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 104, Col: 112}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 102, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" min=\"60\" required></div><div class=\"form-group\"><label for=\"command_timeout\">Command Timeout (seconds)</label> <input type=\"number\" id=\"command_timeout\" name=\"command_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var22 string
-		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CommandTimeout / 1_000_000_000)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 109, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 107, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label> <input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var23 string
-		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 114, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 112, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" min=\"1024\" required></div></fieldset><div class=\"form-actions\"><button type=\"submit\">Save</button><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label> <input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var24 string
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 117, Col: 113}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" min=\"1024\" required></div></details><div class=\"form-actions\"><button type=\"submit\">Save</button><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -457,44 +470,44 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var24 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var24 == nil {
-			templ_7745c5c3_Var24 = templ.NopComponent
+		templ_7745c5c3_Var25 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var25 == nil {
+			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if success {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<span class=\"connection-ok\">&#10003; ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(message)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 132, Col: 48}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<span class=\"connection-err\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<span class=\"connection-ok\">&#10003; ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 134, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 135, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<span class=\"connection-err\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 137, Col: 40}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
