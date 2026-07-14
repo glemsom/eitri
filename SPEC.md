@@ -405,7 +405,7 @@ Frontend-only responsibilities:
 |------|-------|-----------------|-------------|
 | **Session redirect** | `/` | n/a | Ensures `browser_id`; redirects to last-active session, or creates first session and redirects to `/sessions/{id}`. |
 | **Chat** | `/sessions/{id}` | `SessionTabs` + `ChatView` | Primary interface for selected session: top-bar session tabs, workspace indicator, setup banner when provider config is incomplete, message list, input, collapsible terminal. |
-| **Settings** | `/settings` | `SettingsView` | Config form (OpenCode Go provider, advanced custom OpenAI-compatible provider, model selector, executor). Navigated via `hx-get` + `hx-push-url`. |
+| **Settings** | `/settings` | `SettingsView` | Config form (OpenCode Go provider, GitHub Copilot provider, advanced custom OpenAI-compatible provider, model selector, executor). Navigated via `hx-get` + `hx-push-url`. |
 | **Skills** | `/skills` | `SkillsView` | Lists detected Agent Skills, effective/shadowed/invalid status, scope, path, and diagnostics. |
 
 Server renders full pages for direct navigation (`/`, `/settings`) and HTML fragments for HTMX partial swaps.
@@ -794,6 +794,7 @@ Target module/file layout lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#t
 
 - **ARCHITECTURE.md** — Module boundaries, key types, data flow, extension points. Implementation details.
 - **TESTING.md** — Test runbook. Commands, layers, browser test patterns.
+- **docs/providers/github-copilot.md** — User-facing GitHub Copilot provider setup and operation guide.
 - **CONTEXT.md** — Domain glossary, architecture decisions (ADRs).
 - **initial.md** — Original product vision (historical).
 - **Google ADK Go SDK**: `google.golang.org/adk/v2`
