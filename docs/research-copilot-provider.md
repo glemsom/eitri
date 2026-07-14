@@ -4,7 +4,7 @@ Date: 2026-07-14
 
 ## Summary
 
-GitHub Copilot can be integrated as an HTTP model provider without using the Copilot SDK runtime. Auth can use a GitHub OAuth user token obtained with GitHub device flow, then sent directly as `Authorization: Bearer ...` to `https://api.githubcopilot.com`. Model discovery works through `GET /models`. Chat works through OpenAI-compatible-ish `POST /chat/completions`; newer GPT-5-class models can use `POST /responses`; Anthropic models may also advertise `/v1/messages`.
+GitHub Copilot can be integrated as an HTTP model provider without using the Copilot SDK runtime. Auth can use a GitHub OAuth user token obtained with GitHub device flow, then sent directly as `Authorization: Bearer ...` to `https://api.githubcopilot.com`. When GitHub returns refresh metadata, Eitri can persist that provider-owned auth state and refresh expired OAuth credentials before later discovery/chat requests. Model discovery works through `GET /models`. Chat works through OpenAI-compatible-ish `POST /chat/completions`; newer GPT-5-class models can use `POST /responses`; Anthropic models may also advertise `/v1/messages`.
 
 Tested locally with `gho_...` GitHub OAuth token from `gh auth token`:
 
@@ -361,7 +361,7 @@ Implement these cases:
 
 ## Implementation recommendation for Eitri
 
-Status note: issue #59 implemented provider-owned Copilot auth seam for device-flow start/poll, persisted `provider_auth` state, and shared auth resolution for model discovery plus chat. Issue #60 added built-in default GitHub OAuth client ID so Settings device flow no longer depends on user environment setup. Refresh remains later slice.
+Status note: issue #59 implemented provider-owned Copilot auth seam for device-flow start/poll, persisted `provider_auth` state, and shared auth resolution for model discovery plus chat. Issue #60 added built-in default GitHub OAuth client ID so Settings device flow no longer depends on user environment setup. Issue #61 adds request-time refresh for expired OAuth-backed Copilot credentials when stored auth state includes refresh token + expiry metadata, and persists rotated tokens back to config.
 
 
 1. Add provider-owned auth seam for `github_copilot` so login, stored credential shape, request auth resolution, and future refresh behavior live with provider logic instead of Settings-only branches.
@@ -377,6 +377,8 @@ Status note: issue #59 implemented provider-owned Copilot auth seam for device-f
 8. Send chat with OpenAI-compatible request/response parser that ignores unknown fields.
 9. Add provider-specific headers above.
 10. Add automatic re-auth/refresh path for expired Copilot credentials, but prefer public-token strategy first. Pi's internal `copilot_internal/v2/token` exchange may inform design, yet Eitri should not depend on that endpoint unless separately validated in Eitri environments.
+
+Implemented in issue #61: Eitri now refreshes expired stored OAuth credentials through provider-auth resolution before `/models` and chat-run startup when refresh metadata is available.
 
 ## Open questions
 

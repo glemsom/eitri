@@ -161,6 +161,9 @@ func NewServer(cfg ServerConfig) *Server {
 			Timeout: 30 * time.Second,
 		},
 	}
+	if cfg.RunManager != nil {
+		cfg.RunManager.SetAuthRefresh(cfg.ConfigPath, s.httpClient, s.copilotOAuth)
+	}
 	s.registerRoutes()
 	return s
 }
@@ -603,7 +606,22 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	resolvedAuth, err := provider.ResolveAuthForRequest(ctx, cfg.Provider, cfg.APIKey, cfg.ProviderAuth, provider.ResolveAuthOptions{
+		HTTPClient:         s.httpClient,
+		GitHubCopilotOAuth: s.copilotOAuth,
+		Persist: func(apiKey string, raw json.RawMessage) error {
+			cfg.APIKey = apiKey
+			cfg.ProviderAuth = append(json.RawMessage(nil), raw...)
+			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
+			}
+			if s.config.RunManager != nil {
+				s.config.RunManager.runnerMgr.Invalidate()
+				s.config.RunManager.UpdateProviderConfig(cfg)
+			}
+			return nil
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

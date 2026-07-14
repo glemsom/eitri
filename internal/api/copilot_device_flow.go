@@ -279,11 +279,20 @@ func (s *Server) handlePollCopilotDeviceFlow(w http.ResponseWriter, r *http.Requ
 
 	newCfg := *flow.Config
 	newCfg.APIKey = resp.AccessToken
-	newCfg.ProviderAuth, err = provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
-		AccessToken: resp.AccessToken,
-		TokenType:   resp.TokenType,
-		Scope:       resp.Scope,
-	})
+	now := time.Now()
+	state := provider.GitHubCopilotAuthState{
+		AccessToken:  resp.AccessToken,
+		TokenType:    resp.TokenType,
+		Scope:        resp.Scope,
+		RefreshToken: resp.RefreshToken,
+	}
+	if resp.ExpiresIn > 0 {
+		state.ExpiresAt = now.Add(time.Duration(resp.ExpiresIn) * time.Second)
+	}
+	if resp.RefreshTokenExpiresIn > 0 {
+		state.RefreshTokenExpiresAt = now.Add(time.Duration(resp.RefreshTokenExpiresIn) * time.Second)
+	}
+	newCfg.ProviderAuth, err = provider.EncodeGitHubCopilotAuthState(state)
 	if err != nil {
 		s.copilotFlows.delete(id)
 		http.Error(w, "Failed to store provider auth: "+err.Error(), http.StatusInternalServerError)
