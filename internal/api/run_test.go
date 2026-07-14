@@ -318,6 +318,117 @@ func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	}
 }
 
+func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
+	sessionMgr := session.NewManager(10)
+	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
+	runnerMgr := newRunnerManager(t)
+	runMgr := api.NewRunManager(runnerMgr, executorMgr)
+	skillsSvc := skills.NewService()
+	runMgr.SetSkillsService(skillsSvc)
+	runMgr.SetUISessionManager(sessionMgr)
+	configPath := t.TempDir() + "/config.json"
+	now := time.Now().Add(-2 * time.Hour)
+
+	var sawModelsAuth string
+	var sawChatAuth string
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			sawModelsAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+		case "/chat/completions":
+			sawChatAuth = r.Header.Get("Authorization")
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode refresh request: %v", err)
+		}
+		if body["grant_type"] != "refresh_token" {
+			t.Fatalf("grant_type = %q, want refresh_token", body["grant_type"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-refreshed","token_type":"bearer","scope":"read:user","refresh_token":"ghr-next","expires_in":28800,"refresh_token_expires_in":15897600}`)
+	}))
+	defer oauth.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		Scope:                 "read:user",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.Provider = "github_copilot"
+	cfg.APIKey = ""
+	cfg.ProviderAuth = raw
+	cfg.BaseURL = llmSrv.URL
+	cfg.Model = "gpt-4.1"
+	if err := config.Save(configPath, &cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := api.NewServer(api.ServerConfig{
+		ConfigPath:     configPath,
+		Workspace:      t.TempDir(),
+		SessionManager: sessionMgr,
+		RunManager:     runMgr,
+		SkillsService:  skillsSvc,
+		CopilotOAuth: api.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauth.URL,
+		},
+	})
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
+
+	sessionID, browserCookie := createSessionAndCookie(t, server.URL)
+	startChatRun(t, server.URL, sessionID, browserCookie)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if sawModelsAuth != "" && sawChatAuth != "" && runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sawModelsAuth != "Bearer gho-refreshed" {
+		t.Fatalf("model discovery Authorization = %q, want Bearer gho-refreshed", sawModelsAuth)
+	}
+	if sawChatAuth != "Bearer gho-refreshed" {
+		t.Fatalf("chat Authorization = %q, want Bearer gho-refreshed", sawChatAuth)
+	}
+
+	saved, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.APIKey != "gho-refreshed" {
+		t.Fatalf("saved api_key = %q, want gho-refreshed", saved.APIKey)
+	}
+}
+
 func openStreamWithRetry(t *testing.T, serverURL, sessionID string, browserCookie *http.Cookie) *http.Response {
 	t.Helper()
 

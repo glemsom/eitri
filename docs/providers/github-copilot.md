@@ -12,6 +12,7 @@ Eitri supports GitHub Copilot through provider profile `github_copilot`. Setting
 4. Open shown verification URL and enter shown code.
 5. Wait for Settings to refresh.
    - Eitri stores returned `gho_...` token in provider-owned auth state in config and keeps token field masked in UI.
+   - If GitHub also returns refresh metadata, Eitri stores that state and auto-refreshes expired OAuth credentials during later model discovery and chat requests.
    - Same resolved auth is then used for `GET {base_url}/models` and later chat requests.
 6. Select model from discovered list and save.
 
@@ -31,6 +32,15 @@ Eitri ships with built-in GitHub OAuth client ID for this device flow, so no ext
 7. Select model from discovered list and save.
 
 Manual entry still writes same provider-owned auth state, so Settings auth, model discovery, and runtime chat all resolve credentials through one Copilot auth seam.
+
+## Credential refresh behavior
+
+When stored GitHub OAuth credential includes `refresh_token` and expiry metadata, Eitri refreshes it automatically before model discovery and before chat runs that need fresh auth. Refreshed credential is persisted back to config, so later requests use newest access token without manual re-login.
+
+Caveats:
+
+- Legacy saved Copilot credentials without refresh metadata cannot be auto-refreshed; re-run **Authenticate with GitHub** once to store fresh OAuth state.
+- Manual bearer tokens that are not refreshable continue to work as plain bearer tokens; if they expire or are revoked, re-enter or re-authenticate.
 
 Eitri sends token as:
 
@@ -96,7 +106,7 @@ Still deferred:
 - Anthropic `/v1/messages` endpoint.
 - WebSocket transports, including `ws:/responses`.
 - Vision-specific headers such as `Copilot-Vision-Request`.
-- Refresh-token or long-lived Copilot credential management beyond stored bearer token.
+- Broader long-lived Copilot credential strategies beyond stored OAuth refresh state and plain bearer tokens.
 
 Current implementation focuses on normal text chat and tool-call streaming through `/chat/completions`.
 
@@ -107,7 +117,9 @@ Current implementation focuses on normal text chat and tool-call streaming throu
 | `GitHub Copilot token required` | Missing token | Enter token or use **Authenticate with GitHub** in Settings |
 | `GitHub device flow expired` | User took too long or code reused | Start device flow again |
 | `GitHub Copilot OAuth not configured` | Server override/client ID misconfiguration | Restart Eitri or check server configuration |
-| `Provider authentication failed` | Token invalid, expired, lacks Copilot entitlement, or org policy blocks Copilot | Use valid Copilot-enabled token |
+| `Provider authentication failed` | Token invalid, expired, lacks Copilot entitlement, or org policy blocks Copilot | Use valid Copilot-enabled token; if stored OAuth refresh state is missing/stale, re-run **Authenticate with GitHub** |
+| `github_copilot token expired and cannot refresh; re-authenticate` | Stored OAuth access expired but no usable refresh token is stored | Re-run **Authenticate with GitHub** |
+| `github_copilot refresh token expired; re-authenticate` | Stored OAuth refresh token expired | Re-run **Authenticate with GitHub** |
 | No models shown | Discovery failed or returned no picker-enabled chat models | Check token, base URL, enterprise endpoint, org policy |
 | Unsupported-provider error during chat | Selected model/endpoint lacks required streaming/tool-call behavior | Select different discovered chat model |
 | Cannot reach provider | Wrong base URL or network issue | Restore default URL or check enterprise endpoint |

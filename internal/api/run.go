@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +97,10 @@ type RunManager struct {
 	apiKey       string
 	providerAuth json.RawMessage
 	modelName    string
+
+	configPath   string
+	httpClient   *http.Client
+	copilotOAuth provider.GitHubCopilotOAuthConfig
 }
 
 // NewRunManager creates a run manager.
@@ -115,6 +120,15 @@ func (rm *RunManager) SetSkillsService(svc *skills.Service) {
 // SetUISessionManager sets the UI session manager for the run manager.
 func (rm *RunManager) SetUISessionManager(mgr *uisession.Manager) {
 	rm.uiSessionMgr = mgr
+}
+
+// SetAuthRefresh configures request-time auth refresh persistence.
+func (rm *RunManager) SetAuthRefresh(configPath string, httpClient *http.Client, copilotOAuth provider.GitHubCopilotOAuthConfig) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.configPath = configPath
+	rm.httpClient = httpClient
+	rm.copilotOAuth = copilotOAuth
 }
 
 // UpdateProviderConfig stores provider config for creating model instances.
@@ -140,13 +154,41 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	apiKey := rm.apiKey
 	providerAuth := append(json.RawMessage(nil), rm.providerAuth...)
 	modelName := rm.modelName
+	configPath := rm.configPath
+	httpClient := rm.httpClient
+	copilotOAuth := rm.copilotOAuth
 	rm.mu.Unlock()
 
-	resolvedAuth, err := provider.ResolveAuth(providerID, apiKey, providerAuth)
+	resolvedAuth, err := provider.ResolveAuthForRequest(ctx, providerID, apiKey, providerAuth, provider.ResolveAuthOptions{
+		HTTPClient:         httpClient,
+		GitHubCopilotOAuth: copilotOAuth,
+		Persist: func(apiKey string, raw json.RawMessage) error {
+			if configPath == "" {
+				return nil
+			}
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config for refreshed provider auth: %w", err)
+			}
+			cfg.APIKey = apiKey
+			cfg.ProviderAuth = append(json.RawMessage(nil), raw...)
+			if err := config.Save(configPath, cfg); err != nil {
+				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
+			}
+			rm.UpdateProviderConfig(cfg)
+			return nil
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to resolve provider auth: %w", err)
 	}
 	apiKey = resolvedAuth.APIKey
+	rm.mu.Lock()
+	if rm.apiKey != "" {
+		apiKey = rm.apiKey
+	}
+	providerAuth = append(json.RawMessage(nil), rm.providerAuth...)
+	rm.mu.Unlock()
 
 	if baseURL == "" || modelName == "" {
 		return fmt.Errorf("provider not configured: set base_url and model in settings")

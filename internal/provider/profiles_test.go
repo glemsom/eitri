@@ -1,10 +1,14 @@
 package provider_test
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
@@ -197,5 +201,118 @@ func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
 		if models[i] != want[i] {
 			t.Errorf("models[%d] = %q, want %q", i, models[i], want[i])
 		}
+	}
+}
+
+func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	var gotGrantType string
+	var gotRefreshToken string
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/login/oauth/access_token" {
+			http.NotFound(w, r)
+			return
+		}
+		var reqBody map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decode refresh request: %v", err)
+		}
+		gotGrantType = reqBody["grant_type"]
+		gotRefreshToken = reqBody["refresh_token"]
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-refreshed","token_type":"bearer","scope":"read:user","refresh_token":"ghr-next","expires_in":28800,"refresh_token_expires_in":15897600}`)
+	}))
+	defer oauth.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		Scope:                 "read:user",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	var persistedAPIKey string
+	var persistedRaw json.RawMessage
+	resolved, err := provider.ResolveAuthForRequest(context.Background(), "github_copilot", "", raw, provider.ResolveAuthOptions{
+		HTTPClient: http.DefaultClient,
+		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+		Now: now,
+		Persist: func(apiKey string, raw json.RawMessage) error {
+			persistedAPIKey = apiKey
+			persistedRaw = append(json.RawMessage(nil), raw...)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("ResolveAuthForRequest error: %v", err)
+	}
+	if resolved.APIKey != "gho-refreshed" {
+		t.Fatalf("APIKey = %q, want gho-refreshed", resolved.APIKey)
+	}
+	if gotGrantType != "refresh_token" {
+		t.Fatalf("grant_type = %q, want refresh_token", gotGrantType)
+	}
+	if gotRefreshToken != "ghr-refresh" {
+		t.Fatalf("refresh_token = %q, want ghr-refresh", gotRefreshToken)
+	}
+	if persistedAPIKey != "gho-refreshed" {
+		t.Fatalf("persisted APIKey = %q, want gho-refreshed", persistedAPIKey)
+	}
+	var persistedState provider.GitHubCopilotAuthState
+	if err := json.Unmarshal(persistedRaw, &persistedState); err != nil {
+		t.Fatalf("unmarshal persisted state: %v", err)
+	}
+	if persistedState.AccessToken != "gho-refreshed" {
+		t.Fatalf("persisted AccessToken = %q, want gho-refreshed", persistedState.AccessToken)
+	}
+	if persistedState.RefreshToken != "ghr-next" {
+		t.Fatalf("persisted RefreshToken = %q, want ghr-next", persistedState.RefreshToken)
+	}
+	if !persistedState.ExpiresAt.After(now) {
+		t.Fatalf("ExpiresAt = %v, want after %v", persistedState.ExpiresAt, now)
+	}
+}
+
+func TestResolveAuthForRequest_GitHubCopilotReturnsRefreshError(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"invalid_grant"}`)
+	}))
+	defer oauth.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		Scope:                 "read:user",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	_, err = provider.ResolveAuthForRequest(context.Background(), "github_copilot", "", raw, provider.ResolveAuthOptions{
+		HTTPClient: http.DefaultClient,
+		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+		Now: now,
+	})
+	if err == nil {
+		t.Fatal("ResolveAuthForRequest error = nil, want refresh failure")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "refresh") {
+		t.Fatalf("error = %q, want refresh failure", err.Error())
 	}
 }
