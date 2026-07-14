@@ -10,6 +10,7 @@ import (
 )
 
 const GitHubDeviceFlowGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+const DefaultGitHubCopilotOAuthClientID = "Iv1.b507a08c87ecfe98"
 
 // ResolvedAuth holds provider-specific auth material normalized for requests.
 type ResolvedAuth struct {
@@ -57,7 +58,10 @@ type GitHubAccessTokenResponse struct {
 // DefaultGitHubCopilotOAuthConfig fills default GitHub OAuth endpoints and scope.
 func DefaultGitHubCopilotOAuthConfig(cfg GitHubCopilotOAuthConfig) GitHubCopilotOAuthConfig {
 	if cfg.ClientID == "" {
-		cfg.ClientID = os.Getenv("EITRI_GITHUB_CLIENT_ID")
+		cfg.ClientID = strings.TrimSpace(os.Getenv("EITRI_GITHUB_CLIENT_ID"))
+	}
+	if cfg.ClientID == "" {
+		cfg.ClientID = DefaultGitHubCopilotOAuthClientID
 	}
 	if cfg.DeviceCodeURL == "" {
 		cfg.DeviceCodeURL = "https://github.com/login/device/code"

@@ -395,7 +395,6 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		configPath: configPath,
 		copilotOAuth: api.GitHubCopilotOAuthConfig{
-			ClientID:       "client-123",
 			DeviceCodeURL:  oauth.URL + "/login/device/code",
 			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
 		},
@@ -424,8 +423,8 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 		t.Fatal(err)
 	}
 	startBody := string(startBodyBytes)
-	if gotClientID != "client-123" {
-		t.Fatalf("client_id = %q, want client-123", gotClientID)
+	if gotClientID != provider.DefaultGitHubCopilotOAuthClientID {
+		t.Fatalf("client_id = %q, want %q", gotClientID, provider.DefaultGitHubCopilotOAuthClientID)
 	}
 	if !strings.Contains(startBody, "ABCD-EFGH") || !strings.Contains(startBody, "https://github.com/login/device") {
 		t.Fatalf("start response missing device-flow instructions: %s", startBody)
@@ -525,8 +524,28 @@ func TestGetModels_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	}
 }
 
-func TestGitHubCopilotDeviceFlowStartWithoutClientIDShowsConfigError(t *testing.T) {
-	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{})
+func TestGitHubCopilotDeviceFlowStartUsesBuiltInClientID(t *testing.T) {
+	var gotClientID string
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/login/device/code" {
+			http.NotFound(w, r)
+			return
+		}
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decode device-code request: %v", err)
+		}
+		gotClientID, _ = reqBody["client_id"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"device_code":"device-123","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`)
+	}))
+	defer oauth.Close()
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			DeviceCodeURL: oauth.URL + "/login/device/code",
+		},
+	})
 	startForm := url.Values{
 		"provider": {"github_copilot"},
 		"base_url": {"https://api.githubcopilot.com"},
@@ -550,8 +569,11 @@ func TestGitHubCopilotDeviceFlowStartWithoutClientIDShowsConfigError(t *testing.
 		t.Fatal(err)
 	}
 	body := string(bodyBytes)
-	if !strings.Contains(body, "EITRI_GITHUB_CLIENT_ID") {
-		t.Fatalf("response missing client-id guidance: %s", body)
+	if gotClientID == "" {
+		t.Fatal("client_id = empty, want built-in default")
+	}
+	if !strings.Contains(body, "ABCD-EFGH") {
+		t.Fatalf("response missing device-flow instructions: %s", body)
 	}
 }
 

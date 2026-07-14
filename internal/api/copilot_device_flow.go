@@ -175,7 +175,7 @@ func (s *Server) handleStartCopilotDeviceFlow(w http.ResponseWriter, r *http.Req
 			fallback := config.Defaults()
 			cfg = &fallback
 		}
-		writeSettingsFormWithState(w, r, http.StatusOK, cfg, nil, "GitHub Copilot OAuth not configured. Set EITRI_GITHUB_CLIENT_ID and retry.", "", nil)
+		writeSettingsFormWithState(w, r, http.StatusOK, cfg, nil, "GitHub Copilot OAuth not configured. Retry or check server configuration.", "", nil)
 		return
 	}
 
