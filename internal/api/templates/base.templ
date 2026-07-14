@@ -2,7 +2,7 @@ package templates
 
 import "github.com/glemsom/eitri/internal/session"
 
-templ Base(title string) {
+templ Base(title string, chatPath string, sessions []*session.UISession, activeID string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -21,12 +21,16 @@ templ Base(title string) {
 					<h1>Eitri</h1>
 					<span class="text-muted">AI Assistant</span>
 					<nav>
-						<a href="/">Chat</a>
-						<a href="/settings">Settings</a>
-						<a href="/skills">Skills</a>
+						@NavLink(chatPath, "Chat")
+						@NavLink("/settings", "Settings")
+						@NavLink("/skills", "Skills")
 					</nav>
 				</header>
-				<div id="session-tabs"></div>
+				if sessions != nil {
+					@SessionTabs(sessions, activeID)
+				} else {
+					<div id="session-tabs"></div>
+				}
 				<main>
 					<noscript>
 						<p>JavaScript is required for Eitri. Please enable JavaScript.</p>
@@ -38,38 +42,20 @@ templ Base(title string) {
 	</html>
 }
 
+templ NavLink(path string, label string) {
+	<a
+		href={ templ.URL(path) }
+		hx-get={ templ.URL(path) }
+		hx-target="#app"
+		hx-select="#app"
+		hx-swap="outerHTML"
+		hx-push-url="true"
+	>{ label }</a>
+}
+
 // ChatPage renders the full chat page layout with session tabs and chat view.
 templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>Eitri — Chat</title>
-			<script src="/static/htmx.min.js"></script>
-			<script src="/static/eitri-stream.js"></script>
-			<script src="/static/eitri-composer.js"></script>
-			<link rel="stylesheet" href="/static/eitri.css"/>
-		</head>
-		<body>
-			<div id="app">
-				<header>
-					<h1>Eitri</h1>
-					<span class="text-muted">AI Assistant</span>
-					<nav>
-						<a href="/">Chat</a>
-						<a href="/settings">Settings</a>
-						<a href="/skills">Skills</a>
-					</nav>
-				</header>
-				@SessionTabs(sessions, activeID)
-				<main>
-					<noscript>
-						<p>JavaScript is required for Eitri. Please enable JavaScript.</p>
-					</noscript>
-					@ChatView(sess, workspace, configValid)
-				</main>
-			</div>
-		</body>
-	</html>
+	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID) {
+		@ChatView(sess, workspace, configValid)
+	}
 }

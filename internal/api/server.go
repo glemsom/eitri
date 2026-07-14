@@ -165,6 +165,21 @@ func (s *Server) browserIDFromRequest(r *http.Request) string {
 	return cookie.Value
 }
 
+func (s *Server) chatPathForRequest(r *http.Request) string {
+	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		return "/"
+	}
+	if last := s.config.SessionManager.LastActive(browserID); last != nil {
+		return "/sessions/" + last.ID
+	}
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	if len(sessions) > 0 {
+		return "/sessions/" + sessions[0].ID
+	}
+	return "/"
+}
+
 // hxRedirect sends an HX-Redirect header for HTMX requests, or a standard HTTP redirect.
 func (s *Server) hxRedirect(w http.ResponseWriter, r *http.Request, path string) {
 	if r.Header.Get("HX-Request") == "true" {
@@ -275,7 +290,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	component := templates.SettingsView(cfg)
+	component := templates.SettingsView(cfg, s.config.Workspace, s.chatPathForRequest(r))
 	component.Render(r.Context(), w)
 }
 
@@ -925,7 +940,7 @@ func mustJSON(v interface{}) []byte {
 
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	registry := s.config.SkillsService.Registry()
-	component := templates.SkillsPage(registry)
+	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r))
 	component.Render(r.Context(), w)
 }
 

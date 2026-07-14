@@ -16,13 +16,13 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-func newTestServer(t *testing.T) *httptest.Server {
+func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	skillsSvc := skills.NewService()
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
-		Workspace:      t.TempDir(),
+		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 	}
@@ -30,6 +30,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return server
+}
+
+func newTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return newTestServerAtWorkspace(t, t.TempDir())
 }
 
 // fakeProviderServer returns an httptest.Server that responds to /v1/models
@@ -363,6 +368,55 @@ func TestRootRedirectExistingSession(t *testing.T) {
 	}
 }
 
+func TestSessionPageShowsWorkspaceIndicator(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	client := noRedirectClient()
+
+	rootResp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootResp.Body.Close()
+
+	loc := rootResp.Header.Get("Location")
+	if !strings.HasPrefix(loc, "/sessions/") {
+		t.Fatalf("Location = %q, want /sessions/{id}", loc)
+	}
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("browser_id cookie missing")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+loc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+	if !strings.Contains(content, "Workspace: "+workspace) {
+		t.Fatalf("session page missing workspace indicator for %q", workspace)
+	}
+}
+
 func TestHealthMethodNotAllowed(t *testing.T) {
 	server := newTestServer(t)
 
@@ -377,7 +431,8 @@ func TestHealthMethodNotAllowed(t *testing.T) {
 }
 
 func TestSettingsPage(t *testing.T) {
-	server := newTestServer(t)
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
 
 	resp, err := http.Get(server.URL + "/settings")
 	if err != nil {
@@ -394,15 +449,32 @@ func TestSettingsPage(t *testing.T) {
 		t.Errorf("Content-Type = %q, want text/html", ct)
 	}
 
-	body := make([]byte, 8192)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
 
 	// Check for expected form elements
 	checks := []string{"provider", "api_key", "base_url", "model", "session_timeout", "command_timeout", "max_turns"}
 	for _, c := range checks {
 		if !strings.Contains(content, c) {
 			t.Errorf("settings page missing %q", c)
+		}
+	}
+
+	for _, required := range []string{
+		"Workspace: " + workspace,
+		`href="/"`,
+		`href="/settings"`,
+		`href="/skills"`,
+		`/static/eitri-stream.js`,
+		`/static/eitri-composer.js`,
+		`/static/eitri-mermaid.js`,
+		`hx-ext="head-support"`,
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("settings page missing %q", required)
 		}
 	}
 }
@@ -1017,7 +1089,8 @@ func TestSessionCapReached(t *testing.T) {
 }
 
 func TestSkillsEndpoint(t *testing.T) {
-	server := newTestServer(t)
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
 
 	// Test GET /skills returns a page
 	resp, err := http.Get(server.URL + "/skills")
@@ -1035,12 +1108,23 @@ func TestSkillsEndpoint(t *testing.T) {
 		t.Errorf("Content-Type = %q, want text/html", ct)
 	}
 
-	body := make([]byte, 4096)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
 
-	if !strings.Contains(content, "Agent Skills") {
-		t.Errorf("skills page missing 'Agent Skills' heading, got: %s", content[:200])
+	for _, required := range []string{
+		"Agent Skills",
+		"Workspace: " + workspace,
+		`/static/eitri-stream.js`,
+		`/static/eitri-composer.js`,
+		`/static/eitri-mermaid.js`,
+		`hx-ext="head-support"`,
+	} {
+		if !strings.Contains(content, required) {
+			t.Errorf("skills page missing %q", required)
+		}
 	}
 }
 
