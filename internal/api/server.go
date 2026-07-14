@@ -504,7 +504,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if isHTMXRequest(r) {
-		component := templates.SettingsForm(maskedCfg, models, "", "", nil)
+		component := templates.SettingsForm(maskedCfg, models, "", "", nil, "")
 		component.Render(r.Context(), w)
 		return
 	}
@@ -571,8 +571,8 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Render form with models populated
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil)
+	// Render form with success indicator
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil, "✓ Saved")
 	component.Render(r.Context(), w)
 }
 

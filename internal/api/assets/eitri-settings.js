@@ -160,11 +160,55 @@
     });
   }
 
+  // — Save success fade-out —
+  function initSaveSuccessFade() {
+    var badge = document.querySelector('.save-success');
+    if (!badge) return;
+    if (badge._fadeTimer) clearTimeout(badge._fadeTimer);
+    badge._fadeTimer = setTimeout(function () {
+      badge.classList.add('fade-out');
+    }, 2500);
+  }
+
+  // — Error auto-scroll —
+  function scrollToErrorIfPresent() {
+    var toast = document.querySelector('.error-toast');
+    if (toast) {
+      toast.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  // — Ctrl+Enter to submit form —
+  function initCtrlEnter() {
+    var form = document.querySelector('#settings-form form');
+    if (!form) return;
+
+    function handleKeydown(e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        // Find submit button and click it
+        var submitBtn = form.querySelector('button[type=submit]');
+        if (submitBtn) {
+          submitBtn.click();
+        }
+      }
+    }
+
+    // Listen on inputs and textareas inside the form
+    var inputs = form.querySelectorAll('input, textarea, select');
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].addEventListener('keydown', handleKeydown);
+    }
+  }
+
   // — Init on page load —
   function init() {
     if (!document.getElementById('settings-form')) return;
     initBaseURLToggle();
     initTestConnection();
+    initSaveSuccessFade();
+    scrollToErrorIfPresent();
+    initCtrlEnter();
   }
 
   if (document.readyState === 'loading') {
@@ -178,6 +222,9 @@
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'settings-form') {
       initBaseURLToggle();
+      initSaveSuccessFade();
+      scrollToErrorIfPresent();
+      initCtrlEnter();
     }
   });
 

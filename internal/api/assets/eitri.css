@@ -1421,6 +1421,37 @@ eitri-composer {
   color: var(--error);
 }
 
+/* Save success indicator */
+.save-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  background: rgba(46, 204, 113, 0.08);
+  animation: saveSlideIn 0.3s ease;
+}
+
+.save-success.fade-out {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+@keyframes saveSlideIn {
+  from {
+    transform: translateY(-5px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* Save hint */
 .save-hint {
   font-size: 0.8rem;

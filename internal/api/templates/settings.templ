@@ -5,14 +5,17 @@ import "github.com/glemsom/eitri/internal/config"
 templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string) {
 	@Base("Eitri — Settings", chatPath, nil, "", currentPath) {
 		@WorkspaceIndicator(workspace)
-		@SettingsForm(cfg, models, "", "", nil)
+		@SettingsForm(cfg, models, "", "", nil, "")
 	}
 }
 
-templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView) {
+templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string) {
 	<div id="settings-form">
 		if errorMessage != "" {
 			@ErrorToast(errorMessage)
+		}
+		if successMessage != "" {
+			<div class="save-success">{ successMessage }</div>
 		}
 		if noticeMessage != "" {
 			<p class="hint">{ noticeMessage }</p>

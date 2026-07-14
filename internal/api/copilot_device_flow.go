@@ -129,9 +129,13 @@ func validateForCopilotDeviceFlow(cfg *config.Config) error {
 }
 
 func writeSettingsFormWithState(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView) {
+	writeSettingsFormWithStateAndSuccess(w, r, status, cfg, models, errorMessage, noticeMessage, deviceFlow, "")
+}
+
+func writeSettingsFormWithStateAndSuccess(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView, successMessage string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow).Render(r.Context(), w)
+	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage).Render(r.Context(), w)
 }
 
 func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*provider.GitHubDeviceCodeResponse, error) {

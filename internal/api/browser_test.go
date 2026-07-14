@@ -2380,3 +2380,122 @@ func TestBrowser_RunStatusSlim(t *testing.T) {
 		t.Error("run-status-detail should be removed; only stream-indicator badge should remain")
 	}
 }
+
+// TestBrowser_SettingsSaveShowsSuccessIndicator verifies that after a successful config
+// save via PUT /api/config, the settings form shows a "✓ Saved" success indicator.
+func TestBrowser_SettingsSaveShowsSuccessIndicator(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var successText string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		// Set provider to custom_openai and fill credentials
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
+		chromedp.Text(".save-success", &successText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("save success indicator check failed: %v", err)
+	}
+	if !strings.Contains(successText, "Saved") {
+		t.Errorf("save success text = %q, want containing 'Saved'", successText)
+	}
+}
+
+// TestBrowser_SettingsSaveErrorAutoScroll verifies that after a failed config save,
+// the page auto-scrolls to the error toast.
+func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Fill form with invalid credentials and save — expect error toast
+	var errorInView bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-bad", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		chromedp.WaitVisible(".error-toast", chromedp.ByQuery),
+		// Check if error toast is in the visible viewport (allow some tolerance for smooth scroll)
+		chromedp.EvaluateAsDevTools(`
+			(function() {
+				var el = document.querySelector('.error-toast');
+				if (!el) return false;
+				var rect = el.getBoundingClientRect();
+				// Allow 200px tolerance for smooth scroll animation gap
+				return rect.top >= -200 && rect.left >= 0 &&
+					rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) + 200 &&
+					rect.right <= (window.innerWidth || document.documentElement.clientWidth);
+			})()
+		`, &errorInView),
+	)
+	if err != nil {
+		t.Fatalf("error scroll test failed: %v", err)
+	}
+	if !errorInView {
+		t.Error("error-toast should be scrolled into view after failed save")
+	}
+}
+
+// TestBrowser_SettingsCtrlEnterSaves verifies that Ctrl+Enter (or Cmd+Enter on macOS)
+// submits the settings form from any input/textarea.
+func TestBrowser_SettingsCtrlEnterSaves(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var successText string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		// Set up credentials
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		chromedp.SetValue("#system_prompt", "test prompt", chromedp.ByQuery),
+		// Dispatch Ctrl+Enter on the system_prompt textarea
+		chromedp.EvaluateAsDevTools(`
+			(function() {
+				var textarea = document.getElementById('system_prompt');
+				if (!textarea) return 'missing';
+				var evt = new KeyboardEvent('keydown', {
+					key: 'Enter',
+					code: 'Enter',
+					ctrlKey: true,
+					bubbles: true,
+					cancelable: true
+				});
+				return textarea.dispatchEvent(evt) ? 'ok' : 'prevented';
+			})()
+		`, &successText),
+		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
+		chromedp.Text(".save-success", &successText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("ctrl+enter save test failed: %v", err)
+	}
+	if !strings.Contains(successText, "Saved") {
+		t.Errorf("save success text = %q, want containing 'Saved'", successText)
+	}
+}
