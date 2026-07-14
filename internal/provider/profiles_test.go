@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -53,8 +54,9 @@ func TestProfilesKeepExistingAPIKeyRequirements(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"opencode_go":   true,
-		"custom_openai": false,
+		"opencode_go":    true,
+		"custom_openai":  false,
+		"github_copilot": true,
 	}
 	for providerID, wantRequired := range cases {
 		prof, err := provider.Get(providerID)
@@ -63,6 +65,71 @@ func TestProfilesKeepExistingAPIKeyRequirements(t *testing.T) {
 		}
 		if prof.APIKeyRequired != wantRequired {
 			t.Errorf("%s APIKeyRequired = %v, want %v", providerID, prof.APIKeyRequired, wantRequired)
+		}
+	}
+}
+
+func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
+	t.Parallel()
+
+	prof, err := provider.Get("github_copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if prof.DisplayName != "GitHub Copilot" {
+		t.Errorf("DisplayName = %q, want GitHub Copilot", prof.DisplayName)
+	}
+	if prof.DefaultBaseURL != "https://api.githubcopilot.com" {
+		t.Errorf("DefaultBaseURL = %q, want https://api.githubcopilot.com", prof.DefaultBaseURL)
+	}
+	if got := prof.ModelListURL("https://api.githubcopilot.com/"); got != "https://api.githubcopilot.com/models" {
+		t.Errorf("ModelListURL = %q, want https://api.githubcopilot.com/models", got)
+	}
+	if got := prof.ChatCompletionsURL("https://api.githubcopilot.com/"); got != "https://api.githubcopilot.com/chat/completions" {
+		t.Errorf("ChatCompletionsURL = %q, want https://api.githubcopilot.com/chat/completions", got)
+	}
+
+	req := httptest.NewRequest("GET", prof.ModelListURL(prof.DefaultBaseURL), nil)
+	prof.ApplyHeaders(req, "ghu-token")
+	for _, header := range []string{"Authorization", "User-Agent", "X-GitHub-Api-Version", "Openai-Intent", "x-initiator"} {
+		if req.Header.Get(header) == "" {
+			t.Errorf("%s header missing", header)
+		}
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer ghu-token" {
+		t.Errorf("Authorization = %q, want Bearer ghu-token", got)
+	}
+}
+
+func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
+	t.Parallel()
+
+	prof, err := provider.Get("github_copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	models, err := prof.ParseModelList(strings.NewReader(`{
+		"data": [
+			{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},
+			{"id":"disabled","policy":{"state":"disabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},
+			{"id":"hidden","policy":{"state":"enabled"},"model_picker_enabled":false,"supported_endpoints":["/chat/completions"]},
+			{"id":"responses-only","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/responses"]},
+			{"id":"","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("ParseModelList error: %v", err)
+	}
+
+	want := []string{"gpt-4.1"}
+	if len(models) != len(want) {
+		t.Fatalf("models = %#v, want %#v", models, want)
+	}
+	for i := range want {
+		if models[i] != want[i] {
+			t.Errorf("models[%d] = %q, want %q", i, models[i], want[i])
 		}
 	}
 }

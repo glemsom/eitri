@@ -86,7 +86,7 @@ func Validate(cfg *Config) error {
 	}
 
 	if prof.APIKeyRequired && cfg.APIKey == "" {
-		return fmt.Errorf("api_key is required for provider %q", cfg.Provider)
+		return fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
 	}
 
 	if cfg.BaseURL != "" {
