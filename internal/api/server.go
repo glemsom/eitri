@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ type ServerConfig struct {
 	SessionManager *session.Manager
 	RunManager     *RunManager
 	SkillsService  *skills.Service
+	Logger         *slog.Logger
 }
 
 // Server wraps the HTTP handler and injected dependencies.
@@ -37,7 +39,33 @@ type Server struct {
 	config     ServerConfig
 	mux        *http.ServeMux
 	httpClient *http.Client
+	logger     *slog.Logger
 	sses       sync.Map // sessionID -> chan SSEEvent (active stream connections)
+}
+
+const maxRequestBodyBytes = 1 << 20
+
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseRecorder) WriteHeader(status int) {
+	rw.status = status
+	rw.ResponseWriter.WriteHeader(status)
+}
+
+func (rw *responseRecorder) Write(p []byte) (int, error) {
+	if rw.status == 0 {
+		rw.status = http.StatusOK
+	}
+	return rw.ResponseWriter.Write(p)
+}
+
+func (rw *responseRecorder) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 type configState struct {
@@ -115,9 +143,15 @@ func (s *Server) CloseActiveStreams(message string) {
 
 // NewServer creates a new Server with routes registered.
 func NewServer(cfg ServerConfig) *Server {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	s := &Server{
 		config: cfg,
 		mux:    http.NewServeMux(),
+		logger: logger,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -128,7 +162,63 @@ func NewServer(cfg ServerConfig) *Server {
 
 // Handler returns the HTTP handler for use with httptest or http.Server.
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return s.withMiddleware(s.mux)
+}
+
+func (s *Server) withMiddleware(next http.Handler) http.Handler {
+	return s.requestLoggingMiddleware(s.requestBodyLimitMiddleware(next))
+}
+
+func (s *Server) requestBodyLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			if r.ContentLength > maxRequestBodyBytes {
+				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseRecorder{ResponseWriter: w}
+		next.ServeHTTP(rw, r)
+		status := rw.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		s.logger.Info("http_request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Int("status", status),
+			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			slog.String("session_id", extractSessionIDFromPath(r.URL.Path)),
+		)
+	})
+}
+
+func extractSessionIDFromPath(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) >= 2 && parts[0] == "sessions" {
+		return parts[1]
+	}
+	if len(parts) >= 3 && parts[0] == "api" && parts[1] == "sessions" {
+		return parts[2]
+	}
+	return ""
+}
+
+func isRequestTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
+}
+
+func writeRequestTooLarge(w http.ResponseWriter) {
+	http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
 }
 
 func (s *Server) registerRoutes() {
@@ -211,7 +301,7 @@ func (s *Server) ensureBrowserID(w http.ResponseWriter, r *http.Request) string 
 	// Generate new browser ID
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		log.Printf("failed to generate browser ID: %v", err)
+		s.logger.Warn("failed to generate browser ID", slog.Any("error", err))
 		// Fallback: use a timestamp-based ID
 		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
 	}
@@ -406,6 +496,10 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(ct, "application/json") {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Failed to read request body", http.StatusBadRequest)
 			return
 		}
@@ -418,6 +512,10 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// URL-encoded form data (HTMX default for form submissions)
 		if err := r.ParseForm(); err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Failed to parse form", http.StatusBadRequest)
 			return
 		}
@@ -556,6 +654,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Parse message
 	if err := r.ParseForm(); err != nil {
+		if isRequestTooLarge(err) {
+			writeRequestTooLarge(w)
+			return
+		}
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
@@ -782,6 +884,10 @@ func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -793,6 +899,10 @@ func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {
 		messageID = req.MessageID
 	} else {
 		if err := r.ParseForm(); err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -834,6 +944,10 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(ct, "application/json") {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -856,6 +970,10 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Form-encoded (HTMX default)
 		if err := r.ParseForm(); err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -900,6 +1018,10 @@ func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(ct, "application/json") {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -914,6 +1036,10 @@ func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
 		msg = req.Message
 	} else {
 		if err := r.ParseForm(); err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -944,6 +1070,10 @@ func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(ct, "application/json") {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -955,6 +1085,10 @@ func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
 	} else {
 		defer r.Body.Close()
 		if err := r.ParseForm(); err != nil {
+			if isRequestTooLarge(err) {
+				writeRequestTooLarge(w)
+				return
+			}
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
 		}
@@ -1024,7 +1158,7 @@ func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
 func mustJSON(v interface{}) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
-		log.Printf("json marshal error: %v", err)
+		slog.Warn("json marshal error", slog.Any("error", err))
 		return nil
 	}
 	return b

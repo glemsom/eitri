@@ -62,4 +62,5 @@ help:
 	@echo "Env vars:"
 	@echo "  EITRI_ADDR          Listen address (default 127.0.0.1:8080)"
 	@echo "  EITRI_CONFIG        Config file path"
+	@echo "  EITRI_OPEN_BROWSER  Browser auto-open: 1 force, 0 disable, unset auto-detect"
 	@echo "  EITRI_WORKSPACE     Workspace directory (default CWD)"

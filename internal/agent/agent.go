@@ -4,7 +4,7 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"google.golang.org/adk/v2/agent"
@@ -281,5 +281,5 @@ Guidelines:
 
 // LogAgentEvents logs ADK session events for debugging.
 func LogAgentEvents(ctx context.Context, ag agent.Agent, sessionID string) {
-	log.Printf("Agent %q created for session %s", "eitri", sessionID)
+	slog.Info("agent created", slog.String("agent", "eitri"), slog.String("session_id", sessionID))
 }

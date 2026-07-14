@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +23,16 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
+
+type serveOptions struct {
+	Addr      string
+	Workspace string
+	Handler   http.Handler
+	Stdout    io.Writer
+	Stderr    io.Writer
+	Getenv    func(string) string
+	OpenURL   func(string) error
+}
 
 func cleanupRuntime(server *api.Server, runMgr *api.RunManager, executorMgr *executor.SessionManager) {
 	if server != nil {
@@ -32,33 +47,27 @@ func cleanupRuntime(server *api.Server, runMgr *api.RunManager, executorMgr *exe
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// 1. Tmux audit
 	if err := executor.RunAudit(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	// 2. Resolve workspace (process CWD)
 	workspace, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get workspace: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 3. Resolve listen address
 	addr := os.Getenv("EITRI_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8080"
 	}
 
-	// 4. Print startup info
-	fmt.Printf("Workspace: %s\n", workspace)
-	fmt.Printf("Listening on http://%s\n", addr)
-
-	// 5. Create config path
 	configPath := os.Getenv("EITRI_CONFIG")
 	if configPath == "" {
 		home, err := os.UserHomeDir()
@@ -68,65 +77,146 @@ func main() {
 		}
 		configPath = filepath.Join(home, ".eitri", "config.json")
 	}
-	// 6. Load config
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Config: provider=%s, model=%s\n", cfg.Provider, cfg.Model)
 
-	// 7. Create session manager
 	sessionMgr := session.NewManager(10)
-
-	// 8. Create runner manager + run manager
 	runnerMgr := agentrunner.NewManager()
 	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
 	runMgr := api.NewRunManager(runnerMgr, executorMgr)
 	runMgr.UpdateProviderConfig(cfg)
 	executorMgr.StartTimeoutLoop(ctx, 30*time.Second)
 
-	// 9. Create skills service
 	skillsSvc := skills.NewService()
-
-	// 9a. Wire skills service to run manager
 	runMgr.SetSkillsService(skillsSvc)
-
-	// 9b. Wire UI session manager to run manager
 	runMgr.SetUISessionManager(sessionMgr)
 
-	// 10. Create HTTP server
-	srvCfg := api.ServerConfig{
+	server := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		RunManager:     runMgr,
 		SkillsService:  skillsSvc,
-	}
-	server := api.NewServer(srvCfg)
+		Logger:         slog.Default(),
+	})
 
-	httpServer := &http.Server{
-		Addr:    addr,
-		Handler: server.Handler(),
+	err = serve(ctx, serveOptions{
+		Addr:      addr,
+		Workspace: workspace,
+		Handler:   server.Handler(),
+		Stdout:    os.Stdout,
+		Stderr:    os.Stderr,
+		Getenv:    os.Getenv,
+		OpenURL:   openBrowserURL,
+	})
+
+	cleanupRuntime(server, runMgr, executorMgr)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func serve(ctx context.Context, opts serveOptions) error {
+	if opts.Handler == nil {
+		opts.Handler = http.NewServeMux()
+	}
+	if opts.Stdout == nil {
+		opts.Stdout = os.Stdout
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = os.Stderr
+	}
+	if opts.Getenv == nil {
+		opts.Getenv = os.Getenv
+	}
+	if opts.OpenURL == nil {
+		opts.OpenURL = openBrowserURL
 	}
 
-	// 8. Start HTTP server in background
-	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
+	listener, err := net.Listen("tcp", opts.Addr)
+	if err != nil {
+		return fmt.Errorf("Cannot bind %s: %v. Try EITRI_ADDR=127.0.0.1:8081 eitri", opts.Addr, err)
+	}
+	defer listener.Close()
+
+	url := "http://" + listener.Addr().String()
+	if isNonLoopbackBind(listener.Addr().String()) {
+		fmt.Fprintf(opts.Stderr, "Warning: Eitri has no authentication and can execute host commands. Non-loopback bind exposes your machine.\n")
+	}
+	fmt.Fprintf(opts.Stdout, "Workspace: %s\n", opts.Workspace)
+	fmt.Fprintf(opts.Stdout, "Listening on %s\n", url)
+
+	if shouldOpenBrowser(opts.Getenv) {
+		if err := opts.OpenURL(url); err != nil {
+			slog.Warn("open browser failed", slog.String("url", url), slog.Any("error", err))
 		}
+	}
+
+	httpServer := &http.Server{Handler: opts.Handler}
+	serveErrCh := make(chan error, 1)
+	go func() {
+		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErrCh <- err
+		}
+		close(serveErrCh)
 	}()
 
-	// 9. Wait for shutdown signal
-	<-ctx.Done()
-	fmt.Println("\nShutting down...")
-
-	// 10. Graceful shutdown
-	cleanupRuntime(server, runMgr, executorMgr)
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("HTTP shutdown error: %v", err)
+	select {
+	case err := <-serveErrCh:
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	}
-	fmt.Println("Server stopped.")
+}
+
+func shouldOpenBrowser(getenv func(string) string) bool {
+	switch getenv("EITRI_OPEN_BROWSER") {
+	case "1":
+		return true
+	case "0":
+		return false
+	}
+	if getenv("CI") == "true" {
+		return false
+	}
+	return getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != ""
+}
+
+func openBrowserURL(url string) error {
+	cmd := exec.Command("xdg-open", url)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return nil
+}
+
+func isNonLoopbackBind(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return true
+	}
+	if host == "" {
+		return true
+	}
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return true
+	}
+	return !ip.IsLoopback()
 }

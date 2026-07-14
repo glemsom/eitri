@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"google.golang.org/genai"
@@ -19,9 +19,9 @@ import (
 
 // Manager caches ADK runners keyed by config hash.
 type Manager struct {
-	mu          sync.RWMutex
-	runners     map[string]*cachedRunner
-	sessionSvc  session.Service
+	mu         sync.RWMutex
+	runners    map[string]*cachedRunner
+	sessionSvc session.Service
 }
 
 type cachedRunner struct {
@@ -77,7 +77,7 @@ func (m *Manager) GetOrCreate(cfg *config.Config, ag agent.Agent) (*runner.Runne
 	}
 
 	m.runners[hash] = &cachedRunner{runner: r, hash: hash}
-	log.Printf("Runner created for config hash %s (model=%s)", hash[:12], cfg.Model)
+	slog.Info("runner created", slog.String("config_hash", hash[:12]), slog.String("model", cfg.Model))
 
 	return r, nil
 }
@@ -87,7 +87,7 @@ func (m *Manager) Invalidate() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.runners = make(map[string]*cachedRunner)
-	log.Printf("All runners invalidated")
+	slog.Info("all runners invalidated")
 }
 
 // SessionService returns the shared session service.

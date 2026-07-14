@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,5 +115,123 @@ func TestCleanupRuntimeCancelsRunsAndClosesExecutors(t *testing.T) {
 	}
 	if newExecutor == oldExecutor {
 		t.Fatal("executor was not closed during cleanup")
+	}
+}
+
+func TestServeBindFailureReturnsActionableHint(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err = serve(ctx, serveOptions{
+		Addr:      listener.Addr().String(),
+		Workspace: t.TempDir(),
+		Handler:   http.NewServeMux(),
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+		Getenv:    os.Getenv,
+		OpenURL: func(string) error {
+			t.Fatal("OpenURL should not run on bind failure")
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("serve error = nil, want bind failure")
+	}
+	if !strings.Contains(err.Error(), "EITRI_ADDR=127.0.0.1:8081 eitri") {
+		t.Fatalf("error = %q, want bind hint", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty before successful bind", stdout.String())
+	}
+}
+
+func TestServeWarnsOnNonLoopbackBind(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, serveOptions{
+			Addr:      "0.0.0.0:0",
+			Workspace: t.TempDir(),
+			Handler:   http.NewServeMux(),
+			Stdout:    &stdout,
+			Stderr:    &stderr,
+			Getenv:    func(string) string { return "0" },
+			OpenURL:   func(string) error { return nil },
+		})
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(stderr.String(), "no authentication") {
+			cancel()
+			if err := <-done; err != nil {
+				t.Fatalf("serve returned error: %v", err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	t.Fatalf("stderr = %q, want non-loopback warning", stderr.String())
+}
+
+func TestServeOpensBrowserWhenForced(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	opened := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, serveOptions{
+			Addr:      "127.0.0.1:0",
+			Workspace: t.TempDir(),
+			Handler:   http.NewServeMux(),
+			Stdout:    &stdout,
+			Stderr:    &stderr,
+			Getenv: func(key string) string {
+				if key == "EITRI_OPEN_BROWSER" {
+					return "1"
+				}
+				return ""
+			},
+			OpenURL: func(url string) error {
+				opened <- url
+				cancel()
+				return nil
+			},
+		})
+	}()
+
+	select {
+	case url := <-opened:
+		if !strings.HasPrefix(url, "http://127.0.0.1:") {
+			t.Fatalf("opened url = %q, want loopback http url", url)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("OpenURL not called")
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("serve returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Workspace: ") {
+		t.Fatalf("stdout = %q, want workspace line", stdout.String())
 	}
 }

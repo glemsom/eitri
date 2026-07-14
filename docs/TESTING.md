@@ -183,7 +183,7 @@ These test the Go backend without a browser:
 
 | File | Tests |
 |------|-------|
-| `internal/api/server_test.go` | HTTP endpoints (health, chat, config, SSE) |
+| `internal/api/server_test.go` | HTTP endpoints (health, chat, config, SSE), request-body limits, request logging |
 | `internal/agent/agent_test.go` | Agent initialization |
 | `internal/agent/openai_model_test.go` | OpenAI-compatible model calls, OpenCode Go and GitHub Copilot provider paths/headers, Bearer auth, streaming text/tool-call assembly, unsupported provider behavior, all via fake provider servers |
 | `internal/agent/tools_test.go` | Tool execution, `file_editor` edit payloads, create-parent-dir behavior, direct write without confirmation |
@@ -193,7 +193,7 @@ These test the Go backend without a browser:
 | `internal/executor/audit_test.go` | Preflight audit (tmux binary check) |
 | `internal/runner/manager_test.go` | Runner manager |
 | `internal/skills/skills_test.go` | Agent Skills discovery roots, precedence, shadowing, lenient validation, diagnostics, resource manifests, 200KB activation cap |
-| `cmd/eitri/main_test.go` | CLI entry point, startup URL/workspace output, bind failure hint, `xdg-open` auto-open behavior |
+| `cmd/eitri/main_test.go` | CLI entry point, startup URL/workspace output, bind failure hint, non-loopback warning, `xdg-open` auto-open behavior |
 
 Run them with:
 

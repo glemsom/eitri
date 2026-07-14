@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -64,6 +65,7 @@ func (sm *SessionManager) GetOrCreate(sessionID string) (CommandExecutor, error)
 		executor:   exe,
 		lastAccess: time.Now(),
 	}
+	slog.Info("executor created", slog.String("session_id", sessionID))
 	return exe, nil
 }
 
@@ -77,6 +79,7 @@ func (sm *SessionManager) Close(sessionID string) error {
 		return nil
 	}
 	delete(sm.sessions, sessionID)
+	slog.Info("executor closed", slog.String("session_id", sessionID))
 	return ms.executor.Close()
 }
 
@@ -86,6 +89,7 @@ func (sm *SessionManager) CloseAll() {
 	defer sm.mu.Unlock()
 
 	for id, ms := range sm.sessions {
+		slog.Info("executor closed", slog.String("session_id", id))
 		ms.executor.Close()
 		delete(sm.sessions, id)
 	}
@@ -119,6 +123,7 @@ func (sm *SessionManager) closeIdleSessions() {
 	now := time.Now()
 	for id, ms := range sm.sessions {
 		if now.Sub(ms.lastAccess) > sm.idleTimeout {
+			slog.Info("executor idle timeout", slog.String("session_id", id), slog.Duration("idle_timeout", sm.idleTimeout))
 			ms.executor.Close()
 			delete(sm.sessions, id)
 		}
