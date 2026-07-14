@@ -23,6 +23,12 @@ Tested locally with `gho_...` GitHub OAuth token from `gh auth token`:
   - <https://github.com/sst/opencode/blob/dev/packages/opencode/src/plugin/github-copilot/copilot.ts>
   - <https://github.com/sst/opencode/blob/dev/packages/opencode/src/plugin/github-copilot/models.ts>
   - <https://github.com/sst/opencode/blob/dev/packages/llm/src/providers/github-copilot.ts>
+- Pi agent local source review (`~/Documents/git/private/pi`):
+  - `packages/ai/src/utils/oauth/github-copilot.ts`
+  - `packages/ai/src/utils/oauth/device-code.ts`
+  - `packages/ai/src/providers/github-copilot.ts`
+  - `packages/coding-agent/src/core/auth-storage.ts`
+  - `packages/coding-agent/src/modes/interactive/components/login-dialog.ts`
 
 ## Authentication
 
@@ -49,9 +55,21 @@ They explicitly say classic `ghp_` PAT is not supported.
 
 OpenCode uses device flow with scope `read:user`, stores returned access token as both `access` and `refresh`, with `expires: 0`. No refresh token observed in GitHub device flow response.
 
+Pi findings:
+
+- Pi hard-codes a GitHub Copilot OAuth client ID in source instead of requiring user env configuration.
+- Pi wraps Copilot auth behind a provider-owned OAuth interface, not Settings-owned special cases.
+- Pi has generic device-code polling helper behavior worth copying: wait before first poll, honor `slow_down`, handle timeout/cancel cleanly.
+- Pi auto-refreshes expired OAuth credentials under a storage lock before model requests.
+- Pi also derives account-specific base URL and filters available model IDs from credential state.
+
+Caution: Pi refresh path calls `https://api.<domain>/copilot_internal/v2/token`. Local Eitri testing saw `404` from `https://api.github.com/copilot_internal/v2/token`, so Eitri should not assume this internal exchange endpoint is reliable just because Pi uses it.
+
 ### Device flow cURL
 
-Create own GitHub OAuth App for Eitri. Enable device flow in app settings. Use Eitri client ID; do not reuse OpenCode client ID.
+Create own GitHub OAuth App for Eitri. Enable device flow in app settings.
+
+Implementation note from Pi review: shipping a built-in Eitri client ID gives better UX than requiring users to set one manually. If Eitri owns this OAuth app, embed its client ID in code and treat it as product configuration, not user configuration.
 
 ```bash
 export GITHUB_CLIENT_ID="<eitri-oauth-app-client-id>"
@@ -343,21 +361,25 @@ Implement these cases:
 
 ## Implementation recommendation for Eitri
 
-1. Add `github-copilot` provider with configurable `base_url`, default `https://api.githubcopilot.com`.
-2. Add OAuth device-flow login command using Eitri GitHub OAuth App client ID and scope `read:user`.
-3. Store returned `gho_...` token securely.
-4. Discover models with `GET {base_url}/models` using bearer token.
-5. Build model list from `data[]`, filtering disabled/non-picker models for user selection.
-6. For each model, choose endpoint:
+1. Add provider-owned auth seam for `github_copilot` so login, stored credential shape, request auth resolution, and future refresh behavior live with provider logic instead of Settings-only branches.
+2. Ship built-in GitHub Copilot OAuth client ID in Eitri and use scope `read:user` for device flow; do not require user env configuration for client ID.
+3. Copy Pi-style device-code polling semantics: wait before first poll, honor server `slow_down` intervals, and support cancellation/timeouts cleanly.
+4. Store returned credential in Eitri config/credential store as provider-owned auth state.
+5. Discover models with `GET {base_url}/models` using bearer token.
+6. Build model list from `data[]`, filtering disabled/non-picker models for user selection.
+7. For each model, choose endpoint:
    - prefer `/responses` for GPT-5+ models when advertised and Eitri supports Responses parsing
    - else use `/chat/completions` when advertised
    - defer `/v1/messages` until Anthropic-specific support needed
-7. Send chat with OpenAI-compatible request/response parser that ignores unknown fields.
-8. Add provider-specific headers above.
+8. Send chat with OpenAI-compatible request/response parser that ignores unknown fields.
+9. Add provider-specific headers above.
+10. Add automatic re-auth/refresh path for expired Copilot credentials, but prefer public-token strategy first. Pi's internal `copilot_internal/v2/token` exchange may inform design, yet Eitri should not depend on that endpoint unless separately validated in Eitri environments.
 
 ## Open questions
 
 - Whether `github_pat_...` fine-grained PAT works directly against `api.githubcopilot.com`; official SDK auth docs say supported by SDK, but local direct-endpoint test used `gho_...` only.
+- Whether public GitHub OAuth device-flow token remains sufficient long-term for all Copilot API calls, or whether some tenants require Pi-style extra token exchange.
+- Whether Pi's `copilot_internal/v2/token` refresh path works only for certain domains/base URLs (`api.individual.githubcopilot.com`, enterprise hosts) while failing against `api.github.com` in local Eitri testing.
 - Exact minimal header set for every model family. Local test included OpenCode-style headers; `/models` worked with bearer + version + user agent.
 - Streaming SSE behavior for `/chat/completions` and `/responses`; not tested yet.
 - WebSocket `ws:/responses` support; advertised by `/models`, not tested.
