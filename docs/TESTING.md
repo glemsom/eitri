@@ -108,6 +108,7 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_CancelRun` | Stop button re-enables input, hides stop button; partial assistant bubble present after cancellation |
 | `TestBrowser_FindChrome` | `findChrome()` returns a path that exists and is executable |
 | `TestBrowser_ChromeNotFoundSkips` | Chrome-not-found skip behavior works (self-verifying) |
+| `TestBrowser_RichRenderingAssetsAndBehavior` | Embedded Prism/KaTeX/Mermaid assets load; code copy button, Mermaid blocks/components, and math rendering degrade/read correctly |
 
 #### Planned (not yet implemented)
 

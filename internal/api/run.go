@@ -61,6 +61,7 @@ type runState struct {
 	subscribers    map[uint64]chan SSEEvent
 	nextSubscriber uint64
 	streamsClosed  bool
+	history        []SSEEvent
 }
 
 func (rs *runState) finish() {
@@ -309,8 +310,12 @@ func (rs *runState) subscribe() (uint64, <-chan SSEEvent, bool) {
 
 	id := rs.nextSubscriber
 	rs.nextSubscriber++
-	ch := make(chan SSEEvent, 128)
+	ch := make(chan SSEEvent, 512)
 	rs.subscribers[id] = ch
+	history := append([]SSEEvent(nil), rs.history...)
+	for _, evt := range history {
+		ch <- evt
+	}
 	return id, ch, true
 }
 
@@ -332,6 +337,7 @@ func (rs *runState) broadcast(evt SSEEvent) {
 		rs.streamMu.Unlock()
 		return
 	}
+	rs.history = append(rs.history, evt)
 	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
 	for _, ch := range rs.subscribers {
 		subscribers = append(subscribers, ch)

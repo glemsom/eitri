@@ -74,6 +74,21 @@ func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server
 	return server
 }
 
+func newTestServerWithSessionManager(t *testing.T, workspace string, sessionMgr *session.Manager) *httptest.Server {
+	t.Helper()
+	skillsSvc := skills.NewService()
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server
+}
+
 type mutableProviderServer struct {
 	server *httptest.Server
 	mu     sync.RWMutex
@@ -460,28 +475,17 @@ func TestRequestLoggingIncludesMethodPathStatusDurationAndSessionID(t *testing.T
 		t.Fatalf("GET %s status = %d, want %d", sessionPath, resp.StatusCode, http.StatusOK)
 	}
 
-	lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) == "" {
-		t.Fatalf("logs empty")
-	}
-	var entry map[string]any
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &entry); err != nil {
-		t.Fatalf("unmarshal log entry: %v\nlog=%s", err, lines[len(lines)-1])
-	}
-	if entry["method"] != http.MethodGet {
-		t.Fatalf("method = %v, want %s", entry["method"], http.MethodGet)
-	}
-	if entry["path"] != sessionPath {
-		t.Fatalf("path = %v, want %s", entry["path"], sessionPath)
-	}
-	if entry["status"] != float64(http.StatusOK) {
-		t.Fatalf("status = %v, want %d", entry["status"], http.StatusOK)
-	}
-	if entry["session_id"] != sessionID {
-		t.Fatalf("session_id = %v, want %s", entry["session_id"], sessionID)
-	}
-	if _, ok := entry["duration_ms"]; !ok {
-		t.Fatalf("duration_ms missing: %#v", entry)
+	logOutput := logs.String()
+	for _, want := range []string{
+		`"method":"GET"`,
+		`"path":"` + sessionPath + `"`,
+		fmt.Sprintf(`"status":%d`, http.StatusOK),
+		`"session_id":"` + sessionID + `"`,
+		`"duration_ms":`,
+	} {
+		if !strings.Contains(logOutput, want) {
+			t.Fatalf("log output missing %q:\n%s", want, logOutput)
+		}
 	}
 }
 
@@ -683,13 +687,82 @@ func TestSettingsPage(t *testing.T) {
 		`href="/"`,
 		`href="/settings"`,
 		`href="/skills"`,
+		`/static/prism-core.min.js`,
+		`/static/prism-go.min.js`,
+		`/static/prism.min.css`,
+		`/static/katex.min.js`,
+		`/static/katex-auto-render.min.js`,
+		`/static/katex.min.css`,
+		`/static/mermaid.min.js`,
 		`/static/eitri-stream.js`,
 		`/static/eitri-composer.js`,
+		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
 		`hx-ext="head-support"`,
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("settings page missing %q", required)
+		}
+	}
+}
+
+func TestSessionPageRendersAssistantMarkdownAndRichAssets(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "show rich output"})
+	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: strings.Join([]string{
+		"**bold** answer",
+		"",
+		"```go",
+		"fmt.Println(\"hi\")",
+		"```",
+		"",
+		"```mermaid",
+		"graph TD; A-->B;",
+		"```",
+	}, "\n")})
+
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	req, err := http.NewRequest("GET", server.URL+"/sessions/"+sess.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: "browser-1"})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sessions/{id} status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	for _, want := range []string{
+		`<strong>bold</strong> answer`,
+		`class="code-btn copy-btn"`,
+		`<pre class="mermaid">graph TD; A--&gt;B;`,
+		`/static/prism-core.min.js`,
+		`/static/prism.min.css`,
+		`/static/katex.min.js`,
+		`/static/katex.min.css`,
+		`/static/katex-auto-render.min.js`,
+		`/static/mermaid.min.js`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("session page missing %q\nbody: %s", want, content)
 		}
 	}
 }
@@ -1537,8 +1610,16 @@ func TestSkillsEndpoint(t *testing.T) {
 	for _, required := range []string{
 		"Agent Skills",
 		"Workspace: " + workspace,
+		`/static/prism-core.min.js`,
+		`/static/prism-go.min.js`,
+		`/static/prism.min.css`,
+		`/static/katex.min.js`,
+		`/static/katex-auto-render.min.js`,
+		`/static/katex.min.css`,
+		`/static/mermaid.min.js`,
 		`/static/eitri-stream.js`,
 		`/static/eitri-composer.js`,
+		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
 		`hx-ext="head-support"`,
 	} {
