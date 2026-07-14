@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 func TestLoadDefaultsWhenFileMissing(t *testing.T) {
@@ -172,6 +173,21 @@ func TestValidate_CustomOpenAIAPIKeyOptional(t *testing.T) {
 	cfg.BaseURL = "https://custom.example.com"
 	if err := config.Validate(&cfg); err != nil {
 		t.Errorf("Validate(custom_openai missing key) = %v, want nil (key is optional)", err)
+	}
+}
+
+func TestValidate_GitHubCopilotAcceptsProviderAuthState(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Provider = "github_copilot"
+	cfg.APIKey = ""
+	cfg.BaseURL = "https://api.githubcopilot.com"
+	var err error
+	cfg.ProviderAuth, err = provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{AccessToken: "gho-provider-state"})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+	if err := config.Validate(&cfg); err != nil {
+		t.Fatalf("Validate(github_copilot provider_auth) = %v, want nil", err)
 	}
 }
 

@@ -22,6 +22,7 @@ type Profile struct {
 	stripV1Suffix  bool
 	applyHeaders   func(*http.Request, string)
 	parseModelList func(io.Reader) ([]string, error)
+	authHandler    authHandler
 }
 
 // ModelListURL returns the absolute model discovery URL for baseURL.
@@ -96,6 +97,7 @@ var profiles = map[string]Profile{
 		chatPath:       "/chat/completions",
 		applyHeaders:   applyGitHubCopilotHeaders,
 		parseModelList: parseGitHubCopilotModelList,
+		authHandler:    githubCopilotAuthHandler{},
 	},
 }
 

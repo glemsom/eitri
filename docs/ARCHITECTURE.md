@@ -54,7 +54,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | `openai_model.go` | `NewOpenAIModel()` / `NewOpenAIModelForProvider()` — custom `model.LLM` impl for OpenAI-style chat completions via provider profiles |
 | `tools.go` | `NewTools()` — registers 5 built-in function tools |
 
-**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract.
+**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract. GitHub Copilot auth now resolves through `internal/provider` provider-auth helpers before both model discovery and chat requests, so Settings UX, validation, discovery, and runtime requests share one auth seam.
 
 **Tool model**: Tools are defined as Go structs with JSON tags + `jsonschema:` struct tags (parsed by ADK internally). Each tool maps to a Go function that receives `agent.Context` for session ID access.
 
@@ -172,7 +172,7 @@ type CommandExecutor interface {
 
 ### `internal/config/` — configuration
 
-Config schema, defaults, masking, validation, and environment variables live in [SPEC.md §7](../SPEC.md#7-configuration-specification). Architecture note: `config.Manager` owns atomic JSON file writes, secure config permissions (`~/.eitri` `0700`, config/temp files `0600`), default loading without file creation, provider validation/model discovery on save, `context_window_tokens` fallback defaults (256k tokens for UI estimates when provider/model metadata lacks context length), and hot-reload on `PUT /api/config` / runner creation.
+Config schema, defaults, masking, validation, and environment variables live in [SPEC.md §7](../SPEC.md#7-configuration-specification). Architecture note: `config.Manager` owns atomic JSON file writes, secure config permissions (`~/.eitri` `0700`, config/temp files `0600`), default loading without file creation, provider validation/model discovery on save, `context_window_tokens` fallback defaults (256k tokens for UI estimates when provider/model metadata lacks context length), and hot-reload on `PUT /api/config` / runner creation. Config also persists provider-owned auth state in `provider_auth` for providers that need richer auth than plain `api_key`; `GET /api/config` must never expose that raw state back to browser clients.
 
 ## Frontend architecture
 
@@ -310,7 +310,7 @@ eitri/
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
 │   ├── config/                # Config loading, validation, atomic writes
 │   ├── executor/              # tmux command executor + session manager
-│   ├── provider/              # Provider profiles: defaults, credential policy, discovery/chat paths, parsers, headers
+│   ├── provider/              # Provider profiles + auth seams: defaults, credential policy, provider_auth resolution, discovery/chat paths, parsers, headers, device-flow helpers
 │   ├── runner/                # ADK runner cache/invalidation
 │   └── skills/                # Agent Skills discovery, registry, activation
 ├── scripts/install.sh

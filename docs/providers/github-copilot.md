@@ -11,8 +11,8 @@ Eitri supports GitHub Copilot through provider profile `github_copilot`. Setting
 3. Click **Authenticate with GitHub**.
 4. Open shown verification URL and enter shown code.
 5. Wait for Settings to refresh.
-   - Eitri stores returned `gho_...` token in config.
-   - Eitri immediately calls `GET {base_url}/models` and repopulates model selector.
+   - Eitri stores returned `gho_...` token in provider-owned auth state in config and keeps token field masked in UI.
+   - Same resolved auth is then used for `GET {base_url}/models` and later chat requests.
 6. Select model from discovered list and save.
 
 Device flow needs `EITRI_GITHUB_CLIENT_ID` set in environment so Eitri can identify its GitHub OAuth app.
@@ -29,6 +29,8 @@ Device flow needs `EITRI_GITHUB_CLIENT_ID` set in environment so Eitri can ident
    - If validation fails, Settings stays in place and shows visible inline error feedback.
 6. Eitri calls `GET {base_url}/models` with bearer auth and fills model selector with picker-enabled chat models.
 7. Select model from discovered list and save.
+
+Manual entry still writes same provider-owned auth state, so Settings auth, model discovery, and runtime chat all resolve credentials through one Copilot auth seam.
 
 Eitri sends token as:
 

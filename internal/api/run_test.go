@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/provider"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -26,6 +28,7 @@ func newRunnerManager(t *testing.T) *agentrunner.Manager {
 
 type testServerWithRuns struct {
 	server      *httptest.Server
+	configPath  string
 	sessionMgr  *session.Manager
 	executorMgr *executor.SessionManager
 	runMgr      *api.RunManager
@@ -43,8 +46,9 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	runMgr.SetSkillsService(skillsSvc)
 	runMgr.SetUISessionManager(sessionMgr)
 
+	configPath := t.TempDir() + "/config.json"
 	cfg := api.ServerConfig{
-		ConfigPath:     t.TempDir() + "/config.json",
+		ConfigPath:     configPath,
 		Workspace:      t.TempDir(),
 		SessionManager: sessionMgr,
 		RunManager:     runMgr,
@@ -55,6 +59,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Cleanup(server.Close)
 	return &testServerWithRuns{
 		server:      server,
+		configPath:  configPath,
 		sessionMgr:  sessionMgr,
 		executorMgr: executorMgr,
 		runMgr:      runMgr,
@@ -250,6 +255,66 @@ func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("chat status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+	var sawModelsAuth string
+	var sawChatAuth string
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			sawModelsAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+		case "/chat/completions":
+			sawChatAuth = r.Header.Get("Authorization")
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{AccessToken: "gho-provider-state"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.Provider = "github_copilot"
+	cfg.APIKey = ""
+	cfg.ProviderAuth = raw
+	cfg.BaseURL = llmSrv.URL
+	cfg.Model = "gpt-4.1"
+	if err := config.Save(h.configPath, &cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if sawModelsAuth != "" && sawChatAuth != "" && h.runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sawModelsAuth != "Bearer gho-provider-state" {
+		t.Fatalf("model discovery Authorization = %q, want Bearer gho-provider-state", sawModelsAuth)
+	}
+	if sawChatAuth != "Bearer gho-provider-state" {
+		t.Fatalf("chat Authorization = %q, want Bearer gho-provider-state", sawChatAuth)
 	}
 }
 
