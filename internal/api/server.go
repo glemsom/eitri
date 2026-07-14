@@ -407,11 +407,14 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 		return nil, fmt.Errorf("api_key is required for provider %q", cfg.Provider)
 	}
 
-	modelsURL, err := url.JoinPath(cfg.BaseURL, "/v1/models")
+	// Strip trailing /v1 from base URL to avoid double /v1 when appending /v1/models.
+	// E.g. https://api.openai.com/v1 → https://api.openai.com/v1/models (not /v1/v1/models)
+	modelBase := strings.TrimRight(cfg.BaseURL, "/")
+	modelBase = strings.TrimSuffix(modelBase, "/v1")
+	modelsURL, err := url.JoinPath(modelBase, "/v1/models")
 	if err != nil {
 		return nil, fmt.Errorf("invalid base_url: %v", err)
 	}
-
 	req, err := http.NewRequestWithContext(context.Background(), "GET", modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)

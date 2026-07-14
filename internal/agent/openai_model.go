@@ -118,7 +118,8 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			return
 		}
 
-		endpoint := m.baseURL + "/v1/chat/completions"
+		// Strip trailing /v1 to avoid double /v1 (e.g. https://api.openai.com/v1 → /v1/chat/completions, not /v1/v1/...)
+		endpoint := strings.TrimSuffix(m.baseURL, "/v1") + "/v1/chat/completions"
 
 		var lastErr error
 		maxAttempts := m.MaxRetries + 1 // first attempt + retries

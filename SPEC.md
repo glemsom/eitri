@@ -621,7 +621,7 @@ Structured JSON envelope remains canonical. `eitri-stream` dispatches rendering 
 |-------|------|---------|-------------|
 | `provider` | string enum | `"opencode_go"` | Provider identity. Allowed v1 values: `opencode_go` (supported) and `custom_openai` (advanced/best-effort). |
 | `api_key` | string | `""` | API key for LLM provider. Required for `opencode_go`; optional for `custom_openai`. Masked in GET responses. |
-| `base_url` | string | `"https://opencode.ai/zen/go"` | Provider base URL. Default targets OpenCode Go. `custom_openai` requires user-provided base URL. Eitri appends `/v1/models` and `/v1/chat/completions`. |
+| `base_url` | string | `"https://opencode.ai/zen/go"` | Provider base URL. Default targets OpenCode Go. `custom_openai` requires user-provided base URL. Eitri appends `/v1/models` and `/v1/chat/completions`. If the base URL already ends with `/v1`, the suffix is stripped before appending to avoid double `/v1` (e.g. `https://api.openai.com/v1` → `https://api.openai.com/v1/models`, not `/v1/v1/models`). |
 | `model` | string | `""` | Model name sent in API requests. Selection/discovery behavior is specified in §4.1a. |
 | `system_prompt` | string | `""` | Custom system prompt. Overrides default if set. Ships with a crafted default (~50-80 lines) covering Markdown, code blocks, Mermaid diagrams, math, `<think>` collapsibles, and tool usage. |
 | `session_timeout` | int64 | `1800000000000` (30m) | Idle timeout in nanoseconds before session is destroyed. |
