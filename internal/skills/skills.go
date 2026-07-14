@@ -128,10 +128,11 @@ func SkillContent(instructions string, resources []string, directory string) str
 
 // Registry holds the resolved skill state.
 type Registry struct {
-	effective map[string]*Skill // name → effective skill (deduplicated by precedence)
-	shadowed  []*Skill          // skills overridden by higher-precedence skills
-	all       []*Skill          // all parsed skills including shadowed
-	invalid   []*Skill          // skills that failed validation
+	effective   map[string]*Skill // name → effective skill (deduplicated by precedence)
+	shadowed    []*Skill          // skills overridden by higher-precedence skills
+	all         []*Skill          // all parsed skills including shadowed
+	invalid     []*Skill          // skills that failed validation
+	diagnostics Diagnostics       // discovery + registry diagnostics
 }
 
 // NewRegistry creates an empty registry.
@@ -194,30 +195,16 @@ func (r *Registry) Diagnostics() Diagnostics {
 	if r == nil {
 		return nil
 	}
-	var diags Diagnostics
-	for _, s := range r.shadowed {
-		diags = append(diags, Diagnostic{
-			Severity: SeverityWarn,
-			Message:  fmt.Sprintf("Skill %q shadowed by higher-precedence skill", s.Name),
-			Path:     s.Path,
-			Skill:    s.Name,
-		})
-	}
-	for _, s := range r.invalid {
-		diags = append(diags, Diagnostic{
-			Severity: SeverityError,
-			Message:  fmt.Sprintf("Skill %q is invalid", s.Name),
-			Path:     s.Path,
-			Skill:    s.Name,
-		})
-	}
-	return diags
+	result := make(Diagnostics, len(r.diagnostics))
+	copy(result, r.diagnostics)
+	return result
 }
 
 // BuildRegistry resolves precedence across all discovered skills and builds a Registry.
 // Skills with the same name are resolved by root order (earlier = higher precedence).
-func BuildRegistry(discovered []*Skill) *Registry {
+func BuildRegistry(discovered []*Skill, discoveryDiags Diagnostics) *Registry {
 	r := NewRegistry()
+	r.diagnostics = append(r.diagnostics, discoveryDiags...)
 	if len(discovered) == 0 {
 		return r
 	}
@@ -239,6 +226,12 @@ func BuildRegistry(discovered []*Skill) *Registry {
 			// Mark lower-precedence (this one) as shadowed
 			skill.Status = StatusShadowed
 			r.shadowed = append(r.shadowed, skill)
+			r.diagnostics = append(r.diagnostics, Diagnostic{
+				Severity: SeverityWarn,
+				Message:  fmt.Sprintf("Skill %q shadowed by higher-precedence skill", skill.Name),
+				Path:     skill.Path,
+				Skill:    skill.Name,
+			})
 
 			// Keep the higher-precedence one in effective
 			if _, ok := r.effective[skill.Name]; !ok {

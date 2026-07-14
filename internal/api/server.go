@@ -683,6 +683,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_ = s.refreshSkillsRegistry()
+
 	// Check for slash commands
 	slashResult, slashErr := skills.ParseSlashInput(message, func(name string) *skills.Skill {
 		return s.config.SkillsService.Lookup(name)
@@ -1177,8 +1179,15 @@ func mustJSON(v interface{}) []byte {
 	return b
 }
 
+func (s *Server) refreshSkillsRegistry() *skills.Registry {
+	if s.config.SkillsService == nil {
+		return skills.NewRegistry()
+	}
+	return s.config.SkillsService.Refresh()
+}
+
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
-	registry := s.config.SkillsService.Registry()
+	registry := s.refreshSkillsRegistry()
 	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r))
 	component.Render(r.Context(), w)
 }
@@ -1187,7 +1196,7 @@ func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
 	browserID := s.browserIDFromRequest(r)
 	_ = browserID
 
-	registry := s.config.SkillsService.Registry()
+	registry := s.refreshSkillsRegistry()
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if r.Header.Get("HX-Request") == "true" {
@@ -1222,7 +1231,7 @@ func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSkillsRefresh(w http.ResponseWriter, r *http.Request) {
-	registry := s.config.SkillsService.Refresh()
+	registry := s.refreshSkillsRegistry()
 
 	if r.Header.Get("HX-Request") == "true" {
 		component := templates.SkillsTable(registry)
@@ -1247,7 +1256,11 @@ func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query().Get("q")
-	effective := s.config.SkillsService.Effective()
+	registry := s.refreshSkillsRegistry()
+	var effective map[string]*skills.Skill
+	if registry != nil {
+		effective = registry.Effective()
+	}
 
 	type itemJSON struct {
 		Name        string `json:"name"`
@@ -1390,6 +1403,8 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
+
+	_ = s.refreshSkillsRegistry()
 
 	// Validate skill exists and is effective
 	if s.config.SkillsService.Lookup(name) == nil {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,15 @@ func writeSkillMD(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
+}
+
+func diagnosticsContain(diags Diagnostics, want string) bool {
+	for _, diag := range diags {
+		if strings.Contains(diag.Message, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestParseValidSkill(t *testing.T) {
@@ -225,6 +235,10 @@ func TestDiscoverSubdirsOnly(t *testing.T) {
 	rootDir := t.TempDir()
 	// SKILL.md at root level should NOT be counted as a skill
 	writeSkillMD(t, rootDir, "---\nname: root-skill\ndescription: Should not be discovered\n---\nBody")
+	// Plain subdirectory without SKILL.md should be ignored
+	if err := os.MkdirAll(filepath.Join(rootDir, "notes"), 0755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
 	// SKILL.md in a subdirectory should be discovered
 	writeSkill(t, filepath.Join(rootDir, "valid-skill"), "valid-skill", "# Valid")
 
@@ -249,8 +263,18 @@ func TestDiscoverInvalidSkill(t *testing.T) {
 	svc := NewService()
 	svc.roots = []Root{{Path: rootDir, Scope: ScopeProjectEitri}}
 	skills, diags := svc.Discover()
-	if len(skills) != 1 {
-		t.Fatalf("expected 1 valid skill, got %d", len(skills))
+	if len(skills) != 2 {
+		t.Fatalf("expected valid + invalid placeholder skills, got %d", len(skills))
+	}
+	foundInvalid := false
+	for _, skill := range skills {
+		if skill.Status == StatusInvalid && skill.Name == "invalid" {
+			foundInvalid = true
+			break
+		}
+	}
+	if !foundInvalid {
+		t.Fatalf("expected invalid placeholder in discovered skills, got %#v", skills)
 	}
 	if !HasSeverity(diags, SeverityError) {
 		t.Errorf("expected error diagnostic for invalid skill, got %v", diags)
@@ -274,7 +298,7 @@ func TestRegistryPrecedence(t *testing.T) {
 		{Path: rootB, Scope: ScopeUserEitri},
 	}
 	skills, _ := svc.Discover()
-	registry := BuildRegistry(skills)
+	registry := BuildRegistry(skills, nil)
 
 	// "common" should be effective from project (higher precedence)
 	eff := registry.Effective()
@@ -313,7 +337,7 @@ func TestRegistryInvalidNotInEffective(t *testing.T) {
 	svc := NewService()
 	svc.roots = []Root{{Path: rootDir, Scope: ScopeProjectEitri}}
 	skills, _ := svc.Discover()
-	registry := BuildRegistry(skills)
+	registry := BuildRegistry(skills, nil)
 
 	eff := registry.Effective()
 	if eff["bad"] != nil {
@@ -418,6 +442,43 @@ func TestServiceRefresh(t *testing.T) {
 	registry = svc.Refresh()
 	if len(registry.Effective()) != 1 {
 		t.Errorf("expected 1 effective skill, got %d", len(registry.Effective()))
+	}
+}
+
+func TestServiceRefresh_SurfacesInvalidSkillsAndDiagnostics(t *testing.T) {
+	rootDir := t.TempDir()
+	brokenDir := filepath.Join(rootDir, "broken-skill")
+	writeSkillMD(t, brokenDir, "---\ndescription: missing name\n---\nBody")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+	registry := svc.Refresh()
+
+	if len(registry.Invalid()) != 1 {
+		t.Fatalf("invalid count = %d, want 1", len(registry.Invalid()))
+	}
+	if registry.Invalid()[0].Name != "broken-skill" {
+		t.Errorf("invalid skill name = %q, want broken-skill", registry.Invalid()[0].Name)
+	}
+	if registry.Invalid()[0].Path != brokenDir {
+		t.Errorf("invalid skill path = %q, want %q", registry.Invalid()[0].Path, brokenDir)
+	}
+	if !diagnosticsContain(registry.Diagnostics(), "name field missing or empty") {
+		t.Fatalf("diagnostics = %#v, want parse error for invalid skill", registry.Diagnostics())
+	}
+}
+
+func TestServiceRefresh_PreservesRootDiagnostics(t *testing.T) {
+	rootDir := t.TempDir()
+	rootFile := filepath.Join(rootDir, "not-a-directory")
+	if err := os.WriteFile(rootFile, []byte("x"), 0644); err != nil {
+		t.Fatalf("write root marker file: %v", err)
+	}
+
+	svc := NewServiceWithRoots([]Root{{Path: rootFile, Scope: ScopeProjectEitri}})
+	registry := svc.Refresh()
+
+	if !diagnosticsContain(registry.Diagnostics(), "is not a directory") {
+		t.Fatalf("diagnostics = %#v, want root warning", registry.Diagnostics())
 	}
 }
 

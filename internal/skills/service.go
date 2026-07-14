@@ -8,11 +8,11 @@ import (
 
 // Service manages Agent Skills discovery, registry, and lookup.
 type Service struct {
-	mu     sync.RWMutex
-	roots  []Root
-	home   string
+	mu        sync.RWMutex
+	roots     []Root
+	home      string
 	workspace string
-	registry *Registry
+	registry  *Registry
 }
 
 // NewService creates a Service with default discovery roots.
@@ -21,8 +21,8 @@ func NewService() *Service {
 	cwd, _ := os.Getwd()
 
 	s := &Service{
-		roots:  defaultRoots(cwd, home),
-		home:   home,
+		roots:     defaultRoots(cwd, home),
+		home:      home,
 		workspace: cwd,
 	}
 	// Initial scan
@@ -66,8 +66,8 @@ func (s *Service) Discover() ([]*Skill, Diagnostics) {
 // Refresh rescans all roots and rebuilds the registry.
 // Returns the updated registry.
 func (s *Service) Refresh() *Registry {
-	skills, _ := s.Discover()
-	registry := BuildRegistry(skills)
+	discovered, diags := s.Discover()
+	registry := BuildRegistry(discovered, diags)
 
 	s.mu.Lock()
 	s.registry = registry
@@ -219,5 +219,3 @@ func (s *Service) DiagnosticSummary() string {
 	}
 	return msg
 }
-
-

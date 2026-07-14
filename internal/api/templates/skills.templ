@@ -32,6 +32,7 @@ templ SkillsTable(registry *skills.Registry) {
 	@EffectiveSkills(registry)
 	@ShadowedSkills(registry)
 	@InvalidSkills(registry)
+	@SkillDiagnostics(registry)
 }
 
 templ EffectiveSkills(registry *skills.Registry) {
@@ -85,6 +86,28 @@ templ InvalidSkills(registry *skills.Registry) {
 				<p class="skill-path text-muted">{ skill.Path }</p>
 			</div>
 		}
+	}
+}
+
+templ SkillDiagnostics(registry *skills.Registry) {
+	if registry != nil && len(registry.Diagnostics()) > 0 {
+		<h3>Diagnostics</h3>
+		<div class="skills-diagnostics">
+			for _, diag := range registry.Diagnostics() {
+				<div class="skill-card">
+					<div class="skill-card-header">
+						<span class="skill-status badge">{ string(diag.Severity) }</span>
+						if diag.Skill != "" {
+							<span class="skill-name">{ diag.Skill }</span>
+						}
+					</div>
+					<p class="skill-description">{ diag.Message }</p>
+					if diag.Path != "" {
+						<p class="skill-path text-muted">{ diag.Path }</p>
+					}
+				</div>
+			}
+		</div>
 	}
 }
 

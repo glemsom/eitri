@@ -252,7 +252,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	tools = append(tools, activateSkillTool)
 
 	// Build system prompt with skills catalog
-	systemPrompt := buildSystemPrompt(customSystemPrompt, skillsSvc)
+	systemPrompt := BuildSystemPrompt(customSystemPrompt, skillsSvc)
 
 	a, err := llmagent.New(llmagent.Config{
 		Name:        "eitri",
@@ -268,7 +268,8 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	return a, nil
 }
 
-func buildSystemPrompt(customSystemPrompt string, skillsSvc *skills.Service) string {
+// BuildSystemPrompt composes system prompt and current skills catalog.
+func BuildSystemPrompt(customSystemPrompt string, skillsSvc *skills.Service) string {
 	systemPrompt := customSystemPrompt
 	if systemPrompt == "" {
 		systemPrompt = os.Getenv("EITRI_DEFAULT_SYSTEM_PROMPT")

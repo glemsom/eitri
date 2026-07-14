@@ -250,7 +250,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		return fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: systemPrompt}
+	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: agent.BuildSystemPrompt(systemPrompt, rm.skillsSvc)}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
 		return fmt.Errorf("failed to get runner: %w", err)
