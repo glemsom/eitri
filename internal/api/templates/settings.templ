@@ -2,33 +2,11 @@ package templates
 
 import "github.com/glemsom/eitri/internal/config"
 
-templ SettingsView(cfg *config.Config) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>Eitri — Settings</title>
-			<script src="/static/htmx.min.js"></script>
-
-			<link rel="stylesheet" href="/static/eitri.css"/>
-		</head>
-		<body>
-			<div id="app">
-				<header>
-					<h1>Eitri</h1>
-					<span class="text-muted">Settings</span>
-					<nav>
-						<a href="/">Chat</a>
-						<a href="/settings">Settings</a>
-					</nav>
-				</header>
-				<main>
-					@SettingsForm(cfg, nil)
-				</main>
-			</div>
-		</body>
-	</html>
+templ SettingsView(cfg *config.Config, workspace string, chatPath string) {
+	@Base("Eitri — Settings", chatPath, nil, "") {
+		@WorkspaceIndicator(workspace)
+		@SettingsForm(cfg, nil)
+	}
 }
 
 templ SettingsForm(cfg *config.Config, models []string) {

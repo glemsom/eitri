@@ -4,33 +4,11 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-templ SkillsPage(registry *skills.Registry) {
-	<!DOCTYPE html>
-	<html lang="en">
-		<head>
-			<meta charset="UTF-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>Eitri — Skills</title>
-			<script src="/static/htmx.min.js"></script>
-			<link rel="stylesheet" href="/static/eitri.css"/>
-		</head>
-		<body>
-			<div id="app">
-				<header>
-					<h1>Eitri</h1>
-					<span class="text-muted">Skills</span>
-					<nav>
-						<a href="/">Chat</a>
-						<a href="/settings">Settings</a>
-						<a href="/skills">Skills</a>
-					</nav>
-				</header>
-				<main>
-					@SkillsView(registry)
-				</main>
-			</div>
-		</body>
-	</html>
+templ SkillsPage(registry *skills.Registry, workspace string, chatPath string) {
+	@Base("Eitri — Skills", chatPath, nil, "") {
+		@WorkspaceIndicator(workspace)
+		@SkillsView(registry)
+	}
 }
 
 templ SkillsView(registry *skills.Registry) {

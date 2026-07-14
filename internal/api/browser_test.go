@@ -495,6 +495,69 @@ func TestBrowser_SettingsPage(t *testing.T) {
 	}
 }
 
+func TestBrowser_NavUsesHTMXBetweenFullPages(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var pathAfterSettings string
+	var settingsHasWorkspace bool
+	var pathAfterSkills string
+	var skillsHasWorkspace bool
+	var pathAfterChat string
+	var chatHasWorkspace bool
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.Click(`a[href="/settings"]`, chromedp.ByQuery),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.Location(&pathAfterSettings),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			&settingsHasWorkspace,
+		),
+		chromedp.Click(`a[href="/skills"]`, chromedp.ByQuery),
+		chromedp.WaitVisible(".skills-view", chromedp.ByQuery),
+		chromedp.Location(&pathAfterSkills),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			&skillsHasWorkspace,
+		),
+		chromedp.Click(`a[href^="/sessions/"]`, chromedp.ByQuery),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.Location(&pathAfterChat),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			&chatHasWorkspace,
+		),
+	)
+	if err != nil {
+		t.Fatalf("htmx nav test failed: %v", err)
+	}
+
+	if !strings.HasSuffix(pathAfterSettings, "/settings") {
+		t.Errorf("path after settings nav = %q, want suffix /settings", pathAfterSettings)
+	}
+	if !settingsHasWorkspace {
+		t.Error("settings page missing workspace indicator after HTMX nav")
+	}
+	if !strings.HasSuffix(pathAfterSkills, "/skills") {
+		t.Errorf("path after skills nav = %q, want suffix /skills", pathAfterSkills)
+	}
+	if !skillsHasWorkspace {
+		t.Error("skills page missing workspace indicator after HTMX nav")
+	}
+	if !strings.Contains(pathAfterChat, "/sessions/") {
+		t.Errorf("path after chat nav = %q, want containing /sessions/", pathAfterChat)
+	}
+	if !chatHasWorkspace {
+		t.Error("chat page missing workspace indicator after HTMX nav")
+	}
+}
+
 // TestBrowser_PageLoads verifies the chat page loads with correct title,
 // HTMX initialized, and core DOM elements present.
 func TestBrowser_PageLoads(t *testing.T) {
