@@ -19,6 +19,18 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
+func cleanupRuntime(server *api.Server, runMgr *api.RunManager, executorMgr *executor.SessionManager) {
+	if server != nil {
+		server.CloseActiveStreams("Server shutting down")
+	}
+	if runMgr != nil {
+		runMgr.CancelAll()
+	}
+	if executorMgr != nil {
+		executorMgr.CloseAll()
+	}
+}
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -72,6 +84,7 @@ func main() {
 	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
 	runMgr := api.NewRunManager(runnerMgr, executorMgr)
 	runMgr.UpdateProviderConfig(cfg)
+	executorMgr.StartTimeoutLoop(ctx, 30*time.Second)
 
 	// 9. Create skills service
 	skillsSvc := skills.NewService()
@@ -109,7 +122,8 @@ func main() {
 	fmt.Println("\nShutting down...")
 
 	// 10. Graceful shutdown
-	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+	cleanupRuntime(server, runMgr, executorMgr)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("HTTP shutdown error: %v", err)

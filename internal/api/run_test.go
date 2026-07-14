@@ -1,7 +1,10 @@
 package api_test
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,8 +24,16 @@ func newRunnerManager(t *testing.T) *agentrunner.Manager {
 	return agentrunner.NewManager()
 }
 
-// newTestServerWithRuns creates a test server with RunManager enabled.
-func newTestServerWithRuns(t *testing.T) *httptest.Server {
+type testServerWithRuns struct {
+	server      *httptest.Server
+	sessionMgr  *session.Manager
+	executorMgr *executor.SessionManager
+	runMgr      *api.RunManager
+}
+
+// newManagedTestServerWithRuns creates a test server with RunManager enabled
+// and returns test handles for session/run/executor assertions.
+func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
@@ -30,6 +41,7 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	runMgr := api.NewRunManager(runnerMgr, executorMgr)
 	skillsSvc := skills.NewService()
 	runMgr.SetSkillsService(skillsSvc)
+	runMgr.SetUISessionManager(sessionMgr)
 
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
@@ -41,7 +53,61 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
-	return server
+	return &testServerWithRuns{
+		server:      server,
+		sessionMgr:  sessionMgr,
+		executorMgr: executorMgr,
+		runMgr:      runMgr,
+	}
+}
+
+// newTestServerWithRuns creates a test server with RunManager enabled.
+func newTestServerWithRuns(t *testing.T) *httptest.Server {
+	t.Helper()
+	return newManagedTestServerWithRuns(t).server
+}
+
+func fakeSlowChatServer(t *testing.T, delay time.Duration) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":"working"},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(delay):
+			}
+
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func TestRunManager_NewRunManager(t *testing.T) {
@@ -51,6 +117,156 @@ func TestRunManager_NewRunManager(t *testing.T) {
 	if rm == nil {
 		t.Fatal("RunManager is nil")
 	}
+}
+
+func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T) {
+	llmSrv := fakeSlowChatServer(t, 2*time.Second)
+	h := newManagedTestServerWithRuns(t)
+	configureProvider(t, h.server, llmSrv.URL)
+	client := noRedirectClient()
+
+	resp, err := client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("missing session ID")
+	}
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	oldExecutor, err := h.executorMgr.GetOrCreate(sessionID)
+	if err != nil {
+		t.Fatalf("GetOrCreate(%s) = %v", sessionID, err)
+	}
+
+	chatPath := "/api" + loc + "/chat"
+	req, _ := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Delete+me"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+	chatResp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatResp.Body.Close()
+	if chatResp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", chatResp.StatusCode)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.runMgr.ActiveRun(sessionID) != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.runMgr.ActiveRun(sessionID) == nil {
+		t.Fatal("run never became active")
+	}
+
+	streamPath := "/api" + loc + "/stream"
+	var streamResp *http.Response
+	for time.Now().Before(deadline) {
+		streamReq, _ := http.NewRequest(http.MethodGet, h.server.URL+streamPath, nil)
+		streamReq.AddCookie(browserCookie)
+		streamResp, err = client.Do(streamReq)
+		if err == nil && streamResp.StatusCode == http.StatusOK {
+			break
+		}
+		if streamResp != nil {
+			streamResp.Body.Close()
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if streamResp == nil || streamResp.StatusCode != http.StatusOK {
+		if streamResp != nil {
+			streamResp.Body.Close()
+		}
+		t.Fatalf("stream status = %v, want 200", statusCodeOf(streamResp))
+	}
+	defer streamResp.Body.Close()
+
+	streamEvents := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(streamResp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				streamEvents <- strings.TrimPrefix(line, "data: ")
+			}
+		}
+		close(streamEvents)
+	}()
+
+	deleteReq, _ := http.NewRequest(http.MethodDelete, h.server.URL+"/api/sessions/"+sessionID, nil)
+	deleteReq.AddCookie(browserCookie)
+	deleteResp, err := client.Do(deleteReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusFound {
+		t.Fatalf("delete status = %d, want 302", deleteResp.StatusCode)
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.runMgr.ActiveRun(sessionID) != nil {
+		t.Fatal("run still active after delete")
+	}
+
+	newExecutor, err := h.executorMgr.GetOrCreate(sessionID)
+	if err != nil {
+		t.Fatalf("GetOrCreate(%s) after delete = %v", sessionID, err)
+	}
+	if newExecutor == oldExecutor {
+		t.Fatal("executor was not closed and removed on delete")
+	}
+
+	foundClosed := false
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case evt, ok := <-streamEvents:
+			if !ok {
+				deadline = time.Now()
+				continue
+			}
+			if strings.Contains(evt, `"type":"closed"`) {
+				foundClosed = true
+				deadline = time.Now()
+			}
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
+	if !foundClosed {
+		t.Fatal("stream never received closed event")
+	}
+}
+
+func statusCodeOf(resp *http.Response) any {
+	if resp == nil {
+		return nil
+	}
+	return resp.StatusCode
 }
 
 func TestChatEndpoint_NeedsSession(t *testing.T) {

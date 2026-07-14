@@ -40,6 +40,39 @@ type Server struct {
 	sses       sync.Map // sessionID -> chan SSEEvent (active stream connections)
 }
 
+func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
+	defer func() {
+		_ = recover()
+	}()
+	select {
+	case ch <- evt:
+	default:
+	}
+}
+
+func (s *Server) notifySessionClosed(sessionID, message string) {
+	raw, ok := s.sses.Load(sessionID)
+	if !ok {
+		return
+	}
+	ch, ok := raw.(chan SSEEvent)
+	if !ok {
+		return
+	}
+	sendSSEEvent(ch, SSEEvent{Type: "closed", Message: message})
+}
+
+// CloseActiveStreams notifies all attached SSE clients that their stream is closing.
+func (s *Server) CloseActiveStreams(message string) {
+	s.sses.Range(func(_, value any) bool {
+		ch, ok := value.(chan SSEEvent)
+		if ok {
+			sendSSEEvent(ch, SSEEvent{Type: "closed", Message: message})
+		}
+		return true
+	})
+}
+
 // NewServer creates a new Server with routes registered.
 func NewServer(cfg ServerConfig) *Server {
 	s := &Server{
@@ -262,6 +295,13 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.notifySessionClosed(id, "Session closed")
+	if s.config.RunManager != nil {
+		if err := s.config.RunManager.CloseSession(id); err != nil {
+			http.Error(w, "Failed to close session executor", http.StatusInternalServerError)
+			return
+		}
+	}
 	s.config.SessionManager.Delete(id)
 
 	// Redirect to next available session or root
