@@ -173,6 +173,34 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 	rm.maxTurns = cfg.MaxTurns
 }
 
+func (rm *RunManager) persistAuthUpdate(update *provider.AuthUpdate) error {
+	if update == nil {
+		return nil
+	}
+
+	rm.mu.Lock()
+	configPath := rm.configPath
+	rm.mu.Unlock()
+	if configPath == "" {
+		return nil
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config for refreshed provider auth: %w", err)
+	}
+	cfg.APIKey = update.APIKey
+	cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
+	if err := config.Save(configPath, cfg); err != nil {
+		return fmt.Errorf("failed to save refreshed provider auth: %w", err)
+	}
+	if rm.runnerMgr != nil {
+		rm.runnerMgr.Invalidate()
+	}
+	rm.UpdateProviderConfig(cfg)
+	return nil
+}
+
 // StartRun starts a new agent run for a session. Returns error if run already active.
 func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage string) (sessionSkillContext, error) {
 	rm.mu.Lock()
@@ -192,40 +220,8 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	modelName := rm.modelName
 	systemPrompt := rm.systemPrompt
 	maxTurns := rm.maxTurns
-	configPath := rm.configPath
 	httpClient := rm.httpClient
 	copilotOAuth := rm.copilotOAuth
-	rm.mu.Unlock()
-
-	resolvedAuth, err := provider.ResolveAuthForRequest(ctx, providerID, apiKey, providerAuth, provider.ResolveAuthOptions{
-		HTTPClient:         httpClient,
-		GitHubCopilotOAuth: copilotOAuth,
-		Persist: func(apiKey string, raw json.RawMessage) error {
-			if configPath == "" {
-				return nil
-			}
-			cfg, err := config.Load(configPath)
-			if err != nil {
-				return fmt.Errorf("failed to load config for refreshed provider auth: %w", err)
-			}
-			cfg.APIKey = apiKey
-			cfg.ProviderAuth = append(json.RawMessage(nil), raw...)
-			if err := config.Save(configPath, cfg); err != nil {
-				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
-			}
-			rm.UpdateProviderConfig(cfg)
-			return nil
-		},
-	})
-	if err != nil {
-		return sessionSkillContext{}, fmt.Errorf("failed to resolve provider auth: %w", err)
-	}
-	apiKey = resolvedAuth.APIKey
-	rm.mu.Lock()
-	if rm.apiKey != "" {
-		apiKey = rm.apiKey
-	}
-	providerAuth = append(json.RawMessage(nil), rm.providerAuth...)
 	rm.mu.Unlock()
 
 	if baseURL == "" || modelName == "" {
@@ -244,11 +240,31 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		runSystemPrompt += note
 	}
 
-	baseLLM, err := agent.NewOpenAIModelForProvider(modelName, baseURL, apiKey, providerID)
+	chatResult, err := provider.NewChatModel(ctx, provider.ChatRequest{
+		ProviderID:   providerID,
+		BaseURL:      baseURL,
+		APIKey:       apiKey,
+		ProviderAuth: providerAuth,
+		Model:        modelName,
+	}, provider.ChatOptions{
+		HTTPClient:         httpClient,
+		GitHubCopilotOAuth: copilotOAuth,
+	})
 	if err != nil {
 		return sessionSkillContext{}, fmt.Errorf("failed to create model: %w", err)
 	}
-	llm := newSkillContextLLM(baseLLM, skillCtx.Activations)
+	if err := rm.persistAuthUpdate(chatResult.AuthUpdate); err != nil {
+		return sessionSkillContext{}, err
+	}
+
+	effectiveAPIKey := apiKey
+	effectiveProviderAuth := append(json.RawMessage(nil), providerAuth...)
+	if chatResult.AuthUpdate != nil {
+		effectiveAPIKey = chatResult.AuthUpdate.APIKey
+		effectiveProviderAuth = append(json.RawMessage(nil), chatResult.AuthUpdate.ProviderAuth...)
+	}
+
+	llm := newSkillContextLLM(chatResult.Model, skillCtx.Activations)
 
 	var ag adkagent.Agent
 	var agErr error
@@ -261,7 +277,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		return sessionSkillContext{}, fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: agent.BuildSystemPrompt(runSystemPrompt, rm.skillsSvc)}
+	cfg := &config.Config{Provider: providerID, APIKey: effectiveAPIKey, ProviderAuth: effectiveProviderAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: agent.BuildSystemPrompt(runSystemPrompt, rm.skillsSvc)}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
 		return sessionSkillContext{}, fmt.Errorf("failed to get runner: %w", err)
