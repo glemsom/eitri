@@ -208,6 +208,112 @@ noscript {
   transition: opacity 0.3s;
 }
 
+.chat-run-chrome {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.run-status {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.run-status-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.run-status-detail {
+  min-width: 0;
+}
+
+.activity-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.activity-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.75rem 1rem;
+  user-select: none;
+}
+
+.activity-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-panel summary::after {
+  content: '▸';
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.activity-panel[open] summary::after {
+  content: '▾';
+}
+
+.activity-count {
+  min-width: 1.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.activity-log {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.activity-entry {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.activity-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.activity-entry-label {
+  font-weight: 600;
+}
+
+.activity-entry-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.activity-entry-detail {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Think/details collapsible */
 .think-details {
   background: var(--bg);
@@ -300,32 +406,54 @@ noscript {
 
 /* Streaming indicator */
 .stream-indicator {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
   font-size: 0.8rem;
-  border-radius: 4px;
-  margin-left: 0.5rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.stream-indicator.idle {
+  color: var(--text-muted);
 }
 
 .stream-indicator.connecting {
-  background: var(--warning);
-  color: #000;
+  background: rgba(243, 156, 18, 0.18);
+  color: #ffd08a;
 }
 
 .stream-indicator.streaming {
-  color: var(--success);
+  background: rgba(46, 204, 113, 0.14);
+  color: #7ff0aa;
 }
 
 .stream-indicator.tool-running {
-  color: var(--warning);
+  background: rgba(243, 156, 18, 0.18);
+  color: #ffd08a;
+}
+
+.stream-indicator.rendering {
+  background: rgba(233, 69, 96, 0.14);
+  color: #ff9aac;
+}
+
+.stream-indicator.done {
+  background: rgba(46, 204, 113, 0.14);
+  color: #7ff0aa;
 }
 
 .stream-indicator.error {
-  color: var(--error);
+  background: rgba(231, 76, 60, 0.18);
+  color: #ff9b90;
 }
 
 .stream-indicator.reconnecting {
-  color: var(--warning);
+  background: rgba(243, 156, 18, 0.18);
+  color: #ffd08a;
 }
 
 /* Error toast */
