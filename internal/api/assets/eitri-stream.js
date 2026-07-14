@@ -18,26 +18,20 @@
     RECONNECTING: 'reconnecting',
   };
 
-  // Listen for HTMX trigger to connect stream
+  function extractSessionId(detail, target) {
+    if (typeof detail === 'string') return detail;
+    if (detail && typeof detail.value === 'string') return detail.value;
+    if (detail && typeof detail.sessionId === 'string') return detail.sessionId;
+    if (target && typeof target.value === 'string') return target.value;
+    return '';
+  }
+
+  // Listen for HTMX trigger to connect stream.
+  // HX-Trigger JSON payload arrives at evt.detail.value in htmx.
   document.addEventListener('eitri:connectRunStream', function (e) {
-    const sessionId = e.detail || e.target?.value;
+    const sessionId = extractSessionId(e.detail, e.target);
     if (!sessionId) return;
     connectStream(sessionId);
-  });
-
-  // Also listen for htmx:afterOnLoad to detect HX-Trigger with connectRunStream
-  document.addEventListener('htmx:afterOnLoad', function (evt) {
-    const headers = evt.detail?.xhr?.getResponseHeader?.('HX-Trigger');
-    if (!headers) return;
-    try {
-      const parsed = JSON.parse(headers);
-      if (parsed['eitri:connectRunStream']) {
-        const sessionId = parsed['eitri:connectRunStream'];
-        setTimeout(() => connectStream(sessionId), 50);
-      }
-    } catch (e) {
-      // Not JSON or not relevant
-    }
   });
 
   // Re-enable the composer after a run completes or errors

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -147,6 +148,40 @@ func testLLMURL(t *testing.T) string {
 	return fakeChatServer(t, "ok").URL
 }
 
+func fakeInstantChatServer(t *testing.T, reply string) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, reply)
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // configureProvider saves runnable LLM provider config to test server via HTTP.
 func configureProvider(t *testing.T, server *httptest.Server, llmURL string) {
 	t.Helper()
@@ -222,16 +257,74 @@ func TestBrowser_SendMessage(t *testing.T) {
 		t.Error("user bubble with message text not found after sending")
 	}
 
-	// Also verify the chat input is disabled during active run
-	var inputDisabled bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === true", &inputDisabled),
+}
+
+func TestBrowser_FastRunRendersAssistantAndUsesValidStreamURL(t *testing.T) {
+	llmURL := fakeInstantChatServer(t, "skills: one, two, three").URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var (
+		mu         sync.Mutex
+		streamURLs []string
+	)
+	chromedp.ListenTarget(ctx, func(ev interface{}) {
+		req, ok := ev.(*network.EventRequestWillBeSent)
+		if !ok {
+			return
+		}
+		if !strings.Contains(req.Request.URL, "/api/sessions/") || !strings.Contains(req.Request.URL, "/stream") {
+			return
+		}
+		mu.Lock()
+		streamURLs = append(streamURLs, req.Request.URL)
+		mu.Unlock()
+	})
+
+	err := chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", "What skills do you have available?", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
 	)
 	if err != nil {
-		t.Logf("input state check failed (may be race): %v", err)
+		t.Fatalf("navigation/send failed: %v", err)
 	}
-	if !inputDisabled {
-		t.Error("#chat-input should be disabled during active run")
+
+	var assistantText string
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.querySelector('.message-assistant .message-content');
+				return el ? el.textContent : "";
+			})()`, &assistantText),
+		)
+		if err != nil {
+			t.Fatalf("assistant text check failed: %v", err)
+		}
+		if strings.TrimSpace(assistantText) != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if got := strings.TrimSpace(assistantText); got == "" {
+		t.Fatal("assistant response empty after fast run")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, url := range streamURLs {
+		if strings.Contains(url, "/api/sessions/[object%20Object]/stream") || strings.Contains(url, "/api/sessions/[object Object]/stream") {
+			t.Fatalf("invalid stream URL requested: %s", url)
+		}
+	}
+	if len(streamURLs) == 0 {
+		t.Fatal("no stream URL requested")
 	}
 }
 
@@ -340,7 +433,7 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 // TestBrowser_InputDisabledDuringRun verifies that during an active run,
 // the chat input and send button are disabled, and the stop button is visible.
 func TestBrowser_InputDisabledDuringRun(t *testing.T) {
-	llmURL := testLLMURL(t)
+	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
 	server := newTestServerWithRuns(t)
 	configureProvider(t, server, llmURL)
 
@@ -403,7 +496,7 @@ func TestBrowser_InputDisabledDuringRun(t *testing.T) {
 // TestBrowser_CancelRun verifies that cancelling an active run re-enables
 // the chat input and hides the stop button.
 func TestBrowser_CancelRun(t *testing.T) {
-	llmURL := testLLMURL(t)
+	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
 	server := newTestServerWithRuns(t)
 	configureProvider(t, server, llmURL)
 

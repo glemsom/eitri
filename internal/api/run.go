@@ -103,6 +103,8 @@ type RunManager struct {
 	copilotOAuth provider.GitHubCopilotOAuthConfig
 }
 
+const completedRunRetention = 5 * time.Second
+
 // NewRunManager creates a run manager.
 func NewRunManager(runnerMgr *agentrunner.Manager, sessionMgr *executor.SessionManager) *RunManager {
 	return &RunManager{
@@ -145,9 +147,14 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 // StartRun starts a new agent run for a session. Returns error if run already active.
 func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage string) error {
 	rm.mu.Lock()
-	if _, exists := rm.active[sessionID]; exists {
-		rm.mu.Unlock()
-		return fmt.Errorf("session %s already has an active run", sessionID)
+	if existing, exists := rm.active[sessionID]; exists {
+		select {
+		case <-existing.Done:
+			delete(rm.active, sessionID)
+		default:
+			rm.mu.Unlock()
+			return fmt.Errorf("session %s already has an active run", sessionID)
+		}
 	}
 	providerID := rm.providerID
 	baseURL := rm.baseURL
@@ -244,6 +251,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	go func() {
 		<-state.Done
 		slog.Info("run done", slog.String("session_id", sessionID))
+		time.Sleep(completedRunRetention)
 		rm.mu.Lock()
 		if rm.active[sessionID] == state {
 			delete(rm.active, sessionID)
@@ -254,11 +262,24 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	return nil
 }
 
-// ActiveRun returns the active run state for a session.
-func (rm *RunManager) ActiveRun(sessionID string) *runState {
+func (rm *RunManager) lookupRun(sessionID string) *runState {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	return rm.active[sessionID]
+}
+
+// ActiveRun returns unfinished active run state for a session.
+func (rm *RunManager) ActiveRun(sessionID string) *runState {
+	state := rm.lookupRun(sessionID)
+	if state == nil {
+		return nil
+	}
+	select {
+	case <-state.Done:
+		return nil
+	default:
+		return state
+	}
 }
 
 // CancelRun cancels the active run for a session.
@@ -306,7 +327,7 @@ func (rm *RunManager) CloseSession(sessionID string) error {
 }
 
 func (rm *RunManager) subscribe(sessionID string) (uint64, <-chan SSEEvent, bool) {
-	state := rm.ActiveRun(sessionID)
+	state := rm.lookupRun(sessionID)
 	if state == nil {
 		return 0, nil, false
 	}
@@ -314,7 +335,7 @@ func (rm *RunManager) subscribe(sessionID string) (uint64, <-chan SSEEvent, bool
 }
 
 func (rm *RunManager) unsubscribe(sessionID string, subscriberID uint64) {
-	state := rm.ActiveRun(sessionID)
+	state := rm.lookupRun(sessionID)
 	if state == nil {
 		return
 	}
@@ -322,7 +343,7 @@ func (rm *RunManager) unsubscribe(sessionID string, subscriberID uint64) {
 }
 
 func (rm *RunManager) notifySessionClosed(sessionID, message string) {
-	state := rm.ActiveRun(sessionID)
+	state := rm.lookupRun(sessionID)
 	if state == nil {
 		return
 	}
@@ -356,18 +377,19 @@ func (rs *runState) subscribe() (uint64, <-chan SSEEvent, bool) {
 	rs.streamMu.Lock()
 	defer rs.streamMu.Unlock()
 
+	history := append([]SSEEvent(nil), rs.history...)
+	ch := make(chan SSEEvent, 512)
+	for _, evt := range history {
+		ch <- evt
+	}
 	if rs.streamsClosed {
-		return 0, nil, false
+		close(ch)
+		return 0, ch, len(history) > 0
 	}
 
 	id := rs.nextSubscriber
 	rs.nextSubscriber++
-	ch := make(chan SSEEvent, 512)
 	rs.subscribers[id] = ch
-	history := append([]SSEEvent(nil), rs.history...)
-	for _, evt := range history {
-		ch <- evt
-	}
 	return id, ch, true
 }
 
@@ -406,6 +428,9 @@ func (rs *runState) closeStreams(evt *SSEEvent) {
 	if rs.streamsClosed {
 		rs.streamMu.Unlock()
 		return
+	}
+	if evt != nil {
+		rs.history = append(rs.history, *evt)
 	}
 	rs.streamsClosed = true
 	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
