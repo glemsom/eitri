@@ -9,6 +9,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Agent** | ADK-driven LLM agent that processes prompts, calls tools, and returns responses. |
 | **Session** | Single in-memory chat conversation. Has unique ID, message/render history, active-run state, and session-scoped tmux executor. Lost on server restart in v1. |
 | **Tool** | Capability agent can invoke (`terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`). Registered with ADK at agent creation. |
+| **Provider** | External LLM service integration that owns authentication, model discovery, endpoint selection, and chat transport. A Provider exposes one or more Models. |
 | **Skill** | Agent Skills-compatible directory containing `SKILL.md` instructions and optional `scripts/`, `references/`, and `assets/`. Discovered from fixed project/user roots and activated per session. |
 | **Executor** | Session-scoped tmux-managed shell used for direct host command execution. No sandbox in v1. Starts in the launch workspace. |
 | **Model** | LLM accessible via OpenCode Go's OpenAI-compatible API in v1, with custom OpenAI-compatible endpoints available as advanced/best-effort. Configured via Settings or `~/.eitri/config.json`; model IDs discovered from `/v1/models`. |
@@ -28,6 +29,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0004](docs/adr/0004-session-scoped-executor-lifecycle.md) | Session-scoped executor lifecycle | Accepted |
 | [0005](docs/adr/0005-htmx-templ-ui.md) | HTMX + Templ shell with browser islands | Accepted |
 | [0006](docs/adr/0006-agent-skills.md) | Agent Skills support | Accepted |
+| [0007](docs/adr/0007-provider-profiles-and-github-copilot.md) | Provider profiles and GitHub Copilot | Accepted |
 
 ## Project structure
 
