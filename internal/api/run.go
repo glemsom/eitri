@@ -39,8 +39,8 @@ type SSEEvent struct {
 
 // tokenUsage holds token count information for a completed run.
 type tokenUsage struct {
-	TotalTokens    int `json:"total_tokens"`
-	PromptTokens   int `json:"prompt_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 }
 
@@ -52,20 +52,27 @@ type runState struct {
 	Cancel    context.CancelFunc
 	StartedAt time.Time
 	Done      chan struct{}
+	doneOnce  sync.Once
+}
+
+func (rs *runState) finish() {
+	rs.doneOnce.Do(func() {
+		close(rs.Done)
+	})
 }
 
 // RunManager manages active runs per session.
 type RunManager struct {
-	mu            sync.Mutex
-	active        map[string]*runState
-	runnerMgr     *agentrunner.Manager
-	sessionMgr    *executor.SessionManager
-	uiSessionMgr  *uisession.Manager
-	skillsSvc     *skills.Service
-	providerID    string
-	baseURL       string
-	apiKey        string
-	modelName     string
+	mu           sync.Mutex
+	active       map[string]*runState
+	runnerMgr    *agentrunner.Manager
+	sessionMgr   *executor.SessionManager
+	uiSessionMgr *uisession.Manager
+	skillsSvc    *skills.Service
+	providerID   string
+	baseURL      string
+	apiKey       string
+	modelName    string
 }
 
 // NewRunManager creates a run manager.
@@ -191,8 +198,33 @@ func (rm *RunManager) CancelRun(sessionID string) bool {
 		return false
 	}
 	state.Cancel()
-	close(state.Done)
+	state.finish()
 	return true
+}
+
+// CancelAll cancels every active run.
+func (rm *RunManager) CancelAll() {
+	rm.mu.Lock()
+	states := make([]*runState, 0, len(rm.active))
+	for sessionID, state := range rm.active {
+		delete(rm.active, sessionID)
+		states = append(states, state)
+	}
+	rm.mu.Unlock()
+
+	for _, state := range states {
+		state.Cancel()
+		state.finish()
+	}
+}
+
+// CloseSession cancels an active run for sessionID and closes its executor.
+func (rm *RunManager) CloseSession(sessionID string) error {
+	rm.CancelRun(sessionID)
+	if rm.sessionMgr == nil {
+		return nil
+	}
+	return rm.sessionMgr.Close(sessionID)
 }
 
 // SSEWriter writes SSE-formatted events to a channel.
@@ -263,7 +295,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 					}
 					w.Done(messageID, estimateUsage(fullText.String()))
 				}
-				close(state.Done)
+				state.finish()
 				return fullText.String()
 			}
 			if evt == nil {
@@ -317,18 +349,18 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 					})
 				}
 				w.Done(messageID, estimateUsage(fullText.String()))
-				close(state.Done)
+				state.finish()
 				return fullText.String()
 			}
 
 		case err, ok := <-state.Errors:
 			if !ok {
-				close(state.Done)
+				state.finish()
 				return fullText.String()
 			}
 			if err != nil {
 				w.Error(formatErrorMessage(err))
-				close(state.Done)
+				state.finish()
 				return fullText.String()
 			}
 

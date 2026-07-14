@@ -37,14 +37,14 @@ Orchestrates startup:
 1. **Runtime audit** (`executor.RunAudit`) — verifies `tmux` binary on `$PATH`
 2. **Workspace capture** — resolves process CWD as the launch workspace; v1 has no CLI workspace argument
 3. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
-4. **Session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace
+4. **Session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace; startup also begins idle-timeout cleanup using configured `session_timeout`
 5. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
 6. **Built-in tools** (`agent.NewTools`) — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
 7. **ADK session service** (`session.InMemoryService`) — stores conversation history
 8. **Runner manager** (`runner.NewManager`) — caches ADK runner, hot-reloads on config or skills-catalog changes
 9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux), delegates runner creation to RunnerManager; prints workspace + URL and optionally opens URL via `xdg-open`
 
-Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → closes executors → shuts down HTTP.
+Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, closes executors, then shuts down HTTP.
 
 ### `internal/agent/` — ADK agent + model
 
