@@ -96,11 +96,11 @@ Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-s
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |
 | `components/chat_bubble.templ` | User/assistant message bubbles |
 | `components/tool_card.templ` | Tool call + result cards |
-| `components/file_edit_card.templ` | Post-write diff/created-file card for `file_editor` results |
+| `components/file_edit_card.templ` | Post-write diff/created-file card for `file_editor` results; overwrite mode reuses shared interactive diff viewer |
 | `components/error_toast.templ` | Error banner, auto-dismiss |
 | `components/mermaid_diagram.templ` | Mermaid diagram container |
 | `components/quick_replies.templ` | Suggestion chip buttons |
-| `components/diff_card.templ` | Side-by-side diff view |
+| `components/diff_card.templ` | Shared interactive diff viewer for DiffCard components and file edit overwrite results |
 
 ### `internal/skills/` — Agent Skills discovery + activation
 

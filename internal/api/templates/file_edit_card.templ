@@ -28,9 +28,9 @@ templ fileEditBody(mode string, oldContent string, newContent string) {
 				<pre><code>{ newContent }</code></pre>
 			</div>
 		</details>
-	} else if mode == "overwrite" && oldContent != "" {
+	} else if mode == "overwrite" {
 		<div class="file-diff">
-			<pre class="diff-content"><code>{ diffText(oldContent, newContent) }</code></pre>
+			@InteractiveDiffViewer(oldContent, newContent, "")
 		</div>
 	} else {
 		<div class="file-preview">

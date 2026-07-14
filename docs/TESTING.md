@@ -140,6 +140,7 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_FindChrome` | `findChrome()` returns a path that exists and is executable |
 | `TestBrowser_ChromeNotFoundSkips` | Chrome-not-found skip behavior works (self-verifying) |
 | `TestBrowser_RichRenderingAssetsAndBehavior` | Embedded Prism/KaTeX/Mermaid assets load; code copy button, Mermaid blocks/components, and math rendering degrade/read correctly |
+| `TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap` | DiffCard and file edit diff UIs support unified/side-by-side toggle plus collapsed unchanged-region expansion after HTMX swaps |
 
 #### Planned (not yet implemented)
 

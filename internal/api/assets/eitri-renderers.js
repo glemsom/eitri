@@ -79,10 +79,61 @@
     });
   }
 
+  function setDiffView(card, view) {
+    card.querySelectorAll('.diff-toggle-btn').forEach(function (btn) {
+      var active = btn.getAttribute('data-view') === view;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    card.querySelectorAll('.diff-pane').forEach(function (pane) {
+      pane.classList.toggle('is-active', pane.getAttribute('data-view') === view);
+    });
+  }
+
+  function setCollapseState(card, group, expanded) {
+    card.querySelectorAll('.diff-collapse-btn[data-group="' + group + '"]').forEach(function (btn) {
+      var collapsedLabel = btn.getAttribute('data-collapsed-label') || 'Show unchanged lines';
+      var expandedLabel = btn.getAttribute('data-expanded-label') || 'Hide unchanged lines';
+      btn.textContent = expanded ? expandedLabel : collapsedLabel;
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+
+    card.querySelectorAll('.diff-row[data-collapse-group="' + group + '"]').forEach(function (row) {
+      row.hidden = !expanded;
+    });
+  }
+
+  function bindDiffCards() {
+    document.querySelectorAll('eitri-diff-card').forEach(function (card) {
+      if (card.dataset.eitriBound === 'true') return;
+      card.dataset.eitriBound = 'true';
+
+      card.querySelectorAll('.diff-toggle-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          setDiffView(card, btn.getAttribute('data-view') || 'unified');
+        });
+      });
+
+      card.querySelectorAll('.diff-collapse-btn').forEach(function (btn) {
+        var group = btn.getAttribute('data-group') || '';
+        if (!group) return;
+        setCollapseState(card, group, false);
+        btn.addEventListener('click', function () {
+          var expanded = btn.getAttribute('aria-expanded') !== 'true';
+          setCollapseState(card, group, expanded);
+        });
+      });
+
+      setDiffView(card, 'unified');
+    });
+  }
+
   function initAll() {
     bindCodeBlocks();
     initPrism();
     initKatex();
+    bindDiffCards();
   }
 
   if (document.readyState === 'loading') {
