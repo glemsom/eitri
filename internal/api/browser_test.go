@@ -259,6 +259,121 @@ func TestBrowser_SendMessage(t *testing.T) {
 
 }
 
+func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
+	llmURL := fakeInstantChatServer(t, "ok").URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	const firstMessage = "Fix flaky session tab title behavior across browser tabs and runs"
+	const expectedTitle = "Fix flaky session tab title be…"
+
+	var titles []string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.WaitVisible("#session-tabs", chromedp.ByQuery),
+		chromedp.Click("#session-tabs .new-session-btn", chromedp.ByQuery),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("create second session failed: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`Array.from(document.querySelectorAll('#session-tabs .session-title')).map(el => el.textContent.trim())`, &titles),
+		)
+		if err != nil {
+			t.Fatalf("read session titles after create failed: %v", err)
+		}
+		if len(titles) == 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(titles) != 2 {
+		t.Fatalf("session titles after create = %v, want 2 tabs", titles)
+	}
+	if titles[0] != "Session 1" || titles[1] != "Session 2" {
+		t.Fatalf("initial session titles = %v, want [Session 1 Session 2]", titles)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Click("#session-tabs .session-tab:first-child .session-tab-link", chromedp.ByQuery),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", firstMessage, chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send first message failed: %v", err)
+	}
+
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`Array.from(document.querySelectorAll('#session-tabs .session-title')).map(el => el.textContent.trim())`, &titles),
+		)
+		if err != nil {
+			t.Fatalf("read session titles after first send failed: %v", err)
+		}
+		if len(titles) == 2 && titles[0] == expectedTitle && titles[1] == "Session 2" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(titles) != 2 || titles[0] != expectedTitle || titles[1] != "Session 2" {
+		t.Fatalf("session titles after first send = %v, want [%s Session 2]", titles, expectedTitle)
+	}
+
+	var inputReady bool
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var input = document.querySelector('#chat-input');
+				var send = document.querySelector('#send-btn');
+				return !!input && !!send && !input.disabled && !send.disabled;
+			})()`, &inputReady),
+		)
+		if err != nil {
+			t.Fatalf("read composer readiness failed: %v", err)
+		}
+		if inputReady {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !inputReady {
+		t.Fatal("composer did not become ready for second message")
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible("#chat-input", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`(function() {
+			var input = document.querySelector('#chat-input');
+			if (!input) return false;
+			input.value = '';
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			return true;
+		})()`, nil),
+		chromedp.SendKeys("#chat-input", "second message should not rename tab", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send second message failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`Array.from(document.querySelectorAll('#session-tabs .session-title')).map(el => el.textContent.trim())`, &titles),
+	)
+	if err != nil {
+		t.Fatalf("read session titles after second send failed: %v", err)
+	}
+	if len(titles) != 2 || titles[0] != expectedTitle || titles[1] != "Session 2" {
+		t.Fatalf("session titles after second send = %v, want unchanged [%s Session 2]", titles, expectedTitle)
+	}
+}
+
 func TestBrowser_FastRunRendersAssistantAndUsesValidStreamURL(t *testing.T) {
 	llmURL := fakeInstantChatServer(t, "skills: one, two, three").URL
 	server := newTestServerWithRuns(t)

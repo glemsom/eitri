@@ -781,12 +781,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	// Render user bubble + send JS events for SSE connect and run state
+	// Render user bubble + session tab refresh + send JS events for SSE connect and run state
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
 
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	userBubble := templates.UserBubble(message)
 	userBubble.Render(r.Context(), w)
+	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {

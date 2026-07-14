@@ -250,6 +250,60 @@ func TestAppendMessage(t *testing.T) {
 	if got.Messages[0].Content != "hello" {
 		t.Errorf("Message content = %q, want %q", got.Messages[0].Content, "hello")
 	}
+	if got.Title != "hello" {
+		t.Errorf("Title = %q, want %q", got.Title, "hello")
+	}
+}
+
+func TestAppendMessage_FirstUserMessageSetsTruncatedTitle(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   Fix   flaky session tab title behavior across browser tabs and runs   "})
+
+	got := mgr.Get(sess.ID)
+	if got.Title != "Fix flaky session tab title be…" {
+		t.Errorf("Title = %q, want %q", got.Title, "Fix flaky session tab title be…")
+	}
+}
+
+func TestAppendMessage_OnlyFirstUserMessageRenamesSession(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "first question"})
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "second question should not rename"})
+
+	got := mgr.Get(sess.ID)
+	if got.Title != "first question" {
+		t.Errorf("Title = %q, want %q", got.Title, "first question")
+	}
+}
+
+func TestAppendMessage_BlankFirstUserMessageKeepsPlaceholderTitle(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
+
+	got := mgr.Get(sess.ID)
+	if got.Title != "Session 1" {
+		t.Errorf("Title = %q, want %q", got.Title, "Session 1")
+	}
+}
+
+func TestAppendMessage_BlankFirstUserMessageDoesNotBlockLaterRename(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "real first question"})
+
+	got := mgr.Get(sess.ID)
+	if got.Title != "real first question" {
+		t.Errorf("Title = %q, want %q", got.Title, "real first question")
+	}
 }
 
 func TestDefaultMaxSessions(t *testing.T) {

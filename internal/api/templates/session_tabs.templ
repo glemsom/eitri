@@ -4,8 +4,8 @@ import "github.com/glemsom/eitri/internal/session"
 
 // SessionTabs renders the top-bar session tab strip.
 // Shows all sessions for the browser, with active tab highlighted.
-templ SessionTabs(sessions []*session.UISession, activeID string) {
-	<div id="session-tabs" class="session-tabs">
+templ SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) {
+	<div id="session-tabs" class="session-tabs" if swapOOB { hx-swap-oob="outerHTML" }>
 		for _, s := range sessions {
 			<div class={ "session-tab", templ.KV("active", s.ID == activeID) }>
 				<a href={ templ.URL("/sessions/" + s.ID) } class="session-tab-link">
