@@ -53,12 +53,32 @@ type runState struct {
 	StartedAt time.Time
 	Done      chan struct{}
 	doneOnce  sync.Once
+
+	bufferMu sync.Mutex
+	buffer   strings.Builder
+
+	streamMu       sync.Mutex
+	subscribers    map[uint64]chan SSEEvent
+	nextSubscriber uint64
+	streamsClosed  bool
 }
 
 func (rs *runState) finish() {
 	rs.doneOnce.Do(func() {
 		close(rs.Done)
 	})
+}
+
+func (rs *runState) appendBuffer(text string) {
+	rs.bufferMu.Lock()
+	defer rs.bufferMu.Unlock()
+	rs.buffer.WriteString(text)
+}
+
+func (rs *runState) bufferString() string {
+	rs.bufferMu.Lock()
+	defer rs.bufferMu.Unlock()
+	return rs.buffer.String()
 }
 
 // RunManager manages active runs per session.
@@ -153,12 +173,13 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	eventCh, errCh, cancel := rm.runnerMgr.Run(ctx, r, sessionID, sessionID, content)
 
 	state := &runState{
-		SessionID: sessionID,
-		Events:    eventCh,
-		Errors:    errCh,
-		Cancel:    cancel,
-		StartedAt: time.Now(),
-		Done:      make(chan struct{}),
+		SessionID:   sessionID,
+		Events:      eventCh,
+		Errors:      errCh,
+		Cancel:      cancel,
+		StartedAt:   time.Now(),
+		Done:        make(chan struct{}),
+		subscribers: make(map[uint64]chan SSEEvent),
 	}
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
@@ -231,24 +252,137 @@ func (rm *RunManager) CloseSession(sessionID string) error {
 	return rm.sessionMgr.Close(sessionID)
 }
 
-// SSEWriter writes SSE-formatted events to a channel.
+func (rm *RunManager) subscribe(sessionID string) (uint64, <-chan SSEEvent, bool) {
+	state := rm.ActiveRun(sessionID)
+	if state == nil {
+		return 0, nil, false
+	}
+	return state.subscribe()
+}
+
+func (rm *RunManager) unsubscribe(sessionID string, subscriberID uint64) {
+	state := rm.ActiveRun(sessionID)
+	if state == nil {
+		return
+	}
+	state.unsubscribe(subscriberID)
+}
+
+func (rm *RunManager) notifySessionClosed(sessionID, message string) {
+	state := rm.ActiveRun(sessionID)
+	if state == nil {
+		return
+	}
+	state.closeStreams(&SSEEvent{Type: "closed", Message: message})
+}
+
+func (rm *RunManager) notifyAllStreamsClosed(message string) {
+	rm.mu.Lock()
+	states := make([]*runState, 0, len(rm.active))
+	for _, state := range rm.active {
+		states = append(states, state)
+	}
+	rm.mu.Unlock()
+
+	for _, state := range states {
+		state.closeStreams(&SSEEvent{Type: "closed", Message: message})
+	}
+}
+
+func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
+	defer func() {
+		_ = recover()
+	}()
+	select {
+	case ch <- evt:
+	default:
+	}
+}
+
+func (rs *runState) subscribe() (uint64, <-chan SSEEvent, bool) {
+	rs.streamMu.Lock()
+	defer rs.streamMu.Unlock()
+
+	if rs.streamsClosed {
+		return 0, nil, false
+	}
+
+	id := rs.nextSubscriber
+	rs.nextSubscriber++
+	ch := make(chan SSEEvent, 128)
+	rs.subscribers[id] = ch
+	return id, ch, true
+}
+
+func (rs *runState) unsubscribe(id uint64) {
+	rs.streamMu.Lock()
+	defer rs.streamMu.Unlock()
+
+	ch, ok := rs.subscribers[id]
+	if !ok {
+		return
+	}
+	delete(rs.subscribers, id)
+	close(ch)
+}
+
+func (rs *runState) broadcast(evt SSEEvent) {
+	rs.streamMu.Lock()
+	if rs.streamsClosed {
+		rs.streamMu.Unlock()
+		return
+	}
+	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
+	for _, ch := range rs.subscribers {
+		subscribers = append(subscribers, ch)
+	}
+	rs.streamMu.Unlock()
+
+	for _, ch := range subscribers {
+		sendSSEEvent(ch, evt)
+	}
+}
+
+func (rs *runState) closeStreams(evt *SSEEvent) {
+	rs.streamMu.Lock()
+	if rs.streamsClosed {
+		rs.streamMu.Unlock()
+		return
+	}
+	rs.streamsClosed = true
+	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
+	for id, ch := range rs.subscribers {
+		subscribers = append(subscribers, ch)
+		delete(rs.subscribers, id)
+	}
+	rs.streamMu.Unlock()
+
+	for _, ch := range subscribers {
+		if evt != nil {
+			sendSSEEvent(ch, *evt)
+		}
+		close(ch)
+	}
+}
+
+// SSEWriter writes SSE-formatted events to run subscribers.
 type SSEWriter struct {
-	ch chan SSEEvent
+	state *runState
 }
 
 // NewSSEWriter creates an SSE writer.
-func NewSSEWriter(ch chan SSEEvent) *SSEWriter {
-	return &SSEWriter{ch: ch}
+func NewSSEWriter(state *runState) *SSEWriter {
+	return &SSEWriter{state: state}
 }
 
 // Token sends a text token event.
 func (w *SSEWriter) Token(content string) {
-	w.ch <- SSEEvent{Type: "token", Content: content}
+	w.state.broadcast(SSEEvent{Type: "token", Content: content})
 }
 
 // ToolCall sends a tool call event.
 func (w *SSEWriter) ToolCall(name string, args interface{}) {
-	w.ch <- SSEEvent{Type: "tool_call", Tool: name, Args: args}
+	w.state.broadcast(SSEEvent{Type: "tool_call", Tool: name, Args: args})
 }
 
 // ToolResult sends a tool result event.
@@ -261,46 +395,46 @@ func (w *SSEWriter) ToolResult(name string, output interface{}) {
 			outputStr = string(b)
 		}
 	}
-	w.ch <- SSEEvent{Type: "tool_result", Tool: name, Output: outputStr}
+	w.state.broadcast(SSEEvent{Type: "tool_result", Tool: name, Output: outputStr})
 }
 
 // Done sends a done event with optional token usage.
 func (w *SSEWriter) Done(messageID string, usage *tokenUsage) {
-	w.ch <- SSEEvent{Type: "done", MessageID: messageID, Usage: usage}
+	w.state.closeStreams(&SSEEvent{Type: "done", MessageID: messageID, Usage: usage})
 }
 
 // Component sends a generative UI component event.
 func (w *SSEWriter) Component(data interface{}) {
-	w.ch <- SSEEvent{Type: "component", Data: data}
+	w.state.broadcast(SSEEvent{Type: "component", Data: data})
 }
 
 // Error sends an error event.
 func (w *SSEWriter) Error(msg string) {
-	w.ch <- SSEEvent{Type: "error", Message: msg}
+	w.state.closeStreams(&SSEEvent{Type: "error", Message: msg})
 }
 
 // AppendEvent processes ADK session events and sends SSE events to the writer.
 // Returns the accumulated assistant response text for storage in the UI session.
 func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
-	var fullText strings.Builder
 
 	for {
 		select {
 		case evt, ok := <-state.Events:
 			if !ok {
-				if fullText.Len() > 0 {
+				content := state.bufferString()
+				if content != "" {
 					if rm.uiSessionMgr != nil {
 						rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
 							Role:      "assistant",
-							Content:   fullText.String(),
+							Content:   content,
 							CreatedAt: time.Now(),
 						})
 					}
-					w.Done(messageID, estimateUsage(fullText.String()))
+					w.Done(messageID, estimateUsage(content))
 				}
 				state.finish()
-				return fullText.String()
+				return content
 			}
 			if evt == nil {
 				continue
@@ -314,7 +448,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						continue
 					}
 					if part.Text != "" {
-						fullText.WriteString(part.Text)
+						state.appendBuffer(part.Text)
 						w.Token(part.Text)
 					}
 					if fc := part.FunctionCall; fc != nil {
@@ -323,11 +457,11 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 							argsMap := fc.Args
 							compName, _ := argsMap["name"].(string)
 							compData, _ := argsMap["data"].(map[string]interface{})
-							w.ch <- SSEEvent{
+							w.state.broadcast(SSEEvent{
 								Type: "component",
 								Name: compName,
 								Data: compData,
-							}
+							})
 						} else {
 							w.ToolCall(fc.Name, fc.Args)
 						}
@@ -336,7 +470,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						if fr.Name == "render_component" {
 							// Tool result already emitted as component event above
 							// Still emit a brief token to show in transcript
-							fullText.WriteString("[Component rendered]")
+							state.appendBuffer("[Component rendered]")
 						} else {
 							w.ToolResult(fr.Name, fr.Response)
 						}
@@ -345,31 +479,33 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 			}
 
 			if turnComplete {
+				content := state.bufferString()
 				if rm.uiSessionMgr != nil {
 					rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
 						Role:      "assistant",
-						Content:   fullText.String(),
+						Content:   content,
 						CreatedAt: time.Now(),
 					})
 				}
-				w.Done(messageID, estimateUsage(fullText.String()))
+				w.Done(messageID, estimateUsage(content))
 				state.finish()
-				return fullText.String()
+				return content
 			}
 
 		case err, ok := <-state.Errors:
 			if !ok {
 				state.finish()
-				return fullText.String()
+				return state.bufferString()
 			}
 			if err != nil {
 				w.Error(formatErrorMessage(err))
 				state.finish()
-				return fullText.String()
+				return state.bufferString()
 			}
 
 		case <-state.Done:
-			return fullText.String()
+			state.closeStreams(nil)
+			return state.bufferString()
 		}
 	}
 }
