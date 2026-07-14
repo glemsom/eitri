@@ -145,12 +145,9 @@ func testLLMURL(t *testing.T) string {
 	return fakeChatServer(t, "ok").URL
 }
 
-// configureProvider saves an LLM provider config to the test server via HTTP.
-// Provider switches clear model, so tests save provider credentials first, then
-// save the selected model on the stable provider.
+// configureProvider saves runnable LLM provider config to test server via HTTP.
 func configureProvider(t *testing.T, server *httptest.Server, llmURL string) {
 	t.Helper()
-	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test"}`, llmURL))
 	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, llmURL))
 }
 
@@ -689,44 +686,64 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 	}
 }
 
-// TestBrowser_ConfigSavePopulatesModels verifies the full HTMX config-save
-// roundtrip: fill form, submit, provider validates /v1/models, models populate dropdown.
-func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
+func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
 	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
 	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	// Navigate to settings page
+	var hasGPT4 bool
+	var hasGPT35 bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitReady("#model option[value='gpt-4']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-4")`,
+			&hasGPT4,
+		),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-3.5-turbo")`,
+			&hasGPT35,
+		),
+	)
+	if err != nil {
+		t.Fatalf("settings direct navigation failed: %v", err)
+	}
+	if !hasGPT4 {
+		t.Error("settings page missing gpt-4 on direct navigation")
+	}
+	if !hasGPT35 {
+		t.Error("settings page missing gpt-3.5-turbo on direct navigation")
+	}
+}
+
+// TestBrowser_ConfigSavePopulatesModels verifies HTMX save succeeds when
+// user selects discovered model from settings page.
+func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigation to settings failed: %v", err)
-	}
-
-	// Set provider, clear and fill fields, submit via HTMX
-	err = chromedp.Run(ctx,
-		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
-		chromedp.Clear("#base_url", chromedp.ByQuery),
-		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
-		chromedp.Clear("#api_key", chromedp.ByQuery),
-		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		chromedp.SetValue("#model", "gpt-3.5-turbo", chromedp.ByQuery),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
 	)
 	if err != nil {
-		t.Fatalf("form fill/submit failed: %v", err)
+		t.Fatalf("form submit failed: %v", err)
 	}
 
-	// Wait for HTMX response to swap #settings-form with models populated.
-	// The server returns HTML with model options on success (2xx).
 	var modelOptionCount int
 	var hasGPT4 bool
 	var hasGPT35 bool
+	var selectedModel string
 	err = chromedp.Run(ctx,
-		// Wait for the HTMX swap (new #model element with options)
 		chromedp.WaitReady("#model option[value='gpt-4']", chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length", &modelOptionCount),
 		chromedp.EvaluateAsDevTools(
@@ -737,6 +754,7 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-3.5-turbo")`,
 			&hasGPT35,
 		),
+		chromedp.Value("#model", &selectedModel, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("model dropdown check failed: %v", err)
@@ -751,8 +769,10 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 	if !hasGPT35 {
 		t.Error("model dropdown missing gpt-3.5-turbo")
 	}
+	if selectedModel != "gpt-3.5-turbo" {
+		t.Errorf("selected model = %q, want gpt-3.5-turbo", selectedModel)
+	}
 
-	// Verify no error toast is present (success state)
 	var hasErrorToast bool
 	_ = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools("document.querySelector('.error-toast') !== null", &hasErrorToast),

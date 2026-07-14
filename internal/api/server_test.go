@@ -9,9 +9,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -35,6 +37,58 @@ func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return newTestServerAtWorkspace(t, t.TempDir())
+}
+
+func newTestServerWithConfigPath(t *testing.T, workspace, configPath string) *httptest.Server {
+	t.Helper()
+	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewService()
+	cfg := api.ServerConfig{
+		ConfigPath:     configPath,
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server
+}
+
+type mutableProviderServer struct {
+	server *httptest.Server
+	mu     sync.RWMutex
+	status int
+	body   string
+}
+
+func newMutableProviderServer(t *testing.T, status int, body string) *mutableProviderServer {
+	t.Helper()
+	m := &mutableProviderServer{status: status, body: body}
+	m.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(m.status)
+		_, _ = w.Write([]byte(m.body))
+	}))
+	t.Cleanup(m.server.Close)
+	return m
+}
+
+func (m *mutableProviderServer) URL() string {
+	return m.server.URL
+}
+
+func (m *mutableProviderServer) SetResponse(status int, body string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.status = status
+	m.body = body
 }
 
 // fakeProviderServer returns an httptest.Server that responds to /v1/models
@@ -70,7 +124,7 @@ func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
 	t.Cleanup(provider.Close)
 
 	server := newTestServer(t)
-	body := fmt.Sprintf(`{"provider":"github_copilot","base_url":%q,"api_key":"ghu-token"}`, provider.URL)
+	body := fmt.Sprintf(`{"provider":"github_copilot","base_url":%q,"api_key":"ghu-token","model":"gpt-4.1"}`, provider.URL)
 	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +277,7 @@ func TestPutConfigExistingProvidersUseProfileModelDiscovery(t *testing.T) {
 			t.Cleanup(provider.Close)
 
 			server := newTestServer(t)
-			body := fmt.Sprintf(`{"provider":%q,"base_url":%q,"api_key":%q}`, tc.providerID, provider.URL+"/v1", tc.apiKey)
+			body := fmt.Sprintf(`{"provider":%q,"base_url":%q,"api_key":%q,"model":"gpt-4"}`, tc.providerID, provider.URL+"/v1", tc.apiKey)
 			req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
 			if err != nil {
 				t.Fatal(err)
@@ -546,7 +600,28 @@ func TestGetConfigHTMLFragment(t *testing.T) {
 
 func TestPutConfigValid(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
 
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test","model":"gpt-4"}`
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestPutConfigRequiresSelectedModel(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 	server := newTestServer(t)
 
 	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test"}`
@@ -562,8 +637,46 @@ func TestPutConfigValid(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config missing model status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	var bodyJSON map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&bodyJSON); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if !strings.Contains(bodyJSON["error"], "model is required") {
+		t.Errorf("error = %q, want missing model message", bodyJSON["error"])
+	}
+}
+
+func TestPutConfigRejectsUnavailableSelectedModel(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test","model":"missing-model"}`
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config stale model status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	var bodyJSON map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&bodyJSON); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if !strings.Contains(bodyJSON["error"], "missing-model") {
+		t.Errorf("error = %q, want stale model name", bodyJSON["error"])
 	}
 }
 
@@ -618,7 +731,7 @@ func TestPutConfig_ClearAPIKey(t *testing.T) {
 	server := newTestServer(t)
 
 	// First save a config with an API key
-	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test-key"}`
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test-key","model":"gpt-4"}`
 	req, _ := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := http.DefaultClient.Do(req)
@@ -665,7 +778,7 @@ func TestPutConfigFormURLEncoded(t *testing.T) {
 	form.Set("command_timeout", "30")
 	form.Set("max_turns", "10")
 	form.Set("context_window_tokens", "128000")
-	form.Set("model", "")
+	form.Set("model", "gpt-4")
 
 	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -700,7 +813,7 @@ func TestPutConfigFormPreservesAPIKeyWhenEmpty(t *testing.T) {
 	server := newTestServer(t)
 
 	// First save with an API key via JSON
-	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-existing"}`
+	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-existing","model":"gpt-4"}`
 	putJSONConfig(t, server, body)
 
 	// Now submit form with empty api_key (no clear_key checkbox — real HTML behavior)
@@ -737,8 +850,8 @@ func TestPutConfigJSONPreservesAPIKeyWhenEmpty(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 	server := newTestServer(t)
 
-	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-existing-secret"}`)
-	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":""}`)
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-existing-secret","model":"gpt-4"}`)
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"","model":"gpt-4"}`)
 
 	cfgData := getConfigJSON(t, server)
 	if key, ok := cfgData["api_key"].(string); !ok || key == "" {
@@ -746,7 +859,7 @@ func TestPutConfigJSONPreservesAPIKeyWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestPutConfigJSONProviderSwitchClearsModel(t *testing.T) {
+func TestPutConfigJSONProviderSwitchPreservesExplicitModel(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 	server := newTestServer(t)
 
@@ -757,12 +870,12 @@ func TestPutConfigJSONProviderSwitchClearsModel(t *testing.T) {
 	if cfgData["provider"] != "opencode_go" {
 		t.Errorf("provider = %q, want opencode_go", cfgData["provider"])
 	}
-	if cfgData["model"] != "" {
-		t.Errorf("model = %q after provider switch JSON, want empty", cfgData["model"])
+	if cfgData["model"] != "gpt-4" {
+		t.Errorf("model = %q after provider switch JSON, want gpt-4", cfgData["model"])
 	}
 }
 
-func TestPutConfigFormProviderSwitchClearsModel(t *testing.T) {
+func TestPutConfigFormProviderSwitchPreservesExplicitModel(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 	server := newTestServer(t)
 
@@ -791,8 +904,158 @@ func TestPutConfigFormProviderSwitchClearsModel(t *testing.T) {
 	if cfgData["provider"] != "opencode_go" {
 		t.Errorf("provider = %q, want opencode_go", cfgData["provider"])
 	}
-	if cfgData["model"] != "" {
-		t.Errorf("model = %q after provider switch form, want empty", cfgData["model"])
+	if cfgData["model"] != "gpt-4" {
+		t.Errorf("model = %q after provider switch form, want gpt-4", cfgData["model"])
+	}
+}
+
+func TestSettingsPagePopulatesDiscoveredModelsOnDirectNavigation(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-4.1"}]}`)
+	workspace := t.TempDir()
+	configPath := workspace + "/config.json"
+	server := newTestServerWithConfigPath(t, workspace, configPath)
+
+	if err := config.Save(configPath, &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             provider.URL,
+		Model:               "gpt-4",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	resp, err := http.Get(server.URL + "/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+	if !strings.Contains(content, `option value="gpt-4"`) {
+		t.Errorf("settings page missing discovered model gpt-4")
+	}
+	if !strings.Contains(content, `option value="gpt-4.1"`) {
+		t.Errorf("settings page missing discovered model gpt-4.1")
+	}
+}
+
+func TestGetSessionPageShowsSetupBannerWhenSavedModelUnavailable(t *testing.T) {
+	provider := newMutableProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	workspace := t.TempDir()
+	configPath := workspace + "/config.json"
+	server := newTestServerWithConfigPath(t, workspace, configPath)
+	client := noRedirectClient()
+
+	if err := config.Save(configPath, &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             provider.URL(),
+		Model:               "gpt-4",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+	provider.SetResponse(http.StatusOK, `{"object":"list","data":[{"id":"other-model"}]}`)
+
+	rootResp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootResp.Body.Close()
+
+	loc := rootResp.Header.Get("Location")
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	pageReq, _ := http.NewRequest(http.MethodGet, server.URL+loc, nil)
+	pageReq.AddCookie(browserCookie)
+	pageResp, err := client.Do(pageReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pageResp.Body.Close()
+
+	body, err := io.ReadAll(pageResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+	if !strings.Contains(content, `id="setup-banner"`) {
+		t.Fatalf("session page missing setup banner when saved model stale")
+	}
+	if !strings.Contains(content, `id="chat-input"`) || !strings.Contains(content, `disabled`) {
+		t.Errorf("session page should render disabled chat input when config invalid")
+	}
+}
+
+func TestChatRejectsUnavailableSavedModel(t *testing.T) {
+	provider := newMutableProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	h := newManagedTestServerWithRuns(t)
+	client := noRedirectClient()
+
+	putJSONConfig(t, h.server, `{"provider":"custom_openai","base_url":"`+provider.URL()+`","api_key":"sk-test","model":"gpt-4"}`)
+	provider.SetResponse(http.StatusOK, `{"object":"list","data":[{"id":"other-model"}]}`)
+
+	rootResp, err := client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootResp.Body.Close()
+	loc := rootResp.Header.Get("Location")
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	chatReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/api"+loc+"/chat", strings.NewReader("message=hello"))
+	chatReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	chatReq.Header.Set("HX-Request", "true")
+	chatReq.AddCookie(browserCookie)
+	chatResp, err := client.Do(chatReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chatResp.Body.Close()
+
+	if chatResp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("chat status = %d, want %d", chatResp.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	body, err := io.ReadAll(chatResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "selected model") {
+		t.Errorf("chat error = %q, want stale model message", string(body))
+	}
+	if h.runMgr.ActiveRun(strings.TrimPrefix(loc, "/sessions/")) != nil {
+		t.Fatal("chat started run despite stale saved model")
 	}
 }
 
@@ -833,11 +1096,7 @@ func TestGetConfigHTMLFragmentWithModels(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"claude-3"}]}`)
 	server := newTestServer(t)
 
-	// Save to populate config
-	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test"}`
-	req, _ := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	http.DefaultClient.Do(req)
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-test","model":"claude-3"}`)
 
 	// Verify via JSON that model was returned in models endpoint
 	modelsResp, err := http.Get(fmt.Sprintf("%s/api/models", server.URL))

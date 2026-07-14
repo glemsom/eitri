@@ -2,10 +2,10 @@ package templates
 
 import "github.com/glemsom/eitri/internal/config"
 
-templ SettingsView(cfg *config.Config, workspace string, chatPath string) {
+templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string) {
 	@Base("Eitri — Settings", chatPath, nil, "") {
 		@WorkspaceIndicator(workspace)
-		@SettingsForm(cfg, nil)
+		@SettingsForm(cfg, models)
 	}
 }
 
@@ -49,7 +49,7 @@ templ SettingsForm(cfg *config.Config, models []string) {
 							<option value={ m } if cfg.Model == m { selected }>{ m }</option>
 						}
 					</select>
-					<small class="hint">Models are discovered on save. Save to populate model list.</small>
+					<small class="hint">Models are discovered from current provider settings on load and save.</small>
 				</div>
 			</fieldset>
 

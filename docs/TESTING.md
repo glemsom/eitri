@@ -99,7 +99,8 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_SetupBannerVisible` | Missing provider config keeps chat visible, disables composer, shows `#setup-banner` linking to `/settings` |
 | `TestBrowser_SettingsPage` | `/settings` route loads, `#provider` select element present |
 | `TestBrowser_SettingsFormElements` | Settings form renders `#provider`, `#api_key`, `#base_url`, `#model` fields; no chat-specific `#send-btn` on settings page |
-| `TestBrowser_ConfigSavePopulatesModels` | Save via `hx-put` hits `/v1/models` with credentials, populates `#model` dropdown with returned models, no error toast |
+| `TestBrowser_SettingsDirectNavigationPopulatesModels` | Direct navigation to `/settings` with saved provider config populates `#model` dropdown from live discovery |
+| `TestBrowser_ConfigSavePopulatesModels` | Save via `hx-put` revalidates provider discovery, preserves discovered model options, and keeps selected model |
 | `TestBrowser_ConfigSaveProviderFailure` | 4xx from provider validation does NOT populate models; form stays unchanged (HTMX no-swap on error responses) |
 | `TestBrowser_HealthPage` | `/health` page renders with body containing "ok" |
 | `TestBrowser_SendMessage` | Sends a message → user bubble appears with correct text, `#chat-input` disabled during active run |

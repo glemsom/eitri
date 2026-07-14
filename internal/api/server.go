@@ -40,6 +40,46 @@ type Server struct {
 	sses       sync.Map // sessionID -> chan SSEEvent (active stream connections)
 }
 
+type configState struct {
+	cfg    *config.Config
+	models []string
+	err    error
+}
+
+func (cs configState) valid() bool {
+	return cs.cfg != nil && cs.err == nil
+}
+
+func (s *Server) loadConfigState(ctx context.Context) configState {
+	cfg, err := config.Load(s.config.ConfigPath)
+	if err != nil {
+		return configState{err: err}
+	}
+	if err := config.Validate(cfg); err != nil {
+		return configState{cfg: cfg, err: err}
+	}
+	models, err := s.fetchModelList(ctx, cfg)
+	if err != nil {
+		return configState{cfg: cfg, err: err}
+	}
+	if err := config.ValidateSelectedModel(cfg, models); err != nil {
+		return configState{cfg: cfg, models: models, err: err}
+	}
+	return configState{cfg: cfg, models: models}
+}
+
+func writeConfigError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	if r.Header.Get("HX-Request") == "true" || !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		_ = templates.ErrorToast(message).Render(r.Context(), w)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
 func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
 	defer func() {
 		_ = recover()
@@ -248,14 +288,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 	sess := s.config.SessionManager.Get(id)
 
-	// Check config validity for setup banner
-	cfg, err := config.Load(s.config.ConfigPath)
-	configValid := err == nil && cfg != nil && cfg.Model != "" && cfg.BaseURL != ""
-	if cfg != nil {
-		if prof, profErr := provider.Get(cfg.Provider); profErr != nil || (prof.APIKeyRequired && cfg.APIKey == "") {
-			configValid = false
-		}
-	}
+	state := s.loadConfigState(r.Context())
+	configValid := state.valid()
 
 	// Stale session (id doesn't exist at all) → redirect to /
 	if sess == nil {
@@ -324,13 +358,13 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.config.ConfigPath)
-	if err != nil {
+	state := s.loadConfigState(r.Context())
+	if state.cfg == nil {
 		http.Error(w, "Failed to load config", http.StatusInternalServerError)
 		return
 	}
 
-	component := templates.SettingsView(cfg, s.config.Workspace, s.chatPathForRequest(r))
+	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r))
 	component.Render(r.Context(), w)
 }
 
@@ -341,6 +375,12 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	state := s.loadConfigState(r.Context())
+	models := state.models
+	if state.cfg != nil {
+		cfg = state.cfg
+	}
+
 	// Mask the API key for GET responses
 	maskedCfg := *cfg
 	if maskedCfg.APIKey != "" {
@@ -349,7 +389,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if r.Header.Get("HX-Request") == "true" {
-		component := templates.SettingsForm(&maskedCfg, nil)
+		component := templates.SettingsForm(&maskedCfg, models)
 		component.Render(r.Context(), w)
 		return
 	}
@@ -428,18 +468,18 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Validate field-level constraints
 	if err := config.Validate(newCfg); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 
 	// Validate provider credentials by calling the profile's model discovery path.
-	models, err := s.fetchModelList(newCfg)
+	models, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if err := config.ValidateSelectedModel(newCfg, models); err != nil {
+		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 
@@ -466,7 +506,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 
 // fetchModelList calls the provider profile's model discovery path and returns model IDs.
 // Also validates that the provider credentials work.
-func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
+func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("base_url is required")
 	}
@@ -479,7 +519,7 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 	}
 
 	modelsURL := prof.ModelListURL(cfg.BaseURL)
-	req, err := http.NewRequestWithContext(context.Background(), "GET", modelsURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -569,6 +609,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		prompt = slashResult.Prompt
 	}
 
+	cfgState := s.loadConfigState(r.Context())
+	if !cfgState.valid() {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		component := templates.ErrorToast(cfgState.err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+	if s.config.RunManager != nil {
+		s.config.RunManager.UpdateProviderConfig(cfgState.cfg)
+	}
+
 	// Check for active run (concurrent run protection)
 	if s.config.RunManager.ActiveRun(id) != nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -602,8 +654,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
 
 	// Start SSE event processing in background
-	state := s.config.RunManager.ActiveRun(id)
-	if state != nil {
+	runState := s.config.RunManager.ActiveRun(id)
+	if runState != nil {
 		sseCh := make(chan SSEEvent, 100)
 		s.sses.Store(id, sseCh)
 
@@ -615,7 +667,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			}()
 
 			w := NewSSEWriter(sseCh)
-			s.config.RunManager.AppendEvent(state, w)
+			s.config.RunManager.AppendEvent(runState, w)
 		}()
 	}
 
@@ -1226,7 +1278,7 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, err := s.fetchModelList(cfg)
+	models, err := s.fetchModelList(r.Context(), cfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)

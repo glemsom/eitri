@@ -114,6 +114,19 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// ValidateSelectedModel checks that cfg.Model is present in live-discovered models.
+func ValidateSelectedModel(cfg *Config, models []string) error {
+	if strings.TrimSpace(cfg.Model) == "" {
+		return fmt.Errorf("model is required; choose one from discovered models")
+	}
+	for _, model := range models {
+		if model == cfg.Model {
+			return nil
+		}
+	}
+	return fmt.Errorf("selected model %q is no longer available; choose another discovered model", cfg.Model)
+}
+
 // MaskAPIKey returns a masked version of the API key per SPEC §7.2:
 // first 5 chars + "..." + last 3 chars. If key is too short, returns as-is.
 func MaskAPIKey(key string) string {
@@ -186,7 +199,9 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 	}
 
 	if providerChanged {
-		result.Model = ""
+		if _, ok := patch["model"]; !ok {
+			result.Model = ""
+		}
 		if shouldResetBaseURLOnProviderSwitch(base.Provider, result.Provider, base.BaseURL, baseURLPatched, baseURLPatch) {
 			if prof, err := provider.Get(result.Provider); err == nil {
 				result.BaseURL = prof.DefaultBaseURL
