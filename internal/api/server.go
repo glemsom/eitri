@@ -343,6 +343,16 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Detect masked-key round-trip: when the submitted api_key matches
+	// the masked version of the current key, preserve the real key.
+	// Masked keys (sk-pd...AWi) come from the settings form's value attr
+	// and would overwrite the real key if saved as-is.
+	if v, ok := patch["api_key"]; ok {
+		if s, ok := v.(string); ok && s != "" && s == config.MaskAPIKey(cfg.APIKey) {
+			delete(patch, "api_key")
+		}
+	}
+
 	// Apply patch
 	newCfg := config.Merge(cfg, patch)
 
