@@ -106,11 +106,11 @@ type apiError struct {
 
 // retryableStatusCodes are HTTP statuses that trigger automatic retry.
 var retryableStatusCodes = map[int]bool{
-	http.StatusTooManyRequests:      true, // 429
-	http.StatusServiceUnavailable:   true, // 503
-	http.StatusBadGateway:           true, // 502
-	http.StatusGatewayTimeout:       true, // 504
-	http.StatusInternalServerError:  true, // 500
+	http.StatusTooManyRequests:     true, // 429
+	http.StatusServiceUnavailable:  true, // 503
+	http.StatusBadGateway:          true, // 502
+	http.StatusGatewayTimeout:      true, // 504
+	http.StatusInternalServerError: true, // 500
 }
 
 // isRetryableError checks if an HTTP status code should trigger a retry.
@@ -308,6 +308,8 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 	scanner.Buffer(make([]byte, 0, 65536), 1<<20)
 
 	buf := &streamBuf{}
+	seenDataLine := false
+	seenChoice := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -317,6 +319,7 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
+		seenDataLine = true
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			break
@@ -325,7 +328,8 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 		var chunk openAIRespChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			log.Printf("bad SSE chunk: %v", err)
-			continue
+			yield(nil, fmt.Errorf("streaming tool calls not supported: malformed SSE chunk"))
+			return
 		}
 
 		if chunk.Error != nil {
@@ -335,6 +339,7 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 		if len(chunk.Choices) == 0 {
 			continue
 		}
+		seenChoice = true
 		choice := chunk.Choices[0]
 
 		// Accumulate text + tool call fragments
@@ -373,6 +378,11 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 
 	if err := scanner.Err(); err != nil {
 		yield(nil, fmt.Errorf("SSE read error: %w", err))
+		return
+	}
+
+	if !seenDataLine || !seenChoice {
+		yield(nil, fmt.Errorf("streaming tool calls not supported: provider did not return OpenAI-style SSE chat completions"))
 		return
 	}
 

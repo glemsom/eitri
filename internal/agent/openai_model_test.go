@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -126,7 +127,7 @@ func TestOpenAIModel_ExistingProvidersUseProfileChatCompletionsPath(t *testing.T
 			}
 			m.MaxRetries = 0
 			req := &model.LLMRequest{
-				Model: "gpt-4",
+				Model:    "gpt-4",
 				Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hello"}}}},
 			}
 			_, err = collectErrors(m.GenerateContent(context.Background(), req, true))
@@ -134,6 +135,145 @@ func TestOpenAIModel_ExistingProvidersUseProfileChatCompletionsPath(t *testing.T
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestOpenAIModel_GitHubCopilotStreamingTextUsesCopilotTransport(t *testing.T) {
+	var sawRequest bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawRequest = true
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("path = %q, want /chat/completions", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		assertCopilotHeaders(t, r)
+		var body struct {
+			Model  string `json:"model"`
+			Stream bool   `json:"stream"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body.Model != "gpt-4.1" {
+			t.Errorf("model = %q, want gpt-4.1", body.Model)
+		}
+		if !body.Stream {
+			t.Errorf("stream = false, want true")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Copilot says hi"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	m, err := agent.NewOpenAIModelForProvider("gpt-4.1", srv.URL, "gh-token", "github_copilot")
+	if err != nil {
+		t.Fatalf("NewOpenAIModelForProvider error: %v", err)
+	}
+	m.MaxRetries = 0
+	resp, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model:    "gpt-4.1",
+		Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hello"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sawRequest {
+		t.Fatal("server did not receive request")
+	}
+	if len(resp) == 0 || resp[0].Content.Parts[0].Text != "Copilot says hi" {
+		t.Fatalf("first response = %+v, want Copilot says hi", resp)
+	}
+	if !resp[len(resp)-1].TurnComplete {
+		t.Fatalf("last response should be TurnComplete")
+	}
+}
+
+func TestOpenAIModel_GitHubCopilotStreamingToolCalls(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		if r.URL.Path != "/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		assertCopilotHeaders(t, r)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"terminal_execute","arguments":"{\"command\":\""}}]},"finish_reason":null}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"echo copilot\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	m, err := agent.NewOpenAIModelForProvider("gpt-4.1", srv.URL, "gh-token", "github_copilot")
+	if err != nil {
+		t.Fatalf("NewOpenAIModelForProvider error: %v", err)
+	}
+	m.MaxRetries = 0
+	resp, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model:    "gpt-4.1",
+		Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Run command"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	last := resp[len(resp)-1]
+	for _, part := range last.Content.Parts {
+		if part.FunctionCall != nil && part.FunctionCall.Name == "terminal_execute" {
+			if cmd, ok := part.FunctionCall.Args["command"].(string); !ok || cmd != "echo copilot" {
+				t.Fatalf("command = %q, want echo copilot", cmd)
+			}
+			return
+		}
+	}
+	t.Fatalf("terminal_execute tool call missing: %+v", last.Content.Parts)
+}
+
+func TestOpenAIModel_MalformedStreamingProducesUnsupportedProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		fmt.Fprint(w, `{"message":"not an SSE stream"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
+	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model:    "gpt-4",
+		Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "streaming tool calls") {
+		t.Fatalf("error = %v, want streaming tool calls unsupported error", err)
+	}
+}
+
+func assertCopilotHeaders(t *testing.T, r *http.Request) {
+	t.Helper()
+	want := map[string]string{
+		"Authorization":        "Bearer gh-token",
+		"User-Agent":           "Eitri",
+		"X-GitHub-Api-Version": "2022-11-28",
+		"Openai-Intent":        "conversation-panel",
+		"x-initiator":          "user",
+		"Accept":               "text/event-stream",
+	}
+	for name, value := range want {
+		if got := r.Header.Get(name); got != value {
+			t.Errorf("header %s = %q, want %q", name, got, value)
+		}
 	}
 }
 
