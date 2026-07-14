@@ -267,17 +267,17 @@ func TestAppendMessage_FirstUserMessageSetsTruncatedTitle(t *testing.T) {
 	}
 }
 
-func TestAppendMessage_OnlyFirstUserMessageRenamesSession(t *testing.T) {
+func TestAppendMessage_EveryUserMessageUpdatesTitle(t *testing.T) {
 	mgr := session.NewManager(10)
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "first question"})
 	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "second question should not rename"})
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "second question should rename"})
 
 	got := mgr.Get(sess.ID)
-	if got.Title != "first question" {
-		t.Errorf("Title = %q, want %q", got.Title, "first question")
+	if got.Title != "second question should rename" {
+		t.Errorf("Title = %q, want %q", got.Title, "second question should rename")
 	}
 }
 
