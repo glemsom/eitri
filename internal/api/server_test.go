@@ -1,9 +1,11 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,6 +50,23 @@ func newTestServerWithConfigPath(t *testing.T, workspace, configPath string) *ht
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server {
+	t.Helper()
+	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewService()
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      t.TempDir(),
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+		Logger:         logger,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -321,6 +340,148 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if body["status"] != "ok" {
 		t.Errorf(`body["status"] = %q, want "ok"`, body["status"])
+	}
+}
+
+func TestRequestBodyLimitRejectsOversizedRequests(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootResp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("browser_id cookie missing")
+	}
+	sessionID := strings.TrimPrefix(rootResp.Header.Get("Location"), "/sessions/")
+	large := strings.Repeat("x", 1024*1024+1)
+
+	for _, tc := range []struct {
+		name        string
+		method      string
+		path        string
+		contentType string
+		body        string
+		withCookie  bool
+	}{
+		{
+			name:        "config put",
+			method:      http.MethodPut,
+			path:        "/api/config",
+			contentType: "application/json",
+			body:        `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test","model":"` + large + `"}`,
+		},
+		{
+			name:        "chat post",
+			method:      http.MethodPost,
+			path:        "/api/sessions/" + sessionID + "/chat",
+			contentType: "application/x-www-form-urlencoded",
+			body:        "message=" + large,
+			withCookie:  true,
+		},
+		{
+			name:        "render component post",
+			method:      http.MethodPost,
+			path:        "/api/sessions/" + sessionID + "/render/component",
+			contentType: "application/json",
+			body:        `{"name":"MermaidDiagram","data":{"code":"` + large + `"}}`,
+			withCookie:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, server.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", tc.contentType)
+			if tc.withCookie {
+				req.AddCookie(browserCookie)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusRequestEntityTooLarge {
+				body, _ := io.ReadAll(resp.Body)
+				t.Fatalf("%s status = %d, want %d; body=%s", tc.path, resp.StatusCode, http.StatusRequestEntityTooLarge, body)
+			}
+		})
+	}
+}
+
+func TestRequestLoggingIncludesMethodPathStatusDurationAndSessionID(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	server := newTestServerWithLogger(t, logger)
+	client := noRedirectClient()
+
+	rootResp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootResp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("browser_id cookie missing")
+	}
+	sessionPath := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(sessionPath, "/sessions/")
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+sessionPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s status = %d, want %d", sessionPath, resp.StatusCode, http.StatusOK)
+	}
+
+	lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) == "" {
+		t.Fatalf("logs empty")
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &entry); err != nil {
+		t.Fatalf("unmarshal log entry: %v\nlog=%s", err, lines[len(lines)-1])
+	}
+	if entry["method"] != http.MethodGet {
+		t.Fatalf("method = %v, want %s", entry["method"], http.MethodGet)
+	}
+	if entry["path"] != sessionPath {
+		t.Fatalf("path = %v, want %s", entry["path"], sessionPath)
+	}
+	if entry["status"] != float64(http.StatusOK) {
+		t.Fatalf("status = %v, want %d", entry["status"], http.StatusOK)
+	}
+	if entry["session_id"] != sessionID {
+		t.Fatalf("session_id = %v, want %s", entry["session_id"], sessionID)
+	}
+	if _, ok := entry["duration_ms"]; !ok {
+		t.Fatalf("duration_ms missing: %#v", entry)
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -161,13 +161,15 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		Done:      make(chan struct{}),
 	}
 
+	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
+
 	rm.mu.Lock()
 	rm.active[sessionID] = state
 	rm.mu.Unlock()
 
 	go func() {
 		<-state.Done
-		log.Printf("Run done for session %s", sessionID)
+		slog.Info("run done", slog.String("session_id", sessionID))
 		rm.mu.Lock()
 		if rm.active[sessionID] == state {
 			delete(rm.active, sessionID)
@@ -197,6 +199,7 @@ func (rm *RunManager) CancelRun(sessionID string) bool {
 	if !exists {
 		return false
 	}
+	slog.Info("run canceled", slog.String("session_id", sessionID))
 	state.Cancel()
 	state.finish()
 	return true
@@ -213,6 +216,7 @@ func (rm *RunManager) CancelAll() {
 	rm.mu.Unlock()
 
 	for _, state := range states {
+		slog.Info("run canceled", slog.String("session_id", state.SessionID))
 		state.Cancel()
 		state.finish()
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -179,6 +180,8 @@ func (e *TmuxExecutor) recoverSession() bool {
 
 	_ = exec.Command(TmuxPath, "kill-session", "-t", e.sessionName).Run()
 	cmd := exec.Command(TmuxPath, "new-session", "-d", "-s", e.sessionName, "-c", e.workspace)
+
+	slog.Warn("tmux session missing; recreating", slog.String("tmux_session", e.sessionName))
 	if _, err := cmd.CombinedOutput(); err != nil {
 		return false
 	}
@@ -205,6 +208,7 @@ func (e *TmuxExecutor) Close() error {
 		return nil
 	}
 	e.closed = true
+	slog.Info("tmux executor closing", slog.String("tmux_session", e.sessionName))
 	e.mu.Unlock()
 
 	stopErr := e.stopActiveCommand()

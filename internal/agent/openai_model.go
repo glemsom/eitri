@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -143,7 +143,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			if attempt > 0 {
 				// Exponential backoff: delay, 2*delay, 4*delay
 				backoff := m.RetryDelay * (1 << (attempt - 1))
-				log.Printf("Retrying LLM request after %v (attempt %d/%d)", backoff, attempt, m.MaxRetries)
+				slog.Info("retrying llm request", slog.Duration("backoff", backoff), slog.Int("attempt", attempt), slog.Int("max_retries", m.MaxRetries))
 				timer := time.NewTimer(backoff)
 				select {
 				case <-ctx.Done():
@@ -168,7 +168,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 				// Network errors: connection refused, timeout, DNS failure — retryable
 				lastErr = m.classifyNetError(err)
 				if attempt < m.MaxRetries {
-					log.Printf("LLM network error (attempt %d/%d): %v", attempt+1, m.MaxRetries, err)
+					slog.Warn("llm network error", slog.Int("attempt", attempt+1), slog.Int("max_retries", m.MaxRetries), slog.Any("error", err))
 					continue
 				}
 				yield(nil, m.retryExhaustedError(lastErr))
@@ -180,7 +180,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 					lastErr = m.parseHTTPError(resp)
 					resp.Body.Close()
 					if attempt < m.MaxRetries {
-						log.Printf("LLM retryable HTTP %d (attempt %d/%d): %v", resp.StatusCode, attempt+1, m.MaxRetries, lastErr)
+						slog.Warn("llm retryable http error", slog.Int("status", resp.StatusCode), slog.Int("attempt", attempt+1), slog.Int("max_retries", m.MaxRetries), slog.Any("error", lastErr))
 						continue
 					}
 					// Exhausted retries — wrap error and yield
@@ -327,7 +327,7 @@ func (m *OpenAIModel) readStream(body io.Reader, yield func(*model.LLMResponse, 
 
 		var chunk openAIRespChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			log.Printf("bad SSE chunk: %v", err)
+			slog.Warn("bad sse chunk", slog.Any("error", err))
 			yield(nil, fmt.Errorf("streaming tool calls not supported: malformed SSE chunk"))
 			return
 		}
@@ -407,7 +407,7 @@ func (b *streamBuf) addContent(s string) {
 func (b *streamBuf) addToolCalls(raw json.RawMessage) {
 	var incoming []map[string]any
 	if err := json.Unmarshal(raw, &incoming); err != nil {
-		log.Printf("bad tool_calls in stream: %v", err)
+		slog.Warn("bad tool_calls in stream", slog.Any("error", err))
 		return
 	}
 	for _, tc := range incoming {
