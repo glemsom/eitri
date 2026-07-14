@@ -21,8 +21,7 @@ mkdir -p "${INSTALL_DIR}"
 # Determine the latest release tag
 echo "Determining latest release..."
 TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-  | grep '"tag_name"' \
-  | sed 's/.*: "//;s/",//' 2>/dev/null || true)
+  | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' 2>/dev/null || true)
 
 if [ -z "${TAG}" ]; then
   echo "Warning: Could not determine latest release tag. Trying 'latest' URL..."
@@ -50,23 +49,30 @@ fi
 CHECKSUM_URL="${BASE_URL}/checksums.txt"
 CHECKSUM_FILE="${TMPDIR}/checksums.txt"
 
-if curl -sSfL "${CHECKSUM_URL}" -o "${CHECKSUM_FILE}" 2>/dev/null; then
-  echo "Verifying SHA256 checksum..."
-  if command -v sha256sum &>/dev/null; then
-    (cd "${TMPDIR}" && sha256sum -c --ignore-missing "${CHECKSUM_FILE}") || {
-      echo "Error: SHA256 verification failed."
-      exit 1
-    }
-  elif command -v shasum &>/dev/null; then
-    (cd "${TMPDIR}" && shasum -a 256 -c "${CHECKSUM_FILE}") || {
-      echo "Error: SHA256 verification failed."
-      exit 1
-    }
-  else
-    echo "Warning: sha256sum not found. Skipping verification."
-  fi
+if ! curl -sSfL "${CHECKSUM_URL}" -o "${CHECKSUM_FILE}" 2>/dev/null; then
+  echo "Error: checksums.txt not found at ${CHECKSUM_URL}."
+  exit 1
+fi
+
+echo "Verifying SHA256 checksum..."
+EXPECTED_SHA=$(awk '$2 == "eitri-linux-amd64.tar.gz" { print $1 }' "${CHECKSUM_FILE}")
+if [ -z "${EXPECTED_SHA}" ]; then
+  echo "Error: checksums.txt does not contain entry for ${TARBALL}."
+  exit 1
+fi
+
+ACTUAL_SHA=""
+if command -v sha256sum &>/dev/null; then
+  ACTUAL_SHA=$(sha256sum "${TMPDIR}/${TARBALL}" | awk '{ print $1 }')
+elif command -v shasum &>/dev/null; then
+  ACTUAL_SHA=$(shasum -a 256 "${TMPDIR}/${TARBALL}" | awk '{ print $1 }')
 else
-  echo "Warning: checksums.txt not found at ${CHECKSUM_URL}. Skipping verification."
+  echo "Warning: no SHA256 tool found. Skipping verification."
+fi
+
+if [ -n "${ACTUAL_SHA}" ] && [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
+  echo "Error: SHA256 verification failed."
+  exit 1
 fi
 
 # Extract tarball

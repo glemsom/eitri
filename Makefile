@@ -1,10 +1,13 @@
-BINARY   := eitri
-GO       := go
-TEMPL    := templ
-BUILD_DIR:= dist
-GOFLAGS  := -ldflags="-s -w"
+BINARY        := eitri
+GO            := go
+TEMPL         := templ
+BUILD_DIR     := dist
+DIST_BINARY   := $(BUILD_DIR)/$(BINARY)
+DIST_TARBALL  := $(BUILD_DIR)/eitri-linux-amd64.tar.gz
+DIST_CHECKSUM := $(BUILD_DIR)/checksums.txt
+GOFLAGS       := -ldflags="-s -w"
 
-.PHONY: all build clean test help run templ-generate
+.PHONY: all build clean test help run templ-generate release release-check
 
 all: build
 
@@ -20,6 +23,18 @@ clean:
 ## test — run all tests
 test:
 	$(GO) test ./...
+
+## release — build linux/amd64 release tarball + checksums.txt
+release: templ-generate
+	mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath $(GOFLAGS) -o $(DIST_BINARY) ./cmd/eitri
+	tar -C $(BUILD_DIR) -czf $(DIST_TARBALL) $(BINARY)
+	cd $(BUILD_DIR) && sha256sum $(notdir $(DIST_TARBALL)) > $(notdir $(DIST_CHECKSUM))
+
+## release-check — release readiness test gates
+release-check:
+	$(GO) test ./...
+	$(GO) test -tags=browser ./internal/api/
 
 ## run — build and start server
 run: build
@@ -39,6 +54,8 @@ help:
 	@echo "  make build          Compile the eitri binary"
 	@echo "  make clean          Remove build artifacts (binary + dist/)"
 	@echo "  make test           Run all tests"
+	@echo "  make release        Build linux/amd64 tarball + checksums"
+	@echo "  make release-check  Run release readiness tests"
 	@echo "  make run            Build and run the server"
 	@echo "  make help           Show this help"
 	@echo ""
