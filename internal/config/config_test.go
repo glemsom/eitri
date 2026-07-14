@@ -229,6 +229,41 @@ func TestValidate_InvalidBaseURL(t *testing.T) {
 	}
 }
 
+func TestValidateSelectedModel_RequiresSelection(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Model = ""
+
+	err := config.ValidateSelectedModel(&cfg, []string{"gpt-4"})
+	if err == nil {
+		t.Fatal("ValidateSelectedModel(empty) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "model is required") {
+		t.Errorf("error = %q, want missing model message", err.Error())
+	}
+}
+
+func TestValidateSelectedModel_RequiresDiscoveredModel(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Model = "stale-model"
+
+	err := config.ValidateSelectedModel(&cfg, []string{"gpt-4"})
+	if err == nil {
+		t.Fatal("ValidateSelectedModel(stale) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "stale-model") {
+		t.Errorf("error = %q, want selected model name", err.Error())
+	}
+}
+
+func TestValidateSelectedModel_AcceptsDiscoveredModel(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Model = "gpt-4"
+
+	if err := config.ValidateSelectedModel(&cfg, []string{"gpt-4", "gpt-4.1"}); err != nil {
+		t.Errorf("ValidateSelectedModel(valid) = %v, want nil", err)
+	}
+}
+
 func TestMaskAPIKey(t *testing.T) {
 	tests := []struct {
 		input string
@@ -323,18 +358,18 @@ func TestMerge_ProviderSwitchClearsModelAndResetsDefaultBaseURL(t *testing.T) {
 	}
 }
 
-func TestMerge_ProviderSwitchResetsStaleSubmittedDefaultBaseURL(t *testing.T) {
+func TestMerge_ProviderSwitchPreservesExplicitSubmittedModelAndResetsStaleDefaultBaseURL(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Model = "opencode-model"
 
 	result := config.Merge(&cfg, map[string]interface{}{
 		"provider": "github_copilot",
 		"base_url": cfg.BaseURL,
-		"model":    cfg.Model,
+		"model":    "gpt-4.1",
 	})
 
-	if result.Model != "" {
-		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
+	if result.Model != "gpt-4.1" {
+		t.Errorf("Model = %q, want explicit submitted model preserved", result.Model)
 	}
 	if result.BaseURL != "https://api.githubcopilot.com" {
 		t.Errorf("BaseURL = %q, want GitHub Copilot default", result.BaseURL)
