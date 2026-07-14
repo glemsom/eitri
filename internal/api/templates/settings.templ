@@ -52,15 +52,15 @@ templ SettingsForm(cfg *config.Config, models []string) {
 				</div>
 
 				<div class="form-group">
-					<label for="api_key">API Key</label>
+					<label for="api_key">API key / token</label>
 					<div class="api-key-row">
-						<input type="password" id="api_key" name="api_key" value={ cfg.APIKey } placeholder="sk-..." autocomplete="off"/>
+						<input type="password" id="api_key" name="api_key" value={ cfg.APIKey } placeholder="API key or bearer token" autocomplete="off"/>
 						<label class="checkbox-label">
 							<input type="checkbox" name="clear_api_key" value="true"/>
-							Clear key
+							Clear stored credential
 						</label>
 					</div>
-					<small class="hint">OpenCode Go requires an API key. GitHub Copilot requires a bearer token. Custom OpenAI credentials are optional.</small>
+					<small class="hint">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small>
 				</div>
 
 				<div class="form-group">

@@ -188,7 +188,7 @@ func TestSettingsIncludesGitHubCopilotProvider(t *testing.T) {
 	if !strings.Contains(content, `value="github_copilot"`) || !strings.Contains(content, "GitHub Copilot") {
 		t.Errorf("settings HTML missing GitHub Copilot provider option")
 	}
-	if !strings.Contains(content, "GitHub Copilot requires a bearer token") {
+	if !strings.Contains(content, "GitHub Copilot: bearer token required") {
 		t.Errorf("settings HTML missing Copilot token hint")
 	}
 }
@@ -629,9 +629,7 @@ func TestPutConfigFormPreservesAPIKeyWhenEmpty(t *testing.T) {
 
 	// First save with an API key via JSON
 	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-existing"}`
-	req, _ := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	http.DefaultClient.Do(req)
+	putJSONConfig(t, server, body)
 
 	// Now submit form with empty api_key (no clear_key checkbox — real HTML behavior)
 	form := url.Values{}
@@ -657,6 +655,95 @@ func TestPutConfigFormPreservesAPIKeyWhenEmpty(t *testing.T) {
 	}
 
 	// Verify the key was preserved
+	cfgData := getConfigJSON(t, server)
+	if key, ok := cfgData["api_key"].(string); !ok || key == "" {
+		t.Errorf("api_key = %q after empty form submit, want preserved", key)
+	}
+}
+
+func TestPutConfigJSONPreservesAPIKeyWhenEmpty(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-existing-secret"}`)
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":""}`)
+
+	cfgData := getConfigJSON(t, server)
+	if key, ok := cfgData["api_key"].(string); !ok || key == "" {
+		t.Errorf("api_key = %q after empty JSON submit, want preserved", key)
+	}
+}
+
+func TestPutConfigJSONProviderSwitchClearsModel(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-existing","model":"gpt-4"}`)
+	putJSONConfig(t, server, `{"provider":"opencode_go","base_url":"`+provider.URL+`/v1","api_key":"sk-opencode","model":"gpt-4"}`)
+
+	cfgData := getConfigJSON(t, server)
+	if cfgData["provider"] != "opencode_go" {
+		t.Errorf("provider = %q, want opencode_go", cfgData["provider"])
+	}
+	if cfgData["model"] != "" {
+		t.Errorf("model = %q after provider switch JSON, want empty", cfgData["model"])
+	}
+}
+
+func TestPutConfigFormProviderSwitchClearsModel(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-existing","model":"gpt-4"}`)
+
+	form := url.Values{}
+	form.Set("provider", "opencode_go")
+	form.Set("base_url", provider.URL+"/v1")
+	form.Set("api_key", "sk-opencode")
+	form.Set("model", "gpt-4")
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config form provider switch status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	cfgData := getConfigJSON(t, server)
+	if cfgData["provider"] != "opencode_go" {
+		t.Errorf("provider = %q, want opencode_go", cfgData["provider"])
+	}
+	if cfgData["model"] != "" {
+		t.Errorf("model = %q after provider switch form, want empty", cfgData["model"])
+	}
+}
+
+func putJSONConfig(t *testing.T, server *httptest.Server, body string) {
+	t.Helper()
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		content, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/config status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, content)
+	}
+}
+
+func getConfigJSON(t *testing.T, server *httptest.Server) map[string]interface{} {
+	t.Helper()
 	getResp, err := http.Get(server.URL + "/api/config")
 	if err != nil {
 		t.Fatal(err)
@@ -664,10 +751,10 @@ func TestPutConfigFormPreservesAPIKeyWhenEmpty(t *testing.T) {
 	defer getResp.Body.Close()
 
 	var cfgData map[string]interface{}
-	json.NewDecoder(getResp.Body).Decode(&cfgData)
-	if key, ok := cfgData["api_key"].(string); !ok || key == "" {
-		t.Errorf("api_key = %q after empty form submit, want preserved", key)
+	if err := json.NewDecoder(getResp.Body).Decode(&cfgData); err != nil {
+		t.Fatal(err)
 	}
+	return cfgData
 }
 
 func TestGetConfigHTMLFragmentWithModels(t *testing.T) {

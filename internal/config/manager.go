@@ -128,25 +128,29 @@ func MaskAPIKey(key string) string {
 // clear_api_key=true explicitly empties the API key.
 func Merge(base *Config, patch map[string]interface{}) *Config {
 	result := *base // shallow copy
+	providerChanged := false
+	baseURLPatched := false
+	baseURLPatch := ""
 
 	if v, ok := patch["provider"]; ok {
 		if s, ok := v.(string); ok {
+			providerChanged = s != base.Provider
 			result.Provider = s
 		}
 	}
 	if v, ok := patch["api_key"]; ok {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" {
 			result.APIKey = s
 		}
 	}
 	// clear_api_key checkbox: if explicitly true, clear the key
-	if v, ok := patch["clear_api_key"]; ok {
-		if s, ok := v.(string); ok && s == "true" {
-			result.APIKey = ""
-		}
+	if v, ok := patch["clear_api_key"]; ok && clearAPIKeyRequested(v) {
+		result.APIKey = ""
 	}
 	if v, ok := patch["base_url"]; ok {
 		if s, ok := v.(string); ok {
+			baseURLPatched = true
+			baseURLPatch = s
 			result.BaseURL = s
 		}
 	}
@@ -181,5 +185,41 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 		}
 	}
 
+	if providerChanged {
+		result.Model = ""
+		if shouldResetBaseURLOnProviderSwitch(base.Provider, result.Provider, base.BaseURL, baseURLPatched, baseURLPatch) {
+			if prof, err := provider.Get(result.Provider); err == nil {
+				result.BaseURL = prof.DefaultBaseURL
+			}
+		}
+	}
+
 	return &result
+}
+
+func clearAPIKeyRequested(v interface{}) bool {
+	s, ok := v.(string)
+	if ok {
+		return s == "true"
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
+func shouldResetBaseURLOnProviderSwitch(oldProviderID, newProviderID, oldBaseURL string, baseURLPatched bool, baseURLPatch string) bool {
+	oldProf, oldErr := provider.Get(oldProviderID)
+	if _, err := provider.Get(newProviderID); err != nil {
+		return false
+	}
+
+	oldBaseWasDefault := oldErr == nil && oldBaseURL == oldProf.DefaultBaseURL
+	oldBaseWasEmpty := oldBaseURL == ""
+
+	if !baseURLPatched {
+		return oldBaseWasEmpty || oldBaseWasDefault
+	}
+	if baseURLPatch == "" {
+		return true
+	}
+	return oldBaseWasDefault && baseURLPatch == oldBaseURL
 }
