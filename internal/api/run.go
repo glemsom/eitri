@@ -174,7 +174,7 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 }
 
 // StartRun starts a new agent run for a session. Returns error if run already active.
-func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage string) error {
+func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage string) (sessionSkillContext, error) {
 	rm.mu.Lock()
 	if existing, exists := rm.active[sessionID]; exists {
 		select {
@@ -182,7 +182,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 			delete(rm.active, sessionID)
 		default:
 			rm.mu.Unlock()
-			return fmt.Errorf("session %s already has an active run", sessionID)
+			return sessionSkillContext{}, fmt.Errorf("session %s already has an active run", sessionID)
 		}
 	}
 	providerID := rm.providerID
@@ -218,7 +218,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to resolve provider auth: %w", err)
+		return sessionSkillContext{}, fmt.Errorf("failed to resolve provider auth: %w", err)
 	}
 	apiKey = resolvedAuth.APIKey
 	rm.mu.Lock()
@@ -229,31 +229,42 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	rm.mu.Unlock()
 
 	if baseURL == "" || modelName == "" {
-		return fmt.Errorf("provider not configured: set base_url and model in settings")
+		return sessionSkillContext{}, fmt.Errorf("provider not configured: set base_url and model in settings")
 	}
 
 	if providerID == "" {
 		providerID = "opencode_go"
 	}
-	llm, err := agent.NewOpenAIModelForProvider(modelName, baseURL, apiKey, providerID)
-	if err != nil {
-		return fmt.Errorf("failed to create model: %w", err)
+	skillCtx := rm.resolveSessionSkillContext(sessionID)
+	runSystemPrompt := systemPrompt
+	if note := skillCtx.systemPromptNote(); note != "" {
+		if runSystemPrompt != "" {
+			runSystemPrompt += "\n\n"
+		}
+		runSystemPrompt += note
 	}
+
+	baseLLM, err := agent.NewOpenAIModelForProvider(modelName, baseURL, apiKey, providerID)
+	if err != nil {
+		return sessionSkillContext{}, fmt.Errorf("failed to create model: %w", err)
+	}
+	llm := newSkillContextLLM(baseLLM, skillCtx.Activations)
+
 	var ag adkagent.Agent
 	var agErr error
 	if rm.skillsSvc != nil {
-		ag, agErr = agent.NewAgentWithPromptAndSkills(llm, rm.sessionMgr, systemPrompt, rm.skillsSvc, rm.uiSessionMgr)
+		ag, agErr = agent.NewAgentWithPromptAndSkills(llm, rm.sessionMgr, runSystemPrompt, rm.skillsSvc, rm.uiSessionMgr)
 	} else {
-		ag, agErr = agent.NewAgentWithPrompt(llm, rm.sessionMgr, systemPrompt)
+		ag, agErr = agent.NewAgentWithPrompt(llm, rm.sessionMgr, runSystemPrompt)
 	}
 	if agErr != nil {
-		return fmt.Errorf("failed to create agent: %w", agErr)
+		return sessionSkillContext{}, fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: agent.BuildSystemPrompt(systemPrompt, rm.skillsSvc)}
+	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: agent.BuildSystemPrompt(runSystemPrompt, rm.skillsSvc)}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
-		return fmt.Errorf("failed to get runner: %w", err)
+		return sessionSkillContext{}, fmt.Errorf("failed to get runner: %w", err)
 	}
 
 	content := &genai.Content{
@@ -290,7 +301,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		rm.mu.Unlock()
 	}()
 
-	return nil
+	return skillCtx, nil
 }
 
 func (rm *RunManager) lookupRun(sessionID string) *runState {

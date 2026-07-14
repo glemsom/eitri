@@ -256,7 +256,7 @@ The prompt instructs the model to call `activate_skill(name)` when a task matche
 
 #### Skill activation
 
-Skills activate by model tool call or user slash command. Activation is session-scoped and persists for the lifetime of the in-memory chat session. Active skill names are deduplicated and re-applied on every new run in that session. Server restart loses active skills along with chat sessions.
+Skills activate by model tool call or user slash command. Activation is session-scoped and persists for the lifetime of the in-memory chat session. Active skill names are deduplicated and re-applied on every new run in that session as ephemeral `activate_skill` context for that Run rather than permanently duplicating Skill instructions into session history. If an active Skill is no longer effective on a later Run, Eitri skips it, removes it from the active-session list, and shows a user-visible warning. Server restart loses active skills along with chat sessions.
 
 `activate_skill` accepts only an effective loaded skill name. It returns structured, model-friendly content:
 

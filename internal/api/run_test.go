@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -71,6 +74,35 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	t.Helper()
 	return newManagedTestServerWithRuns(t).server
+}
+
+func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {
+	t.Helper()
+	sessionMgr := session.NewManager(10)
+	executorMgr := executor.NewSessionManager(workspace, 0, 0)
+	runnerMgr := newRunnerManager(t)
+	runMgr := api.NewRunManager(runnerMgr, executorMgr)
+	runMgr.SetSkillsService(skillsSvc)
+	runMgr.SetUISessionManager(sessionMgr)
+
+	configPath := t.TempDir() + "/config.json"
+	cfg := api.ServerConfig{
+		ConfigPath:     configPath,
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		RunManager:     runMgr,
+		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return &testServerWithRuns{
+		server:      server,
+		configPath:  configPath,
+		sessionMgr:  sessionMgr,
+		executorMgr: executorMgr,
+		runMgr:      runMgr,
+	}
 }
 
 func fakeSlowChatServer(t *testing.T, delay time.Duration) *httptest.Server {
@@ -437,6 +469,201 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 	}
 	if !strings.Contains(thirdPrompt, "You are Eitri") {
 		t.Fatalf("third run system prompt = %q, want built-in default prompt", thirdPrompt)
+	}
+}
+
+type capturedChatRequest struct {
+	Messages []struct {
+		Role       string `json:"role"`
+		Content    string `json:"content"`
+		ToolCallID string `json:"tool_call_id"`
+		ToolCalls  []struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tool_calls"`
+	} `json:"messages"`
+}
+
+func countActivateSkillMessages(req capturedChatRequest) (assistantCalls int, toolResponses int) {
+	for _, msg := range req.Messages {
+		for _, call := range msg.ToolCalls {
+			if call.Function.Name == "activate_skill" {
+				assistantCalls++
+			}
+		}
+		if msg.Role == "tool" && msg.ToolCallID != "" && strings.Contains(msg.Content, "skill_directory") {
+			toolResponses++
+		}
+	}
+	return assistantCalls, toolResponses
+}
+
+func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := filepath.Join(workspace, ".eitri", "skills")
+	if err := os.MkdirAll(filepath.Join(rootDir, "code-review"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "code-review", "SKILL.md"), []byte("---\nname: code-review\ndescription: Review code\n---\n# Review\n\nUse strict review checklist."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	h := newManagedTestServerWithRunsAndSkillsService(t, workspace, skillsSvc)
+	requests := make(chan capturedChatRequest, 4)
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			var body capturedChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			requests <- body
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	client := noRedirectClient()
+	activateReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/api/sessions/"+sessionID+"/chat", strings.NewReader(url.Values{"message": {"/code-review"}}.Encode()))
+	activateReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	activateReq.AddCookie(browserCookie)
+	activateResp, err := client.Do(activateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activateResp.Body.Close()
+	if activateResp.StatusCode != http.StatusOK {
+		t.Fatalf("slash activation status = %d, want 200", activateResp.StatusCode)
+	}
+
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	first := <-requests
+	waitForRunToFinish(t, h.runMgr, sessionID)
+	firstCalls, firstResponses := countActivateSkillMessages(first)
+	if firstCalls != 1 || firstResponses != 1 {
+		t.Fatalf("first run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", firstCalls, firstResponses, first.Messages)
+	}
+
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	second := <-requests
+	waitForRunToFinish(t, h.runMgr, sessionID)
+	secondCalls, secondResponses := countActivateSkillMessages(second)
+	if secondCalls != 1 || secondResponses != 1 {
+		t.Fatalf("second run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", secondCalls, secondResponses, second.Messages)
+	}
+}
+
+func TestChatRun_SkipsDisappearedActiveSkillAndShowsWarning(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := filepath.Join(workspace, ".eitri", "skills")
+	skillDir := filepath.Join(rootDir, "code-review")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: code-review\ndescription: Review code\n---\n# Review\n\nUse strict review checklist."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	h := newManagedTestServerWithRunsAndSkillsService(t, workspace, skillsSvc)
+	requests := make(chan capturedChatRequest, 2)
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			var body capturedChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			requests <- body
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	client := noRedirectClient()
+	activateReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/api/sessions/"+sessionID+"/chat", strings.NewReader(url.Values{"message": {"/code-review"}}.Encode()))
+	activateReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	activateReq.AddCookie(browserCookie)
+	activateResp, err := client.Do(activateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activateResp.Body.Close()
+	if activateResp.StatusCode != http.StatusOK {
+		t.Fatalf("slash activation status = %d, want 200", activateResp.StatusCode)
+	}
+
+	if err := os.RemoveAll(skillDir); err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest(http.MethodPost, h.server.URL+"/api/sessions/"+sessionID+"/chat", strings.NewReader("message=Hello"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("chat status = %d, want 200, body=%s", resp.StatusCode, string(body))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "code-review") || !strings.Contains(string(body), "no longer available") {
+		t.Fatalf("chat response missing stale-skill warning: %s", string(body))
+	}
+
+	captured := <-requests
+	waitForRunToFinish(t, h.runMgr, sessionID)
+	calls, responses := countActivateSkillMessages(captured)
+	if calls != 0 || responses != 0 {
+		t.Fatalf("stale skill should not be re-applied, got (%d calls, %d responses); messages=%#v", calls, responses, captured.Messages)
+	}
+	if got := h.sessionMgr.ActiveSkills(sessionID); len(got) != 0 {
+		t.Fatalf("active skills after stale-skill skip = %v, want empty", got)
 	}
 }
 

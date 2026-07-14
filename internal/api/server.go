@@ -707,13 +707,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove any active skills that are no longer effective
-	for _, name := range sess.ActiveSkills {
-		if s.config.SkillsService.Lookup(name) == nil {
-			s.config.SessionManager.DeactivateSkill(id, name)
-		}
-	}
-
 	// If slash-only (no prompt), return activation event without starting a run
 	if slashResult != nil && slashResult.IsSlashOnly {
 		// Render the updated active skill chips
@@ -761,7 +754,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Use context.Background() instead of r.Context() so the run survives
 	// the HTTP handler returning (which cancels the request context).
 	// CancelRun() provides explicit cancellation via state.Cancel().
-	err := s.config.RunManager.StartRun(context.Background(), id, prompt)
+	skillCtx, err := s.config.RunManager.StartRun(context.Background(), id, prompt)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -786,6 +779,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Render user bubble + session tab refresh + send JS events for SSE connect and run state
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
+
+	for _, warning := range skillCtx.Warnings {
+		_ = templates.ErrorToast(warning).Render(r.Context(), w)
+	}
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	userBubble := templates.UserBubble(message)

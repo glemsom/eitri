@@ -124,7 +124,7 @@ func (s *Service) Current() *Registry
 func (s *Service) Activate(ctx context.Context, sessionID, name string) (*ActivatedSkill, error)
 ```
 
-`api.Server` stores active skill names per UI session. `agent` calls `Activate` through the built-in `activate_skill` tool. API and agent packages consume this service; they never scan skill files directly.
+`api.Server` stores active skill names per UI session. `agent` calls `Activate` through the built-in `activate_skill` tool. At chat-run start, `api.RunManager` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into ADK session history. API and agent packages consume this service; they never scan skill files directly.
 
 ### `internal/runner/` — Runner lifecycle
 
@@ -233,7 +233,8 @@ sequenceDiagram
     API->>API: Validate message, provider setup, parse slash skills, ensure no active run
     API->>Skills: Refresh + activate slash skills
     Skills-->>API: effective catalog + active skills
-    API->>RunnerMgr: getRunner(config + skills catalog)
+    API->>API: Re-resolve session active skills, warn/drop stale ones
+    API->>RunnerMgr: getRunner(config + skills catalog + run skill context)
     RunnerMgr-->>API: runner (cached or new)
     API-->>Browser: User bubble HTML + HX-Trigger: eitri:connectRunStream
     API->>Agent: Start background runner.Run(ctx, sessionID, message)
