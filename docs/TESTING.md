@@ -132,6 +132,8 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_ConfigSaveProviderFailure` | Provider validation failure swaps updated settings form with visible error feedback; model list stays unpopulated |
 | `TestBrowser_HealthPage` | `/health` page renders with body containing "ok" |
 | `TestBrowser_SendMessage` | Sends a message → user bubble appears with correct text, `#chat-input` disabled during active run |
+| `TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone` | Run-status chrome starts at idle, shows connecting/no-dead-air copy while first token is delayed, then reaches done after final render |
+| `TestBrowser_RunStatusChrome_ReconnectAndActivityPanel` | Stream chrome shows reconnecting and rendering phases, and hidden-by-default activity panel records tool start/finish entries for current session |
 | `TestBrowser_InputDisabledDuringRun` | During active run: `#chat-input` disabled, `#send-btn` disabled, `#stop-btn` visible |
 | `TestBrowser_CancelRun` | Stop button re-enables input, hides stop button; partial assistant bubble present after cancellation |
 | `TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline` | Enter sends chat message; Shift+Enter keeps multiline composer content intact before send |
@@ -148,7 +150,6 @@ The following scenarios are planned for future iterations:
 
 | Scenario | Notes |
 |----------|-------|
-| SSE stream state (idle → connecting → streaming) | Stream indicator lifecycle |
 | Workspace indicator | Launch workspace path visible across pages |
 | API key field type | `type="password"` verification |
 | Empty input guard | Send button disabled when input empty |
@@ -158,7 +159,6 @@ The following scenarios are planned for future iterations:
 | Friendly error rendering | Auth, rate limit, unreachable, context-limit, etc. |
 | Multi-message flow | Second send while run active rejected |
 | HTMX target swaps | Correct DOM element swapping |
-| SSE reconnection | Reconnect on connection drop |
 | Skills page and slash activation | `/skills` route, `/skill`, unknown slash `422` |
 | Active skill chips | No duplicate entries on activation |
 | File edit cards | Diff view, create preview, large-edit collapse |

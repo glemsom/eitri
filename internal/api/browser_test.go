@@ -203,6 +203,48 @@ func fakeInstantChatServer(t *testing.T, reply string) *httptest.Server {
 	return srv
 }
 
+func fakeDelayedFirstTokenChatServer(t *testing.T, delay time.Duration, reply string) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(delay):
+			}
+
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, reply)
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // configureProvider saves runnable LLM provider config to test server via HTTP.
 func configureProvider(t *testing.T, server *httptest.Server, llmURL string) {
 	t.Helper()
@@ -877,6 +919,233 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 	}
 	if !fileEditSideBySideActive {
 		t.Error("file edit diff should switch to side-by-side view")
+	}
+}
+
+func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
+	llmURL := fakeDelayedFirstTokenChatServer(t, 1200*time.Millisecond, "slow hello").URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var idleStatus string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.Text("#stream-indicator", &idleStatus, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+	if strings.TrimSpace(idleStatus) != "Idle" {
+		t.Fatalf("initial run status = %q, want Idle", idleStatus)
+	}
+
+	if err := chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "show status", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("start run failed: %v", err)
+	}
+
+	time.Sleep(850 * time.Millisecond)
+
+	var (
+		connectingStatus string
+		connectingDetail string
+	)
+	err = chromedp.Run(ctx,
+		chromedp.Text("#stream-indicator", &connectingStatus, chromedp.ByQuery),
+		chromedp.Text("#run-status-detail", &connectingDetail, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("read connecting status failed: %v", err)
+	}
+	if strings.TrimSpace(connectingStatus) != "Connecting" {
+		t.Fatalf("run status during slow start = %q, want Connecting", connectingStatus)
+	}
+	if !strings.Contains(strings.ToLower(connectingDetail), "waiting for first response") {
+		t.Fatalf("run detail during slow start = %q, want no-dead-air copy", connectingDetail)
+	}
+
+	var finalStatus string
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.Text("#stream-indicator", &finalStatus, chromedp.ByQuery),
+		)
+		if err == nil && strings.TrimSpace(finalStatus) == "Done" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if strings.TrimSpace(finalStatus) != "Done" {
+		t.Fatalf("final run status = %q, want Done", finalStatus)
+	}
+
+	var assistantText string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var msgs = Array.from(document.querySelectorAll('.message-assistant .message-content'));
+			return msgs.map(function(el) { return el.textContent || ''; }).join('\n');
+		})()`, &assistantText),
+	)
+	if err != nil {
+		t.Fatalf("read assistant text failed: %v", err)
+	}
+	if !strings.Contains(assistantText, "slow hello") {
+		t.Fatalf("assistant text = %q, want slow hello", assistantText)
+	}
+}
+
+func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	var panelClosed bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
+	)
+	if err != nil {
+		t.Fatalf("read activity panel default state failed: %v", err)
+	}
+	if !panelClosed {
+		t.Fatal("activity panel should be collapsed by default")
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) {
+					this.url = url;
+					window.__fakeEventSource = this;
+				}
+				close() {
+					this.closed = true;
+				}
+				emitOpen() {
+					if (this.onopen) this.onopen({});
+				}
+				emitMessage(packet) {
+					if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) });
+				}
+				emitError() {
+					if (this.onerror) this.onerror(new Event('error'));
+				}
+			}
+			window.EventSource = FakeEventSource;
+			var sessionId = location.pathname.split('/').pop();
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: sessionId } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitError()`, nil),
+	); err != nil {
+		t.Fatalf("emit reconnect transition failed: %v", err)
+	}
+
+	var reconnectingStatus string
+	err = chromedp.Run(ctx,
+		chromedp.Text("#stream-indicator", &reconnectingStatus, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("read reconnecting status failed: %v", err)
+	}
+	if strings.TrimSpace(reconnectingStatus) != "Reconnecting" {
+		t.Fatalf("run status after error = %q, want Reconnecting", reconnectingStatus)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'token', content: 'hello'})`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello'}})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit token/tool_call failed: %v", err)
+	}
+
+	var toolRunningStatus string
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.Text("#stream-indicator", &toolRunningStatus, chromedp.ByQuery),
+		)
+		if err == nil && strings.TrimSpace(toolRunningStatus) == "Tool running" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if strings.TrimSpace(toolRunningStatus) != "Tool running" {
+		t.Fatalf("run status during tool call = %q, want Tool running", toolRunningStatus)
+	}
+
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: 'hello\n'})`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'done', message_id: 'msg_fake'})`, nil),
+	); err != nil {
+		t.Fatalf("emit tool_result/done failed: %v", err)
+	}
+
+	var renderingSeen bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var indicator = document.getElementById('stream-indicator');
+			return indicator ? indicator.textContent.trim() === 'Rendering' : false;
+		})()`, &renderingSeen),
+	)
+	if err != nil {
+		t.Fatalf("read rendering phase failed: %v", err)
+	}
+	if !renderingSeen {
+		t.Fatal("expected Rendering phase immediately after done packet")
+	}
+
+	var (
+		activityCount string
+		activityText  string
+		doneStatus    string
+	)
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.Text("#stream-indicator", &doneStatus, chromedp.ByQuery),
+			chromedp.Text("#activity-count", &activityCount, chromedp.ByQuery),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('activity-log');
+				return el ? (el.textContent || '') : '';
+			})()`, &activityText),
+		)
+		if err == nil && strings.TrimSpace(doneStatus) == "Done" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if strings.TrimSpace(doneStatus) != "Done" {
+		t.Fatalf("final run status = %q, want Done", doneStatus)
+	}
+	if strings.TrimSpace(activityCount) != "2" {
+		t.Fatalf("activity count = %q, want 2", activityCount)
+	}
+	if !strings.Contains(activityText, "Started terminal_execute") || !strings.Contains(activityText, "Finished terminal_execute") || !strings.Contains(activityText, "echo hello") {
+		t.Fatalf("activity log = %q, want started/finished command entries", activityText)
 	}
 }
 

@@ -1276,6 +1276,36 @@ func TestStream_ReconnectDuringActiveRunReceivesSubsequentEventsAndDone(t *testi
 	}
 }
 
+func TestStream_ReconnectAfterToolCallReceivesToolResultAndDone(t *testing.T) {
+	llmSrv, _ := fakeTwoTurnToolChatServer(t, nil)
+	h := newManagedTestServerWithRuns(t)
+	configureProvider(t, h.server, llmSrv.URL)
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	stream1 := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	if got := stream1.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"tool_call"`) && strings.Contains(data, `"tool":"terminal_execute"`)
+	}, 2*time.Second); got == "" {
+		t.Fatal("first stream never received tool_call")
+	}
+	stream1.Close()
+
+	stream2 := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	defer stream2.Close()
+	if got := stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"tool_result"`) && strings.Contains(data, `"tool":"terminal_execute"`)
+	}, 3*time.Second); got == "" {
+		t.Fatal("reconnected stream never received tool_result")
+	}
+	if got := stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"done"`)
+	}, 3*time.Second); got == "" {
+		t.Fatal("reconnected stream never received done after tool run")
+	}
+}
+
 func statusCodeOf(resp *http.Response) any {
 	if resp == nil {
 		return nil
