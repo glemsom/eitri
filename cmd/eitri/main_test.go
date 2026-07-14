@@ -89,7 +89,7 @@ func TestCleanupRuntimeCancelsRunsAndClosesExecutors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreate = %v", err)
 	}
-	if err := runMgr.StartRun(context.Background(), "session-1", "hello"); err != nil {
+	if _, err := runMgr.StartRun(context.Background(), "session-1", "hello"); err != nil {
 		t.Fatalf("StartRun = %v", err)
 	}
 	if runMgr.ActiveRun("session-1") == nil {
