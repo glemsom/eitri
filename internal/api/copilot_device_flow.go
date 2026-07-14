@@ -278,43 +278,30 @@ func (s *Server) handlePollCopilotDeviceFlow(w http.ResponseWriter, r *http.Requ
 	}
 
 	newCfg := *flow.Config
-	newCfg.APIKey = resp.AccessToken
-	now := time.Now()
-	state := provider.GitHubCopilotAuthState{
-		AccessToken:  resp.AccessToken,
-		TokenType:    resp.TokenType,
-		Scope:        resp.Scope,
-		RefreshToken: resp.RefreshToken,
-	}
-	if resp.ExpiresIn > 0 {
-		state.ExpiresAt = now.Add(time.Duration(resp.ExpiresIn) * time.Second)
-	}
-	if resp.RefreshTokenExpiresIn > 0 {
-		state.RefreshTokenExpiresAt = now.Add(time.Duration(resp.RefreshTokenExpiresIn) * time.Second)
-	}
-	newCfg.ProviderAuth, err = provider.EncodeGitHubCopilotAuthState(state)
+	initialAuthUpdate, err := provider.GitHubCopilotAuthUpdateFromTokenResponse(resp, time.Now())
 	if err != nil {
 		s.copilotFlows.delete(id)
 		http.Error(w, "Failed to store provider auth: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := config.Save(s.config.ConfigPath, &newCfg); err != nil {
+	applyAuthUpdate(&newCfg, initialAuthUpdate)
+
+	discoveryResult, modelsErr := s.discoverModelList(r.Context(), &newCfg)
+	if modelsErr == nil {
+		applyAuthUpdate(&newCfg, discoveryResult.AuthUpdate)
+	}
+	if err := s.saveProviderConfig(&newCfg); err != nil {
 		s.copilotFlows.delete(id)
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if s.config.RunManager != nil {
-		s.config.RunManager.runnerMgr.Invalidate()
-		s.config.RunManager.UpdateProviderConfig(&newCfg)
-	}
 
-	models, modelsErr := s.fetchModelList(r.Context(), &newCfg)
 	s.copilotFlows.delete(id)
 	if modelsErr != nil {
 		writeSettingsFormWithState(w, r, http.StatusOK, maskedConfig(&newCfg), nil, modelsErr.Error(), "GitHub Copilot connected. Token saved.", nil)
 		return
 	}
-	writeSettingsFormWithState(w, r, http.StatusOK, maskedConfig(&newCfg), models, "", "GitHub Copilot connected. Models refreshed.", nil)
+	writeSettingsFormWithState(w, r, http.StatusOK, maskedConfig(&newCfg), discoveryResult.Models, "", "GitHub Copilot connected. Models refreshed.", nil)
 }
 
 func (s *Server) handleCancelCopilotDeviceFlow(w http.ResponseWriter, r *http.Request) {
