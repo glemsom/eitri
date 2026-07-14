@@ -222,28 +222,17 @@ func (m *Manager) UpdateStatus(id string, status Status) {
 }
 
 // AppendMessage appends a message to a session. No-op if session not found.
+// Title is updated to the latest user message's preview.
 func (m *Manager) AppendMessage(id string, msg Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if s := m.sessions[id]; s != nil {
-		title := ""
-		setTitle := false
 		if msg.Role == "user" {
-			title = sessionTitlePreview(msg.Content)
-			if title != "" {
-				setTitle = true
-				for _, existing := range s.Messages {
-					if existing.Role == "user" && sessionTitlePreview(existing.Content) != "" {
-						setTitle = false
-						break
-					}
-				}
+			if title := sessionTitlePreview(msg.Content); title != "" {
+				s.Title = title
 			}
 		}
 		s.Messages = append(s.Messages, msg)
-		if setTitle {
-			s.Title = title
-		}
 		s.UpdatedAt = time.Now()
 	}
 }
