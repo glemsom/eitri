@@ -65,7 +65,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			return templ_7745c5c3_Err
 		}
 		if sessions != nil {
-			templ_7745c5c3_Err = SessionTabs(sessions, activeID).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SessionTabs(sessions, activeID, false).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

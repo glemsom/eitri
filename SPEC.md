@@ -581,7 +581,7 @@ Structured JSON envelope remains canonical. `eitri-stream` dispatches rendering 
 - Maximum of 10 total server sessions. At cap, new-session requests return `429` and an error toast. Closing a session frees a slot immediately.
 - Sessions are in-memory only. Server restart loses tabs/history and tmux executors.
 - New session starts blank with a fresh chat history and fresh tmux executor on first command.
-- New session title starts as `Session N`, then auto-updates to a truncated preview of the first user message. Titles are not editable.
+- New session title starts as `Session N`, then auto-updates to a whitespace-collapsed, max-31-rune preview of the first user message. Titles are not editable.
 - One active assistant run per session. A new `POST /api/sessions/{id}/chat` while that session has an active run returns `409 Conflict` (or HTMX error fragment) with a clear message instead of queueing.
 - Each session stores active skill names. Activated skills are deduplicated, persist for the in-memory session lifetime, and are re-applied to each new run.
 - Multiple sessions may run concurrently.

@@ -6,8 +6,10 @@ package session
 import (
 	"crypto/rand"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Status represents the current state of a session.
@@ -18,6 +20,8 @@ const (
 	StatusRunning Status = "running"
 	StatusError   Status = "error"
 )
+
+const sessionTitlePreviewMaxRunes = 31
 
 // Message represents a single chat message in a session.
 type Message struct {
@@ -43,9 +47,9 @@ type UISession struct {
 // Thread-safe. Enforces a maximum number of sessions globally.
 type Manager struct {
 	mu              sync.RWMutex
-	sessions        map[string]*UISession     // sessionID → session
-	browserSessions map[string][]string       // browserID → ordered session IDs
-	nextSessionNum  map[string]int            // browserID → next session number
+	sessions        map[string]*UISession // sessionID → session
+	browserSessions map[string][]string   // browserID → ordered session IDs
+	nextSessionNum  map[string]int        // browserID → next session number
 	maxSessions     int
 }
 
@@ -222,9 +226,38 @@ func (m *Manager) AppendMessage(id string, msg Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if s := m.sessions[id]; s != nil {
+		title := ""
+		setTitle := false
+		if msg.Role == "user" {
+			title = sessionTitlePreview(msg.Content)
+			if title != "" {
+				setTitle = true
+				for _, existing := range s.Messages {
+					if existing.Role == "user" && sessionTitlePreview(existing.Content) != "" {
+						setTitle = false
+						break
+					}
+				}
+			}
+		}
 		s.Messages = append(s.Messages, msg)
+		if setTitle {
+			s.Title = title
+		}
 		s.UpdatedAt = time.Now()
 	}
+}
+
+func sessionTitlePreview(message string) string {
+	normalized := strings.Join(strings.Fields(message), " ")
+	if normalized == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(normalized) <= sessionTitlePreviewMaxRunes {
+		return normalized
+	}
+	runes := []rune(normalized)
+	return string(runes[:sessionTitlePreviewMaxRunes-1]) + "…"
 }
 
 // ActivateSkill adds a skill name to the session's active skills. No-op if session not found.

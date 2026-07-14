@@ -35,7 +35,7 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 					</nav>
 				</header>
 				if sessions != nil {
-					@SessionTabs(sessions, activeID)
+					@SessionTabs(sessions, activeID, false)
 				} else {
 					<div id="session-tabs"></div>
 				}
