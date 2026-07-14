@@ -247,6 +247,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 				if fullText.Len() > 0 {
 					w.Done(messageID, estimateUsage(fullText.String()))
 				}
+				close(state.Done)
 				return fullText.String()
 			}
 			if evt == nil {
@@ -297,6 +298,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 
 		case err, ok := <-state.Errors:
 			if !ok {
+				close(state.Done)
 				return fullText.String()
 			}
 			if err != nil {

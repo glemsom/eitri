@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/executor"
@@ -281,6 +282,111 @@ func TestCancelEndpoint(t *testing.T) {
 		if !strings.HasPrefix(ct, "text/html") {
 			t.Errorf("Content-Type = %q, want text/html", ct)
 		}
+	}
+}
+
+func TestConsecutiveChatEndpoint(t *testing.T) {
+	// Reproduces the zombie-active-run bug: sending a message, waiting for
+	// completion, then sending another should NOT return 409.
+	llmSrv := fakeChatServer(t, "ok")
+	defer llmSrv.Close()
+
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+	client := noRedirectClient()
+
+	// Create session
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	loc := resp.Header.Get("Location") // e.g. /sessions/abc123
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	chatPath := "/api" + loc + "/chat"
+
+	// First chat request
+	body := "message=Say+hi"
+	req1, _ := http.NewRequest("POST", server.URL+chatPath, strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req1.Header.Set("HX-Request", "true")
+	if browserCookie != nil {
+		req1.AddCookie(browserCookie)
+	}
+	resp1, err := client.Do(req1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp1.Body.Close()
+
+	if resp1.StatusCode == http.StatusConflict {
+		t.Fatalf("first chat got 409 — unexpected active run")
+	}
+
+	if resp1.StatusCode != http.StatusOK {
+		t.Logf("first chat status = %d (non-fatal, may be provider config issue)", resp1.StatusCode)
+	}
+
+	// Wait for run to complete (poll stream endpoint until it 404s, meaning run is done)
+	// Maximum wait: 5 seconds
+	streamPath := "/api" + loc + "/stream"
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		reqCheck, _ := http.NewRequest("GET", server.URL+streamPath, nil)
+		if browserCookie != nil {
+			reqCheck.AddCookie(browserCookie)
+		}
+		respCheck, err := client.Do(reqCheck)
+		if err == nil {
+			respCheck.Body.Close()
+			if respCheck.StatusCode == http.StatusNotFound {
+				// Stream ended — run completed
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Second chat request — should NOT get 409
+	req2, _ := http.NewRequest("POST", server.URL+chatPath, strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.Header.Set("HX-Request", "true")
+	if browserCookie != nil {
+		req2.AddCookie(browserCookie)
+	}
+	resp2, err := client.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+
+	if resp2.StatusCode == http.StatusConflict {
+		t.Errorf("second chat got 409 — zombie active run (bug: Done not closed on normal completion)")
+	}
+
+	// Wait for second run to also complete
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		reqCheck, _ := http.NewRequest("GET", server.URL+streamPath, nil)
+		if browserCookie != nil {
+			reqCheck.AddCookie(browserCookie)
+		}
+		respCheck, err := client.Do(reqCheck)
+		if err == nil {
+			respCheck.Body.Close()
+			if respCheck.StatusCode == http.StatusNotFound {
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

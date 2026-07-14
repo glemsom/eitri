@@ -536,7 +536,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Start run in background
-	err := s.config.RunManager.StartRun(r.Context(), id, prompt)
+	// Use context.Background() instead of r.Context() so the run survives
+	// the HTTP handler returning (which cancels the request context).
+	// CancelRun() provides explicit cancellation via state.Cancel().
+	err := s.config.RunManager.StartRun(context.Background(), id, prompt)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)
