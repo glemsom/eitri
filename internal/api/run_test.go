@@ -1537,10 +1537,10 @@ func TestCancelEndpoint(t *testing.T) {
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("cancel status = %d, want 200", resp2.StatusCode)
 	} else {
-		// Should return HTML fragment (MessageInput)
-		ct := resp2.Header.Get("Content-Type")
-		if !strings.HasPrefix(ct, "text/html") {
-			t.Errorf("Content-Type = %q, want text/html", ct)
+		// Cancel now returns empty 200 (issue #103 — CSS class toggle, no more outerHTML swap)
+		body, _ := io.ReadAll(resp2.Body)
+		if len(body) > 0 {
+			t.Errorf("cancel response body = %d bytes, want empty", len(body))
 		}
 	}
 }

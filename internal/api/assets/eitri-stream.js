@@ -210,8 +210,13 @@
     const sendBtn = document.getElementById('send-btn');
     const stopBtn = document.getElementById('stop-btn');
     if (input) input.disabled = false;
-    if (sendBtn) sendBtn.disabled = false;
-    if (stopBtn) stopBtn.style.display = 'none';
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.classList.remove('send-hidden');
+    }
+    if (stopBtn) {
+      stopBtn.classList.add('stop-hidden');
+    }
   }
 
   document.addEventListener('htmx:beforeSwap', function (evt) {

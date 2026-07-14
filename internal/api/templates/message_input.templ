@@ -2,8 +2,8 @@ package templates
 
 // MessageInput renders the chat input form with textarea, send, and stop buttons.
 // disabled=true when provider config is incomplete.
-// showStop=true to make the Stop/cancel button visible (active run).
-templ MessageInput(sessionID string, disabled bool, showStop bool) {
+// Both Send and Stop buttons are always rendered and toggled via CSS classes.
+templ MessageInput(sessionID string, disabled bool, _ bool) {
 	<eitri-composer id="eitri-composer">
 		<div id="composer" class="composer">
 		<form
@@ -39,11 +39,8 @@ templ MessageInput(sessionID string, disabled bool, showStop bool) {
 					<button
 					id="stop-btn"
 					type="button"
-					class="stop-btn"
-					style={ templ.KV("display:none", !showStop) }
+					class="stop-btn stop-hidden"
 					hx-post={ templ.URL("/api/sessions/" + sessionID + "/cancel") }
-					hx-target="#eitri-composer"
-					hx-swap="outerHTML"
 				>
 					Stop
 				</button>

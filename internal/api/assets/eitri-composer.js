@@ -264,7 +264,7 @@
 
     _cancelActiveRun() {
       const stopBtn = document.getElementById('stop-btn');
-      if (!stopBtn || window.getComputedStyle(stopBtn).display === 'none') {
+      if (!stopBtn || stopBtn.classList.contains('stop-hidden')) {
         return false;
       }
       stopBtn.click();
@@ -342,6 +342,7 @@
 })();
 
 // Listen for run-started event from HTMX HX-Trigger header
+// Uses CSS class toggle instead of outerHTML swap (issue #103).
 (function () {
   'use strict';
   document.addEventListener('eitri:runStarted', function () {
@@ -349,7 +350,12 @@
     var sendBtn = document.getElementById('send-btn');
     var stopBtn = document.getElementById('stop-btn');
     if (input) input.disabled = true;
-    if (sendBtn) sendBtn.disabled = true;
-    if (stopBtn) stopBtn.setAttribute('style', '');
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.classList.add('send-hidden');
+    }
+    if (stopBtn) {
+      stopBtn.classList.remove('stop-hidden');
+    }
   });
 })();
