@@ -48,6 +48,56 @@ func fakeProviderServer(t *testing.T, status int, body string) *httptest.Server 
 	return srv
 }
 
+func TestPutConfigExistingProvidersUseProfileModelDiscovery(t *testing.T) {
+	for _, tc := range []struct {
+		providerID string
+		apiKey     string
+		wantAuth   string
+	}{
+		{providerID: "opencode_go", apiKey: "sk-opencode", wantAuth: "Bearer sk-opencode"},
+		{providerID: "custom_openai", apiKey: "", wantAuth: ""},
+	} {
+		t.Run(tc.providerID, func(t *testing.T) {
+			var gotPath string
+			var gotAuth string
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				gotAuth = r.Header.Get("Authorization")
+				if r.URL.Path != "/v1/models" {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+			}))
+			t.Cleanup(provider.Close)
+
+			server := newTestServer(t)
+			body := fmt.Sprintf(`{"provider":%q,"base_url":%q,"api_key":%q}`, tc.providerID, provider.URL+"/v1", tc.apiKey)
+			req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+			if gotPath != "/v1/models" {
+				t.Errorf("model discovery path = %q, want /v1/models", gotPath)
+			}
+			if gotAuth != tc.wantAuth {
+				t.Errorf("Authorization = %q, want %q", gotAuth, tc.wantAuth)
+			}
+		})
+	}
+}
+
 func TestHealthEndpoint(t *testing.T) {
 	server := newTestServer(t)
 

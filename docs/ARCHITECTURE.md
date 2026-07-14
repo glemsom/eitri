@@ -51,10 +51,10 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → closes e
 | File | Responsibility |
 |------|---------------|
 | `agent.go` | `NewAgent()` — factory wrapping `google.golang.org/adk/v2/agent/llmagent` |
-| `openai_model.go` | `NewOpenAIModel()` — custom `model.LLM` impl for OpenAI-compatible APIs |
+| `openai_model.go` | `NewOpenAIModel()` / `NewOpenAIModelForProvider()` — custom `model.LLM` impl for OpenAI-style chat completions via provider profiles |
 | `tools.go` | `NewTools()` — registers 5 built-in function tools |
 
-**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP to OpenCode Go's OpenAI-compatible `/v1/chat/completions`. `custom_openai` endpoints are available as advanced/best-effort when they satisfy Eitri's minimum OpenAI-compatible streaming tool-call contract.
+**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract.
 
 **Tool model**: Tools are defined as Go structs with JSON tags + `jsonschema:` struct tags (parsed by ADK internally). Each tool maps to a Go function that receives `agent.Context` for session ID access.
 
@@ -310,6 +310,7 @@ eitri/
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
 │   ├── config/                # Config loading, validation, atomic writes
 │   ├── executor/              # tmux command executor + session manager
+│   ├── provider/              # Provider profiles: defaults, credential policy, discovery/chat paths, parsers, headers
 │   ├── runner/                # ADK runner cache/invalidation
 │   └── skills/                # Agent Skills discovery, registry, activation
 ├── scripts/install.sh

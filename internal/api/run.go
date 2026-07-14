@@ -62,6 +62,7 @@ type RunManager struct {
 	sessionMgr    *executor.SessionManager
 	uiSessionMgr  *uisession.Manager
 	skillsSvc     *skills.Service
+	providerID    string
 	baseURL       string
 	apiKey        string
 	modelName     string
@@ -90,6 +91,7 @@ func (rm *RunManager) SetUISessionManager(mgr *uisession.Manager) {
 func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
+	rm.providerID = cfg.Provider
 	rm.baseURL = cfg.BaseURL
 	rm.apiKey = cfg.APIKey
 	rm.modelName = cfg.Model
@@ -102,6 +104,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		rm.mu.Unlock()
 		return fmt.Errorf("session %s already has an active run", sessionID)
 	}
+	providerID := rm.providerID
 	baseURL := rm.baseURL
 	apiKey := rm.apiKey
 	modelName := rm.modelName
@@ -111,7 +114,13 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		return fmt.Errorf("provider not configured: set base_url and model in settings")
 	}
 
-	llm := agent.NewOpenAIModel(modelName, baseURL, apiKey)
+	if providerID == "" {
+		providerID = "opencode_go"
+	}
+	llm, err := agent.NewOpenAIModelForProvider(modelName, baseURL, apiKey, providerID)
+	if err != nil {
+		return fmt.Errorf("failed to create model: %w", err)
+	}
 	var ag adkagent.Agent
 	var agErr error
 	if rm.skillsSvc != nil {
@@ -123,7 +132,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		return fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: "opencode_go", APIKey: apiKey, BaseURL: baseURL, Model: modelName}
+	cfg := &config.Config{Provider: providerID, APIKey: apiKey, BaseURL: baseURL, Model: modelName}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
 		return fmt.Errorf("failed to get runner: %w", err)

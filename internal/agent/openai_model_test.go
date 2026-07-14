@@ -116,6 +116,27 @@ func TestOpenAIModel_StreamingText(t *testing.T) {
 	}
 }
 
+func TestOpenAIModel_ExistingProvidersUseProfileChatCompletionsPath(t *testing.T) {
+	for _, providerID := range []string{"opencode_go", "custom_openai"} {
+		t.Run(providerID, func(t *testing.T) {
+			srv := fakeLLMServer(t, "ok")
+			m, err := agent.NewOpenAIModelForProvider("gpt-4", srv.URL+"/v1", "sk-test", providerID)
+			if err != nil {
+				t.Fatalf("NewOpenAIModelForProvider error: %v", err)
+			}
+			m.MaxRetries = 0
+			req := &model.LLMRequest{
+				Model: "gpt-4",
+				Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hello"}}}},
+			}
+			_, err = collectErrors(m.GenerateContent(context.Background(), req, true))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestOpenAIModel_Unauthorized(t *testing.T) {
 	srv := fakeLLMServer(t, "unauthorized")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "bad-key")
