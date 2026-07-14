@@ -13,7 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 // findChrome searches common locations for a Chrome/Chromium binary.
@@ -230,6 +232,108 @@ func TestBrowser_SendMessage(t *testing.T) {
 	}
 	if !inputDisabled {
 		t.Error("#chat-input should be disabled during active run")
+	}
+}
+
+func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "show rich output"})
+	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: strings.Join([]string{
+		"Here is rich output.",
+		"",
+		"Inline math $a+b$.",
+		"",
+		"```go",
+		"fmt.Println(\"hi\")",
+		"```",
+		"",
+		"```mermaid",
+		"graph TD; A-->B;",
+		"```",
+	}, "\n")})
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var prismLoaded bool
+	var katexLoaded bool
+	var mermaidLoaded bool
+	var copyButtonExists bool
+	var copyButtonState string
+	var mathRenderedOrVisible bool
+	var mermaidBlockRenderedOrVisible bool
+	var componentMermaidRenderedOrVisible bool
+
+	err = chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie("browser_id", "browser-1").WithURL(server.URL).Do(ctx)
+		}),
+		chromedp.Navigate(server.URL+"/sessions/"+sess.ID),
+		chromedp.WaitVisible(".message-assistant .copy-btn", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("typeof Prism !== 'undefined'", &prismLoaded),
+		chromedp.EvaluateAsDevTools("typeof katex !== 'undefined'", &katexLoaded),
+		chromedp.EvaluateAsDevTools("typeof mermaid !== 'undefined'", &mermaidLoaded),
+		chromedp.EvaluateAsDevTools("document.querySelector('.message-assistant .copy-btn') !== null", &copyButtonExists),
+		chromedp.Click(".message-assistant .copy-btn", chromedp.ByQuery),
+		chromedp.Sleep(150 * time.Millisecond),
+		chromedp.Text(".message-assistant .copy-btn", &copyButtonState, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`(function () {
+			var el = document.querySelector('.message-assistant .math-inline');
+			if (!el) return false;
+			return !!el.querySelector('.katex') || (el.textContent || '').includes('$a+b$');
+		})()`, &mathRenderedOrVisible),
+		chromedp.EvaluateAsDevTools(`(function () {
+			var el = document.querySelector('.message-assistant pre.mermaid');
+			if (!el) return false;
+			return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
+		})()`, &mermaidBlockRenderedOrVisible),
+		chromedp.EvaluateAsDevTools(`(function () {
+			var messages = document.getElementById('messages');
+			messages.insertAdjacentHTML('beforeend', '<div class="mermaid-diagram"><pre class="mermaid">graph TD; A--&gt;B;</pre></div>');
+			document.dispatchEvent(new Event('htmx:afterSwap'));
+			return true;
+		})()`, nil),
+		chromedp.Sleep(200 * time.Millisecond),
+		chromedp.EvaluateAsDevTools(`(function () {
+			var el = document.querySelector('.mermaid-diagram pre.mermaid');
+			if (!el) return false;
+			return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
+		})()`, &componentMermaidRenderedOrVisible),
+	)
+	if err != nil {
+		t.Fatalf("rich rendering browser test failed: %v", err)
+	}
+
+	if !prismLoaded {
+		t.Error("Prism asset not loaded")
+	}
+	if !katexLoaded {
+		t.Error("KaTeX asset not loaded")
+	}
+	if !mermaidLoaded {
+		t.Error("Mermaid asset not loaded")
+	}
+	if !copyButtonExists {
+		t.Error("copy button not rendered")
+	}
+	if copyButtonState != "Copied!" && copyButtonState != "Failed" && copyButtonState != "Copy" {
+		t.Errorf("unexpected copy button state %q", copyButtonState)
+	}
+	if !mathRenderedOrVisible {
+		t.Error("math markup neither rendered nor visible")
+	}
+	if !mermaidBlockRenderedOrVisible {
+		t.Error("mermaid fenced block neither rendered nor visible")
+	}
+	if !componentMermaidRenderedOrVisible {
+		t.Error("mermaid component markup neither rendered nor visible")
 	}
 }
 

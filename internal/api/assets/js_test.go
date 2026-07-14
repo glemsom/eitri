@@ -7,7 +7,20 @@ import (
 )
 
 func TestJsFiles(t *testing.T) {
-	files := []string{"eitri-composer.js", "eitri-stream.js", "htmx.min.js"}
+	files := []string{
+		"eitri-composer.js",
+		"eitri-stream.js",
+		"eitri-renderers.js",
+		"eitri-mermaid.js",
+		"htmx.min.js",
+		"prism-core.min.js",
+		"prism-go.min.js",
+		"katex.min.js",
+		"katex-auto-render.min.js",
+		"mermaid.min.js",
+		"prism.min.css",
+		"katex.min.css",
+	}
 	for _, name := range files {
 		f, err := Files.Open(name)
 		if err != nil {
@@ -51,5 +64,22 @@ func TestJsFiles(t *testing.T) {
 	content2 := string(data2)
 	if !strings.Contains(content2, "reenableComposer") {
 		t.Error("eitri-stream.js missing reenableComposer function")
+	}
+
+	f3, err := Files.Open("eitri-renderers.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-renderers.js: %v", err)
+	}
+	data3, err := io.ReadAll(f3)
+	f3.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-renderers.js: %v", err)
+	}
+	content3 := string(data3)
+	if !strings.Contains(content3, "initPrism") {
+		t.Error("eitri-renderers.js missing Prism initialization")
+	}
+	if !strings.Contains(content3, "initKatex") {
+		t.Error("eitri-renderers.js missing KaTeX initialization")
 	}
 }

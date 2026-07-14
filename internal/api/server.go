@@ -201,6 +201,23 @@ func writeRequestTooLarge(w http.ResponseWriter) {
 	http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
 }
 
+func renderSessionForPage(sess *session.UISession) *session.UISession {
+	if sess == nil {
+		return nil
+	}
+
+	rendered := *sess
+	rendered.ActiveSkills = append([]string(nil), sess.ActiveSkills...)
+	rendered.Messages = make([]session.Message, len(sess.Messages))
+	for i, msg := range sess.Messages {
+		rendered.Messages[i] = msg
+		if msg.Role == "assistant" {
+			rendered.Messages[i].Content = renderMarkdownToHTML(msg.Content)
+		}
+	}
+	return &rendered
+}
+
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.Files)))
@@ -374,8 +391,9 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	renderedSession := renderSessionForPage(sess)
 
-	component := templates.ChatPage(sessions, id, sess, s.config.Workspace, configValid)
+	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid)
 	component.Render(r.Context(), w)
 }
 

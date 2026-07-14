@@ -9,11 +9,19 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
+			<link rel="stylesheet" href="/static/prism.min.css"/>
+			<link rel="stylesheet" href="/static/katex.min.css"/>
+			<link rel="stylesheet" href="/static/eitri.css"/>
 			<script src="/static/htmx.min.js"></script>
+			<script src="/static/prism-core.min.js"></script>
+			<script src="/static/prism-go.min.js"></script>
+			<script src="/static/katex.min.js"></script>
+			<script src="/static/katex-auto-render.min.js"></script>
+			<script src="/static/mermaid.min.js"></script>
 			<script src="/static/eitri-stream.js"></script>
 			<script src="/static/eitri-composer.js"></script>
+			<script src="/static/eitri-renderers.js"></script>
 			<script src="/static/eitri-mermaid.js"></script>
-			<link rel="stylesheet" href="/static/eitri.css"/>
 		</head>
 		<body hx-ext="head-support">
 			<div id="app">

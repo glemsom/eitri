@@ -154,6 +154,10 @@ noscript {
   margin: 0.5rem 0;
 }
 
+.message-content pre.code-block {
+  padding-top: 2.5rem;
+}
+
 .message-content code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.9em;
@@ -222,6 +226,24 @@ noscript {
 
 .think-details summary:hover {
   color: var(--text);
+}
+
+/* Math */
+.math-inline,
+.math-block {
+  font-family: "KaTeX_Main", "Times New Roman", serif;
+}
+
+.math-inline {
+  display: inline-block;
+  padding: 0 0.1rem;
+}
+
+.math-block {
+  display: block;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  text-align: center;
 }
 
 /* Tool cards */
