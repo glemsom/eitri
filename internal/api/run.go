@@ -245,6 +245,13 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 		case evt, ok := <-state.Events:
 			if !ok {
 				if fullText.Len() > 0 {
+					if rm.uiSessionMgr != nil {
+						rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
+							Role:      "assistant",
+							Content:   fullText.String(),
+							CreatedAt: time.Now(),
+						})
+					}
 					w.Done(messageID, estimateUsage(fullText.String()))
 				}
 				close(state.Done)
@@ -254,7 +261,9 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 				continue
 			}
 
-			if evt.Content != nil {
+			turnComplete := evt.TurnComplete || evt.IsFinalResponse()
+
+			if evt.Content != nil && !turnComplete {
 				for _, part := range evt.Content.Parts {
 					if part == nil {
 						continue
@@ -290,7 +299,14 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 				}
 			}
 
-			if evt.TurnComplete || evt.IsFinalResponse() {
+			if turnComplete {
+				if rm.uiSessionMgr != nil {
+					rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
+						Role:      "assistant",
+						Content:   fullText.String(),
+						CreatedAt: time.Now(),
+					})
+				}
 				w.Done(messageID, estimateUsage(fullText.String()))
 				close(state.Done)
 				return fullText.String()

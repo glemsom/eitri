@@ -575,14 +575,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			}()
 
 			w := NewSSEWriter(sseCh)
-			text := s.config.RunManager.AppendEvent(state, w)
-			if text != "" {
-				s.config.SessionManager.AppendMessage(id, session.Message{
-					Role:      "assistant",
-					Content:   text,
-					CreatedAt: time.Now(),
-				})
-			}
+			s.config.RunManager.AppendEvent(state, w)
 		}()
 	}
 
@@ -689,23 +682,34 @@ func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		MessageID string `json:"message_id"`
+	messageID := ""
+	ct := r.Header.Get("Content-Type")
+	if strings.Contains(ct, "application/json") {
+		var req struct {
+			MessageID string `json:"message_id"`
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+		messageID = req.MessageID
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		messageID = r.FormValue("message_id")
 	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
 
-	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
+	_ = messageID
 
 	// Look up the last assistant message in session
-	// In v1, we render the accumulated run content from the session messages
 	var content string
 	sess = s.config.SessionManager.Get(id)
 	if sess != nil {

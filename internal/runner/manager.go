@@ -107,7 +107,9 @@ func (m *Manager) Run(ctx context.Context, r *runner.Runner, userID, sessionID s
 		defer close(eventCh)
 		defer close(errCh)
 
-		seq := r.Run(runCtx, userID, sessionID, msg, agent.RunConfig{},
+		seq := r.Run(runCtx, userID, sessionID, msg, agent.RunConfig{
+			StreamingMode: agent.StreamingModeSSE,
+		},
 			runner.WithStateDelta(map[string]any{"eitri_session": sessionID}),
 		)
 
