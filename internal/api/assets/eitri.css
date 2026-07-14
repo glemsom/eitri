@@ -735,6 +735,15 @@ noscript {
   background: #c0392b;
 }
 
+/* Send/Stop CSS toggle classes (issue #103) */
+.send-hidden {
+  display: none !important;
+}
+
+.stop-hidden {
+  display: none !important;
+}
+
 /* Setup banner */
 .setup-banner {
   background: var(--warning);

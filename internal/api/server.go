@@ -851,10 +851,9 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	s.config.RunManager.CancelRun(id)
 	s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
 
-	// Return re-enabled input
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	component := templates.MessageInput(id, false, false)
-	component.Render(r.Context(), w)
+	// Re-enabling is now client-side via CSS class toggle (issue #103).
+	// Return empty 200 so HTMX does not swap out the composer.
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {

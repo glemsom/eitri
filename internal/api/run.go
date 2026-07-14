@@ -353,6 +353,8 @@ func (rm *RunManager) CancelRun(sessionID string) bool {
 		return false
 	}
 	slog.Info("run canceled", slog.String("session_id", sessionID))
+	// Broadcast done event so SSE subscribers re-enable composer (issue #103)
+	state.broadcast(SSEEvent{Type: "done"})
 	state.Cancel()
 	state.finish()
 	return true
