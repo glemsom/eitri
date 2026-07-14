@@ -588,17 +588,14 @@
     initCodeBlockButtons();
   });
   document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
-})();
+  document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
 
   // ---- Optimistic user bubble and auto-scroll (issue #95) ----
 
   function insertOptimisticBubble(text) {
     const messages = document.getElementById('messages');
     if (!messages || !text) return;
-
-    // Avoid inserting duplicate optimistic bubbles
     if (messages.querySelector('[data-optimistic="true"]')) return;
-
     const bubble = document.createElement('div');
     bubble.className = 'message message-user';
     bubble.setAttribute('data-optimistic', 'true');
@@ -631,10 +628,7 @@
   // Insert optimistic user bubble when chat form is about to submit
   document.addEventListener('htmx:configRequest', function (evt) {
     if (!evt.detail || !evt.detail.path) return;
-    // Match /api/sessions/{id}/chat
     if (!/\/api\/sessions\/[^/]+\/chat$/.test(evt.detail.path)) return;
-
-    // Extract message from the request values
     var values = evt.detail.parameters || {};
     var message = values.message || values['message'] || '';
     if (message) {
@@ -642,8 +636,7 @@
     }
   });
 
-  // After any HTMX swap, remove optimistic bubbles (server has returned real ones)
-  // and auto-scroll if the swap targeted #messages or #streaming
+  // After any HTMX swap, remove optimistic bubbles and auto-scroll
   document.addEventListener('htmx:afterSwap', function (evt) {
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'messages' || targetId === 'streaming') {
@@ -652,23 +645,27 @@
     }
   });
 
-  // Auto-scroll when streaming content is appended
-  var origAppendToken = appendToken;
+  // Wrap appendToken for auto-scroll
+  var _origAppendToken = appendToken;
   appendToken = function (state, content) {
-    origAppendToken(state, content);
+    _origAppendToken(state, content);
     setTimeout(scrollToLatest, 20);
   };
 
-  var origShowStreamingBubble = showStreamingBubble;
+  // Wrap showStreamingBubble for auto-scroll
+  var _origShowStreamingBubble = showStreamingBubble;
   showStreamingBubble = function () {
-    origShowStreamingBubble();
+    _origShowStreamingBubble();
     setTimeout(scrollToLatest, 20);
   };
 
-  var origFinalizeMessage = finalizeMessage;
+  // Wrap finalizeMessage for auto-scroll
+  var _origFinalizeMessage = finalizeMessage;
   finalizeMessage = function (sessionId, messageId, usage, onRendered) {
-    origFinalizeMessage(sessionId, messageId, usage, function () {
+    _origFinalizeMessage(sessionId, messageId, usage, function () {
       if (typeof onRendered === 'function') onRendered();
       setTimeout(scrollToLatest, 100);
     });
   };
+
+})();
