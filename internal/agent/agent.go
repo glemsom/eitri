@@ -20,17 +20,27 @@ import (
 
 // NewAgent creates an ADK LLMAgent with the given model and tools.
 func NewAgent(llm model.LLM, sessionMgr *executor.SessionManager) (agent.Agent, error) {
+	return NewAgentWithPrompt(llm, sessionMgr, "")
+}
+
+// NewAgentWithPrompt creates an ADK LLMAgent with an optional custom system prompt.
+func NewAgentWithPrompt(llm model.LLM, sessionMgr *executor.SessionManager, customSystemPrompt string) (agent.Agent, error) {
 	workspace := sessionMgr.Workspace()
-	return newAgentWithSkills(llm, sessionMgr, workspace, skills.NewService(), nil)
+	return newAgentWithSkills(llm, sessionMgr, workspace, customSystemPrompt, skills.NewService(), nil)
 }
 
 // NewAgentWithSkills creates an ADK LLMAgent with skills support.
 func NewAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
-	workspace := sessionMgr.Workspace()
-	return newAgentWithSkills(llm, sessionMgr, workspace, skillsSvc, uiSessionMgr)
+	return NewAgentWithPromptAndSkills(llm, sessionMgr, "", skillsSvc, uiSessionMgr)
 }
 
-func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, workspace string, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
+// NewAgentWithPromptAndSkills creates an ADK LLMAgent with skills support and an optional custom system prompt.
+func NewAgentWithPromptAndSkills(llm model.LLM, sessionMgr *executor.SessionManager, customSystemPrompt string, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
+	workspace := sessionMgr.Workspace()
+	return newAgentWithSkills(llm, sessionMgr, workspace, customSystemPrompt, skillsSvc, uiSessionMgr)
+}
+
+func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, workspace string, customSystemPrompt string, skillsSvc *skills.Service, uiSessionMgr *session.Manager) (agent.Agent, error) {
 	tools := make([]tool.Tool, 0)
 
 	// terminal_execute
@@ -242,7 +252,27 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	tools = append(tools, activateSkillTool)
 
 	// Build system prompt with skills catalog
-	systemPrompt := os.Getenv("EITRI_DEFAULT_SYSTEM_PROMPT")
+	systemPrompt := buildSystemPrompt(customSystemPrompt, skillsSvc)
+
+	a, err := llmagent.New(llmagent.Config{
+		Name:        "eitri",
+		Description: "Eitri AI coding assistant",
+		Model:       llm,
+		Instruction: systemPrompt,
+		Tools:       tools,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	return a, nil
+}
+
+func buildSystemPrompt(customSystemPrompt string, skillsSvc *skills.Service) string {
+	systemPrompt := customSystemPrompt
+	if systemPrompt == "" {
+		systemPrompt = os.Getenv("EITRI_DEFAULT_SYSTEM_PROMPT")
+	}
 	if systemPrompt == "" {
 		systemPrompt = `You are Eitri, a helpful AI coding assistant named after the Norse blacksmith who forged Mjölnir. You operate in a workspace on a Linux machine.
 
@@ -259,24 +289,15 @@ Guidelines:
 - Prefer showing command output and explaining results.`
 	}
 
-	// Append skills catalog to system prompt if skills are available
+	if skillsSvc == nil {
+		return systemPrompt
+	}
+
 	catalog := skillsSvc.SkillsCatalogXML()
 	if catalog != "" {
 		systemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call activate_skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
 	}
-
-	a, err := llmagent.New(llmagent.Config{
-		Name:        "eitri",
-		Description: "Eitri AI coding assistant",
-		Model:       llm,
-		Instruction: systemPrompt,
-		Tools:       tools,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", err)
-	}
-
-	return a, nil
+	return systemPrompt
 }
 
 // LogAgentEvents logs ADK session events for debugging.

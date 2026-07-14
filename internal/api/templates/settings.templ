@@ -77,6 +77,16 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			</fieldset>
 
 			<fieldset>
+				<legend>Prompt</legend>
+
+				<div class="form-group">
+					<label for="system_prompt">System Prompt</label>
+					<textarea id="system_prompt" name="system_prompt" rows="8" placeholder="Leave empty to use built-in default prompt.">{ cfg.SystemPrompt }</textarea>
+					<small class="hint">Applies to later runs only. Clear value to restore built-in default prompt.</small>
+				</div>
+			</fieldset>
+
+			<fieldset>
 				<legend>Timeouts & Limits</legend>
 
 				<div class="form-group">

@@ -209,37 +209,21 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 
 func (m *OpenAIModel) toOpenAIReq(req *model.LLMRequest, stream bool) *openAIReq {
 	var msgs []openAIMsg
+	if req.Config != nil && req.Config.SystemInstruction != nil {
+		if msg := contentToOpenAIMessage(req.Config.SystemInstruction); msg != nil {
+			msg.Role = "system"
+			msgs = append(msgs, *msg)
+		}
+	}
 	for _, c := range req.Contents {
 		if c == nil {
 			continue
 		}
-		msg := openAIMsg{Role: mapRole(c.Role)}
-		var textParts []string
-		for _, part := range c.Parts {
-			if part == nil {
-				continue
-			}
-			if part.Text != "" {
-				textParts = append(textParts, part.Text)
-			}
-			if call := part.FunctionCall; call != nil {
-				msg.Role = "assistant"
-				argsJSON, _ := json.Marshal(call.Args)
-				msg.ToolCalls = mustMarshal([]map[string]any{
-					{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": string(argsJSON)}},
-				})
-			}
-			if fr := part.FunctionResponse; fr != nil {
-				msg.Role = "tool"
-				msg.ToolCallID = fr.ID
-				respJSON, _ := json.Marshal(fr.Response)
-				textParts = append(textParts, string(respJSON))
-			}
+		msg := contentToOpenAIMessage(c)
+		if msg == nil {
+			continue
 		}
-		if len(textParts) > 0 {
-			msg.Content = strings.Join(textParts, "\n")
-		}
-		msgs = append(msgs, msg)
+		msgs = append(msgs, *msg)
 	}
 
 	var tools interface{}
@@ -253,6 +237,42 @@ func (m *OpenAIModel) toOpenAIReq(req *model.LLMRequest, stream bool) *openAIReq
 		Stream:   stream,
 		Tools:    tools,
 	}
+}
+
+func contentToOpenAIMessage(c *genai.Content) *openAIMsg {
+	if c == nil {
+		return nil
+	}
+	msg := openAIMsg{Role: mapRole(c.Role)}
+	var textParts []string
+	for _, part := range c.Parts {
+		if part == nil {
+			continue
+		}
+		if part.Text != "" {
+			textParts = append(textParts, part.Text)
+		}
+		if call := part.FunctionCall; call != nil {
+			msg.Role = "assistant"
+			argsJSON, _ := json.Marshal(call.Args)
+			msg.ToolCalls = mustMarshal([]map[string]any{
+				{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": string(argsJSON)}},
+			})
+		}
+		if fr := part.FunctionResponse; fr != nil {
+			msg.Role = "tool"
+			msg.ToolCallID = fr.ID
+			respJSON, _ := json.Marshal(fr.Response)
+			textParts = append(textParts, string(respJSON))
+		}
+	}
+	if len(textParts) > 0 {
+		msg.Content = strings.Join(textParts, "\n")
+	}
+	if msg.Content == "" && len(msg.ToolCalls) == 0 && msg.ToolCallID == "" {
+		return nil
+	}
+	return &msg
 }
 
 func mapRole(r string) string {

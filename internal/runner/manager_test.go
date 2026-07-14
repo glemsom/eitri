@@ -31,6 +31,12 @@ func TestConfigHash_DifferentInputs(t *testing.T) {
 	if h1 == h3 {
 		t.Error("different base URLs should produce different hashes")
 	}
+
+	h4 := configHash(&config.Config{Provider: "opencode_go", APIKey: "key1", BaseURL: "http://a", Model: "m1", SystemPrompt: "prompt one"})
+	h5 := configHash(&config.Config{Provider: "opencode_go", APIKey: "key1", BaseURL: "http://a", Model: "m1", SystemPrompt: "prompt two"})
+	if h4 == h5 {
+		t.Error("different system prompts should produce different hashes")
+	}
 }
 
 func TestGetOrCreate_CachesRunner(t *testing.T) {

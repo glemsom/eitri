@@ -1171,7 +1171,7 @@ func TestSettingsPage(t *testing.T) {
 	content := string(body)
 
 	// Check for expected form elements
-	checks := []string{"provider", "api_key", "base_url", "model", "session_timeout", "command_timeout", "max_turns"}
+	checks := []string{"provider", "api_key", "base_url", "model", "system_prompt", "session_timeout", "command_timeout", "max_turns"}
 	for _, c := range checks {
 		if !strings.Contains(content, c) {
 			t.Errorf("settings page missing %q", c)
@@ -1293,6 +1293,9 @@ func TestGetConfigJSON(t *testing.T) {
 	if body["api_key"] != "" {
 		t.Errorf("api_key = %q, want empty string", body["api_key"])
 	}
+	if body["system_prompt"] != "" {
+		t.Errorf("system_prompt = %q, want empty string", body["system_prompt"])
+	}
 	if _, ok := body["provider_auth"]; ok {
 		t.Errorf("provider_auth should be omitted from GET /api/config")
 	}
@@ -1350,6 +1353,25 @@ func TestPutConfigValid(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestPutConfigPersistsSystemPrompt(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-test","model":"gpt-4","system_prompt":"Speak like blacksmith."}`)
+
+	cfgData := getConfigJSON(t, server)
+	if got := cfgData["system_prompt"]; got != "Speak like blacksmith." {
+		t.Fatalf("system_prompt = %v, want custom prompt", got)
+	}
+
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+provider.URL+`","api_key":"sk-test","model":"gpt-4","system_prompt":""}`)
+
+	cfgData = getConfigJSON(t, server)
+	if got := cfgData["system_prompt"]; got != "" {
+		t.Fatalf("system_prompt after clear = %v, want empty string", got)
 	}
 }
 

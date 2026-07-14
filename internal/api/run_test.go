@@ -258,6 +258,109 @@ func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http
 	}
 }
 
+func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	releaseFirstRun := make(chan struct{})
+	promptCh := make(chan string, 3)
+	requestCount := 0
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			requestCount++
+			var body struct {
+				Messages []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			var systemPrompt string
+			for _, msg := range body.Messages {
+				if msg.Role == "system" {
+					systemPrompt = msg.Content
+					break
+				}
+			}
+			promptCh <- systemPrompt
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			if requestCount == 1 {
+				<-releaseFirstRun
+			}
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","system_prompt":"Prompt one"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	firstPrompt := <-promptCh
+	if !strings.Contains(firstPrompt, "Prompt one") {
+		t.Fatalf("first run system prompt = %q, want custom prompt", firstPrompt)
+	}
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","system_prompt":"Prompt two"}`, llmSrv.URL))
+	close(releaseFirstRun)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.runMgr.ActiveRun(sessionID) != nil {
+		t.Fatal("first run did not finish")
+	}
+
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	secondPrompt := <-promptCh
+	if !strings.Contains(secondPrompt, "Prompt two") {
+		t.Fatalf("second run system prompt = %q, want updated prompt", secondPrompt)
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.runMgr.ActiveRun(sessionID) != nil {
+		t.Fatal("second run did not finish")
+	}
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","system_prompt":""}`, llmSrv.URL))
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	thirdPrompt := <-promptCh
+	if strings.Contains(thirdPrompt, "Prompt one") || strings.Contains(thirdPrompt, "Prompt two") {
+		t.Fatalf("third run system prompt = %q, want default prompt after clear", thirdPrompt)
+	}
+	if !strings.Contains(thirdPrompt, "You are Eitri") {
+		t.Fatalf("third run system prompt = %q, want built-in default prompt", thirdPrompt)
+	}
+}
+
 func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)
 	var sawModelsAuth string
