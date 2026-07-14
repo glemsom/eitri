@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -97,8 +96,8 @@ func (e *TmuxExecutor) ExecuteCommand(ctx context.Context, command string) (Comm
 	}
 
 	// Poll for command completion.
-	// The sentinel appears in BOTH the echoed command line and the actual output.
-	// Waiting for 2+ occurrences means the command has finished executing.
+	// Sentinels also appear in the typed command line, so only a marker printed
+	// as its own output line means the command has finished executing.
 	var allOutput string
 pollLoop:
 	for {
@@ -112,7 +111,7 @@ pollLoop:
 		}
 
 		allOutput = e.capturePane()
-		if strings.Count(allOutput, endSentinel) >= 2 {
+		if containsMarkerLine(allOutput, endSentinel) {
 			break pollLoop
 		}
 
@@ -208,31 +207,50 @@ func (e *TmuxExecutor) Close() error {
 	return exec.Command(TmuxPath, "kill-session", "-t", e.sessionName).Run()
 }
 
-// extractBetween returns content after the LAST occurrence of startMarker
-// and before the FIRST occurrence of endMarker after that start.
+// containsMarkerLine reports whether marker appears as its own output line.
+func containsMarkerLine(s, marker string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) == marker {
+			return true
+		}
+	}
+	return false
+}
+
+// extractBetween returns content between marker lines, ignoring prompt/input lines
+// where sentinels appear as part of the typed shell command.
 func extractBetween(s, startMarker, endMarker string) string {
-	startIdx := strings.LastIndex(s, startMarker)
+	lines := strings.Split(s, "\n")
+	startIdx := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == startMarker {
+			startIdx = i
+		}
+	}
 	if startIdx < 0 {
 		return s
 	}
-	startIdx += len(startMarker)
 
-	after := s[startIdx:]
-	endIdx := strings.Index(after, endMarker)
-	if endIdx < 0 {
-		return after
+	endIdx := len(lines)
+	for i := startIdx + 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == endMarker {
+			endIdx = i
+			break
+		}
 	}
-	return after[:endIdx]
+	return strings.Join(lines[startIdx+1:endIdx], "\n")
 }
 
 // parseExitCode extracts exit code from output using the given exit marker.
 func parseExitCode(s, exitMarker string) int {
-	re := regexp.MustCompile(exitMarker + `:(\d+)`)
-	m := re.FindStringSubmatch(s)
-	if len(m) >= 2 {
-		code := 0
-		fmt.Sscanf(m[1], "%d", &code)
-		return code
+	prefix := exitMarker + ":"
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			code := 0
+			fmt.Sscanf(strings.TrimPrefix(line, prefix), "%d", &code)
+			return code
+		}
 	}
 	return 0
 }
