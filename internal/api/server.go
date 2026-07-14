@@ -566,15 +566,9 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save
-	if err := config.Save(s.config.ConfigPath, newCfg); err != nil {
+	if err := s.saveProviderConfig(newCfg); err != nil {
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	// Invalidate runner cache on config change
-	if s.config.RunManager != nil {
-		s.config.RunManager.runnerMgr.Invalidate()
-		s.config.RunManager.UpdateProviderConfig(newCfg)
 	}
 
 	// Render form with models populated
@@ -582,9 +576,9 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-// fetchModelList calls Provider discovery seam and persists any refreshed auth state.
-func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
-	result, err := provider.DiscoverModels(ctx, provider.DiscoveryRequest{
+// discoverModelList calls Provider discovery seam without persisting returned auth updates.
+func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*provider.DiscoveryResult, error) {
+	return provider.DiscoverModels(ctx, provider.DiscoveryRequest{
 		ProviderID:   cfg.Provider,
 		BaseURL:      cfg.BaseURL,
 		APIKey:       cfg.APIKey,
@@ -593,6 +587,11 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 		HTTPClient:         s.httpClient,
 		GitHubCopilotOAuth: s.copilotOAuth,
 	})
+}
+
+// fetchModelList calls Provider discovery seam and persists any refreshed auth state.
+func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
+	result, err := s.discoverModelList(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -602,23 +601,36 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	return result.Models, nil
 }
 
-func (s *Server) persistDiscoveryAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) error {
+func applyAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) {
 	if update == nil {
-		return nil
+		return
 	}
-
 	cfg.APIKey = update.APIKey
 	if len(update.ProviderAuth) == 0 {
 		cfg.ProviderAuth = nil
-	} else {
-		cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
+		return
 	}
+	cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
+}
+
+func (s *Server) saveProviderConfig(cfg *config.Config) error {
 	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
-		return fmt.Errorf("failed to save refreshed provider auth: %w", err)
+		return err
 	}
 	if s.config.RunManager != nil {
 		s.config.RunManager.runnerMgr.Invalidate()
 		s.config.RunManager.UpdateProviderConfig(cfg)
+	}
+	return nil
+}
+
+func (s *Server) persistDiscoveryAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) error {
+	if update == nil {
+		return nil
+	}
+	applyAuthUpdate(cfg, update)
+	if err := s.saveProviderConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save refreshed provider auth: %w", err)
 	}
 	return nil
 }

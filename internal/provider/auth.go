@@ -167,6 +167,26 @@ func ResolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw j
 	return ResolvedAuth{APIKey: strings.TrimSpace(apiKey)}, nil
 }
 
+// GitHubCopilotAuthUpdateFromTokenResponse converts successful OAuth token response
+// into caller-persisted auth data.
+func GitHubCopilotAuthUpdateFromTokenResponse(resp *GitHubAccessTokenResponse, now time.Time) (*AuthUpdate, error) {
+	if resp == nil || strings.TrimSpace(resp.AccessToken) == "" {
+		return nil, fmt.Errorf("github_copilot token response missing access token")
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	state := applyGitHubCopilotTokenResponse(GitHubCopilotAuthState{}, resp, now)
+	raw, err := EncodeGitHubCopilotAuthState(state)
+	if err != nil {
+		return nil, err
+	}
+	return &AuthUpdate{
+		APIKey:       strings.TrimSpace(state.AccessToken),
+		ProviderAuth: raw,
+	}, nil
+}
+
 // NormalizeAuthState canonicalizes provider-owned auth state for config persistence.
 func NormalizeAuthState(providerID, apiKey string, raw json.RawMessage) (json.RawMessage, error) {
 	prof, err := Get(providerID)

@@ -546,6 +546,198 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 	}
 }
 
+func TestGitHubCopilotDeviceFlowSuccessPersistsAuthAfterDiscoverySeam(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/device/code":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"device_code":"device-123","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`)
+		case "/login/oauth/access_token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"access_token":"gho_device_token","token_type":"bearer","scope":"read:user"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer oauth.Close()
+
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+			t.Fatalf("config saved before discovery seam; err=%v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer providerSrv.Close()
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		configPath: configPath,
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			DeviceCodeURL:  oauth.URL + "/login/device/code",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+	})
+
+	startForm := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {providerSrv.URL},
+	}
+	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	startReq.Header.Set("HX-Request", "true")
+	startResp, err := http.DefaultClient.Do(startReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startResp.Body.Close()
+	startBodyBytes, err := io.ReadAll(startResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flowID := extractCopilotFlowID(t, string(startBodyBytes))
+
+	pollReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/providers/github_copilot/device-flow/"+flowID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range startResp.Cookies() {
+		pollReq.AddCookie(c)
+	}
+	pollResp, err := http.DefaultClient.Do(pollReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pollResp.Body.Close()
+	if pollResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(pollResp.Body)
+		t.Fatalf("device-flow poll status = %d, want %d; body=%s", pollResp.StatusCode, http.StatusOK, string(body))
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKey != "gho_device_token" {
+		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
+	}
+	if cfg.BaseURL != providerSrv.URL {
+		t.Fatalf("saved base_url = %q, want %q", cfg.BaseURL, providerSrv.URL)
+	}
+	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	if err != nil {
+		t.Fatalf("ResolveAuth(saved config) error: %v", err)
+	}
+	if resolvedAuth.APIKey != "gho_device_token" {
+		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	}
+}
+
+func TestGitHubCopilotDeviceFlowDiscoveryFailureStillSavesToken(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/device/code":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"device_code":"device-123","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`)
+		case "/login/oauth/access_token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"access_token":"gho_device_token","token_type":"bearer","scope":"read:user"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer oauth.Close()
+
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "bad gateway", http.StatusBadGateway)
+	}))
+	defer providerSrv.Close()
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		configPath: configPath,
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			DeviceCodeURL:  oauth.URL + "/login/device/code",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+	})
+
+	startForm := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {providerSrv.URL},
+	}
+	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	startReq.Header.Set("HX-Request", "true")
+	startResp, err := http.DefaultClient.Do(startReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startResp.Body.Close()
+	startBodyBytes, err := io.ReadAll(startResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flowID := extractCopilotFlowID(t, string(startBodyBytes))
+
+	pollReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/providers/github_copilot/device-flow/"+flowID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range startResp.Cookies() {
+		pollReq.AddCookie(c)
+	}
+	pollResp, err := http.DefaultClient.Do(pollReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pollResp.Body.Close()
+	if pollResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(pollResp.Body)
+		t.Fatalf("device-flow poll status = %d, want %d; body=%s", pollResp.StatusCode, http.StatusOK, string(body))
+	}
+	pollBodyBytes, err := io.ReadAll(pollResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollBody := string(pollBodyBytes)
+	if !strings.Contains(pollBody, "GitHub Copilot connected. Token saved.") {
+		t.Fatalf("poll response missing token-saved notice: %s", pollBody)
+	}
+	if !strings.Contains(pollBody, "Model discovery failed: provider returned HTTP 502") {
+		t.Fatalf("poll response missing discovery error: %s", pollBody)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKey != "gho_device_token" {
+		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
+	}
+	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	if err != nil {
+		t.Fatalf("ResolveAuth(saved config) error: %v", err)
+	}
+	if resolvedAuth.APIKey != "gho_device_token" {
+		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	}
+}
+
 func TestGetModels_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	configPath := t.TempDir() + "/config.json"
 	var gotAuth string
