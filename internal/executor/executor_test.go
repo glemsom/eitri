@@ -2,6 +2,7 @@ package executor_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/executor"
@@ -48,4 +49,24 @@ func TestMockExecutor_Close(t *testing.T) {
 	}
 
 	m.CloseErr = nil // default is nil
+}
+
+func TestCommandResult_JSONShape(t *testing.T) {
+	result := executor.CommandResult{
+		Stdout:     "out",
+		Stderr:     "",
+		ExitCode:   0,
+		TimedOut:   false,
+		DurationMs: 1234,
+		Truncated:  false,
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal() = %v", err)
+	}
+	want := `{"stdout":"out","stderr":"","exit_code":0,"timed_out":false,"duration_ms":1234,"truncated":false}`
+	if string(data) != want {
+		t.Fatalf("json = %s, want %s", data, want)
+	}
 }

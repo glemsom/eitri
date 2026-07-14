@@ -37,34 +37,23 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	type termArgs struct {
 		Command string `json:"command" jsonschema:"Shell command to run"`
 	}
-	type termResult struct {
-		Stdout    string `json:"stdout"`
-		ExitCode  int    `json:"exit_code"`
-		TimedOut  bool   `json:"timed_out"`
-		Truncated bool   `json:"truncated"`
-	}
 
-	termTool, err := functiontool.New[termArgs, termResult](
+	termTool, err := functiontool.New[termArgs, executor.CommandResult](
 		functiontool.Config{
 			Name:        "terminal_execute",
 			Description: "Execute a shell command in the session's tmux shell and return the output. Use for running commands, tests, builds, or any shell operations.",
 		},
-		func(ctx agent.Context, args termArgs) (termResult, error) {
+		func(ctx agent.Context, args termArgs) (executor.CommandResult, error) {
 			sessionID := ctx.SessionID()
 			exe, err := sessionMgr.GetOrCreate(sessionID)
 			if err != nil {
-				return termResult{}, fmt.Errorf("failed to get session executor: %w", err)
+				return executor.CommandResult{}, fmt.Errorf("failed to get session executor: %w", err)
 			}
-			result, err := exe.ExecuteCommand(context.Background(), args.Command)
+			result, err := exe.ExecuteCommand(ctx, args.Command)
 			if err != nil {
-				return termResult{}, fmt.Errorf("command execution failed: %w", err)
+				return executor.CommandResult{}, fmt.Errorf("command execution failed: %w", err)
 			}
-			return termResult{
-				Stdout:    result.Stdout,
-				ExitCode:  result.ExitCode,
-				TimedOut:  result.TimedOut,
-				Truncated: result.Truncated,
-			}, nil
+			return result, nil
 		},
 	)
 	if err != nil {

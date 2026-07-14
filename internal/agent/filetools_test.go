@@ -127,6 +127,19 @@ func TestReadFile_BinaryContent(t *testing.T) {
 	}
 }
 
+func TestReadFile_InvalidUTF8(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "invalid.txt")
+	if err := os.WriteFile(path, []byte{0xff, 0xfe, 0xfd}, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ReadFile(path, 0, 0)
+	if err == nil {
+		t.Fatal("expected error for invalid UTF-8, got nil")
+	}
+}
+
 func TestReadFile_OffsetPastEnd(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
@@ -188,6 +201,15 @@ func TestWriteFile_CreateWithParentDirs(t *testing.T) {
 	}
 	if result.Mode != "create" {
 		t.Errorf("Mode = %q, want 'create'", result.Mode)
+	}
+	wantDirs := []string{filepath.Join(dir, "sub"), filepath.Join(dir, "sub", "nested")}
+	if len(result.DirsCreated) != len(wantDirs) {
+		t.Fatalf("DirsCreated len = %d, want %d (%v)", len(result.DirsCreated), len(wantDirs), result.DirsCreated)
+	}
+	for i := range wantDirs {
+		if result.DirsCreated[i] != wantDirs[i] {
+			t.Fatalf("DirsCreated[%d] = %q, want %q", i, result.DirsCreated[i], wantDirs[i])
+		}
 	}
 
 	// Verify file was written
