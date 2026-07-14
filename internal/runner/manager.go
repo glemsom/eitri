@@ -29,6 +29,30 @@ type cachedRunner struct {
 	hash   string
 }
 
+// MaxTurnsExceededError reports that a run hit its configured turn cap.
+type MaxTurnsExceededError struct {
+	Limit int
+}
+
+func (e *MaxTurnsExceededError) Error() string {
+	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
+}
+
+func eventNeedsAnotherTurn(evt *session.Event) bool {
+	if evt == nil || evt.Content == nil {
+		return false
+	}
+	for _, part := range evt.Content.Parts {
+		if part == nil {
+			continue
+		}
+		if part.FunctionCall != nil || part.FunctionResponse != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // NewManager creates a runner manager.
 func NewManager() *Manager {
 	return &Manager{
@@ -97,9 +121,9 @@ func (m *Manager) SessionService() session.Service {
 	return m.sessionSvc
 }
 
-// Run runs the ADK agent and delivers events via channels.
+// Run runs ADK agent and delivers events via channels.
 // Returns event channel, error channel, cancel func.
-func (m *Manager) Run(ctx context.Context, r *runner.Runner, userID, sessionID string, msg *genai.Content) (<-chan *session.Event, <-chan error, context.CancelFunc) {
+func (m *Manager) Run(ctx context.Context, r *runner.Runner, userID, sessionID string, msg *genai.Content, maxTurns int) (<-chan *session.Event, <-chan error, context.CancelFunc) {
 	runCtx, cancel := context.WithCancel(ctx)
 
 	eventCh := make(chan *session.Event, 200)
@@ -115,6 +139,7 @@ func (m *Manager) Run(ctx context.Context, r *runner.Runner, userID, sessionID s
 			runner.WithStateDelta(map[string]any{"eitri_session": sessionID}),
 		)
 
+		turns := 0
 		for evt, err := range seq {
 			if err != nil {
 				select {
@@ -128,6 +153,14 @@ func (m *Manager) Run(ctx context.Context, r *runner.Runner, userID, sessionID s
 				case eventCh <- evt:
 				case <-runCtx.Done():
 					return
+				}
+				if maxTurns > 0 && evt.TurnComplete {
+					turns++
+					if turns >= maxTurns && eventNeedsAnotherTurn(evt) {
+						errCh <- &MaxTurnsExceededError{Limit: maxTurns}
+						cancel()
+						return
+					}
 				}
 			}
 		}

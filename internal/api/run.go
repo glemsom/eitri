@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -122,6 +123,7 @@ type RunManager struct {
 	providerAuth json.RawMessage
 	modelName    string
 	systemPrompt string
+	maxTurns     int
 
 	configPath   string
 	httpClient   *http.Client
@@ -168,6 +170,7 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 	rm.providerAuth = append(rm.providerAuth[:0], cfg.ProviderAuth...)
 	rm.modelName = cfg.Model
 	rm.systemPrompt = cfg.SystemPrompt
+	rm.maxTurns = cfg.MaxTurns
 }
 
 // StartRun starts a new agent run for a session. Returns error if run already active.
@@ -188,6 +191,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	providerAuth := append(json.RawMessage(nil), rm.providerAuth...)
 	modelName := rm.modelName
 	systemPrompt := rm.systemPrompt
+	maxTurns := rm.maxTurns
 	configPath := rm.configPath
 	httpClient := rm.httpClient
 	copilotOAuth := rm.copilotOAuth
@@ -257,7 +261,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		Parts: []*genai.Part{{Text: userMessage}},
 	}
 
-	eventCh, errCh, cancel := rm.runnerMgr.Run(ctx, r, sessionID, sessionID, content)
+	eventCh, errCh, cancel := rm.runnerMgr.Run(ctx, r, sessionID, sessionID, content, maxTurns)
 
 	state := &runState{
 		SessionID:   sessionID,
@@ -532,6 +536,13 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 		select {
 		case evt, ok := <-state.Events:
 			if !ok {
+				select {
+				case err, ok := <-state.Errors:
+					if ok && err != nil {
+						return rm.finishWithError(state, w, messageID, err)
+					}
+				default:
+				}
 				content := state.bufferString()
 				if content != "" {
 					if rm.uiSessionMgr != nil {
@@ -609,9 +620,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 				return state.bufferString()
 			}
 			if err != nil {
-				w.Error(formatErrorMessage(err))
-				state.finish()
-				return state.bufferString()
+				return rm.finishWithError(state, w, messageID, err)
 			}
 
 		case <-state.Done:
@@ -621,9 +630,44 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 	}
 }
 
+func (rm *RunManager) finishWithError(state *runState, w *SSEWriter, messageID string, err error) string {
+	var maxTurnsErr *agentrunner.MaxTurnsExceededError
+	if errors.As(err, &maxTurnsErr) {
+		content := state.bufferString()
+		limitMsg := maxTurnsMessage(maxTurnsErr.Limit)
+		if content == "" {
+			state.appendBuffer(limitMsg)
+			content = limitMsg
+		} else {
+			state.appendBuffer("\n\n" + limitMsg)
+			content += "\n\n" + limitMsg
+		}
+		if rm.uiSessionMgr != nil {
+			rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
+				Role:      "assistant",
+				Content:   content,
+				CreatedAt: time.Now(),
+			})
+		}
+		w.Done(messageID, estimateUsage(content))
+		state.finish()
+		return content
+	}
+	w.Error(formatErrorMessage(err))
+	state.finish()
+	return state.bufferString()
+}
+
 // estimateUsage estimates token counts from text length.
 // Uses a rough ratio: ~4 chars per token for English text.
 // This is a fallback when the provider doesn't return usage data.
+func maxTurnsMessage(limit int) string {
+	if limit == 1 {
+		return "Stopped after reaching max turns limit (1). Increase Max Turns in Settings if this task needs tool follow-up steps."
+	}
+	return fmt.Sprintf("Stopped after reaching max turns limit (%d). Increase Max Turns in Settings if this task needs more tool/model steps.", limit)
+}
+
 func estimateUsage(text string) *tokenUsage {
 	const charsPerToken = 4
 	totalTokens := len(text) / charsPerToken

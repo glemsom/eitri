@@ -109,7 +109,7 @@ func TestRun_ReturnsChannels(t *testing.T) {
 		t.Fatalf("GetOrCreate: %v", err)
 	}
 
-	eventCh, errCh, cancel := m.Run(context.Background(), r, "user1", "session1", nil)
+	eventCh, errCh, cancel := m.Run(context.Background(), r, "user1", "session1", nil, 25)
 	defer cancel()
 
 	if eventCh == nil {
