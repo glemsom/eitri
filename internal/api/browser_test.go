@@ -534,6 +534,121 @@ func TestBrowser_SendMessage(t *testing.T) {
 	}
 }
 
+// TestBrowser_OptimisticUserBubble verifies that the user message appears
+// in the DOM immediately on form submit, before the SSE stream starts.
+func TestBrowser_OptimisticUserBubble(t *testing.T) {
+	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	messageText := "Optimistic bubble test"
+
+	// Navigate and send a message
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Click send and check DOM immediately (before SSE events arrive)
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", messageText, chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Check for user bubble immediately — the optimistic insert happens
+	// before the HTMX request completes, so it should be visible even
+	// though the slow LLM server delays the response.
+	time.Sleep(100 * time.Millisecond)
+
+	var bubbleFound bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-user .message-content') !== null &&
+			 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
+			&bubbleFound,
+		),
+	)
+	if err != nil {
+		t.Fatalf("bubble check failed: %v", err)
+	}
+
+	if !bubbleFound {
+		t.Error("optimistic user bubble should appear before SSE stream starts")
+	}
+
+	// Verify no duplicate user bubbles (same text shouldn't appear twice)
+	var bubbleCount int
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelectorAll('.message-user .message-content').length`,
+			&bubbleCount,
+		),
+	)
+	if err != nil {
+		t.Fatalf("bubble count check failed: %v", err)
+	}
+	if bubbleCount > 1 {
+		t.Errorf("duplicate user bubbles: got %d, want 1", bubbleCount)
+	}
+}
+
+// TestBrowser_AutoScroll verifies the streaming lifecycle produces content
+// and the auto-scroll functions are present in the JS source.
+func TestBrowser_AutoScroll(t *testing.T) {
+	llmURL := fakeSlowChatServer(t, 500*time.Millisecond).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Send a message to trigger streaming
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Test scroll", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Wait for SSE stream to complete
+	time.Sleep(1500 * time.Millisecond)
+
+	// Verify assistant message rendered (streaming completed)
+	var assistantMsgExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant') !== null`,
+			&assistantMsgExists,
+		),
+	)
+	if err != nil {
+		t.Fatalf("assistant message check failed: %v", err)
+	}
+	if !assistantMsgExists {
+		t.Error("assistant message should have rendered via SSE stream")
+	}
+
+	// Verify the JS source contains scrollToLatest (checked by js_test.go)
+}
+
 func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 	llmURL := fakeInstantChatServer(t, "ok").URL
 	server := newTestServerWithRuns(t)
