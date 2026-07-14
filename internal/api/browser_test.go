@@ -692,7 +692,7 @@ func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 	}
 
 	err = chromedp.Run(ctx,
-		chromedp.Click("#session-tabs .session-tab:first-child .session-tab-link", chromedp.ByQuery),
+		chromedp.Click("#session-tabs .session-item:first-child .session-item-link", chromedp.ByQuery),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
 		chromedp.SendKeys("#chat-input", firstMessage, chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
@@ -1577,21 +1577,24 @@ func TestBrowser_NavUsesHTMXBetweenFullPages(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-		chromedp.Click(`a[href="/settings"]`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown .gear-btn`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown a[href="/settings"]`, chromedp.ByQuery),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.Location(&pathAfterSettings),
 		chromedp.EvaluateAsDevTools(
 			`document.querySelector('#workspace-indicator') !== null && document.querySelector('#workspace-indicator').title === `+fmt.Sprintf("%q", workspace),
 			&settingsHasWorkspace,
 		),
-		chromedp.Click(`a[href="/skills"]`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown .gear-btn`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown a[href="/skills"]`, chromedp.ByQuery),
 		chromedp.WaitVisible(".skills-view", chromedp.ByQuery),
 		chromedp.Location(&pathAfterSkills),
 		chromedp.EvaluateAsDevTools(
 			`document.querySelector('#workspace-indicator') !== null && document.querySelector('#workspace-indicator').title === `+fmt.Sprintf("%q", workspace),
 			&skillsHasWorkspace,
 		),
-		chromedp.Click(`a[href^="/sessions/"]`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown .gear-btn`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown a[href^="/sessions/"]`, chromedp.ByQuery),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
 		chromedp.Location(&pathAfterChat),
 		chromedp.EvaluateAsDevTools(
@@ -1972,9 +1975,9 @@ func TestBrowser_ActiveNavLink(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnChat),
-		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnChat),
-		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/skills"]')?.classList.contains("active")`, &skillsActiveOnChat),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#nav-dropdown a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnChat),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#nav-dropdown a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnChat),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#nav-dropdown a[href="/skills"]')?.classList.contains("active")`, &skillsActiveOnChat),
 	)
 	if err != nil {
 		t.Fatalf("chat page nav test failed: %v", err)
@@ -1989,13 +1992,14 @@ func TestBrowser_ActiveNavLink(t *testing.T) {
 		t.Error("Skills nav link should NOT have active class on chat page")
 	}
 
-	// Navigate to settings
+	// Navigate to settings — click gear button to show dropdown, then settings link
 	var chatActiveOnSettings, settingsActiveOnSettings bool
 	err = chromedp.Run(ctx,
-		chromedp.Click(`nav a[href="/settings"]`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown .gear-btn`, chromedp.ByQuery),
+		chromedp.Click(`#nav-dropdown a[href="/settings"]`, chromedp.ByQuery),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnSettings),
-		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnSettings),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#nav-dropdown a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnSettings),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#nav-dropdown a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnSettings),
 	)
 	if err != nil {
 		t.Fatalf("settings page nav test failed: %v", err)

@@ -3,7 +3,7 @@ package templates
 import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
-// Renders session tabs, workspace indicator, setup banner, message list, and composer.
+// Renders workspace indicator, setup banner, message list, and composer.
 templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 	<div id="chat-view">
 		<div id="error-toasts"></div>

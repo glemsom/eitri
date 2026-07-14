@@ -22,22 +22,29 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			<script src="/static/eitri-composer.js"></script>
 			<script src="/static/eitri-renderers.js"></script>
 			<script src="/static/eitri-mermaid.js"></script>
+			<script src="/static/eitri-session-rename.js"></script>
 		</head>
 		<body hx-ext="head-support">
 			<div id="app">
 				<header>
 					<h1>Eitri</h1>
-					<span class="text-muted">AI Assistant</span>
-					<nav>
-						@NavLink(chatPath, "Chat", currentPath)
-						@NavLink("/settings", "Settings", currentPath)
-						@NavLink("/skills", "Skills", currentPath)
-					</nav>
+					<div class="dropdown" id="nav-dropdown">
+						<button class="gear-btn" title="Menu" aria-label="Menu">
+							&#9881;
+						</button>
+						<div class="dropdown-content">
+							@NavLink(chatPath, "Chat", currentPath)
+							@NavLink("/settings", "Settings", currentPath)
+							@NavLink("/skills", "Skills", currentPath)
+						</div>
+					</div>
 				</header>
 				if sessions != nil {
-					@SessionTabs(sessions, activeID, false)
+					<div id="sidebar">
+						@SessionTabs(sessions, activeID, false)
+					</div>
 				} else {
-					<div id="session-tabs"></div>
+					<div id="sidebar"><div id="session-tabs"></div></div>
 				}
 				<main>
 					<noscript>
@@ -62,7 +69,7 @@ templ NavLink(path string, label string, currentPath string) {
 	>{ label }</a>
 }
 
-// ChatPage renders the full chat page layout with session tabs and chat view.
+// ChatPage renders the full chat page layout with session sidebar and chat view.
 templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string) {
 	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath) {
 		@ChatView(sess, workspace, configValid)

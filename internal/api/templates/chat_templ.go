@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
-// Renders session tabs, workspace indicator, setup banner, message list, and composer.
+// Renders workspace indicator, setup banner, message list, and composer.
 func ChatView(sess *session.UISession, workspace string, configValid bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
