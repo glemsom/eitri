@@ -30,8 +30,8 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					</select>
 				</div>
 
-				<div class="form-group">
-					<label for="base_url">Base URL</label>
+				<div class={ "form-group", "base-url-group", templ.KV("base-url-hidden", cfg.Provider != "custom_openai") }>
+					<label for="base_url">Base URL <span if cfg.Provider == "custom_openai" { class="required-marker" }>*</span></label>
 					<input type="url" id="base_url" name="base_url" value={ cfg.BaseURL } placeholder="https://opencode.ai/zen/go" required/>
 				</div>
 
@@ -70,7 +70,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 
 				<div class="form-group">
-					<label for="model">Model</label>
+					<label for="model">Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="display:none;">&#9696;</span></label>
 					<select id="model" name="model">
 						<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
 						for _, m := range models {
@@ -117,7 +117,20 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 
 			<div class="form-actions">
 				<button type="submit">Save</button>
+				<div id="test-connection-wrapper" class="test-connection-wrapper">
+					<button type="button" id="test-connection-btn" hx-get="/api/models" hx-target="#test-connection-result" hx-swap="innerHTML">Test Connection</button>
+					<div id="test-connection-result" class="test-connection-result"></div>
+				</div>
+				<span class="save-hint">(Ctrl+Enter to save)</span>
 			</div>
 		</form>
 	</div>
+}
+
+templ TestConnectionResult(success bool, message string) {
+	if success {
+		<span class="connection-ok">&#10003; { message }</span>
+	} else {
+		<span class="connection-err">{ message }</span>
+	}
 }
