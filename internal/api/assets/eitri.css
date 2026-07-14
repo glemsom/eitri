@@ -780,6 +780,32 @@ noscript {
   display: none !important;
 }
 
+.device-flow-section {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 0 0 8px 8px;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  padding-bottom: 0.5rem;
+}
+
+.device-flow-code {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: var(--bg);
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.device-flow-code-wrapper {
+  line-height: 2;
+}
+
 /* Setup banner */
 .setup-banner {
   background: var(--warning);
