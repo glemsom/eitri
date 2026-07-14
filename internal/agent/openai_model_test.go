@@ -229,6 +229,9 @@ func TestOpenAIModel_GitHubCopilotStreamingToolCalls(t *testing.T) {
 	last := resp[len(resp)-1]
 	for _, part := range last.Content.Parts {
 		if part.FunctionCall != nil && part.FunctionCall.Name == "terminal_execute" {
+			if part.FunctionCall.ID != "call_1" {
+				t.Fatalf("tool call id = %q, want call_1", part.FunctionCall.ID)
+			}
 			if cmd, ok := part.FunctionCall.Args["command"].(string); !ok || cmd != "echo copilot" {
 				t.Fatalf("command = %q, want echo copilot", cmd)
 			}

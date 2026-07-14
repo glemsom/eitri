@@ -191,11 +191,13 @@
     const el = document.getElementById('streaming');
     if (!el) return;
 
+    const contentEl = el.querySelector('.message-content') || el;
+
     // Use text content (no HTML injection) - just append text progressively
     // The final markdown render will replace this completely
     const span = document.createElement('span');
     span.textContent = text;
-    el.appendChild(span);
+    contentEl.appendChild(span);
   }
 
   function showStreamingBubble(sessionId) {
@@ -207,9 +209,11 @@
     if (!el) {
       el = document.createElement('div');
       el.id = 'streaming';
+      messages.appendChild(el);
+    }
+    if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
       el.innerHTML = '<div class="message-avatar">E</div><div class="message-content streaming-indicator"><span></span></div>';
-      messages.appendChild(el);
     }
   }
 

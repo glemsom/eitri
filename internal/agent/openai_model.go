@@ -454,6 +454,7 @@ func (b *streamBuf) finalize(why genai.FinishReason) *model.LLMResponse {
 		if fn == nil {
 			continue
 		}
+		id, _ := tc["id"].(string)
 		name, _ := fn["name"].(string)
 		argsStr, _ := fn["arguments"].(string)
 		if name == "" {
@@ -463,6 +464,7 @@ func (b *streamBuf) finalize(why genai.FinishReason) *model.LLMResponse {
 		json.Unmarshal([]byte(argsStr), &args)
 		parts = append(parts, &genai.Part{
 			FunctionCall: &genai.FunctionCall{
+				ID:   id,
 				Name: name,
 				Args: args,
 			},

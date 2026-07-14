@@ -78,6 +78,30 @@ func (rs *runState) appendBuffer(text string) {
 	rs.buffer.WriteString(text)
 }
 
+func contentHasFunctionCalls(content *genai.Content) bool {
+	if content == nil {
+		return false
+	}
+	for _, part := range content.Parts {
+		if part != nil && part.FunctionCall != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func contentHasFunctionResponses(content *genai.Content) bool {
+	if content == nil {
+		return false
+	}
+	for _, part := range content.Parts {
+		if part != nil && part.FunctionResponse != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (rs *runState) bufferString() string {
 	rs.bufferMu.Lock()
 	defer rs.bufferMu.Unlock()
@@ -523,14 +547,15 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 				continue
 			}
 
-			turnComplete := evt.TurnComplete || evt.IsFinalResponse()
+			turnComplete := !evt.Partial && !contentHasFunctionCalls(evt.Content) && !contentHasFunctionResponses(evt.Content)
+			acceptFinalText := turnComplete && state.bufferString() == ""
 
-			if evt.Content != nil && !turnComplete {
+			if evt.Content != nil {
 				for _, part := range evt.Content.Parts {
 					if part == nil {
 						continue
 					}
-					if part.Text != "" {
+					if part.Text != "" && (!turnComplete || acceptFinalText) {
 						state.appendBuffer(part.Text)
 						w.Token(part.Text)
 					}
