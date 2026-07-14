@@ -1,5 +1,5 @@
 /* Eitri — Custom CSS */
-/* Minimal reset + layout for v1 foundation */
+/* v2: sidebar + main layout */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -19,6 +19,8 @@
   --success: #2ecc71;
   --warning: #f39c12;
   --error: #e74c3c;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 48px;
 }
 
 html {
@@ -42,14 +44,19 @@ a:hover {
   color: var(--accent-hover);
 }
 
-/* Layout */
+/* Layout: sidebar | main */
 #app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main";
   min-height: 100vh;
 }
 
 header {
+  grid-area: header;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 0.5rem 1rem;
@@ -64,16 +71,192 @@ header h1 {
   color: var(--accent);
 }
 
-header nav {
+/* Sidebar */
+#sidebar {
+  grid-area: sidebar;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#session-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+
+.sidebar-footer {
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Session items in sidebar */
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  margin: 0.15rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.session-item:hover {
+  background: var(--surface-alt);
+}
+
+.session-item.active {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+
+.session-item-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.session-item-link:hover {
+  color: var(--text);
+}
+
+.session-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.session-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.session-item:hover .session-close {
+  opacity: 0.6;
+}
+
+.session-close:hover {
+  color: var(--accent);
+  opacity: 1 !important;
+}
+
+.new-session-btn {
+  width: 100%;
+  padding: 0.5rem;
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.new-session-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Main content area */
+main {
+  grid-area: main;
+  padding: 1rem;
+  max-width: 960px;
+  width: 100%;
+  overflow-y: auto;
+}
+
+/* Utility */
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* Dropdown gear menu */
+.dropdown {
+  position: relative;
+  display: inline-block;
+  margin-left: auto;
+}
+
+.gear-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.gear-btn:hover,
+.gear-btn:focus {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 100;
+  padding: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.dropdown:hover .dropdown-content,
+.dropdown:focus-within .dropdown-content {
+  display: block;
 }
 
 .nav-link {
-  padding: 0.25rem 0.65rem;
+  display: block;
+  padding: 0.45rem 0.75rem;
   border-radius: 6px;
   font-size: 0.9rem;
-  transition: background 0.2s;
+  transition: background 0.15s;
+  color: var(--text);
 }
 
 .nav-link:hover {
@@ -81,22 +264,9 @@ header nav {
 }
 
 .nav-link.active {
-  background: var(--surface-alt);
-  color: var(--text);
+  background: var(--accent);
+  color: white;
   font-weight: 600;
-}
-
-main {
-  flex: 1;
-  padding: 1rem;
-  max-width: 960px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-/* Utility */
-.text-muted {
-  color: var(--text-muted);
 }
 
 /* noscript */
@@ -579,16 +749,6 @@ noscript {
   text-decoration: underline;
 }
 
-/* Session tabs */
-#session-tabs {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0.25rem 1rem;
-  display: flex;
-  gap: 0.25rem;
-  overflow-x: auto;
-}
-
 /* Workspace indicator */
 .workspace-indicator {
   font-size: 0.8rem;
@@ -994,4 +1154,60 @@ eitri-composer {
   display: block;
 }
 
+/* Session rename input */
+.session-rename-input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+}
 
+/* Responsive: narrow viewport collapses sidebar to icon strip */
+@media (max-width: 768px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "header"
+      "sidebar"
+      "main";
+  }
+
+  #sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 160px;
+  }
+
+  .sidebar-header {
+    display: none;
+  }
+
+  .sidebar-list {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.15rem 0.35rem;
+  }
+
+  .session-item {
+    flex-shrink: 0;
+    padding: 0.3rem 0.5rem;
+    margin: 0.1rem 0.2rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  main {
+    padding: 0.75rem;
+  }
+}

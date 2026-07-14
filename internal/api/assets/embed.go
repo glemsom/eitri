@@ -18,4 +18,5 @@ import (
 //go:embed eitri-composer.js
 //go:embed eitri-renderers.js
 //go:embed eitri-mermaid.js
+//go:embed eitri-session-rename.js
 var Files embed.FS
