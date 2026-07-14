@@ -109,6 +109,7 @@ func maskedConfig(cfg *config.Config) *config.Config {
 	if masked.APIKey != "" {
 		masked.APIKey = config.MaskAPIKey(masked.APIKey)
 	}
+	masked.ProviderAuth = nil
 	return &masked
 }
 
@@ -154,7 +155,7 @@ func NewServer(cfg ServerConfig) *Server {
 		config:       cfg,
 		mux:          http.NewServeMux(),
 		logger:       logger,
-		copilotOAuth: defaultGitHubCopilotOAuthConfig(cfg.CopilotOAuth),
+		copilotOAuth: provider.DefaultGitHubCopilotOAuthConfig(cfg.CopilotOAuth),
 		copilotFlows: newCopilotDeviceFlowStore(),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -602,7 +603,11 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	if prof.APIKeyRequired && cfg.APIKey == "" {
+	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	if err != nil {
+		return nil, err
+	}
+	if prof.APIKeyRequired && resolvedAuth.APIKey == "" {
 		return nil, fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
 	}
 
@@ -611,7 +616,7 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-	prof.ApplyHeaders(req, cfg.APIKey)
+	prof.ApplyHeaders(req, resolvedAuth.APIKey)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

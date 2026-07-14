@@ -13,15 +13,16 @@ import (
 
 // Config represents the Eitri configuration per SPEC §7.1.
 type Config struct {
-	Provider            string `json:"provider"`
-	APIKey              string `json:"api_key"`
-	BaseURL             string `json:"base_url"`
-	Model               string `json:"model"`
-	SystemPrompt        string `json:"system_prompt"`
-	SessionTimeout      int64  `json:"session_timeout"`
-	CommandTimeout      int64  `json:"command_timeout"`
-	MaxTurns            int    `json:"max_turns"`
-	ContextWindowTokens int    `json:"context_window_tokens"`
+	Provider            string          `json:"provider"`
+	APIKey              string          `json:"api_key"`
+	ProviderAuth        json.RawMessage `json:"provider_auth,omitempty"`
+	BaseURL             string          `json:"base_url"`
+	Model               string          `json:"model"`
+	SystemPrompt        string          `json:"system_prompt"`
+	SessionTimeout      int64           `json:"session_timeout"`
+	CommandTimeout      int64           `json:"command_timeout"`
+	MaxTurns            int             `json:"max_turns"`
+	ContextWindowTokens int             `json:"context_window_tokens"`
 }
 
 // Defaults returns a Config with default values.
@@ -85,7 +86,11 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("provider must be one of %s, got %q", strings.Join(provider.IDs(), ", "), cfg.Provider)
 	}
 
-	if prof.APIKeyRequired && cfg.APIKey == "" {
+	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	if err != nil {
+		return err
+	}
+	if prof.APIKeyRequired && resolvedAuth.APIKey == "" {
 		return fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
 	}
 
@@ -141,6 +146,7 @@ func MaskAPIKey(key string) string {
 // clear_api_key=true explicitly empties the API key.
 func Merge(base *Config, patch map[string]interface{}) *Config {
 	result := *base // shallow copy
+	result.ProviderAuth = cloneRawMessage(base.ProviderAuth)
 	providerChanged := false
 	baseURLPatched := false
 	baseURLPatch := ""
@@ -209,6 +215,7 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 		}
 	}
 
+	result.ProviderAuth = normalizeProviderAuth(result.Provider, result.APIKey, result.ProviderAuth)
 	return &result
 }
 
@@ -219,6 +226,23 @@ func clearAPIKeyRequested(v interface{}) bool {
 	}
 	b, ok := v.(bool)
 	return ok && b
+}
+
+func normalizeProviderAuth(providerID, apiKey string, raw json.RawMessage) json.RawMessage {
+	normalized, err := provider.NormalizeAuthState(providerID, apiKey, raw)
+	if err != nil {
+		return cloneRawMessage(raw)
+	}
+	return normalized
+}
+
+func cloneRawMessage(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	clone := make([]byte, len(raw))
+	copy(clone, raw)
+	return json.RawMessage(clone)
 }
 
 func shouldResetBaseURLOnProviderSwitch(oldProviderID, newProviderID, oldBaseURL string, baseURLPatched bool, baseURLPatch string) bool {

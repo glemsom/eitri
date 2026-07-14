@@ -7,40 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 )
 
-const githubDeviceFlowGrantType = "urn:ietf:params:oauth:grant-type:device_code"
-
-// GitHubCopilotOAuthConfig configures GitHub OAuth device-flow endpoints.
-type GitHubCopilotOAuthConfig struct {
-	ClientID       string
-	DeviceCodeURL  string
-	AccessTokenURL string
-	Scope          string
-}
-
-func defaultGitHubCopilotOAuthConfig(cfg GitHubCopilotOAuthConfig) GitHubCopilotOAuthConfig {
-	if cfg.ClientID == "" {
-		cfg.ClientID = os.Getenv("EITRI_GITHUB_CLIENT_ID")
-	}
-	if cfg.DeviceCodeURL == "" {
-		cfg.DeviceCodeURL = "https://github.com/login/device/code"
-	}
-	if cfg.AccessTokenURL == "" {
-		cfg.AccessTokenURL = "https://github.com/login/oauth/access_token"
-	}
-	if cfg.Scope == "" {
-		cfg.Scope = "read:user"
-	}
-	return cfg
-}
+type GitHubCopilotOAuthConfig = provider.GitHubCopilotOAuthConfig
 
 type copilotDeviceFlowStore struct {
 	mu    sync.Mutex
@@ -92,22 +68,6 @@ func (s *copilotDeviceFlowStore) delete(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.flows, id)
-}
-
-type githubDeviceCodeResponse struct {
-	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`
-	VerificationURI string `json:"verification_uri"`
-	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval"`
-	Error           string `json:"error"`
-}
-
-type githubAccessTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	Scope       string `json:"scope"`
-	Error       string `json:"error"`
 }
 
 func parseConfigPatch(r *http.Request) (map[string]interface{}, error) {
@@ -174,83 +134,12 @@ func writeSettingsFormWithState(w http.ResponseWriter, r *http.Request, status i
 	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow).Render(r.Context(), w)
 }
 
-func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*githubDeviceCodeResponse, error) {
-	payload := map[string]string{
-		"client_id": s.copilotOAuth.ClientID,
-		"scope":     s.copilotOAuth.Scope,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.copilotOAuth.DeviceCodeURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Eitri")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GitHub device flow unreachable: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub device flow start failed: HTTP %d", resp.StatusCode)
-	}
-
-	var deviceResp githubDeviceCodeResponse
-	if err := json.NewDecoder(resp.Body).Decode(&deviceResp); err != nil {
-		return nil, fmt.Errorf("GitHub device flow start failed: %v", err)
-	}
-	if deviceResp.Error != "" {
-		return nil, fmt.Errorf("GitHub device flow start failed: %s", deviceResp.Error)
-	}
-	if deviceResp.DeviceCode == "" || deviceResp.UserCode == "" || deviceResp.VerificationURI == "" {
-		return nil, fmt.Errorf("GitHub device flow start failed: incomplete response")
-	}
-	if deviceResp.Interval <= 0 {
-		deviceResp.Interval = 5
-	}
-	if deviceResp.ExpiresIn <= 0 {
-		deviceResp.ExpiresIn = 900
-	}
-	return &deviceResp, nil
+func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*provider.GitHubDeviceCodeResponse, error) {
+	return provider.StartGitHubCopilotDeviceFlow(ctx, s.httpClient, s.copilotOAuth)
 }
 
-func (s *Server) pollCopilotDeviceFlow(ctx context.Context, flow *copilotDeviceFlowState) (*githubAccessTokenResponse, error) {
-	payload := map[string]string{
-		"client_id":   s.copilotOAuth.ClientID,
-		"device_code": flow.DeviceCode,
-		"grant_type":  githubDeviceFlowGrantType,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.copilotOAuth.AccessTokenURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Eitri")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("GitHub device flow poll failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub device flow poll failed: HTTP %d", resp.StatusCode)
-	}
-
-	var tokenResp githubAccessTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return nil, fmt.Errorf("GitHub device flow poll failed: %v", err)
-	}
-	return &tokenResp, nil
+func (s *Server) pollCopilotDeviceFlow(ctx context.Context, flow *copilotDeviceFlowState) (*provider.GitHubAccessTokenResponse, error) {
+	return provider.PollGitHubCopilotDeviceFlow(ctx, s.httpClient, s.copilotOAuth, flow.DeviceCode)
 }
 
 func (s *Server) copilotDeviceFlowView(flow *copilotDeviceFlowState) *templates.CopilotDeviceFlowView {
@@ -390,6 +279,16 @@ func (s *Server) handlePollCopilotDeviceFlow(w http.ResponseWriter, r *http.Requ
 
 	newCfg := *flow.Config
 	newCfg.APIKey = resp.AccessToken
+	newCfg.ProviderAuth, err = provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken: resp.AccessToken,
+		TokenType:   resp.TokenType,
+		Scope:       resp.Scope,
+	})
+	if err != nil {
+		s.copilotFlows.delete(id)
+		http.Error(w, "Failed to store provider auth: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if err := config.Save(s.config.ConfigPath, &newCfg); err != nil {
 		s.copilotFlows.delete(id)
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)

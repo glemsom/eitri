@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/provider"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -93,6 +94,7 @@ type RunManager struct {
 	providerID   string
 	baseURL      string
 	apiKey       string
+	providerAuth json.RawMessage
 	modelName    string
 }
 
@@ -122,6 +124,7 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 	rm.providerID = cfg.Provider
 	rm.baseURL = cfg.BaseURL
 	rm.apiKey = cfg.APIKey
+	rm.providerAuth = append(rm.providerAuth[:0], cfg.ProviderAuth...)
 	rm.modelName = cfg.Model
 }
 
@@ -135,8 +138,15 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	providerID := rm.providerID
 	baseURL := rm.baseURL
 	apiKey := rm.apiKey
+	providerAuth := append(json.RawMessage(nil), rm.providerAuth...)
 	modelName := rm.modelName
 	rm.mu.Unlock()
+
+	resolvedAuth, err := provider.ResolveAuth(providerID, apiKey, providerAuth)
+	if err != nil {
+		return fmt.Errorf("failed to resolve provider auth: %w", err)
+	}
+	apiKey = resolvedAuth.APIKey
 
 	if baseURL == "" || modelName == "" {
 		return fmt.Errorf("provider not configured: set base_url and model in settings")
@@ -160,7 +170,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		return fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: providerID, APIKey: apiKey, BaseURL: baseURL, Model: modelName}
+	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
 		return fmt.Errorf("failed to get runner: %w", err)

@@ -43,6 +43,7 @@ func configHash(cfg *config.Config) string {
 	h.Write([]byte(cfg.Provider))
 	h.Write([]byte(cfg.APIKey))
 	h.Write([]byte(cfg.BaseURL))
+	h.Write(cfg.ProviderAuth)
 	h.Write([]byte(cfg.Model))
 	return fmt.Sprintf("%x", h.Sum(nil))
 }

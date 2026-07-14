@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -103,6 +104,39 @@ func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 		if got := req.Header.Get(name); got != value {
 			t.Errorf("%s = %q, want %q", name, got, value)
 		}
+	}
+}
+
+func TestResolveAuth_GitHubCopilotUsesProviderAuthState(t *testing.T) {
+	t.Parallel()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken: "gho-provider-state",
+		TokenType:   "bearer",
+		Scope:       "read:user",
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	resolved, err := provider.ResolveAuth("github_copilot", "", raw)
+	if err != nil {
+		t.Fatalf("ResolveAuth error: %v", err)
+	}
+	if resolved.APIKey != "gho-provider-state" {
+		t.Fatalf("APIKey = %q, want gho-provider-state", resolved.APIKey)
+	}
+
+	normalized, err := provider.NormalizeAuthState("github_copilot", "gho-manual", raw)
+	if err != nil {
+		t.Fatalf("NormalizeAuthState error: %v", err)
+	}
+	var state provider.GitHubCopilotAuthState
+	if err := json.Unmarshal(normalized, &state); err != nil {
+		t.Fatalf("unmarshal normalized state: %v", err)
+	}
+	if state.AccessToken != "gho-manual" {
+		t.Fatalf("AccessToken = %q, want gho-manual", state.AccessToken)
 	}
 }
 

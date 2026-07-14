@@ -18,6 +18,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -377,7 +378,7 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 	}))
 	defer oauth.Close()
 
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/models" {
 			http.NotFound(w, r)
 			return
@@ -388,7 +389,7 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
 	}))
-	defer provider.Close()
+	defer providerSrv.Close()
 
 	configPath := t.TempDir() + "/config.json"
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
@@ -402,7 +403,7 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 
 	startForm := url.Values{
 		"provider": {"github_copilot"},
-		"base_url": {provider.URL},
+		"base_url": {providerSrv.URL},
 	}
 	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
 	if err != nil {
@@ -467,11 +468,60 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 	if cfg.Provider != "github_copilot" {
 		t.Fatalf("saved provider = %q, want github_copilot", cfg.Provider)
 	}
-	if cfg.BaseURL != provider.URL {
-		t.Fatalf("saved base_url = %q, want %q", cfg.BaseURL, provider.URL)
+	if cfg.BaseURL != providerSrv.URL {
+		t.Fatalf("saved base_url = %q, want %q", cfg.BaseURL, providerSrv.URL)
 	}
 	if cfg.APIKey != "gho_device_token" {
 		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
+	}
+	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
+	if err != nil {
+		t.Fatalf("ResolveAuth(saved config) error: %v", err)
+	}
+	if resolvedAuth.APIKey != "gho_device_token" {
+		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	}
+}
+
+func TestGetModels_GitHubCopilotUsesProviderAuthState(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	var gotAuth string
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer providerSrv.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{AccessToken: "gho-provider-state"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Save(configPath, &config.Config{
+		Provider:            "github_copilot",
+		BaseURL:             providerSrv.URL,
+		Model:               "gpt-4.1",
+		ProviderAuth:        raw,
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := newTestServerWithConfigPath(t, t.TempDir(), configPath)
+	resp, err := http.Get(server.URL + "/api/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /api/models status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, string(body))
+	}
+	if gotAuth != "Bearer gho-provider-state" {
+		t.Fatalf("Authorization = %q, want Bearer gho-provider-state", gotAuth)
 	}
 }
 
@@ -1136,6 +1186,9 @@ func TestGetConfigJSON(t *testing.T) {
 	// API key should be empty (no key set)
 	if body["api_key"] != "" {
 		t.Errorf("api_key = %q, want empty string", body["api_key"])
+	}
+	if _, ok := body["provider_auth"]; ok {
+		t.Errorf("provider_auth should be omitted from GET /api/config")
 	}
 }
 
