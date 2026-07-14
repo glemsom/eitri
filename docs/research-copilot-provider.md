@@ -361,11 +361,11 @@ Implement these cases:
 
 ## Implementation recommendation for Eitri
 
-Status note: issue #59 implemented provider-owned Copilot auth seam for device-flow start/poll, persisted `provider_auth` state, and shared auth resolution for model discovery plus chat. Built-in client ID and refresh remain later slices.
+Status note: issue #59 implemented provider-owned Copilot auth seam for device-flow start/poll, persisted `provider_auth` state, and shared auth resolution for model discovery plus chat. Issue #60 added built-in default GitHub OAuth client ID so Settings device flow no longer depends on user environment setup. Refresh remains later slice.
 
 
 1. Add provider-owned auth seam for `github_copilot` so login, stored credential shape, request auth resolution, and future refresh behavior live with provider logic instead of Settings-only branches.
-2. Ship built-in GitHub Copilot OAuth client ID in Eitri and use scope `read:user` for device flow; do not require user env configuration for client ID.
+2. Ship built-in GitHub Copilot OAuth client ID in Eitri and use scope `read:user` for device flow; allow optional server-side override, but do not require user env configuration for normal use.
 3. Copy Pi-style device-code polling semantics: wait before first poll, honor server `slow_down` intervals, and support cancellation/timeouts cleanly.
 4. Store returned credential in Eitri config/credential store as provider-owned auth state.
 5. Discover models with `GET {base_url}/models` using bearer token.

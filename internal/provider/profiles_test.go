@@ -107,6 +107,34 @@ func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 	}
 }
 
+func TestDefaultGitHubCopilotOAuthConfigUsesBuiltInClientID(t *testing.T) {
+	t.Setenv("EITRI_GITHUB_CLIENT_ID", "")
+
+	cfg := provider.DefaultGitHubCopilotOAuthConfig(provider.GitHubCopilotOAuthConfig{})
+	if cfg.ClientID == "" {
+		t.Fatal("ClientID = empty, want built-in default")
+	}
+	if cfg.DeviceCodeURL != "https://github.com/login/device/code" {
+		t.Fatalf("DeviceCodeURL = %q, want GitHub default", cfg.DeviceCodeURL)
+	}
+	if cfg.AccessTokenURL != "https://github.com/login/oauth/access_token" {
+		t.Fatalf("AccessTokenURL = %q, want GitHub default", cfg.AccessTokenURL)
+	}
+	if cfg.Scope != "read:user" {
+		t.Fatalf("Scope = %q, want read:user", cfg.Scope)
+	}
+}
+
+func TestDefaultGitHubCopilotOAuthConfigAllowsEnvOverride(t *testing.T) {
+	const want = "client-from-env"
+	t.Setenv("EITRI_GITHUB_CLIENT_ID", want)
+
+	cfg := provider.DefaultGitHubCopilotOAuthConfig(provider.GitHubCopilotOAuthConfig{})
+	if cfg.ClientID != want {
+		t.Fatalf("ClientID = %q, want %q", cfg.ClientID, want)
+	}
+}
+
 func TestResolveAuth_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	t.Parallel()
 

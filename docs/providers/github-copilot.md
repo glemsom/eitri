@@ -15,7 +15,7 @@ Eitri supports GitHub Copilot through provider profile `github_copilot`. Setting
    - Same resolved auth is then used for `GET {base_url}/models` and later chat requests.
 6. Select model from discovered list and save.
 
-Device flow needs `EITRI_GITHUB_CLIENT_ID` set in environment so Eitri can identify its GitHub OAuth app.
+Eitri ships with built-in GitHub OAuth client ID for this device flow, so no extra environment setup is required for normal use. `EITRI_GITHUB_CLIENT_ID` remains optional as server-side override for development or custom deployments.
 
 ### Manual token entry
 
@@ -106,7 +106,7 @@ Current implementation focuses on normal text chat and tool-call streaming throu
 | --- | --- | --- |
 | `GitHub Copilot token required` | Missing token | Enter token or use **Authenticate with GitHub** in Settings |
 | `GitHub device flow expired` | User took too long or code reused | Start device flow again |
-| `GitHub Copilot OAuth not configured` | `EITRI_GITHUB_CLIENT_ID` missing | Set env var and restart Eitri |
+| `GitHub Copilot OAuth not configured` | Server override/client ID misconfiguration | Restart Eitri or check server configuration |
 | `Provider authentication failed` | Token invalid, expired, lacks Copilot entitlement, or org policy blocks Copilot | Use valid Copilot-enabled token |
 | No models shown | Discovery failed or returned no picker-enabled chat models | Check token, base URL, enterprise endpoint, org policy |
 | Unsupported-provider error during chat | Selected model/endpoint lacks required streaming/tool-call behavior | Select different discovered chat model |
