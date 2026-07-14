@@ -504,16 +504,22 @@ func TestBrowser_SendMessage(t *testing.T) {
 	// Type a message and click send
 	messageText := "Hello, Eitri!"
 	var userBubbleExists bool
+	var inputValue string
 	err = chromedp.Run(ctx,
 		chromedp.SendKeys("#chat-input", messageText, chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
-		// Wait for user bubble to appear
+		// Wait for user bubble to appear (HTMX swap completed)
 		chromedp.WaitVisible(".message-user", chromedp.ByQuery),
 		// Verify the bubble contains our message
 		chromedp.EvaluateAsDevTools(
 			`document.querySelector('.message-user .message-content') !== null &&
 			 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
 			&userBubbleExists,
+		),
+		// Verify chat input is cleared after submit
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('chat-input').value`,
+			&inputValue,
 		),
 	)
 	if err != nil {
@@ -523,7 +529,9 @@ func TestBrowser_SendMessage(t *testing.T) {
 	if !userBubbleExists {
 		t.Error("user bubble with message text not found after sending")
 	}
-
+	if inputValue != "" {
+		t.Errorf("chat input not cleared after submit: got %q, want empty", inputValue)
+	}
 }
 
 func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
