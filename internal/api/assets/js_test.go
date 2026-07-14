@@ -66,6 +66,22 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing reenableComposer function")
 	}
 
+
+	// Verify stream JS has insertOptimisticBubble
+	if !strings.Contains(content2, "insertOptimisticBubble") {
+		t.Error("eitri-stream.js missing insertOptimisticBubble function")
+	}
+
+	// Verify stream JS has scrollToLatest
+	if !strings.Contains(content2, "scrollToLatest") {
+		t.Error("eitri-stream.js missing scrollToLatest function")
+	}
+
+	// Verify stream JS has removeOptimisticBubbles
+	if !strings.Contains(content2, "removeOptimisticBubbles") {
+		t.Error("eitri-stream.js missing removeOptimisticBubbles function")
+	}
+
 	f3, err := Files.Open("eitri-renderers.js")
 	if err != nil {
 		t.Fatalf("failed to open eitri-renderers.js: %v", err)

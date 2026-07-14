@@ -534,6 +534,129 @@ func TestBrowser_SendMessage(t *testing.T) {
 	}
 }
 
+// TestBrowser_OptimisticUserBubble verifies that the user message appears
+// in the DOM immediately on form submit, before the SSE stream starts.
+func TestBrowser_OptimisticUserBubble(t *testing.T) {
+	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	messageText := "Optimistic bubble test"
+
+	// Navigate and send a message
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Click send and check DOM immediately (before SSE events arrive)
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", messageText, chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Check for user bubble immediately — the optimistic insert happens
+	// before the HTMX request completes, so it should be visible even
+	// though the slow LLM server delays the response.
+	time.Sleep(100 * time.Millisecond)
+
+	var bubbleFound bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-user .message-content') !== null &&
+			 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
+			&bubbleFound,
+		),
+	)
+	if err != nil {
+		t.Fatalf("bubble check failed: %v", err)
+	}
+
+	if !bubbleFound {
+		t.Error("optimistic user bubble should appear before SSE stream starts")
+	}
+
+	// Verify no duplicate user bubbles (same text shouldn't appear twice)
+	var bubbleCount int
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelectorAll('.message-user .message-content').length`,
+			&bubbleCount,
+		),
+	)
+	if err != nil {
+		t.Fatalf("bubble count check failed: %v", err)
+	}
+	if bubbleCount > 1 {
+		t.Errorf("duplicate user bubbles: got %d, want 1", bubbleCount)
+	}
+}
+
+// TestBrowser_AutoScroll verifies that the page auto-scrolls when
+// new content arrives (streaming tokens, HTMX swaps, etc).
+// Uses a burst server to generate enough content to overflow viewport.
+func TestBrowser_AutoScroll(t *testing.T) {
+	llmURL := fakeBurstChatServer(t, 500, 0).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Measure initial scroll position
+	var initialScrollY float64
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools("window.scrollY || window.pageYOffset", &initialScrollY),
+	)
+	if err != nil {
+		t.Fatalf("initial scroll check failed: %v", err)
+	}
+
+	// Send a message to trigger streaming
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Test auto-scroll", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Wait for SSE stream to complete (burst server finishes quickly)
+	time.Sleep(1000 * time.Millisecond)
+
+	// After streaming completes, check that scroll position has moved
+	// (indicating auto-scroll happened)
+	var finalScrollY float64
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools("window.scrollY || window.pageYOffset", &finalScrollY),
+	)
+	if err != nil {
+		t.Fatalf("final scroll check failed: %v", err)
+	}
+
+	if finalScrollY <= initialScrollY {
+		t.Logf("initial scrollY=%.0f, final scrollY=%.0f", initialScrollY, finalScrollY)
+		t.Error("auto-scroll did not move scroll position after new content")
+	}
+}
+
 func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 	llmURL := fakeInstantChatServer(t, "ok").URL
 	server := newTestServerWithRuns(t)
