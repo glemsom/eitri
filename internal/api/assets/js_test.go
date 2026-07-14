@@ -77,6 +77,17 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing scrollToLatest function")
 	}
 
+	// Verify stream JS has scroll-to-bottom button logic (IntersectionObserver, sentinel, button toggle)
+	if !strings.Contains(content2, "initScrollToBottomButton") {
+		t.Error("eitri-stream.js missing initScrollToBottomButton function")
+	}
+	if !strings.Contains(content2, "scroll-to-bottom-btn") {
+		t.Error("eitri-stream.js missing scroll-to-bottom-btn element reference")
+	}
+	if !strings.Contains(content2, "IntersectionObserver") {
+		t.Error("eitri-stream.js missing IntersectionObserver for scroll detection")
+	}
+
 	// Verify stream JS has removeOptimisticBubbles
 	if !strings.Contains(content2, "removeOptimisticBubbles") {
 		t.Error("eitri-stream.js missing removeOptimisticBubbles function")

@@ -571,21 +571,77 @@
     messages.appendChild(footer);
   }
 
+  // ---- Scroll-to-bottom floating button (issue #104) ----
+
+  function initScrollToBottomButton() {
+    var sentinel = document.getElementById('scroll-sentinel');
+    var btn = document.getElementById('scroll-to-bottom-btn');
+    if (!sentinel || !btn) return;
+
+    // Use IntersectionObserver to detect if user is at bottom
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          btn.classList.remove('visible');
+        } else {
+          // Only show during active streaming
+          if (isStreaming()) {
+            btn.classList.add('visible');
+          }
+        }
+      });
+    }, {
+      root: document.getElementById('messages'),
+      threshold: 0
+    });
+
+    observer.observe(sentinel);
+    sentinel._scrollObserver = observer;
+
+    btn.addEventListener('click', function () {
+      scrollToLatest();
+      btn.classList.remove('visible');
+    });
+  }
+
+  function isStreaming() {
+    var indicator = document.getElementById('stream-indicator');
+    if (!indicator) return false;
+    return indicator.classList.contains('streaming') ||
+           indicator.classList.contains('connecting') ||
+           indicator.classList.contains('tool-running') ||
+           indicator.classList.contains('rendering');
+  }
+
+  function reinitScrollObserver() {
+    var sentinel = document.getElementById('scroll-sentinel');
+    if (!sentinel) return;
+
+    // Disconnect old observer if any
+    if (sentinel._scrollObserver) {
+      sentinel._scrollObserver.disconnect();
+    }
+
+    initScrollToBottomButton();
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       ensureChatChrome();
       initCodeBlockButtons();
+      initScrollToBottomButton();
     });
   } else {
     ensureChatChrome();
     initCodeBlockButtons();
+    initScrollToBottomButton();
   }
 
   document.addEventListener('htmx:afterSwap', function () {
     ensureChatChrome();
     initCodeBlockButtons();
+    reinitScrollObserver();
   });
-  document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
   document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
 
   // ---- Optimistic user bubble and auto-scroll (issue #95) ----
