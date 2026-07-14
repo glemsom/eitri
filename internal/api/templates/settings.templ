@@ -5,14 +5,17 @@ import "github.com/glemsom/eitri/internal/config"
 templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string) {
 	@Base("Eitri — Settings", chatPath, nil, "") {
 		@WorkspaceIndicator(workspace)
-		@SettingsForm(cfg, models, "")
+		@SettingsForm(cfg, models, "", "", nil)
 	}
 }
 
-templ SettingsForm(cfg *config.Config, models []string, errorMessage string) {
+templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView) {
 	<div id="settings-form">
 		if errorMessage != "" {
 			@ErrorToast(errorMessage)
+		}
+		if noticeMessage != "" {
+			<p class="hint">{ noticeMessage }</p>
 		}
 		<form hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
 			<fieldset>
@@ -42,6 +45,23 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string) {
 						</label>
 					</div>
 					<small class="hint">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small>
+					<div class="device-flow-panel">
+						if deviceFlow != nil {
+							<p>Authenticate with GitHub device flow.</p>
+							<p>Open <a href={ deviceFlow.VerificationURI } target="_blank" rel="noreferrer noopener">{ deviceFlow.VerificationURI }</a> and enter code <code>{ deviceFlow.UserCode }</code>.</p>
+							<div id={ "copilot-device-flow-status-" + deviceFlow.ID } hx-get={ deviceFlow.PollURL } hx-trigger={ deviceFlow.PollTrigger } hx-target="#settings-form" hx-swap="outerHTML">
+								<small class="hint">Waiting for GitHub approval…</small>
+							</div>
+							<div class="form-actions">
+								<button type="button" hx-delete={ deviceFlow.CancelURL } hx-target="#settings-form" hx-swap="outerHTML">Cancel GitHub auth</button>
+							</div>
+						} else {
+							<div class="form-actions">
+								<button type="button" hx-post="/api/providers/github_copilot/device-flow/start" hx-include="closest form" hx-target="#settings-form" hx-swap="outerHTML">Authenticate with GitHub</button>
+							</div>
+							<small class="hint">For GitHub Copilot. Select provider above, start device flow, then models refresh automatically.</small>
+						}
+					</div>
 				</div>
 
 				<div class="form-group">

@@ -64,3 +64,4 @@ help:
 	@echo "  EITRI_CONFIG        Config file path"
 	@echo "  EITRI_OPEN_BROWSER  Browser auto-open: 1 force, 0 disable, unset auto-detect"
 	@echo "  EITRI_WORKSPACE     Workspace directory (default CWD)"
+	@echo "  EITRI_GITHUB_CLIENT_ID GitHub OAuth App client ID for Copilot device flow"
