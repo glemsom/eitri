@@ -23,12 +23,9 @@
         'github_copilot': 'https://api.githubcopilot.com',
         'custom_openai': '',
       };
-      // Only reset if input is hidden (switching away from custom)
-      // or if empty
-      if (!isCustomOpenAI || !baseUrlInput.value || baseUrlInput.value === defaults['opencode_go'] || baseUrlInput.value === defaults['github_copilot']) {
-        if (defaults[provider.value] !== undefined) {
-          baseUrlInput.value = defaults[provider.value];
-        }
+      // Reset to default when switching provider
+      if (defaults[provider.value] !== undefined) {
+        baseUrlInput.value = defaults[provider.value];
       }
     }
   }
@@ -38,55 +35,45 @@
     if (!provider) return;
     provider.addEventListener('change', function () {
       updateBaseURLVisibility();
-      // Trigger model refresh by submitting the form's HTMX PUT
-      // Actually, provider change initiates a model fetch via HTMX.
-      // The form already has hx-put, but we need to trigger model refresh
-      // without saving. We'll do an hx-get on the models endpoint.
-      triggerModelRefresh();
+      // Fetch models via API to refresh model dropdown
+      refreshModels();
     });
     // Set initial state
     updateBaseURLVisibility();
   }
 
-  // — Model refresh spinner —
-  function triggerModelRefresh() {
+  // — Model refresh spinner and fetch —
+  function refreshModels() {
     var spinner = document.getElementById('model-refresh-spinner');
     if (spinner) spinner.style.display = 'inline-block';
 
-    // Use HTMX to fetch models via PUT /api/config triggered by form submit
-    // but we don't want to save. Instead, use GET /api/models via HTMX
-    // and on success update the model select.
-    htmx.ajax('GET', '/api/models', {
-      source: document.getElementById('test-connection-btn') || document.body,
-      target: '#model-refresh-notice',
-      swap: 'innerHTML',
-      handler: function (el, targetInfo) {
-        // Hide spinner
-        if (spinner) spinner.style.display = 'none';
-
-        // When response is JSON, parse and update model select
-        try {
-          var data = JSON.parse(el);
-          if (data.data && Array.isArray(data.data)) {
-            updateModelSelect(data.data);
-            showToast('&#10003; Models refreshed');
-          }
-        } catch (e) {
-          // If it's HTML, it might be an error toast - just hide spinner
-          showToast('Model refresh failed');
+    // Fetch models via fetch API (not HTMX) to get JSON, then update select
+    fetch('/api/models')
+      .then(function (res) {
+        if (!res.ok) throw new Error('Failed to fetch models');
+        return res.json();
+      })
+      .then(function (data) {
+        if (data.data && Array.isArray(data.data)) {
+          updateModelSelect(data.data);
+          showToast('✓ Models refreshed');
         }
-      },
-    });
+      })
+      .catch(function () {
+        showToast('Model refresh failed');
+      })
+      .finally(function () {
+        if (spinner) spinner.style.display = 'none';
+      });
   }
 
   function updateModelSelect(models) {
     var select = document.getElementById('model');
     if (!select) return;
 
-    // Keep the currently selected value
     var currentValue = select.value;
 
-    // Clear options (keep the placeholder)
+    // Clear options
     while (select.options.length > 0) {
       select.remove(0);
     }
@@ -119,19 +106,22 @@
       if (modelGroup) {
         modelGroup.appendChild(notice);
       } else {
-        document.getElementById('settings-form').appendChild(notice);
+        var form = document.getElementById('settings-form');
+        if (form) form.appendChild(notice);
       }
     }
     notice.innerHTML = message;
-    notice.classList.add('fade-in');
     notice.classList.remove('fade-out');
 
-    setTimeout(function () {
+    // Clear any pending hide timer
+    if (notice._hideTimer) clearTimeout(notice._hideTimer);
+
+    notice._hideTimer = setTimeout(function () {
       notice.classList.add('fade-out');
       setTimeout(function () {
         notice.innerHTML = '';
       }, 600);
-    }, 2000);
+    }, 2500);
   }
 
   // — Test Connection button —
@@ -139,9 +129,10 @@
     var btn = document.getElementById('test-connection-btn');
     if (!btn) return;
 
-    // HTMX events handle the request lifecycle
+    // Disable button while request is in flight
     document.body.addEventListener('htmx:beforeSend', function (evt) {
-      if (evt.detail && evt.detail.requestConfig && evt.detail.requestConfig.path === '/api/models') {
+      var target = evt.detail && evt.detail.target;
+      if (target && target.id === 'test-connection-result') {
         var btn2 = document.getElementById('test-connection-btn');
         if (btn2) btn2.disabled = true;
         var result = document.getElementById('test-connection-result');
@@ -149,63 +140,28 @@
       }
     });
 
+    // Re-enable button after swap (response arrives)
     document.body.addEventListener('htmx:afterSwap', function (evt) {
       var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
       if (targetId === 'test-connection-result') {
         var btn2 = document.getElementById('test-connection-btn');
         if (btn2) btn2.disabled = false;
-
-        // The target is now populated by HTMX swap from our server
-        // or we need to handle the JSON response
-        // In the htmx flow, response content-type matters
-        // We'll need a server-side handler or use htmx:beforeOnLoad
       }
     });
 
-    // For JSON responses from GET /api/models, HTMX won't auto-swap
-    // We need to intercept and convert to our TestConnectionResult template
-    document.body.addEventListener('htmx:beforeOnLoad', function (evt) {
-      if (evt.detail && evt.detail.requestConfig && evt.detail.requestConfig.path === '/api/models' && evt.detail.xhr) {
-        var xhr = evt.detail.xhr;
-        var ct = xhr.getResponseHeader('Content-Type') || '';
-        if (ct.indexOf('application/json') !== -1) {
-          try {
-            var data = JSON.parse(xhr.responseText);
-            var resultEl = document.getElementById('test-connection-result');
-            var btn2 = document.getElementById('test-connection-btn');
-            if (btn2) btn2.disabled = false;
-
-            if (resultEl) {
-              if (data.data && Array.isArray(data.data)) {
-                resultEl.innerHTML = '<span class="connection-ok">&#10003; Connection OK</span>';
-                // Also refresh model list
-                updateModelSelect(data.data);
-              } else if (data.error) {
-                resultEl.innerHTML = '<span class="connection-err">Connection failed: ' + escapeHtml(data.error) + '</span>';
-              }
-            }
-          } catch (e) {
-            var resultEl2 = document.getElementById('test-connection-result');
-            if (resultEl2) {
-              resultEl2.innerHTML = '<span class="connection-err">Connection failed</span>';
-            }
-          }
-          // Prevent HTMX from trying to swap JSON
-          evt.preventDefault();
-        }
+    // Handle model refresh spinner when settings form is re-rendered
+    // (after PUT /api/config via form save)
+    document.body.addEventListener('htmx:afterOnLoad', function (evt) {
+      var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
+      if (targetId === 'settings-form') {
+        var spinner = document.getElementById('model-refresh-spinner');
+        if (spinner) spinner.style.display = 'none';
       }
     });
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
   }
 
   // — Init on page load —
   function init() {
-    // Only run on settings page
     if (!document.getElementById('settings-form')) return;
     initBaseURLToggle();
     initTestConnection();
