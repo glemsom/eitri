@@ -1421,6 +1421,162 @@ func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
 	}
 }
 
+func TestBrowser_ActivityPanelOpensOnFirstTool(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Verify panel starts collapsed
+	var panelClosed bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
+	)
+	if err != nil {
+		t.Fatalf("read activity panel default state failed: %v", err)
+	}
+	if !panelClosed {
+		t.Fatal("activity panel should be collapsed by default")
+	}
+
+	// Parse session ID from URL
+	var sessionID string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	// Emit open and a token (no tool yet)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'token', content: 'hello'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit open/token failed: %v", err)
+	}
+
+	// Panel should still be closed (no tool yet)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
+	)
+	if err != nil {
+		t.Fatalf("read activity panel after token failed: %v", err)
+	}
+	if !panelClosed {
+		t.Fatal("activity panel should stay collapsed before any tool call")
+	}
+
+	// Emit first tool_call — panel should auto-open
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello world'}})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_call failed: %v", err)
+	}
+
+	var panelOpen bool
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === true`, &panelOpen),
+		)
+		if err == nil && panelOpen {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !panelOpen {
+		t.Fatal("activity panel should auto-open when first tool_call arrives")
+	}
+
+	// Emit a second tool_call
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'file_editor', args: {path: '/tmp/test.go'}})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit second tool_call failed: %v", err)
+	}
+
+	// Emit tool_result for first tool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: 'hello\nworld'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_result failed: %v", err)
+	}
+
+	// Verify summary shows tool count and command names
+	var summaryText string
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('#activity-panel summary').textContent.trim()`, &summaryText),
+		)
+		if err == nil && strings.Contains(summaryText, "2") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !strings.Contains(summaryText, "2") {
+		t.Fatalf("activity summary should show tool count 2, got: %q", summaryText)
+	}
+	if !strings.Contains(summaryText, "echo hello world") {
+		t.Fatalf("activity summary should show first command name, got: %q", summaryText)
+	}
+	if !strings.Contains(summaryText, "/tmp/test.go") {
+		t.Fatalf("activity summary should show file path for file_editor, got: %q", summaryText)
+	}
+
+	// Emit done
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'done', message_id: 'msg_fake'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit done failed: %v", err)
+	}
+
+	// Verify panel stays open after done
+	var panelStillOpen bool
+	time.Sleep(300 * time.Millisecond)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === true`, &panelStillOpen),
+	)
+	if err != nil {
+		t.Fatalf("read activity panel after done failed: %v", err)
+	}
+	if !panelStillOpen {
+		t.Fatal("activity panel should stay open after run completes")
+	}
+}
+
 func TestBrowser_InputDisabledDuringRun(t *testing.T) {
 	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
 	server := newTestServerWithRuns(t)

@@ -93,6 +93,21 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing removeOptimisticBubbles function")
 	}
 
+	// Verify stream JS has activity panel auto-open on first tool
+	if !strings.Contains(content2, "autoOpenActivityPanel") {
+		t.Error("eitri-stream.js missing autoOpenActivityPanel function")
+	}
+
+	// Verify stream JS has compact summary update for activity panel
+	if !strings.Contains(content2, "updateActivitySummary") {
+		t.Error("eitri-stream.js missing updateActivitySummary function")
+	}
+
+	// Verify stream JS has elapsed time tracking in activity entries
+	if !strings.Contains(content2, "activityElapsed") {
+		t.Error("eitri-stream.js missing activityElapsed variable or function")
+	}
+
 	f3, err := Files.Open("eitri-renderers.js")
 	if err != nil {
 		t.Fatalf("failed to open eitri-renderers.js: %v", err)

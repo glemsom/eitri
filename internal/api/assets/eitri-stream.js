@@ -28,6 +28,10 @@
     return '';
   }
 
+  var activityToolCount = 0;
+  var activityToolSummary = []; // array of {label, brief} for summary display
+  var activityElapsed = {}; // toolCallKey -> start time (Date.now)
+
   function createStreamState() {
     return {
       status: STATES.IDLE,
@@ -37,6 +41,67 @@
       streamTimer: null,
       deadAirTimer: null,
     };
+  }
+
+  function resetActivityTracking() {
+    activityToolCount = 0;
+    activityToolSummary = [];
+    activityElapsed = {};
+  }
+
+  function autoOpenActivityPanel() {
+    var panel = document.getElementById('activity-panel');
+    if (panel && !panel.open) {
+      panel.open = true;
+    }
+  }
+
+  function updateActivitySummary() {
+    var summary = document.querySelector('#activity-panel summary');
+    if (!summary) return;
+
+    var previewHtml = '';
+    if (activityToolCount > 0) {
+      // Build a compact preview: tool name + brief summary for up to 3 items
+      var previews = [];
+      for (var i = 0; i < activityToolSummary.length && i < 3; i++) {
+        var s = activityToolSummary[i];
+        previews.push(s.brief || s.label);
+      }
+      if (activityToolSummary.length > 3) {
+        previews.push('…');
+      }
+      var preview = escapeHtml(previews.join(', '));
+      previewHtml = ' (' + activityToolCount + '): <span class="activity-summary-preview">' + preview + '</span>';
+    }
+
+    summary.innerHTML = '<span>Activity' + previewHtml + '</span><span id="activity-count" class="activity-count">0</span>';
+
+    // Restore count from activity-log entries so updateActivitySummary and updateActivityCount are consistent
+    var log = document.getElementById('activity-log');
+    if (log) {
+      var countEl = document.getElementById('activity-count');
+      if (countEl) {
+        countEl.textContent = String(log.querySelectorAll('.activity-entry').length);
+      }
+    }
+  }
+
+  function activityBriefForPacket(packet) {
+    if (packet.tool === 'terminal_execute' && packet.args && typeof packet.args.command === 'string') {
+      var cmd = packet.args.command;
+      return cmd.length > 40 ? cmd.slice(0, 40) + '…' : cmd;
+    }
+    if (packet.tool === 'file_editor' && packet.args && typeof packet.args.path === 'string') {
+      return packet.args.path;
+    }
+    return packet.tool || '';
+  }
+
+  function formatElapsed(ms) {
+    if (ms < 1000) return ms + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+    return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
   }
 
   function statusLabel(status) {
@@ -103,6 +168,7 @@
       updateRunStatus(STATES.IDLE, defaultStatusDetail(STATES.IDLE), null);
     }
     updateActivityCount();
+    updateActivitySummary();
   }
 
   function clearDeadAirTimer(state) {
@@ -137,7 +203,9 @@
     empty.textContent = 'No tool activity yet.';
     log.appendChild(empty);
     if (panel) panel.open = false;
+    resetActivityTracking();
     updateActivityCount();
+    updateActivitySummary();
   }
 
   function updateActivityCount() {
@@ -148,7 +216,7 @@
     countEl.textContent = String(count);
   }
 
-  function appendActivityEntry(label, detail, meta) {
+  function appendActivityEntry(label, detail, meta, toolKey) {
     const log = document.getElementById('activity-log');
     if (!log) return;
 
@@ -166,20 +234,54 @@
     labelEl.textContent = label;
     header.appendChild(labelEl);
 
+    // Show elapsed time in meta for finished tools
     if (meta) {
+      var metaText = meta;
+      if (toolKey && activityElapsed[toolKey]) {
+        var elapsed = Date.now() - activityElapsed[toolKey];
+        metaText = meta + ' (' + formatElapsed(elapsed) + ')';
+      }
       const metaEl = document.createElement('span');
       metaEl.className = 'activity-entry-meta';
-      metaEl.textContent = meta;
+      metaEl.textContent = metaText;
+      header.appendChild(metaEl);
+    } else if (toolKey && activityElapsed[toolKey]) {
+      var elapsed2 = Date.now() - activityElapsed[toolKey];
+      const metaEl = document.createElement('span');
+      metaEl.className = 'activity-entry-meta';
+      metaEl.textContent = formatElapsed(elapsed2);
       header.appendChild(metaEl);
     }
 
     entry.appendChild(header);
 
     if (detail) {
-      const detailEl = document.createElement('div');
+      var detailText = detail;
+      var truncated = false;
+      if (detailText.length > 300) {
+        detailText = detailText.slice(0, 300) + '…';
+        truncated = true;
+      }
+      var detailEl = document.createElement('div');
       detailEl.className = 'activity-entry-detail';
-      detailEl.textContent = detail;
+      detailEl.textContent = detailText;
       entry.appendChild(detailEl);
+
+      if (truncated) {
+        var expandBtn = document.createElement('button');
+        expandBtn.className = 'activity-expand-btn';
+        expandBtn.textContent = 'Show full output';
+        expandBtn.addEventListener('click', function () {
+          if (detailEl.textContent === detailText) {
+            detailEl.textContent = detail;
+            expandBtn.textContent = 'Show less';
+          } else {
+            detailEl.textContent = detailText;
+            expandBtn.textContent = 'Show full output';
+          }
+        });
+        entry.appendChild(expandBtn);
+      }
     }
 
     log.appendChild(entry);
@@ -314,7 +416,21 @@
         markStreamResumed(state);
         state.status = STATES.TOOL_RUNNING;
         updateRunStatus(STATES.TOOL_RUNNING, 'Running tool: ' + (packet.tool || 'unknown tool'), state);
-        appendActivityEntry('Started ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'running');
+
+        // Track for activity summary
+        var brief = activityBriefForPacket(packet);
+        var toolCallKey = sessionId + '-tool-' + activityToolCount;
+        activityToolCount++;
+        activityToolSummary.push({ label: packet.tool || 'tool', brief: brief });
+        activityElapsed[toolCallKey] = Date.now();
+
+        // Auto-open panel on first tool
+        if (activityToolCount === 1) {
+          autoOpenActivityPanel();
+        }
+
+        appendActivityEntry('Started ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'running', toolCallKey);
+        updateActivitySummary();
         renderToolCard(sessionId, 'tool_call', packet);
         break;
 
@@ -322,7 +438,16 @@
         markStreamResumed(state);
         state.status = STATES.STREAMING;
         updateRunStatus(STATES.STREAMING, 'Tool finished. Continuing response.', state);
-        appendActivityEntry('Finished ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'done');
+
+        // Find tool call key for elapsed tracking
+        // Use the packet's position or sequential tracking
+        var resultKey = sessionId + '-tool-' + (activityToolCount - 1);
+        // If we have multiple concurrent, find matching
+        if (!activityElapsed[resultKey]) {
+          resultKey = '';
+        }
+
+        appendActivityEntry('Finished ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'done', resultKey);
         renderToolCard(sessionId, 'tool_result', packet);
         break;
 
