@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/assets"
@@ -40,7 +39,6 @@ type Server struct {
 	mux        *http.ServeMux
 	httpClient *http.Client
 	logger     *slog.Logger
-	sses       sync.Map // sessionID -> chan SSEEvent (active stream connections)
 }
 
 const maxRequestBodyBytes = 1 << 20
@@ -108,37 +106,19 @@ func writeConfigError(w http.ResponseWriter, r *http.Request, status int, messag
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
-	defer func() {
-		_ = recover()
-	}()
-	select {
-	case ch <- evt:
-	default:
-	}
-}
-
 func (s *Server) notifySessionClosed(sessionID, message string) {
-	raw, ok := s.sses.Load(sessionID)
-	if !ok {
+	if s.config.RunManager == nil {
 		return
 	}
-	ch, ok := raw.(chan SSEEvent)
-	if !ok {
-		return
-	}
-	sendSSEEvent(ch, SSEEvent{Type: "closed", Message: message})
+	s.config.RunManager.notifySessionClosed(sessionID, message)
 }
 
 // CloseActiveStreams notifies all attached SSE clients that their stream is closing.
 func (s *Server) CloseActiveStreams(message string) {
-	s.sses.Range(func(_, value any) bool {
-		ch, ok := value.(chan SSEEvent)
-		if ok {
-			sendSSEEvent(ch, SSEEvent{Type: "closed", Message: message})
-		}
-		return true
-	})
+	if s.config.RunManager == nil {
+		return
+	}
+	s.config.RunManager.notifyAllStreamsClosed(message)
 }
 
 // NewServer creates a new Server with routes registered.
@@ -758,17 +738,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Start SSE event processing in background
 	runState := s.config.RunManager.ActiveRun(id)
 	if runState != nil {
-		sseCh := make(chan SSEEvent, 100)
-		s.sses.Store(id, sseCh)
-
 		go func() {
-			defer func() {
-				s.sses.Delete(id)
-				close(sseCh)
-				s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
-			}()
-
-			w := NewSSEWriter(sseCh)
+			defer s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
+			w := NewSSEWriter(runState)
 			s.config.RunManager.AppendEvent(runState, w)
 		}()
 	}
@@ -791,17 +763,17 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the SSE channel for this session
-	raw, ok := s.sses.Load(id)
+	if s.config.RunManager == nil {
+		http.Error(w, "No active run for this session", http.StatusNotFound)
+		return
+	}
+
+	subscriberID, sseCh, ok := s.config.RunManager.subscribe(id)
 	if !ok {
 		http.Error(w, "No active run for this session", http.StatusNotFound)
 		return
 	}
-	sseCh, ok := raw.(chan SSEEvent)
-	if !ok {
-		http.Error(w, "Stream error", http.StatusInternalServerError)
-		return
-	}
+	defer s.config.RunManager.unsubscribe(id, subscriberID)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -835,6 +807,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Fprintf(w, "data: %s\n\n", string(data))
 			flusher.Flush()
+			if evt.Type == "done" || evt.Type == "error" || evt.Type == "closed" {
+				return
+			}
 
 		case <-keepAlive.C:
 			// SSE keep-alive comment

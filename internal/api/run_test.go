@@ -110,6 +110,225 @@ func fakeSlowChatServer(t *testing.T, delay time.Duration) *httptest.Server {
 	return srv
 }
 
+func fakeBurstChatServer(t *testing.T, tokenCount int, delay time.Duration) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			for i := 0; i < tokenCount; i++ {
+				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":"x"},"finish_reason":null}]}`+"\n\n", now)
+				flusher.Flush()
+				if delay > 0 {
+					select {
+					case <-r.Context().Done():
+						return
+					case <-time.After(delay):
+					}
+				}
+			}
+
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func fakePhasedChatServer(t *testing.T, delays []time.Duration, parts []string) *httptest.Server {
+	t.Helper()
+
+	if len(delays) != len(parts) {
+		t.Fatalf("len(delays)=%d len(parts)=%d", len(delays), len(parts))
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			for i, part := range parts {
+				select {
+				case <-r.Context().Done():
+					return
+				case <-time.After(delays[i]):
+				}
+				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, part)
+				flusher.Flush()
+			}
+
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func createSessionAndCookie(t *testing.T, serverURL string) (string, *http.Cookie) {
+	t.Helper()
+
+	client := noRedirectClient()
+	resp, err := client.Get(serverURL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	sessionID := strings.TrimPrefix(resp.Header.Get("Location"), "/sessions/")
+	if sessionID == "" {
+		t.Fatal("missing session ID")
+	}
+
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			return sessionID, c
+		}
+	}
+	t.Fatal("missing browser cookie")
+	return "", nil
+}
+
+func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http.Cookie) {
+	t.Helper()
+
+	client := noRedirectClient()
+	chatPath := "/api/sessions/" + sessionID + "/chat"
+	req, err := http.NewRequest(http.MethodPost, serverURL+chatPath, strings.NewReader("message=Hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func openStreamWithRetry(t *testing.T, serverURL, sessionID string, browserCookie *http.Cookie) *http.Response {
+	t.Helper()
+
+	client := noRedirectClient()
+	streamPath := "/api/sessions/" + sessionID + "/stream"
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, serverURL+streamPath, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(browserCookie)
+		resp, err := client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			return resp
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("stream never became available")
+	return nil
+}
+
+type sseStream struct {
+	resp    *http.Response
+	scanner *bufio.Scanner
+}
+
+func newSSEStream(resp *http.Response) *sseStream {
+	return &sseStream{
+		resp:    resp,
+		scanner: bufio.NewScanner(resp.Body),
+	}
+}
+
+func (s *sseStream) Close() error {
+	return s.resp.Body.Close()
+}
+
+func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.Duration) string {
+	t.Helper()
+
+	resultCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		for s.scanner.Scan() {
+			line := s.scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if match(data) {
+				resultCh <- data
+				return
+			}
+		}
+		if err := s.scanner.Err(); err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- ""
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result
+	case err := <-errCh:
+		t.Fatalf("read SSE: %v", err)
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for SSE event")
+	}
+	return ""
+}
+
 func TestRunManager_NewRunManager(t *testing.T) {
 	runnerMgr := newRunnerManager(t)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
@@ -259,6 +478,86 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 	}
 	if !foundClosed {
 		t.Fatal("stream never received closed event")
+	}
+}
+
+func TestStream_TwoClientsBothReceiveDone(t *testing.T) {
+	llmSrv := fakePhasedChatServer(t, []time.Duration{150 * time.Millisecond, 150 * time.Millisecond}, []string{"first", "second"})
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+
+	sessionID, browserCookie := createSessionAndCookie(t, server.URL)
+	startChatRun(t, server.URL, sessionID, browserCookie)
+
+	stream1 := newSSEStream(openStreamWithRetry(t, server.URL, sessionID, browserCookie))
+	defer stream1.Close()
+	stream2 := newSSEStream(openStreamWithRetry(t, server.URL, sessionID, browserCookie))
+	defer stream2.Close()
+
+	if got := stream1.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"done"`)
+	}, 3*time.Second); got == "" {
+		t.Fatal("first stream never received done")
+	}
+	if got := stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"done"`)
+	}, 3*time.Second); got == "" {
+		t.Fatal("second stream never received done")
+	}
+}
+
+func TestStream_ClientDisconnectDoesNotBlockRunCompletion(t *testing.T) {
+	llmSrv := fakeBurstChatServer(t, 250, 0)
+	h := newManagedTestServerWithRuns(t)
+	configureProvider(t, h.server, llmSrv.URL)
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	stream := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	_ = stream.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"token"`)
+	}, 2*time.Second)
+	stream.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if h.runMgr.ActiveRun(sessionID) == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("run stayed active after client disconnect")
+}
+
+func TestStream_ReconnectDuringActiveRunReceivesSubsequentEventsAndDone(t *testing.T) {
+	llmSrv := fakePhasedChatServer(t, []time.Duration{50 * time.Millisecond, 300 * time.Millisecond}, []string{"first", "second"})
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+
+	sessionID, browserCookie := createSessionAndCookie(t, server.URL)
+	startChatRun(t, server.URL, sessionID, browserCookie)
+
+	stream1 := newSSEStream(openStreamWithRetry(t, server.URL, sessionID, browserCookie))
+	firstToken := stream1.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"content":"first"`)
+	}, 2*time.Second)
+	if firstToken == "" {
+		t.Fatal("first stream never received first token")
+	}
+	stream1.Close()
+
+	stream2 := newSSEStream(openStreamWithRetry(t, server.URL, sessionID, browserCookie))
+	defer stream2.Close()
+	if got := stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"content":"second"`)
+	}, 2*time.Second); got == "" {
+		t.Fatal("reconnected stream never received subsequent token")
+	}
+	if got := stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, `"type":"done"`)
+	}, 2*time.Second); got == "" {
+		t.Fatal("reconnected stream never received done")
 	}
 }
 
