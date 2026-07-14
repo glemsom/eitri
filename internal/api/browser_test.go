@@ -146,10 +146,16 @@ func testLLMURL(t *testing.T) string {
 }
 
 // configureProvider saves an LLM provider config to the test server via HTTP.
-// Sets provider, base_url, api_key AND model so configValid becomes true.
+// Provider switches clear model, so tests save provider credentials first, then
+// save the selected model on the stable provider.
 func configureProvider(t *testing.T, server *httptest.Server, llmURL string) {
 	t.Helper()
-	body := fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, llmURL)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test"}`, llmURL))
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, llmURL))
+}
+
+func putBrowserConfig(t *testing.T, server *httptest.Server, body string) {
+	t.Helper()
 	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("failed to create config request: %v", err)
@@ -399,7 +405,7 @@ func TestBrowser_CancelRun(t *testing.T) {
 			t.Logf("failed to read stop-btn style: %v", err)
 		}
 		t.Logf("actual stop-btn style attr: %s", styleAttr)
-}
+	}
 }
 
 // TestBrowser_HarnessCanary verifies the browser test harness works.
@@ -619,7 +625,6 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 		t.Error("#send-btn should be absent on settings page")
 	}
 }
-
 
 // TestBrowser_ConfigSavePopulatesModels verifies the full HTMX config-save
 // roundtrip: fill form, submit, provider validates /v1/models, models populate dropdown.

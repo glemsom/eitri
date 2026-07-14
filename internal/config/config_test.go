@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,17 +279,79 @@ func TestMerge_IgnoresUnknownFields(t *testing.T) {
 }
 
 func TestMerge_ClearAPIKey(t *testing.T) {
+	for _, clearValue := range []interface{}{"true", true} {
+		t.Run(fmt.Sprintf("%T", clearValue), func(t *testing.T) {
+			cfg := config.Defaults()
+			cfg.APIKey = "sk-secret-key-to-clear"
+			patch := map[string]interface{}{
+				"clear_api_key": clearValue,
+			}
+			result := config.Merge(&cfg, patch)
+			if result.APIKey != "" {
+				t.Errorf("APIKey = %q, want empty after clear", result.APIKey)
+			}
+			// Other fields should remain unchanged
+			if result.Provider != cfg.Provider {
+				t.Errorf("Provider changed unexpectedly: %q", result.Provider)
+			}
+		})
+	}
+}
+
+func TestMerge_PreservesAPIKeyWhenEmptyWithoutClear(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.APIKey = "sk-secret-key-to-clear"
-	patch := map[string]interface{}{
-		"clear_api_key": "true",
+	cfg.APIKey = "sk-existing"
+
+	result := config.Merge(&cfg, map[string]interface{}{"api_key": ""})
+
+	if result.APIKey != "sk-existing" {
+		t.Errorf("APIKey = %q, want existing key preserved", result.APIKey)
 	}
-	result := config.Merge(&cfg, patch)
-	if result.APIKey != "" {
-		t.Errorf("APIKey = %q, want empty after clear", result.APIKey)
+}
+
+func TestMerge_ProviderSwitchClearsModelAndResetsDefaultBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Model = "opencode-model"
+
+	result := config.Merge(&cfg, map[string]interface{}{"provider": "github_copilot"})
+
+	if result.Model != "" {
+		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
 	}
-	// Other fields should remain unchanged
-	if result.Provider != cfg.Provider {
-		t.Errorf("Provider changed unexpectedly: %q", result.Provider)
+	if result.BaseURL != "https://api.githubcopilot.com" {
+		t.Errorf("BaseURL = %q, want GitHub Copilot default", result.BaseURL)
+	}
+}
+
+func TestMerge_ProviderSwitchResetsStaleSubmittedDefaultBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Model = "opencode-model"
+
+	result := config.Merge(&cfg, map[string]interface{}{
+		"provider": "github_copilot",
+		"base_url": cfg.BaseURL,
+		"model":    cfg.Model,
+	})
+
+	if result.Model != "" {
+		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
+	}
+	if result.BaseURL != "https://api.githubcopilot.com" {
+		t.Errorf("BaseURL = %q, want GitHub Copilot default", result.BaseURL)
+	}
+}
+
+func TestMerge_ProviderSwitchPreservesCustomBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.BaseURL = "https://custom-gateway.example.com/v1"
+	cfg.Model = "opencode-model"
+
+	result := config.Merge(&cfg, map[string]interface{}{"provider": "github_copilot"})
+
+	if result.Model != "" {
+		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
+	}
+	if result.BaseURL != cfg.BaseURL {
+		t.Errorf("BaseURL = %q, want custom base URL preserved", result.BaseURL)
 	}
 }
