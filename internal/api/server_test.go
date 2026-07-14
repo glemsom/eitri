@@ -2515,6 +2515,61 @@ func TestCompleteFiles(t *testing.T) {
 	}
 }
 
+func TestCompleteFiles_PreservesWorkspaceRelativeNestedPaths(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	client := noRedirectClient()
+
+	if err := os.MkdirAll(workspace+"/alpha", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspace+"/alpha/nested.txt", []byte("nested"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	sessionID := strings.TrimPrefix(rootResp.Header.Get("Location"), "/sessions/")
+
+	req, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/files?q=alpha/", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var body struct {
+		Items []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Items) != 1 {
+		t.Fatalf("nested completion item count = %d, want 1", len(body.Items))
+	}
+	if body.Items[0].Path != "alpha/nested.txt" {
+		t.Fatalf("nested completion path = %q, want %q", body.Items[0].Path, "alpha/nested.txt")
+	}
+	if body.Items[0].Kind != "file" {
+		t.Fatalf("nested completion kind = %q, want %q", body.Items[0].Kind, "file")
+	}
+	if !strings.HasPrefix(body.Items[0].Path, "alpha/") {
+		t.Fatalf("nested completion lost directory prefix: %+v", body.Items[0])
+	}
+}
+
 func TestCompleteFiles_RejectEscape(t *testing.T) {
 	server := newTestServer(t)
 	client := noRedirectClient()

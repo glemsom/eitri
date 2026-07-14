@@ -1294,18 +1294,20 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
 	searchDir := workspace
 	prefix := q
+	displayPrefix := ""
 
 	// Handle subdirectory prefix: split into dir + file prefix
 	if q != "" {
 		if strings.HasSuffix(q, "/") {
-			// q is a directory path; list its contents
 			searchDir = filepath.Join(workspace, q)
 			prefix = ""
+			displayPrefix = q
 		} else {
 			dir := filepath.Dir(q)
 			if dir != "." {
 				searchDir = filepath.Join(workspace, dir)
 				prefix = filepath.Base(q)
+				displayPrefix = dir + "/"
 			} else {
 				prefix = q
 			}
@@ -1351,13 +1353,14 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		itemPath := displayPrefix + name
 		if entry.IsDir() {
 			if skipDirs[name] {
 				continue
 			}
-			items = append(items, fileItem{Path: name + "/", Kind: "dir"})
+			items = append(items, fileItem{Path: itemPath + "/", Kind: "dir"})
 		} else {
-			items = append(items, fileItem{Path: name, Kind: "file"})
+			items = append(items, fileItem{Path: itemPath, Kind: "file"})
 		}
 
 		if len(items) >= 50 {

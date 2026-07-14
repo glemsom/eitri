@@ -134,6 +134,9 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_SendMessage` | Sends a message → user bubble appears with correct text, `#chat-input` disabled during active run |
 | `TestBrowser_InputDisabledDuringRun` | During active run: `#chat-input` disabled, `#send-btn` disabled, `#stop-btn` visible |
 | `TestBrowser_CancelRun` | Stop button re-enables input, hides stop button; partial assistant bubble present after cancellation |
+| `TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline` | Enter sends chat message; Shift+Enter keeps multiline composer content intact before send |
+| `TestBrowser_ComposerCompletionKeyboardAndNestedPaths` | Completion keyboard controls handle Tab/Shift+Tab/Arrow/Escape flow; file completions keep workspace-relative nested paths |
+| `TestBrowser_EscapeCancelsActiveRun` | Global Escape key cancels active run even after composer disables during streaming |
 | `TestBrowser_FindChrome` | `findChrome()` returns a path that exists and is executable |
 | `TestBrowser_ChromeNotFoundSkips` | Chrome-not-found skip behavior works (self-verifying) |
 | `TestBrowser_RichRenderingAssetsAndBehavior` | Embedded Prism/KaTeX/Mermaid assets load; code copy button, Mermaid blocks/components, and math rendering degrade/read correctly |
