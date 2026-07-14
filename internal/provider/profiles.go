@@ -16,9 +16,11 @@ type Profile struct {
 	DisplayName    string
 	DefaultBaseURL string
 	APIKeyRequired bool
+	CredentialName string
 	modelListPath  string
 	chatPath       string
 	stripV1Suffix  bool
+	applyHeaders   func(*http.Request, string)
 	parseModelList func(io.Reader) ([]string, error)
 }
 
@@ -37,6 +39,17 @@ func (p Profile) ApplyHeaders(req *http.Request, apiKey string) {
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
+	if p.applyHeaders != nil {
+		p.applyHeaders(req, apiKey)
+	}
+}
+
+// RequiredCredentialName returns user-facing credential name for validation errors.
+func (p Profile) RequiredCredentialName() string {
+	if p.CredentialName != "" {
+		return p.CredentialName
+	}
+	return "api_key"
 }
 
 // ParseModelList parses provider model discovery response into selectable IDs.
@@ -73,6 +86,17 @@ var profiles = map[string]Profile{
 		stripV1Suffix:  true,
 		parseModelList: parseOpenAIModelList,
 	},
+	"github_copilot": {
+		ID:             "github_copilot",
+		DisplayName:    "GitHub Copilot",
+		DefaultBaseURL: "https://api.githubcopilot.com",
+		APIKeyRequired: true,
+		CredentialName: "token",
+		modelListPath:  "/models",
+		chatPath:       "/chat/completions",
+		applyHeaders:   applyGitHubCopilotHeaders,
+		parseModelList: parseGitHubCopilotModelList,
+	},
 }
 
 // Get returns a provider profile by config provider ID.
@@ -95,7 +119,7 @@ func MustGet(id string) Profile {
 
 // IDs returns supported provider IDs.
 func IDs() []string {
-	return []string{"opencode_go", "custom_openai"}
+	return []string{"opencode_go", "custom_openai", "github_copilot"}
 }
 
 func parseOpenAIModelList(r io.Reader) ([]string, error) {
@@ -115,4 +139,53 @@ func parseOpenAIModelList(r io.Reader) ([]string, error) {
 		}
 	}
 	return modelIDs, nil
+}
+
+func applyGitHubCopilotHeaders(req *http.Request, _ string) {
+	req.Header.Set("User-Agent", "Eitri")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Openai-Intent", "conversation-panel")
+	req.Header.Set("x-initiator", "user")
+}
+
+type githubCopilotModel struct {
+	ID     string `json:"id"`
+	Policy struct {
+		State string `json:"state"`
+	} `json:"policy"`
+	ModelPickerEnabled bool     `json:"model_picker_enabled"`
+	SupportedEndpoints []string `json:"supported_endpoints"`
+}
+
+func parseGitHubCopilotModelList(r io.Reader) ([]string, error) {
+	var modelsResp struct {
+		Data   []githubCopilotModel `json:"data"`
+		Models []githubCopilotModel `json:"models"`
+	}
+	if err := json.NewDecoder(r).Decode(&modelsResp); err != nil {
+		return nil, fmt.Errorf("failed to parse model list: %w", err)
+	}
+
+	models := modelsResp.Data
+	if len(models) == 0 {
+		models = modelsResp.Models
+	}
+
+	modelIDs := make([]string, 0, len(models))
+	for _, m := range models {
+		if m.ID == "" || m.Policy.State == "disabled" || !m.ModelPickerEnabled || !supportsEndpoint(m.SupportedEndpoints, "/chat/completions") {
+			continue
+		}
+		modelIDs = append(modelIDs, m.ID)
+	}
+	return modelIDs, nil
+}
+
+func supportsEndpoint(endpoints []string, want string) bool {
+	for _, endpoint := range endpoints {
+		if endpoint == want {
+			return true
+		}
+	}
+	return false
 }

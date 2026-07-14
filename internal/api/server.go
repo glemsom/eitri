@@ -25,11 +25,11 @@ import (
 
 // ServerConfig holds dependencies and settings for the API server.
 type ServerConfig struct {
-	ConfigPath      string          // path to config file for save
-	Workspace       string          // launch workspace (process CWD)
-	SessionManager  *session.Manager
-	RunManager      *RunManager
-	SkillsService   *skills.Service
+	ConfigPath     string // path to config file for save
+	Workspace      string // launch workspace (process CWD)
+	SessionManager *session.Manager
+	RunManager     *RunManager
+	SkillsService  *skills.Service
 }
 
 // Server wraps the HTTP handler and injected dependencies.
@@ -420,7 +420,7 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 		return nil, err
 	}
 	if prof.APIKeyRequired && cfg.APIKey == "" {
-		return nil, fmt.Errorf("api_key is required for provider %q", cfg.Provider)
+		return nil, fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
 	}
 
 	modelsURL := prof.ModelListURL(cfg.BaseURL)
@@ -525,8 +525,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Append user message to session
 	s.config.SessionManager.AppendMessage(id, session.Message{
-		Role:    "user",
-		Content: message,
+		Role:      "user",
+		Content:   message,
 		CreatedAt: time.Now(),
 	})
 
@@ -962,7 +962,7 @@ func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"skills": result,
+		"skills":      result,
 		"diagnostics": registry.Diagnostics(),
 	})
 }

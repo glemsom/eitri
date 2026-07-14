@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -170,6 +171,20 @@ func TestValidate_CustomOpenAIAPIKeyOptional(t *testing.T) {
 	cfg.BaseURL = "https://custom.example.com"
 	if err := config.Validate(&cfg); err != nil {
 		t.Errorf("Validate(custom_openai missing key) = %v, want nil (key is optional)", err)
+	}
+}
+
+func TestValidate_MissingTokenForGitHubCopilot(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Provider = "github_copilot"
+	cfg.APIKey = ""
+	cfg.BaseURL = "https://api.githubcopilot.com"
+	err := config.Validate(&cfg)
+	if err == nil {
+		t.Fatal("Validate(github_copilot missing token) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "token is required") {
+		t.Errorf("error = %q, want missing token", err.Error())
 	}
 }
 

@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -46,6 +47,150 @@ func fakeProviderServer(t *testing.T, status int, body string) *httptest.Server 
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
+	var gotPath string
+	gotHeaders := http.Header{}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotHeaders = r.Header.Clone()
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},{"id":"bad-policy-model","policy":{"state":"disabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},{"id":"picker-off-model","policy":{"state":"enabled"},"model_picker_enabled":false,"supported_endpoints":["/chat/completions"]},{"id":"responses-only-model","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/responses"]}]}`)
+	}))
+	t.Cleanup(provider.Close)
+
+	server := newTestServer(t)
+	body := fmt.Sprintf(`{"provider":"github_copilot","base_url":%q,"api_key":"ghu-token"}`, provider.URL)
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if gotPath != "/models" {
+		t.Errorf("model discovery path = %q, want /models", gotPath)
+	}
+	for _, header := range []string{"Authorization", "User-Agent", "X-GitHub-Api-Version", "Openai-Intent", "x-initiator"} {
+		if gotHeaders.Get(header) == "" {
+			t.Errorf("%s header missing", header)
+		}
+	}
+	if got := gotHeaders.Get("Authorization"); got != "Bearer ghu-token" {
+		t.Errorf("Authorization = %q, want Bearer ghu-token", got)
+	}
+
+	respBody := make([]byte, 16384)
+	n, _ := resp.Body.Read(respBody)
+	content := string(respBody[:n])
+	if !strings.Contains(content, "gpt-4.1") {
+		t.Errorf("response HTML missing discovered Copilot model")
+	}
+	for _, filtered := range []string{"bad-policy-model", "picker-off-model", "responses-only-model"} {
+		if strings.Contains(content, filtered) {
+			t.Errorf("response HTML contains filtered model %q", filtered)
+		}
+	}
+
+	modelsResp, err := http.Get(server.URL + "/api/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer modelsResp.Body.Close()
+	var modelsBody struct {
+		Data []string `json:"data"`
+	}
+	if err := json.NewDecoder(modelsResp.Body).Decode(&modelsBody); err != nil {
+		t.Fatal(err)
+	}
+	if len(modelsBody.Data) != 1 || modelsBody.Data[0] != "gpt-4.1" {
+		t.Errorf("/api/models data = %#v, want [gpt-4.1]", modelsBody.Data)
+	}
+}
+
+func TestPutConfigGitHubCopilotAuthFailure(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	t.Cleanup(provider.Close)
+
+	server := newTestServer(t)
+	body := fmt.Sprintf(`{"provider":"github_copilot","base_url":%q,"api_key":"bad-token"}`, provider.URL)
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestPutConfigGitHubCopilotMissingToken(t *testing.T) {
+	server := newTestServer(t)
+	body := `{"provider":"github_copilot","base_url":"https://api.githubcopilot.com"}`
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	var errBody map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&errBody); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errBody["error"], "token is required") {
+		t.Errorf("error = %q, want missing token", errBody["error"])
+	}
+}
+
+func TestSettingsIncludesGitHubCopilotProvider(t *testing.T) {
+	server := newTestServer(t)
+	resp, err := http.Get(server.URL + "/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	contentBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(contentBytes)
+	if !strings.Contains(content, `value="github_copilot"`) || !strings.Contains(content, "GitHub Copilot") {
+		t.Errorf("settings HTML missing GitHub Copilot provider option")
+	}
+	if !strings.Contains(content, "GitHub Copilot requires a bearer token") {
+		t.Errorf("settings HTML missing Copilot token hint")
+	}
 }
 
 func TestPutConfigExistingProvidersUseProfileModelDiscovery(t *testing.T) {
