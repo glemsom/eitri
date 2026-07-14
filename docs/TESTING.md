@@ -23,7 +23,7 @@ templ generate
 ## Quick start
 
 ```bash
-# Run all unit + non-browser integration tests (requires tmux, no browser needed)
+# Run all tests (browser tests skip gracefully if Chrome not found; tmux required)
 go test ./...
 
 # Run a specific test package
