@@ -20,6 +20,33 @@ go install github.com/a-h/templ/cmd/templ@<pinned-version>
 templ generate
 ```
 
+## Agent test/build output policy
+
+Do not paste large command output into chat.
+
+For noisy commands (`go test`, builds, linters):
+- write full output to log file
+- report only summary, failures, and final 100-200 lines
+- preserve original exit code
+- use `set -o pipefail` when piping
+- avoid verbose flags unless diagnosing
+- rerun narrower scope before broader scope
+
+Go-specific:
+- avoid `go test -v ./...`
+- start with package- or test-scoped runs
+- run full `./...` near end
+
+Example:
+
+```bash
+go test ./... > /tmp/go-test.log 2>&1
+status=$?
+grep -nE '^(FAIL|--- FAIL:)|panic:|^FAIL\t|^# ' /tmp/go-test.log | tail -n 120 || true
+tail -n 80 /tmp/go-test.log
+exit $status
+```
+
 ## Quick start
 
 ```bash
