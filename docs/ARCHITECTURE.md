@@ -51,10 +51,10 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | File | Responsibility |
 |------|---------------|
 | `agent.go` | `NewAgent()` — factory wrapping `google.golang.org/adk/v2/agent/llmagent` |
-| `openai_model.go` | `NewOpenAIModel()` / `NewOpenAIModelForProvider()` — custom `model.LLM` impl for OpenAI-style chat completions via provider profiles |
+| `openai_model.go` | Thin compatibility wrappers re-exporting provider-owned OpenAI-compatible chat model constructors |
 | `tools.go` | `NewTools()` — registers 5 built-in function tools |
 
-**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract. GitHub Copilot auth now resolves through `internal/provider` seams before both model discovery and chat requests, so Settings UX, validation, discovery, runtime requests, and expired-OAuth refresh can converge behind one Provider module instead of scattered caller logic.
+**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles, but transport ownership now lives in `internal/provider` so callers can ask Provider module for ready-to-use chat models instead of assembling provider-specific details themselves. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract. GitHub Copilot auth now resolves through `internal/provider` seams before both model discovery and chat requests, so Settings UX, validation, discovery, runtime requests, and expired-OAuth refresh can converge behind one Provider module instead of scattered caller logic.
 
 **Tool model**: Tools are defined as Go structs with JSON tags + `jsonschema:` struct tags (parsed by ADK internally). Each tool maps to a Go function that receives `agent.Context` for session ID access.
 
@@ -63,10 +63,12 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | File | Responsibility |
 |------|---------------|
 | `discovery.go` | `DiscoverModels()` — caller-facing model-discovery seam. Resolves auth, refreshes provider-owned auth when needed, fetches selectable Models, and returns any refreshed auth state as data for caller persistence. |
+| `chat.go` | `NewChatModel()` — caller-facing chat seam. Resolves auth, refreshes provider-owned auth when needed, and returns ready-to-use ADK `model.LLM` plus optional refreshed auth state for caller persistence. |
+| `openai_model.go` | Provider-owned OpenAI-compatible `model.LLM` transport used by `NewChatModel()` and legacy wrappers. |
 | `profiles.go` | Provider profile table: default base URL, discovery/chat paths, headers, model-list parsing, credential policy. |
 | `auth.go` | Provider-owned auth helpers, including GitHub Copilot device-flow token storage and refresh. |
 
-**Caller contract**: caller modules pass Provider-language inputs (`provider_id`, `base_url`, request credential, provider-owned auth blob) and get back discovered Models plus optional refreshed auth state. Provider package never writes app config itself; callers persist returned auth updates when needed. Chat-model construction still lives on old path until follow-on migration lands.
+**Caller contract**: caller modules pass Provider-language inputs (`provider_id`, `base_url`, request credential, provider-owned auth blob, model`) and get back discovered Models or ready-to-use chat Models plus optional refreshed auth state. Provider package never writes app config itself; callers persist returned auth updates when needed. Legacy chat-model constructors still exist as compatibility wrappers until migration lands.
 
 Built-in tool contracts are specified in [SPEC.md §4.2](../SPEC.md#42-built-in-tools). Implementations live in `internal/agent/tools.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
 

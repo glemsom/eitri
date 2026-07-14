@@ -47,7 +47,11 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 		return nil, err
 	}
 
-	resolvedAuth, authUpdate, err := resolveAuthWithUpdate(ctx, req, opts)
+	resolvedAuth, authUpdate, err := resolveAuthWithUpdate(ctx, req.ProviderID, req.APIKey, req.ProviderAuth, authResolveOptions{
+		HTTPClient:         opts.HTTPClient,
+		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
+		Now:                opts.Now,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +95,15 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 	}, nil
 }
 
-func resolveAuthWithUpdate(ctx context.Context, req DiscoveryRequest, opts DiscoveryOptions) (ResolvedAuth, *AuthUpdate, error) {
+type authResolveOptions struct {
+	HTTPClient         *http.Client
+	GitHubCopilotOAuth GitHubCopilotOAuthConfig
+	Now                time.Time
+}
+
+func resolveAuthWithUpdate(ctx context.Context, providerID, apiKey string, providerAuth json.RawMessage, opts authResolveOptions) (ResolvedAuth, *AuthUpdate, error) {
 	var update *AuthUpdate
-	resolved, err := ResolveAuthForRequest(ctx, req.ProviderID, req.APIKey, req.ProviderAuth, ResolveAuthOptions{
+	resolved, err := ResolveAuthForRequest(ctx, providerID, apiKey, providerAuth, ResolveAuthOptions{
 		HTTPClient:         opts.HTTPClient,
 		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
 		Now:                opts.Now,
