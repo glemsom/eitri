@@ -4,8 +4,8 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-templ SkillsPage(registry *skills.Registry, workspace string, chatPath string) {
-	@Base("Eitri — Skills", chatPath, nil, "") {
+templ SkillsPage(registry *skills.Registry, workspace string, chatPath string, currentPath string) {
+	@Base("Eitri — Skills", chatPath, nil, "", currentPath) {
 		@WorkspaceIndicator(workspace)
 		@SkillsView(registry)
 	}

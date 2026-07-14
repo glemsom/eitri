@@ -90,12 +90,10 @@
 
   function updateRunStatus(status, detail, state) {
     const indicator = document.getElementById('stream-indicator');
-    const detailEl = document.getElementById('run-status-detail');
-    if (!indicator || !detailEl) return;
+    if (!indicator) return;
 
     indicator.className = 'stream-indicator ' + status;
     indicator.textContent = statusLabel(status);
-    detailEl.textContent = detail || defaultStatusDetail(status, state);
   }
 
   function ensureChatChrome() {

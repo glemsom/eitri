@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1075,22 +1076,15 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 
 	time.Sleep(850 * time.Millisecond)
 
-	var (
-		connectingStatus string
-		connectingDetail string
-	)
+	var connectingStatus string
 	err = chromedp.Run(ctx,
 		chromedp.Text("#stream-indicator", &connectingStatus, chromedp.ByQuery),
-		chromedp.Text("#run-status-detail", &connectingDetail, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("read connecting status failed: %v", err)
 	}
 	if strings.TrimSpace(connectingStatus) != "Connecting" {
 		t.Fatalf("run status during slow start = %q, want Connecting", connectingStatus)
-	}
-	if !strings.Contains(strings.ToLower(connectingDetail), "waiting for first response") {
-		t.Fatalf("run detail during slow start = %q, want no-dead-air copy", connectingDetail)
 	}
 
 	var finalStatus string
@@ -1587,21 +1581,21 @@ func TestBrowser_NavUsesHTMXBetweenFullPages(t *testing.T) {
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.Location(&pathAfterSettings),
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			`document.querySelector('#workspace-indicator') !== null && document.querySelector('#workspace-indicator').title === `+fmt.Sprintf("%q", workspace),
 			&settingsHasWorkspace,
 		),
 		chromedp.Click(`a[href="/skills"]`, chromedp.ByQuery),
 		chromedp.WaitVisible(".skills-view", chromedp.ByQuery),
 		chromedp.Location(&pathAfterSkills),
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			`document.querySelector('#workspace-indicator') !== null && document.querySelector('#workspace-indicator').title === `+fmt.Sprintf("%q", workspace),
 			&skillsHasWorkspace,
 		),
 		chromedp.Click(`a[href^="/sessions/"]`, chromedp.ByQuery),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
 		chromedp.Location(&pathAfterChat),
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('#workspace-indicator')?.textContent.includes(`+fmt.Sprintf("%q", workspace)+`) ?? false`,
+			`document.querySelector('#workspace-indicator') !== null && document.querySelector('#workspace-indicator').title === `+fmt.Sprintf("%q", workspace),
 			&chatHasWorkspace,
 		),
 	)
@@ -1613,19 +1607,19 @@ func TestBrowser_NavUsesHTMXBetweenFullPages(t *testing.T) {
 		t.Errorf("path after settings nav = %q, want suffix /settings", pathAfterSettings)
 	}
 	if !settingsHasWorkspace {
-		t.Error("settings page missing workspace indicator after HTMX nav")
+		t.Error("settings page missing workspace indicator with correct title after HTMX nav")
 	}
 	if !strings.HasSuffix(pathAfterSkills, "/skills") {
 		t.Errorf("path after skills nav = %q, want suffix /skills", pathAfterSkills)
 	}
 	if !skillsHasWorkspace {
-		t.Error("skills page missing workspace indicator after HTMX nav")
+		t.Error("skills page missing workspace indicator with correct title after HTMX nav")
 	}
 	if !strings.Contains(pathAfterChat, "/sessions/") {
 		t.Errorf("path after chat nav = %q, want containing /sessions/", pathAfterChat)
 	}
 	if !chatHasWorkspace {
-		t.Error("chat page missing workspace indicator after HTMX nav")
+		t.Error("chat page missing workspace indicator with correct title after HTMX nav")
 	}
 }
 
@@ -1962,5 +1956,112 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 	}
 	if !strings.Contains(errorText, "Provider authentication failed") {
 		t.Errorf("error text = %q, want auth guidance", errorText)
+	}
+}
+
+// TestBrowser_ActiveNavLink verifies the current page's nav link has active styling.
+func TestBrowser_ActiveNavLink(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Check Chat page — Chat link has active class
+	var chatActiveOnChat, settingsActiveOnChat, skillsActiveOnChat bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnChat),
+		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnChat),
+		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/skills"]')?.classList.contains("active")`, &skillsActiveOnChat),
+	)
+	if err != nil {
+		t.Fatalf("chat page nav test failed: %v", err)
+	}
+	if !chatActiveOnChat {
+		t.Error("Chat nav link should have active class on chat page")
+	}
+	if settingsActiveOnChat {
+		t.Error("Settings nav link should NOT have active class on chat page")
+	}
+	if skillsActiveOnChat {
+		t.Error("Skills nav link should NOT have active class on chat page")
+	}
+
+	// Navigate to settings
+	var chatActiveOnSettings, settingsActiveOnSettings bool
+	err = chromedp.Run(ctx,
+		chromedp.Click(`nav a[href="/settings"]`, chromedp.ByQuery),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href^="/sessions/"]')?.classList.contains("active")`, &chatActiveOnSettings),
+		chromedp.EvaluateAsDevTools(`document.querySelector('nav a[href="/settings"]')?.classList.contains("active")`, &settingsActiveOnSettings),
+	)
+	if err != nil {
+		t.Fatalf("settings page nav test failed: %v", err)
+	}
+	if chatActiveOnSettings {
+		t.Error("Chat nav link should NOT have active class on settings page")
+	}
+	if !settingsActiveOnSettings {
+		t.Error("Settings nav link should have active class on settings page")
+	}
+}
+
+// TestBrowser_WorkspaceTrim verifies workspace indicator shows basename with full path in tooltip.
+func TestBrowser_WorkspaceTrim(t *testing.T) {
+	workspace := t.TempDir()
+	basename := filepath.Base(workspace)
+	server := newTestServerAtWorkspace(t, workspace)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var indicatorText string
+	var indicatorTooltip string
+	var tooltipFound bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#workspace-indicator", chromedp.ByQuery),
+		chromedp.Text("#workspace-indicator", &indicatorText, chromedp.ByQuery),
+		chromedp.AttributeValue("#workspace-indicator", "title", &indicatorTooltip, &tooltipFound, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("workspace indicator test failed: %v", err)
+	}
+
+	// Should contain basename, not full workspace path
+	if !strings.Contains(indicatorText, basename) {
+		t.Errorf("workspace indicator text = %q, want containing basename %q", indicatorText, basename)
+	}
+	if strings.Contains(indicatorText, workspace) && workspace != basename {
+		t.Errorf("workspace indicator text = %q, should not contain full path %q", indicatorText, workspace)
+	}
+	// Tooltip should have full workspace path
+	if !tooltipFound {
+		t.Error("workspace indicator missing title attribute")
+	} else if indicatorTooltip != workspace {
+		t.Errorf("workspace indicator title = %q, want full path %q", indicatorTooltip, workspace)
+	}
+}
+
+// TestBrowser_RunStatusSlim verifies run-status no longer shows descriptive text.
+func TestBrowser_RunStatusSlim(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var runStatusDetailExists bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#run-status", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("document.querySelector('#run-status-detail') !== null", &runStatusDetailExists),
+	)
+	if err != nil {
+		t.Fatalf("run status slim test failed: %v", err)
+	}
+	if runStatusDetailExists {
+		t.Error("run-status-detail should be removed; only stream-indicator badge should remain")
 	}
 }

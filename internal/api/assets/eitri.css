@@ -64,6 +64,28 @@ header h1 {
   color: var(--accent);
 }
 
+header nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-link {
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.nav-link:hover {
+  background: var(--surface-alt);
+}
+
+.nav-link.active {
+  background: var(--surface-alt);
+  color: var(--text);
+  font-weight: 600;
+}
+
 main {
   flex: 1;
   padding: 1rem;
@@ -215,21 +237,9 @@ noscript {
 }
 
 .run-status {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-}
-
-.run-status-header {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.run-status-detail {
-  min-width: 0;
+  padding: 0;
 }
 
 .activity-panel {
@@ -584,6 +594,11 @@ noscript {
   font-size: 0.8rem;
   color: var(--text-muted);
   padding: 0.5rem 0;
+  cursor: default;
+}
+
+.workspace-indicator:hover {
+  color: var(--text);
 }
 
 /* Scrollbar */
