@@ -2669,11 +2669,75 @@ func TestRenderComponent_DiffCard(t *testing.T) {
 	if !strings.Contains(content, "diff-card") {
 		t.Errorf("DiffCard response missing 'diff-card' class, got: %s", content[:100])
 	}
+	if !strings.Contains(content, "diff-pane-unified") {
+		t.Errorf("DiffCard response missing unified pane, got: %s", content[:200])
+	}
+	if !strings.Contains(content, "diff-pane-side-by-side") {
+		t.Errorf("DiffCard response missing side-by-side pane, got: %s", content[:200])
+	}
+	if !strings.Contains(content, "diff-toggle-btn") {
+		t.Errorf("DiffCard response missing view toggle buttons, got: %s", content[:200])
+	}
 	if !strings.Contains(content, "old code") {
 		t.Errorf("DiffCard response missing old code, got: %s", content[:100])
 	}
 	if !strings.Contains(content, "new code") {
 		t.Errorf("DiffCard response missing new code, got: %s", content[:100])
+	}
+}
+
+func TestRenderToolCard_FileEditorRendersInteractiveDiff(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("type", "tool_result")
+	form.Set("tool", "file_editor")
+	form.Set("output", `{"path":"main.go","mode":"overwrite","bytes_written":42,"old_content":"line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n","new_content":"line 1\nline 2\nline 3 changed\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\n"}`)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/tool-card", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("render file_editor tool result status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	if !strings.Contains(content, "file-edit-card") {
+		t.Fatalf("file edit response missing file-edit-card class: %s", content)
+	}
+	if !strings.Contains(content, "eitri-diff-card") {
+		t.Fatalf("file edit response missing eitri-diff-card wrapper: %s", content)
+	}
+	if !strings.Contains(content, "diff-toggle-btn") {
+		t.Fatalf("file edit response missing diff toggle buttons: %s", content)
+	}
+	if !strings.Contains(content, "unchanged lines") {
+		t.Fatalf("file edit response missing collapsed unchanged control: %s", content)
 	}
 }
 

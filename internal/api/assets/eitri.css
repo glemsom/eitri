@@ -534,33 +534,8 @@ pre:hover .copy-btn {
   font-size: 0.85rem;
 }
 
-.file-diff pre.diff-content {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem;
-  overflow-x: auto;
-  font-size: 0.85rem;
-  line-height: 1.4;
-}
-
-.file-diff pre.diff-content code {
-  white-space: pre-wrap;
-}
-
-/* Diff line markers */
-.file-diff .diff-added,
-.file-diff .diff-removed {
-  display: block;
-  padding: 0 0.25rem;
-}
-
-.file-diff .diff-added {
-  background: rgba(46, 204, 113, 0.1);
-}
-
-.file-diff .diff-removed {
-  background: rgba(231, 76, 60, 0.1);
+.file-diff {
+  margin-top: 0.25rem;
 }
 
 /* Quick reply chips */
@@ -611,6 +586,10 @@ pre.mermaid.mermaid-error {
 }
 
 /* Diff card */
+eitri-diff-card {
+  display: block;
+}
+
 .diff-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -627,23 +606,127 @@ pre.mermaid.mermaid-error {
   border-bottom: 1px solid var(--border);
 }
 
-.diff-toggle-btn {
+.diff-toggle-btn,
+.diff-collapse-btn {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 0.15rem 0.5rem;
+  padding: 0.2rem 0.55rem;
   font-size: 0.8rem;
   cursor: pointer;
 }
 
-.diff-toggle-btn:hover {
+.diff-toggle-btn:hover,
+.diff-collapse-btn:hover {
   background: var(--surface);
   color: var(--text);
 }
 
-.diff-view {
-  padding: 0.5rem;
+.diff-toggle-btn.is-active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.diff-pane {
+  display: none;
+}
+
+.diff-pane.is-active {
+  display: block;
+}
+
+.diff-table {
+  overflow-x: auto;
+}
+
+.diff-row {
+  display: grid;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.diff-row:last-child {
+  border-bottom: none;
+}
+
+.diff-table-unified .diff-row {
+  grid-template-columns: 3.5rem 3.5rem 1.5rem minmax(0, 1fr);
+}
+
+.diff-table-side-by-side .diff-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.diff-cell,
+.diff-table-unified .diff-line-no,
+.diff-table-unified .diff-marker,
+.diff-table-unified .diff-code {
+  padding: 0.3rem 0.5rem;
+}
+
+.diff-table-unified .diff-line-no,
+.diff-table-unified .diff-marker,
+.diff-cell .diff-line-no,
+.diff-cell .diff-marker {
+  user-select: none;
+}
+
+.diff-cell {
+  display: grid;
+  grid-template-columns: 3.5rem 1.5rem minmax(0, 1fr);
+  min-width: 0;
+}
+
+.diff-cell-old {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.diff-line-no {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.diff-marker {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.diff-code {
+  display: block;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.diff-row-equal {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.diff-row-delete,
+.diff-cell-old.diff-cell-empty + .diff-cell-new,
+.diff-row-delete .diff-cell-old {
+  background: rgba(231, 76, 60, 0.08);
+}
+
+.diff-row-insert,
+.diff-row-insert .diff-cell-new {
+  background: rgba(46, 204, 113, 0.08);
+}
+
+.diff-cell-empty {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.diff-collapse-btn {
+  display: block;
+  width: calc(100% - 1rem);
+  margin: 0.5rem;
+  text-align: left;
 }
 
 /* Completion menu */

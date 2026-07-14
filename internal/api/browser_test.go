@@ -772,6 +772,114 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 
 // TestBrowser_InputDisabledDuringRun verifies that during an active run,
 // the chat input and send button are disabled, and the stop button is visible.
+func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	oldContent := strings.Join([]string{
+		"line 1",
+		"line 2",
+		"line 3",
+		"line 4",
+		"line 5",
+		"line 6",
+		"line 7",
+		"line 8",
+		"line 9",
+		"line 10",
+		"line 11",
+		"line 12",
+	}, "\n") + "\n"
+	newContent := strings.Replace(oldContent, "line 3\n", "line 3 changed\n", 1)
+
+	var (
+		diffExpanded             bool
+		diffSideBySideActive     bool
+		fileEditDiffRendered     bool
+		fileEditSideBySideActive bool
+	)
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(fmt.Sprintf(`(function() {
+			const sessionId = location.pathname.split('/').pop();
+			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/component', {
+				source: document.body,
+				target: '#messages',
+				swap: 'beforeend',
+				values: {
+					name: 'DiffCard',
+					data: JSON.stringify({old: %q, new: %q, lang: 'go'})
+				}
+			});
+			return true;
+		})()`, oldContent, newContent), nil),
+		chromedp.WaitVisible("eitri-diff-card .diff-collapse-btn", chromedp.ByQuery),
+		chromedp.Click("eitri-diff-card .diff-collapse-btn", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`(function() {
+			const active = document.querySelector('eitri-diff-card .diff-pane.is-active');
+			if (!active) return false;
+			return active.querySelectorAll('.diff-row[data-collapse-group][hidden]').length === 0;
+		})()`, &diffExpanded),
+		chromedp.Click("eitri-diff-card .diff-toggle-btn[data-view='side-by-side']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`(function() {
+			const card = document.querySelector('eitri-diff-card');
+			if (!card) return false;
+			return !!card.querySelector('.diff-pane-side-by-side.is-active') &&
+				!!card.querySelector('.diff-toggle-btn[data-view="side-by-side"].is-active');
+		})()`, &diffSideBySideActive),
+		chromedp.EvaluateAsDevTools(fmt.Sprintf(`(function() {
+			const sessionId = location.pathname.split('/').pop();
+			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
+				source: document.body,
+				target: '#messages',
+				swap: 'beforeend',
+				values: {
+					type: 'tool_result',
+					tool: 'file_editor',
+					output: JSON.stringify({
+						path: 'main.go',
+						mode: 'overwrite',
+						bytes_written: 123,
+						old_content: %q,
+						new_content: %q,
+						dirs_created: []
+					})
+				}
+			});
+			return true;
+		})()`, oldContent, newContent), nil),
+		chromedp.WaitVisible(".file-edit-card eitri-diff-card .diff-toggle-btn[data-view='side-by-side']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('.file-edit-card eitri-diff-card') !== null`, &fileEditDiffRendered),
+		chromedp.Click(".file-edit-card eitri-diff-card .diff-toggle-btn[data-view='side-by-side']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`(function() {
+			const card = document.querySelector('.file-edit-card eitri-diff-card');
+			if (!card) return false;
+			return !!card.querySelector('.diff-pane-side-by-side.is-active') &&
+				!!card.querySelector('.diff-toggle-btn[data-view="side-by-side"].is-active');
+		})()`, &fileEditSideBySideActive),
+	)
+	if err != nil {
+		t.Fatalf("diff card browser test failed: %v", err)
+	}
+
+	if !diffExpanded {
+		t.Error("DiffCard unchanged rows should expand after collapse toggle")
+	}
+	if !diffSideBySideActive {
+		t.Error("DiffCard should switch to side-by-side view")
+	}
+	if !fileEditDiffRendered {
+		t.Error("file edit result should render interactive diff card")
+	}
+	if !fileEditSideBySideActive {
+		t.Error("file edit diff should switch to side-by-side view")
+	}
+}
+
 func TestBrowser_InputDisabledDuringRun(t *testing.T) {
 	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
 	server := newTestServerWithRuns(t)

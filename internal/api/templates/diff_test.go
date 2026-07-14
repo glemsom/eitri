@@ -111,3 +111,56 @@ func TestEscapeDiff(t *testing.T) {
 		}
 	}
 }
+
+func TestUnifiedDiffHTML_CollapsesLargeUnchangedSections(t *testing.T) {
+	old := strings.Join([]string{
+		"line 1",
+		"line 2",
+		"line 3",
+		"line 4",
+		"line 5",
+		"line 6",
+		"line 7",
+		"line 8",
+		"line 9",
+		"line 10",
+		"line 11",
+		"line 12",
+	}, "\n") + "\n"
+	new := strings.Replace(old, "line 3\n", "line 3 changed\n", 1)
+
+	html := unifiedDiffHTML(old, new)
+
+	if !strings.Contains(html, "diff-collapse-btn") {
+		t.Fatalf("unified diff missing collapse button: %s", html)
+	}
+	if !strings.Contains(html, "unchanged lines") {
+		t.Fatalf("unified diff missing unchanged-lines label: %s", html)
+	}
+	if !strings.Contains(html, "data-collapse-group=") {
+		t.Fatalf("unified diff missing collapse group metadata: %s", html)
+	}
+	if !strings.Contains(html, "hidden") {
+		t.Fatalf("unified diff missing hidden collapsed rows: %s", html)
+	}
+	if !strings.Contains(html, "line 3 changed") {
+		t.Fatalf("unified diff missing changed line: %s", html)
+	}
+}
+
+func TestSideBySideDiffHTML_ShowsBothColumns(t *testing.T) {
+	html := sideBySideDiffHTML("before\n", "after\n")
+
+	if !strings.Contains(html, "diff-cell-old") {
+		t.Fatalf("side-by-side diff missing old column: %s", html)
+	}
+	if !strings.Contains(html, "diff-cell-new") {
+		t.Fatalf("side-by-side diff missing new column: %s", html)
+	}
+	if !strings.Contains(html, "before") {
+		t.Fatalf("side-by-side diff missing old content: %s", html)
+	}
+	if !strings.Contains(html, "after") {
+		t.Fatalf("side-by-side diff missing new content: %s", html)
+	}
+}
