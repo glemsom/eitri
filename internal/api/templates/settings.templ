@@ -45,23 +45,28 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 						</label>
 					</div>
 					<small class="hint">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small>
-					<div class="device-flow-panel">
-						if deviceFlow != nil {
+				</div>
+
+				<div class="device-flow-section">
+					if deviceFlow != nil {
+						<div class="device-flow-panel">
 							<p>Authenticate with GitHub device flow.</p>
-							<p>Open <a href={ deviceFlow.VerificationURI } target="_blank" rel="noreferrer noopener">{ deviceFlow.VerificationURI }</a> and enter code <code>{ deviceFlow.UserCode }</code>.</p>
+							<p class="device-flow-code-wrapper">Open <a href={ deviceFlow.VerificationURI } target="_blank" rel="noreferrer noopener">{ deviceFlow.VerificationURI }</a> and enter code <code class="device-flow-code">{ deviceFlow.UserCode }</code>.</p>
 							<div id={ "copilot-device-flow-status-" + deviceFlow.ID } hx-get={ deviceFlow.PollURL } hx-trigger={ deviceFlow.PollTrigger } hx-target="#settings-form" hx-swap="outerHTML">
 								<small class="hint">Waiting for GitHub approval…</small>
 							</div>
 							<div class="form-actions">
 								<button type="button" hx-delete={ deviceFlow.CancelURL } hx-target="#settings-form" hx-swap="outerHTML">Cancel GitHub auth</button>
 							</div>
-						} else {
+						</div>
+					} else {
+						<div class="device-flow-panel">
 							<div class="form-actions">
 								<button type="button" hx-post="/api/providers/github_copilot/device-flow/start" hx-include="closest form" hx-target="#settings-form" hx-swap="outerHTML">Authenticate with GitHub</button>
 							</div>
 							<small class="hint">For GitHub Copilot. Select provider above, start device flow, then models refresh automatically.</small>
-						}
-					</div>
+						</div>
+					}
 				</div>
 
 				<div class="form-group">
