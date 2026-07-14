@@ -74,7 +74,7 @@ func AssistantBubble(htmlContent string) templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"message message-assistant\"><div class=\"message-avatar\">E</div><div class=\"message-content\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"message message-assistant\"><img class=\"message-avatar\" src=\"/static/face.webp\" alt=\"Eitri\" width=\"32\" height=\"32\"><div class=\"message-content\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

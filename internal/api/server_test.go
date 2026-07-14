@@ -1540,6 +1540,9 @@ func TestSettingsPage(t *testing.T) {
 		`/static/eitri-composer.js`,
 		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
+		`/static/face.webp`,
+		`/static/favicon-32.png`,
+		`/static/favicon-16.png`,
 		`hx-ext="head-support"`,
 	} {
 		if !strings.Contains(content, required) {
@@ -2507,6 +2510,9 @@ func TestSkillsEndpoint(t *testing.T) {
 		`/static/eitri-composer.js`,
 		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
+		`/static/face.webp`,
+		`/static/favicon-32.png`,
+		`/static/favicon-16.png`,
 		`hx-ext="head-support"`,
 	} {
 		if !strings.Contains(content, required) {

@@ -19,4 +19,7 @@ import (
 //go:embed eitri-renderers.js
 //go:embed eitri-mermaid.js
 //go:embed eitri-session-rename.js
+//go:embed face.webp
+//go:embed favicon-32.png
+//go:embed favicon-16.png
 var Files embed.FS
