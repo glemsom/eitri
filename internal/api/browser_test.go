@@ -74,6 +74,27 @@ func newBrowserCtx(t *testing.T, srvURL string) (context.Context, context.Cancel
 	}
 }
 
+func waitForComposerReady(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var ready bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var input = document.querySelector('#chat-input');
+				var menu = document.querySelector('#completion-menu');
+				return !!input && !!menu && input.getAttribute('aria-controls') === 'completion-menu';
+			})()`, &ready),
+		)
+		if err == nil && ready {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("composer did not initialize")
+}
+
 // newTestServer is already defined in server_test.go — shared via package api_test.
 
 // fakeChatServer returns an httptest.Server that acts as an OpenAI-compatible
@@ -212,6 +233,210 @@ func putBrowserConfig(t *testing.T, server *httptest.Server, body string) {
 }
 
 // ————— Chat run browser tests (issue #22) —————
+
+func TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline(t *testing.T) {
+	llmURL := testLLMURL(t)
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var (
+		composerValue string
+		userText      string
+	)
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+	waitForComposerReady(t, ctx)
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const input = document.querySelector('#chat-input');
+			input.focus();
+			input.value = 'line 1';
+			input.setSelectionRange(input.value.length, input.value.length);
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			const event = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
+			const allowed = input.dispatchEvent(event);
+			if (allowed && !event.defaultPrevented) {
+				const start = input.selectionStart;
+				const end = input.selectionEnd;
+				input.value = input.value.slice(0, start) + '\n' + input.value.slice(end);
+				input.setSelectionRange(start + 1, start + 1);
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+			}
+			input.value += 'line 2';
+			input.setSelectionRange(input.value.length, input.value.length);
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			return input.value;
+		})()`, &composerValue),
+	)
+	if err != nil {
+		t.Fatalf("compose multiline message failed: %v", err)
+	}
+	if composerValue != "line 1\nline 2" {
+		t.Fatalf("composer value after Shift+Enter = %q, want %q", composerValue, "line 1\nline 2")
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const input = document.querySelector('#chat-input');
+			input.focus();
+			const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+			input.dispatchEvent(event);
+			return event.defaultPrevented;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("dispatch Enter failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible(".message-user", chromedp.ByQuery),
+		chromedp.Text(".message-user .message-content", &userText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send by Enter failed: %v", err)
+	}
+	if !strings.Contains(userText, "line 1") || !strings.Contains(userText, "line 2") {
+		t.Fatalf("user bubble text = %q, want both lines present", userText)
+	}
+}
+
+func TestBrowser_ComposerCompletionKeyboardAndNestedPaths(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(workspace+"/alpha", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workspace+"/beta", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspace+"/alpha/nested.txt", []byte("nested"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workspace+"/root.txt", []byte("root"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"test-model"}]}`)
+	server := newTestServerAtWorkspace(t, workspace)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var selectedLabel string
+	var menuClosed bool
+	var dirValue string
+	var nestedItemsJSON string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+	waitForComposerReady(t, ctx)
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const input = document.querySelector('#chat-input');
+			input.focus();
+			input.value = '@';
+			input.setSelectionRange(1, 1);
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("open root completion failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible("#completion-menu .completion-item", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("wait root completion failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#completion-menu .completion-item.selected .completion-label')?.textContent ?? ''`, &selectedLabel),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#completion-menu').style.display === 'none'`, &menuClosed),
+	)
+	if err != nil {
+		t.Fatalf("navigate completion menu failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const input = document.querySelector('#chat-input');
+			input.value = '@a';
+			input.focus();
+			input.setSelectionRange(2, 2);
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("open directory completion failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible("#completion-menu .completion-item", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#chat-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`, nil),
+		chromedp.Value("#chat-input", &dirValue, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("select directory completion failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const sessionMatch = window.location.pathname.match(/\/sessions\/([^/]+)/);
+			if (!sessionMatch) return '[]';
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', '/api/sessions/' + sessionMatch[1] + '/complete/files?q=' + encodeURIComponent('alpha/'), false);
+			xhr.send(null);
+			const data = JSON.parse(xhr.responseText || '{"items": []}');
+			return JSON.stringify(data.items || []);
+		})()`, &nestedItemsJSON),
+	)
+	var nestedItems []map[string]string
+	if err == nil {
+		err = json.Unmarshal([]byte(nestedItemsJSON), &nestedItems)
+	}
+	if err != nil {
+		t.Fatalf("fetch nested file completions failed: %v", err)
+	}
+	if selectedLabel != "alpha/" {
+		t.Fatalf("selected label after keyboard navigation = %q, want %q", selectedLabel, "alpha/")
+	}
+	if !menuClosed {
+		t.Fatal("Escape should close completion menu")
+	}
+	if dirValue != "@alpha/" {
+		t.Fatalf("directory completion value = %q, want %q", dirValue, "@alpha/")
+	}
+	if len(nestedItems) != 1 {
+		t.Fatalf("nested completion items = %+v, want single nested file", nestedItems)
+	}
+	if nestedItems[0]["path"] != "alpha/nested.txt" {
+		t.Fatalf("nested completion path = %q, want %q", nestedItems[0]["path"], "alpha/nested.txt")
+	}
+	if nestedItems[0]["kind"] != "file" {
+		t.Fatalf("nested completion kind = %q, want %q", nestedItems[0]["kind"], "file")
+	}
+}
 
 // TestBrowser_SendMessage verifies that sending a message creates a user bubble
 // in the DOM and clears the chat input.
@@ -714,6 +939,43 @@ func TestBrowser_CancelRun(t *testing.T) {
 			t.Logf("failed to read stop-btn style: %v", err)
 		}
 		t.Logf("actual stop-btn style attr: %s", styleAttr)
+	}
+}
+
+func TestBrowser_EscapeCancelsActiveRun(t *testing.T) {
+	llmURL := fakeSlowChatServer(t, 2*time.Second).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", "cancel me", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("start run failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	var cancelled bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+			document.dispatchEvent(event);
+			return event.defaultPrevented;
+		})()`, &cancelled),
+		chromedp.WaitVisible("#send-btn:not([disabled])", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("escape cancel failed: %v", err)
+	}
+	if !cancelled {
+		t.Fatal("Escape should cancel active run")
 	}
 }
 

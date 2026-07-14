@@ -5,22 +5,39 @@
 
   class EitriComposer extends HTMLElement {
     connectedCallback() {
-      // Already initialized
       if (this._initialized) return;
-      this._initialized = true;
 
       this.textarea = this.querySelector('.chat-input');
       this.form = this.querySelector('form');
-      if (!this.textarea || !this.form) return;
+      if (!this.textarea || !this.form) {
+        if (!this._initScheduled) {
+          this._initScheduled = true;
+          window.requestAnimationFrame(() => {
+            this._initScheduled = false;
+            this.connectedCallback();
+          });
+        }
+        return;
+      }
 
+      this._initialized = true;
       this.sessionId = this._extractSessionId();
       this.menuEl = null;
-      this.menuType = null; // 'skill' or 'file'
+      this.menuType = null;
       this.selectedIdx = -1;
       this.sequence = 0;
+      this.debounceDelayMs = 100;
+      this.debounceTimer = null;
+      this._token = null;
 
       this._setupMenu();
       this._bindEvents();
+    }
+
+    disconnectedCallback() {
+      if (this._handleDocumentKeydown) {
+        document.removeEventListener('keydown', this._handleDocumentKeydown);
+      }
     }
 
     _extractSessionId() {
@@ -46,46 +63,58 @@
       this.textarea.setAttribute('aria-controls', 'completion-menu');
       this.textarea.setAttribute('aria-autocomplete', 'list');
       this.textarea.setAttribute('aria-expanded', 'false');
+
+      this._handleDocumentKeydown = (e) => {
+        if (e.key !== 'Escape') return;
+        if (this.menuEl.style.display === 'block' && document.activeElement === this.textarea) {
+          return;
+        }
+        if (this._cancelActiveRun()) {
+          e.preventDefault();
+        }
+      };
+      document.addEventListener('keydown', this._handleDocumentKeydown);
     }
 
     _onInput() {
+      window.clearTimeout(this.debounceTimer);
+
       const { text, pos } = this._getTextAndPos();
       const token = this._getTokenAtCursor(text, pos);
-
-      if (!token) {
+      if (!token || !this._isTokenBoundary(text, token.start)) {
         this._closeMenu();
         return;
       }
 
-      // Only trigger completions at the start of a word
-      const charBefore = pos > 0 ? text[pos - 1] : ' ';
-      if (charBefore !== ' ' && charBefore !== '\n' && token.start !== 0) {
+      const type = token.prefix === '/' ? 'skill' : token.prefix === '@' ? 'file' : null;
+      if (!type) {
         this._closeMenu();
         return;
       }
 
-      if (token.prefix === '/') {
-        const query = token.value.slice(1); // after /
-        this._fetchCompletions('skill', query, token);
-      } else if (token.prefix === '@') {
-        const query = token.value.slice(1); // after @
-        this._fetchCompletions('file', query, token);
-      } else {
-        this._closeMenu();
-      }
+      const query = token.value.slice(1);
+      const seq = ++this.sequence;
+      this.debounceTimer = window.setTimeout(() => {
+        this._fetchCompletions(type, query, token, seq);
+      }, this.debounceDelayMs);
+    }
+
+    _isTokenBoundary(text, start) {
+      if (start === 0) return true;
+      const before = text[start - 1];
+      return before === ' ' || before === '\n' || before === '\t';
     }
 
     _getTextAndPos() {
-      const text = this.textarea.value;
-      const pos = this.textarea.selectionStart;
-      return { text, pos };
+      return {
+        text: this.textarea.value,
+        pos: this.textarea.selectionStart,
+      };
     }
 
-    // Returns the token (prefix + value) at cursor, or null
     _getTokenAtCursor(text, pos) {
       if (pos <= 0) return null;
 
-      // Look backwards from cursor to find start of token
       let start = pos;
       while (start > 0) {
         const ch = text[start - 1];
@@ -101,68 +130,67 @@
       const firstChar = text[start];
       if (firstChar !== '/' && firstChar !== '@') return null;
 
-      const value = text.slice(start, pos);
-      return { prefix: firstChar, value, start };
+      return {
+        prefix: firstChar,
+        value: text.slice(start, pos),
+        start,
+      };
     }
 
-    _fetchCompletions(type, query, token) {
-      const seq = ++this.sequence;
-      const currentSeq = seq;
+    _fetchCompletions(type, query, token, seq) {
+      if (seq !== this.sequence) return;
 
-      let url;
-      if (type === 'skill') {
-        url = `/api/sessions/${this.sessionId}/complete/skills?q=${encodeURIComponent(query)}`;
-      } else {
-        url = `/api/sessions/${this.sessionId}/complete/files?q=${encodeURIComponent(query)}`;
-      }
+      const url = type === 'skill'
+        ? `/api/sessions/${this.sessionId}/complete/skills?q=${encodeURIComponent(query)}`
+        : `/api/sessions/${this.sessionId}/complete/files?q=${encodeURIComponent(query)}`;
 
       fetch(url)
-        .then(r => r.json())
-        .then(data => {
-          if (currentSeq !== this.sequence) return; // stale
+        .then((r) => r.json())
+        .then((data) => {
+          if (seq !== this.sequence) return;
           if (!data.items || data.items.length === 0) {
             this._closeMenu();
             return;
           }
-          this._renderMenu(type, data.items, query, token);
+          this._renderMenu(type, data.items, token);
         })
         .catch(() => {
-          if (currentSeq === this.sequence) this._closeMenu();
+          if (seq === this.sequence) this._closeMenu();
         });
     }
 
-    _renderMenu(type, items, query, token) {
+    _renderMenu(type, items, token) {
       this.menuType = type;
       this.selectedIdx = -1;
       this._token = token;
 
-      this.menuEl.innerHTML = '';
+      this.menuEl.replaceChildren();
       this.menuEl.style.display = 'block';
       this.textarea.setAttribute('aria-expanded', 'true');
 
       items.forEach((item, idx) => {
         const opt = document.createElement('div');
+        opt.id = 'completion-item-' + idx;
+        opt.className = 'completion-item';
+        opt.dataset.index = String(idx);
         opt.setAttribute('role', 'option');
         opt.setAttribute('aria-selected', 'false');
-        opt.className = 'completion-item';
-        if (idx === this.selectedIdx) {
-          opt.classList.add('selected');
-          opt.setAttribute('aria-selected', 'true');
-          this.textarea.setAttribute('aria-activedescendant', 'completion-item-' + idx);
-        }
-        opt.id = 'completion-item-' + idx;
-        opt.dataset.index = idx;
 
-        if (type === 'skill') {
-          opt.innerHTML = '<span class="completion-label">' + this._escapeHtml(item.name) + '</span>' +
-            '<span class="completion-desc">' + this._escapeHtml(item.description || '') + '</span>';
-          opt.dataset.value = item.name;
-        } else {
-          opt.innerHTML = '<span class="completion-label">' + this._escapeHtml(item.path) + '</span>' +
-            '<span class="completion-desc">' + item.kind + '</span>';
-          opt.dataset.value = item.path;
+        const label = document.createElement('span');
+        label.className = 'completion-label';
+        label.textContent = type === 'skill' ? item.name : item.path;
+
+        const desc = document.createElement('span');
+        desc.className = 'completion-desc';
+        desc.textContent = type === 'skill' ? (item.description || '') : item.kind;
+
+        opt.dataset.value = type === 'skill' ? item.name : item.path;
+        if (type === 'file') {
+          opt.dataset.kind = item.kind;
         }
 
+        opt.appendChild(label);
+        opt.appendChild(desc);
         opt.addEventListener('mousedown', (e) => {
           e.preventDefault();
           this._selectItem(idx);
@@ -173,33 +201,36 @@
     }
 
     _onKeydown(e) {
-      if (this.menuEl.style.display !== 'block') {
-        // Escape cancels active run
+      const menuOpen = this.menuEl.style.display === 'block';
+      if (!menuOpen) {
         if (e.key === 'Escape') {
-          const stopBtn = document.getElementById('stop-btn');
-          if (stopBtn && stopBtn.style.display !== 'none') {
-            stopBtn.click();
+          if (this._cancelActiveRun()) {
             e.preventDefault();
           }
+          return;
+        }
+
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          this._submitForm();
         }
         return;
       }
 
-      const items = this.menuEl.querySelectorAll('.completion-item');
-      if (!items.length) return;
-
       switch (e.key) {
         case 'ArrowDown':
-        case 'Tab':
           e.preventDefault();
-          this.selectedIdx = Math.min(this.selectedIdx + 1, items.length - 1);
-          this._highlightItem(items);
+          this._moveSelection(1);
           break;
 
         case 'ArrowUp':
           e.preventDefault();
-          this.selectedIdx = Math.max(this.selectedIdx - 1, 0);
-          this._highlightItem(items);
+          this._moveSelection(-1);
+          break;
+
+        case 'Tab':
+          e.preventDefault();
+          this._moveSelection(e.shiftKey ? -1 : 1);
           break;
 
         case 'Enter':
@@ -216,15 +247,54 @@
       }
     }
 
+    _submitForm() {
+      if (this.textarea.disabled) return;
+      this._closeMenu();
+      const sendBtn = this.form.querySelector('#send-btn');
+      if (sendBtn) {
+        sendBtn.click();
+        return;
+      }
+      if (typeof this.form.requestSubmit === 'function') {
+        this.form.requestSubmit();
+        return;
+      }
+      this.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+
+    _cancelActiveRun() {
+      const stopBtn = document.getElementById('stop-btn');
+      if (!stopBtn || window.getComputedStyle(stopBtn).display === 'none') {
+        return false;
+      }
+      stopBtn.click();
+      return true;
+    }
+
+    _moveSelection(delta) {
+      const items = this.menuEl.querySelectorAll('.completion-item');
+      if (!items.length) return;
+
+      if (this.selectedIdx < 0) {
+        this.selectedIdx = delta < 0 ? items.length - 1 : 0;
+      } else {
+        this.selectedIdx = Math.max(0, Math.min(this.selectedIdx + delta, items.length - 1));
+      }
+      this._highlightItem(items);
+    }
+
     _highlightItem(items) {
       items.forEach((el, idx) => {
-        el.classList.toggle('selected', idx === this.selectedIdx);
-        el.setAttribute('aria-selected', idx === this.selectedIdx ? 'true' : 'false');
+        const selected = idx === this.selectedIdx;
+        el.classList.toggle('selected', selected);
+        el.setAttribute('aria-selected', selected ? 'true' : 'false');
       });
       if (this.selectedIdx >= 0) {
         const id = 'completion-item-' + this.selectedIdx;
         this.textarea.setAttribute('aria-activedescendant', id);
         items[this.selectedIdx].scrollIntoView({ block: 'nearest' });
+      } else {
+        this.textarea.removeAttribute('aria-activedescendant');
       }
     }
 
@@ -233,49 +303,38 @@
       if (index < 0 || index >= items.length) return;
 
       const item = items[index];
-      const value = item.dataset.value;
       const token = this._token;
       if (!token) return;
 
-      const text = this.textarea.value;
-      const before = text.slice(0, token.start);
-      const after = text.slice(this.textarea.selectionStart);
+      const value = item.dataset.value || '';
+      const kind = item.dataset.kind || '';
+      const keepMenuOpen = token.prefix === '@' && kind === 'dir';
+      const suffix = keepMenuOpen ? '' : ' ';
 
-      // Determine insertion: skill names get trailing space, dirs keep menu open
-      const isDir = item.querySelector('.completion-desc')?.textContent === 'dir';
-      const suffix = isDir ? '' : ' ';
+      const before = this.textarea.value.slice(0, token.start);
+      const after = this.textarea.value.slice(this.textarea.selectionStart);
+      this.textarea.value = before + token.prefix + value + suffix + after;
 
-      this.textarea.value = before + value + suffix + after;
-      const newPos = before.length + value.length + suffix.length;
+      const newPos = before.length + token.prefix.length + value.length + suffix.length;
       this.textarea.setSelectionRange(newPos, newPos);
       this.textarea.focus();
+      this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
-      if (isDir) {
-        // Keep menu open for directory completion
-        this._token = { prefix: '@', value: value + '/', start: token.start };
-        this._onInput();
-      } else {
+      if (!keepMenuOpen) {
         this._closeMenu();
       }
-
-      // Trigger HTMX validation
-      this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     _closeMenu() {
+      window.clearTimeout(this.debounceTimer);
+      this.sequence++;
       this.menuEl.style.display = 'none';
-      this.menuEl.innerHTML = '';
+      this.menuEl.replaceChildren();
       this.menuType = null;
       this.selectedIdx = -1;
       this._token = null;
       this.textarea.setAttribute('aria-expanded', 'false');
       this.textarea.removeAttribute('aria-activedescendant');
-    }
-
-    _escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
     }
   }
 
