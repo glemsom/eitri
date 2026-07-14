@@ -582,78 +582,45 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-// fetchModelList calls the provider profile's model discovery path and returns model IDs.
-// Also validates that the provider credentials work.
-func providerValidationErrorMessage(providerID string, statusCode int) string {
-	switch statusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		if providerID == "github_copilot" {
-			return "Provider authentication failed. Token invalid, expired, missing Copilot entitlement, or org policy blocked access."
-		}
-		return "Provider authentication failed. Check API key or token and try again."
-	case http.StatusNotFound:
-		return "Model discovery failed. Check base URL; provider endpoint not found."
-	default:
-		return fmt.Sprintf("Model discovery failed: provider returned HTTP %d", statusCode)
-	}
-}
-
+// fetchModelList calls Provider discovery seam and persists any refreshed auth state.
 func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
-	if cfg.BaseURL == "" {
-		return nil, fmt.Errorf("base_url is required")
-	}
-	prof, err := provider.Get(cfg.Provider)
-	if err != nil {
-		return nil, err
-	}
-	resolvedAuth, err := provider.ResolveAuthForRequest(ctx, cfg.Provider, cfg.APIKey, cfg.ProviderAuth, provider.ResolveAuthOptions{
+	result, err := provider.DiscoverModels(ctx, provider.DiscoveryRequest{
+		ProviderID:   cfg.Provider,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       cfg.APIKey,
+		ProviderAuth: cfg.ProviderAuth,
+	}, provider.DiscoveryOptions{
 		HTTPClient:         s.httpClient,
 		GitHubCopilotOAuth: s.copilotOAuth,
-		Persist: func(apiKey string, raw json.RawMessage) error {
-			cfg.APIKey = apiKey
-			cfg.ProviderAuth = append(json.RawMessage(nil), raw...)
-			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
-				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
-			}
-			if s.config.RunManager != nil {
-				s.config.RunManager.runnerMgr.Invalidate()
-				s.config.RunManager.UpdateProviderConfig(cfg)
-			}
-			return nil
-		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	if prof.APIKeyRequired && resolvedAuth.APIKey == "" {
-		return nil, fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
+	if err := s.persistDiscoveryAuthUpdate(cfg, result.AuthUpdate); err != nil {
+		return nil, err
+	}
+	return result.Models, nil
+}
+
+func (s *Server) persistDiscoveryAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) error {
+	if update == nil {
+		return nil
 	}
 
-	modelsURL := prof.ModelListURL(cfg.BaseURL)
-	req, err := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
+	cfg.APIKey = update.APIKey
+	if len(update.ProviderAuth) == 0 {
+		cfg.ProviderAuth = nil
+	} else {
+		cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
 	}
-	prof.ApplyHeaders(req, resolvedAuth.APIKey)
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Provider unreachable. Check base URL and network connection: %v", err)
+	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+		return fmt.Errorf("failed to save refreshed provider auth: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New(providerValidationErrorMessage(cfg.Provider, resp.StatusCode))
+	if s.config.RunManager != nil {
+		s.config.RunManager.runnerMgr.Invalidate()
+		s.config.RunManager.UpdateProviderConfig(cfg)
 	}
-
-	modelIDs, err := prof.ParseModelList(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Model discovery failed: %v", err)
-	}
-	if len(modelIDs) == 0 {
-		return nil, fmt.Errorf("Model discovery failed: no selectable models returned")
-	}
-	return modelIDs, nil
+	return nil
 }
 
 // ————— Chat + SSE run handlers (issue #6) —————

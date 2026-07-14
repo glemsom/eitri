@@ -672,6 +672,98 @@ func TestGetModels_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) 
 	}
 }
 
+func TestGetConfigHTMXRefreshesExpiredGitHubCopilotAuthAndShowsModels(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	now := time.Now().Add(-2 * time.Hour)
+	var gotAuth string
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer providerSrv.Close()
+
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode refresh request: %v", err)
+		}
+		if body["grant_type"] != "refresh_token" {
+			t.Fatalf("grant_type = %q, want refresh_token", body["grant_type"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-refreshed","token_type":"bearer","scope":"read:user","refresh_token":"ghr-next","expires_in":28800,"refresh_token_expires_in":15897600}`)
+	}))
+	defer oauth.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		Scope:                 "read:user",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Save(configPath, &config.Config{
+		Provider:            "github_copilot",
+		BaseURL:             providerSrv.URL,
+		Model:               "gpt-4.1",
+		ProviderAuth:        raw,
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		configPath: configPath,
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauth.URL,
+		},
+	})
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/config", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("HX-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("GET /api/config HX status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, string(body))
+	}
+	if gotAuth != "Bearer gho-refreshed" {
+		t.Fatalf("Authorization = %q, want Bearer gho-refreshed", gotAuth)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+	if !strings.Contains(content, `option value="gpt-4.1"`) {
+		t.Fatalf("settings fragment missing refreshed model option: %s", content)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKey != "gho-refreshed" {
+		t.Fatalf("saved api_key = %q, want gho-refreshed", cfg.APIKey)
+	}
+}
+
 func TestGitHubCopilotDeviceFlowStartUsesBuiltInClientID(t *testing.T) {
 	var gotClientID string
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
