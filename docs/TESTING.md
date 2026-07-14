@@ -205,20 +205,29 @@ go test ./... -v
 Release readiness requires:
 
 ```bash
+make release-check
+make release
+```
+
+Equivalent manual commands:
+
+```bash
 templ generate
 go test ./...
+go test -tags=browser ./internal/api/
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/eitri ./cmd/eitri
 tar -C dist -czf dist/eitri-linux-amd64.tar.gz eitri
-sha256sum dist/eitri-linux-amd64.tar.gz > dist/checksums.txt
+(cd dist && sha256sum eitri-linux-amd64.tar.gz > checksums.txt)
 ```
 
 Smoke installer behavior with a local fixture tarball/checksum before publishing:
 
 - tarball contains binary named `eitri`
 - checksum mismatch fails before overwrite
+- missing `checksums.txt` fails before overwrite
 - successful install writes `~/.local/bin/eitri`
 - missing `tmux` prints distro-specific hint
-- missing `sha256sum` skips verification with clear warning only if spec allows that path
+- if no SHA256 tool exists locally, installer warns and skips verification only after `checksums.txt` download succeeds
 
 ### Agent Skills required coverage
 
