@@ -282,7 +282,7 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 		chromedp.EvaluateAsDevTools("typeof mermaid !== 'undefined'", &mermaidLoaded),
 		chromedp.EvaluateAsDevTools("document.querySelector('.message-assistant .copy-btn') !== null", &copyButtonExists),
 		chromedp.Click(".message-assistant .copy-btn", chromedp.ByQuery),
-		chromedp.Sleep(150 * time.Millisecond),
+		chromedp.Sleep(150*time.Millisecond),
 		chromedp.Text(".message-assistant .copy-btn", &copyButtonState, chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(`(function () {
 			var el = document.querySelector('.message-assistant .math-inline');
@@ -300,7 +300,7 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 			document.dispatchEvent(new Event('htmx:afterSwap'));
 			return true;
 		})()`, nil),
-		chromedp.Sleep(200 * time.Millisecond),
+		chromedp.Sleep(200*time.Millisecond),
 		chromedp.EvaluateAsDevTools(`(function () {
 			var el = document.querySelector('.mermaid-diagram pre.mermaid');
 			if (!el) return false;
@@ -945,9 +945,7 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 }
 
 // TestBrowser_ConfigSaveProviderFailure verifies that provider validation failure
-// (401 from fake provider) does NOT populate models and the form stays unchanged.
-// HTMX does NOT swap error content on 4xx (responseHandling), so no error toast
-// appears in the DOM. The form simply stays as-is.
+// returns swapped settings HTML with visible error feedback.
 func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 	fakeProvider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
 	server := newTestServer(t)
@@ -955,36 +953,27 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	// Navigate to settings page
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigation to settings failed: %v", err)
-	}
-
-	// Fill form with bad provider URL and submit
-	err = chromedp.Run(ctx,
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
 		chromedp.Clear("#base_url", chromedp.ByQuery),
 		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
 		chromedp.Clear("#api_key", chromedp.ByQuery),
 		chromedp.SendKeys("#api_key", "sk-bad", chromedp.ByQuery),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		chromedp.WaitVisible(".error-toast", chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("form fill/submit failed: %v", err)
 	}
 
-	// Wait for HTMX to process the response (will not swap on 4xx).
-	// The form remains unchanged. Verify model dropdown stayed empty.
-	time.Sleep(500 * time.Millisecond)
-
 	var modelOptionsEmpty bool
 	var providerValue string
+	var errorText string
 	err = chromedp.Run(ctx,
 		chromedp.Value("#provider", &providerValue, chromedp.ByQuery),
+		chromedp.Text(".error-toast .error-text", &errorText, chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length <= 1", &modelOptionsEmpty),
 	)
 	if err != nil {
@@ -996,5 +985,8 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 	}
 	if providerValue != "custom_openai" {
 		t.Errorf("provider should still be 'custom_openai' after error, got %q", providerValue)
+	}
+	if !strings.Contains(errorText, "Provider authentication failed") {
+		t.Errorf("error text = %q, want auth guidance", errorText)
 	}
 }

@@ -5,12 +5,15 @@ import "github.com/glemsom/eitri/internal/config"
 templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string) {
 	@Base("Eitri — Settings", chatPath, nil, "") {
 		@WorkspaceIndicator(workspace)
-		@SettingsForm(cfg, models)
+		@SettingsForm(cfg, models, "")
 	}
 }
 
-templ SettingsForm(cfg *config.Config, models []string) {
+templ SettingsForm(cfg *config.Config, models []string, errorMessage string) {
 	<div id="settings-form">
+		if errorMessage != "" {
+			@ErrorToast(errorMessage)
+		}
 		<form hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
 			<fieldset>
 				<legend>Provider</legend>

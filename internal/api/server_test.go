@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
@@ -241,6 +242,66 @@ func TestPutConfigGitHubCopilotAuthFailure(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	var errBody map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&errBody); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errBody["error"], "Provider authentication failed") {
+		t.Errorf("error = %q, want auth guidance", errBody["error"])
+	}
+}
+
+func TestPutConfigHTMXGitHubCopilotAuthFailureReturnsVisibleFormError(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	t.Cleanup(provider.Close)
+
+	server := newTestServer(t)
+	form := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {provider.URL},
+		"api_key":  {"bad-token"},
+	}
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config HTMX status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(bodyBytes)
+	if !strings.Contains(body, `id="settings-form"`) {
+		t.Fatalf("response missing settings form: %s", body)
+	}
+	if !strings.Contains(body, "Provider authentication failed") {
+		t.Errorf("response missing auth guidance: %s", body)
+	}
+	if !strings.Contains(body, `class="error-toast"`) {
+		t.Errorf("response missing visible error toast: %s", body)
+	}
+	if !strings.Contains(body, `value="bad-token"`) {
+		t.Errorf("response should preserve attempted token for correction: %s", body)
 	}
 }
 
@@ -479,17 +540,31 @@ func TestRequestLoggingIncludesMethodPathStatusDurationAndSessionID(t *testing.T
 		t.Fatalf("GET %s status = %d, want %d", sessionPath, resp.StatusCode, http.StatusOK)
 	}
 
-	logOutput := logs.String()
-	for _, want := range []string{
+	wants := []string{
 		`"method":"GET"`,
 		`"path":"` + sessionPath + `"`,
 		fmt.Sprintf(`"status":%d`, http.StatusOK),
 		`"session_id":"` + sessionID + `"`,
 		`"duration_ms":`,
-	} {
-		if !strings.Contains(logOutput, want) {
-			t.Fatalf("log output missing %q:\n%s", want, logOutput)
+	}
+
+	deadline := time.Now().Add(1 * time.Second)
+	for {
+		logOutput := logs.String()
+		missing := ""
+		for _, want := range wants {
+			if !strings.Contains(logOutput, want) {
+				missing = want
+				break
+			}
 		}
+		if missing == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("log output missing %q:\n%s", missing, logOutput)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

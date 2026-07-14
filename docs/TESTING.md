@@ -102,7 +102,7 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_SettingsDirectNavigationPopulatesModels` | Direct navigation to `/settings` with saved provider config populates `#model` dropdown from live discovery |
 | `TestBrowser_InitialConfigSavePopulatesModels` | First save without selected model discovers models, swaps updated form, and leaves model unselected for second save |
 | `TestBrowser_ConfigSavePopulatesModels` | Save via `hx-put` revalidates provider discovery, preserves discovered model options, and keeps selected model |
-| `TestBrowser_ConfigSaveProviderFailure` | 4xx from provider validation does NOT populate models; form stays unchanged (HTMX no-swap on error responses) |
+| `TestBrowser_ConfigSaveProviderFailure` | Provider validation failure swaps updated settings form with visible error feedback; model list stays unpopulated |
 | `TestBrowser_HealthPage` | `/health` page renders with body containing "ok" |
 | `TestBrowser_SendMessage` | Sends a message → user bubble appears with correct text, `#chat-input` disabled during active run |
 | `TestBrowser_InputDisabledDuringRun` | During active run: `#chat-input` disabled, `#send-btn` disabled, `#stop-btn` visible |
