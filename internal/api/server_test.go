@@ -1250,9 +1250,21 @@ func TestRequestBodyLimitRejectsOversizedRequests(t *testing.T) {
 	}
 }
 
+// lockedWriter synchronizes writes to an underlying buffer.
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
 func TestRequestLoggingIncludesMethodPathStatusDurationAndSessionID(t *testing.T) {
+	var mu sync.Mutex
 	var logs bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	logger := slog.New(slog.NewJSONHandler(&lockedWriter{&mu, &logs}, nil))
 	server := newTestServerWithLogger(t, logger)
 	client := noRedirectClient()
 
@@ -1299,7 +1311,9 @@ func TestRequestLoggingIncludesMethodPathStatusDurationAndSessionID(t *testing.T
 
 	deadline := time.Now().Add(1 * time.Second)
 	for {
+		mu.Lock()
 		logOutput := logs.String()
+		mu.Unlock()
 		missing := ""
 		for _, want := range wants {
 			if !strings.Contains(logOutput, want) {

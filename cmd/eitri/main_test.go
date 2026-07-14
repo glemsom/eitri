@@ -35,6 +35,19 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+// warningWriter captures the first write to a channel for synchronized test reads.
+type warningWriter struct {
+	ch chan<- string
+}
+
+func (w warningWriter) Write(p []byte) (int, error) {
+	select {
+	case w.ch <- string(p):
+	default:
+	}
+	return len(p), nil
+}
+
 func fakeSlowProvider(t *testing.T, delay time.Duration) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +171,7 @@ func TestServeWarnsOnNonLoopbackBind(t *testing.T) {
 	defer cancel()
 
 	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	warningCh := make(chan string, 1)
 	done := make(chan error, 1)
 	go func() {
 		done <- serve(ctx, serveOptions{
@@ -166,26 +179,26 @@ func TestServeWarnsOnNonLoopbackBind(t *testing.T) {
 			Workspace: t.TempDir(),
 			Handler:   http.NewServeMux(),
 			Stdout:    &stdout,
-			Stderr:    &stderr,
+			Stderr:    warningWriter{warningCh},
 			Getenv:    func(string) string { return "0" },
 			OpenURL:   func(string) error { return nil },
 		})
 	}()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if strings.Contains(stderr.String(), "no authentication") {
-			cancel()
-			if err := <-done; err != nil {
-				t.Fatalf("serve returned error: %v", err)
-			}
-			return
+	select {
+	case warning := <-warningCh:
+		if !strings.Contains(warning, "no authentication") {
+			t.Fatalf("warning = %q, want non-loopback warning", warning)
 		}
-		time.Sleep(10 * time.Millisecond)
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("serve returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("timed out waiting for non-loopback warning")
 	}
-	cancel()
-	<-done
-	t.Fatalf("stderr = %q, want non-loopback warning", stderr.String())
 }
 
 func TestServeOpensBrowserWhenForced(t *testing.T) {
