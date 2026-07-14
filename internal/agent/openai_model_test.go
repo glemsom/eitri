@@ -265,7 +265,7 @@ func assertCopilotHeaders(t *testing.T, r *http.Request) {
 	want := map[string]string{
 		"Authorization":        "Bearer gh-token",
 		"User-Agent":           "Eitri",
-		"X-GitHub-Api-Version": "2022-11-28",
+		"X-GitHub-Api-Version": "2026-06-01",
 		"Openai-Intent":        "conversation-panel",
 		"x-initiator":          "user",
 		"Accept":               "text/event-stream",

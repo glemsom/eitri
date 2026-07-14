@@ -92,13 +92,17 @@ func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 
 	req := httptest.NewRequest("GET", prof.ModelListURL(prof.DefaultBaseURL), nil)
 	prof.ApplyHeaders(req, "ghu-token")
-	for _, header := range []string{"Authorization", "User-Agent", "X-GitHub-Api-Version", "Openai-Intent", "x-initiator"} {
-		if req.Header.Get(header) == "" {
-			t.Errorf("%s header missing", header)
-		}
+	want := map[string]string{
+		"Authorization":        "Bearer ghu-token",
+		"User-Agent":           "Eitri",
+		"X-GitHub-Api-Version": "2026-06-01",
+		"Openai-Intent":        "conversation-panel",
+		"x-initiator":          "user",
 	}
-	if got := req.Header.Get("Authorization"); got != "Bearer ghu-token" {
-		t.Errorf("Authorization = %q, want Bearer ghu-token", got)
+	for name, value := range want {
+		if got := req.Header.Get(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
 	}
 }
 

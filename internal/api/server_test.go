@@ -176,13 +176,17 @@ func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
 	if gotPath != "/models" {
 		t.Errorf("model discovery path = %q, want /models", gotPath)
 	}
-	for _, header := range []string{"Authorization", "User-Agent", "X-GitHub-Api-Version", "Openai-Intent", "x-initiator"} {
-		if gotHeaders.Get(header) == "" {
-			t.Errorf("%s header missing", header)
-		}
+	wantHeaders := map[string]string{
+		"Authorization":        "Bearer ghu-token",
+		"User-Agent":           "Eitri",
+		"X-GitHub-Api-Version": "2026-06-01",
+		"Openai-Intent":        "conversation-panel",
+		"x-initiator":          "user",
 	}
-	if got := gotHeaders.Get("Authorization"); got != "Bearer ghu-token" {
-		t.Errorf("Authorization = %q, want Bearer ghu-token", got)
+	for name, value := range wantHeaders {
+		if got := gotHeaders.Get(name); got != value {
+			t.Errorf("%s = %q, want %q", name, got, value)
+		}
 	}
 
 	respBody := make([]byte, 16384)
@@ -854,8 +858,8 @@ func TestPutConfigValid(t *testing.T) {
 	}
 }
 
-func TestPutConfigRequiresSelectedModel(t *testing.T) {
-	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+func TestPutConfigWithoutModelPopulatesDiscoveredModels(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-4.1"}]}`)
 	server := newTestServer(t)
 
 	body := `{"provider":"custom_openai","base_url":"` + provider.URL + `","api_key":"sk-test"}`
@@ -871,16 +875,35 @@ func TestPutConfigRequiresSelectedModel(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("PUT /api/config missing model status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config missing model status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var bodyJSON map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&bodyJSON); err != nil {
-		t.Fatalf("decode error response: %v", err)
+	contentBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(bodyJSON["error"], "model is required") {
-		t.Errorf("error = %q, want missing model message", bodyJSON["error"])
+	content := string(contentBytes)
+	for _, model := range []string{"gpt-4", "gpt-4.1"} {
+		if !strings.Contains(content, model) {
+			t.Errorf("response HTML missing discovered model %q", model)
+		}
+	}
+
+	cfgResp, err := http.Get(server.URL + "/api/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cfgResp.Body.Close()
+	var cfgData map[string]interface{}
+	if err := json.NewDecoder(cfgResp.Body).Decode(&cfgData); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfgData["provider"]; got != "custom_openai" {
+		t.Errorf("provider = %v, want custom_openai", got)
+	}
+	if got := cfgData["model"]; got != "" {
+		t.Errorf("model = %v, want empty string until user selects one", got)
 	}
 }
 

@@ -143,7 +143,7 @@ func parseOpenAIModelList(r io.Reader) ([]string, error) {
 
 func applyGitHubCopilotHeaders(req *http.Request, _ string) {
 	req.Header.Set("User-Agent", "Eitri")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-06-01")
 	req.Header.Set("Openai-Intent", "conversation-panel")
 	req.Header.Set("x-initiator", "user")
 }

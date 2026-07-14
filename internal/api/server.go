@@ -574,9 +574,11 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if err := config.ValidateSelectedModel(newCfg, models); err != nil {
-		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
-		return
+	if strings.TrimSpace(newCfg.Model) != "" {
+		if err := config.ValidateSelectedModel(newCfg, models); err != nil {
+			writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 	}
 
 	// Save

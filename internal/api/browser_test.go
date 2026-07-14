@@ -823,6 +823,64 @@ func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
 	}
 }
 
+// TestBrowser_InitialConfigSavePopulatesModels verifies first save without a
+// selected model discovers models and keeps the form editable for second save.
+func TestBrowser_InitialConfigSavePopulatesModels(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("form submit failed: %v", err)
+	}
+
+	var modelOptionCount int
+	var hasGPT4 bool
+	var hasGPT35 bool
+	var selectedModel string
+	err = chromedp.Run(ctx,
+		chromedp.WaitReady("#model option[value='gpt-4']", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length", &modelOptionCount),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-4")`,
+			&hasGPT4,
+		),
+		chromedp.EvaluateAsDevTools(
+			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-3.5-turbo")`,
+			&hasGPT35,
+		),
+		chromedp.Value("#model", &selectedModel, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("model dropdown check failed: %v", err)
+	}
+
+	if modelOptionCount < 3 {
+		t.Errorf("model dropdown has %d options, expected at least 3 (placeholder + 2 models)", modelOptionCount)
+	}
+	if !hasGPT4 {
+		t.Error("model dropdown missing gpt-4")
+	}
+	if !hasGPT35 {
+		t.Error("model dropdown missing gpt-3.5-turbo")
+	}
+	if selectedModel != "" {
+		t.Errorf("selected model = %q, want empty after initial discovery save", selectedModel)
+	}
+}
+
 // TestBrowser_ConfigSavePopulatesModels verifies HTMX save succeeds when
 // user selects discovered model from settings page.
 func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
