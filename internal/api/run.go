@@ -121,6 +121,7 @@ type RunManager struct {
 	apiKey       string
 	providerAuth json.RawMessage
 	modelName    string
+	systemPrompt string
 
 	configPath   string
 	httpClient   *http.Client
@@ -166,6 +167,7 @@ func (rm *RunManager) UpdateProviderConfig(cfg *config.Config) {
 	rm.apiKey = cfg.APIKey
 	rm.providerAuth = append(rm.providerAuth[:0], cfg.ProviderAuth...)
 	rm.modelName = cfg.Model
+	rm.systemPrompt = cfg.SystemPrompt
 }
 
 // StartRun starts a new agent run for a session. Returns error if run already active.
@@ -185,6 +187,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	apiKey := rm.apiKey
 	providerAuth := append(json.RawMessage(nil), rm.providerAuth...)
 	modelName := rm.modelName
+	systemPrompt := rm.systemPrompt
 	configPath := rm.configPath
 	httpClient := rm.httpClient
 	copilotOAuth := rm.copilotOAuth
@@ -235,15 +238,15 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	var ag adkagent.Agent
 	var agErr error
 	if rm.skillsSvc != nil {
-		ag, agErr = agent.NewAgentWithSkills(llm, rm.sessionMgr, rm.skillsSvc, rm.uiSessionMgr)
+		ag, agErr = agent.NewAgentWithPromptAndSkills(llm, rm.sessionMgr, systemPrompt, rm.skillsSvc, rm.uiSessionMgr)
 	} else {
-		ag, agErr = agent.NewAgent(llm, rm.sessionMgr)
+		ag, agErr = agent.NewAgentWithPrompt(llm, rm.sessionMgr, systemPrompt)
 	}
 	if agErr != nil {
 		return fmt.Errorf("failed to create agent: %w", agErr)
 	}
 
-	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName}
+	cfg := &config.Config{Provider: providerID, APIKey: apiKey, ProviderAuth: providerAuth, BaseURL: baseURL, Model: modelName, SystemPrompt: systemPrompt}
 	r, err := rm.runnerMgr.GetOrCreate(cfg, ag)
 	if err != nil {
 		return fmt.Errorf("failed to get runner: %w", err)

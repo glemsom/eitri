@@ -845,7 +845,7 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 	defer cancel()
 
 	var providerExists bool
-	var apiKeyExists, baseURLExists, modelExists bool
+	var apiKeyExists, baseURLExists, modelExists, systemPromptExists bool
 	var sendBtnAbsent bool
 	var providerOptionsCount int
 
@@ -856,6 +856,7 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#api_key') !== null", &apiKeyExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#base_url') !== null", &baseURLExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#model') !== null", &modelExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('#system_prompt') !== null", &systemPromptExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#send-btn') === null", &sendBtnAbsent),
 		chromedp.EvaluateAsDevTools("document.querySelector('#provider').options.length", &providerOptionsCount),
 	)
@@ -877,6 +878,9 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 	}
 	if !modelExists {
 		t.Error("#model select not found")
+	}
+	if !systemPromptExists {
+		t.Error("#system_prompt textarea not found")
 	}
 	if !sendBtnAbsent {
 		t.Error("#send-btn should be absent on settings page")

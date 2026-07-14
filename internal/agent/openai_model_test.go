@@ -85,6 +85,53 @@ func TestOpenAIModel_Name(t *testing.T) {
 	}
 }
 
+func TestOpenAIModel_UsesSystemInstructionFromConfig(t *testing.T) {
+	var gotMessages []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		messages, _ := body["messages"].([]interface{})
+		for _, msg := range messages {
+			if m, ok := msg.(map[string]any); ok {
+				gotMessages = append(gotMessages, m)
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	m.MaxRetries = 0
+	_, err := collectErrors(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model:    "gpt-4",
+		Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hello"}}}},
+		Config: &genai.GenerateContentConfig{
+			SystemInstruction: &genai.Content{Parts: []*genai.Part{{Text: "Custom system prompt"}}},
+		},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gotMessages) < 2 {
+		t.Fatalf("messages = %d, want at least 2", len(gotMessages))
+	}
+	if gotMessages[0]["role"] != "system" {
+		t.Fatalf("first message role = %v, want system", gotMessages[0]["role"])
+	}
+	if gotMessages[0]["content"] != "Custom system prompt" {
+		t.Fatalf("first message content = %v, want custom system prompt", gotMessages[0]["content"])
+	}
+}
+
 func TestOpenAIModel_StreamingText(t *testing.T) {
 	srv := fakeLLMServer(t, "ok")
 	m := agent.NewOpenAIModel("gpt-4", srv.URL, "sk-test")

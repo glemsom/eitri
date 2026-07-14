@@ -125,7 +125,7 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_HarnessCanary` | Basic navigation works, title contains "Eitri" |
 | `TestBrowser_SetupBannerVisible` | Missing provider config keeps chat visible, disables composer, shows `#setup-banner` linking to `/settings` |
 | `TestBrowser_SettingsPage` | `/settings` route loads, `#provider` select element present |
-| `TestBrowser_SettingsFormElements` | Settings form renders `#provider`, `#api_key`, `#base_url`, `#model` fields; no chat-specific `#send-btn` on settings page |
+| `TestBrowser_SettingsFormElements` | Settings form renders `#provider`, `#api_key`, `#base_url`, `#model`, and `#system_prompt` fields; no chat-specific `#send-btn` on settings page |
 | `TestBrowser_SettingsDirectNavigationPopulatesModels` | Direct navigation to `/settings` with saved provider config populates `#model` dropdown from live discovery |
 | `TestBrowser_InitialConfigSavePopulatesModels` | First save without selected model discovers models, swaps updated form, and leaves model unselected for second save |
 | `TestBrowser_ConfigSavePopulatesModels` | Save via `hx-put` revalidates provider discovery, preserves discovered model options, and keeps selected model |
@@ -220,7 +220,7 @@ These test the Go backend without a browser:
 | `internal/executor/tmux_test.go` | Tmux command execution, cancellation/timeout cleanup, child-process cleanup, and initial working directory = launch workspace |
 | `internal/executor/session_test.go` | Session lifecycle |
 | `internal/executor/audit_test.go` | Preflight audit (tmux binary check) |
-| `internal/runner/manager_test.go` | Runner manager |
+| `internal/runner/manager_test.go` | Runner manager, including cache keys for config-dependent agent prompt changes |
 | `internal/skills/skills_test.go` | Agent Skills discovery roots, precedence, shadowing, lenient validation, diagnostics, resource manifests, 200KB activation cap |
 | `cmd/eitri/main_test.go` | CLI entry point, startup URL/workspace output, bind failure hint, non-loopback warning, `xdg-open` auto-open behavior |
 

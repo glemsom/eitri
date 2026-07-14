@@ -79,7 +79,7 @@ Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-s
 | `base.templ` | HTML document shell + embedded pinned assets + browser island scripts |
 | `chat.templ` | `ChatView` — workspace indicator, setup banner for invalid provider config, message list, input, visible Stop button, completion menu container, SSE target for selected session |
 | `session_tabs.templ` | `SessionTabs` — top-bar session strip with title, status dot, close button, and new-session button |
-| `settings.templ` | `SettingsView` — config form, provider + model selectors |
+| `settings.templ` | `SettingsView` — config form, provider + model selectors, custom system prompt |
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |
 | `components/chat_bubble.templ` | User/assistant message bubbles |

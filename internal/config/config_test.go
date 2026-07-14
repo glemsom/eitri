@@ -406,3 +406,14 @@ func TestMerge_ProviderSwitchPreservesCustomBaseURL(t *testing.T) {
 		t.Errorf("BaseURL = %q, want custom base URL preserved", result.BaseURL)
 	}
 }
+
+func TestMerge_OverridesSystemPrompt(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.SystemPrompt = "old prompt"
+
+	result := config.Merge(&cfg, map[string]interface{}{"system_prompt": "new prompt"})
+
+	if result.SystemPrompt != "new prompt" {
+		t.Errorf("SystemPrompt = %q, want %q", result.SystemPrompt, "new prompt")
+	}
+}
