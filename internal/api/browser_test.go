@@ -653,7 +653,7 @@ func TestBrowser_AutoScroll(t *testing.T) {
 // TestBrowser_ScrollToBottomButton verifies the floating scroll-to-bottom button
 // appears when user scrolls up during streaming and scrolls down on click.
 func TestBrowser_ScrollToBottomButton(t *testing.T) {
-	llmURL := fakeSlowChatServer(t, 1*time.Second).URL
+	llmURL := fakeBurstChatServer(t, 500, 2*time.Millisecond).URL
 	server := newTestServerWithRuns(t)
 	configureProvider(t, server, llmURL)
 
@@ -702,7 +702,7 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 		t.Errorf("scroll-to-bottom button should be hidden initially, got: %v", btnState)
 	}
 
-	// Send a message to trigger streaming
+	// Send a message to trigger streaming with many tokens (500 x's = ~500 chars)
 	err = chromedp.Run(ctx,
 		chromedp.SendKeys("#chat-input", "Test scroll button", chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
@@ -711,8 +711,20 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait for streaming to start
-	time.Sleep(300 * time.Millisecond)
+	// Wait for streaming to start and accumulate enough content
+	time.Sleep(2 * time.Second)
+
+	// Force messages container to a small fixed height to create overflow
+	// (default viewport is too large for 500 chars to overflow)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('messages').style.maxHeight = '150px'`,
+			nil,
+		),
+	)
+	if err != nil {
+		t.Fatalf("set messages height failed: %v", err)
+	}
 
 	// Scroll up to trigger the button
 	err = chromedp.Run(ctx,

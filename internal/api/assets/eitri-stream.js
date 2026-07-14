@@ -584,10 +584,7 @@
         if (entry.isIntersecting) {
           btn.classList.remove('visible');
         } else {
-          // Only show during active streaming
-          if (isStreaming()) {
-            btn.classList.add('visible');
-          }
+          btn.classList.add('visible');
         }
       });
     }, {
@@ -602,15 +599,6 @@
       scrollToLatest();
       btn.classList.remove('visible');
     });
-  }
-
-  function isStreaming() {
-    var indicator = document.getElementById('stream-indicator');
-    if (!indicator) return false;
-    return indicator.classList.contains('streaming') ||
-           indicator.classList.contains('connecting') ||
-           indicator.classList.contains('tool-running') ||
-           indicator.classList.contains('rendering');
   }
 
   function reinitScrollObserver() {
