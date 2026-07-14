@@ -7,8 +7,8 @@ import "github.com/glemsom/eitri/internal/session"
 templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 	<div id="chat-view">
 		<div id="error-toasts"></div>
-		<div id="workspace-indicator" class="workspace-indicator">
-			Workspace: { workspace }
+		<div id="workspace-indicator" class="workspace-indicator" title={ workspace }>
+			Workspace: { pathBase(workspace) }
 		</div>
 		if !configValid {
 			<div id="setup-banner" class="setup-banner">
@@ -18,10 +18,7 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 		@ActiveSkillChips(sess.ActiveSkills)
 		<div class="chat-run-chrome">
 			<div id="run-status" class="run-status" role="status" aria-live="polite" aria-atomic="true">
-				<div class="run-status-header">
-					<span id="stream-indicator" class="stream-indicator idle">Idle</span>
-					<span id="run-status-detail" class="run-status-detail text-muted">Ready for next run.</span>
-				</div>
+				<span id="stream-indicator" class="stream-indicator idle">Idle</span>
 			</div>
 			<details id="activity-panel" class="activity-panel">
 				<summary>
@@ -47,9 +44,9 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 	</div>
 }
 
-// WorkspaceIndicator shows the launch workspace path.
+// WorkspaceIndicator shows the launch workspace path (basename) with full path in tooltip.
 templ WorkspaceIndicator(workspace string) {
-	<div id="workspace-indicator" class="workspace-indicator">
-		Workspace: { workspace }
+	<div id="workspace-indicator" class="workspace-indicator" title={ workspace }>
+		Workspace: { pathBase(workspace) }
 	</div>
 }

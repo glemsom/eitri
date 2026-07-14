@@ -424,7 +424,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	renderedSession := renderSessionForPage(sess)
 
-	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid)
+	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path)
 	component.Render(r.Context(), w)
 }
 
@@ -483,7 +483,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r))
+	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path)
 	component.Render(r.Context(), w)
 }
 
@@ -1164,7 +1164,7 @@ func (s *Server) refreshSkillsRegistry() *skills.Registry {
 
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	registry := s.refreshSkillsRegistry()
-	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r))
+	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path)
 	component.Render(r.Context(), w)
 }
 

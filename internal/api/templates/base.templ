@@ -2,7 +2,7 @@ package templates
 
 import "github.com/glemsom/eitri/internal/session"
 
-templ Base(title string, chatPath string, sessions []*session.UISession, activeID string) {
+templ Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -29,9 +29,9 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 					<h1>Eitri</h1>
 					<span class="text-muted">AI Assistant</span>
 					<nav>
-						@NavLink(chatPath, "Chat")
-						@NavLink("/settings", "Settings")
-						@NavLink("/skills", "Skills")
+						@NavLink(chatPath, "Chat", currentPath)
+						@NavLink("/settings", "Settings", currentPath)
+						@NavLink("/skills", "Skills", currentPath)
 					</nav>
 				</header>
 				if sessions != nil {
@@ -50,7 +50,7 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 	</html>
 }
 
-templ NavLink(path string, label string) {
+templ NavLink(path string, label string, currentPath string) {
 	<a
 		href={ templ.URL(path) }
 		hx-get={ templ.URL(path) }
@@ -58,12 +58,13 @@ templ NavLink(path string, label string) {
 		hx-select="#app"
 		hx-swap="outerHTML"
 		hx-push-url="true"
+		class={ "nav-link", templ.KV("active", path == currentPath) }
 	>{ label }</a>
 }
 
 // ChatPage renders the full chat page layout with session tabs and chat view.
-templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool) {
-	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID) {
+templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string) {
+	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath) {
 		@ChatView(sess, workspace, configValid)
 	}
 }

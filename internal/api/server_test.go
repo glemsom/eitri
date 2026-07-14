@@ -1459,8 +1459,8 @@ func TestSessionPageShowsWorkspaceIndicator(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(body)
-	if !strings.Contains(content, "Workspace: "+workspace) {
-		t.Fatalf("session page missing workspace indicator for %q", workspace)
+	if !strings.Contains(content, filepath.Base(workspace)) {
+		t.Fatalf("session page missing workspace indicator (basename) for %q", workspace)
 	}
 }
 
@@ -1511,7 +1511,7 @@ func TestSettingsPage(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"Workspace: " + workspace,
+		"Workspace: " + filepath.Base(workspace),
 		`href="/"`,
 		`href="/settings"`,
 		`href="/skills"`,
@@ -2481,7 +2481,7 @@ func TestSkillsEndpoint(t *testing.T) {
 
 	for _, required := range []string{
 		"Agent Skills",
-		"Workspace: " + workspace,
+		"Workspace: " + filepath.Base(workspace),
 		`/static/prism-core.min.js`,
 		`/static/prism-go.min.js`,
 		`/static/prism.min.css`,

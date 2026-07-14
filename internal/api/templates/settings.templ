@@ -2,8 +2,8 @@ package templates
 
 import "github.com/glemsom/eitri/internal/config"
 
-templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string) {
-	@Base("Eitri — Settings", chatPath, nil, "") {
+templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string) {
+	@Base("Eitri — Settings", chatPath, nil, "", currentPath) {
 		@WorkspaceIndicator(workspace)
 		@SettingsForm(cfg, models, "", "", nil)
 	}
