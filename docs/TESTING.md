@@ -88,36 +88,45 @@ Browser tests are included in every `go test` run. If Chrome/Chromium is not fou
 
 ### What's tested
 
-Test scenarios target HTMX + SSE architecture (no Alpine.js, no WebSocket, no xterm.js):
+All currently implemented browser tests target the HTMX + SSE architecture (no Alpine.js, no WebSocket, no xterm.js):
 
 | Test | What it verifies |
 |------|-----------------|
-| Page load | Page loads, title correct, HTMX initializes |
-| SSE stream state | Stream indicator is idle on page load, then connecting/streaming during an active run |
-| Chat input | Input field and Send button present |
-| Workspace indicator | Launch workspace path visible in chat/settings/skills pages |
-| Setup banner | Missing/invalid provider config keeps chat visible, disables composer, and links to Settings |
-| Settings page | `/settings` route returns full settings page |
-| Config form | Form populated from API (`hx-get` fills form), provider defaults to OpenCode Go, advanced custom OpenAI option is labeled best-effort |
-| Config save | Save via `hx-put` verifies `/v1/models` with entered credentials, then toast → form updated |
-| API key field | Field is `type="password"`; OpenCode key required; custom OpenAI key optional |
+| `TestBrowser_PageLoads` | Page loads with title "Eitri — Chat", HTMX initializes, `#chat-view`, `#messages`, `#composer` all present |
+| `TestBrowser_HarnessCanary` | Basic navigation works, title contains "Eitri" |
+| `TestBrowser_SetupBannerVisible` | Missing provider config keeps chat visible, disables composer, shows `#setup-banner` linking to `/settings` |
+| `TestBrowser_SettingsPage` | `/settings` route loads, `#provider` select element present |
+| `TestBrowser_SettingsFormElements` | Settings form renders `#provider`, `#api_key`, `#base_url`, `#model` fields; no chat-specific `#send-btn` on settings page |
+| `TestBrowser_ConfigSavePopulatesModels` | Save via `hx-put` hits `/v1/models` with credentials, populates `#model` dropdown with returned models, no error toast |
+| `TestBrowser_ConfigSaveProviderFailure` | 4xx from provider validation does NOT populate models; form stays unchanged (HTMX no-swap on error responses) |
+| `TestBrowser_HealthPage` | `/health` page renders with body containing "ok" |
+| `TestBrowser_SendMessage` | Sends a message → user bubble appears with correct text, `#chat-input` disabled during active run |
+| `TestBrowser_InputDisabledDuringRun` | During active run: `#chat-input` disabled, `#send-btn` disabled, `#stop-btn` visible |
+| `TestBrowser_CancelRun` | Stop button re-enables input, hides stop button; partial assistant bubble present after cancellation |
+| `TestBrowser_FindChrome` | `findChrome()` returns a path that exists and is executable |
+| `TestBrowser_ChromeNotFoundSkips` | Chrome-not-found skip behavior works (self-verifying) |
+
+#### Planned (not yet implemented)
+
+The following scenarios are planned for future iterations:
+
+| Scenario | Notes |
+|----------|-------|
+| SSE stream state (idle → connecting → streaming) | Stream indicator lifecycle |
+| Workspace indicator | Launch workspace path visible across pages |
+| API key field type | `type="password"` verification |
 | Empty input guard | Send button disabled when input empty |
-| Input disabled during send | Input disabled + button shows state while agent runs; visible Stop button remains enabled |
-| Cancel run | Stop button/Escape posts cancel, shows cancelling state, marks partial assistant response stopped, re-enables input |
-| Full send→SSE→done cycle | Send message starts background run → browser opens per-run SSE → stream emits token, tool_call, tool_result, done → stream closes |
-| User/agent bubbles | Message bubbles appear in DOM |
 | Session ID cookie | Cookie set by server on first request |
-| No browser console errors | Console clean |
-| Model discovery in UI | Models fetched from `/v1/models`; selected model displayed; 401/discovery failures show friendly field/action errors |
-| Friendly errors | Auth, rate limit, provider unreachable, unsupported streaming tool calls, context-limit, command timeout, and concurrent-run errors render actionable messages |
-| Multi-message flow | Multi-message session works; second send while run active is rejected clearly |
-| HTMX target swaps | HTMX swaps correct DOM elements |
-| SSE reconnection | Reconnects on connection drop during an active run |
-| Skills page | `/skills` route lists detected skills, statuses, scopes, paths, and diagnostics |
-| Slash skill activation | `/skill`, `/skill prompt`, multiple leading skills, and unknown slash `422` behavior |
-| Active skill chips | Skill activation updates current session chips without duplicate entries |
-| File edit cards | `file_editor` overwrite shows diff, create shows created-file preview, large edits collapse by default |
-| Stale session page | Reloading a stale `/sessions/{id}` after server restart redirects to `/` and creates/selects a new session |
+| Console error check | No browser console errors during test |
+| Model discovery error states | 401/discovery failures in UI |
+| Friendly error rendering | Auth, rate limit, unreachable, context-limit, etc. |
+| Multi-message flow | Second send while run active rejected |
+| HTMX target swaps | Correct DOM element swapping |
+| SSE reconnection | Reconnect on connection drop |
+| Skills page and slash activation | `/skills` route, `/skill`, unknown slash `422` |
+| Active skill chips | No duplicate entries on activation |
+| File edit cards | Diff view, create preview, large-edit collapse |
+| Stale session page | Redirect on stale `/sessions/{id}` |
 
 ### Adding new browser tests
 
@@ -196,7 +205,6 @@ Release readiness requires:
 ```bash
 templ generate
 go test ./...
-go test -tags=browser ./internal/api/
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/eitri ./cmd/eitri
 tar -C dist -czf dist/eitri-linux-amd64.tar.gz eitri
 sha256sum dist/eitri-linux-amd64.tar.gz > dist/checksums.txt
