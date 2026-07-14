@@ -727,6 +727,66 @@ func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	}
 }
 
+func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+	var sawModelsAuth string
+	var sawChatAuth string
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			sawModelsAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+		case "/chat/completions":
+			sawChatAuth = r.Header.Get("Authorization")
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{AccessToken: "gho-provider-state"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.Provider = "github_copilot"
+	cfg.APIKey = "gho-stale-api-key"
+	cfg.ProviderAuth = raw
+	cfg.BaseURL = llmSrv.URL
+	cfg.Model = "gpt-4.1"
+	if err := config.Save(h.configPath, &cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if sawModelsAuth != "" && sawChatAuth != "" && h.runMgr.ActiveRun(sessionID) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sawModelsAuth != "Bearer gho-provider-state" {
+		t.Fatalf("model discovery Authorization = %q, want Bearer gho-provider-state", sawModelsAuth)
+	}
+	if sawChatAuth != "Bearer gho-provider-state" {
+		t.Fatalf("chat Authorization = %q, want Bearer gho-provider-state", sawChatAuth)
+	}
+}
+
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
