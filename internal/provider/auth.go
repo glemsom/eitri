@@ -52,8 +52,7 @@ type GitHubDeviceCodeResponse struct {
 	Error           string `json:"error"`
 }
 
-// GitHubAccessTokenResponse is GitHub device-flow poll response.
-type GitHubAccessTokenResponse struct {
+type gitHubAccessTokenResponse struct {
 	AccessToken           string `json:"access_token"`
 	TokenType             string `json:"token_type"`
 	Scope                 string `json:"scope"`
@@ -98,9 +97,24 @@ func EncodeGitHubCopilotAuthState(state GitHubCopilotAuthState) (json.RawMessage
 	return json.RawMessage(b), nil
 }
 
-// ResolveAuth resolves provider-owned auth state into request credentials.
-func ResolveAuth(providerID, apiKey string, raw json.RawMessage) (ResolvedAuth, error) {
-	prof, err := Get(providerID)
+// ValidateCredentials checks that provider config has usable request credentials.
+func ValidateCredentials(providerID, apiKey string, raw json.RawMessage) error {
+	prof, err := getProfile(providerID)
+	if err != nil {
+		return err
+	}
+	resolvedAuth, err := resolveAuth(providerID, apiKey, raw)
+	if err != nil {
+		return err
+	}
+	if prof.APIKeyRequired && resolvedAuth.APIKey == "" {
+		return fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), providerID)
+	}
+	return nil
+}
+
+func resolveAuth(providerID, apiKey string, raw json.RawMessage) (ResolvedAuth, error) {
+	prof, err := getProfile(providerID)
 	if err != nil {
 		return ResolvedAuth{}, err
 	}
@@ -118,10 +132,9 @@ type ResolveAuthOptions struct {
 	Persist            func(apiKey string, raw json.RawMessage) error
 }
 
-// ResolveAuthForRequest resolves provider auth and refreshes expired OAuth state when supported.
-func ResolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw json.RawMessage, opts ResolveAuthOptions) (ResolvedAuth, error) {
+func resolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw json.RawMessage, opts ResolveAuthOptions) (ResolvedAuth, error) {
 	if providerID != "github_copilot" {
-		return ResolveAuth(providerID, apiKey, raw)
+		return resolveAuth(providerID, apiKey, raw)
 	}
 
 	state, hasState, err := decodeGitHubCopilotAuthState(raw)
@@ -132,7 +145,7 @@ func ResolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw j
 		return ResolvedAuth{}, err
 	}
 	if !hasState {
-		return ResolveAuth(providerID, apiKey, raw)
+		return resolveAuth(providerID, apiKey, raw)
 	}
 
 	now := opts.Now
@@ -146,7 +159,7 @@ func ResolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw j
 		if !state.RefreshTokenExpiresAt.IsZero() && !state.RefreshTokenExpiresAt.After(now) {
 			return ResolvedAuth{}, fmt.Errorf("github_copilot refresh token expired; re-authenticate")
 		}
-		refreshed, err := RefreshGitHubCopilotToken(ctx, opts.HTTPClient, DefaultGitHubCopilotOAuthConfig(opts.GitHubCopilotOAuth), state.RefreshToken)
+		refreshed, err := refreshGitHubCopilotToken(ctx, opts.HTTPClient, DefaultGitHubCopilotOAuthConfig(opts.GitHubCopilotOAuth), state.RefreshToken)
 		if err != nil {
 			return ResolvedAuth{}, err
 		}
@@ -167,9 +180,7 @@ func ResolveAuthForRequest(ctx context.Context, providerID, apiKey string, raw j
 	return ResolvedAuth{APIKey: strings.TrimSpace(apiKey)}, nil
 }
 
-// GitHubCopilotAuthUpdateFromTokenResponse converts successful OAuth token response
-// into caller-persisted auth data.
-func GitHubCopilotAuthUpdateFromTokenResponse(resp *GitHubAccessTokenResponse, now time.Time) (*AuthUpdate, error) {
+func gitHubCopilotAuthUpdateFromTokenResponse(resp *gitHubAccessTokenResponse, now time.Time) (*AuthUpdate, error) {
 	if resp == nil || strings.TrimSpace(resp.AccessToken) == "" {
 		return nil, fmt.Errorf("github_copilot token response missing access token")
 	}
@@ -187,9 +198,9 @@ func GitHubCopilotAuthUpdateFromTokenResponse(resp *GitHubAccessTokenResponse, n
 	}, nil
 }
 
-// NormalizeAuthState canonicalizes provider-owned auth state for config persistence.
-func NormalizeAuthState(providerID, apiKey string, raw json.RawMessage) (json.RawMessage, error) {
-	prof, err := Get(providerID)
+// NormalizeConfigAuthState canonicalizes provider-owned auth state for config persistence.
+func NormalizeConfigAuthState(providerID, apiKey string, raw json.RawMessage) (json.RawMessage, error) {
+	prof, err := getProfile(providerID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,18 +256,59 @@ func StartGitHubCopilotDeviceFlow(ctx context.Context, client *http.Client, cfg 
 	return &deviceResp, nil
 }
 
-// PollGitHubCopilotDeviceFlow polls GitHub OAuth device flow for access token.
-func PollGitHubCopilotDeviceFlow(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, deviceCode string) (*GitHubAccessTokenResponse, error) {
+// GitHubCopilotDeviceFlowPollStatus describes caller-safe device-flow poll outcome.
+type GitHubCopilotDeviceFlowPollStatus string
+
+// GitHub Copilot device-flow poll statuses exposed to API callers.
+const (
+	GitHubCopilotDeviceFlowAuthorized           GitHubCopilotDeviceFlowPollStatus = "authorized"
+	GitHubCopilotDeviceFlowAuthorizationPending GitHubCopilotDeviceFlowPollStatus = "authorization_pending"
+	GitHubCopilotDeviceFlowSlowDown             GitHubCopilotDeviceFlowPollStatus = "slow_down"
+	GitHubCopilotDeviceFlowExpiredToken         GitHubCopilotDeviceFlowPollStatus = "expired_token"
+	GitHubCopilotDeviceFlowAccessDenied         GitHubCopilotDeviceFlowPollStatus = "access_denied"
+	GitHubCopilotDeviceFlowProviderError        GitHubCopilotDeviceFlowPollStatus = "provider_error"
+)
+
+// GitHubCopilotDeviceFlowPollResult contains normalized poll outcome data.
+type GitHubCopilotDeviceFlowPollResult struct {
+	Status     GitHubCopilotDeviceFlowPollStatus
+	AuthUpdate *AuthUpdate
+	ErrorCode  string
+}
+
+// PollGitHubCopilotDeviceFlow polls GitHub OAuth device flow and returns caller-safe status.
+func PollGitHubCopilotDeviceFlow(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, deviceCode string, now time.Time) (*GitHubCopilotDeviceFlowPollResult, error) {
 	payload := map[string]string{
 		"client_id":   cfg.ClientID,
 		"device_code": deviceCode,
 		"grant_type":  GitHubDeviceFlowGrantType,
 	}
-	return postGitHubCopilotAccessTokenRequest(ctx, client, cfg, payload, "GitHub device flow poll failed")
+	resp, err := postGitHubCopilotAccessTokenRequest(ctx, client, cfg, payload, "GitHub device flow poll failed")
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		status := GitHubCopilotDeviceFlowProviderError
+		switch resp.Error {
+		case "authorization_pending":
+			status = GitHubCopilotDeviceFlowAuthorizationPending
+		case "slow_down":
+			status = GitHubCopilotDeviceFlowSlowDown
+		case "expired_token", "token_expired":
+			status = GitHubCopilotDeviceFlowExpiredToken
+		case "access_denied":
+			status = GitHubCopilotDeviceFlowAccessDenied
+		}
+		return &GitHubCopilotDeviceFlowPollResult{Status: status, ErrorCode: resp.Error}, nil
+	}
+	update, err := gitHubCopilotAuthUpdateFromTokenResponse(resp, now)
+	if err != nil {
+		return nil, err
+	}
+	return &GitHubCopilotDeviceFlowPollResult{Status: GitHubCopilotDeviceFlowAuthorized, AuthUpdate: update}, nil
 }
 
-// RefreshGitHubCopilotToken refreshes GitHub OAuth access token using stored refresh token.
-func RefreshGitHubCopilotToken(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, refreshToken string) (*GitHubAccessTokenResponse, error) {
+func refreshGitHubCopilotToken(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, refreshToken string) (*gitHubAccessTokenResponse, error) {
 	payload := map[string]string{
 		"client_id":     cfg.ClientID,
 		"refresh_token": refreshToken,
@@ -275,7 +327,7 @@ func RefreshGitHubCopilotToken(ctx context.Context, client *http.Client, cfg Git
 	return resp, nil
 }
 
-func postGitHubCopilotAccessTokenRequest(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, payload map[string]string, prefix string) (*GitHubAccessTokenResponse, error) {
+func postGitHubCopilotAccessTokenRequest(ctx context.Context, client *http.Client, cfg GitHubCopilotOAuthConfig, payload map[string]string, prefix string) (*gitHubAccessTokenResponse, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -300,7 +352,7 @@ func postGitHubCopilotAccessTokenRequest(ctx context.Context, client *http.Clien
 		return nil, fmt.Errorf("%s: HTTP %d", prefix, resp.StatusCode)
 	}
 
-	var tokenResp GitHubAccessTokenResponse
+	var tokenResp gitHubAccessTokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, fmt.Errorf("%s: %v", prefix, err)
 	}
@@ -353,7 +405,7 @@ func decodeGitHubCopilotAuthState(raw json.RawMessage) (GitHubCopilotAuthState, 
 	return state, true, nil
 }
 
-func applyGitHubCopilotTokenResponse(state GitHubCopilotAuthState, resp *GitHubAccessTokenResponse, now time.Time) GitHubCopilotAuthState {
+func applyGitHubCopilotTokenResponse(state GitHubCopilotAuthState, resp *gitHubAccessTokenResponse, now time.Time) GitHubCopilotAuthState {
 	state.AccessToken = strings.TrimSpace(resp.AccessToken)
 	if strings.TrimSpace(resp.TokenType) != "" {
 		state.TokenType = strings.TrimSpace(resp.TokenType)

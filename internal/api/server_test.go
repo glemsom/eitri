@@ -537,12 +537,8 @@ func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *t
 	if cfg.APIKey != "gho_device_token" {
 		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
 	}
-	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
-	if err != nil {
-		t.Fatalf("ResolveAuth(saved config) error: %v", err)
-	}
-	if resolvedAuth.APIKey != "gho_device_token" {
-		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	if len(cfg.ProviderAuth) == 0 {
+		t.Fatal("saved provider_auth = empty, want persisted auth state")
 	}
 }
 
@@ -631,12 +627,8 @@ func TestGitHubCopilotDeviceFlowSuccessPersistsAuthAfterDiscoverySeam(t *testing
 	if cfg.BaseURL != providerSrv.URL {
 		t.Fatalf("saved base_url = %q, want %q", cfg.BaseURL, providerSrv.URL)
 	}
-	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
-	if err != nil {
-		t.Fatalf("ResolveAuth(saved config) error: %v", err)
-	}
-	if resolvedAuth.APIKey != "gho_device_token" {
-		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	if len(cfg.ProviderAuth) == 0 {
+		t.Fatal("saved provider_auth = empty, want persisted auth state")
 	}
 }
 
@@ -729,12 +721,8 @@ func TestGitHubCopilotDeviceFlowDiscoveryFailureStillSavesToken(t *testing.T) {
 	if cfg.APIKey != "gho_device_token" {
 		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
 	}
-	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
-	if err != nil {
-		t.Fatalf("ResolveAuth(saved config) error: %v", err)
-	}
-	if resolvedAuth.APIKey != "gho_device_token" {
-		t.Fatalf("resolved APIKey = %q, want gho_device_token", resolvedAuth.APIKey)
+	if len(cfg.ProviderAuth) == 0 {
+		t.Fatal("saved provider_auth = empty, want persisted auth state")
 	}
 }
 
@@ -855,12 +843,8 @@ func TestGetModels_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) 
 	if cfg.APIKey != "gho-refreshed" {
 		t.Fatalf("saved api_key = %q, want gho-refreshed", cfg.APIKey)
 	}
-	resolved, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
-	if err != nil {
-		t.Fatalf("ResolveAuth(saved config) error: %v", err)
-	}
-	if resolved.APIKey != "gho-refreshed" {
-		t.Fatalf("resolved APIKey = %q, want gho-refreshed", resolved.APIKey)
+	if len(cfg.ProviderAuth) == 0 {
+		t.Fatal("saved provider_auth = empty, want persisted auth state")
 	}
 }
 

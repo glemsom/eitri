@@ -22,7 +22,7 @@ type OpenAIModel struct {
 	name       string
 	baseURL    string
 	apiKey     string
-	profile    Profile
+	profile    profile
 	client     *http.Client
 	MaxRetries int           // max retry attempts for retryable errors (default 3)
 	RetryDelay time.Duration // base delay for exponential backoff (default 1s)
@@ -39,15 +39,14 @@ func NewOpenAIModel(name, baseURL, apiKey string) *OpenAIModel {
 
 // NewOpenAIModelForProvider creates an OpenAI-style model.LLM for configured provider profile.
 func NewOpenAIModelForProvider(name, baseURL, apiKey, providerID string) (*OpenAIModel, error) {
-	prof, err := Get(providerID)
+	prof, err := getProfile(providerID)
 	if err != nil {
 		return nil, err
 	}
-	return NewOpenAIModelForProfile(name, baseURL, apiKey, prof, nil), nil
+	return newOpenAIModelForProfile(name, baseURL, apiKey, prof, nil), nil
 }
 
-// NewOpenAIModelForProfile creates chat model for resolved provider profile.
-func NewOpenAIModelForProfile(name, baseURL, apiKey string, prof Profile, client *http.Client) *OpenAIModel {
+func newOpenAIModelForProfile(name, baseURL, apiKey string, prof profile, client *http.Client) *OpenAIModel {
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Minute}
 	}

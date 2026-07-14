@@ -9,14 +9,19 @@ import (
 	"strings"
 )
 
-// Profile captures provider-specific URLs, credential policy, model discovery,
-// and request headers used by Eitri's OpenAI-style transport.
-type Profile struct {
+// Descriptor exposes caller-safe provider metadata for config/UI decisions.
+type Descriptor struct {
 	ID             string
 	DisplayName    string
 	DefaultBaseURL string
 	APIKeyRequired bool
 	CredentialName string
+}
+
+// profile captures provider-internal URLs, credential policy, model discovery,
+// and request headers used by Eitri's OpenAI-style transport.
+type profile struct {
+	Descriptor
 	modelListPath  string
 	chatPath       string
 	stripV1Suffix  bool
@@ -25,18 +30,18 @@ type Profile struct {
 	authHandler    authHandler
 }
 
-// ModelListURL returns the absolute model discovery URL for baseURL.
-func (p Profile) ModelListURL(baseURL string) string {
+// ModelListURL returns absolute model discovery URL for baseURL.
+func (p profile) ModelListURL(baseURL string) string {
 	return p.join(baseURL, p.modelListPath)
 }
 
-// ChatCompletionsURL returns the absolute chat-completions URL for baseURL.
-func (p Profile) ChatCompletionsURL(baseURL string) string {
+// ChatCompletionsURL returns absolute chat-completions URL for baseURL.
+func (p profile) ChatCompletionsURL(baseURL string) string {
 	return p.join(baseURL, p.chatPath)
 }
 
 // ApplyHeaders applies provider headers common to model discovery and chat.
-func (p Profile) ApplyHeaders(req *http.Request, apiKey string) {
+func (p profile) ApplyHeaders(req *http.Request, apiKey string) {
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
@@ -46,7 +51,7 @@ func (p Profile) ApplyHeaders(req *http.Request, apiKey string) {
 }
 
 // RequiredCredentialName returns user-facing credential name for validation errors.
-func (p Profile) RequiredCredentialName() string {
+func (p profile) RequiredCredentialName() string {
 	if p.CredentialName != "" {
 		return p.CredentialName
 	}
@@ -54,11 +59,11 @@ func (p Profile) RequiredCredentialName() string {
 }
 
 // ParseModelList parses provider model discovery response into selectable IDs.
-func (p Profile) ParseModelList(r io.Reader) ([]string, error) {
+func (p profile) ParseModelList(r io.Reader) ([]string, error) {
 	return p.parseModelList(r)
 }
 
-func (p Profile) join(baseURL, path string) string {
+func (p profile) join(baseURL, path string) string {
 	base := strings.TrimRight(baseURL, "/")
 	if p.stripV1Suffix {
 		base = strings.TrimSuffix(base, "/v1")
@@ -66,33 +71,39 @@ func (p Profile) join(baseURL, path string) string {
 	return base + path
 }
 
-var profiles = map[string]Profile{
+var profiles = map[string]profile{
 	"opencode_go": {
-		ID:             "opencode_go",
-		DisplayName:    "OpenCode Go",
-		DefaultBaseURL: "https://opencode.ai/zen/go",
-		APIKeyRequired: true,
+		Descriptor: Descriptor{
+			ID:             "opencode_go",
+			DisplayName:    "OpenCode Go",
+			DefaultBaseURL: "https://opencode.ai/zen/go",
+			APIKeyRequired: true,
+		},
 		modelListPath:  "/v1/models",
 		chatPath:       "/v1/chat/completions",
 		stripV1Suffix:  true,
 		parseModelList: parseOpenAIModelList,
 	},
 	"custom_openai": {
-		ID:             "custom_openai",
-		DisplayName:    "Custom OpenAI (advanced/best-effort)",
-		DefaultBaseURL: "",
-		APIKeyRequired: false,
+		Descriptor: Descriptor{
+			ID:             "custom_openai",
+			DisplayName:    "Custom OpenAI (advanced/best-effort)",
+			DefaultBaseURL: "",
+			APIKeyRequired: false,
+		},
 		modelListPath:  "/v1/models",
 		chatPath:       "/v1/chat/completions",
 		stripV1Suffix:  true,
 		parseModelList: parseOpenAIModelList,
 	},
 	"github_copilot": {
-		ID:             "github_copilot",
-		DisplayName:    "GitHub Copilot",
-		DefaultBaseURL: "https://api.githubcopilot.com",
-		APIKeyRequired: true,
-		CredentialName: "token",
+		Descriptor: Descriptor{
+			ID:             "github_copilot",
+			DisplayName:    "GitHub Copilot",
+			DefaultBaseURL: "https://api.githubcopilot.com",
+			APIKeyRequired: true,
+			CredentialName: "token",
+		},
 		modelListPath:  "/models",
 		chatPath:       "/chat/completions",
 		applyHeaders:   applyGitHubCopilotHeaders,
@@ -101,22 +112,30 @@ var profiles = map[string]Profile{
 	},
 }
 
-// Get returns a provider profile by config provider ID.
-func Get(id string) (Profile, error) {
-	p, ok := profiles[id]
-	if !ok {
-		return Profile{}, fmt.Errorf("unsupported provider %q", id)
+// Describe returns caller-safe provider metadata by config provider ID.
+func Describe(id string) (Descriptor, error) {
+	p, err := getProfile(id)
+	if err != nil {
+		return Descriptor{}, err
 	}
-	return p, nil
+	return p.Descriptor, nil
 }
 
-// MustGet returns a provider profile and panics if id is unsupported.
-func MustGet(id string) Profile {
-	p, err := Get(id)
+// MustDescribe returns caller-safe provider metadata and panics if id is unsupported.
+func MustDescribe(id string) Descriptor {
+	d, err := Describe(id)
 	if err != nil {
 		panic(err)
 	}
-	return p
+	return d
+}
+
+func getProfile(id string) (profile, error) {
+	p, ok := profiles[id]
+	if !ok {
+		return profile{}, fmt.Errorf("unsupported provider %q", id)
+	}
+	return p, nil
 }
 
 // IDs returns supported provider IDs.

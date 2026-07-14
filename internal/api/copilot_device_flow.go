@@ -138,8 +138,8 @@ func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*provider.GitHubDe
 	return provider.StartGitHubCopilotDeviceFlow(ctx, s.httpClient, s.copilotOAuth)
 }
 
-func (s *Server) pollCopilotDeviceFlow(ctx context.Context, flow *copilotDeviceFlowState) (*provider.GitHubAccessTokenResponse, error) {
-	return provider.PollGitHubCopilotDeviceFlow(ctx, s.httpClient, s.copilotOAuth, flow.DeviceCode)
+func (s *Server) pollCopilotDeviceFlow(ctx context.Context, flow *copilotDeviceFlowState) (*provider.GitHubCopilotDeviceFlowPollResult, error) {
+	return provider.PollGitHubCopilotDeviceFlow(ctx, s.httpClient, s.copilotOAuth, flow.DeviceCode, time.Now())
 }
 
 func (s *Server) copilotDeviceFlowView(flow *copilotDeviceFlowState) *templates.CopilotDeviceFlowView {
@@ -249,42 +249,41 @@ func (s *Server) handlePollCopilotDeviceFlow(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	switch resp.Error {
-	case "":
+	switch resp.Status {
+	case provider.GitHubCopilotDeviceFlowAuthorized:
 		// continue below
-	case "authorization_pending":
+	case provider.GitHubCopilotDeviceFlowAuthorizationPending:
 		flow.NextPollAt = time.Now().Add(flow.Interval)
 		s.copilotFlows.update(flow)
 		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "", "", s.copilotDeviceFlowView(flow))
 		return
-	case "slow_down":
+	case provider.GitHubCopilotDeviceFlowSlowDown:
 		flow.Interval += 5 * time.Second
 		flow.NextPollAt = time.Now().Add(flow.Interval)
 		s.copilotFlows.update(flow)
 		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "", "", s.copilotDeviceFlowView(flow))
 		return
-	case "expired_token":
+	case provider.GitHubCopilotDeviceFlowExpiredToken:
 		s.copilotFlows.delete(id)
 		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "GitHub device flow expired. Start again.", "", nil)
 		return
-	case "access_denied":
+	case provider.GitHubCopilotDeviceFlowAccessDenied:
 		s.copilotFlows.delete(id)
 		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "GitHub device flow was denied. Start again when ready.", "", nil)
 		return
 	default:
 		s.copilotFlows.delete(id)
-		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "GitHub device flow failed: "+resp.Error, "", nil)
+		writeSettingsFormWithState(w, r, http.StatusOK, flow.Config, nil, "GitHub device flow failed: "+resp.ErrorCode, "", nil)
 		return
 	}
 
 	newCfg := *flow.Config
-	initialAuthUpdate, err := provider.GitHubCopilotAuthUpdateFromTokenResponse(resp, time.Now())
-	if err != nil {
+	if resp.AuthUpdate == nil {
 		s.copilotFlows.delete(id)
-		http.Error(w, "Failed to store provider auth: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to store provider auth: missing auth update", http.StatusInternalServerError)
 		return
 	}
-	applyAuthUpdate(&newCfg, initialAuthUpdate)
+	applyAuthUpdate(&newCfg, resp.AuthUpdate)
 
 	discoveryResult, modelsErr := s.discoverModelList(r.Context(), &newCfg)
 	if modelsErr == nil {
