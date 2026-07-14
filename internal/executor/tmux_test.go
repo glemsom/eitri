@@ -2,10 +2,13 @@ package executor_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -211,5 +214,132 @@ func TestTmuxExecutor_CommandTimeout(t *testing.T) {
 	}
 	if !result.TimedOut {
 		t.Errorf("TimedOut = false, want true for slow command")
+	}
+}
+
+func TestTmuxExecutor_ContextCancelStopsCommand(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on $PATH, skipping integration test")
+	}
+
+	dir := t.TempDir()
+	exe, err := executor.NewTmuxExecutor("test-session-cancel", dir, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewTmuxExecutor() = %v", err)
+	}
+	defer exe.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := exe.ExecuteCommand(ctx, "sleep 30")
+		resultCh <- err
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+
+	err = <-resultCh
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExecuteCommand() err = %v, want context.Canceled", err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("cancellation took too long: %v", time.Since(start))
+	}
+}
+
+func TestTmuxExecutor_CommandTimeoutKillsChildProcess(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on $PATH, skipping integration test")
+	}
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	exe, err := executor.NewTmuxExecutor("test-session-timeout-kill", dir, time.Second)
+	if err != nil {
+		t.Fatalf("NewTmuxExecutor() = %v", err)
+	}
+	defer exe.Close()
+
+	result, err := exe.ExecuteCommand(context.Background(), "sh -c 'sleep 30 & echo $! > child.pid; wait'")
+	if err != nil {
+		t.Fatalf("ExecuteCommand() = %v", err)
+	}
+	if !result.TimedOut {
+		t.Fatalf("TimedOut = false, want true")
+	}
+
+	pid := waitForPIDFile(t, pidFile)
+	waitForProcessExit(t, pid)
+}
+
+func TestTmuxExecutor_CloseKillsChildProcess(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not found on $PATH, skipping integration test")
+	}
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	exe, err := executor.NewTmuxExecutor("test-session-close-kill", dir, 30*time.Second)
+	if err != nil {
+		t.Fatalf("NewTmuxExecutor() = %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := exe.ExecuteCommand(context.Background(), "sh -c 'sleep 30 & echo $! > child.pid; wait'")
+		errCh <- err
+	}()
+
+	pid := waitForPIDFile(t, pidFile)
+	if err := exe.Close(); err != nil {
+		t.Fatalf("Close() = %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil && !strings.Contains(err.Error(), "executor closed") {
+			// command may surface context/session interruption or return cleanly after session death
+			t.Logf("ExecuteCommand() returned err after close: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("ExecuteCommand() did not return after Close")
+	}
+
+	waitForProcessExit(t, pid)
+}
+
+func waitForPIDFile(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if convErr != nil {
+				t.Fatalf("invalid pid file %q: %v", string(data), convErr)
+			}
+			return pid
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pid file %s not written: %v", path, err)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func waitForProcessExit(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err := syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("process %d still alive", pid)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 }

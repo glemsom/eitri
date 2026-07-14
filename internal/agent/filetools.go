@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // FileViewerResult holds the result of reading a file.
@@ -42,9 +43,12 @@ func ReadFile(absPath string, offset, limit int) (FileViewerResult, error) {
 		return FileViewerResult{}, fmt.Errorf("cannot read file: %w", err)
 	}
 
-	// Reject binary / non-UTF-8 content (NUL bytes)
+	// Reject binary / non-UTF-8 content.
 	if strings.ContainsRune(string(data), '\x00') {
 		return FileViewerResult{}, fmt.Errorf("file %q is not a text file (contains NUL bytes)", absPath)
+	}
+	if !utf8.Valid(data) {
+		return FileViewerResult{}, fmt.Errorf("file %q is not valid UTF-8 text", absPath)
 	}
 
 	// Split into lines
@@ -95,15 +99,11 @@ func WriteFile(absPath, content, mode string) (FileEditorResult, error) {
 			return FileEditorResult{}, fmt.Errorf("file %q already exists (use overwrite mode)", absPath)
 		}
 
-		// Create parent directories
 		parentDir := filepath.Dir(absPath)
-		var dirsCreated []string
-		if err := os.MkdirAll(parentDir, 0755); err != nil {
+		dirsCreated, err := createMissingDirs(parentDir)
+		if err != nil {
 			return FileEditorResult{}, fmt.Errorf("failed to create parent directories: %w", err)
 		}
-
-		// Record created dirs (only newly created ones)
-		// Return nil for v1 — MkdirAll's created dirs can't be easily determined post-hoc.
 
 		if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
 			return FileEditorResult{}, fmt.Errorf("failed to write file: %w", err)
@@ -153,4 +153,43 @@ func WriteFile(absPath, content, mode string) (FileEditorResult, error) {
 	return FileEditorResult{}, fmt.Errorf("unknown mode: %q", mode)
 }
 
+func createMissingDirs(parentDir string) ([]string, error) {
+	if parentDir == "." || parentDir == string(filepath.Separator) {
+		return nil, nil
+	}
 
+	missing := make([]string, 0)
+	current := parentDir
+	for {
+		info, err := os.Stat(current)
+		if err == nil {
+			if !info.IsDir() {
+				return nil, fmt.Errorf("parent path %q exists and is not a directory", current)
+			}
+			break
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		missing = append(missing, current)
+		next := filepath.Dir(current)
+		if next == current {
+			break
+		}
+		current = next
+	}
+
+	for i := len(missing) - 1; i >= 0; i-- {
+		if err := os.Mkdir(missing[i], 0755); err != nil {
+			if os.IsExist(err) {
+				continue
+			}
+			return nil, err
+		}
+	}
+
+	for i, j := 0, len(missing)-1; i < j; i, j = i+1, j-1 {
+		missing[i], missing[j] = missing[j], missing[i]
+	}
+	return missing, nil
+}

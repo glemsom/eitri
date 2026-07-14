@@ -140,7 +140,7 @@ type CommandResult struct {
     Stderr     string
     ExitCode   int
     TimedOut   bool
-    Duration   time.Duration
+    DurationMs int64
     Truncated  bool
 }
 
@@ -150,7 +150,7 @@ type CommandExecutor interface {
 }
 ```
 
-`ExecuteCommand` is final-only in v1. It returns after command completion, timeout, or executor failure. Non-zero shell exit is represented in `CommandResult.ExitCode`, not as a Go error.
+`ExecuteCommand` is final-only in v1. It returns after command completion, timeout, cancellation, or executor failure. Non-zero shell exit is represented in `CommandResult.ExitCode`, not as a Go error. Timeout sets `TimedOut`; context cancellation stops active command promptly and returns a context error.
 
 **Tmux executor architecture**:
 1. Starts a long-running tmux session with a shell loop inside
