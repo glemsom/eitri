@@ -1420,9 +1420,22 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 
 	models, err := s.fetchModelList(r.Context(), cfg)
 	if err != nil {
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_ = templates.TestConnectionResult(false, "Connection failed: "+err.Error()).Render(r.Context(), w)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	if isHTMXRequest(r) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = templates.TestConnectionResult(true, "Connection OK").Render(r.Context(), w)
 		return
 	}
 

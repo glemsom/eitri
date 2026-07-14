@@ -1319,4 +1319,126 @@ eitri-composer {
   main {
     padding: 0.75rem;
   }
+
+  /* Mobile: form-actions not sticky */
+  .form-actions {
+    position: static !important;
+  }
+}
+
+/* ============================================
+   Settings page: Issue #115
+   Provider-aware Base URL, model refresh, Test Connection
+   ============================================ */
+
+/* Base URL show/hide */
+.base-url-hidden {
+  display: none !important;
+}
+
+.required-marker {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+/* Model refresh spinner */
+.model-refresh-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  font-size: 1rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.model-refresh-notice {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: var(--success);
+  margin-left: 0.5rem;
+  transition: opacity 0.5s ease;
+}
+
+.model-refresh-notice.fade-out {
+  opacity: 0;
+}
+
+/* Test Connection */
+.test-connection-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#test-connection-btn {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#test-connection-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+#test-connection-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-connection-result {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.test-connection-pending {
+  color: var(--text-muted);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.connection-ok {
+  color: var(--success);
+}
+
+.connection-err {
+  color: var(--error);
+}
+
+/* Save hint */
+.save-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+}
+
+/* Form-actions sticky on desktop */
+@media (min-width: 769px) {
+  .form-actions {
+    position: sticky;
+    bottom: 0;
+    background: rgba(26, 26, 46, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 1rem;
+    margin: 1rem -1rem -1rem -1rem;
+    border-top: 1px solid var(--border);
+    z-index: 10;
+  }
 }
