@@ -32,6 +32,8 @@ go test ./internal/api/ -v -run TestHealth
 
 ## Test layers
 
+Provider integration tests use local fake-provider HTTP servers. Automated tests must not call live OpenCode Go, GitHub Copilot, GitHub OAuth, or any external model service.
+
 | Layer | Tool | Run command | Requires |
 |-------|------|-------------|----------|
 | Unit + non-browser integration | `go test` | `go test ./...` | **tmux** |
@@ -182,9 +184,9 @@ These test the Go backend without a browser:
 |------|-------|
 | `internal/api/server_test.go` | HTTP endpoints (health, chat, config, SSE) |
 | `internal/agent/agent_test.go` | Agent initialization |
-| `internal/agent/openai_model_test.go` | OpenAI-compatible model calls, OpenCode Go endpoints, Bearer auth, streaming tool-call assembly, unsupported provider behavior |
+| `internal/agent/openai_model_test.go` | OpenAI-compatible model calls, OpenCode Go and GitHub Copilot provider paths/headers, Bearer auth, streaming text/tool-call assembly, unsupported provider behavior, all via fake provider servers |
 | `internal/agent/tools_test.go` | Tool execution, `file_editor` edit payloads, create-parent-dir behavior, direct write without confirmation |
-| `internal/config/config_test.go` | Config load/save/merge, provider enum validation, model-discovery validation, secure file/dir permissions |
+| `internal/config/config_test.go` | Config load/save/merge, provider enum validation, model-discovery validation through fake provider servers, secure file/dir permissions |
 | `internal/executor/tmux_test.go` | Tmux command execution and initial working directory = launch workspace |
 | `internal/executor/session_test.go` | Session lifecycle |
 | `internal/executor/audit_test.go` | Preflight audit (tmux binary check) |

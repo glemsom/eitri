@@ -47,6 +47,7 @@ eitri/
 ├── scripts/                   # Install script
 ├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
 ├── docs/TESTING.md            # Test runbook
+├── docs/providers/            # User-facing provider setup/operation guides
 ├── docs/ROADMAP.md            # Non-normative post-v1 ideas
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
