@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/assets"
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -203,8 +203,10 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	// Check config validity for setup banner
 	cfg, err := config.Load(s.config.ConfigPath)
 	configValid := err == nil && cfg != nil && cfg.Model != "" && cfg.BaseURL != ""
-	if cfg != nil && cfg.Provider == "opencode_go" && cfg.APIKey == "" {
-		configValid = false
+	if cfg != nil {
+		if prof, profErr := provider.Get(cfg.Provider); profErr != nil || (prof.APIKeyRequired && cfg.APIKey == "") {
+			configValid = false
+		}
 	}
 
 	// Stale session (id doesn't exist at all) → redirect to /
@@ -377,7 +379,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate provider credentials by calling /v1/models and get model list
+	// Validate provider credentials by calling the profile's model discovery path.
 	models, err := s.fetchModelList(newCfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -407,31 +409,26 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-// fetchModelList calls /v1/models on the provider and returns the list of model IDs.
+// fetchModelList calls the provider profile's model discovery path and returns model IDs.
 // Also validates that the provider credentials work.
 func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("base_url is required")
 	}
-	if cfg.Provider == "opencode_go" && cfg.APIKey == "" {
+	prof, err := provider.Get(cfg.Provider)
+	if err != nil {
+		return nil, err
+	}
+	if prof.APIKeyRequired && cfg.APIKey == "" {
 		return nil, fmt.Errorf("api_key is required for provider %q", cfg.Provider)
 	}
 
-	// Strip trailing /v1 from base URL to avoid double /v1 when appending /v1/models.
-	// E.g. https://api.openai.com/v1 → https://api.openai.com/v1/models (not /v1/v1/models)
-	modelBase := strings.TrimRight(cfg.BaseURL, "/")
-	modelBase = strings.TrimSuffix(modelBase, "/v1")
-	modelsURL, err := url.JoinPath(modelBase, "/v1/models")
-	if err != nil {
-		return nil, fmt.Errorf("invalid base_url: %v", err)
-	}
+	modelsURL := prof.ModelListURL(cfg.BaseURL)
 	req, err := http.NewRequestWithContext(context.Background(), "GET", modelsURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-	if cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-	}
+	prof.ApplyHeaders(req, cfg.APIKey)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -443,21 +440,9 @@ func (s *Server) fetchModelList(cfg *config.Config) ([]string, error) {
 		return nil, fmt.Errorf("Model discovery failed: provider returned HTTP %d", resp.StatusCode)
 	}
 
-	// Parse OpenAI-compatible /v1/models response
-	var modelsResp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
-		return nil, fmt.Errorf("failed to parse model list: %v", err)
-	}
-
-	modelIDs := make([]string, 0, len(modelsResp.Data))
-	for _, m := range modelsResp.Data {
-		if m.ID != "" {
-			modelIDs = append(modelIDs, m.ID)
-		}
+	modelIDs, err := prof.ParseModelList(resp.Body)
+	if err != nil {
+		return nil, err
 	}
 	return modelIDs, nil
 }

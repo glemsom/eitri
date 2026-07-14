@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // Config represents the Eitri configuration per SPEC §7.1.
@@ -23,9 +26,10 @@ type Config struct {
 
 // Defaults returns a Config with default values.
 func Defaults() Config {
+	prof := provider.MustGet("opencode_go")
 	return Config{
-		Provider:            "opencode_go",
-		BaseURL:             "https://opencode.ai/zen/go",
+		Provider:            prof.ID,
+		BaseURL:             prof.DefaultBaseURL,
 		SessionTimeout:      30 * 60_000_000_000, // 30 minutes in ns
 		CommandTimeout:      60 * 1_000_000_000,  // 60 seconds in ns
 		MaxTurns:            25,
@@ -76,14 +80,12 @@ func Save(path string, cfg *Config) error {
 // Validate checks field-level constraints per SPEC §7.2.
 // Returns a descriptive error for the first violation found.
 func Validate(cfg *Config) error {
-	switch cfg.Provider {
-	case "opencode_go", "custom_openai":
-		// valid
-	default:
-		return fmt.Errorf("provider must be 'opencode_go' or 'custom_openai', got %q", cfg.Provider)
+	prof, err := provider.Get(cfg.Provider)
+	if err != nil {
+		return fmt.Errorf("provider must be one of %s, got %q", strings.Join(provider.IDs(), ", "), cfg.Provider)
 	}
 
-	if cfg.Provider == "opencode_go" && cfg.APIKey == "" {
+	if prof.APIKeyRequired && cfg.APIKey == "" {
 		return fmt.Errorf("api_key is required for provider %q", cfg.Provider)
 	}
 

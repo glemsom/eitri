@@ -16,6 +16,8 @@ import (
 	"google.golang.org/genai"
 
 	"google.golang.org/adk/v2/model"
+
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // OpenAIModel implements model.LLM for OpenAI-compatible chat completions.
@@ -23,23 +25,38 @@ type OpenAIModel struct {
 	name       string
 	baseURL    string
 	apiKey     string
+	profile    provider.Profile
 	client     *http.Client
 	MaxRetries int           // max retry attempts for retryable errors (default 3)
 	RetryDelay time.Duration // base delay for exponential backoff (default 1s)
 }
 
-// NewOpenAIModel creates an OpenAI-compatible model.LLM.
+// NewOpenAIModel creates an OpenAI-compatible model.LLM using the OpenCode Go profile.
 func NewOpenAIModel(name, baseURL, apiKey string) *OpenAIModel {
+	m, err := NewOpenAIModelForProvider(name, baseURL, apiKey, "opencode_go")
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+// NewOpenAIModelForProvider creates an OpenAI-style model.LLM for a configured provider profile.
+func NewOpenAIModelForProvider(name, baseURL, apiKey, providerID string) (*OpenAIModel, error) {
+	prof, err := provider.Get(providerID)
+	if err != nil {
+		return nil, err
+	}
 	return &OpenAIModel{
 		name:       name,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
+		profile:    prof,
 		MaxRetries: 3,
 		RetryDelay: 1 * time.Second,
 		client: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
-	}
+	}, nil
 }
 
 func (m *OpenAIModel) Name() string { return m.name }
@@ -118,8 +135,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			return
 		}
 
-		// Strip trailing /v1 to avoid double /v1 (e.g. https://api.openai.com/v1 → /v1/chat/completions, not /v1/v1/...)
-		endpoint := strings.TrimSuffix(m.baseURL, "/v1") + "/v1/chat/completions"
+		endpoint := m.profile.ChatCompletionsURL(m.baseURL)
 
 		var lastErr error
 		maxAttempts := m.MaxRetries + 1 // first attempt + retries
@@ -145,9 +161,7 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 			}
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Accept", "text/event-stream")
-			if m.apiKey != "" {
-				httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
-			}
+			m.profile.ApplyHeaders(httpReq, m.apiKey)
 
 			resp, err := m.client.Do(httpReq)
 			if err != nil {
