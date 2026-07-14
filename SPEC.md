@@ -86,9 +86,9 @@ Executor hardening requirements live in §10. Key command requirements: literal 
 - Implement `model.LLM` from `google.golang.org/adk/v2/model`.
 - Supported providers:
   - `opencode_go`: OpenCode Go via OpenAI-compatible `/v1/chat/completions` SSE streaming.
-  - `github_copilot`: GitHub Copilot via OpenAI-style `/chat/completions` SSE streaming, using a manually supplied GitHub/Copilot bearer token. OAuth device flow is deferred.
+  - `github_copilot`: GitHub Copilot via OpenAI-style `/chat/completions` SSE streaming. Settings support manual bearer-token entry and GitHub OAuth device flow.
 - Advanced provider: `custom_openai` base URL, best-effort only.
-- Configurable: `provider`, `api_key`, `base_url`, `model` name. `api_key` stores the bearer credential for providers that require one. OpenCode Go default provider base is `https://opencode.ai/zen/go`; GitHub Copilot default provider base is `https://api.githubcopilot.com`. Model IDs must come from live provider discovery rather than a hard-coded default.
+- Configurable: `provider`, `api_key`, `base_url`, `model` name. `api_key` stores bearer credential for providers that require one. OpenCode Go default provider base is `https://opencode.ai/zen/go`; GitHub Copilot default provider base is `https://api.githubcopilot.com`. Model IDs must come from live provider discovery rather than hard-coded default.
 - OpenCode Go and GitHub Copilot require a bearer credential. Eitri sends it as `Authorization: Bearer <api_key>`.
 - Must handle: rate limits (429), auth errors (401/403), context-limit errors, timeouts, connection refused.
 - Initial release requires provider-profile model discovery; manual model fallback is out of scope for v1.
@@ -113,7 +113,7 @@ Eitri calls the configured provider profile's model-discovery path to discover a
 - **Populate** the Settings UI model selector from live provider data.
 - **Require** model selection from discovered model IDs for the initial release.
 - **Validate** saved model against provider available list on startup/settings load.
-- **Validate Settings save** by calling `/v1/models` with the entered provider/API key before accepting provider config.
+- **Validate Settings save** by calling provider profile model-discovery path with entered provider/API key before accepting provider config.
 - **Use** discovered/model-provided context length when available; otherwise assume a 256k-token context window for UI estimates.
 - **Disable chat** when model discovery fails or saved model is no longer present.
 
@@ -427,7 +427,7 @@ Frontend-specific behavior:
 | Input lifecycle | Server disables composer + send button during active run via OOB swaps; a visible Stop button remains enabled and posts to `/api/sessions/{id}/cancel`. Empty input is blocked client-side and rejected server-side with `422`. Successful chat POST returns immediate user bubble before assistant stream connects. If provider config is incomplete/invalid, chat remains visible with a setup banner and disabled composer. |
 | Cancellation | Stop button and Escape cancel the active run. UI phase changes to `cancelling...`; on success input is re-enabled, partial assistant message is marked `Stopped`, and any active tool card transitions to `Cancelled` when applicable. |
 | Keyboard composer | Enter sends; Shift+Enter inserts newline; Escape cancels active run. When completion menu is open, Enter accepts highlighted candidate, Escape closes menu, Tab/ArrowDown moves next, Shift+Tab/ArrowUp moves previous. |
-| Config form | Save uses `hx-put` and returns updated form + toast that auto-dismisses after 3s. Provider defaults to `opencode_go` with base URL `https://opencode.ai/zen/go`; `github_copilot` is supported with default base URL `https://api.githubcopilot.com`; `custom_openai` is available under an advanced/best-effort disclosure. OpenCode API key and GitHub Copilot token are required and sent as Bearer auth; custom API key is optional. Save verifies provider credentials and model discovery via the provider profile's model path before accepting config. Current API key/token is shown masked read-only; replacement password field is empty. Empty save preserves existing key; `clear_api_key` clears it. When provider changes, Eitri clears `model` and updates `base_url` to the new provider default only if the previous base URL was empty or equal to the old provider default. No API-key help link is required in v1. |
+| Config form | Save uses `hx-put` and returns updated form + toast that auto-dismisses after 3s. Provider defaults to `opencode_go` with base URL `https://opencode.ai/zen/go`; `github_copilot` is supported with default base URL `https://api.githubcopilot.com`; `custom_openai` is available under advanced/best-effort disclosure. OpenCode API key and GitHub Copilot token are sent as Bearer auth; custom API key is optional. Settings also expose `Authenticate with GitHub` for Copilot device flow. Device flow shows verification URL + user code, polls for approval, stores returned token in config, and refreshes model list. Save verifies provider credentials and model discovery via provider profile model path before accepting config. Empty save preserves existing key; `clear_api_key` clears it. When provider changes, Eitri clears `model` and updates `base_url` to new provider default only if previous base URL was empty or equal to old provider default. |
 | Stream status | Run indicator is driven by `EventSource` readyState and stream packets. Phases: `idle`, `connecting`, `streaming`, `tool-running`, `rendering`, `done`, `error`, `reconnecting`. Accessible text required; color never sole signal; no server polling. |
 | No-dead-air/reconnect | If no first token/tool event arrives within 500-800ms after stream connection, show working state. If EventSource reconnects mid-run, show reconnecting until stream resumes, completes, or errors. |
 | Errors | SSE `error` dispatches to `/api/sessions/{id}/render/error`; server returns ErrorToast HTML for `#errors`. Banner is non-modal and auto-dismisses. Config/model/LLM/tool failures use friendly messages with action hints (§5.8a). Provider context-limit errors say: `Model context limit exceeded. Start a new session or ask a shorter question.` No pre-run context estimation/blocking is required in v1. |
@@ -455,7 +455,7 @@ Eitri must translate common failures into short user-facing messages with action
 |-----------|--------------|-------------|
 | Missing provider config | `Provider setup required` | Open Settings |
 | Missing OpenCode API key | `OpenCode API key required` | Enter API key in Settings |
-| Missing GitHub Copilot token | `GitHub Copilot token required` | Enter token in Settings |
+| Missing GitHub Copilot token | `GitHub Copilot token required` | Enter token or use Authenticate with GitHub in Settings |
 | 401/auth failure | `Provider rejected API key` | Update API key |
 | 429/rate limit | `Provider rate limit reached` | Retry later |
 | Connection refused/unreachable | `Cannot reach provider at <base_url>` | Check provider is running and URL is correct |
@@ -639,7 +639,7 @@ Structured JSON envelope remains canonical. `eitri-stream` dispatches rendering 
 - **Defaults**: File missing → use defaults in memory. Create `~/.eitri/config.json` only on first save. Startup must not create or mutate the config file. Default `provider` is `opencode_go`, default `base_url` is `https://opencode.ai/zen/go`, default `model` is empty, and default assumed context window is `256000` tokens; model discovery/selection behavior is specified in §4.1a.
 - **Provider changes**: When `provider` changes, Eitri clears `model`. Eitri updates `base_url` to the new provider default only when the previous base URL is empty or equals the old provider default; custom URLs are preserved.
 - **Hot-reload**: Config changes via `PUT /api/config` take effect on next chat message/run start (runner cache invalidated). Active runs keep the config/model they started with. No restart required.
-- **Validation**: `provider` must be `opencode_go`, `github_copilot`, or `custom_openai`. `base_url` must be a valid URL before chat. `opencode_go` and `github_copilot` require non-empty `api_key`; `custom_openai` API key is optional. Settings save validates provider credentials and model list by calling the provider profile's model-discovery path; save is rejected with `422` field errors if discovery/auth fails. `session_timeout` must be ≥ 1 minute. `command_timeout` must be ≥ 1 second. `max_turns` must be ≥ 1. `context_window_tokens` must be ≥ 1024. `model` must satisfy §4.1a discovery/selection rules. Validated server-side with 422 on save/chat start. Client-side HTML5 validation as well.
+- **Validation**: `provider` must be `opencode_go`, `github_copilot`, or `custom_openai`. `base_url` must be valid URL before chat. `opencode_go` and `github_copilot` require non-empty `api_key`; `custom_openai` API key is optional. Settings save validates provider credentials and model list by calling provider profile model-discovery path; save is rejected with `422` field errors if discovery/auth fails. Copilot device flow may temporarily hold pending auth state without saved `api_key`, but final saved config still requires token. `session_timeout` must be ≥ 1 minute. `command_timeout` must be ≥ 1 second. `max_turns` must be ≥ 1. `context_window_tokens` must be ≥ 1024. `model` must satisfy §4.1a discovery/selection rules. Validated server-side with `422` on save/chat start. Client-side HTML5 validation as well.
 - **Masking**: `GET /api/config` returns/displays `api_key` as `"sk-...abc"` (first 5 + last 3 chars) if set. Normal JSON includes masked value. HTMX Settings form shows masked key as read-only text; API key input is empty.
 - **API key save semantics**: Empty API key input preserves existing key. Non-empty input replaces key. A dedicated `clear_api_key` checkbox clears key.
 - **HTMX-aware reads**: `GET /api/config` checks `HX-Request`. If `true`, returns the pre-filled Settings form HTML fragment. Otherwise returns masked JSON for API/non-browser clients.
@@ -652,6 +652,7 @@ Structured JSON envelope remains canonical. `eitri-stream` dispatches rendering 
 | `EITRI_ADDR` | Listen address | `127.0.0.1:8080` |
 | `EITRI_CONFIG` | Override config path | `~/.eitri/config.json` |
 | `EITRI_OPEN_BROWSER` | Browser auto-open control: `1` force, `0` disable, unset = auto when desktop env detected | unset |
+| `EITRI_GITHUB_CLIENT_ID` | GitHub OAuth App client ID used for GitHub Copilot device flow | unset |
 
 If `EITRI_ADDR` binds a non-loopback host (for example `0.0.0.0:8080`), startup prints a warning that Eitri has no authentication and can execute host commands.
 

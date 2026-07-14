@@ -31,14 +31,17 @@ type ServerConfig struct {
 	RunManager     *RunManager
 	SkillsService  *skills.Service
 	Logger         *slog.Logger
+	CopilotOAuth   GitHubCopilotOAuthConfig
 }
 
 // Server wraps the HTTP handler and injected dependencies.
 type Server struct {
-	config     ServerConfig
-	mux        *http.ServeMux
-	httpClient *http.Client
-	logger     *slog.Logger
+	config       ServerConfig
+	mux          *http.ServeMux
+	httpClient   *http.Client
+	logger       *slog.Logger
+	copilotOAuth GitHubCopilotOAuthConfig
+	copilotFlows *copilotDeviceFlowStore
 }
 
 const maxRequestBodyBytes = 1 << 20
@@ -110,9 +113,7 @@ func maskedConfig(cfg *config.Config) *config.Config {
 }
 
 func writeSettingsForm(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, message string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_ = templates.SettingsForm(cfg, models, message).Render(r.Context(), w)
+	writeSettingsFormWithState(w, r, status, cfg, models, message, "", nil)
 }
 
 func writeConfigError(w http.ResponseWriter, r *http.Request, status int, message string) {
@@ -150,9 +151,11 @@ func NewServer(cfg ServerConfig) *Server {
 	}
 
 	s := &Server{
-		config: cfg,
-		mux:    http.NewServeMux(),
-		logger: logger,
+		config:       cfg,
+		mux:          http.NewServeMux(),
+		logger:       logger,
+		copilotOAuth: defaultGitHubCopilotOAuthConfig(cfg.CopilotOAuth),
+		copilotFlows: newCopilotDeviceFlowStore(),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -256,6 +259,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	s.mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	s.mux.HandleFunc("GET /api/models", s.handleGetModels)
+	s.mux.HandleFunc("POST /api/providers/github_copilot/device-flow/start", s.handleStartCopilotDeviceFlow)
+	s.mux.HandleFunc("GET /api/providers/github_copilot/device-flow/{id}", s.handlePollCopilotDeviceFlow)
+	s.mux.HandleFunc("DELETE /api/providers/github_copilot/device-flow/{id}", s.handleCancelCopilotDeviceFlow)
 
 	// Agent run + SSE streaming (issue #6)
 	s.mux.HandleFunc("POST /api/sessions/{id}/chat", s.handleChat)
@@ -494,7 +500,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if isHTMXRequest(r) {
-		component := templates.SettingsForm(maskedCfg, models, "")
+		component := templates.SettingsForm(maskedCfg, models, "", "", nil)
 		component.Render(r.Context(), w)
 		return
 	}
@@ -505,45 +511,14 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
-	var patch map[string]interface{}
-
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+	patch, err := parseConfigPatch(r)
+	if err != nil {
+		if isRequestTooLarge(err) {
+			writeRequestTooLarge(w)
 			return
 		}
-		defer r.Body.Close()
-
-		if err := json.Unmarshal(body, &patch); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-	} else {
-		// URL-encoded form data (HTMX default for form submissions)
-		if err := r.ParseForm(); err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Failed to parse form", http.StatusBadRequest)
-			return
-		}
-		patch = make(map[string]interface{}, len(r.Form))
-		for k, v := range r.Form {
-			patch[k] = v[0]
-		}
-		// Preserve existing API key when form field is empty and clear is not requested
-		if v, ok := patch["api_key"]; ok && v.(string) == "" {
-			if _, hasClear := patch["clear_api_key"]; !hasClear {
-				delete(patch, "api_key")
-			}
-		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Load current config
@@ -553,31 +528,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Detect masked-key round-trip: when the submitted api_key matches
-	// the masked version of the current key, preserve the real key.
-	// Masked keys (sk-pd...AWi) come from the settings form's value attr
-	// and would overwrite the real key if saved as-is.
-	if v, ok := patch["api_key"]; ok {
-		if s, ok := v.(string); ok && s != "" && s == config.MaskAPIKey(cfg.APIKey) {
-			delete(patch, "api_key")
-		}
-	}
-
-	// Apply patch
-	newCfg := config.Merge(cfg, patch)
-
-	// Convert timeout fields from seconds (form) to nanoseconds (config storage)
-	if _, ok := patch["session_timeout"]; ok {
-		// If value is in seconds range (well below 1e9), multiply to ns
-		if newCfg.SessionTimeout < 1_000_000_000 && newCfg.SessionTimeout > 0 {
-			newCfg.SessionTimeout *= 1_000_000_000
-		}
-	}
-	if _, ok := patch["command_timeout"]; ok {
-		if newCfg.CommandTimeout < 1_000_000_000 && newCfg.CommandTimeout > 0 {
-			newCfg.CommandTimeout *= 1_000_000_000
-		}
-	}
+	newCfg := normalizePatchedConfig(cfg, patch)
 
 	// Validate field-level constraints
 	if err := config.Validate(newCfg); err != nil {
@@ -623,7 +574,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render form with models populated
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "")
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil)
 	component.Render(r.Context(), w)
 }
 

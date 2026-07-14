@@ -1,13 +1,28 @@
 # GitHub Copilot Provider
 
-Eitri supports GitHub Copilot through provider profile `github_copilot`. MVP uses manual bearer-token entry and OpenAI-style streaming chat completions.
+Eitri supports GitHub Copilot through provider profile `github_copilot`. Settings support GitHub OAuth device flow and manual bearer-token entry. Chat still uses OpenAI-style streaming chat completions.
 
 ## Configure in Settings
+
+### Preferred: Authenticate with GitHub
+
+1. Open **Settings**.
+2. Set **Provider** to **GitHub Copilot**.
+3. Click **Authenticate with GitHub**.
+4. Open shown verification URL and enter shown code.
+5. Wait for Settings to refresh.
+   - Eitri stores returned `gho_...` token in config.
+   - Eitri immediately calls `GET {base_url}/models` and repopulates model selector.
+6. Select model from discovered list and save.
+
+Device flow needs `EITRI_GITHUB_CLIENT_ID` set in environment so Eitri can identify its GitHub OAuth app.
+
+### Manual token entry
 
 1. Open **Settings**.
 2. Set **Provider** to **GitHub Copilot**.
 3. Enter GitHub/Copilot bearer token in token field.
-   - OAuth user tokens such as `gho_...` are expected for MVP.
+   - OAuth user tokens such as `gho_...` are expected.
    - Token must belong to account/org with Copilot entitlement.
 4. Keep **Base URL** empty/default unless using enterprise or data-residency endpoint.
 5. Save settings.
@@ -71,23 +86,25 @@ x-initiator: user
 
 Requests use `stream: true`. Eitri expects OpenAI-style SSE text deltas and streaming tool-call deltas. Providers/models that cannot satisfy required streaming tool-call contract show friendly unsupported-provider error.
 
-## MVP limitations
+## Current limitations
 
-Deferred from MVP:
+Still deferred:
 
-- OAuth device-flow login inside Eitri. Users manually paste bearer token.
 - OpenAI `/responses` endpoint.
 - Anthropic `/v1/messages` endpoint.
 - WebSocket transports, including `ws:/responses`.
 - Vision-specific headers such as `Copilot-Vision-Request`.
+- Refresh-token or long-lived Copilot credential management beyond stored bearer token.
 
-MVP focuses on normal text chat and tool-call streaming through `/chat/completions`.
+Current implementation focuses on normal text chat and tool-call streaming through `/chat/completions`.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `GitHub Copilot token required` | Missing token | Enter token in Settings |
+| `GitHub Copilot token required` | Missing token | Enter token or use **Authenticate with GitHub** in Settings |
+| `GitHub device flow expired` | User took too long or code reused | Start device flow again |
+| `GitHub Copilot OAuth not configured` | `EITRI_GITHUB_CLIENT_ID` missing | Set env var and restart Eitri |
 | `Provider authentication failed` | Token invalid, expired, lacks Copilot entitlement, or org policy blocks Copilot | Use valid Copilot-enabled token |
 | No models shown | Discovery failed or returned no picker-enabled chat models | Check token, base URL, enterprise endpoint, org policy |
 | Unsupported-provider error during chat | Selected model/endpoint lacks required streaming/tool-call behavior | Select different discovered chat model |

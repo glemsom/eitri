@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -44,18 +45,42 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 func newTestServerWithConfigPath(t *testing.T, workspace, configPath string) *httptest.Server {
 	t.Helper()
+	return newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath})
+}
+
+type testServerOptions struct {
+	configPath   string
+	copilotOAuth api.GitHubCopilotOAuthConfig
+}
+
+func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOptions) *httptest.Server {
+	t.Helper()
 	sessionMgr := session.NewManager(10)
 	skillsSvc := skills.NewService()
+	configPath := opts.configPath
+	if configPath == "" {
+		configPath = t.TempDir() + "/config.json"
+	}
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
+		CopilotOAuth:   opts.copilotOAuth,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return server
+}
+
+func extractCopilotFlowID(t *testing.T, body string) string {
+	t.Helper()
+	matches := regexp.MustCompile(`/api/providers/github_copilot/device-flow/([^"?]+)`).FindStringSubmatch(body)
+	if len(matches) != 2 {
+		t.Fatalf("response missing device-flow status URL: %s", body)
+	}
+	return matches[1]
 }
 
 func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server {
@@ -331,6 +356,239 @@ func TestPutConfigGitHubCopilotMissingToken(t *testing.T) {
 	}
 }
 
+func TestGitHubCopilotDeviceFlowStartAndPollSuccessSavesTokenAndLoadsModels(t *testing.T) {
+	var gotClientID string
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/device/code":
+			var reqBody map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+				t.Fatalf("decode device-code request: %v", err)
+			}
+			gotClientID, _ = reqBody["client_id"].(string)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"device_code":"device-123","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`)
+		case "/login/oauth/access_token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"access_token":"gho_device_token","token_type":"bearer","scope":"read:user"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer oauth.Close()
+
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer gho_device_token" {
+			t.Fatalf("Authorization = %q, want Bearer gho_device_token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer provider.Close()
+
+	configPath := t.TempDir() + "/config.json"
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		configPath: configPath,
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			ClientID:       "client-123",
+			DeviceCodeURL:  oauth.URL + "/login/device/code",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+	})
+
+	startForm := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {provider.URL},
+	}
+	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	startReq.Header.Set("HX-Request", "true")
+	startResp, err := http.DefaultClient.Do(startReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startResp.Body.Close()
+	if startResp.StatusCode != http.StatusOK {
+		t.Fatalf("device-flow start status = %d, want %d", startResp.StatusCode, http.StatusOK)
+	}
+	startBodyBytes, err := io.ReadAll(startResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startBody := string(startBodyBytes)
+	if gotClientID != "client-123" {
+		t.Fatalf("client_id = %q, want client-123", gotClientID)
+	}
+	if !strings.Contains(startBody, "ABCD-EFGH") || !strings.Contains(startBody, "https://github.com/login/device") {
+		t.Fatalf("start response missing device-flow instructions: %s", startBody)
+	}
+	cookies := startResp.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("start response missing browser cookie")
+	}
+
+	flowID := extractCopilotFlowID(t, startBody)
+	pollReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/providers/github_copilot/device-flow/"+flowID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollReq.AddCookie(cookies[0])
+	pollResp, err := http.DefaultClient.Do(pollReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pollResp.Body.Close()
+	if pollResp.StatusCode != http.StatusOK {
+		t.Fatalf("device-flow poll status = %d, want %d", pollResp.StatusCode, http.StatusOK)
+	}
+	pollBodyBytes, err := io.ReadAll(pollResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollBody := string(pollBodyBytes)
+	if !strings.Contains(pollBody, "gpt-4.1") {
+		t.Fatalf("poll response missing discovered model: %s", pollBody)
+	}
+	if !strings.Contains(pollBody, "GitHub Copilot connected") {
+		t.Fatalf("poll response missing success status: %s", pollBody)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Provider != "github_copilot" {
+		t.Fatalf("saved provider = %q, want github_copilot", cfg.Provider)
+	}
+	if cfg.BaseURL != provider.URL {
+		t.Fatalf("saved base_url = %q, want %q", cfg.BaseURL, provider.URL)
+	}
+	if cfg.APIKey != "gho_device_token" {
+		t.Fatalf("saved api_key = %q, want gho_device_token", cfg.APIKey)
+	}
+}
+
+func TestGitHubCopilotDeviceFlowStartWithoutClientIDShowsConfigError(t *testing.T) {
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{})
+	startForm := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {"https://api.githubcopilot.com"},
+	}
+	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	startReq.Header.Set("HX-Request", "true")
+	startResp, err := http.DefaultClient.Do(startReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startResp.Body.Close()
+	if startResp.StatusCode != http.StatusOK {
+		t.Fatalf("device-flow start status = %d, want %d", startResp.StatusCode, http.StatusOK)
+	}
+	bodyBytes, err := io.ReadAll(startResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(bodyBytes)
+	if !strings.Contains(body, "EITRI_GITHUB_CLIENT_ID") {
+		t.Fatalf("response missing client-id guidance: %s", body)
+	}
+}
+
+func TestGitHubCopilotDeviceFlowPollExpiredTokenShowsErrorAndDoesNotSaveToken(t *testing.T) {
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/device/code":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"device_code":"device-123","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`)
+		case "/login/oauth/access_token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"error":"expired_token"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer oauth.Close()
+
+	configPath := t.TempDir() + "/config.json"
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		configPath: configPath,
+		copilotOAuth: api.GitHubCopilotOAuthConfig{
+			ClientID:       "client-123",
+			DeviceCodeURL:  oauth.URL + "/login/device/code",
+			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
+		},
+	})
+
+	startForm := url.Values{
+		"provider": {"github_copilot"},
+		"base_url": {"https://api.githubcopilot.com"},
+	}
+	startReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/providers/github_copilot/device-flow/start", strings.NewReader(startForm.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	startReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	startReq.Header.Set("HX-Request", "true")
+	startResp, err := http.DefaultClient.Do(startReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer startResp.Body.Close()
+	startBodyBytes, err := io.ReadAll(startResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies := startResp.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("start response missing browser cookie")
+	}
+	flowID := extractCopilotFlowID(t, string(startBodyBytes))
+
+	pollReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/providers/github_copilot/device-flow/"+flowID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollReq.AddCookie(cookies[0])
+	pollResp, err := http.DefaultClient.Do(pollReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pollResp.Body.Close()
+	if pollResp.StatusCode != http.StatusOK {
+		t.Fatalf("device-flow poll status = %d, want %d", pollResp.StatusCode, http.StatusOK)
+	}
+	pollBodyBytes, err := io.ReadAll(pollResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pollBody := string(pollBodyBytes)
+	if !strings.Contains(pollBody, "expired") {
+		t.Fatalf("poll response missing expiry guidance: %s", pollBody)
+	}
+	if strings.Contains(pollBody, "/api/providers/github_copilot/device-flow/"+flowID) {
+		t.Fatalf("expired flow should stop polling: %s", pollBody)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKey != "" {
+		t.Fatalf("saved api_key = %q, want empty after expired flow", cfg.APIKey)
+	}
+}
+
 func TestSettingsIncludesGitHubCopilotProvider(t *testing.T) {
 	server := newTestServer(t)
 	resp, err := http.Get(server.URL + "/settings")
@@ -348,6 +606,9 @@ func TestSettingsIncludesGitHubCopilotProvider(t *testing.T) {
 	}
 	if !strings.Contains(content, "GitHub Copilot: bearer token required") {
 		t.Errorf("settings HTML missing Copilot token hint")
+	}
+	if !strings.Contains(content, "Authenticate with GitHub") {
+		t.Errorf("settings HTML missing GitHub device-flow action")
 	}
 }
 
