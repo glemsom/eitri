@@ -1428,6 +1428,73 @@ eitri-composer {
   margin-left: 0.5rem;
 }
 
+/* Settings collapsible sections */
+.settings-details {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  padding: 0.5rem 1rem;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.4rem 0;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.settings-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-details summary::before {
+  content: "\25B6";
+  font-size: 0.7rem;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  color: var(--text-muted);
+}
+
+.settings-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.settings-details summary:hover {
+  color: var(--text);
+}
+
+.settings-details summary:hover::before {
+  color: var(--accent);
+}
+
+/* System prompt textarea: monospace + pre-wrap */
+.monospace-textarea {
+  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 0.9rem;
+  resize: vertical;
+  white-space: pre-wrap;
+  min-height: 120px;
+}
+
+/* Char count below textarea */
+.char-count-wrapper {
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.char-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+}
+
 /* Form-actions sticky on desktop */
 @media (min-width: 769px) {
   .form-actions {

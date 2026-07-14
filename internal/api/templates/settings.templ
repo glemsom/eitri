@@ -81,18 +81,21 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 			</fieldset>
 
-			<fieldset>
-				<legend>Prompt</legend>
+			<details class="settings-details">
+				<summary><span>Prompt</span></summary>
 
 				<div class="form-group">
 					<label for="system_prompt">System Prompt</label>
-					<textarea id="system_prompt" name="system_prompt" rows="8" placeholder="Leave empty to use built-in default prompt.">{ cfg.SystemPrompt }</textarea>
+					<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="8" placeholder="Leave empty to use built-in default prompt.">{ cfg.SystemPrompt }</textarea>
+					<div class="char-count-wrapper">
+						<small class="char-count" id="prompt-char-count">{ len(cfg.SystemPrompt) } / 4096 chars</small>
+					</div>
 					<small class="hint">Applies to later runs only. Clear value to restore built-in default prompt.</small>
 				</div>
-			</fieldset>
+			</details>
 
-			<fieldset>
-				<legend>Timeouts & Limits</legend>
+			<details class="settings-details">
+				<summary><span>Timeouts &amp; Limits</span></summary>
 
 				<div class="form-group">
 					<label for="session_timeout">Session Timeout (seconds)</label>
@@ -113,7 +116,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					<label for="context_window_tokens">Context Window Tokens</label>
 					<input type="number" id="context_window_tokens" name="context_window_tokens" value={ cfg.ContextWindowTokens } min="1024" required/>
 				</div>
-			</fieldset>
+			</details>
 
 			<div class="form-actions">
 				<button type="submit">Save</button>
