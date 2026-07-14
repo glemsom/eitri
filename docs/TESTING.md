@@ -269,8 +269,8 @@ Because Agent Skills are v1 scope, release readiness requires tests for:
 - Fixed discovery roots and precedence (`project-eitri` > `project-agents` > `user-eitri` > `user-agents`).
 - Shadowing by duplicate `name`.
 - Lenient validation hard skips vs warnings.
-- `/skills`, `/api/skills`, and `/api/skills/refresh` contracts.
-- `activate_skill` accepting only effective loaded skills, deduping per session, and enforcing 200KB body cap.
+- `/skills`, `/api/skills`, and `/api/skills/refresh` contracts, including refresh-trigger behavior and surfaced diagnostics for malformed/unreadable Skills.
+- `activate_skill` accepting only refreshed effective loaded skills, deduping per session, and enforcing 200KB body cap.
 - Resource manifest cap and depth behavior.
 - `file_viewer` path validation for workspace + skill directories, including path-escape rejection.
 - `file_editor` remaining workspace-only.

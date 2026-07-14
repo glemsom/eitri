@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -114,6 +115,69 @@ func newTestServerWithSessionManager(t *testing.T, workspace string, sessionMgr 
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return server
+}
+
+func newTestServerWithSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *httptest.Server {
+	t.Helper()
+	sessionMgr := session.NewManager(10)
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server
+}
+
+func createSessionForBrowser(t *testing.T, server *httptest.Server, client *http.Client) (string, *http.Cookie) {
+	t.Helper()
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("create session root request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("browser_id cookie missing")
+	}
+
+	sessionID := strings.TrimPrefix(resp.Header.Get("Location"), "/sessions/")
+	if sessionID == "" {
+		t.Fatal("session id missing from redirect")
+	}
+	return sessionID, browserCookie
+}
+
+func writeSkill(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	content := "---\nname: " + name + "\ndescription: Test skill " + name + "\n---\n" + body
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	return dir
+}
+
+func writeSkillMD(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
 }
 
 type mutableProviderServer struct {
@@ -2195,6 +2259,153 @@ func TestAPISkillsEndpoint(t *testing.T) {
 
 	if _, ok := body["skills"]; !ok {
 		t.Errorf("response missing 'skills' field")
+	}
+}
+
+func TestSkillsEndpointRefreshesRegistry(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	writeSkill(t, filepath.Join(rootDir, "fresh-skill"), "fresh-skill", "# Fresh")
+
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "fresh-skill") {
+		t.Fatalf("GET /skills body missing refreshed skill: %s", string(body))
+	}
+}
+
+func TestSkillsEndpointShowsInvalidSkillDiagnostics(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	writeSkillMD(t, filepath.Join(rootDir, "broken-skill"), "---\ndescription: missing name\n---\nBody")
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+	for _, want := range []string{"Invalid Skills", "broken-skill", "name field missing or empty"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("GET /skills missing %q in body: %s", want, content)
+		}
+	}
+}
+
+func TestCompleteSkillsRefreshesRegistry(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+	client := noRedirectClient()
+
+	sessionID, browserCookie := createSessionForBrowser(t, server, client)
+	writeSkill(t, filepath.Join(rootDir, "code-review"), "code-review", "# Review")
+
+	req, _ := http.NewRequest("GET", server.URL+"/api/sessions/"+sessionID+"/complete/skills?q=code", nil)
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /complete/skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		Items []struct {
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 1 || body.Items[0].Name != "code-review" {
+		t.Fatalf("completion items = %#v, want refreshed code-review", body.Items)
+	}
+}
+
+func TestActivateSessionSkillUsesRefreshedRegistry(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+	client := noRedirectClient()
+
+	sessionID, browserCookie := createSessionForBrowser(t, server, client)
+	writeSkill(t, filepath.Join(rootDir, "code-review"), "code-review", "# Review")
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/skills/code-review/activate", nil)
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("activate status = %d, want %d, body=%s", resp.StatusCode, http.StatusOK, string(body))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "code-review") {
+		t.Fatalf("activate response missing refreshed skill chip: %s", string(body))
+	}
+}
+
+func TestChatSlashActivationRefreshesRegistryAtRunStart(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+	client := noRedirectClient()
+
+	sessionID, browserCookie := createSessionForBrowser(t, server, client)
+	writeSkill(t, filepath.Join(rootDir, "code-review"), "code-review", "# Review")
+
+	form := url.Values{"message": {"/code-review"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/chat", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("slash activation status = %d, want %d, body=%s", resp.StatusCode, http.StatusOK, string(body))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "code-review") {
+		t.Fatalf("slash activation response missing refreshed skill chip: %s", string(body))
 	}
 }
 

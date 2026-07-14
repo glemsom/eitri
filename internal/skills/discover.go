@@ -71,11 +71,27 @@ func discoverRoot(root Root) ([]*Skill, Diagnostics) {
 		if skill != nil {
 			skill.Scope = root.Scope
 			skills = append(skills, skill)
+		} else if HasSeverity(skillDiags, SeverityError) && !hasMissingSkillMD(skillDiags) {
+			skills = append(skills, &Skill{
+				Name:   entry.Name(),
+				Path:   skillDir,
+				Scope:  root.Scope,
+				Status: StatusInvalid,
+			})
 		}
 		diags = append(diags, skillDiags...)
 	}
 
 	return skills, diags
+}
+
+func hasMissingSkillMD(diags Diagnostics) bool {
+	for _, diag := range diags {
+		if diag.Message == "SKILL.md not found" {
+			return true
+		}
+	}
+	return false
 }
 
 // defaultRoots returns the default skill discovery roots with scope assignment.
