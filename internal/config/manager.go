@@ -27,7 +27,7 @@ type Config struct {
 
 // Defaults returns a Config with default values.
 func Defaults() Config {
-	prof := provider.MustGet("opencode_go")
+	prof := provider.MustDescribe("opencode_go")
 	return Config{
 		Provider:            prof.ID,
 		BaseURL:             prof.DefaultBaseURL,
@@ -81,17 +81,11 @@ func Save(path string, cfg *Config) error {
 // Validate checks field-level constraints per SPEC §7.2.
 // Returns a descriptive error for the first violation found.
 func Validate(cfg *Config) error {
-	prof, err := provider.Get(cfg.Provider)
-	if err != nil {
+	if _, err := provider.Describe(cfg.Provider); err != nil {
 		return fmt.Errorf("provider must be one of %s, got %q", strings.Join(provider.IDs(), ", "), cfg.Provider)
 	}
-
-	resolvedAuth, err := provider.ResolveAuth(cfg.Provider, cfg.APIKey, cfg.ProviderAuth)
-	if err != nil {
+	if err := provider.ValidateCredentials(cfg.Provider, cfg.APIKey, cfg.ProviderAuth); err != nil {
 		return err
-	}
-	if prof.APIKeyRequired && resolvedAuth.APIKey == "" {
-		return fmt.Errorf("%s is required for provider %q", prof.RequiredCredentialName(), cfg.Provider)
 	}
 
 	if cfg.BaseURL != "" {
@@ -209,7 +203,7 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 			result.Model = ""
 		}
 		if shouldResetBaseURLOnProviderSwitch(base.Provider, result.Provider, base.BaseURL, baseURLPatched, baseURLPatch) {
-			if prof, err := provider.Get(result.Provider); err == nil {
+			if prof, err := provider.Describe(result.Provider); err == nil {
 				result.BaseURL = prof.DefaultBaseURL
 			}
 		}
@@ -229,7 +223,7 @@ func clearAPIKeyRequested(v interface{}) bool {
 }
 
 func normalizeProviderAuth(providerID, apiKey string, raw json.RawMessage) json.RawMessage {
-	normalized, err := provider.NormalizeAuthState(providerID, apiKey, raw)
+	normalized, err := provider.NormalizeConfigAuthState(providerID, apiKey, raw)
 	if err != nil {
 		return cloneRawMessage(raw)
 	}
@@ -246,8 +240,8 @@ func cloneRawMessage(raw json.RawMessage) json.RawMessage {
 }
 
 func shouldResetBaseURLOnProviderSwitch(oldProviderID, newProviderID, oldBaseURL string, baseURLPatched bool, baseURLPatch string) bool {
-	oldProf, oldErr := provider.Get(oldProviderID)
-	if _, err := provider.Get(newProviderID); err != nil {
+	oldProf, oldErr := provider.Describe(oldProviderID)
+	if _, err := provider.Describe(newProviderID); err != nil {
 		return false
 	}
 

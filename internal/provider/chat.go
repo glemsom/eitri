@@ -40,7 +40,7 @@ func NewChatModel(ctx context.Context, req ChatRequest, opts ChatOptions) (*Chat
 	if req.Model == "" {
 		return nil, fmt.Errorf("model is required")
 	}
-	prof, err := Get(req.ProviderID)
+	prof, err := getProfile(req.ProviderID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func NewChatModel(ctx context.Context, req ChatRequest, opts ChatOptions) (*Chat
 	}
 
 	return &ChatResult{
-		Model:      NewOpenAIModelForProfile(req.Model, req.BaseURL, resolvedAuth.APIKey, prof, opts.HTTPClient),
+		Model:      newOpenAIModelForProfile(req.Model, req.BaseURL, resolvedAuth.APIKey, prof, opts.HTTPClient),
 		AuthUpdate: authUpdate,
 	}, nil
 }

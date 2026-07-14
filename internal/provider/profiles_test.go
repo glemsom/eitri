@@ -1,4 +1,4 @@
-package provider_test
+package provider
 
 import (
 	"context"
@@ -9,17 +9,15 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/glemsom/eitri/internal/provider"
 )
 
 func TestOpenAICompatibleProfilesBuildModelAndChatURLs(t *testing.T) {
 	t.Parallel()
 
 	for _, providerID := range []string{"opencode_go", "custom_openai"} {
-		prof, err := provider.Get(providerID)
+		prof, err := getProfile(providerID)
 		if err != nil {
-			t.Fatalf("Get(%q) error: %v", providerID, err)
+			t.Fatalf("getProfile(%q) error: %v", providerID, err)
 		}
 
 		if got := prof.ModelListURL("https://example.test/v1/"); got != "https://example.test/v1/models" {
@@ -34,7 +32,7 @@ func TestOpenAICompatibleProfilesBuildModelAndChatURLs(t *testing.T) {
 func TestOpenAICompatibleProfilesParseOpenAIModelList(t *testing.T) {
 	t.Parallel()
 
-	prof, err := provider.Get("custom_openai")
+	prof, err := getProfile("custom_openai")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +53,7 @@ func TestOpenAICompatibleProfilesParseOpenAIModelList(t *testing.T) {
 	}
 }
 
-func TestProfilesKeepExistingAPIKeyRequirements(t *testing.T) {
+func TestDescribe_ExposesCallerSafeMetadata(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
@@ -64,12 +62,12 @@ func TestProfilesKeepExistingAPIKeyRequirements(t *testing.T) {
 		"github_copilot": true,
 	}
 	for providerID, wantRequired := range cases {
-		prof, err := provider.Get(providerID)
+		desc, err := Describe(providerID)
 		if err != nil {
-			t.Fatalf("Get(%q) error: %v", providerID, err)
+			t.Fatalf("Describe(%q) error: %v", providerID, err)
 		}
-		if prof.APIKeyRequired != wantRequired {
-			t.Errorf("%s APIKeyRequired = %v, want %v", providerID, prof.APIKeyRequired, wantRequired)
+		if desc.APIKeyRequired != wantRequired {
+			t.Errorf("%s APIKeyRequired = %v, want %v", providerID, desc.APIKeyRequired, wantRequired)
 		}
 	}
 }
@@ -77,7 +75,7 @@ func TestProfilesKeepExistingAPIKeyRequirements(t *testing.T) {
 func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 	t.Parallel()
 
-	prof, err := provider.Get("github_copilot")
+	prof, err := getProfile("github_copilot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +112,7 @@ func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 func TestDefaultGitHubCopilotOAuthConfigUsesBuiltInClientID(t *testing.T) {
 	t.Setenv("EITRI_GITHUB_CLIENT_ID", "")
 
-	cfg := provider.DefaultGitHubCopilotOAuthConfig(provider.GitHubCopilotOAuthConfig{})
+	cfg := DefaultGitHubCopilotOAuthConfig(GitHubCopilotOAuthConfig{})
 	if cfg.ClientID == "" {
 		t.Fatal("ClientID = empty, want built-in default")
 	}
@@ -133,16 +131,16 @@ func TestDefaultGitHubCopilotOAuthConfigAllowsEnvOverride(t *testing.T) {
 	const want = "client-from-env"
 	t.Setenv("EITRI_GITHUB_CLIENT_ID", want)
 
-	cfg := provider.DefaultGitHubCopilotOAuthConfig(provider.GitHubCopilotOAuthConfig{})
+	cfg := DefaultGitHubCopilotOAuthConfig(GitHubCopilotOAuthConfig{})
 	if cfg.ClientID != want {
 		t.Fatalf("ClientID = %q, want %q", cfg.ClientID, want)
 	}
 }
 
-func TestResolveAuth_GitHubCopilotUsesProviderAuthState(t *testing.T) {
+func TestValidateCredentials_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	t.Parallel()
 
-	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+	raw, err := EncodeGitHubCopilotAuthState(GitHubCopilotAuthState{
 		AccessToken: "gho-provider-state",
 		TokenType:   "bearer",
 		Scope:       "read:user",
@@ -151,19 +149,15 @@ func TestResolveAuth_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
 	}
 
-	resolved, err := provider.ResolveAuth("github_copilot", "", raw)
-	if err != nil {
-		t.Fatalf("ResolveAuth error: %v", err)
-	}
-	if resolved.APIKey != "gho-provider-state" {
-		t.Fatalf("APIKey = %q, want gho-provider-state", resolved.APIKey)
+	if err := ValidateCredentials("github_copilot", "", raw); err != nil {
+		t.Fatalf("ValidateCredentials error: %v", err)
 	}
 
-	normalized, err := provider.NormalizeAuthState("github_copilot", "gho-manual", raw)
+	normalized, err := NormalizeConfigAuthState("github_copilot", "gho-manual", raw)
 	if err != nil {
-		t.Fatalf("NormalizeAuthState error: %v", err)
+		t.Fatalf("NormalizeConfigAuthState error: %v", err)
 	}
-	var state provider.GitHubCopilotAuthState
+	var state GitHubCopilotAuthState
 	if err := json.Unmarshal(normalized, &state); err != nil {
 		t.Fatalf("unmarshal normalized state: %v", err)
 	}
@@ -175,7 +169,7 @@ func TestResolveAuth_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
 	t.Parallel()
 
-	prof, err := provider.Get("github_copilot")
+	prof, err := getProfile("github_copilot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +218,7 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 	}))
 	defer oauth.Close()
 
-	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+	raw, err := EncodeGitHubCopilotAuthState(GitHubCopilotAuthState{
 		AccessToken:           "gho-expired",
 		TokenType:             "bearer",
 		Scope:                 "read:user",
@@ -238,9 +232,9 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 
 	var persistedAPIKey string
 	var persistedRaw json.RawMessage
-	resolved, err := provider.ResolveAuthForRequest(context.Background(), "github_copilot", "", raw, provider.ResolveAuthOptions{
+	resolved, err := resolveAuthForRequest(context.Background(), "github_copilot", "", raw, ResolveAuthOptions{
 		HTTPClient: http.DefaultClient,
-		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+		GitHubCopilotOAuth: GitHubCopilotOAuthConfig{
 			ClientID:       "client-id",
 			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
 		},
@@ -252,7 +246,7 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 		},
 	})
 	if err != nil {
-		t.Fatalf("ResolveAuthForRequest error: %v", err)
+		t.Fatalf("resolveAuthForRequest error: %v", err)
 	}
 	if resolved.APIKey != "gho-refreshed" {
 		t.Fatalf("APIKey = %q, want gho-refreshed", resolved.APIKey)
@@ -266,7 +260,7 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 	if persistedAPIKey != "gho-refreshed" {
 		t.Fatalf("persisted APIKey = %q, want gho-refreshed", persistedAPIKey)
 	}
-	var persistedState provider.GitHubCopilotAuthState
+	var persistedState GitHubCopilotAuthState
 	if err := json.Unmarshal(persistedRaw, &persistedState); err != nil {
 		t.Fatalf("unmarshal persisted state: %v", err)
 	}
@@ -281,6 +275,39 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 	}
 }
 
+func TestPollGitHubCopilotDeviceFlow_ReturnsCallerSafeStatusAndAuthUpdate(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode poll request: %v", err)
+		}
+		if body["grant_type"] != GitHubDeviceFlowGrantType {
+			t.Fatalf("grant_type = %q, want %q", body["grant_type"], GitHubDeviceFlowGrantType)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-device","token_type":"bearer","scope":"read:user"}`)
+	}))
+	defer oauth.Close()
+
+	result, err := PollGitHubCopilotDeviceFlow(context.Background(), http.DefaultClient, GitHubCopilotOAuthConfig{
+		ClientID:       "client-id",
+		AccessTokenURL: oauth.URL,
+	}, "device-123", now)
+	if err != nil {
+		t.Fatalf("PollGitHubCopilotDeviceFlow error: %v", err)
+	}
+	if result.Status != GitHubCopilotDeviceFlowAuthorized {
+		t.Fatalf("Status = %q, want %q", result.Status, GitHubCopilotDeviceFlowAuthorized)
+	}
+	if result.AuthUpdate == nil {
+		t.Fatal("AuthUpdate = nil, want value")
+	}
+	if result.AuthUpdate.APIKey != "gho-device" {
+		t.Fatalf("AuthUpdate.APIKey = %q, want gho-device", result.AuthUpdate.APIKey)
+	}
+}
+
 func TestResolveAuthForRequest_GitHubCopilotReturnsRefreshError(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +316,7 @@ func TestResolveAuthForRequest_GitHubCopilotReturnsRefreshError(t *testing.T) {
 	}))
 	defer oauth.Close()
 
-	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+	raw, err := EncodeGitHubCopilotAuthState(GitHubCopilotAuthState{
 		AccessToken:           "gho-expired",
 		TokenType:             "bearer",
 		Scope:                 "read:user",
@@ -301,16 +328,16 @@ func TestResolveAuthForRequest_GitHubCopilotReturnsRefreshError(t *testing.T) {
 		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
 	}
 
-	_, err = provider.ResolveAuthForRequest(context.Background(), "github_copilot", "", raw, provider.ResolveAuthOptions{
+	_, err = resolveAuthForRequest(context.Background(), "github_copilot", "", raw, ResolveAuthOptions{
 		HTTPClient: http.DefaultClient,
-		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+		GitHubCopilotOAuth: GitHubCopilotOAuthConfig{
 			ClientID:       "client-id",
 			AccessTokenURL: oauth.URL + "/login/oauth/access_token",
 		},
 		Now: now,
 	})
 	if err == nil {
-		t.Fatal("ResolveAuthForRequest error = nil, want refresh failure")
+		t.Fatal("resolveAuthForRequest error = nil, want refresh failure")
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "refresh") {
 		t.Fatalf("error = %q, want refresh failure", err.Error())

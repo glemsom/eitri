@@ -42,7 +42,7 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 	if req.BaseURL == "" {
 		return nil, fmt.Errorf("base_url is required")
 	}
-	prof, err := Get(req.ProviderID)
+	prof, err := getProfile(req.ProviderID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ type authResolveOptions struct {
 
 func resolveAuthWithUpdate(ctx context.Context, providerID, apiKey string, providerAuth json.RawMessage, opts authResolveOptions) (ResolvedAuth, *AuthUpdate, error) {
 	var update *AuthUpdate
-	resolved, err := ResolveAuthForRequest(ctx, providerID, apiKey, providerAuth, ResolveAuthOptions{
+	resolved, err := resolveAuthForRequest(ctx, providerID, apiKey, providerAuth, ResolveAuthOptions{
 		HTTPClient:         opts.HTTPClient,
 		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
 		Now:                opts.Now,
