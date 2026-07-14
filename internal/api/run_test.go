@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -256,6 +257,84 @@ func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("chat status = %d, want 200", resp.StatusCode)
 	}
+}
+
+func waitForRunToFinish(t *testing.T, runMgr *api.RunManager, sessionID string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if runMgr.ActiveRun(sessionID) == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("run %s did not finish", sessionID)
+}
+
+func waitForSessionMessageCount(t *testing.T, sessionMgr *session.Manager, sessionID string, want int) *session.UISession {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		sess := sessionMgr.Get(sessionID)
+		if sess != nil && len(sess.Messages) >= want {
+			return sess
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	sess := sessionMgr.Get(sessionID)
+	if sess == nil {
+		t.Fatalf("session %s missing", sessionID)
+	}
+	t.Fatalf("messages = %d, want at least %d", len(sess.Messages), want)
+	return nil
+}
+
+func fakeTwoTurnToolChatServer(t *testing.T, waitBeforeSecondTurn <-chan struct{}) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+
+	var chatCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			call := chatCalls.Add(1)
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			if call%2 == 1 {
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"terminal_execute","arguments":"{\"command\":\"echo hello\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			if waitBeforeSecondTurn != nil && call == 2 {
+				select {
+				case <-r.Context().Done():
+					return
+				case <-waitBeforeSecondTurn:
+				}
+			}
+
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"final answer after tool"},"index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &chatCalls
 }
 
 func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
@@ -529,6 +608,76 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	}
 	if saved.APIKey != "gho-refreshed" {
 		t.Fatalf("saved api_key = %q, want gho-refreshed", saved.APIKey)
+	}
+}
+
+func TestChatRun_MaxTurnsStopsAfterToolTurn(t *testing.T) {
+	llmSrv, chatCalls := fakeTwoTurnToolChatServer(t, nil)
+	h := newManagedTestServerWithRuns(t)
+	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","max_turns":1}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	waitForRunToFinish(t, h.runMgr, sessionID)
+
+	if got := chatCalls.Load(); got != 1 {
+		t.Fatalf("chat completion calls = %d, want 1", got)
+	}
+
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+	assistant := sess.Messages[1]
+	if assistant.Role != "assistant" {
+		t.Fatalf("assistant role = %q, want assistant", assistant.Role)
+	}
+	if !strings.Contains(assistant.Content, "max turns") {
+		t.Fatalf("assistant message = %q, want max-turn explanation", assistant.Content)
+	}
+	if !strings.Contains(assistant.Content, "1") {
+		t.Fatalf("assistant message = %q, want configured limit", assistant.Content)
+	}
+}
+
+func TestChatRun_MaxTurnsConfigChangesOnlyAffectLaterRuns(t *testing.T) {
+	secondTurnGate := make(chan struct{})
+	llmSrv, chatCalls := fakeTwoTurnToolChatServer(t, secondTurnGate)
+	h := newManagedTestServerWithRuns(t)
+	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","max_turns":2}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if chatCalls.Load() >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := chatCalls.Load(); got < 2 {
+		t.Fatalf("chat completion calls = %d, want second turn in progress", got)
+	}
+
+	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","max_turns":1}`, llmSrv.URL))
+	close(secondTurnGate)
+	waitForRunToFinish(t, h.runMgr, sessionID)
+
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+	if got := sess.Messages[1].Content; !strings.Contains(got, "final answer after tool") {
+		t.Fatalf("first run assistant message = %q, want final answer", got)
+	}
+	if strings.Contains(sess.Messages[1].Content, "max turns") {
+		t.Fatalf("first run assistant message = %q, want no max-turn warning", sess.Messages[1].Content)
+	}
+
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	waitForRunToFinish(t, h.runMgr, sessionID)
+	if got := chatCalls.Load(); got != 3 {
+		t.Fatalf("chat completion calls after second run = %d, want 3", got)
+	}
+
+	sess = waitForSessionMessageCount(t, h.sessionMgr, sessionID, 4)
+	if got := sess.Messages[3].Content; !strings.Contains(got, "max turns") {
+		t.Fatalf("second run assistant message = %q, want max-turn explanation", got)
 	}
 }
 
