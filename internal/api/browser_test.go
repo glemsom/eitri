@@ -643,19 +643,20 @@ func TestBrowser_AutoScroll(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait for SSE stream to complete
-	time.Sleep(1500 * time.Millisecond)
-
-	// Verify assistant message rendered (streaming completed)
+	// Poll for SSE stream to complete
+	deadline := time.Now().Add(4 * time.Second)
 	var assistantMsgExists bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.message-assistant') !== null`,
-			&assistantMsgExists,
-		),
-	)
-	if err != nil {
-		t.Fatalf("assistant message check failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('.message-assistant') !== null`,
+				&assistantMsgExists,
+			),
+		)
+		if err == nil && assistantMsgExists {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if !assistantMsgExists {
 		t.Error("assistant message should have rendered via SSE stream")
@@ -1501,16 +1502,17 @@ func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Wait for HTMX swap to complete
-	time.Sleep(600 * time.Millisecond)
-
-	// Verify card shows 'done' status
+	// Wait for HTMX swap to complete — poll for 'done' status
+	deadline = time.Now().Add(3 * time.Second)
 	var doneCard bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
-	)
-	if err != nil {
-		t.Fatalf("query done card status failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
+		)
+		if err == nil && doneCard {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !doneCard {
 		t.Fatal("tool card should show 'done' status after tool_result")
@@ -2465,18 +2467,22 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Wait for tool cards container to appear
-	time.Sleep(500 * time.Millisecond)
-
-	// Verify tool-cards-container exists
+	// Poll for tool cards container to appear
+	deadline := time.Now().Add(3 * time.Second)
 	var toolCardsContainerExists bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`document.getElementById('tool-cards-`+sessionID+`') !== null`,
-			&toolCardsContainerExists,
-		),
-	)
-	if err != nil || !toolCardsContainerExists {
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.getElementById('tool-cards-`+sessionID+`') !== null`,
+				&toolCardsContainerExists,
+			),
+		)
+		if err == nil && toolCardsContainerExists {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !toolCardsContainerExists {
 		t.Fatalf("tool-cards-container not found: err=%v exists=%v", err, toolCardsContainerExists)
 	}
 
@@ -2507,23 +2513,27 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("emit token failed: %v", err)
 	}
 
-	// Wait for streaming to appear
-	time.Sleep(500 * time.Millisecond)
-
-	// Verify #streaming exists and is before scroll-sentinel
+	// Poll for streaming to appear
+	deadline = time.Now().Add(3 * time.Second)
 	var streamingBeforeSentinel bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var messages = document.getElementById('messages');
-			var sentinel = document.getElementById('scroll-sentinel');
-			var streaming = document.getElementById('streaming');
-			if (!messages || !sentinel || !streaming) return false;
-			var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
-			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
-			return streamingIdx >= 0 && sentinelIdx > streamingIdx;
-		})()`, &streamingBeforeSentinel),
-	)
-	if err != nil || !streamingBeforeSentinel {
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var messages = document.getElementById('messages');
+				var sentinel = document.getElementById('scroll-sentinel');
+				var streaming = document.getElementById('streaming');
+				if (!messages || !sentinel || !streaming) return false;
+				var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
+				var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
+				return streamingIdx >= 0 && sentinelIdx > streamingIdx;
+			})()`, &streamingBeforeSentinel),
+		)
+		if err == nil && streamingBeforeSentinel {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !streamingBeforeSentinel {
 		t.Fatalf("streaming should be before scroll-sentinel: err=%v beforeSentinel=%v", err, streamingBeforeSentinel)
 	}
 
@@ -2617,22 +2627,59 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 		}
 	}
 
-	// Wait for HTMX swaps to settle
-	time.Sleep(800 * time.Millisecond)
+	// Poll for HTMX swaps to complete — all 3 slots must show 'done' status
+	deadline := time.Now().Add(3 * time.Second)
+	var allDone bool
+	for time.Now().Before(deadline) {
+		var slotIDs []string
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var slots = document.querySelectorAll('.tool-call-container');
+				return Array.from(slots).map(function(s) { return s.getAttribute('data-tool-id'); });
+			})()`, &slotIDs),
+		)
+		if err != nil {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		if len(slotIDs) != 3 {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
 
-	// Verify there are exactly 3 tool-call-container slots (one per tool)
-	var slotCount int
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelectorAll('.tool-call-container').length`, &slotCount),
-	)
-	if err != nil {
-		t.Fatalf("query slot count failed: %v", err)
+		allDone = true
+		for _, id := range slotIDs {
+			var hasDone bool
+			err = chromedp.Run(ctx,
+				chromedp.EvaluateAsDevTools(
+					`document.querySelector('[data-tool-id="`+id+`"] .tool-status') !== null &&
+					 document.querySelector('[data-tool-id="`+id+`"] .tool-status').textContent === 'done'`,
+					&hasDone,
+				),
+			)
+			if err != nil || !hasDone {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if slotCount != 3 {
-		t.Fatalf("expected 3 tool-call-container slots, got %d", slotCount)
+	if !allDone {
+		// Dump debug info on failure
+		var debugHTML string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var c = document.getElementById('tool-cards-`+sessionID+`');
+				return c ? c.innerHTML : 'no container';
+			})()`, &debugHTML),
+		)
+		t.Fatalf("tool cards did not show 'done' within deadline; container HTML: %s", debugHTML)
 	}
 
-	// Verify each slot has data-tool-id
+	// Verify each slot has a unique data-tool-id
 	var slotIDs []string
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
@@ -2646,32 +2693,12 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 	if len(slotIDs) != 3 {
 		t.Fatalf("expected 3 slot IDs, got %d", len(slotIDs))
 	}
-
-	// Verify each slot has a unique data-tool-id
 	seen := make(map[string]bool)
 	for _, id := range slotIDs {
 		if seen[id] {
 			t.Fatalf("duplicate data-tool-id: %s", id)
 		}
 		seen[id] = true
-	}
-
-	// Verify each slot contains rendered tool-result content (tool name + "done" status)
-	for _, id := range slotIDs {
-		var hasDone bool
-		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(
-				`document.querySelector('[data-tool-id="`+id+`"] .tool-status') !== null &&
-				 document.querySelector('[data-tool-id="`+id+`"] .tool-status').textContent === 'done'`,
-				&hasDone,
-			),
-		)
-		if err != nil {
-			t.Fatalf("query slot %s content failed: %v", id, err)
-		}
-		if !hasDone {
-			t.Errorf("slot %s should show 'done' status", id)
-		}
 	}
 
 	// Verify tool-cards-container appears before scroll-sentinel
@@ -2916,19 +2943,20 @@ func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
 	if !hasTokenContent {
 		t.Error("streaming tokens should have content in #messages scroll container")
 	}
-	// Wait for streaming to complete
-	time.Sleep(1500 * time.Millisecond)
-
-	// Verify assistant message rendered (stream complete)
+	// Poll for streaming to complete
+	deadline := time.Now().Add(4 * time.Second)
 	assistantMsgExists := false
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.message-assistant') !== null`,
-			&assistantMsgExists,
-		),
-	)
-	if err != nil {
-		t.Fatalf("assistant message check failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('.message-assistant') !== null`,
+				&assistantMsgExists,
+			),
+		)
+		if err == nil && assistantMsgExists {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if !assistantMsgExists {
 		t.Error("assistant message should have rendered via SSE stream")
@@ -3180,16 +3208,17 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Wait for HTMX swap to complete
-	time.Sleep(600 * time.Millisecond)
-
-	// Verify card shows 'done' status (HTMX morph worked)
+	// Wait for HTMX swap to complete — poll for 'done' status
+	deadline = time.Now().Add(3 * time.Second)
 	var doneCard bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
-	)
-	if err != nil {
-		t.Fatalf("query done card status failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
+		)
+		if err == nil && doneCard {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !doneCard {
 		t.Fatal("tool card should show 'done' status after tool_result via HTMX morph")
@@ -3203,16 +3232,17 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Fatalf("emit done failed: %v", err)
 	}
 
-	// Wait for finalizeMessage to replace streaming bubble
-	time.Sleep(1500 * time.Millisecond)
-
-	// Verify streaming bubble was replaced by final markdown (no #streaming element)
+	// Poll for finalizeMessage to replace streaming bubble
+	deadline = time.Now().Add(3 * time.Second)
 	var streamingReplaced bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('streaming') === null`, &streamingReplaced),
-	)
-	if err != nil {
-		t.Fatalf("check streaming replaced failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') === null`, &streamingReplaced),
+		)
+		if err == nil && streamingReplaced {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !streamingReplaced {
 		t.Error("streaming element should be replaced by final markdown (outerHTML swap)")
@@ -3361,18 +3391,20 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 		t.Error("scroll-sentinel should have dimensions for IntersectionObserver to fire")
 	}
 
-	// Verify run completes
-	time.Sleep(1500 * time.Millisecond)
-
+	// Poll for run completion
+	deadline := time.Now().Add(3 * time.Second)
 	var finalDone bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var indicator = document.getElementById('stream-indicator');
-			return indicator && indicator.textContent.trim() === 'Done';
-		})()`, &finalDone),
-	)
-	if err != nil {
-		t.Fatalf("check final status failed: %v", err)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var indicator = document.getElementById('stream-indicator');
+				return indicator && indicator.textContent.trim() === 'Done';
+			})()`, &finalDone),
+		)
+		if err == nil && finalDone {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	if !finalDone {
 		t.Error("run should reach Done status")
