@@ -245,6 +245,10 @@ func (m *OpenAIModel) toOpenAIReq(req *model.LLMRequest, stream bool) *openAIReq
 	if m.profile.supportsPromptCache && m.SessionID != "" {
 		cacheKey = m.SessionID
 	}
+	// Clamp session ID to 64 characters (defensive guard for provider limits)
+	if len(cacheKey) > 64 {
+		cacheKey = cacheKey[:64]
+	}
 
 	return &openAIReq{
 		Model:          m.name,

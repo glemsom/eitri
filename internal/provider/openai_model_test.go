@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"google.golang.org/adk/v2/model"
@@ -176,6 +177,156 @@ func TestPromptCacheKey_JSONSerializePresentWhenSet(t *testing.T) {
 	}
 	if v != "session-xyz" {
 		t.Errorf("prompt_cache_key = %q, want %q", v, "session-xyz")
+	}
+}
+
+func TestPromptCacheKey_SessionIDClampedTo64Chars(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	prof, err := getProfile("opencode_go")
+	if err != nil {
+		t.Fatalf("getProfile error: %v", err)
+	}
+
+	m := newOpenAIModelForProfile("gpt-4", srv.URL, "sk-test", prof, nil)
+	m.MaxRetries = 0
+	// 80-char session ID — should be truncated to 64
+	longID := "session-" + strings.Repeat("x", 72)
+	m.SessionID = longID
+
+	_, err = collectTestResponses(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody == nil {
+		t.Fatal("server did not receive request body")
+	}
+	v, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from request body")
+	}
+	cacheKey, ok := v.(string)
+	if !ok {
+		t.Fatalf("prompt_cache_key is not a string: %T", v)
+	}
+	if len(cacheKey) > 64 {
+		t.Errorf("prompt_cache_key length = %d, want <= 64", len(cacheKey))
+	}
+	if len(cacheKey) != 64 {
+		t.Errorf("prompt_cache_key length = %d, want exactly 64 (clamped from 80)", len(cacheKey))
+	}
+	if cacheKey != longID[:64] {
+		t.Errorf("prompt_cache_key = %q, want first 64 chars of session ID", cacheKey)
+	}
+}
+
+func TestPromptCacheKey_ShortSessionIDNotClamped(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	prof, err := getProfile("opencode_go")
+	if err != nil {
+		t.Fatalf("getProfile error: %v", err)
+	}
+
+	m := newOpenAIModelForProfile("gpt-4", srv.URL, "sk-test", prof, nil)
+	m.MaxRetries = 0
+	// 40-char session ID — within 64-char limit, should not be truncated
+	shortID := "session-" + strings.Repeat("y", 32)
+	m.SessionID = shortID
+
+	_, err = collectTestResponses(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody == nil {
+		t.Fatal("server did not receive request body")
+	}
+	v, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from request body")
+	}
+	if v != shortID {
+		t.Errorf("prompt_cache_key = %q, want %q (no clamping needed)", v, shortID)
+	}
+}
+
+func TestPromptCacheKey_ASCIIOnly(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	prof, err := getProfile("opencode_go")
+	if err != nil {
+		t.Fatalf("getProfile error: %v", err)
+	}
+
+	m := newOpenAIModelForProfile("gpt-4", srv.URL, "sk-test", prof, nil)
+	m.MaxRetries = 0
+	m.SessionID = "session-abc-123"
+
+	_, err = collectTestResponses(m.GenerateContent(context.Background(), &model.LLMRequest{
+		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
+	}, true))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody == nil {
+		t.Fatal("server did not receive request body")
+	}
+	v, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from request body")
+	}
+	cacheKey, ok := v.(string)
+	if !ok {
+		t.Fatalf("prompt_cache_key is not a string: %T", v)
+	}
+	if cacheKey == "" {
+		t.Fatal("prompt_cache_key is empty, want non-empty")
+	}
+	// Verify all characters are printable ASCII (no high bytes or control chars except tabs/newlines, but cache key is plaintext)
+	for i, c := range cacheKey {
+		if c < 32 || c > 126 {
+			t.Errorf("prompt_cache_key[%d] = %q (0x%x) is not printable ASCII", i, c, c)
+		}
 	}
 }
 
