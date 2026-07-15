@@ -26,6 +26,11 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
+// sessionIDSetter is an optional interface for models that support prompt caching via session ID.
+type sessionIDSetter interface {
+	SetSessionID(string) *provider.OpenAIModel
+}
+
 // SSEEvent represents one SSE data packet sent to the browser.
 type SSEEvent struct {
 	Type      string      `json:"type"`
@@ -262,6 +267,11 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 	if chatResult.AuthUpdate != nil {
 		effectiveAPIKey = chatResult.AuthUpdate.APIKey
 		effectiveProviderAuth = append(json.RawMessage(nil), chatResult.AuthUpdate.ProviderAuth...)
+	}
+
+	// Set session ID on model for prompt caching before skill context wrapping.
+	if setter, ok := chatResult.Model.(sessionIDSetter); ok {
+		chatResult.Model = setter.SetSessionID(sessionID)
 	}
 
 	llm := newSkillContextLLM(chatResult.Model, skillCtx.Activations)
