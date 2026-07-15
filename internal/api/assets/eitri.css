@@ -601,6 +601,13 @@ noscript {
   color: var(--text-muted);
 }
 
+.tool-elapsed {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .tool-args,
 .tool-output {
   padding: 0.5rem 0.75rem;

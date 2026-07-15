@@ -1,9 +1,10 @@
 package templates
 
 // ToolCard renders a unified tool card with status-based rendering.
-// When status="running", shows tool name + args + "running..." indicator.
-// When status="done", shows tool name + output + "done" indicator.
-templ ToolCard(toolCallKey string, toolName string, args string, output string, status string) {
+// When status="running", shows tool name + args + "running..." indicator + live elapsed timer.
+// When status="done", shows tool name + output + "done" indicator + final elapsed time.
+// elapsed is the final elapsed time string (e.g. "↑ 1.2s", "↑ 2m 13s"), empty for running cards.
+templ ToolCard(toolCallKey string, toolName string, args string, output string, status string, elapsed string) {
 	<div class="tool-card tool-{ status }" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
 		<div class="tool-card-header">
 			if status == "running" {
@@ -16,6 +17,11 @@ templ ToolCard(toolCallKey string, toolName string, args string, output string, 
 				<span class="tool-status">running...</span>
 			} else {
 				<span class="tool-status">done</span>
+			}
+			if elapsed != "" {
+				<span class="tool-elapsed">{ elapsed }</span>
+			} else if status == "running" {
+				<span class="tool-elapsed" data-tool-elapsed={ toolCallKey }></span>
 			}
 		</div>
 		if status == "running" && args != "" {
