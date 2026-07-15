@@ -264,7 +264,8 @@ main {
   margin-top: 0.25rem;
 }
 
-.dropdown:hover .dropdown-content,
+.gear-btn:hover + .dropdown-content,
+.dropdown-content:hover,
 .dropdown:focus-within .dropdown-content {
   display: block;
 }
