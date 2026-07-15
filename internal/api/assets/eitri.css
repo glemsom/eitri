@@ -620,6 +620,10 @@ noscript {
   max-width: 85%;
 }
 
+.tool-call-container {
+  margin-top: 0.5rem;
+}
+
 /* Streaming indicator */
 .stream-indicator {
   display: inline-flex;
