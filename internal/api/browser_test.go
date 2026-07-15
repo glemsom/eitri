@@ -2579,6 +2579,156 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 	}
 }
 
+// TestBrowser_ToolCardMorphInPlace verifies that sequential tool results for the same tool
+// update the existing tool card slot in-place rather than appending new DOM nodes.
+func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	var sessionID string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit open failed: %v", err)
+	}
+
+	// Emit three sequential tool_calls
+	for i, cmd := range []string{"echo first", "echo second", "echo third"} {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: "`+cmd+`"}})`,
+				nil,
+			),
+		)
+		if err != nil {
+			t.Fatalf("emit tool_call %d failed: %v", i, err)
+		}
+
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: "output " + "`+cmd+`"})`,
+				nil,
+			),
+		)
+		if err != nil {
+			t.Fatalf("emit tool_result %d failed: %v", i, err)
+		}
+	}
+
+	// Wait for HTMX swaps to settle
+	time.Sleep(800 * time.Millisecond)
+
+	// Verify there are exactly 3 tool-call-container slots (one per tool)
+	var slotCount int
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelectorAll('.tool-call-container').length`, &slotCount),
+	)
+	if err != nil {
+		t.Fatalf("query slot count failed: %v", err)
+	}
+	if slotCount != 3 {
+		t.Fatalf("expected 3 tool-call-container slots, got %d", slotCount)
+	}
+
+	// Verify each slot has data-tool-id
+	var slotIDs []string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var slots = document.querySelectorAll('.tool-call-container');
+			return Array.from(slots).map(function(s) { return s.getAttribute('data-tool-id'); });
+		})()`, &slotIDs),
+	)
+	if err != nil {
+		t.Fatalf("query slot IDs failed: %v", err)
+	}
+	if len(slotIDs) != 3 {
+		t.Fatalf("expected 3 slot IDs, got %d", len(slotIDs))
+	}
+
+	// Verify each slot has a unique data-tool-id
+	seen := make(map[string]bool)
+	for _, id := range slotIDs {
+		if seen[id] {
+			t.Fatalf("duplicate data-tool-id: %s", id)
+		}
+		seen[id] = true
+	}
+
+	// Verify each slot contains rendered tool-result content (tool name + "done" status)
+	for _, id := range slotIDs {
+		var hasDone bool
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('[data-tool-id="`+id+`"] .tool-status') !== null &&
+				 document.querySelector('[data-tool-id="`+id+`"] .tool-status').textContent === 'done'`,
+				&hasDone,
+			),
+		)
+		if err != nil {
+			t.Fatalf("query slot %s content failed: %v", id, err)
+		}
+		if !hasDone {
+			t.Errorf("slot %s should show 'done' status", id)
+		}
+	}
+
+	// Verify tool-cards-container appears before scroll-sentinel
+	var cardsBeforeSentinel bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			var sentinel = document.getElementById('scroll-sentinel');
+			var cards = document.getElementById('tool-cards-`+sessionID+`');
+			if (!messages || !sentinel || !cards) return false;
+			var cardsIdx = Array.prototype.indexOf.call(messages.children, cards);
+			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
+			return cardsIdx >= 0 && sentinelIdx > cardsIdx;
+		})()`, &cardsBeforeSentinel),
+	)
+	if err != nil {
+		t.Fatalf("query cards before sentinel failed: %v", err)
+	}
+	if !cardsBeforeSentinel {
+		t.Error("tool-cards-container should appear before scroll-sentinel")
+	}
+}
+
 // TestBrowser_SettingsSaveErrorAutoScroll verifies that after a failed config save,
 // the page auto-scrolls to the error toast.
 func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {

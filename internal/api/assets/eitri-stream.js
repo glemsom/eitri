@@ -548,33 +548,48 @@
     const messages = document.getElementById('messages');
     if (!messages) return;
 
+    // Compute toolCallKey matching activity panel tracking
+    var toolCallKey = sessionId + '-tool-' + (activityToolCount - 1);
+
     const formData = new FormData();
     formData.append('type', type);
     formData.append('tool', packet.tool || packet.name || '');
+    formData.append('tool_call_key', toolCallKey);
     if (packet.args) formData.append('args', JSON.stringify(packet.args));
     if (packet.output) formData.append('output', String(packet.output));
     if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
 
-    const targetId = 'tool-cards-' + sessionId;
-    let target = document.getElementById(targetId);
-    if (!target) {
-      target = document.createElement('div');
-      target.id = targetId;
-      target.className = 'tool-cards-container';
+    const containerId = 'tool-cards-' + sessionId;
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      container.className = 'tool-cards-container';
       // Insert before scroll-sentinel (always present as absolute end marker)
       // so tool cards appear before assistant response and never above user message.
       var sentinel = document.getElementById('scroll-sentinel');
       if (sentinel && sentinel.parentNode === messages) {
-        messages.insertBefore(target, sentinel);
+        messages.insertBefore(container, sentinel);
       } else {
-        messages.appendChild(target);
+        messages.appendChild(container);
       }
     }
 
+    // Check if a tool card slot exists for this toolCallKey
+    var slot = container.querySelector('[data-tool-id="' + toolCallKey + '"]');
+    if (!slot) {
+      // Create new container slot on first tool_result for this tool
+      slot = document.createElement('div');
+      slot.className = 'tool-call-container';
+      slot.setAttribute('data-tool-id', toolCallKey);
+      container.appendChild(slot);
+    }
+
+    // Always update innerHTML of the slot via HTMX (morph in place)
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
       source: document.body,
-      target: '#' + targetId,
-      swap: 'beforeend',
+      target: '#' + CSS.escape(slot.id || (slot.id = toolCallKey)),
+      swap: 'innerHTML',
       values: Object.fromEntries(formData),
     });
   }
