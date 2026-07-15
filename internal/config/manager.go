@@ -11,7 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// Config represents the Eitri configuration per SPEC §7.1.
+// Config represents the Eitri configuration schema.
 type Config struct {
 	Provider            string          `json:"provider"`
 	APIKey              string          `json:"api_key"`
@@ -78,7 +78,7 @@ func Save(path string, cfg *Config) error {
 	return os.Rename(tmpPath, path)
 }
 
-// Validate checks field-level constraints per SPEC §7.2.
+// Validate checks field-level constraints.
 // Returns a descriptive error for the first violation found.
 func Validate(cfg *Config) error {
 	if _, err := provider.Describe(cfg.Provider); err != nil {
@@ -126,7 +126,7 @@ func ValidateSelectedModel(cfg *Config, models []string) error {
 	return fmt.Errorf("selected model %q is no longer available; choose another discovered model", cfg.Model)
 }
 
-// MaskAPIKey returns a masked version of the API key per SPEC §7.2:
+// MaskAPIKey returns a masked version of the API key:
 // first 5 chars + "..." + last 3 chars. If key is too short, returns as-is.
 func MaskAPIKey(key string) string {
 	if len(key) <= 8 {

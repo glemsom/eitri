@@ -25,7 +25,7 @@ func TestLoadDefaultsWhenFileMissing(t *testing.T) {
 		t.Fatalf("Load() = %v, want nil for missing file", err)
 	}
 
-	// Defaults per SPEC §7.1
+	// Default config values
 	if cfg.Provider != "opencode_go" {
 		t.Errorf("Provider = %q, want %q", cfg.Provider, "opencode_go")
 	}

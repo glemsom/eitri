@@ -1,5 +1,5 @@
 // Package skills implements Agent Skills discovery, parsing, registry management,
-// and resource manifest generation as specified in SPEC §4.4.
+// and resource manifest generation.
 package skills
 
 import (

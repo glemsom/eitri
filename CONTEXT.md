@@ -51,9 +51,8 @@ eitri/
 ├── docs/ROADMAP.md            # Non-normative post-v1 ideas
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
-├── SPEC.md                    # Product specification
 ├── go.mod
-└── initial.md                 # Original product vision
+├── initial.md                 # Original product vision
 ```
 
 > **AI agents**: read `docs/ARCHITECTURE.md` before making changes — it covers module boundaries, key types, data flow, and extension points in detail.

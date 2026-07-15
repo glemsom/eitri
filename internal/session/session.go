@@ -31,7 +31,7 @@ type Message struct {
 }
 
 // UISession represents a browser-facing chat session.
-// Per SPEC §6.2: sessions store owning browser_id, title, status, messages.
+// UISession represents a browser-facing chat session with id, browser_id, title, status, messages.
 type UISession struct {
 	ID           string    `json:"id"`
 	BrowserID    string    `json:"browser_id"`

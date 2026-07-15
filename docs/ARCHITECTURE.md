@@ -1,8 +1,7 @@
 # Eitri — Architecture Guide
 
 > For AI agents navigating the codebase. Explains module boundaries, key types, data flow, and extension points.
-> Derived from SPEC.md decisions. Describes target implementation.
-> SPEC.md is canonical for product, API, tool, frontend-behavior, skills, and config requirements. This guide is canonical for implementation topology, package boundaries, data flow, and extension seams.
+> This guide is canonical for implementation topology, package boundaries, data flow, and extension seams.
 
 ## Overview
 
@@ -72,7 +71,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 
 **Caller contract**: caller modules use narrow Provider seams, not raw profile/auth/transport internals. `config` reads caller-safe metadata via `Describe()` / `MustDescribe()` and validates persisted credentials via `ValidateCredentials()` plus `NormalizeConfigAuthState()`. Settings load/save, `/api/models`, and post-device-flow model refresh use `DiscoverModels()`. Chat-run startup uses `NewChatModel()`. GitHub device-flow UI polls through caller-safe `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`, not raw OAuth token payload handling. Provider package never writes app config itself; callers persist returned auth updates when needed.
 
-Built-in tool contracts are specified in [SPEC.md §4.2](../SPEC.md#42-built-in-tools). Implementations live in `internal/agent/tools.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
+Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/agent/tools.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
 
 ### `internal/api/` — HTTP server + Templ templates
 
@@ -82,7 +81,7 @@ Built-in tool contracts are specified in [SPEC.md §4.2](../SPEC.md#42-built-in-
 | `templates/` | Templ source files (`.templ` → Go via `templ generate`) |
 | `assets/` | Pinned frontend assets served from `embed.FS` (HTMX, Prism, KaTeX, Mermaid, and stylesheet assets). |
 
-Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-specification). Architecture note: Settings page load/save and `/api/models` cross one model-discovery seam: `provider.DiscoverModels()`, then persist any returned auth refresh through `persistAuth` callback or `config.Save`. GitHub Copilot device-flow UI still lives in API layer, but its poll step now consumes provider-owned status + `AuthUpdate` from `provider.PollGitHubCopilotDeviceFlow()` instead of decoding raw OAuth token payloads in handler code. `RunService.StartRun()` uses `provider.NewChatModel()` as its single chat seam and any auth refresh is persisted automatically via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership and never starts runs. Active runs own their subscriber set, so multiple EventSource clients and reconnects are fan-out safe and disconnected clients cannot block run completion. Run start snapshots user-configured runtime limits such as `max_turns`, so later Settings changes affect only later runs; when a run hits that cap, server appends a friendly assistant message instead of hanging. Completion endpoints under `/api/sessions/{id}/complete/*` also validate `browser_id` ownership and return JSON for the composer island, not HTML fragments. The top-level HTTP handler also owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
+Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets are JSON-enveloped events with `event`, `data`, and optional `id` fields. Architecture note: Settings page load/save and `/api/models` cross one model-discovery seam: `provider.DiscoverModels()`, then persist any returned auth refresh through `persistAuth` callback or `config.Save`. GitHub Copilot device-flow UI still lives in API layer, but its poll step now consumes provider-owned status + `AuthUpdate` from `provider.PollGitHubCopilotDeviceFlow()` instead of decoding raw OAuth token payloads in handler code. `RunService.StartRun()` uses `provider.NewChatModel()` as its single chat seam and any auth refresh is persisted automatically via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership and never starts runs. Active runs own their subscriber set, so multiple EventSource clients and reconnects are fan-out safe and disconnected clients cannot block run completion. Run start snapshots user-configured runtime limits such as `max_turns`, so later Settings changes affect only later runs; when a run hits that cap, server appends a friendly assistant message instead of hanging. Completion endpoints under `/api/sessions/{id}/complete/*` also validate `browser_id` ownership and return JSON for the composer island, not HTML fragments. The top-level HTTP handler also owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
 
 **UI session state**: `api.Server` owns in-memory `UISession` records for browser-facing state: `id`, `browser_id`, `title`, `status` (`idle`/`running`/`error`), renderable messages/events, active run buffers, active skills, and timestamps. Server also exposes launch workspace path, provider setup state, and token-usage/context-window estimates to templates. Server-owned run buffers are canonical assistant transcripts; browser token buffers are display-only. ADK session service remains model conversation state; templates render from `UISession`, not ADK internals. Sessions are not persisted. Stale `/sessions/{id}` full-page loads after restart redirect to `/`; API calls for missing sessions return friendly 404 fragments/JSON.
 
@@ -106,7 +105,7 @@ Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-s
 
 ### `internal/skills/` — Agent Skills discovery + activation
 
-Package owns Agent Skills scanning, parsing, precedence resolution, diagnostics, resource manifests, and activation. Product policy is canonical in [SPEC.md §4.4](../SPEC.md#44-agent-skills).
+Package owns Agent Skills scanning, parsing, precedence resolution, diagnostics, resource manifests, and activation. Skills are discovered from fixed project/user roots containing `SKILL.md`; precedence follows last-wins scoping.
 
 | File | Responsibility |
 |------|---------------|
@@ -190,11 +189,11 @@ type CommandExecutor interface {
 
 ### `internal/config/` — configuration
 
-Config schema, defaults, masking, validation, and environment variables live in [SPEC.md §7](../SPEC.md#7-configuration-specification). Architecture note: `config.Manager` owns atomic JSON file writes, secure config permissions (`~/.eitri` `0700`, config/temp files `0600`), default loading without file creation, provider validation/model discovery on save, `context_window_tokens` fallback defaults (256k tokens for UI estimates when provider/model metadata lacks context length), and hot-reload on `PUT /api/config` / runner creation. Config reads provider defaults through caller-safe Provider descriptors rather than raw profile internals. Config also persists provider-owned auth state in `provider_auth` for providers that need richer auth than plain `api_key`; `GET /api/config` must never expose that raw state back to browser clients.
+Config schema with defaults, masking, validation, and environment variable names are defined in `internal/config/manager.go`. Architecture note: `config.Manager` owns atomic JSON file writes, secure config permissions (`~/.eitri` `0700`, config/temp files `0600`), default loading without file creation, provider validation/model discovery on save, `context_window_tokens` fallback defaults (256k tokens for UI estimates when provider/model metadata lacks context length), and hot-reload on `PUT /api/config` / runner creation. Config reads provider defaults through caller-safe Provider descriptors rather than raw profile internals. Config also persists provider-owned auth state in `provider_auth` for providers that need richer auth than plain `api_key`; `GET /api/config` must never expose that raw state back to browser clients.
 
 ## Frontend architecture
 
-Architecture name: **HTMX + Templ shell with browser islands**. Product behavior is canonical in [SPEC.md §5](../SPEC.md#5-frontend-specification); route and SSE contracts are canonical in [SPEC.md §6](../SPEC.md#6-api-specification).
+Architecture name: **HTMX + Templ shell with browser islands**. Server owns canonical state and rendering; browser islands own only local ephemeral UI state.
 
 **Stack**: Templ (`.templ` → Go), HTMX, small custom-element/browser-island scripts, embedded CSS, Prism.js, KaTeX, Mermaid.js. No npm, bundler, Tailwind, or SPA framework. Only code-generation step is `templ generate`.
 
@@ -340,7 +339,6 @@ eitri/
 │   ├── ROADMAP.md
 │   ├── adr/
 │   └── agents/
-├── SPEC.md
 ├── CONTEXT.md
 ├── AGENTS.md
 ├── go.mod / go.sum
@@ -359,4 +357,4 @@ ADR index lives in [CONTEXT.md](../CONTEXT.md#architecture-decisions).
 
 ## Runtime configuration
 
-Config file, listen address, and environment variable contract live in [SPEC.md §7](../SPEC.md#7-configuration-specification).
+Config file (`~/.eitri/config.json`), listen address (`--listen` flag, default `127.0.0.1:8080`), and environment variable overrides are defined in `internal/config/manager.go`.
