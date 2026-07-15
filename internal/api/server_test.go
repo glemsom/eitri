@@ -3004,6 +3004,12 @@ func TestUnifiedRender_ToolCardRunning(t *testing.T) {
 	if !strings.Contains(content, "terminal_execute") {
 		t.Errorf("unified render running card missing tool name, got: %s", content[:200])
 	}
+	if !strings.Contains(content, `<div class="tool-card tool-running`) {
+		t.Errorf("unified render running card should be <div>, got: %s", content[:300])
+	}
+	if strings.Contains(content, "<details") {
+		t.Errorf("unified render running card should NOT be <details>, got: %s", content[:300])
+	}
 }
 
 func TestUnifiedRender_ToolCardDone(t *testing.T) {
@@ -3052,6 +3058,12 @@ func TestUnifiedRender_ToolCardDone(t *testing.T) {
 	if !strings.Contains(content, "terminal_execute") {
 		t.Errorf("unified render done card missing tool name, got: %s", content[:200])
 	}
+	if !strings.Contains(content, `<details class="tool-card tool-done"`) {
+		t.Errorf("unified render done card should be <details>, got: %s", content[:300])
+	}
+	if strings.Contains(content, `tool-running`) {
+		t.Errorf("unified render done card should NOT have tool-running class, got: %s", content[:300])
+	}
 }
 
 func TestUnifiedRender_ToolCardFileEditor(t *testing.T) {
@@ -3098,6 +3110,12 @@ func TestUnifiedRender_ToolCardFileEditor(t *testing.T) {
 	content := string(respBody)
 	if !strings.Contains(content, "file-edit-card") {
 		t.Errorf("unified render file_editor missing file-edit-card class, got: %s", content[:300])
+	}
+	if !strings.Contains(content, `file-edit-card`) {
+		t.Errorf("unified render file_editor missing file-edit-card class, got: %s", content[:300])
+	}
+	if !strings.Contains(content, `<details class="tool-card file-edit-card"`) {
+		t.Errorf("unified render file_editor should be <details>, got: %s", content[:300])
 	}
 }
 

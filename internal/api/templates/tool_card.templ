@@ -5,31 +5,37 @@ package templates
 // When status="done", shows tool name + output + "done" indicator + final elapsed time.
 // elapsed is the final elapsed time string (e.g. "↑ 1.2s", "↑ 2m 13s"), empty for running cards.
 templ ToolCard(toolCallKey string, toolName string, args string, output string, status string, elapsed string) {
-	<div class="tool-card tool-{ status }" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
-		<div class="tool-card-header">
-			if status == "running" {
+	if status == "running" {
+		<div class="tool-card tool-running" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
+			<div class="tool-card-header">
 				<span class="tool-icon">🔧</span>
-			} else {
-				<span class="tool-icon">✅</span>
-			}
-			<span class="tool-name">{ toolName }</span>
-			if status == "running" {
+				<span class="tool-name">{ toolName }</span>
 				<span class="tool-status">running...</span>
-			} else {
-				<span class="tool-status">done</span>
-			}
-			if elapsed != "" {
-				<span class="tool-elapsed">{ elapsed }</span>
-			} else if status == "running" {
-				<span class="tool-elapsed" data-tool-elapsed={ toolCallKey }></span>
+				if elapsed != "" {
+					<span class="tool-elapsed">{ elapsed }</span>
+				} else {
+					<span class="tool-elapsed" data-tool-elapsed={ toolCallKey }></span>
+				}
+			</div>
+			if args != "" {
+				<pre class="tool-args"><code>{ args }</code></pre>
 			}
 		</div>
-		if status == "running" && args != "" {
-			<pre class="tool-args"><code>{ args }</code></pre>
-		}
-		if status == "done" && output != "" {
-			<pre class="tool-output"><code>{ output }</code></pre>
-		}
-	</div>
+	} else {
+		<details class="tool-card tool-done" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
+			<summary class="tool-card-header">
+				<span class="tool-icon">✅</span>
+				<span class="tool-name">{ toolName }</span>
+				<span class="tool-status">done</span>
+				if elapsed != "" {
+					<span class="tool-elapsed">{ elapsed }</span>
+				}
+				<span class="tool-chevron">▸</span>
+			</summary>
+			if output != "" {
+				<pre class="tool-output"><code>{ output }</code></pre>
+			}
+		</details>
+	}
 }
 
