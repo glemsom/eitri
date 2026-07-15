@@ -1931,9 +1931,9 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var htmxExists bool
 	var chatViewExists, messagesExists, composerExists bool
 	var sessionChromeExists, workspaceIndicatorExists, streamIndicatorExists, runStatusExists bool
-	var sessionChromePosition, sessionChromeZIndex string
-	var chatViewFlex, messagesFlex, messagesFlex1, composerFlexShrink string
-	var messagesOverflowY string
+	var sessionChromePosition string
+	var chatViewDisplay, chatViewGridRows string
+	var messagesOverflowY, messagesDisplay string
 	var gearBtnColor, gearBtnBg, gearBtnBorder, gearBtnRadius, gearBtnCursor, gearBtnFontSize string
 	var dropdownDisplay string
 
@@ -1945,19 +1945,16 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#chat-view') !== null", &chatViewExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#messages') !== null", &messagesExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
-		// Verify sticky session-chrome bar with indicators
+		// Verify grid-based chat layout with pinned regions
 		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome') !== null", &sessionChromeExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #workspace-indicator') !== null", &workspaceIndicatorExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #stream-indicator') !== null", &streamIndicatorExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #run-status') !== null", &runStatusExists),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('position')", &sessionChromePosition),
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('z-index')", &sessionChromeZIndex),
-		// Verify flex layout for sticky composer
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewFlex),
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('flex-direction')", &messagesFlex),
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('flex')", &messagesFlex1),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewDisplay),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('grid-template-rows')", &chatViewGridRows),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('overflow-y')", &messagesOverflowY),
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('eitri-composer')).getPropertyValue('flex-shrink')", &composerFlexShrink),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('display')", &messagesDisplay),
 		// Verify gear button dark-theme styles (catches missing CSS rule bugs)
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('color')", &gearBtnColor),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('background-color')", &gearBtnBg),
@@ -1999,29 +1996,21 @@ func TestBrowser_PageLoads(t *testing.T) {
 	if !runStatusExists {
 		t.Error("#run-status in #session-chrome not found")
 	}
-	if sessionChromePosition != "sticky" {
-		t.Errorf("#session-chrome position = %q, want 'sticky'", sessionChromePosition)
+	if sessionChromePosition != "static" {
+		t.Errorf("#session-chrome position = %q, want 'static' (grid handles layout)", sessionChromePosition)
 	}
-	if sessionChromeZIndex != "10" {
-		t.Errorf(".session-chrome z-index = %q, want '10'", sessionChromeZIndex)
+	if chatViewDisplay != "grid" {
+		t.Errorf("#chat-view display = %q, want 'grid'", chatViewDisplay)
 	}
-	if chatViewFlex != "flex" {
-		t.Errorf("#chat-view display = %q, want 'flex'", chatViewFlex)
-	}
-	if messagesFlex != "column" {
-		t.Errorf("#chat-view flex-direction = %q, want 'column'", messagesFlex)
-	}
-	if messagesFlex1 != "1 1 0%" && messagesFlex1 != "1 1 auto" && messagesFlex1 != "1 1 0px" && messagesFlex1 != "1 1 0" {
-		// Accept common flex:1 shorthand resolutions across browsers
-		if strings.TrimSpace(messagesFlex1) != "1" && messagesFlex1 != "1 0%" && messagesFlex1 != "1 0px" && messagesFlex1 != "1 0auto" && messagesFlex1 != "1 1 0%" && messagesFlex1 != "1 1 auto" && messagesFlex1 != "1 1 0px" && messagesFlex1 != "1 1 0" {
-			t.Errorf("#messages flex = %q, expected flex:1 equivalent", messagesFlex1)
-		}
+	// Browser returns computed pixel values. Just verify grid-template-rows is set (not "none" or empty).
+	if chatViewGridRows == "" || chatViewGridRows == "none" {
+		t.Errorf("#chat-view grid-template-rows = %q, expected explicit rows (auto 1fr auto)", chatViewGridRows)
 	}
 	if messagesOverflowY != "auto" {
 		t.Errorf("#messages overflow-y = %q, want 'auto'", messagesOverflowY)
 	}
-	if composerFlexShrink != "0" {
-		t.Errorf("eitri-composer flex-shrink = %q, want '0'", composerFlexShrink)
+	if messagesDisplay != "flex" {
+		t.Errorf("#messages display = %q, want 'flex' (grid-area messages keeps its flex column layout)", messagesDisplay)
 	}
 	// Gear button should have dark-theme styled border (not default 2px outset black)
 	if gearBtnColor == "rgb(0, 0, 0)" || gearBtnColor == "#000" || gearBtnColor == "black" {
@@ -3046,38 +3035,38 @@ func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
 		t.Error("main should have overflow-y: hidden to prevent double scrollbars")
 	}
 
-	// Verify chat-view is flex column
-	var chatViewFlexColumn bool
+	// Verify chat-view is a grid with pinned regions
+	var chatViewGrid bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
 			var el = document.getElementById('chat-view');
 			if (!el) return false;
 			var style = window.getComputedStyle(el);
-			return style.display === 'flex' && style.flexDirection === 'column';
-		})()`, &chatViewFlexColumn),
+			return style.display === 'grid';
+		})()`, &chatViewGrid),
 	)
 	if err != nil {
 		t.Fatalf("check chat-view layout failed: %v", err)
 	}
-	if !chatViewFlexColumn {
-		t.Error("chat-view should be display:flex; flex-direction:column")
+	if !chatViewGrid {
+		t.Error("chat-view should be display:grid (with auto 1fr auto rows)")
 	}
 
-	// Verify composer is flex-shrink: 0 (pinned at bottom)
-	var composerFlexShrink bool
+	// Verify composer is in the grid (position handled by grid, no need for flex-shrink)
+	var composerInGrid bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
 			var el = document.querySelector('eitri-composer');
 			if (!el) return false;
 			var style = window.getComputedStyle(el);
-			return style.flexShrink === '0';
-		})()`, &composerFlexShrink),
+			return style.gridArea !== '' && style.gridArea !== 'auto / auto / auto / auto';
+		})()`, &composerInGrid),
 	)
 	if err != nil {
-		t.Fatalf("check composer flex-shrink failed: %v", err)
+		t.Fatalf("check composer grid-area failed: %v", err)
 	}
-	if !composerFlexShrink {
-		t.Error("eitri-composer should have flex-shrink: 0")
+	if !composerInGrid {
+		t.Error("eitri-composer should have a grid-area assigned in #chat-view grid")
 	}
 
 	// Send a message that will produce streaming tokens
