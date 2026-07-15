@@ -517,11 +517,25 @@ func TestBrowser_SendMessage(t *testing.T) {
 			 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
 			&userBubbleExists,
 		),
-		// Verify chat input is cleared after submit
-		chromedp.EvaluateAsDevTools(
-			`document.getElementById('chat-input').value`,
-			&inputValue,
-		),
+		// Retry input check up to 50 times
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			for i := 0; i < 50; i++ {
+				var v string
+				if err := chromedp.EvaluateAsDevTools(
+					`document.getElementById('chat-input').value`,
+					&v,
+				).Do(ctx); err != nil {
+					return err
+				}
+				if v == "" {
+					inputValue = v
+					return nil
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			inputValue = "TIMEOUT"
+			return nil
+		}),
 	)
 	if err != nil {
 		t.Fatalf("send message test failed: %v", err)

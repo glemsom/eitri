@@ -349,7 +349,10 @@
     var input = document.getElementById('chat-input');
     var sendBtn = document.getElementById('send-btn');
     var stopBtn = document.getElementById('stop-btn');
-    if (input) input.disabled = true;
+    if (input) {
+      input.value = '';
+      input.disabled = true;
+    }
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.classList.add('send-hidden');
