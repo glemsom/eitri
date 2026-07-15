@@ -124,4 +124,33 @@ func TestJsFiles(t *testing.T) {
 	if !strings.Contains(content3, "initKatex") {
 		t.Error("eitri-renderers.js missing KaTeX initialization")
 	}
+
+	// Verify CSS has scroll-to-bottom button with --composer-height variable
+	f4, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("failed to open eitri.css: %v", err)
+	}
+	data4, err := io.ReadAll(f4)
+	f4.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri.css: %v", err)
+	}
+	content4 := string(data4)
+	if !strings.Contains(content4, "--composer-height") {
+		t.Error("eitri.css missing --composer-height CSS variable for scroll-to-bottom positioning")
+	}
+	if !strings.Contains(content4, "calc(var(--composer-height") {
+		t.Error("eitri.css missing calc(var(--composer-height) for scroll-to-bottom button bottom offset")
+	}
+
+	// Verify composer JS has composer height tracking on parent #chat-view
+	if !strings.Contains(content, "_trackComposerHeight") {
+		t.Error("eitri-composer.js missing _trackComposerHeight method")
+	}
+	if !strings.Contains(content, "ResizeObserver") {
+		t.Error("eitri-composer.js missing ResizeObserver for composer height tracking")
+	}
+	if !strings.Contains(content, "parent.style.setProperty") {
+		t.Error("eitri-composer.js should set --composer-height on parent element")
+	}
 }
