@@ -562,10 +562,11 @@
       target = document.createElement('div');
       target.id = targetId;
       target.className = 'tool-cards-container';
-      // Insert before streaming div so tool cards appear before assistant response
-      var streamingEl = document.getElementById('streaming');
-      if (streamingEl && streamingEl.parentNode === messages) {
-        messages.insertBefore(target, streamingEl);
+      // Insert before scroll-sentinel (always present as absolute end marker)
+      // so tool cards appear before assistant response and never above user message.
+      var sentinel = document.getElementById('scroll-sentinel');
+      if (sentinel && sentinel.parentNode === messages) {
+        messages.insertBefore(target, sentinel);
       } else {
         messages.appendChild(target);
       }
