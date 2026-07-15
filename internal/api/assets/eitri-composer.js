@@ -1,5 +1,6 @@
-// eitri-composer — Browser island for keyboard handling and completion menu.
+// eitri-composer — Browser island for keyboard handling, completion menu, and mobile keyboard visibility.
 // Manages /skill and @file completions with debounce, ARIA, and sequence gating.
+// On mobile (≤768px), tracks visualViewport to keep composer visible above virtual keyboard.
 (function () {
   'use strict';
 
@@ -33,6 +34,7 @@
       this._setupMenu();
       this._bindEvents();
       this._trackComposerHeight();
+      this._initMobileKeyboard();
     }
 
     _trackComposerHeight() {
@@ -50,12 +52,74 @@
       this._composerResizeObserver = ro;
     }
 
+    _initMobileKeyboard() {
+      // On iOS/Safari, the layout viewport does not resize when the virtual keyboard
+      // opens, but visualViewport does. We adjust the composer bottom position so
+      // it stays visible above the keyboard. Only active on narrow viewports.
+      if (!window.visualViewport) return;
+
+      var composerEl = this;
+      var chatViewEl = this.closest('#chat-view');
+      if (!chatViewEl) return;
+
+      var storedBottom = '';
+      var viewportHandler = function () {
+        var isMobile = window.innerWidth <= 768;
+        if (!isMobile) {
+          if (storedBottom) {
+            chatViewEl.style.setProperty('--composer-bottom', storedBottom);
+            storedBottom = '';
+            composerEl.style.position = '';
+            composerEl.style.bottom = '';
+            composerEl.style.left = '';
+            composerEl.style.right = '';
+            composerEl.style.zIndex = '';
+          }
+          return;
+        }
+
+        var vvHeight = window.visualViewport.height;
+        var lvHeight = window.innerHeight;
+        var diff = lvHeight - vvHeight;
+
+        if (diff > 80) {
+          // Keyboard likely open: pin composer above keyboard
+          if (!storedBottom) storedBottom = '0px';
+          composerEl.style.position = 'fixed';
+          composerEl.style.bottom = diff + 'px';
+          composerEl.style.left = '0';
+          composerEl.style.right = '0';
+          composerEl.style.zIndex = '100';
+          chatViewEl.style.setProperty('--composer-bottom', diff + 'px');
+        } else {
+          // Keyboard closed: restore
+          if (storedBottom) {
+            chatViewEl.style.setProperty('--composer-bottom', storedBottom);
+            storedBottom = '';
+          }
+          composerEl.style.position = '';
+          composerEl.style.bottom = '';
+          composerEl.style.left = '';
+          composerEl.style.right = '';
+          composerEl.style.zIndex = '';
+        }
+      };
+
+      window.visualViewport.addEventListener('resize', viewportHandler);
+      window.visualViewport.addEventListener('scroll', viewportHandler);
+      this._visualViewportHandler = viewportHandler;
+    }
+
     disconnectedCallback() {
       if (this._handleDocumentKeydown) {
         document.removeEventListener('keydown', this._handleDocumentKeydown);
       }
       if (this._composerResizeObserver) {
         this._composerResizeObserver.disconnect();
+      }
+      if (this._visualViewportHandler && window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this._visualViewportHandler);
+        window.visualViewport.removeEventListener('scroll', this._visualViewportHandler);
       }
     }
 

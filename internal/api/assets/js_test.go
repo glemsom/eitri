@@ -169,8 +169,8 @@ func TestJsFiles(t *testing.T) {
 	if !strings.Contains(content4, "--composer-height") {
 		t.Error("eitri.css missing --composer-height CSS variable for scroll-to-bottom positioning")
 	}
-	if !strings.Contains(content4, "calc(var(--composer-height") {
-		t.Error("eitri.css missing calc(var(--composer-height) for scroll-to-bottom button bottom offset")
+	if !strings.Contains(content4, "calc(var(--composer-bottom, var(--composer-height") {
+		t.Error("eitri.css missing calc(var(--composer-bottom, var(--composer-height) for scroll-to-bottom button bottom offset")
 	}
 
 	// Verify composer JS has composer height tracking on parent #chat-view
