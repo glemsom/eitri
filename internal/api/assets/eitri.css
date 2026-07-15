@@ -518,6 +518,18 @@ noscript {
   font-variant-numeric: tabular-nums;
 }
 
+/* Chevron indicator for collapsible tool cards */
+.tool-chevron {
+  margin-left: auto;
+  font-size: 0.8rem;
+  transition: transform 0.2s ease;
+  user-select: none;
+}
+
+details[open] .tool-chevron {
+  transform: rotate(90deg);
+}
+
 .tool-args,
 .tool-output {
   padding: 0.5rem 0.75rem;
