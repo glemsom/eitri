@@ -1932,6 +1932,8 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var chatViewExists, messagesExists, composerExists bool
 	var chatViewFlex, messagesFlex, messagesFlex1, composerFlexShrink string
 	var messagesOverflowY string
+	var gearBtnColor, gearBtnBg, gearBtnBorder, gearBtnRadius, gearBtnCursor, gearBtnFontSize string
+	var dropdownDisplay string
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
@@ -1947,6 +1949,15 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('flex')", &messagesFlex1),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('overflow-y')", &messagesOverflowY),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('eitri-composer')).getPropertyValue('flex-shrink')", &composerFlexShrink),
+		// Verify gear button dark-theme styles (catches missing CSS rule bugs)
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('color')", &gearBtnColor),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('background-color')", &gearBtnBg),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('border')", &gearBtnBorder),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('border-radius')", &gearBtnRadius),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('cursor')", &gearBtnCursor),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('font-size')", &gearBtnFontSize),
+		// Verify dropdown is hidden by default
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.dropdown-content')).getPropertyValue('display')", &dropdownDisplay),
 	)
 	if err != nil {
 		t.Fatalf("page load test failed: %v", err)
@@ -1984,6 +1995,26 @@ func TestBrowser_PageLoads(t *testing.T) {
 	}
 	if composerFlexShrink != "0" {
 		t.Errorf("eitri-composer flex-shrink = %q, want '0'", composerFlexShrink)
+	}
+	// Gear button should have dark-theme styled border (not default 2px outset black)
+	if gearBtnColor == "rgb(0, 0, 0)" || gearBtnColor == "#000" || gearBtnColor == "black" {
+		t.Errorf(".gear-btn color = %q, expected dark-theme muted color", gearBtnColor)
+	}
+	if gearBtnBorder == "2px outset rgb(0, 0, 0)" || gearBtnBorder == "2px outset black" || gearBtnBorder == "2px outset #000" {
+		t.Errorf(".gear-btn border = %q, expected 1px solid themed border", gearBtnBorder)
+	}
+	if gearBtnRadius != "6px" && gearBtnRadius != "6px 6px" {
+		t.Errorf(".gear-btn border-radius = %q, want '6px'", gearBtnRadius)
+	}
+	if gearBtnCursor != "pointer" {
+		t.Errorf(".gear-btn cursor = %q, want 'pointer'", gearBtnCursor)
+	}
+	if strings.HasPrefix(gearBtnFontSize, "13.") {
+		t.Errorf(".gear-btn font-size = %q, expected themed size > 13px", gearBtnFontSize)
+	}
+	// Dropdown should be hidden by default
+	if dropdownDisplay != "none" {
+		t.Errorf(".dropdown-content display = %q, want 'none'", dropdownDisplay)
 	}
 }
 
