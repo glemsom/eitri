@@ -480,6 +480,29 @@ func (b *streamBuf) addToolCalls(raw json.RawMessage) {
 	}
 }
 
+// toolParamAliases maps known LLM-hallucinated parameter names to correct ones
+// per tool. The JSON Schema generated from Go structs sets additionalProperties: false,
+// so any unrecognized key causes a validation error.
+var toolParamAliases = map[string]map[string]string{
+	"file_viewer": {"file_path": "path"},
+}
+
+func normalizeToolArgs(name string, args map[string]any) {
+	aliases, ok := toolParamAliases[name]
+	if !ok {
+		return
+	}
+	for wrong, correct := range aliases {
+		if v, exists := args[wrong]; exists {
+			// Only alias if the correct key is absent
+			if _, hasCorrect := args[correct]; !hasCorrect {
+				args[correct] = v
+			}
+			delete(args, wrong)
+		}
+	}
+}
+
 func (b *streamBuf) finalize(why genai.FinishReason) *model.LLMResponse {
 	content := b.text.String()
 	var parts []*genai.Part
@@ -502,6 +525,7 @@ func (b *streamBuf) finalize(why genai.FinishReason) *model.LLMResponse {
 		}
 		var args map[string]any
 		json.Unmarshal([]byte(argsStr), &args)
+		normalizeToolArgs(name, args)
 		parts = append(parts, &genai.Part{
 			FunctionCall: &genai.FunctionCall{
 				ID:   id,

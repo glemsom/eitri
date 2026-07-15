@@ -95,7 +95,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 			Name:        "file_viewer",
 			Description: "Read file contents from workspace or active skill directories. " +
 				"Supports multiple modes:\n\n- \"read\" (default): Read a file with optional line offset and limit. " +
-				"Only UTF-8 text files.\n  Set include_line_info=true to get line-number + content-hash prefixes " +
+				"Only UTF-8 text files.\n  Parameter name is \"path\" (NOT \"file_path\").\n  Set include_line_info=true to get line-number + content-hash prefixes " +
 				"(e.g. \"15:a1b2c3 | text\") for use as anchors in file_editor. Use offset and limit for " +
 				"progressive reading when total_lines > limit.\n  Default limit is 100 lines; set limit=0 for " +
 				"unlimited.\n\n- \"list\": List directory contents. Returns sorted filenames " +
