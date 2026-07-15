@@ -45,7 +45,7 @@
   // — Model refresh spinner and fetch —
   function refreshModels() {
     var spinner = document.getElementById('model-refresh-spinner');
-    if (spinner) spinner.style.display = 'inline-block';
+    if (spinner) spinner.style.visibility = 'visible';
 
     // Fetch models via fetch API (not HTMX) to get JSON, then update select
     fetch('/api/models')
@@ -63,7 +63,7 @@
         showToast('Model refresh failed');
       })
       .finally(function () {
-        if (spinner) spinner.style.display = 'none';
+        if (spinner) spinner.style.visibility = 'hidden';
       });
   }
 
@@ -155,7 +155,7 @@
       var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
       if (targetId === 'settings-form') {
         var spinner = document.getElementById('model-refresh-spinner');
-        if (spinner) spinner.style.display = 'none';
+        if (spinner) spinner.style.visibility = 'hidden';
       }
     });
   }
