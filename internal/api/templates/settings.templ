@@ -121,7 +121,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 			</details>
 
-			<div class="form-actions">
+			<div class="form-actions form-actions-sticky">
 				<button type="submit">Save</button>
 				<div id="test-connection-wrapper" class="test-connection-wrapper">
 					<button type="button" id="test-connection-btn" hx-get="/api/models" hx-target="#test-connection-result" hx-swap="innerHTML">Test Connection</button>
