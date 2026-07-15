@@ -20,15 +20,6 @@ templ ChatView(sess *session.UISession, workspace string, configValid bool) {
 			<div id="run-status" class="run-status" role="status" aria-live="polite" aria-atomic="true">
 				<span id="stream-indicator" class="stream-indicator idle">Idle</span>
 			</div>
-			<details id="activity-panel" class="activity-panel">
-				<summary>
-					<span>Activity</span>
-					<span id="activity-count" class="activity-count">0</span>
-				</summary>
-				<div id="activity-log" class="activity-log">
-					<p id="activity-empty" class="text-muted">No tool activity yet.</p>
-				</div>
-			</details>
 		</div>
 		<div id="messages" class="messages">
 			for _, msg := range sess.Messages {

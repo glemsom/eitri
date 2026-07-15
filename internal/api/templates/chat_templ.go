@@ -73,7 +73,7 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"chat-run-chrome\"><div id=\"run-status\" class=\"run-status\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span id=\"stream-indicator\" class=\"stream-indicator idle\">Idle</span></div><details id=\"activity-panel\" class=\"activity-panel\"><summary><span>Activity</span> <span id=\"activity-count\" class=\"activity-count\">0</span></summary><div id=\"activity-log\" class=\"activity-log\"><p id=\"activity-empty\" class=\"text-muted\">No tool activity yet.</p></div></details></div><div id=\"messages\" class=\"messages\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"chat-run-chrome\"><div id=\"run-status\" class=\"run-status\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span id=\"stream-indicator\" class=\"stream-indicator idle\">Idle</span></div></div><div id=\"messages\" class=\"messages\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -135,7 +135,7 @@ func WorkspaceIndicator(workspace string) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(workspace)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 51, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 42, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -148,7 +148,7 @@ func WorkspaceIndicator(workspace string) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(pathBase(workspace))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 52, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 43, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
