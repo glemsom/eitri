@@ -651,3 +651,392 @@ func TestListDirectory_SortedOrder(t *testing.T) {
 		}
 	}
 }
+
+
+// ── EditFile ───────────────────────────────────────────────────────────────
+
+func TestEditFile_SingleMatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\nbaz qux\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := EditFile(path, "foo bar", "FOO BAR", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Old != "foo bar" {
+		t.Errorf("Old = %q, want %q", result.Old, "foo bar")
+	}
+	if result.New != "FOO BAR" {
+		t.Errorf("New = %q, want %q", result.New, "FOO BAR")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "hello world\nFOO BAR\nbaz qux\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEditFile_ZeroMatches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "nonexistent", "replacement", "")
+	if err == nil {
+		t.Fatal("expected error for 0 matches")
+	}
+	if !strings.Contains(err.Error(), "0 matches") {
+		t.Errorf("error = %q, want '0 matches'", err.Error())
+	}
+}
+
+func TestEditFile_MultipleMatches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "foo\nbar\nfoo\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "foo", "FOO", "")
+	if err == nil {
+		t.Fatal("expected error for multiple matches")
+	}
+	if !strings.Contains(err.Error(), "2 times") && !strings.Contains(err.Error(), "expected exactly 1") {
+		t.Errorf("error = %q, want 'expected exactly 1 match'", err.Error())
+	}
+}
+
+func TestEditFile_WithValidAnchor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\nbaz qux\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Line 2 has content "foo bar"
+	anchor := fmt.Sprintf("2:%s", lineHash("foo bar"))
+	result, err := EditFile(path, "foo", "FOO", anchor)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Old != "foo" {
+		t.Errorf("Old = %q, want %q", result.Old, "foo")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "hello world\nFOO bar\nbaz qux\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEditFile_WithAnchorHashMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "foo", "FOO", "2:deadbeef")
+	if err == nil {
+		t.Fatal("expected error for hash mismatch")
+	}
+	if !strings.Contains(err.Error(), "anchor hash mismatch") {
+		t.Errorf("error = %q, want 'anchor hash mismatch'", err.Error())
+	}
+}
+
+func TestEditFile_AnchorOldNotFound(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := fmt.Sprintf("2:%s", lineHash("foo bar"))
+	_, err := EditFile(path, "nonexistent", "NO", anchor)
+	if err == nil {
+		t.Fatal("expected error when old text not on anchored line")
+	}
+	if !strings.Contains(err.Error(), "not found at line") {
+		t.Errorf("error = %q, want 'not found at line'", err.Error())
+	}
+}
+
+func TestEditFile_AnchorLineExceedsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello\nworld\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "foo", "FOO", "10:abc123")
+	if err == nil {
+		t.Fatal("expected error for line exceeding file length")
+	}
+	if !strings.Contains(err.Error(), "exceeds file length") {
+		t.Errorf("error = %q, want 'exceeds file length'", err.Error())
+	}
+}
+
+func TestEditFile_BeginningOfFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "first line\nmiddle\nlast line\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "first line", "NEW FIRST", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "NEW FIRST\nmiddle\nlast line\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEditFile_EndOfFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "line1\nline2\nfinal\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "final", "LAST", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "line1\nline2\nLAST\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEditFile_MultiLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "a\nb\nc\nd\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := EditFile(path, "b\nc", "B\nC", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "a\nB\nC\nd\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEditFile_Directory(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := EditFile(dir, "old", "new", "")
+	if err == nil {
+		t.Fatal("expected error for directory")
+	}
+}
+
+func TestEditFile_NonExistent(t *testing.T) {
+	_, err := EditFile("/nonexistent/path.txt", "old", "new", "")
+	if err == nil {
+		t.Fatal("expected error for non-existent file")
+	}
+}
+
+// ── InsertLine ─────────────────────────────────────────────────────────────
+
+func TestInsertLine_MidFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "line1\nline2\nline3\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := fmt.Sprintf("2:%s", lineHash("line2"))
+	result, err := InsertLine(path, anchor, "INSERTED")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Mode != "insert" {
+		t.Errorf("Mode = %q, want 'insert'", result.Mode)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "line1\nline2\nINSERTED\nline3\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestInsertLine_Beginning(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "first\nsecond\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := fmt.Sprintf("1:%s", lineHash("first"))
+	_, err := InsertLine(path, anchor, "BEFORE")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "first\nBEFORE\nsecond\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestInsertLine_End(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "first\nsecond\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := fmt.Sprintf("2:%s", lineHash("second"))
+	_, err := InsertLine(path, anchor, "AFTER")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "first\nsecond\nAFTER\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestInsertLine_MultiLineContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "line1\nline2\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	anchor := fmt.Sprintf("1:%s", lineHash("line1"))
+	_, err := InsertLine(path, anchor, "a\nb\nc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "line1\na\nb\nc\nline2\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestInsertLine_HashMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello\nworld\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := InsertLine(path, "1:deadbeef", "inserted")
+	if err == nil {
+		t.Fatal("expected error for hash mismatch")
+	}
+	if !strings.Contains(err.Error(), "anchor hash mismatch") {
+		t.Errorf("error = %q, want 'anchor hash mismatch'", err.Error())
+	}
+}
+
+func TestInsertLine_LineOutOfRange(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := InsertLine(path, "5:abc123", "inserted")
+	if err == nil {
+		t.Fatal("expected error for line out of range")
+	}
+	if !strings.Contains(err.Error(), "exceeds file length") {
+		t.Errorf("error = %q, want 'exceeds file length'", err.Error())
+	}
+}
+
+func TestInsertLine_Directory(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := InsertLine(dir, "1:abc", "content")
+	if err == nil {
+		t.Fatal("expected error for directory")
+	}
+}
+
+func TestInsertLine_InvalidAnchorFormat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := InsertLine(path, "invalid-anchor", "content")
+	if err == nil {
+		t.Fatal("expected error for invalid anchor format")
+	}
+}
