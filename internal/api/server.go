@@ -38,12 +38,13 @@ type ServerConfig struct {
 
 // Server wraps the HTTP handler and injected dependencies.
 type Server struct {
-	config       ServerConfig
-	mux          *http.ServeMux
-	httpClient   *http.Client
-	logger       *slog.Logger
-	copilotOAuth GitHubCopilotOAuthConfig
-	copilotFlows *copilotDeviceFlowStore
+	config          ServerConfig
+	mux             *http.ServeMux
+	httpClient      *http.Client
+	logger          *slog.Logger
+	copilotOAuth    GitHubCopilotOAuthConfig
+	copilotFlows    *copilotDeviceFlowStore
+	persistAuthFn   provider.PersistAuthFunc
 }
 
 const maxRequestBodyBytes = 1 << 20
@@ -164,7 +165,7 @@ func NewServer(cfg ServerConfig) *Server {
 		},
 	}
 	if cfg.RunService != nil {
-		cfg.RunService.SetPersistAuth(func(apiKey string, providerAuth json.RawMessage) error {
+		s.persistAuthFn = func(apiKey string, providerAuth json.RawMessage) error {
 			cfg2, err := config.Load(cfg.ConfigPath)
 			if err != nil {
 				return fmt.Errorf("failed to load config for auth persist: %w", err)
@@ -176,7 +177,8 @@ func NewServer(cfg ServerConfig) *Server {
 			}
 			cfg.RunService.InvalidateRunners()
 			return nil
-		})
+		}
+		cfg.RunService.SetPersistAuth(s.persistAuthFn)
 	}
 	s.registerRoutes()
 	return s
@@ -591,7 +593,8 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-// discoverModelList calls Provider discovery seam without persisting returned auth updates.
+// discoverModelList calls Provider discovery seam. It passes PersistAuth if
+// available so that refreshed auth state is persisted automatically.
 func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*provider.DiscoveryResult, error) {
 	return provider.DiscoverModels(ctx, provider.DiscoveryRequest{
 		ProviderID:   cfg.Provider,
@@ -601,17 +604,33 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 	}, provider.DiscoveryOptions{
 		HTTPClient:         s.httpClient,
 		GitHubCopilotOAuth: s.copilotOAuth,
+		PersistAuth:        s.persistAuth(),
 	})
 }
 
-// fetchModelList calls Provider discovery seam and persists any refreshed auth state.
+// fetchModelList calls Provider discovery seam. Auth refresh is persisted
+// automatically via PersistAuth when configured, or manually when not.
 func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, error) {
 	result, err := s.discoverModelList(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.persistDiscoveryAuthUpdate(cfg, result.AuthUpdate); err != nil {
-		return nil, err
+	if result == nil {
+		return nil, nil
+	}
+	if result.AuthUpdate != nil {
+		// PersistAuth was not set — save the auth update manually.
+		applyAuthUpdate(cfg, result.AuthUpdate)
+		if err := s.saveProviderConfig(cfg); err != nil {
+			return nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
+		}
+	} else if s.persistAuth() != nil {
+		// PersistAuth handled persistence; reload cfg to reflect refreshed credentials.
+		loaded, loadErr := config.Load(s.config.ConfigPath)
+		if loadErr == nil {
+			cfg.APIKey = loaded.APIKey
+			cfg.ProviderAuth = append(json.RawMessage(nil), loaded.ProviderAuth...)
+		}
 	}
 	return result.Models, nil
 }
@@ -628,23 +647,17 @@ func applyAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) {
 	cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
 }
 
+// persistAuth returns the PersistAuth callback, or nil if none is configured.
+func (s *Server) persistAuth() provider.PersistAuthFunc {
+	return s.persistAuthFn
+}
+
 func (s *Server) saveProviderConfig(cfg *config.Config) error {
 	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
 		return err
 	}
 	if s.config.RunService != nil {
 		s.config.RunService.UpdateProviderConfig(cfg)
-	}
-	return nil
-}
-
-func (s *Server) persistDiscoveryAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) error {
-	if update == nil {
-		return nil
-	}
-	applyAuthUpdate(cfg, update)
-	if err := s.saveProviderConfig(cfg); err != nil {
-		return fmt.Errorf("failed to save refreshed provider auth: %w", err)
 	}
 	return nil
 }
