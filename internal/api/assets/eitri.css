@@ -1243,7 +1243,8 @@ eitri-composer {
   }
 
   /* Mobile: form-actions not sticky */
-  .form-actions {
+  .form-actions,
+  .form-actions-sticky {
     position: static !important;
   }
 }
@@ -1448,9 +1449,10 @@ eitri-composer {
   font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
 }
 
-/* Form-actions sticky on desktop */
+/* Form-actions sticky on desktop: scoped to form-actions-sticky so device-flow
+   buttons (also .form-actions) do not inherit sticky positioning. */
 @media (min-width: 769px) {
-  .form-actions {
+  .form-actions-sticky {
     position: sticky;
     bottom: 0;
     background: rgba(26, 26, 46, 0.92);
