@@ -75,6 +75,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	type fileViewerArgs struct {
 		Mode            string `json:"mode,omitempty" jsonschema:"Mode: \"read\" (default) or \"list\""`
 		Path            string `json:"path" jsonschema:"File or directory path relative to workspace root or an absolute path within the workspace"`
+		FilePath        string `json:"file_path,omitempty"`
 		Offset          int    `json:"offset,omitempty" jsonschema:"1-indexed line offset to start reading from (default: 1)"`
 		Limit           *int   `json:"limit,omitempty" jsonschema:"Maximum number of lines to return (omit for default 100, 0 for unlimited)"`
 		IncludeLineInfo bool   `json:"include_line_info,omitempty" jsonschema:"Prefix each line with LINE:HASH for use as anchors in file_editor (default: false)"`
@@ -104,6 +105,10 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 				"next chunk via offset + limit using next_offset from the response.",
 		},
 		func(ctx agent.Context, args fileViewerArgs) (fileViewerResult, error) {
+			// Accept "file_path" as alias for "path" (common LLM hallucination)
+			if args.Path == "" && args.FilePath != "" {
+				args.Path = args.FilePath
+			}
 			absPath, err := validatePathWithAllowed(args.Path, workspace, skillDirs)
 			if err != nil {
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
