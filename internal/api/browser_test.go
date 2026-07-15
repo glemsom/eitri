@@ -1322,7 +1322,9 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 	}
 }
 
-func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
+// TestBrowser_RunStatusChrome_Reconnect verifies run status chrome transitions
+// through connecting → reconnecting → tool running → rendering → done.
+func TestBrowser_RunStatusChrome_Reconnect(t *testing.T) {
 	server := newTestServer(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
@@ -1551,6 +1553,54 @@ func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 	}
 	if !doneCard {
 		t.Fatal("tool card should show 'done' status after tool_result")
+	}
+
+	// Verify done tool card is rendered as <details> (collapsible) and collapsed by default
+	var isDetails bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.tool-card.tool-done') !== null && document.querySelector('.tool-card.tool-done').tagName === 'DETAILS'`,
+			&isDetails,
+		),
+	)
+	if err != nil || !isDetails {
+		t.Fatalf("done tool card should be <details> element: err=%v isDetails=%v", err, isDetails)
+	}
+
+	// Verify done tool card is collapsed (no open attribute)
+	var isCollapsed bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.tool-card.tool-done') !== null && !document.querySelector('.tool-card.tool-done').hasAttribute('open')`,
+			&isCollapsed,
+		),
+	)
+	if err != nil || !isCollapsed {
+		t.Fatalf("done tool card should be collapsed (no open attribute): err=%v isCollapsed=%v", err, isCollapsed)
+	}
+
+	// Verify collapsed card still shows header text (tool name)
+	var headerVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.tool-card.tool-done .tool-name') !== null && document.querySelector('.tool-card.tool-done .tool-name').textContent === 'terminal_execute'`,
+			&headerVisible,
+		),
+	)
+	if err != nil || !headerVisible {
+		t.Fatalf("collapsed done tool card should show tool name in header: err=%v visible=%v", err, headerVisible)
+	}
+
+	// Verify chevron indicator is present in collapsed card
+	var hasChevron bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.tool-card.tool-done .tool-chevron') !== null`,
+			&hasChevron,
+		),
+	)
+	if err != nil || !hasChevron {
+		t.Fatalf("collapsed done tool card should have .tool-chevron element: err=%v hasChevron=%v", err, hasChevron)
 	}
 }
 
