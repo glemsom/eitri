@@ -1264,9 +1264,19 @@ eitri-composer {
   font-weight: bold;
 }
 
+/* Settings header bar */
+.settings-header-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
 /* Model refresh spinner */
 .model-refresh-spinner {
-  display: inline-block;
+  visibility: hidden;
+  display: inline;
   animation: spin 1s linear infinite;
   font-size: 1rem;
   margin-left: 0.35rem;

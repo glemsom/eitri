@@ -4,7 +4,9 @@ import "github.com/glemsom/eitri/internal/config"
 
 templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string) {
 	@Base("Eitri — Settings", chatPath, nil, "", currentPath) {
-		@WorkspaceIndicator(workspace)
+		<div class="settings-header-bar">
+			@WorkspaceIndicator(workspace)
+		</div>
 		@SettingsForm(cfg, models, "", "", nil, "")
 	}
 }
@@ -21,8 +23,8 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			<p class="hint">{ noticeMessage }</p>
 		}
 		<form hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
-			<fieldset>
-				<legend>Provider</legend>
+			<details class="settings-details" open>
+				<summary><span>Provider &amp; Authentication</span></summary>
 
 				<div class="form-group">
 					<label for="provider">Provider</label>
@@ -71,9 +73,12 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 						</div>
 					}
 				</div>
+			</details>
+
+			<details class="settings-details">
+				<summary><span>Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="visibility:hidden;">&#9696;</span></span></summary>
 
 				<div class="form-group">
-					<label for="model">Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="display:none;">&#9696;</span></label>
 					<select id="model" name="model">
 						<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
 						for _, m := range models {
@@ -82,10 +87,10 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					</select>
 					<small class="hint">Models are discovered from current provider settings on load and save.</small>
 				</div>
-			</fieldset>
+			</details>
 
 			<details class="settings-details">
-				<summary><span>Prompt</span></summary>
+				<summary><span>Prompt — { len(cfg.SystemPrompt) } / 4096 chars</span></summary>
 
 				<div class="form-group">
 					<label for="system_prompt">System Prompt</label>
