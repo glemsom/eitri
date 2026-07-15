@@ -10,9 +10,20 @@ import (
 	"sync"
 )
 
+// RenderKind maps SSE events to the render kind the browser island should POST.
+type RenderKind string
+
+const (
+	RenderKindToolCard  RenderKind = "tool_card"
+	RenderKindComponent RenderKind = "component"
+	RenderKindError     RenderKind = "error"
+	RenderKindMarkdown  RenderKind = "markdown"
+)
+
 // SSEEvent represents one SSE data packet sent to the browser.
 type SSEEvent struct {
 	Type      string      `json:"type"`
+	Kind      RenderKind  `json:"kind,omitempty"`
 	Content   string      `json:"content,omitempty"`
 	Name      string      `json:"name,omitempty"`
 	Tool      string      `json:"tool,omitempty"`
@@ -117,14 +128,14 @@ func (s *State) Broadcast(evt SSEEvent) {
 	}
 }
 
-// BroadcastDone sends a done event, closes all subscriber streams, and marks the state as closed.
+// BroadcastDone sends a done event with kind "markdown", closes all subscriber streams, and marks the state as closed.
 func (s *State) BroadcastDone(messageID string, usage *TokenUsage) {
-	s.closeStreams(&SSEEvent{Type: "done", MessageID: messageID, Usage: usage})
+	s.closeStreams(&SSEEvent{Type: "done", Kind: RenderKindMarkdown, MessageID: messageID, Usage: usage})
 }
 
-// BroadcastError sends an error event and closes all subscriber streams.
+// BroadcastError sends an error event with kind "error" and closes all subscriber streams.
 func (s *State) BroadcastError(msg string) {
-	s.closeStreams(&SSEEvent{Type: "error", Message: msg})
+	s.closeStreams(&SSEEvent{Type: "error", Kind: RenderKindError, Message: msg})
 }
 
 // BroadcastClosed sends a closed event and closes all subscriber streams.
@@ -216,12 +227,12 @@ func (w *Writer) Token(content string) {
 	w.state.Broadcast(SSEEvent{Type: "token", Content: content})
 }
 
-// ToolCall sends a tool call event.
+// ToolCall sends a tool call event with kind "tool_card".
 func (w *Writer) ToolCall(name string, args interface{}) {
-	w.state.Broadcast(SSEEvent{Type: "tool_call", Tool: name, Args: args})
+	w.state.Broadcast(SSEEvent{Type: "tool_call", Kind: RenderKindToolCard, Tool: name, Args: args})
 }
 
-// ToolResult sends a tool result event.
+// ToolResult sends a tool result event with kind "tool_card".
 func (w *Writer) ToolResult(name string, output interface{}) {
 	outputStr := ""
 	if s, ok := output.(string); ok {
@@ -231,7 +242,7 @@ func (w *Writer) ToolResult(name string, output interface{}) {
 			outputStr = string(b)
 		}
 	}
-	w.state.Broadcast(SSEEvent{Type: "tool_result", Tool: name, Output: outputStr})
+	w.state.Broadcast(SSEEvent{Type: "tool_result", Kind: RenderKindToolCard, Tool: name, Output: outputStr})
 }
 
 // Done sends a done event with optional token usage and closes streams.
@@ -239,12 +250,12 @@ func (w *Writer) Done(messageID string, usage *TokenUsage) {
 	w.state.BroadcastDone(messageID, usage)
 }
 
-// Component sends a generative UI component event.
+// Component sends a generative UI component event with kind "component".
 func (w *Writer) Component(data interface{}) {
-	w.state.Broadcast(SSEEvent{Type: "component", Data: data})
+	w.state.Broadcast(SSEEvent{Type: "component", Kind: RenderKindComponent, Data: data})
 }
 
-// Error sends an error event and closes streams.
+// Error sends an error event with kind "error" and closes streams.
 func (w *Writer) Error(msg string) {
 	w.state.BroadcastError(msg)
 }
