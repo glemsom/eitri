@@ -248,7 +248,7 @@ sequenceDiagram
         Browser->>Browser: Display-only buffer, flush on newline or 50-100ms
         Agent->>Agent: LLM generates tool call
         API-->>Browser: SSE: tool_call
-        Browser->>API: POST /api/sessions/{id}/render/tool-card
+        Browser->>Browser: Activity panel entry only; no tool_call card rendered
         alt activate_skill
             Agent->>Skills: Activate(sessionID, name)
             Skills-->>Agent: structured skill_content

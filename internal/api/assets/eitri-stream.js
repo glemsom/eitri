@@ -431,7 +431,6 @@
 
         appendActivityEntry('Started ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'running', toolCallKey);
         updateActivitySummary();
-        renderToolCard(sessionId, 'tool_call', packet);
         break;
 
       case 'tool_result':
