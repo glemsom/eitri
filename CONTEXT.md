@@ -30,6 +30,8 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0005](docs/adr/0005-htmx-templ-ui.md) | HTMX + Templ shell with browser islands | Accepted |
 | [0006](docs/adr/0006-agent-skills.md) | Agent Skills support | Accepted |
 | [0007](docs/adr/0007-provider-profiles-and-github-copilot.md) | Provider profiles and GitHub Copilot | Accepted |
+| [0008](docs/adr/0008-merge-tool-activity-into-inline-tool-cards.md) | Merge tool activity into inline tool cards | Accepted |
+| [0009](docs/adr/0009-prompt-caching.md) | Session-scoped prompt caching | Accepted |
 
 ## Project structure
 

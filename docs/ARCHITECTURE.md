@@ -40,7 +40,7 @@ Orchestrates startup:
 3. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
 4. **Session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace; startup also begins idle-timeout cleanup using configured `session_timeout`
 5. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
-6. **Built-in tools** (`agent.NewTools`) — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
+6. **Built-in tools** (`agent.newAgentWithSkills`) — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
 7. **ADK session service** (`session.InMemoryService`) — stores conversation history
 8. **Runner manager** (`runner.NewManager`) — caches ADK runner, hot-reloads on config or skills-catalog changes
 9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux), delegates runner creation to RunnerManager; prints workspace + URL and optionally opens URL via `xdg-open`
@@ -53,7 +53,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 |------|---------------|
 | `agent.go` | `NewAgent()` — factory wrapping `google.golang.org/adk/v2/agent/llmagent` |
 | `openai_model.go` | Thin agent-facing wrappers still used by transport-focused tests; production provider-aware chat setup goes through `internal/provider.NewChatModel()` |
-| `tools.go` | `NewTools()` — registers 5 built-in function tools |
+| `agent.go` | `newAgentWithSkills()` — registers 5 built-in function tools inline |
 
 **Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles, but transport ownership now lives in `internal/provider` so callers can ask Provider module for ready-to-use chat models instead of assembling provider-specific details themselves. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract. GitHub Copilot auth now resolves through `internal/provider` seams before both model discovery and chat requests, so Settings UX, validation, discovery, runtime requests, and expired-OAuth refresh can converge behind one Provider module instead of scattered caller logic.
 
@@ -71,7 +71,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 
 **Caller contract**: caller modules use narrow Provider seams, not raw profile/auth/transport internals. `config` reads caller-safe metadata via `Describe()` / `MustDescribe()` and validates persisted credentials via `ValidateCredentials()` plus `NormalizeConfigAuthState()`. Settings load/save, `/api/models`, and post-device-flow model refresh use `DiscoverModels()`. Chat-run startup uses `NewChatModel()`. GitHub device-flow UI polls through caller-safe `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`, not raw OAuth token payload handling. Provider package never writes app config itself; callers persist returned auth updates when needed.
 
-Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/agent/tools.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
+Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/agent/agent.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
 
 ### `internal/api/` — HTTP server + Templ templates
 
@@ -278,7 +278,7 @@ sequenceDiagram
 
 ### Adding a new built-in tool
 
-1. Define args/result structs in `internal/agent/tools.go`
+1. Define args/result structs in `internal/agent/agent.go`
 2. Register with `functiontool.New()` and append to the returned `[]tool.Tool`
 3. Tool function receives `agent.Context` — call `ctx.SessionID()` to get executor/session-scoped state
 
@@ -297,7 +297,7 @@ sequenceDiagram
 
 ### Adding a new generative UI component
 
-1. Add component name to `render_component` tool enum in `tools.go`
+1. Add component name to `render_component` tool enum in `internal/agent/agent.go`
 2. Create Templ template in `internal/api/templates/components/`
 3. Wire server-side dispatch in `/api/sessions/{id}/render` handler with `kind: "component"`
 4. Add browser island initialization only if component needs local browser-native behavior
