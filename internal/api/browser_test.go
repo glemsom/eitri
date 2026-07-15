@@ -2420,6 +2420,89 @@ func TestBrowser_RunStatusSlim(t *testing.T) {
 	}
 }
 
+// TestBrowser_SettingsSaveButtonLoadingState verifies that when the save button is clicked,
+// it shows "Saving…" text and is disabled during the HTMX request, then re-enabled after.
+func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
+	// Use a slow provider server so the request takes long enough to observe loading state
+	fakeProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(fakeProvider.Close)
+
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var initialText, loadingText, postSubmitText string
+	var submitDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		// Set provider to custom_openai and fill credentials so save will succeed
+		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", fakeProvider.URL, chromedp.ByQuery),
+		chromedp.Clear("#api_key", chromedp.ByQuery),
+		chromedp.SendKeys("#api_key", "sk-test", chromedp.ByQuery),
+		// Read button text before click
+		chromedp.Text("button[type=submit]", &initialText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("initial setup failed: %v", err)
+	}
+	if !strings.Contains(initialText, "Save") {
+		t.Errorf("initial button text = %q, want containing 'Save'", initialText)
+	}
+
+	// Click submit. The provider is slow (200ms delay), so we can observe loading state.
+	err = chromedp.Run(ctx,
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		// Wait for beforeSend to fire (HTMX fires synchronously before XMLHttpRequest.send)
+		chromedp.Sleep(50*time.Millisecond),
+		chromedp.Text("button[type=submit]", &loadingText, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('button[type=submit]').disabled`,
+			&submitDisabled,
+		),
+	)
+	if err != nil {
+		t.Fatalf("loading state check failed: %v", err)
+	}
+	if !strings.Contains(loadingText, "Saving") {
+		t.Errorf("button text during save = %q, want containing 'Saving'", loadingText)
+	}
+	if !submitDisabled {
+		t.Error("submit button should be disabled during save request")
+	}
+
+	// Wait for the swap to complete (after provider delay), then verify button is re-enabled
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
+		chromedp.Text("button[type=submit]", &postSubmitText, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('button[type=submit]').disabled`,
+			&submitDisabled,
+		),
+	)
+	if err != nil {
+		t.Fatalf("post-save state check failed: %v", err)
+	}
+	if !strings.Contains(postSubmitText, "Save") {
+		t.Errorf("post-save button text = %q, want containing 'Save'", postSubmitText)
+	}
+	if submitDisabled {
+		t.Error("submit button should be re-enabled after save completes")
+	}
+}
+
 // TestBrowser_SettingsSaveShowsSuccessIndicator verifies that after a successful config
 // save via PUT /api/config, the settings form shows a "✓ Saved" success indicator.
 func TestBrowser_SettingsSaveShowsSuccessIndicator(t *testing.T) {

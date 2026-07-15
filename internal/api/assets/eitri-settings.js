@@ -124,6 +124,36 @@
     }, 2500);
   }
 
+  // — Save button loading state —
+  function initSaveButtonLoading() {
+    // Disable save button + show "Saving…" during HTMX form submit
+    document.body.addEventListener('htmx:beforeSend', function (evt) {
+      var target = evt.detail && evt.detail.target;
+      if (target && target.id === 'settings-form') {
+        var btn = document.querySelector('button[type=submit]');
+        if (btn) {
+          btn.disabled = true;
+          btn._origText = btn.textContent;
+          btn.textContent = 'Saving…';
+        }
+      }
+    });
+
+    // Re-enable save button after swap
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+      var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
+      if (targetId === 'settings-form') {
+        var btn = document.querySelector('button[type=submit]');
+        if (btn) {
+          btn.disabled = false;
+          // Restore original text if we have it, otherwise default to "Save"
+          btn.textContent = btn._origText || 'Save';
+          delete btn._origText;
+        }
+      }
+    });
+  }
+
   // — Test Connection button —
   function initTestConnection() {
     var btn = document.getElementById('test-connection-btn');
@@ -205,6 +235,7 @@
   function init() {
     if (!document.getElementById('settings-form')) return;
     initBaseURLToggle();
+    initSaveButtonLoading();
     initTestConnection();
     initSaveSuccessFade();
     scrollToErrorIfPresent();
@@ -222,6 +253,7 @@
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'settings-form') {
       initBaseURLToggle();
+      initSaveButtonLoading();
       initSaveSuccessFade();
       scrollToErrorIfPresent();
       initCtrlEnter();
