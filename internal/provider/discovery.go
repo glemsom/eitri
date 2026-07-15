@@ -34,6 +34,7 @@ type DiscoveryOptions struct {
 	HTTPClient         *http.Client
 	GitHubCopilotOAuth GitHubCopilotOAuthConfig
 	Now                time.Time
+	PersistAuth        PersistAuthFunc // optional: called on auth refresh instead of returning AuthUpdate
 }
 
 // DiscoverModels resolves auth, refreshes provider-owned auth when needed, and
@@ -51,7 +52,7 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 		HTTPClient:         opts.HTTPClient,
 		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
 		Now:                opts.Now,
-	})
+	}, opts.PersistAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -101,19 +102,23 @@ type authResolveOptions struct {
 	Now                time.Time
 }
 
-func resolveAuthWithUpdate(ctx context.Context, providerID, apiKey string, providerAuth json.RawMessage, opts authResolveOptions) (ResolvedAuth, *AuthUpdate, error) {
+func resolveAuthWithUpdate(ctx context.Context, providerID, apiKey string, providerAuth json.RawMessage, opts authResolveOptions, persistAuth PersistAuthFunc) (ResolvedAuth, *AuthUpdate, error) {
 	var update *AuthUpdate
+	persist := func(apiKey string, raw json.RawMessage) error {
+		if persistAuth != nil {
+			return persistAuth(apiKey, raw)
+		}
+		update = &AuthUpdate{
+			APIKey:       apiKey,
+			ProviderAuth: cloneRawMessage(raw),
+		}
+		return nil
+	}
 	resolved, err := resolveAuthForRequest(ctx, providerID, apiKey, providerAuth, ResolveAuthOptions{
 		HTTPClient:         opts.HTTPClient,
 		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
 		Now:                opts.Now,
-		Persist: func(apiKey string, raw json.RawMessage) error {
-			update = &AuthUpdate{
-				APIKey:       apiKey,
-				ProviderAuth: cloneRawMessage(raw),
-			}
-			return nil
-		},
+		Persist:            persist,
 	})
 	if err != nil {
 		return ResolvedAuth{}, nil, err

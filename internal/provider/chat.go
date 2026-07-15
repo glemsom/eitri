@@ -25,11 +25,16 @@ type ChatResult struct {
 	AuthUpdate *AuthUpdate
 }
 
+// PersistAuthFunc persists refreshed provider auth state (api key + provider_auth JSON).
+// Called during auth refresh before the provider operation returns.
+type PersistAuthFunc func(apiKey string, providerAuth json.RawMessage) error
+
 // ChatOptions configures chat-model auth refresh and transport.
 type ChatOptions struct {
 	HTTPClient         *http.Client
 	GitHubCopilotOAuth GitHubCopilotOAuthConfig
 	Now                time.Time
+	PersistAuth        PersistAuthFunc // optional: called on auth refresh instead of returning AuthUpdate
 }
 
 // NewChatModel resolves provider auth, hides transport details, and returns ready-to-use ADK model.
@@ -49,7 +54,7 @@ func NewChatModel(ctx context.Context, req ChatRequest, opts ChatOptions) (*Chat
 		HTTPClient:         opts.HTTPClient,
 		GitHubCopilotOAuth: opts.GitHubCopilotOAuth,
 		Now:                opts.Now,
-	})
+	}, opts.PersistAuth)
 	if err != nil {
 		return nil, err
 	}
