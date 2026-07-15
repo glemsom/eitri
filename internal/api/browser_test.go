@@ -2412,6 +2412,173 @@ func TestBrowser_SettingsSaveShowsSuccessIndicator(t *testing.T) {
 	}
 }
 
+// TestBrowser_ToolCardsInsertBeforeSentinel verifies tool cards appear before
+// #scroll-sentinel even when tools run before any text token (so #streaming
+// doesn't exist yet). Regression: previously fell back to appendChild, placing
+// tool cards after user message but before where #streaming would later appear.
+func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Verify scroll-sentinel present
+	var sentinelExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('scroll-sentinel') !== null`,
+			&sentinelExists,
+		),
+	)
+	if err != nil || !sentinelExists {
+		t.Fatalf("scroll-sentinel not found: err=%v exists=%v", err, sentinelExists)
+	}
+
+	// Parse session ID from URL
+	var sessionID string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	// Emit open and a user message already rendered (simulated via HTMX)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit open failed: %v", err)
+	}
+
+	// Emit tool_call (no token before — simulating tools-run-first scenario)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello'}})`,
+			nil,
+		),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_call failed: %v", err)
+	}
+
+	// Emit tool_result
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: 'hello\n'})`,
+			nil,
+		),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_result failed: %v", err)
+	}
+
+	// Wait for tool cards container to appear
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify tool-cards-container exists
+	var toolCardsContainerExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.getElementById('tool-cards-`+sessionID+`') !== null`,
+			&toolCardsContainerExists,
+		),
+	)
+	if err != nil || !toolCardsContainerExists {
+		t.Fatalf("tool-cards-container not found: err=%v exists=%v", err, toolCardsContainerExists)
+	}
+
+	// Verify tool cards container appears before scroll-sentinel
+	// (i.e., its next sibling or later sibling is scroll-sentinel, or it's before sentinel)
+	var toolCardsBeforeSentinel bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			var sentinel = document.getElementById('scroll-sentinel');
+			var toolCards = document.getElementById('tool-cards-`+sessionID+`');
+			if (!messages || !sentinel || !toolCards) return false;
+			// Check sentinel is after toolCards in messages children
+			var toolIdx = Array.prototype.indexOf.call(messages.children, toolCards);
+			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
+			return toolIdx >= 0 && sentinelIdx > toolIdx;
+		})()`, &toolCardsBeforeSentinel),
+	)
+	if err != nil || !toolCardsBeforeSentinel {
+		t.Fatalf("tool cards should be before scroll-sentinel: err=%v beforeSentinel=%v", err, toolCardsBeforeSentinel)
+	}
+
+	// Now simulate streaming bubble creation (as would happen on first token after tools)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'token', content: 'Thinking about it...'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit token failed: %v", err)
+	}
+
+	// Wait for streaming to appear
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify #streaming exists and is before scroll-sentinel
+	var streamingBeforeSentinel bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			var sentinel = document.getElementById('scroll-sentinel');
+			var streaming = document.getElementById('streaming');
+			if (!messages || !sentinel || !streaming) return false;
+			var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
+			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
+			return streamingIdx >= 0 && sentinelIdx > streamingIdx;
+		})()`, &streamingBeforeSentinel),
+	)
+	if err != nil || !streamingBeforeSentinel {
+		t.Fatalf("streaming should be before scroll-sentinel: err=%v beforeSentinel=%v", err, streamingBeforeSentinel)
+	}
+
+	// Verify tool cards are still before streaming (not reordered)
+	var toolCardsBeforeStreaming bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			var streaming = document.getElementById('streaming');
+			var toolCards = document.getElementById('tool-cards-`+sessionID+`');
+			if (!messages || !streaming || !toolCards) return false;
+			var toolIdx = Array.prototype.indexOf.call(messages.children, toolCards);
+			var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
+			return toolIdx >= 0 && streamingIdx > toolIdx;
+		})()`, &toolCardsBeforeStreaming),
+	)
+	if err != nil || !toolCardsBeforeStreaming {
+		t.Fatalf("tool cards should be before streaming: err=%v beforeStreaming=%v", err, toolCardsBeforeStreaming)
+	}
+}
+
 // TestBrowser_SettingsSaveErrorAutoScroll verifies that after a failed config save,
 // the page auto-scrolls to the error toast.
 func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {
