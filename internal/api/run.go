@@ -581,8 +581,8 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 							CreatedAt: time.Now(),
 						})
 					}
-					w.Done(messageID, estimateUsage(content))
 				}
+				w.Done(messageID, estimateUsage(content))
 				state.finish()
 				return content
 			}
@@ -645,15 +645,27 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 
 		case err, ok := <-state.Errors:
 			if !ok {
+				content := state.bufferString()
+				if content != "" {
+					if rm.uiSessionMgr != nil {
+						rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
+							Role:      "assistant",
+							Content:   content,
+							CreatedAt: time.Now(),
+						})
+					}
+				}
+				w.Done(messageID, estimateUsage(content))
 				state.finish()
-				return state.bufferString()
+				return content
 			}
 			if err != nil {
 				return rm.finishWithError(state, w, messageID, err)
 			}
 
 		case <-state.Done:
-			state.closeStreams(nil)
+			state.closeStreams(&SSEEvent{Type: "done", MessageID: messageID, Usage: estimateUsage(state.bufferString())})
+			state.finish()
 			return state.bufferString()
 		}
 	}
