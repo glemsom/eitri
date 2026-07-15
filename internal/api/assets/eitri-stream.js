@@ -655,12 +655,17 @@
       container.appendChild(slot);
     }
 
-    // Morph card in place via HTMX (issue #131)
-    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
+    // POST to unified render route with kind field (issue #195)
+    const jsonPayload = Object.assign(
+      Object.fromEntries(formData),
+      { kind: 'tool_card' }
+    );
+    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
       target: '#' + CSS.escape(slot.id || (slot.id = toolCallKey)),
       swap: 'innerHTML',
-      values: Object.fromEntries(formData),
+      contentType: 'application/json',
+      values: JSON.stringify(jsonPayload),
     });
   }
 
@@ -672,14 +677,16 @@
     const compData = packet.data || {};
     if (!compName) return;
 
-    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/component', {
+    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
       target: '#messages',
       swap: 'beforeend',
-      values: {
+      contentType: 'application/json',
+      values: JSON.stringify({
+        kind: 'component',
         name: compName,
-        data: JSON.stringify(compData),
-      },
+        data: compData,
+      }),
     });
   }
 
@@ -708,22 +715,30 @@
 
     document.body.addEventListener('htmx:afterSwap', afterSwap);
 
-    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/markdown', {
+    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
       target: '#streaming',
       swap: 'outerHTML',
-      values: { message_id: messageId || '' },
+      contentType: 'application/json',
+      values: JSON.stringify({
+        kind: 'markdown',
+        message_id: messageId || '',
+      }),
     });
 
     window.setTimeout(finish, 500);
   }
 
   function renderError(sessionId, message) {
-    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/error', {
+    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
       target: '#error-toasts',
       swap: 'beforeend',
-      values: { message: message || 'An error occurred' },
+      contentType: 'application/json',
+      values: JSON.stringify({
+        kind: 'error',
+        message: message || 'An error occurred',
+      }),
     });
   }
 

@@ -1423,8 +1423,8 @@ func TestRenderMarkdown(t *testing.T) {
 			}
 
 			// Test the render/markdown endpoint
-			renderPath := "/api" + loc + "/render/markdown"
-			body := `{"message_id":"test_1"}`
+			renderPath := "/api" + loc + "/render"
+			body := `{"kind":"markdown","message_id":"test_1"}`
 			req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			if browserCookie != nil {
@@ -1463,8 +1463,8 @@ func TestRenderToolCard(t *testing.T) {
 		}
 	}
 
-	renderPath := "/api" + loc + "/render/tool-card"
-	body := `{"type":"tool_call","tool":"terminal_execute","args":{"command":"echo hello"}}`
+	renderPath := "/api" + loc + "/render"
+	body := `{"kind":"tool_card","tool":"terminal_execute","args":"{\"command\":\"echo hello\"}"}`
 	req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if browserCookie != nil {
@@ -1490,8 +1490,8 @@ func TestRenderError(t *testing.T) {
 	server := newTestServerWithRuns(t)
 	client := noRedirectClient()
 
-	body := `{"message":"Test error message"}`
-	resp, err := client.Post(server.URL+"/api/sessions/nonexistent/render/error", "application/json", strings.NewReader(body))
+	body := `{"kind":"error","message":"Test error message"}`
+	resp, err := client.Post(server.URL+"/api/sessions/nonexistent/render", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

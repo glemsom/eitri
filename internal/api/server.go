@@ -288,10 +288,6 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/stream", s.handleStream)
 	s.mux.HandleFunc("POST /api/sessions/{id}/cancel", s.handleCancel)
 	s.mux.HandleFunc("POST /api/sessions/{id}/render", s.handleRender)
-	s.mux.HandleFunc("POST /api/sessions/{id}/render/markdown", s.handleRenderMarkdown)
-	s.mux.HandleFunc("POST /api/sessions/{id}/render/tool-card", s.handleRenderToolCard)
-	s.mux.HandleFunc("POST /api/sessions/{id}/render/error", s.handleRenderError)
-	s.mux.HandleFunc("POST /api/sessions/{id}/render/component", s.handleRenderComponent)
 
 	// Skills routes
 	s.mux.HandleFunc("GET /skills", s.handleSkills)
@@ -882,303 +878,6 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) handleRenderMarkdown(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	browserID := s.browserIDFromRequest(r)
-
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	messageID := ""
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		var req struct {
-			MessageID string `json:"message_id"`
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-		messageID = req.MessageID
-	} else {
-		if err := r.ParseForm(); err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		messageID = r.FormValue("message_id")
-	}
-
-	_ = messageID
-
-	// Look up the last assistant message in session
-	var content string
-	sess = s.config.SessionManager.Get(id)
-	if sess != nil {
-		for i := len(sess.Messages) - 1; i >= 0; i-- {
-			if sess.Messages[i].Role == "assistant" {
-				content = sess.Messages[i].Content
-				break
-			}
-		}
-	}
-
-	html := renderMarkdownToHTML(content)
-	component := templates.AssistantBubble(html)
-	component.Render(r.Context(), w)
-}
-
-func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	browserID := s.browserIDFromRequest(r)
-
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	var toolType, toolName, toolArgs, toolOutput, status, toolCallKey, toolElapsed string
-
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-
-		var req struct {
-			Type        string          `json:"type"`
-			Tool        string          `json:"tool"`
-			Args        json.RawMessage `json:"args,omitempty"`
-			Output      string          `json:"output,omitempty"`
-			Status      string          `json:"status,omitempty"`
-			ToolCallKey string          `json:"tool_call_key,omitempty"`
-			Elapsed     string          `json:"elapsed,omitempty"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-		toolType = req.Type
-		toolName = req.Tool
-		toolArgs = string(req.Args)
-		toolOutput = req.Output
-		status = req.Status
-		toolCallKey = req.ToolCallKey
-		toolElapsed = req.Elapsed
-	} else {
-		// Form-encoded (HTMX default)
-		if err := r.ParseForm(); err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		toolType = r.FormValue("type")
-		toolName = r.FormValue("tool")
-		toolArgs = r.FormValue("args")
-		toolOutput = r.FormValue("output")
-		status = r.FormValue("status")
-		toolCallKey = r.FormValue("tool_call_key")
-		toolElapsed = r.FormValue("elapsed")
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if status == "running" || toolType == "tool_call" {
-		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "running", "")
-		component.Render(r.Context(), w)
-	} else if toolName == "file_editor" && toolOutput != "" {
-		// Parse file_editor result JSON to render FileEditCard
-		var feResult struct {
-			Path         string   `json:"path"`
-			Mode         string   `json:"mode"`
-			BytesWritten int      `json:"bytes_written"`
-			OldContent   string   `json:"old_content"`
-			NewContent   string   `json:"new_content"`
-			DirsCreated  []string `json:"dirs_created"`
-		}
-		if err := json.Unmarshal([]byte(toolOutput), &feResult); err == nil {
-			component := templates.FileEditCard(feResult.Path, feResult.Mode, feResult.OldContent, feResult.NewContent, feResult.BytesWritten, feResult.DirsCreated)
-			component.Render(r.Context(), w)
-		} else {
-			// Fallback to regular tool result card (done)
-			component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done", toolElapsed)
-			component.Render(r.Context(), w)
-		}
-	} else {
-		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done", toolElapsed)
-		component.Render(r.Context(), w)
-	}
-}
-
-func (s *Server) handleRenderError(w http.ResponseWriter, r *http.Request) {
-	var msg string
-
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-		var req struct {
-			Message string `json:"message"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-		msg = req.Message
-	} else {
-		if err := r.ParseForm(); err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		msg = r.FormValue("message")
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	component := templates.ErrorToast(msg)
-	component.Render(r.Context(), w)
-}
-
-func (s *Server) handleRenderComponent(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	browserID := s.browserIDFromRequest(r)
-
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	var req struct {
-		Name string                 `json:"name"`
-		Data map[string]interface{} `json:"data"`
-	}
-
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "application/json") {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		defer r.Body.Close()
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-	} else {
-		defer r.Body.Close()
-		if err := r.ParseForm(); err != nil {
-			if isRequestTooLarge(err) {
-				writeRequestTooLarge(w)
-				return
-			}
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-		req.Name = r.FormValue("name")
-		dataStr := r.FormValue("data")
-		if dataStr != "" {
-			if err := json.Unmarshal([]byte(dataStr), &req.Data); err != nil {
-				// Bad JSON in data field — treat as empty
-				req.Data = nil
-			}
-		}
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	switch req.Name {
-	case "MermaidDiagram":
-		code := ""
-		if req.Data != nil {
-			if c, ok := req.Data["code"].(string); ok {
-				code = c
-			}
-		}
-		component := templates.MermaidDiagram(code)
-		component.Render(r.Context(), w)
-
-	case "QuickReplies":
-		var options []string
-		if req.Data != nil {
-			if opts, ok := req.Data["options"]; ok {
-				if optsArr, ok := opts.([]interface{}); ok {
-					for _, o := range optsArr {
-						if s, ok := o.(string); ok {
-							options = append(options, s)
-						}
-					}
-				}
-			}
-		}
-		component := templates.QuickReplies(id, options)
-		component.Render(r.Context(), w)
-
-	case "DiffCard":
-		oldCode := ""
-		newCode := ""
-		lang := ""
-		if req.Data != nil {
-			if o, ok := req.Data["old"].(string); ok {
-				oldCode = o
-			}
-			if n, ok := req.Data["new"].(string); ok {
-				newCode = n
-			}
-			if l, ok := req.Data["lang"].(string); ok {
-				lang = l
-			}
-		}
-		component := templates.DiffCard(oldCode, newCode, lang)
-		component.Render(r.Context(), w)
-
-	default:
-		http.Error(w, "Unknown component", http.StatusBadRequest)
-	}
-}
-
 // unifiedRenderRequest is the JSON body for the unified render route.
 type unifiedRenderRequest struct {
 	Kind       string                 `json:"kind"`
@@ -1198,12 +897,6 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		if isRequestTooLarge(err) {
@@ -1218,6 +911,19 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	var req unifiedRenderRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Error rendering doesn't require a valid session (may happen during setup)
+	if req.Kind == "error" {
+		component := templates.ErrorToast(req.Message)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
