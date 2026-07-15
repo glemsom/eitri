@@ -359,7 +359,12 @@ Guidelines:
 - Wrap reasoning/thinking steps in <think>...</think> tags.
 - When you need to run a shell command, use the terminal_execute tool.
 - To read files, use the file_viewer tool.
-- To create or edit files, use the file_editor tool.
+- To create or edit files, use the file_editor tool with one of four modes:
+    create — new file (fails if exists)
+    overwrite — replace entire file content
+    edit — surgical old→new text replacement
+    insert — insert content after a LINE:HASH anchor
+  First read with file_viewer(include_line_info=true) to get anchors for edit/insert.
 - When a task matches an available skill description, call activate_skill with that skill name before proceeding.
 - Prefer showing command output and explaining results.`
 	}
