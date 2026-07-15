@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -910,8 +911,28 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 
 	var req unifiedRenderRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
+		// HTMX 2.0 ajax() sends form-urlencoded even with contentType: 'application/json'
+		// (issue #195 follow-up). Try parsing body as URL-encoded form data.
+		if vals, parseErr := url.ParseQuery(string(body)); parseErr == nil && vals.Get("kind") != "" {
+			req.Kind = vals.Get("kind")
+			req.Tool = vals.Get("tool")
+			req.Output = vals.Get("output")
+			req.Status = vals.Get("status")
+			req.ToolCallKey = vals.Get("tool_call_key")
+			req.Elapsed = vals.Get("elapsed")
+			req.Message = vals.Get("message")
+			req.MessageID = vals.Get("message_id")
+			req.Name = vals.Get("name")
+			if args := vals.Get("args"); args != "" {
+				req.Args = json.RawMessage(args)
+			}
+			if data := vals.Get("data"); data != "" {
+				json.Unmarshal([]byte(data), &req.Data)
+			}
+		} else {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Error rendering doesn't require a valid session (may happen during setup)
