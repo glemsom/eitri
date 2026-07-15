@@ -3401,3 +3401,386 @@ func TestRenderComponent_OwnershipMismatch(t *testing.T) {
 		t.Errorf("render component no auth status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
+
+// ————— Unified render route tests —————
+
+func TestUnifiedRender_ToolCardRunning(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind":      "tool_card",
+		"tool":      "terminal_execute",
+		"args":      `{"command":"ls"}`,
+		"status":    "running",
+		"tool_call_key": "tc_1",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render tool_card running status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "terminal_execute") {
+		t.Errorf("unified render running card missing tool name, got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_ToolCardDone(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind":      "tool_card",
+		"tool":      "terminal_execute",
+		"args":      `{"command":"ls"}`,
+		"output":    "file1.txt\nfile2.txt",
+		"status":    "done",
+		"tool_call_key": "tc_1",
+		"elapsed":   "1.2s",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render tool_card done status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "terminal_execute") {
+		t.Errorf("unified render done card missing tool name, got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_ToolCardFileEditor(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	output := `{"path":"main.go","mode":"overwrite","bytes_written":42,"old_content":"old","new_content":"new"}`
+	body := map[string]interface{}{
+		"kind":      "tool_card",
+		"tool":      "file_editor",
+		"output":    output,
+		"status":    "done",
+		"tool_call_key": "tc_1",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render file_editor status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "file-edit-card") {
+		t.Errorf("unified render file_editor missing file-edit-card class, got: %s", content[:300])
+	}
+}
+
+func TestUnifiedRender_Error(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind":    "error",
+		"message": "Something went wrong",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render error status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "Something went wrong") {
+		t.Errorf("unified render error missing message, got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_Component(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind": "component",
+		"name": "MermaidDiagram",
+		"data": map[string]interface{}{
+			"code": "graph TD; A-->B;",
+		},
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render mermaid status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "mermaid") {
+		t.Errorf("unified render mermaid missing 'mermaid' class, got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_ComponentQuickReplies(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind": "component",
+		"name": "QuickReplies",
+		"data": map[string]interface{}{
+			"options": []string{"Summarize", "Make shorter"},
+		},
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render QuickReplies status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "Summarize") {
+		t.Errorf("unified render QuickReplies missing 'Summarize', got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_ComponentDiffCard(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind": "component",
+		"name": "DiffCard",
+		"data": map[string]interface{}{
+			"old":  "old code",
+			"new":  "new code",
+			"lang": "go",
+		},
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unified render DiffCard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	content := string(respBody)
+	if !strings.Contains(content, "diff-card") {
+		t.Errorf("unified render DiffCard missing 'diff-card' class, got: %s", content[:200])
+	}
+}
+
+func TestUnifiedRender_UnknownKind(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	body := map[string]interface{}{
+		"kind": "unknown_kind",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("unified render unknown kind status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestUnifiedRender_OwnershipMismatch(t *testing.T) {
+	server := newTestServer(t)
+
+	body := map[string]interface{}{
+		"kind": "error",
+		"message": "test",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	// No browser cookie -> 404
+	resp, err := http.Post(server.URL+"/api/sessions/nonexistent/render", "application/json", bytes.NewReader(bodyJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("unified render no auth status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}

@@ -324,7 +324,7 @@ func (rm *RunManager) CancelRun(sessionID string) bool {
 	}
 	slog.Info("run canceled", slog.String("session_id", sessionID))
 	// Broadcast done event so SSE subscribers re-enable composer (issue #103)
-	state.SSE.Broadcast(runstate.SSEEvent{Type: "done"})
+	state.SSE.Broadcast(runstate.SSEEvent{Type: "done", Kind: runstate.RenderKindMarkdown})
 	state.Cancel()
 	state.finish()
 	return true
@@ -447,6 +447,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *runstate.Writer) string {
 							compData, _ := argsMap["data"].(map[string]interface{})
 							state.SSE.Broadcast(runstate.SSEEvent{
 								Type: "component",
+								Kind: runstate.RenderKindComponent,
 								Name: compName,
 								Data: compData,
 							})
