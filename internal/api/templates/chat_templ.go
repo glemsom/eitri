@@ -33,14 +33,14 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"chat-view\"><div id=\"error-toasts\"></div><div id=\"workspace-indicator\" class=\"workspace-indicator\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"chat-view\"><div id=\"error-toasts\"></div><div id=\"session-chrome\" class=\"session-chrome\"><div id=\"workspace-indicator\" class=\"workspace-indicator\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(workspace)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 10, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 11, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -53,7 +53,7 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(pathBase(workspace))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 11, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat.templ`, Line: 12, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -69,11 +69,15 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 				return templ_7745c5c3_Err
 			}
 		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div id=\"run-status\" class=\"run-status\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span id=\"stream-indicator\" class=\"stream-indicator idle\">Idle</span></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		templ_7745c5c3_Err = ActiveSkillChips(sess.ActiveSkills).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"chat-run-chrome\"><div id=\"run-status\" class=\"run-status\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span id=\"stream-indicator\" class=\"stream-indicator idle\">Idle</span></div></div><div id=\"messages\" class=\"messages\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div id=\"messages\" class=\"messages\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -90,7 +94,7 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -98,7 +102,7 @@ func ChatView(sess *session.UISession, workspace string, configValid bool) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -128,7 +132,7 @@ func WorkspaceIndicator(workspace string) templ.Component {
 			templ_7745c5c3_Var4 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div id=\"workspace-indicator\" class=\"workspace-indicator\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div id=\"workspace-indicator\" class=\"workspace-indicator\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -141,7 +145,7 @@ func WorkspaceIndicator(workspace string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\">Workspace: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">Workspace: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -154,7 +158,7 @@ func WorkspaceIndicator(workspace string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

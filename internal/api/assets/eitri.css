@@ -421,16 +421,22 @@ noscript {
   transition: opacity 0.3s;
 }
 
-.chat-run-chrome {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+.session-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
 }
 
 .run-status {
   display: inline-flex;
   align-items: center;
   padding: 0;
+  margin-left: auto;
 }
 
 
@@ -739,7 +745,7 @@ noscript {
 .workspace-indicator {
   font-size: 0.8rem;
   color: var(--text-muted);
-  padding: 0.5rem 0;
+  padding: 0;
   cursor: default;
 }
 
