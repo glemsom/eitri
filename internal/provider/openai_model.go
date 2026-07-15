@@ -10,12 +10,17 @@ import (
 	"iter"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/genai"
 )
+
+// Debug log toggle — set EITRI_DEBUG_PROMPT=1 or EITRI_DEBUG_REQUEST=1
+// to dump the full OpenAI request JSON (system prompt, messages, tools) to slog.Info.
+var debugLogPayload = os.Getenv("EITRI_DEBUG_PROMPT") == "1" || os.Getenv("EITRI_DEBUG_REQUEST") == "1"
 
 // OpenAIModel implements model.LLM for OpenAI-compatible chat completions.
 type OpenAIModel struct {
@@ -73,12 +78,12 @@ func (m *OpenAIModel) Name() string { return m.name }
 // ————— wire types —————
 
 type openAIReq struct {
-	Model           string      `json:"model"`
-	Messages        []openAIMsg `json:"messages"`
-	Stream          bool        `json:"stream"`
-	Tools           interface{} `json:"tools,omitempty"`
-	ToolChoice      string      `json:"tool_choice,omitempty"`
-	PromptCacheKey  string      `json:"prompt_cache_key,omitempty"`
+	Model          string      `json:"model"`
+	Messages       []openAIMsg `json:"messages"`
+	Stream         bool        `json:"stream"`
+	Tools          interface{} `json:"tools,omitempty"`
+	ToolChoice     string      `json:"tool_choice,omitempty"`
+	PromptCacheKey string      `json:"prompt_cache_key,omitempty"`
 }
 
 type openAIMsg struct {
@@ -146,6 +151,14 @@ func (m *OpenAIModel) GenerateContent(ctx context.Context, req *model.LLMRequest
 		}
 
 		endpoint := m.profile.ChatCompletionsURL(m.baseURL)
+
+		if debugLogPayload {
+			slog.Info("llm request",
+				slog.String("model", openAIReq.Model),
+				slog.String("endpoint", endpoint),
+				slog.String("body", string(body)),
+			)
+		}
 
 		var lastErr error
 		maxAttempts := m.MaxRetries + 1 // first attempt + retries
