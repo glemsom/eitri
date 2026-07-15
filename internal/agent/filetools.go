@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,11 +9,15 @@ import (
 	"unicode/utf8"
 )
 
+const defaultReadLimit = 100
+
 // FileViewerResult holds the result of reading a file.
 type FileViewerResult struct {
-	Path      string `json:"path"`
-	Content   string `json:"content"`
-	Truncated bool   `json:"truncated"`
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Truncated  bool   `json:"truncated"`
+	TotalLines int    `json:"total_lines,omitempty"`
+	NextOffset int    `json:"next_offset,omitempty"`
 }
 
 // FileEditorResult holds the result of writing a file.
@@ -25,10 +30,22 @@ type FileEditorResult struct {
 	DirsCreated  []string `json:"dirs_created,omitempty"`
 }
 
-// ReadFile reads a file with optional line offset and limit.
-// offset is 1-indexed line offset. limit caps the number of lines returned.
-// Returns the content and whether it was truncated.
-func ReadFile(absPath string, offset, limit int) (FileViewerResult, error) {
+// LineHash returns the first 8 hex characters of the SHA-256 hash of line.
+func LineHash(line string) string {
+	h := sha256.Sum256([]byte(line))
+	return fmt.Sprintf("%x", h)[:8]
+}
+
+// formatLineWithHash prefixes a line with LINE:HASH for anchor use.
+func formatLineWithHash(lineNum int, line string) string {
+	return fmt.Sprintf("%d:%s | %s", lineNum, LineHash(line), line)
+}
+
+// readFileLines reads a file and returns its lines with metadata.
+// offset is 1-indexed; 0 or negative means start at line 1.
+// limit caps returned lines; 0 means unlimited.
+// includeLineInfo controls whether lines are prefixed with LINE:HASH.
+func readFileLines(absPath string, offset, limit int, includeLineInfo bool) (FileViewerResult, error) {
 	// Check not a directory
 	info, err := os.Stat(absPath)
 	if err != nil {
@@ -51,32 +68,83 @@ func ReadFile(absPath string, offset, limit int) (FileViewerResult, error) {
 		return FileViewerResult{}, fmt.Errorf("file %q is not valid UTF-8 text", absPath)
 	}
 
-	// Split into lines
+	// Handle empty file
+	if len(data) == 0 {
+		return FileViewerResult{
+			Path:       absPath,
+			Content:    "",
+			Truncated:  false,
+			TotalLines: 0,
+			NextOffset: 0,
+		}, nil
+	}
+
 	content := string(data)
 	lines := strings.Split(content, "\n")
+	totalLines := len(lines)
 
 	// Apply offset (1-indexed)
 	startLine := offset
 	if startLine < 1 {
 		startLine = 1
 	}
-	if startLine > len(lines) {
-		startLine = len(lines)
+	if startLine > totalLines {
+		startLine = totalLines
 	}
 
-	endLine := len(lines)
-	if limit > 0 && startLine+limit-1 < endLine {
-		endLine = startLine + limit - 1
+	// Apply limit: 0 means unlimited
+	effectiveLimit := limit
+	if effectiveLimit <= 0 {
+		effectiveLimit = totalLines
 	}
 
-	result := strings.Join(lines[startLine-1:endLine], "\n")
-	truncated := limit > 0 && endLine < len(lines)
+	endLine := totalLines
+	if effectiveLimit > 0 && startLine+effectiveLimit-1 < endLine {
+		endLine = startLine + effectiveLimit - 1
+	}
+
+	// Build result content
+	selectedLines := lines[startLine-1 : endLine]
+	var resultLines []string
+	if includeLineInfo {
+		for i, raw := range selectedLines {
+			lineNum := startLine + i
+			resultLines = append(resultLines, formatLineWithHash(lineNum, raw))
+		}
+	} else {
+		resultLines = selectedLines
+	}
+	resultContent := strings.Join(resultLines, "\n")
+
+	truncated := endLine < totalLines
+
+	var nextOffset int
+	if truncated {
+		nextOffset = endLine + 1
+	} else {
+		nextOffset = 0
+	}
 
 	return FileViewerResult{
-		Path:      absPath,
-		Content:   result,
-		Truncated: truncated,
+		Path:       absPath,
+		Content:    resultContent,
+		Truncated:  truncated,
+		TotalLines: totalLines,
+		NextOffset: nextOffset,
 	}, nil
+}
+
+// ReadFile reads a file with optional line offset and limit.
+// offset is 1-indexed line offset; 0 means start at line 1.
+// limit caps returned lines; 0 means unlimited.
+// Returns content, truncation status, total line count, and next offset.
+func ReadFile(absPath string, offset, limit int) (FileViewerResult, error) {
+	return readFileLines(absPath, offset, limit, false)
+}
+
+// ReadFileWithLineInfo reads a file and prefixes each line with LINE:HASH.
+func ReadFileWithLineInfo(absPath string, offset, limit int) (FileViewerResult, error) {
+	return readFileLines(absPath, offset, limit, true)
 }
 
 // WriteFile creates or overwrites a file. Returns old content for overwrite mode.
