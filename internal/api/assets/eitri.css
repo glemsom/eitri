@@ -209,6 +209,7 @@ main {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
 
 /* Chat view — flex column so messages scroll and composer stays pinned */
 #chat-view {
