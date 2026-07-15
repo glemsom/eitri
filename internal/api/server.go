@@ -928,7 +928,7 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var toolType, toolName, toolArgs, toolOutput string
+	var toolType, toolName, toolArgs, toolOutput, status, toolCallKey string
 
 	ct := r.Header.Get("Content-Type")
 	if strings.Contains(ct, "application/json") {
@@ -944,10 +944,12 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
 		var req struct {
-			Type   string          `json:"type"`
-			Tool   string          `json:"tool"`
-			Args   json.RawMessage `json:"args,omitempty"`
-			Output string          `json:"output,omitempty"`
+			Type        string          `json:"type"`
+			Tool        string          `json:"tool"`
+			Args        json.RawMessage `json:"args,omitempty"`
+			Output      string          `json:"output,omitempty"`
+			Status      string          `json:"status,omitempty"`
+			ToolCallKey string          `json:"tool_call_key,omitempty"`
 		}
 		if err := json.Unmarshal(body, &req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -957,6 +959,8 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		toolName = req.Tool
 		toolArgs = string(req.Args)
 		toolOutput = req.Output
+		status = req.Status
+		toolCallKey = req.ToolCallKey
 	} else {
 		// Form-encoded (HTMX default)
 		if err := r.ParseForm(); err != nil {
@@ -971,11 +975,13 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		toolName = r.FormValue("tool")
 		toolArgs = r.FormValue("args")
 		toolOutput = r.FormValue("output")
+		status = r.FormValue("status")
+		toolCallKey = r.FormValue("tool_call_key")
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if toolType == "tool_call" {
-		component := templates.ToolCallCard(toolName, toolArgs)
+	if status == "running" || toolType == "tool_call" {
+		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "running")
 		component.Render(r.Context(), w)
 	} else if toolName == "file_editor" && toolOutput != "" {
 		// Parse file_editor result JSON to render FileEditCard
@@ -991,12 +997,12 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 			component := templates.FileEditCard(feResult.Path, feResult.Mode, feResult.OldContent, feResult.NewContent, feResult.BytesWritten, feResult.DirsCreated)
 			component.Render(r.Context(), w)
 		} else {
-			// Fallback to regular tool result card
-			component := templates.ToolResultCard(toolName, toolOutput)
+			// Fallback to regular tool result card (done)
+			component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done")
 			component.Render(r.Context(), w)
 		}
 	} else {
-		component := templates.ToolResultCard(toolName, toolOutput)
+		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done")
 		component.Render(r.Context(), w)
 	}
 }

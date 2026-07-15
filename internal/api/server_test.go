@@ -2937,6 +2937,169 @@ func TestRenderToolCard_FileEditorRendersInteractiveDiff(t *testing.T) {
 	}
 }
 
+func TestRenderToolCard_StatusRunning(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("type", "tool_call")
+	form.Set("tool", "bash")
+	form.Set("args", `{"command":"ls"}`)
+	form.Set("status", "running")
+	form.Set("tool_call_key", "test-key-123")
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/tool-card", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	if !strings.Contains(content, "bash") {
+		t.Errorf("running card missing tool name 'bash': %s", content)
+	}
+	if !strings.Contains(content, "running...") {
+		t.Errorf("running card missing 'running...' status: %s", content)
+	}
+	if !strings.Contains(content, "\xf0\x9f\x94\xa7") {
+		t.Errorf("running card missing wrench icon: %s", content)
+	}
+	if !strings.Contains(content, `data-tool-id="test-key-123"`) {
+		t.Errorf("running card missing data-tool-id attribute: %s", content)
+	}
+}
+
+func TestRenderToolCard_StatusDone(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	form := url.Values{}
+	form.Set("type", "tool_result")
+	form.Set("tool", "read")
+	form.Set("output", "file content here")
+	form.Set("status", "done")
+	form.Set("tool_call_key", "test-key-456")
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/tool-card", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	if !strings.Contains(content, "read") {
+		t.Errorf("done card missing tool name 'read': %s", content)
+	}
+	if !strings.Contains(content, "done") {
+		t.Errorf("done card missing 'done' status: %s", content)
+	}
+	if !strings.Contains(content, `file content here`) {
+		t.Errorf("done card missing output: %s", content)
+	}
+	if !strings.Contains(content, `data-tool-id="test-key-456"`) {
+		t.Errorf("done card missing data-tool-id attribute: %s", content)
+	}
+}
+
+func TestRenderToolCard_JSONStatusRunning(t *testing.T) {
+	server := newTestServer(t)
+	client := noRedirectClient()
+
+	rootResp, _ := client.Get(server.URL + "/")
+	rootResp.Body.Close()
+	var browserCookie *http.Cookie
+	for _, c := range rootResp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	loc := rootResp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+
+	payload := `{"type":"tool_call","tool":"bash","args":{"command":"ls"},"status":"running","tool_call_key":"json-key-789"}`
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render/tool-card", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	if !strings.Contains(content, "bash") {
+		t.Errorf("JSON running card missing tool name: %s", content)
+	}
+	if !strings.Contains(content, "running...") {
+		t.Errorf("JSON running card missing 'running...': %s", content)
+	}
+	if !strings.Contains(content, `data-tool-id="json-key-789"`) {
+		t.Errorf("JSON running card missing data-tool-id: %s", content)
+	}
+}
+
 func TestRenderComponent_Unknown(t *testing.T) {
 	server := newTestServer(t)
 	client := noRedirectClient()
