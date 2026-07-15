@@ -1930,6 +1930,8 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var title string
 	var htmxExists bool
 	var chatViewExists, messagesExists, composerExists bool
+	var sessionChromeExists, workspaceIndicatorExists, streamIndicatorExists, runStatusExists bool
+	var sessionChromePosition, sessionChromeZIndex string
 	var chatViewFlex, messagesFlex, messagesFlex1, composerFlexShrink string
 	var messagesOverflowY string
 	var gearBtnColor, gearBtnBg, gearBtnBorder, gearBtnRadius, gearBtnCursor, gearBtnFontSize string
@@ -1943,6 +1945,13 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#chat-view') !== null", &chatViewExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#messages') !== null", &messagesExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
+		// Verify sticky session-chrome bar with indicators
+		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome') !== null", &sessionChromeExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #workspace-indicator') !== null", &workspaceIndicatorExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #stream-indicator') !== null", &streamIndicatorExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #run-status') !== null", &runStatusExists),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('position')", &sessionChromePosition),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('z-index')", &sessionChromeZIndex),
 		// Verify flex layout for sticky composer
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewFlex),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('flex-direction')", &messagesFlex),
@@ -1977,6 +1986,24 @@ func TestBrowser_PageLoads(t *testing.T) {
 	}
 	if !composerExists {
 		t.Error("#composer not found")
+	}
+	if !sessionChromeExists {
+		t.Error("#session-chrome not found")
+	}
+	if !workspaceIndicatorExists {
+		t.Error("#workspace-indicator in #session-chrome not found")
+	}
+	if !streamIndicatorExists {
+		t.Error("#stream-indicator in #session-chrome not found")
+	}
+	if !runStatusExists {
+		t.Error("#run-status in #session-chrome not found")
+	}
+	if sessionChromePosition != "sticky" {
+		t.Errorf("#session-chrome position = %q, want 'sticky'", sessionChromePosition)
+	}
+	if sessionChromeZIndex != "10" {
+		t.Errorf(".session-chrome z-index = %q, want '10'", sessionChromeZIndex)
 	}
 	if chatViewFlex != "flex" {
 		t.Errorf("#chat-view display = %q, want 'flex'", chatViewFlex)
