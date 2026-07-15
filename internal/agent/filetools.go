@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -28,6 +29,12 @@ type FileEditorResult struct {
 	OldContent   string   `json:"old_content,omitempty"`
 	NewContent   string   `json:"new_content,omitempty"`
 	DirsCreated  []string `json:"dirs_created,omitempty"`
+}
+
+// ListDirResult holds the result of listing a directory.
+type ListDirResult struct {
+	Path    string   `json:"path"`
+	Entries []string `json:"entries"`
 }
 
 // LineHash returns the first 8 hex characters of the SHA-256 hash of line.
@@ -219,6 +226,39 @@ func WriteFile(absPath, content, mode string) (FileEditorResult, error) {
 	}
 
 	return FileEditorResult{}, fmt.Errorf("unknown mode: %q", mode)
+}
+
+// ListDirectory lists the contents of a directory, returning sorted entries.
+// Directories are suffixed with "/". Returns an error if path is a file.
+func ListDirectory(absPath string) (ListDirResult, error) {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return ListDirResult{}, fmt.Errorf("cannot list directory: %w", err)
+	}
+	if !info.IsDir() {
+		return ListDirResult{}, fmt.Errorf("path %q is a file, use read mode", absPath)
+	}
+
+	entries, err := os.ReadDir(absPath)
+	if err != nil {
+		return ListDirResult{}, fmt.Errorf("cannot list directory: %w", err)
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	return ListDirResult{
+		Path:    absPath,
+		Entries: names,
+	}, nil
 }
 
 func createMissingDirs(parentDir string) ([]string, error) {

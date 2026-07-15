@@ -73,17 +73,19 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 
 	// file_viewer
 	type fileViewerArgs struct {
-		Path            string `json:"path" jsonschema:"File path relative to workspace root or an absolute path within the workspace"`
+		Mode            string `json:"mode,omitempty" jsonschema:"Mode: \"read\" (default) or \"list\""`
+		Path            string `json:"path" jsonschema:"File or directory path relative to workspace root or an absolute path within the workspace"`
 		Offset          int    `json:"offset,omitempty" jsonschema:"1-indexed line offset to start reading from (default: 1)"`
 		Limit           *int   `json:"limit,omitempty" jsonschema:"Maximum number of lines to return (omit for default 100, 0 for unlimited)"`
 		IncludeLineInfo bool   `json:"include_line_info,omitempty" jsonschema:"Prefix each line with LINE:HASH for use as anchors in file_editor (default: false)"`
 	}
 	type fileViewerResult struct {
-		Path       string `json:"path"`
-		Content    string `json:"content"`
-		Truncated  bool   `json:"truncated"`
-		TotalLines int    `json:"total_lines,omitempty"`
-		NextOffset int    `json:"next_offset,omitempty"`
+		Path       string   `json:"path"`
+		Content    string   `json:"content,omitempty"`
+		Truncated  bool     `json:"truncated,omitempty"`
+		TotalLines int      `json:"total_lines,omitempty"`
+		NextOffset int      `json:"next_offset,omitempty"`
+		Entries    []string `json:"entries,omitempty"`
 	}
 
 	// Get skill directories for file_viewer access
@@ -105,6 +107,17 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 			absPath, err := validatePathWithAllowed(args.Path, workspace, skillDirs)
 			if err != nil {
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
+			}
+
+			if args.Mode == "list" {
+				dr, err := ListDirectory(absPath)
+				if err != nil {
+					return fileViewerResult{}, err
+				}
+				return fileViewerResult{
+					Path:    args.Path,
+					Entries: dr.Entries,
+				}, nil
 			}
 
 			limit := defaultReadLimit
