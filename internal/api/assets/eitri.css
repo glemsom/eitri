@@ -32,7 +32,8 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 a {
@@ -52,7 +53,8 @@ a:hover {
   grid-template-areas:
     "sidebar header"
     "sidebar main";
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 header {
