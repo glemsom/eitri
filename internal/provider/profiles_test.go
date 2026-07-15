@@ -76,8 +76,8 @@ func TestProfile_SupportsPromptCache(t *testing.T) {
 	t.Parallel()
 
 	expected := map[string]bool{
-		"opencode_go":    false,
-		"custom_openai":  false,
+		"opencode_go":    true,
+		"custom_openai":  true,
 		"github_copilot": false,
 	}
 

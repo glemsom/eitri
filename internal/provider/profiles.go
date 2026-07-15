@@ -80,10 +80,11 @@ var profiles = map[string]profile{
 			DefaultBaseURL: "https://opencode.ai/zen/go",
 			APIKeyRequired: true,
 		},
-		modelListPath:  "/v1/models",
-		chatPath:       "/v1/chat/completions",
-		stripV1Suffix:  true,
-		parseModelList: parseOpenAIModelList,
+		modelListPath:       "/v1/models",
+		chatPath:            "/v1/chat/completions",
+		stripV1Suffix:       true,
+		parseModelList:      parseOpenAIModelList,
+		supportsPromptCache: true,
 	},
 	"custom_openai": {
 		Descriptor: Descriptor{
@@ -92,10 +93,11 @@ var profiles = map[string]profile{
 			DefaultBaseURL: "",
 			APIKeyRequired: false,
 		},
-		modelListPath:  "/v1/models",
-		chatPath:       "/v1/chat/completions",
-		stripV1Suffix:  true,
-		parseModelList: parseOpenAIModelList,
+		modelListPath:       "/v1/models",
+		chatPath:            "/v1/chat/completions",
+		stripV1Suffix:       true,
+		parseModelList:      parseOpenAIModelList,
+		supportsPromptCache: true,
 	},
 	"github_copilot": {
 		Descriptor: Descriptor{
