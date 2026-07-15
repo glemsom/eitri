@@ -1,5 +1,5 @@
 // eitri-stream — Browser island for managing SSE stream lifecycle.
-// Handles EventSource connection, token display, tool cards, activity panel, and render dispatch.
+// Handles EventSource connection, token display, tool cards, and render dispatch.
 
 (function () {
   'use strict';
@@ -28,9 +28,6 @@
     return '';
   }
 
-  var activityToolCount = 0;
-  var activityToolSummary = []; // array of {label, brief} for summary display
-  var activityElapsed = {}; // toolCallKey -> start time (Date.now)
   var toolCardTimers = {}; // toolCallKey -> interval ID
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
 
@@ -46,66 +43,8 @@
   }
 
   function resetActivityTracking() {
-    activityToolCount = 0;
-    activityToolSummary = [];
-    activityElapsed = {};
     toolCardTimers = {};
     toolCardElapsed = {};
-  }
-
-  function autoOpenActivityPanel() {
-    var panel = document.getElementById('activity-panel');
-    if (panel && !panel.open) {
-      panel.open = true;
-    }
-  }
-
-  function updateActivitySummary() {
-    var summary = document.querySelector('#activity-panel summary');
-    if (!summary) return;
-
-    var previewHtml = '';
-    if (activityToolCount > 0) {
-      // Build a compact preview: tool name + brief summary for up to 3 items
-      var previews = [];
-      for (var i = 0; i < activityToolSummary.length && i < 3; i++) {
-        var s = activityToolSummary[i];
-        previews.push(s.brief || s.label);
-      }
-      if (activityToolSummary.length > 3) {
-        previews.push('…');
-      }
-      var preview = escapeHtml(previews.join(', '));
-      previewHtml = ' (' + activityToolCount + '): <span class="activity-summary-preview">' + preview + '</span>';
-    }
-
-    summary.innerHTML = '<span>Activity' + previewHtml + '</span><span id="activity-count" class="activity-count">0</span>';
-
-    // Restore count from activity-log entries so updateActivitySummary and updateActivityCount are consistent
-    var log = document.getElementById('activity-log');
-    if (log) {
-      var countEl = document.getElementById('activity-count');
-      if (countEl) {
-        countEl.textContent = String(log.querySelectorAll('.activity-entry').length);
-      }
-    }
-  }
-
-  function activityBriefForPacket(packet) {
-    if (packet.tool === 'terminal_execute' && packet.args && typeof packet.args.command === 'string') {
-      var cmd = packet.args.command;
-      return cmd.length > 40 ? cmd.slice(0, 40) + '…' : cmd;
-    }
-    if (packet.tool === 'file_editor' && packet.args && typeof packet.args.path === 'string') {
-      return packet.args.path;
-    }
-    return packet.tool || '';
-  }
-
-  function formatElapsed(ms) {
-    if (ms < 1000) return ms + 'ms';
-    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
-    return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
   }
 
   // Format for tool card live timer (issue #134)
@@ -179,8 +118,6 @@
     if (!indicator.textContent || !indicator.textContent.trim()) {
       updateRunStatus(STATES.IDLE, defaultStatusDetail(STATES.IDLE), null);
     }
-    updateActivityCount();
-    updateActivitySummary();
   }
 
   function clearDeadAirTimer(state) {
@@ -202,116 +139,6 @@
     if (!state || !state.streamTimer) return;
     clearTimeout(state.streamTimer);
     state.streamTimer = null;
-  }
-
-  function resetActivityPanel() {
-    const log = document.getElementById('activity-log');
-    const panel = document.getElementById('activity-panel');
-    if (!log) return;
-    log.replaceChildren();
-    const empty = document.createElement('p');
-    empty.id = 'activity-empty';
-    empty.className = 'text-muted';
-    empty.textContent = 'No tool activity yet.';
-    log.appendChild(empty);
-    if (panel) panel.open = false;
-    stopAllToolCardTimers();
-    resetActivityTracking();
-    updateActivityCount();
-    updateActivitySummary();
-  }
-
-  function updateActivityCount() {
-    const countEl = document.getElementById('activity-count');
-    const log = document.getElementById('activity-log');
-    if (!countEl || !log) return;
-    const count = log.querySelectorAll('.activity-entry').length;
-    countEl.textContent = String(count);
-  }
-
-  function appendActivityEntry(label, detail, meta, toolKey) {
-    const log = document.getElementById('activity-log');
-    if (!log) return;
-
-    const empty = document.getElementById('activity-empty');
-    if (empty) empty.remove();
-
-    const entry = document.createElement('div');
-    entry.className = 'activity-entry';
-
-    const header = document.createElement('div');
-    header.className = 'activity-entry-header';
-
-    const labelEl = document.createElement('span');
-    labelEl.className = 'activity-entry-label';
-    labelEl.textContent = label;
-    header.appendChild(labelEl);
-
-    // Show elapsed time in meta for finished tools
-    if (meta) {
-      var metaText = meta;
-      if (toolKey && activityElapsed[toolKey]) {
-        var elapsed = Date.now() - activityElapsed[toolKey];
-        metaText = meta + ' (' + formatElapsed(elapsed) + ')';
-      }
-      const metaEl = document.createElement('span');
-      metaEl.className = 'activity-entry-meta';
-      metaEl.textContent = metaText;
-      header.appendChild(metaEl);
-    } else if (toolKey && activityElapsed[toolKey]) {
-      var elapsed2 = Date.now() - activityElapsed[toolKey];
-      const metaEl = document.createElement('span');
-      metaEl.className = 'activity-entry-meta';
-      metaEl.textContent = formatElapsed(elapsed2);
-      header.appendChild(metaEl);
-    }
-
-    entry.appendChild(header);
-
-    if (detail) {
-      var detailText = detail;
-      var truncated = false;
-      if (detailText.length > 300) {
-        detailText = detailText.slice(0, 300) + '…';
-        truncated = true;
-      }
-      var detailEl = document.createElement('div');
-      detailEl.className = 'activity-entry-detail';
-      detailEl.textContent = detailText;
-      entry.appendChild(detailEl);
-
-      if (truncated) {
-        var expandBtn = document.createElement('button');
-        expandBtn.className = 'activity-expand-btn';
-        expandBtn.textContent = 'Show full output';
-        expandBtn.addEventListener('click', function () {
-          if (detailEl.textContent === detailText) {
-            detailEl.textContent = detail;
-            expandBtn.textContent = 'Show less';
-          } else {
-            detailEl.textContent = detailText;
-            expandBtn.textContent = 'Show full output';
-          }
-        });
-        entry.appendChild(expandBtn);
-      }
-    }
-
-    log.appendChild(entry);
-    updateActivityCount();
-  }
-
-  function summarizeToolDetail(packet) {
-    if (packet.tool === 'terminal_execute' && packet.args && typeof packet.args.command === 'string') {
-      return packet.args.command;
-    }
-    if (packet.tool === 'file_editor' && packet.args && typeof packet.args.path === 'string') {
-      return packet.args.path;
-    }
-    if (typeof packet.output === 'string' && packet.output) {
-      return packet.output.length > 120 ? packet.output.slice(0, 120) + '…' : packet.output;
-    }
-    return '';
   }
 
   document.addEventListener('eitri:connectRunStream', function (e) {
@@ -343,7 +170,8 @@
 
   function connectStream(sessionId) {
     disconnectStream(sessionId);
-    resetActivityPanel();
+    stopAllToolCardTimers();
+    resetActivityTracking();
 
     const state = createStreamState();
     state.status = STATES.CONNECTING;
@@ -431,20 +259,8 @@
         state.status = STATES.TOOL_RUNNING;
         updateRunStatus(STATES.TOOL_RUNNING, 'Running tool: ' + (packet.tool || 'unknown tool'), state);
 
-        // Track for activity summary
-        var brief = activityBriefForPacket(packet);
-        var toolCallKey = sessionId + '-tool-' + activityToolCount;
-        activityToolCount++;
-        activityToolSummary.push({ label: packet.tool || 'tool', brief: brief });
-        activityElapsed[toolCallKey] = Date.now();
-
-        // Auto-open panel on first tool
-        if (activityToolCount === 1) {
-          autoOpenActivityPanel();
-        }
-
-        appendActivityEntry('Started ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'running', toolCallKey);
-        updateActivitySummary();
+        // Track tool call key for card slot
+        var toolCallKey = sessionId + '-tool-' + Date.now();
 
         // Inject running tool card into message stream (issue #130)
         // Create slot and set running card HTML directly (synchronous, no HTMX race with tool_result)
@@ -456,15 +272,6 @@
         state.status = STATES.STREAMING;
         updateRunStatus(STATES.STREAMING, 'Tool finished. Continuing response.', state);
 
-        // Find tool call key for elapsed tracking
-        // Use the packet's position or sequential tracking
-        var resultKey = sessionId + '-tool-' + (activityToolCount - 1);
-        // If we have multiple concurrent, find matching
-        if (!activityElapsed[resultKey]) {
-          resultKey = '';
-        }
-
-        appendActivityEntry('Finished ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'done', resultKey);
         renderToolCard(sessionId, 'tool_result', packet);
         break;
 
@@ -632,8 +439,20 @@
   }
 
   function renderToolCard(sessionId, type, packet) {
-    // Compute toolCallKey matching activity panel tracking
-    var toolCallKey = sessionId + '-tool-' + (activityToolCount - 1);
+    // Find the latest running tool card slot
+    var toolCallKey = '';
+    var runningSlot = document.querySelector('#messages [data-tool-id] .tool-running');
+    if (runningSlot) {
+      var parentSlot = runningSlot.closest('[data-tool-id]');
+      if (parentSlot) toolCallKey = parentSlot.getAttribute('data-tool-id') || '';
+    }
+    if (!toolCallKey) {
+      // Fallback: use latest slot
+      var allSlots = document.querySelectorAll('#messages [data-tool-id]');
+      if (allSlots.length > 0) {
+        toolCallKey = allSlots[allSlots.length - 1].getAttribute('data-tool-id') || '';
+      }
+    }
 
     // Stop live timer and record final elapsed
     stopToolCardTimer(toolCallKey);

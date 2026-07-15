@@ -93,19 +93,39 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing removeOptimisticBubbles function")
 	}
 
-	// Verify stream JS has activity panel auto-open on first tool
-	if !strings.Contains(content2, "autoOpenActivityPanel") {
-		t.Error("eitri-stream.js missing autoOpenActivityPanel function")
+	// Verify activity panel functions are removed
+	if strings.Contains(content2, "autoOpenActivityPanel") {
+		t.Error("eitri-stream.js should not contain autoOpenActivityPanel function")
 	}
-
-	// Verify stream JS has compact summary update for activity panel
-	if !strings.Contains(content2, "updateActivitySummary") {
-		t.Error("eitri-stream.js missing updateActivitySummary function")
+	if strings.Contains(content2, "updateActivitySummary") {
+		t.Error("eitri-stream.js should not contain updateActivitySummary function")
 	}
-
-	// Verify stream JS has elapsed time tracking in activity entries
-	if !strings.Contains(content2, "activityElapsed") {
-		t.Error("eitri-stream.js missing activityElapsed variable or function")
+	if strings.Contains(content2, "activityElapsed") {
+		t.Error("eitri-stream.js should not contain activityElapsed variable or function")
+	}
+	if strings.Contains(content2, "appendActivityEntry") {
+		t.Error("eitri-stream.js should not contain appendActivityEntry function")
+	}
+	if strings.Contains(content2, "updateActivityCount") {
+		t.Error("eitri-stream.js should not contain updateActivityCount function")
+	}
+	if strings.Contains(content2, "resetActivityPanel") {
+		t.Error("eitri-stream.js should not contain resetActivityPanel function")
+	}
+	if strings.Contains(content2, "activityBriefForPacket") {
+		t.Error("eitri-stream.js should not contain activityBriefForPacket function")
+	}
+	if strings.Contains(content2, "summarizeToolDetail") {
+		t.Error("eitri-stream.js should not contain summarizeToolDetail function")
+	}
+	if strings.Contains(content2, "formatElapsed") {
+		t.Error("eitri-stream.js should not contain formatElapsed function")
+	}
+	if strings.Contains(content2, "activityToolCount") {
+		t.Error("eitri-stream.js should not contain activityToolCount variable")
+	}
+	if strings.Contains(content2, "activityToolSummary") {
+		t.Error("eitri-stream.js should not contain activityToolSummary variable")
 	}
 
 	// Verify stream JS appends token-usage before scroll-sentinel
