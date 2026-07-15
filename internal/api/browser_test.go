@@ -1286,16 +1286,6 @@ func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
 		t.Fatalf("navigate chat failed: %v", err)
 	}
 
-	var panelClosed bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
-	)
-	if err != nil {
-		t.Fatalf("read activity panel default state failed: %v", err)
-	}
-	if !panelClosed {
-		t.Fatal("activity panel should be collapsed by default")
-	}
 
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
@@ -1389,21 +1379,12 @@ func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
 	if !renderingSeen {
 		t.Fatal("expected Rendering phase immediately after done packet")
 	}
-
-	var (
-		activityCount string
-		activityText  string
-		doneStatus    string
-	)
+	// Verify run reaches Done after tool_result + done
+	var doneStatus string
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
 			chromedp.Text("#stream-indicator", &doneStatus, chromedp.ByQuery),
-			chromedp.Text("#activity-count", &activityCount, chromedp.ByQuery),
-			chromedp.EvaluateAsDevTools(`(function() {
-				var el = document.getElementById('activity-log');
-				return el ? (el.textContent || '') : '';
-			})()`, &activityText),
 		)
 		if err == nil && strings.TrimSpace(doneStatus) == "Done" {
 			break
@@ -1413,15 +1394,9 @@ func TestBrowser_RunStatusChrome_ReconnectAndActivityPanel(t *testing.T) {
 	if strings.TrimSpace(doneStatus) != "Done" {
 		t.Fatalf("final run status = %q, want Done", doneStatus)
 	}
-	if strings.TrimSpace(activityCount) != "2" {
-		t.Fatalf("activity count = %q, want 2", activityCount)
-	}
-	if !strings.Contains(activityText, "Started terminal_execute") || !strings.Contains(activityText, "Finished terminal_execute") || !strings.Contains(activityText, "echo hello") {
-		t.Fatalf("activity log = %q, want started/finished command entries", activityText)
-	}
 }
 
-func TestBrowser_ActivityPanelOpensOnFirstTool(t *testing.T) {
+func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 	server := newTestServer(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
@@ -1435,19 +1410,6 @@ func TestBrowser_ActivityPanelOpensOnFirstTool(t *testing.T) {
 		t.Fatalf("navigate chat failed: %v", err)
 	}
 
-	// Verify panel starts collapsed
-	var panelClosed bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
-	)
-	if err != nil {
-		t.Fatalf("read activity panel default state failed: %v", err)
-	}
-	if !panelClosed {
-		t.Fatal("activity panel should be collapsed by default")
-	}
-
-	// Parse session ID from URL
 	var sessionID string
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
@@ -1474,58 +1436,50 @@ func TestBrowser_ActivityPanelOpensOnFirstTool(t *testing.T) {
 		t.Fatalf("install fake EventSource failed: %v", err)
 	}
 
-	// Emit open and a token (no tool yet)
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
-		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'token', content: 'hello'})`, nil),
 	)
 	if err != nil {
-		t.Fatalf("emit open/token failed: %v", err)
+		t.Fatalf("emit open failed: %v", err)
 	}
 
-	// Panel should still be closed (no tool yet)
+	// Emit first tool_call — should create tool card with running status
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === false`, &panelClosed),
-	)
-	if err != nil {
-		t.Fatalf("read activity panel after token failed: %v", err)
-	}
-	if !panelClosed {
-		t.Fatal("activity panel should stay collapsed before any tool call")
-	}
-
-	// Emit first tool_call — panel should auto-open
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello world'}})`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello'}})`, nil),
 	)
 	if err != nil {
 		t.Fatalf("emit tool_call failed: %v", err)
 	}
 
-	var panelOpen bool
+	// Verify tool card appears with running status
+	var runningCard bool
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === true`, &panelOpen),
+			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'running...'`, &runningCard),
 		)
-		if err == nil && panelOpen {
+		if err == nil && runningCard {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !panelOpen {
-		t.Fatal("activity panel should auto-open when first tool_call arrives")
+	if !runningCard {
+		t.Fatal("tool card should show 'running...' status after tool_call")
 	}
 
-	// Emit a second tool_call
+	// Verify elapsed timer appears on running card
+	var hasElapsed bool
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'file_editor', args: {path: '/tmp/test.go'}})`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('[data-tool-elapsed]') !== null`, &hasElapsed),
 	)
 	if err != nil {
-		t.Fatalf("emit second tool_call failed: %v", err)
+		t.Fatalf("query elapsed element failed: %v", err)
+	}
+	if !hasElapsed {
+		t.Fatal("running tool card should have an elapsed timer element")
 	}
 
-	// Emit tool_result for first tool
+	// Emit tool_result — should morph to done
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: 'hello\nworld'})`, nil),
 	)
@@ -1533,47 +1487,19 @@ func TestBrowser_ActivityPanelOpensOnFirstTool(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Verify summary shows tool count and command names
-	var summaryText string
-	deadline = time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('#activity-panel summary').textContent.trim()`, &summaryText),
-		)
-		if err == nil && strings.Contains(summaryText, "2") {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !strings.Contains(summaryText, "2") {
-		t.Fatalf("activity summary should show tool count 2, got: %q", summaryText)
-	}
-	if !strings.Contains(summaryText, "echo hello world") {
-		t.Fatalf("activity summary should show first command name, got: %q", summaryText)
-	}
-	if !strings.Contains(summaryText, "/tmp/test.go") {
-		t.Fatalf("activity summary should show file path for file_editor, got: %q", summaryText)
-	}
+	// Wait for HTMX swap to complete
+	time.Sleep(600 * time.Millisecond)
 
-	// Emit done
+	// Verify card shows 'done' status
+	var doneCard bool
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'done', message_id: 'msg_fake'})`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
 	)
 	if err != nil {
-		t.Fatalf("emit done failed: %v", err)
+		t.Fatalf("query done card status failed: %v", err)
 	}
-
-	// Verify panel stays open after done
-	var panelStillOpen bool
-	time.Sleep(300 * time.Millisecond)
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('activity-panel').open === true`, &panelStillOpen),
-	)
-	if err != nil {
-		t.Fatalf("read activity panel after done failed: %v", err)
-	}
-	if !panelStillOpen {
-		t.Fatal("activity panel should stay open after run completes")
+	if !doneCard {
+		t.Fatal("tool card should show 'done' status after tool_result")
 	}
 }
 
