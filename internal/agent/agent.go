@@ -73,14 +73,17 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 
 	// file_viewer
 	type fileViewerArgs struct {
-		Path   string `json:"path" jsonschema:"File path relative to workspace root or an absolute path within the workspace"`
-		Offset int    `json:"offset,omitempty" jsonschema:"1-indexed line offset to start reading from (default: 1)"`
-		Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of lines to return (default: no limit)"`
+		Path            string `json:"path" jsonschema:"File path relative to workspace root or an absolute path within the workspace"`
+		Offset          int    `json:"offset,omitempty" jsonschema:"1-indexed line offset to start reading from (default: 1)"`
+		Limit           *int   `json:"limit,omitempty" jsonschema:"Maximum number of lines to return (omit for default 100, 0 for unlimited)"`
+		IncludeLineInfo bool   `json:"include_line_info,omitempty" jsonschema:"Prefix each line with LINE:HASH for use as anchors in file_editor (default: false)"`
 	}
 	type fileViewerResult struct {
-		Path      string `json:"path"`
-		Content   string `json:"content"`
-		Truncated bool   `json:"truncated"`
+		Path       string `json:"path"`
+		Content    string `json:"content"`
+		Truncated  bool   `json:"truncated"`
+		TotalLines int    `json:"total_lines,omitempty"`
+		NextOffset int    `json:"next_offset,omitempty"`
 	}
 
 	// Get skill directories for file_viewer access
@@ -88,7 +91,15 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	fileViewerTool, err := functiontool.New[fileViewerArgs, fileViewerResult](
 		functiontool.Config{
 			Name:        "file_viewer",
-			Description: "Read file contents from workspace or active skill directories. Supports line offset and limit. Only UTF-8 text files. Rejects binary files and directories.",
+			Description: "Read file contents from workspace or active skill directories. " +
+				"Supports multiple modes:\n\n- \"read\" (default): Read a file with optional line offset and limit. " +
+				"Only UTF-8 text files.\n  Set include_line_info=true to get line-number + content-hash prefixes " +
+				"(e.g. \"15:a1b2c3 | text\") for use as anchors in file_editor. Use offset and limit for " +
+				"progressive reading when total_lines > limit.\n  Default limit is 100 lines; set limit=0 for " +
+				"unlimited.\n\n- \"list\": List directory contents. Returns sorted filenames " +
+				"and subdirectory names.\n  Directories end with \"/\". Does not recurse.\n\nWhen reading files for editing, " +
+				"prefer include_line_info=true so you can use line-hash anchors for surgical edits.\nThen read the " +
+				"next chunk via offset + limit using next_offset from the response.",
 		},
 		func(ctx agent.Context, args fileViewerArgs) (fileViewerResult, error) {
 			absPath, err := validatePathWithAllowed(args.Path, workspace, skillDirs)
@@ -96,14 +107,25 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
 
-			vr, err := ReadFile(absPath, args.Offset, args.Limit)
+			limit := defaultReadLimit
+			if args.Limit != nil {
+				limit = *args.Limit
+			}
+			var vr FileViewerResult
+			if args.IncludeLineInfo {
+				vr, err = ReadFileWithLineInfo(absPath, args.Offset, limit)
+			} else {
+				vr, err = ReadFile(absPath, args.Offset, limit)
+			}
 			if err != nil {
 				return fileViewerResult{}, err
 			}
 			return fileViewerResult{
-				Path:      args.Path,
-				Content:   vr.Content,
-				Truncated: vr.Truncated,
+				Path:       args.Path,
+				Content:    vr.Content,
+				Truncated:  vr.Truncated,
+				TotalLines: vr.TotalLines,
+				NextOffset: vr.NextOffset,
 			}, nil
 		},
 	)

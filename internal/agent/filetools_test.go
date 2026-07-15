@@ -1,10 +1,22 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+func lineHash(line string) string {
+	h := sha256.Sum256([]byte(line))
+	return fmt.Sprintf("%x", h)[:8]
+}
+
+// ── ReadFile ───────────────────────────────────────────────────────────────
 
 func TestReadFile_Basic(t *testing.T) {
 	dir := t.TempDir()
@@ -158,6 +170,255 @@ func TestReadFile_OffsetPastEnd(t *testing.T) {
 	}
 }
 
+func TestReadFile_UnlimitedZero(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	// Write 150 lines
+	lines := make([]string, 150)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i+1)
+	}
+	content := strings.Join(lines, "\n")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// limit=0 now means unlimited
+	result, err := ReadFile(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Content != content {
+		t.Errorf("content length = %d, want full %d", len(result.Content), len(content))
+	}
+	if result.Truncated {
+		t.Errorf("Truncated = true, want false (limit=0 means unlimited)")
+	}
+}
+
+func TestReadFile_NextOffset(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	lines := make([]string, 250)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i+1)
+	}
+	content := strings.Join(lines, "\n")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read first chunk with explicit limit=100
+	result, err := ReadFile(path, 0, 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TotalLines != 250 {
+		t.Errorf("TotalLines = %d, want %d", result.TotalLines, 250)
+	}
+	if result.NextOffset != 101 {
+		t.Errorf("NextOffset = %d, want %d", result.NextOffset, 101)
+	}
+
+	// Read second chunk
+	result2, err := ReadFile(path, 101, 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result2.NextOffset != 201 {
+		t.Errorf("NextOffset = %d, want %d", result2.NextOffset, 201)
+	}
+
+	// Read third chunk (final 50 lines)
+	result3, err := ReadFile(path, 201, 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result3.NextOffset != 0 {
+		t.Errorf("NextOffset = %d, want 0 (all returned)", result3.NextOffset)
+	}
+	if result3.Truncated {
+		t.Errorf("Truncated = true, want false (final chunk)")
+	}
+}
+
+func TestReadFile_TotalLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "a\nb\nc\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFile(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.TotalLines != 4 {
+		t.Errorf("TotalLines = %d, want %d", result.TotalLines, 4)
+	}
+}
+
+// ── ReadFile with line info ────────────────────────────────────────────────
+
+func TestReadFile_LineInfo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello\nworld\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFile(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Without includeLineInfo, content is plain
+	wantPlain := "hello\nworld\n"
+	if result.Content != wantPlain {
+		t.Errorf("Content = %q, want %q", result.Content, wantPlain)
+	}
+
+	// With includeLineInfo, content has LINE:HASH prefixes
+	result2, err := ReadFileWithLineInfo(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	lines := strings.Split(result2.Content, "\n")
+	if len(lines) != 3 { // 2 content lines + trailing empty
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+
+	wantLine1 := fmt.Sprintf("1:%s | hello", lineHash("hello"))
+	wantLine2 := fmt.Sprintf("2:%s | world", lineHash("world"))
+	if lines[0] != wantLine1 {
+		t.Errorf("line 1 = %q, want %q", lines[0], wantLine1)
+	}
+	if lines[1] != wantLine2 {
+		t.Errorf("line 2 = %q, want %q", lines[1], wantLine2)
+	}
+}
+
+func TestReadFile_LineInfoEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFileWithLineInfo(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Content != "" {
+		t.Errorf("Content = %q, want empty", result.Content)
+	}
+}
+
+func TestReadFile_LineInfoSingleLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "single.txt")
+	content := "just one line"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFileWithLineInfo(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := fmt.Sprintf("1:%s | just one line", lineHash("just one line"))
+	if result.Content != want {
+		t.Errorf("Content = %q, want %q", result.Content, want)
+	}
+}
+
+func TestReadFile_LineInfoSpecialChars(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "special.txt")
+	content := "func main() {\n\treturn 42\n}"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFileWithLineInfo(path, 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := strings.Split(result.Content, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+	want1 := fmt.Sprintf("1:%s | func main() {", lineHash("func main() {"))
+	want2 := fmt.Sprintf("2:%s | \treturn 42", lineHash("\treturn 42"))
+	want3 := fmt.Sprintf("3:%s | }", lineHash("}"))
+	if lines[0] != want1 {
+		t.Errorf("line 1 = %q, want %q", lines[0], want1)
+	}
+	if lines[1] != want2 {
+		t.Errorf("line 2 = %q, want %q", lines[1], want2)
+	}
+	if lines[2] != want3 {
+		t.Errorf("line 3 = %q, want %q", lines[2], want3)
+	}
+}
+
+func TestReadFile_LineInfoWithOffsetAndLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "a\nb\nc\nd\ne\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFileWithLineInfo(path, 2, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	lines := strings.Split(result.Content, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(lines))
+	}
+	want1 := fmt.Sprintf("2:%s | b", lineHash("b"))
+	want2 := fmt.Sprintf("3:%s | c", lineHash("c"))
+	if lines[0] != want1 {
+		t.Errorf("line 1 = %q, want %q", lines[0], want1)
+	}
+	if lines[1] != want2 {
+		t.Errorf("line 2 = %q, want %q", lines[1], want2)
+	}
+}
+
+// ── LineHash ───────────────────────────────────────────────────────────────
+
+func TestLineHash_Consistent(t *testing.T) {
+	h1 := LineHash("hello world")
+	h2 := LineHash("hello world")
+	if h1 != h2 {
+		t.Errorf("line hash not consistent: %q vs %q", h1, h2)
+	}
+}
+
+func TestLineHash_DifferentStrings(t *testing.T) {
+	h1 := LineHash("foo")
+	h2 := LineHash("bar")
+	if h1 == h2 {
+		t.Errorf("different strings should have different hashes")
+	}
+}
+
+func TestLineHash_Length(t *testing.T) {
+	h := LineHash("test")
+	if len(h) != 8 {
+		t.Errorf("hash length = %d, want 8", len(h))
+	}
+}
+
+// ── WriteFile (unchanged, keep existing) ───────────────────────────────────
+
 func TestWriteFile_Create(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "newfile.txt")
@@ -180,7 +441,6 @@ func TestWriteFile_Create(t *testing.T) {
 		t.Errorf("OldContent = %q, want empty", result.OldContent)
 	}
 
-	// Verify file was written
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +472,6 @@ func TestWriteFile_CreateWithParentDirs(t *testing.T) {
 		}
 	}
 
-	// Verify file was written
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +520,6 @@ func TestWriteFile_Overwrite(t *testing.T) {
 		t.Errorf("BytesWritten = %d, want %d", result.BytesWritten, len(newContent))
 	}
 
-	// Verify file was updated
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
