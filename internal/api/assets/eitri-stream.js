@@ -215,6 +215,7 @@
     empty.textContent = 'No tool activity yet.';
     log.appendChild(empty);
     if (panel) panel.open = false;
+    stopAllToolCardTimers();
     resetActivityTracking();
     updateActivityCount();
     updateActivitySummary();
@@ -390,6 +391,7 @@
     if (!entry) return;
     clearDeadAirTimer(entry.state);
     clearStreamTimer(entry.state);
+    stopAllToolCardTimers();
     if (entry.eventSource) {
       entry.eventSource.close();
     }
