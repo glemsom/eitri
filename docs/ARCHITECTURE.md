@@ -14,7 +14,8 @@ flowchart LR
 
     subgraph Server["cmd/eitri (HTTP + SSE server)"]
         API["api/ (routes, SSE)"]
-        Runner["runner/ (RunnerManager)"]
+        RunSvc["runner/ (RunService)"]
+        Runner["runner/ (Manager - cache)"]
         Agent["agent/ (ADK runner)"]
         Skills["skills/ (Agent Skills registry)"]
         Executor["executor/ (tmux)"]
@@ -22,9 +23,10 @@ flowchart LR
     end
 
     Browser <-->|SSE + HTMX request/response| Server
-    API --> Runner
+    API --> RunSvc
     API --> Skills
-    Runner --> Agent
+    RunSvc --> Runner
+    RunSvc --> Agent
     Agent --> Skills
     Agent --> Executor
 ```
@@ -80,7 +82,7 @@ Built-in tool contracts are specified in [SPEC.md §4.2](../SPEC.md#42-built-in-
 | `templates/` | Templ source files (`.templ` → Go via `templ generate`) |
 | `assets/` | Pinned frontend assets served from `embed.FS` (HTMX, Prism, KaTeX, Mermaid, and stylesheet assets). |
 
-Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-specification). Architecture note: Settings page load/save and `/api/models` cross one model-discovery seam: `provider.DiscoverModels()`, then persist any returned auth refresh through `config.Save` on caller side. GitHub Copilot device-flow UI still lives in API layer, but its poll step now consumes provider-owned status + `AuthUpdate` from `provider.PollGitHubCopilotDeviceFlow()` instead of decoding raw OAuth token payloads in handler code. `RunManager.StartRun()` uses `provider.NewChatModel()` as its single chat seam and persists any returned auth refresh on caller side before caching runner state. `getRunner()` delegates to `RunnerManager`; `/api/sessions/{id}/stream` subscribes to active run state keyed by explicit path `sessionID` after validating `browser_id` ownership and never starts runs. Active runs own their subscriber set, so multiple EventSource clients and reconnects are fan-out safe and disconnected clients cannot block run completion. Run start snapshots user-configured runtime limits such as `max_turns`, so later Settings changes affect only later runs; when a run hits that cap, server appends a friendly assistant message instead of hanging. Completion endpoints under `/api/sessions/{id}/complete/*` also validate `browser_id` ownership and return JSON for the composer island, not HTML fragments. The top-level HTTP handler also owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
+Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-specification). Architecture note: Settings page load/save and `/api/models` cross one model-discovery seam: `provider.DiscoverModels()`, then persist any returned auth refresh through `persistAuth` callback or `config.Save`. GitHub Copilot device-flow UI still lives in API layer, but its poll step now consumes provider-owned status + `AuthUpdate` from `provider.PollGitHubCopilotDeviceFlow()` instead of decoding raw OAuth token payloads in handler code. `RunService.StartRun()` uses `provider.NewChatModel()` as its single chat seam and any auth refresh is persisted automatically via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership and never starts runs. Active runs own their subscriber set, so multiple EventSource clients and reconnects are fan-out safe and disconnected clients cannot block run completion. Run start snapshots user-configured runtime limits such as `max_turns`, so later Settings changes affect only later runs; when a run hits that cap, server appends a friendly assistant message instead of hanging. Completion endpoints under `/api/sessions/{id}/complete/*` also validate `browser_id` ownership and return JSON for the composer island, not HTML fragments. The top-level HTTP handler also owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
 
 **UI session state**: `api.Server` owns in-memory `UISession` records for browser-facing state: `id`, `browser_id`, `title`, `status` (`idle`/`running`/`error`), renderable messages/events, active run buffers, active skills, and timestamps. Server also exposes launch workspace path, provider setup state, and token-usage/context-window estimates to templates. Server-owned run buffers are canonical assistant transcripts; browser token buffers are display-only. ADK session service remains model conversation state; templates render from `UISession`, not ADK internals. Sessions are not persisted. Stale `/sessions/{id}` full-page loads after restart redirect to `/`; API calls for missing sessions return friendly 404 fragments/JSON.
 
@@ -124,16 +126,20 @@ func (s *Service) Current() *Registry
 func (s *Service) Activate(ctx context.Context, sessionID, name string) (*ActivatedSkill, error)
 ```
 
-`api.Server` stores active skill names per UI session. `agent` calls `Activate` through the built-in `activate_skill` tool. At chat-run start, `api.RunManager` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into ADK session history. API and agent packages consume this service; they never scan skill files directly.
+`api.Server` stores active skill names per UI session. `agent` calls `Activate` through the built-in `activate_skill` tool. At chat-run start, `api.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into ADK session history. API and agent packages consume this service; they never scan skill files directly.
 
-### `internal/runner/` — Runner lifecycle
+### `internal/runner/` — Run service + runner cache
 
 | File | Responsibility |
 |------|---------------|
+| `service.go` | `RunService` — run lifecycle: agent building, runner cache, SSE broadcast, session persistence, auth persist callbacks |
+| `service_test.go` | Unit tests exercising the RunService seam (StartRun → Subscribe → AppendEvent) |
 | `manager.go` | `Manager` struct — caches ADK `runner.Runner`, hot-reloads on config change |
 | `manager_test.go` | Table-driven tests for cache hit, cache miss, invalidation |
 
-**Runner caching**: `Manager.GetRunner()` creates ADK `runner.Runner` lazily and caches it by config key (`provider|apiKey|baseURL|model|skillsCatalogHash`). Changing settings in the UI or effective skills catalog changes triggers runner invalidation — new runner created on next message. `Invalidate()` forces rebuild on next call.
+**RunService**: consolidates run lifecycle behind a single seam. `StartRun()` builds the agent (NewChatModel → skill context → ADK agent), gets or creates a cached runner, and starts the ADK event loop. `Subscribe()`/`Unsubscribe()` manage SSE fan-out. `AppendEvent()` processes ADK events, broadcasts SSE events, and persists assistant messages. `Cancel()`/`CancelAll()` stop active runs. Auth refresh persistence is handled via a `PersistAuth` callback, not duplicated in API handlers.
+
+**Runner caching**: `Manager.GetOrCreate()` creates ADK `runner.Runner` lazily and caches it by config hash (`provider|apiKey|baseURL|model|systemPrompt`). Changing settings in the UI triggers runner invalidation — new runner created on next message. `Invalidate()` forces rebuild on next call.
 
 ### `internal/executor/` — command execution
 
@@ -222,6 +228,7 @@ Architecture name: **HTMX + Templ shell with browser islands**. Product behavior
 sequenceDiagram
     participant Browser as Browser (HTMX)
     participant API as api.Server
+    participant RunSvc as runner.RunService
     participant RunnerMgr as runner.Manager
     participant Skills as skills.Service
     participant Agent as agent/
@@ -234,20 +241,20 @@ sequenceDiagram
     API->>Skills: Refresh + activate slash skills
     Skills-->>API: effective catalog + active skills
     API->>API: Re-resolve session active skills, warn/drop stale ones
-    API->>RunnerMgr: getRunner(config + skills catalog + run skill context)
-    RunnerMgr-->>API: runner (cached or new)
+    API->>RunSvc: StartRun(sessionID, message)
+    RunSvc->>RunSvc: Build agent, get or create runner
+    RunSvc->>Agent: Run(ctx, sessionID, message)
     API-->>Browser: User bubble HTML + HX-Trigger: eitri:connectRunStream
-    API->>Agent: Start background runner.Run(ctx, sessionID, message)
     Browser->>API: GET /api/sessions/{id}/stream (browser_id cookie)
     API->>API: Attach per-run SSE subscriber to active run fan-out set
     
     loop Agent turn
         Agent->>Agent: LLM generates response (SSE token deltas)
-        API->>API: Append delta to server-owned run buffer
-        API-->>Browser: SSE: token (delta)
+        RunSvc->>RunSvc: Append delta to server-owned run buffer
+        RunSvc-->>Browser: SSE: token (delta)
         Browser->>Browser: Display-only buffer, flush on newline or 50-100ms
         Agent->>Agent: LLM generates tool call
-        API-->>Browser: SSE: tool_call
+        RunSvc-->>Browser: SSE: tool_call
         Browser->>Browser: Activity panel entry only; no tool_call card rendered
         alt activate_skill
             Agent->>Skills: Activate(sessionID, name)
@@ -258,14 +265,14 @@ sequenceDiagram
         else file_editor
             Agent->>Agent: validate workspace path, capture old content, write file
         end
-        API-->>Browser: SSE: tool_result
-        Browser->>API: POST /api/sessions/{id}/render/tool-card or file edit card
+        RunSvc-->>Browser: SSE: tool_result
+        Browser->>API: POST /api/sessions/{id}/render {kind: "tool_card"}
     end
 
-    API-->>Browser: SSE: done (message_id)
-    Browser->>API: POST /api/sessions/{id}/render/markdown {message_id}
+    RunSvc-->>Browser: SSE: done (message_id)
+    Browser->>API: POST /api/sessions/{id}/render {kind: "markdown", message_id}
     API->>API: Compute usage footer from provider usage and model context metadata or 256k fallback
-    API-->>Browser: goldmark-rendered server-owned assistant message
+    API-->>Browser: goldmark-rendered server-owned assistant message (via unified /render)
 ```
 
 ## Extension points
@@ -293,7 +300,7 @@ sequenceDiagram
 
 1. Add component name to `render_component` tool enum in `tools.go`
 2. Create Templ template in `internal/api/templates/components/`
-3. Wire server-side dispatch in `/api/sessions/{id}/render/component` handler
+3. Wire server-side dispatch in `/api/sessions/{id}/render` handler with `kind: "component"`
 4. Add browser island initialization only if component needs local browser-native behavior
 
 ### Adding a browser island

@@ -41,7 +41,7 @@ eitri/
 │   ├── api/                   # HTTP server, SSE, HTMX/Templ render endpoints
 │   │   └── templates/         # Templ source files and generated Go
 │   ├── config/                # ~/.eitri config management
-│   ├── runner/                # RunnerManager — caches ADK runner, hot-reload on config/skills change
+│   ├── runner/                # RunService — run lifecycle + ADK runner cache, SSE broadcast, auth persist callbacks
 │   ├── skills/                # Agent Skills discovery, registry, activation
 │   └── executor/              # tmux command execution + session lifecycle
 ├── scripts/                   # Install script
