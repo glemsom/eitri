@@ -37,12 +37,16 @@ Go-specific:
 - start with package- or test-scoped runs
 - run full `./...` near end
 
-Example:
+### Reading failures in test logs
+
+A failed test outputs its failure message on the line(s) *after* the `FAIL` line. Grepping only for `FAIL` misses the actual failure details. Always include lines below each `FAIL` match.
+
+Example: a log snippet may show the `FAIL` marker on one line and the assertion failure (`got ..., want ...`) on the next. The relevant output is the line(s) immediately following `FAIL`.
 
 ```bash
 go test ./... > /tmp/go-test.log 2>&1
 status=$?
-grep -nE '^(FAIL|--- FAIL:)|panic:|^FAIL\t|^# ' /tmp/go-test.log | tail -n 120 || true
+grep -nE '^(FAIL|--- FAIL:)|panic:|^FAIL\t|^# ' /tmp/go-test.log -A 2 | tail -n 120 || true
 tail -n 80 /tmp/go-test.log
 exit $status
 ```
@@ -196,8 +200,8 @@ func TestBrowser_MyFeature(t *testing.T) {
     if err != nil {
         t.Fatalf("test failed: %v", err)
     }
-    if title != "Eitri — AI Assistant" {
-        t.Errorf("title = %q", title)
+    if !strings.Contains(title, "Eitri") {
+        t.Errorf("title does not contain Eitri: %q", title)
     }
 }
 ```
