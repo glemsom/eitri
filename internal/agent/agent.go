@@ -107,7 +107,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
 
-				limit := defaultReadLimit
+			limit := defaultReadLimit
 			if args.Limit != nil {
 				limit = *args.Limit
 			}
