@@ -2,12 +2,12 @@ package api
 
 import (
 	"testing"
-	"time"
 
 	"google.golang.org/adk/v2/model"
 	adksession "google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
 
+	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -20,15 +20,16 @@ func TestAppendEvent_FinalEventWithContent_AppendsAssistantMessage(t *testing.T)
 
 	events := make(chan *adksession.Event, 1)
 	errs := make(chan error)
+	sseState := runstate.New()
 	state := &runState{
-		SessionID:   sess.ID,
-		Events:      events,
-		Errors:      errs,
-		Done:        make(chan struct{}),
-		subscribers: make(map[uint64]chan SSEEvent),
+		SessionID: sess.ID,
+		Events:    events,
+		Errors:    errs,
+		Done:      make(chan struct{}),
+		SSE:       sseState,
 	}
 	rm := &RunManager{uiSessionMgr: uiMgr}
-	writer := NewSSEWriter(state)
+	writer := runstate.NewWriter(sseState)
 
 	events <- &adksession.Event{
 		LLMResponse: model.LLMResponse{
@@ -62,7 +63,7 @@ func TestAppendEvent_FinalEventWithContent_AppendsAssistantMessage(t *testing.T)
 
 	foundToken := false
 	foundDone := false
-	for _, evt := range state.history {
+	for _, evt := range sseState.History() {
 		if evt.Type == "token" && evt.Content == "hello from final event" {
 			foundToken = true
 		}
@@ -77,10 +78,8 @@ func TestAppendEvent_FinalEventWithContent_AppendsAssistantMessage(t *testing.T)
 		t.Fatal("expected done event")
 	}
 
-	select {
-	case <-state.Done:
-	case <-time.After(time.Second):
-		t.Fatal("run state not marked done")
+	if !sseState.Closed() {
+		t.Fatal("run state streams not closed")
 	}
 }
 
@@ -93,15 +92,16 @@ func TestAppendEvent_ToolCallTurnCompleteDoesNotEndRun(t *testing.T) {
 
 	events := make(chan *adksession.Event, 2)
 	errs := make(chan error)
+	sseState := runstate.New()
 	state := &runState{
-		SessionID:   sess.ID,
-		Events:      events,
-		Errors:      errs,
-		Done:        make(chan struct{}),
-		subscribers: make(map[uint64]chan SSEEvent),
+		SessionID: sess.ID,
+		Events:    events,
+		Errors:    errs,
+		Done:      make(chan struct{}),
+		SSE:       sseState,
 	}
 	rm := &RunManager{uiSessionMgr: uiMgr}
-	writer := NewSSEWriter(state)
+	writer := runstate.NewWriter(sseState)
 
 	events <- &adksession.Event{
 		LLMResponse: model.LLMResponse{
@@ -133,7 +133,7 @@ func TestAppendEvent_ToolCallTurnCompleteDoesNotEndRun(t *testing.T) {
 
 	foundToolCall := false
 	foundDone := false
-	for _, evt := range state.history {
+	for _, evt := range sseState.History() {
 		if evt.Type == "tool_call" && evt.Tool == "activate_skill" {
 			foundToolCall = true
 		}

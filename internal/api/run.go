@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runstate"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -29,59 +29,6 @@ import (
 // sessionIDSetter is an optional interface for models that support prompt caching via session ID.
 type sessionIDSetter interface {
 	SetSessionID(string) *provider.OpenAIModel
-}
-
-// SSEEvent represents one SSE data packet sent to the browser.
-type SSEEvent struct {
-	Type      string      `json:"type"`
-	Content   string      `json:"content,omitempty"`
-	Name      string      `json:"name,omitempty"`
-	Tool      string      `json:"tool,omitempty"`
-	Args      interface{} `json:"args,omitempty"`
-	Output    interface{} `json:"output,omitempty"`
-	Data      interface{} `json:"data,omitempty"`
-	Message   string      `json:"message,omitempty"`
-	MessageID string      `json:"message_id,omitempty"`
-	Usage     *tokenUsage `json:"usage,omitempty"`
-}
-
-// tokenUsage holds token count information for a completed run.
-type tokenUsage struct {
-	TotalTokens      int `json:"total_tokens"`
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-}
-
-// runState tracks one active assistant run per session.
-type runState struct {
-	SessionID string
-	Events    <-chan *session.Event
-	Errors    <-chan error
-	Cancel    context.CancelFunc
-	StartedAt time.Time
-	Done      chan struct{}
-	doneOnce  sync.Once
-
-	bufferMu sync.Mutex
-	buffer   strings.Builder
-
-	streamMu       sync.Mutex
-	subscribers    map[uint64]chan SSEEvent
-	nextSubscriber uint64
-	streamsClosed  bool
-	history        []SSEEvent
-}
-
-func (rs *runState) finish() {
-	rs.doneOnce.Do(func() {
-		close(rs.Done)
-	})
-}
-
-func (rs *runState) appendBuffer(text string) {
-	rs.bufferMu.Lock()
-	defer rs.bufferMu.Unlock()
-	rs.buffer.WriteString(text)
 }
 
 func contentHasFunctionCalls(content *genai.Content) bool {
@@ -108,10 +55,23 @@ func contentHasFunctionResponses(content *genai.Content) bool {
 	return false
 }
 
-func (rs *runState) bufferString() string {
-	rs.bufferMu.Lock()
-	defer rs.bufferMu.Unlock()
-	return rs.buffer.String()
+// runState holds ADK event channels, cancel, and the SSE broadcast state for one run.
+type runState struct {
+	SessionID string
+	Events    <-chan *session.Event
+	Errors    <-chan error
+	Cancel    context.CancelFunc
+	StartedAt time.Time
+	Done      chan struct{}
+	doneOnce  sync.Once
+
+	SSE *runstate.State
+}
+
+func (rs *runState) finish() {
+	rs.doneOnce.Do(func() {
+		close(rs.Done)
+	})
 }
 
 // RunManager manages active runs per session.
@@ -307,7 +267,7 @@ func (rm *RunManager) StartRun(ctx context.Context, sessionID, userMessage strin
 		Cancel:      cancel,
 		StartedAt:   time.Now(),
 		Done:        make(chan struct{}),
-		subscribers: make(map[uint64]chan SSEEvent),
+		SSE:         runstate.New(),
 	}
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
@@ -364,7 +324,7 @@ func (rm *RunManager) CancelRun(sessionID string) bool {
 	}
 	slog.Info("run canceled", slog.String("session_id", sessionID))
 	// Broadcast done event so SSE subscribers re-enable composer (issue #103)
-	state.broadcast(SSEEvent{Type: "done"})
+	state.SSE.Broadcast(runstate.SSEEvent{Type: "done"})
 	state.Cancel()
 	state.finish()
 	return true
@@ -396,12 +356,12 @@ func (rm *RunManager) CloseSession(sessionID string) error {
 	return rm.sessionMgr.Close(sessionID)
 }
 
-func (rm *RunManager) subscribe(sessionID string) (uint64, <-chan SSEEvent, bool) {
+func (rm *RunManager) subscribe(sessionID string) (uint64, <-chan runstate.SSEEvent, bool) {
 	state := rm.lookupRun(sessionID)
 	if state == nil {
 		return 0, nil, false
 	}
-	return state.subscribe()
+	return state.SSE.Subscribe()
 }
 
 func (rm *RunManager) unsubscribe(sessionID string, subscriberID uint64) {
@@ -409,7 +369,7 @@ func (rm *RunManager) unsubscribe(sessionID string, subscriberID uint64) {
 	if state == nil {
 		return
 	}
-	state.unsubscribe(subscriberID)
+	state.SSE.Unsubscribe(subscriberID)
 }
 
 func (rm *RunManager) notifySessionClosed(sessionID, message string) {
@@ -417,7 +377,7 @@ func (rm *RunManager) notifySessionClosed(sessionID, message string) {
 	if state == nil {
 		return
 	}
-	state.closeStreams(&SSEEvent{Type: "closed", Message: message})
+	state.SSE.BroadcastClosed(message)
 }
 
 func (rm *RunManager) notifyAllStreamsClosed(message string) {
@@ -429,146 +389,13 @@ func (rm *RunManager) notifyAllStreamsClosed(message string) {
 	rm.mu.Unlock()
 
 	for _, state := range states {
-		state.closeStreams(&SSEEvent{Type: "closed", Message: message})
+		state.SSE.BroadcastClosed(message)
 	}
 }
 
-func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
-	defer func() {
-		_ = recover()
-	}()
-	select {
-	case ch <- evt:
-	default:
-	}
-}
-
-func (rs *runState) subscribe() (uint64, <-chan SSEEvent, bool) {
-	rs.streamMu.Lock()
-	defer rs.streamMu.Unlock()
-
-	history := append([]SSEEvent(nil), rs.history...)
-	ch := make(chan SSEEvent, 512)
-	for _, evt := range history {
-		ch <- evt
-	}
-	if rs.streamsClosed {
-		close(ch)
-		return 0, ch, len(history) > 0
-	}
-
-	id := rs.nextSubscriber
-	rs.nextSubscriber++
-	rs.subscribers[id] = ch
-	return id, ch, true
-}
-
-func (rs *runState) unsubscribe(id uint64) {
-	rs.streamMu.Lock()
-	defer rs.streamMu.Unlock()
-
-	ch, ok := rs.subscribers[id]
-	if !ok {
-		return
-	}
-	delete(rs.subscribers, id)
-	close(ch)
-}
-
-func (rs *runState) broadcast(evt SSEEvent) {
-	rs.streamMu.Lock()
-	if rs.streamsClosed {
-		rs.streamMu.Unlock()
-		return
-	}
-	rs.history = append(rs.history, evt)
-	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
-	for _, ch := range rs.subscribers {
-		subscribers = append(subscribers, ch)
-	}
-	rs.streamMu.Unlock()
-
-	for _, ch := range subscribers {
-		sendSSEEvent(ch, evt)
-	}
-}
-
-func (rs *runState) closeStreams(evt *SSEEvent) {
-	rs.streamMu.Lock()
-	if rs.streamsClosed {
-		rs.streamMu.Unlock()
-		return
-	}
-	if evt != nil {
-		rs.history = append(rs.history, *evt)
-	}
-	rs.streamsClosed = true
-	subscribers := make([]chan SSEEvent, 0, len(rs.subscribers))
-	for id, ch := range rs.subscribers {
-		subscribers = append(subscribers, ch)
-		delete(rs.subscribers, id)
-	}
-	rs.streamMu.Unlock()
-
-	for _, ch := range subscribers {
-		if evt != nil {
-			sendSSEEvent(ch, *evt)
-		}
-		close(ch)
-	}
-}
-
-// SSEWriter writes SSE-formatted events to run subscribers.
-type SSEWriter struct {
-	state *runState
-}
-
-// NewSSEWriter creates an SSE writer.
-func NewSSEWriter(state *runState) *SSEWriter {
-	return &SSEWriter{state: state}
-}
-
-// Token sends a text token event.
-func (w *SSEWriter) Token(content string) {
-	w.state.broadcast(SSEEvent{Type: "token", Content: content})
-}
-
-// ToolCall sends a tool call event.
-func (w *SSEWriter) ToolCall(name string, args interface{}) {
-	w.state.broadcast(SSEEvent{Type: "tool_call", Tool: name, Args: args})
-}
-
-// ToolResult sends a tool result event.
-func (w *SSEWriter) ToolResult(name string, output interface{}) {
-	outputStr := ""
-	if s, ok := output.(string); ok {
-		outputStr = s
-	} else {
-		if b, err := json.Marshal(output); err == nil {
-			outputStr = string(b)
-		}
-	}
-	w.state.broadcast(SSEEvent{Type: "tool_result", Tool: name, Output: outputStr})
-}
-
-// Done sends a done event with optional token usage.
-func (w *SSEWriter) Done(messageID string, usage *tokenUsage) {
-	w.state.closeStreams(&SSEEvent{Type: "done", MessageID: messageID, Usage: usage})
-}
-
-// Component sends a generative UI component event.
-func (w *SSEWriter) Component(data interface{}) {
-	w.state.broadcast(SSEEvent{Type: "component", Data: data})
-}
-
-// Error sends an error event.
-func (w *SSEWriter) Error(msg string) {
-	w.state.closeStreams(&SSEEvent{Type: "error", Message: msg})
-}
-
-// AppendEvent processes ADK session events and sends SSE events to the writer.
+// AppendEvent processes ADK session events and sends SSE events.
 // Returns the accumulated assistant response text for storage in the UI session.
-func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
+func (rm *RunManager) AppendEvent(state *runState, w *runstate.Writer) string {
 	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 
 	for {
@@ -582,7 +409,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 					}
 				default:
 				}
-				content := state.bufferString()
+				content := state.SSE.BufferString()
 				if content != "" {
 					if rm.uiSessionMgr != nil {
 						rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
@@ -592,7 +419,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						})
 					}
 				}
-				w.Done(messageID, estimateUsage(content))
+				w.Done(messageID, runstate.EstimateUsage(content))
 				state.finish()
 				return content
 			}
@@ -601,7 +428,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 			}
 
 			turnComplete := !evt.Partial && !contentHasFunctionCalls(evt.Content) && !contentHasFunctionResponses(evt.Content)
-			acceptFinalText := turnComplete && state.bufferString() == ""
+			acceptFinalText := turnComplete && state.SSE.BufferString() == ""
 
 			if evt.Content != nil {
 				for _, part := range evt.Content.Parts {
@@ -609,7 +436,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						continue
 					}
 					if part.Text != "" && (!turnComplete || acceptFinalText) {
-						state.appendBuffer(part.Text)
+						state.SSE.AppendBuffer(part.Text)
 						w.Token(part.Text)
 					}
 					if fc := part.FunctionCall; fc != nil {
@@ -618,7 +445,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 							argsMap := fc.Args
 							compName, _ := argsMap["name"].(string)
 							compData, _ := argsMap["data"].(map[string]interface{})
-							w.state.broadcast(SSEEvent{
+							state.SSE.Broadcast(runstate.SSEEvent{
 								Type: "component",
 								Name: compName,
 								Data: compData,
@@ -629,9 +456,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 					}
 					if fr := part.FunctionResponse; fr != nil {
 						if fr.Name == "render_component" {
-							// Tool result already emitted as component event above
-							// Still emit a brief token to show in transcript
-							state.appendBuffer("[Component rendered]")
+							state.SSE.AppendBuffer("[Component rendered]")
 						} else {
 							w.ToolResult(fr.Name, fr.Response)
 						}
@@ -640,7 +465,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 			}
 
 			if turnComplete {
-				content := state.bufferString()
+				content := state.SSE.BufferString()
 				if rm.uiSessionMgr != nil {
 					rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
 						Role:      "assistant",
@@ -648,14 +473,14 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						CreatedAt: time.Now(),
 					})
 				}
-				w.Done(messageID, estimateUsage(content))
+				w.Done(messageID, runstate.EstimateUsage(content))
 				state.finish()
 				return content
 			}
 
 		case err, ok := <-state.Errors:
 			if !ok {
-				content := state.bufferString()
+				content := state.SSE.BufferString()
 				if content != "" {
 					if rm.uiSessionMgr != nil {
 						rm.uiSessionMgr.AppendMessage(state.SessionID, uisession.Message{
@@ -665,7 +490,7 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 						})
 					}
 				}
-				w.Done(messageID, estimateUsage(content))
+				w.Done(messageID, runstate.EstimateUsage(content))
 				state.finish()
 				return content
 			}
@@ -674,23 +499,23 @@ func (rm *RunManager) AppendEvent(state *runState, w *SSEWriter) string {
 			}
 
 		case <-state.Done:
-			state.closeStreams(&SSEEvent{Type: "done", MessageID: messageID, Usage: estimateUsage(state.bufferString())})
+			state.SSE.BroadcastDone(messageID, runstate.EstimateUsage(state.SSE.BufferString()))
 			state.finish()
-			return state.bufferString()
+			return state.SSE.BufferString()
 		}
 	}
 }
 
-func (rm *RunManager) finishWithError(state *runState, w *SSEWriter, messageID string, err error) string {
+func (rm *RunManager) finishWithError(state *runState, w *runstate.Writer, messageID string, err error) string {
 	var maxTurnsErr *agentrunner.MaxTurnsExceededError
 	if errors.As(err, &maxTurnsErr) {
-		content := state.bufferString()
-		limitMsg := maxTurnsMessage(maxTurnsErr.Limit)
+		content := state.SSE.BufferString()
+		limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
 		if content == "" {
-			state.appendBuffer(limitMsg)
+			state.SSE.AppendBuffer(limitMsg)
 			content = limitMsg
 		} else {
-			state.appendBuffer("\n\n" + limitMsg)
+			state.SSE.AppendBuffer("\n\n" + limitMsg)
 			content += "\n\n" + limitMsg
 		}
 		if rm.uiSessionMgr != nil {
@@ -700,67 +525,11 @@ func (rm *RunManager) finishWithError(state *runState, w *SSEWriter, messageID s
 				CreatedAt: time.Now(),
 			})
 		}
-		w.Done(messageID, estimateUsage(content))
+		w.Done(messageID, runstate.EstimateUsage(content))
 		state.finish()
 		return content
 	}
-	w.Error(formatErrorMessage(err))
+	w.Error(runstate.FormatErrorMessage(err))
 	state.finish()
-	return state.bufferString()
-}
-
-// estimateUsage estimates token counts from text length.
-// Uses a rough ratio: ~4 chars per token for English text.
-// This is a fallback when the provider doesn't return usage data.
-func maxTurnsMessage(limit int) string {
-	if limit == 1 {
-		return "Stopped after reaching max turns limit (1). Increase Max Turns in Settings if this task needs tool follow-up steps."
-	}
-	return fmt.Sprintf("Stopped after reaching max turns limit (%d). Increase Max Turns in Settings if this task needs more tool/model steps.", limit)
-}
-
-func estimateUsage(text string) *tokenUsage {
-	const charsPerToken = 4
-	totalTokens := len(text) / charsPerToken
-	if totalTokens < 1 {
-		totalTokens = 1
-	}
-	// Rough split: ~2/3 prompt tokens, ~1/3 completion tokens
-	completionTokens := totalTokens / 3
-	if completionTokens < 1 {
-		completionTokens = 1
-	}
-	promptTokens := totalTokens - completionTokens
-	return &tokenUsage{
-		TotalTokens:      totalTokens,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-	}
-}
-
-// formatErrorMessage converts ADK/provider errors to user-friendly messages.
-func formatErrorMessage(err error) string {
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "connection refused"):
-		return "Connection refused: LLM provider is not reachable. Check that your provider is running."
-	case strings.Contains(msg, "401") || strings.Contains(msg, "Authentication"):
-		return "Authentication failed. Check your API key in Settings."
-	case strings.Contains(msg, "429") || strings.Contains(msg, "Rate limit"):
-		return "Rate limited by provider. Please wait a moment and try again."
-	case strings.Contains(msg, "context length") || strings.Contains(msg, "maximum context"):
-		return "Context length exceeded. Try a shorter message or reduce conversation history."
-	case strings.Contains(msg, "model no longer available") || strings.Contains(msg, "model not found"):
-		return "Selected model no longer available. Choose another model in Settings."
-	case strings.Contains(msg, "streaming tool calls") || strings.Contains(msg, "streaming not supported"):
-		return "Provider does not support required streaming tool calls. Use OpenCode Go or another compatible provider."
-	case strings.Contains(msg, "timeout"):
-		return "Request timed out. The provider took too long to respond."
-	case strings.Contains(msg, "port already in use") || strings.Contains(msg, "address already in use"):
-		return "Cannot bind port: address already in use. Try EITRI_ADDR=127.0.0.1:8081 eitri."
-	case strings.Contains(msg, "no such host") || strings.Contains(msg, "lookup"):
-		return "Cannot reach provider at the configured URL. Check base_url in Settings."
-	default:
-		return fmt.Sprintf("LLM error: %s", msg)
-	}
+	return state.SSE.BufferString()
 }

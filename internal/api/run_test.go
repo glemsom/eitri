@@ -21,6 +21,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	agentrunner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -1621,7 +1622,7 @@ func TestConsecutiveChatEndpoint(t *testing.T) {
 
 func TestSSEEventSerialization(t *testing.T) {
 	// Test that SSEEvent serializes correctly
-	evt := api.SSEEvent{Type: "token", Content: "Hello, world!"}
+	evt := runstate.SSEEvent{Type: "token", Content: "Hello, world!"}
 	data, err := json.Marshal(evt)
 	if err != nil {
 		t.Fatal(err)

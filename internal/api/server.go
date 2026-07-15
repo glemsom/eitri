@@ -19,6 +19,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -750,7 +751,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if runState != nil {
 		go func() {
 			defer s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
-			w := NewSSEWriter(runState)
+			w := runstate.NewWriter(runState.SSE)
 			s.config.RunManager.AppendEvent(runState, w)
 		}()
 	}
@@ -802,7 +803,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	// Send initial connecting event
-	if initData := mustJSON(SSEEvent{Type: "connecting"}); initData != nil {
+	if initData := mustJSON(runstate.SSEEvent{Type: "connecting"}); initData != nil {
 		fmt.Fprintf(w, "data: %s\n\n", string(initData))
 		flusher.Flush()
 	}
