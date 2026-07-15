@@ -431,6 +431,10 @@
 
         appendActivityEntry('Started ' + (packet.tool || 'tool'), summarizeToolDetail(packet), 'running', toolCallKey);
         updateActivitySummary();
+
+        // Inject running tool card into message stream (issue #130)
+        // Create slot and set running card HTML directly (synchronous, no HTMX race with tool_result)
+        injectToolCardSlot(sessionId, packet, toolCallKey);
         break;
 
       case 'tool_result':
@@ -544,6 +548,53 @@
     }
   }
 
+  function injectToolCardSlot(sessionId, packet, toolCallKey) {
+    const messages = document.getElementById('messages');
+    if (!messages) return;
+
+    var toolName = packet.tool || packet.name || 'tool';
+    var argsStr = packet.args ? JSON.stringify(packet.args, null, 2) : '';
+
+    var container = getOrCreateToolContainer(sessionId, messages);
+    if (!container) return;
+
+    // Idempotent: skip if slot already exists (e.g. SSE reconnect)
+    if (container.querySelector('[data-tool-id="' + toolCallKey + '"]')) return;
+
+    var slot = document.createElement('div');
+    slot.className = 'tool-call-container';
+    slot.setAttribute('data-tool-id', toolCallKey);
+    container.appendChild(slot);
+
+    // Build running card HTML (mirrors server-rendered ToolCard with status=running)
+    var html = '<div class="tool-card tool-running" data-tool-id="' + toolCallKey + '">' +
+      '<div class="tool-card-header">' +
+      '<span class="tool-icon">\uD83D\uDD27</span>' +
+      '<span class="tool-name">' + escapeHtml(toolName) + '</span>' +
+      '<span class="tool-status">running...</span>' +
+      '</div>' +
+      (argsStr ? '<pre class="tool-args"><code>' + escapeHtml(argsStr) + '</code></pre>' : '') +
+      '</div>';
+    slot.innerHTML = html;
+  }
+
+  function getOrCreateToolContainer(sessionId, messages) {
+    const containerId = 'tool-cards-' + sessionId;
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      container.className = 'tool-cards-container';
+      var sentinel = document.getElementById('scroll-sentinel');
+      if (sentinel && sentinel.parentNode === messages) {
+        messages.insertBefore(container, sentinel);
+      } else {
+        messages.appendChild(container);
+      }
+    }
+    return container;
+  }
+
   function renderToolCard(sessionId, type, packet) {
     const messages = document.getElementById('messages');
     if (!messages) return;
@@ -555,37 +606,25 @@
     formData.append('type', type);
     formData.append('tool', packet.tool || packet.name || '');
     formData.append('tool_call_key', toolCallKey);
+    formData.append('status', 'done');
     if (packet.args) formData.append('args', JSON.stringify(packet.args));
     if (packet.output) formData.append('output', String(packet.output));
     if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
 
-    const containerId = 'tool-cards-' + sessionId;
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      container.className = 'tool-cards-container';
-      // Insert before scroll-sentinel (always present as absolute end marker)
-      // so tool cards appear before assistant response and never above user message.
-      var sentinel = document.getElementById('scroll-sentinel');
-      if (sentinel && sentinel.parentNode === messages) {
-        messages.insertBefore(container, sentinel);
-      } else {
-        messages.appendChild(container);
-      }
-    }
+    var container = getOrCreateToolContainer(sessionId, messages);
+    if (!container) return;
 
-    // Check if a tool card slot exists for this toolCallKey
+    // Find existing slot created by injectToolCardSlot
     var slot = container.querySelector('[data-tool-id="' + toolCallKey + '"]');
     if (!slot) {
-      // Create new container slot on first tool_result for this tool
+      // Fallback: create slot if injectToolCardSlot missed (shouldn't happen)
       slot = document.createElement('div');
       slot.className = 'tool-call-container';
       slot.setAttribute('data-tool-id', toolCallKey);
       container.appendChild(slot);
     }
 
-    // Always update innerHTML of the slot via HTMX (morph in place)
+    // Morph card in place via HTMX (issue #131)
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
       source: document.body,
       target: '#' + CSS.escape(slot.id || (slot.id = toolCallKey)),
