@@ -1182,14 +1182,12 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(fmt.Sprintf(`(function() {
 			const sessionId = location.pathname.split('/').pop();
-			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/component', {
+			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
 				source: document.body,
 				target: '#messages',
 				swap: 'beforeend',
-				values: {
-					name: 'DiffCard',
-					data: JSON.stringify({old: %q, new: %q, lang: 'go'})
-				}
+				contentType: 'application/json',
+				values: JSON.stringify({kind: 'component', name: 'DiffCard', data: {old: %q, new: %q, lang: 'go'}})
 			});
 			return true;
 		})()`, oldContent, newContent), nil),
@@ -1209,22 +1207,19 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 		})()`, &diffSideBySideActive),
 		chromedp.EvaluateAsDevTools(fmt.Sprintf(`(function() {
 			const sessionId = location.pathname.split('/').pop();
-			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
+			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
 				source: document.body,
 				target: '#messages',
 				swap: 'beforeend',
-				values: {
-					type: 'tool_result',
-					tool: 'file_editor',
-					output: JSON.stringify({
-						path: 'main.go',
-						mode: 'overwrite',
-						bytes_written: 123,
-						old_content: %q,
-						new_content: %q,
-						dirs_created: []
-					})
-				}
+				contentType: 'application/json',
+				values: JSON.stringify({kind: 'tool_card', tool: 'file_editor', status: 'done', output: JSON.stringify({
+					path: 'main.go',
+					mode: 'overwrite',
+					bytes_written: 123,
+					old_content: %q,
+					new_content: %q,
+					dirs_created: []
+				})})
 			});
 			return true;
 		})()`, oldContent, newContent), nil),
