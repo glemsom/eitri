@@ -22,6 +22,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/runner"
 )
 
 // ServerConfig holds dependencies and settings for the API server.
@@ -29,7 +30,7 @@ type ServerConfig struct {
 	ConfigPath     string // path to config file for save
 	Workspace      string // launch workspace (process CWD)
 	SessionManager *session.Manager
-	RunManager     *RunManager
+	RunService     *runner.RunService
 	SkillsService  *skills.Service
 	Logger         *slog.Logger
 	CopilotOAuth   GitHubCopilotOAuthConfig
@@ -131,18 +132,18 @@ func writeConfigError(w http.ResponseWriter, r *http.Request, status int, messag
 }
 
 func (s *Server) notifySessionClosed(sessionID, message string) {
-	if s.config.RunManager == nil {
+	if s.config.RunService == nil {
 		return
 	}
-	s.config.RunManager.notifySessionClosed(sessionID, message)
+	s.config.RunService.NotifySessionClosed(sessionID, message)
 }
 
 // CloseActiveStreams notifies all attached SSE clients that their stream is closing.
 func (s *Server) CloseActiveStreams(message string) {
-	if s.config.RunManager == nil {
+	if s.config.RunService == nil {
 		return
 	}
-	s.config.RunManager.notifyAllStreamsClosed(message)
+	s.config.RunService.NotifyAllStreamsClosed(message)
 }
 
 // NewServer creates a new Server with routes registered.
@@ -162,8 +163,20 @@ func NewServer(cfg ServerConfig) *Server {
 			Timeout: 30 * time.Second,
 		},
 	}
-	if cfg.RunManager != nil {
-		cfg.RunManager.SetAuthRefresh(cfg.ConfigPath, s.httpClient, s.copilotOAuth)
+	if cfg.RunService != nil {
+		cfg.RunService.SetPersistAuth(func(apiKey string, providerAuth json.RawMessage) error {
+			cfg2, err := config.Load(cfg.ConfigPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config for auth persist: %w", err)
+			}
+			cfg2.APIKey = apiKey
+			cfg2.ProviderAuth = append(json.RawMessage(nil), providerAuth...)
+			if err := config.Save(cfg.ConfigPath, cfg2); err != nil {
+				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
+			}
+			cfg.RunService.InvalidateRunners()
+			return nil
+		})
 	}
 	s.registerRoutes()
 	return s
@@ -451,8 +464,8 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.notifySessionClosed(id, "Session closed")
-	if s.config.RunManager != nil {
-		if err := s.config.RunManager.CloseSession(id); err != nil {
+	if s.config.RunService != nil {
+		if err := s.config.RunService.CloseSession(id); err != nil {
 			http.Error(w, "Failed to close session executor", http.StatusInternalServerError)
 			return
 		}
@@ -619,9 +632,8 @@ func (s *Server) saveProviderConfig(cfg *config.Config) error {
 	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
 		return err
 	}
-	if s.config.RunManager != nil {
-		s.config.RunManager.runnerMgr.Invalidate()
-		s.config.RunManager.UpdateProviderConfig(cfg)
+	if s.config.RunService != nil {
+		s.config.RunService.UpdateProviderConfig(cfg)
 	}
 	return nil
 }
@@ -711,12 +723,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		component.Render(r.Context(), w)
 		return
 	}
-	if s.config.RunManager != nil {
-		s.config.RunManager.UpdateProviderConfig(cfgState.cfg)
+	if s.config.RunService != nil {
+		s.config.RunService.UpdateProviderConfig(cfgState.cfg)
 	}
 
 	// Check for active run (concurrent run protection)
-	if s.config.RunManager.ActiveRun(id) != nil {
+	if s.config.RunService.ActiveRun(id) != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusConflict)
 		component := templates.ErrorToast("This session already has an active run. Wait for it to complete or cancel it.")
@@ -734,8 +746,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Start run in background
 	// Use context.Background() instead of r.Context() so the run survives
 	// the HTTP handler returning (which cancels the request context).
-	// CancelRun() provides explicit cancellation via state.Cancel().
-	skillCtx, err := s.config.RunManager.StartRun(context.Background(), id, prompt)
+	// Cancel() provides explicit cancellation via state.Cancel().
+	skillWarnings, err := s.config.RunService.StartRun(context.Background(), id, prompt)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -744,16 +756,20 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Render skill warnings
+	for _, warning := range skillWarnings {
+		_ = templates.ErrorToast(warning).Render(r.Context(), w)
+	}
+
 	// Update session status
 	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
 
 	// Start SSE event processing in background
-	runState := s.config.RunManager.ActiveRun(id)
+	runState := s.config.RunService.ActiveRun(id)
 	if runState != nil {
 		go func() {
 			defer s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
-			w := runstate.NewWriter(runState.SSE)
-			s.config.RunManager.AppendEvent(runState, w)
+			s.config.RunService.AppendEvent(runState)
 		}()
 	}
 
@@ -761,13 +777,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
 
-	for _, warning := range skillCtx.Warnings {
-		_ = templates.ErrorToast(warning).Render(r.Context(), w)
-	}
-
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
-	userBubble := templates.UserBubble(message)
-	userBubble.Render(r.Context(), w)
+	_ = templates.UserBubble(message).Render(r.Context(), w)
 	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
 }
 
@@ -781,17 +792,17 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.config.RunManager == nil {
+	if s.config.RunService == nil {
 		http.Error(w, "No active run for this session", http.StatusNotFound)
 		return
 	}
 
-	subscriberID, sseCh, ok := s.config.RunManager.subscribe(id)
+	subscriberID, sseCh, ok := s.config.RunService.Subscribe(id)
 	if !ok {
 		http.Error(w, "No active run for this session", http.StatusNotFound)
 		return
 	}
-	defer s.config.RunManager.unsubscribe(id, subscriberID)
+	defer s.config.RunService.Unsubscribe(id, subscriberID)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -850,7 +861,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.config.RunManager.CancelRun(id)
+	s.config.RunService.Cancel(id)
 	s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
 
 	// Re-enabling is now client-side via CSS class toggle (issue #103).

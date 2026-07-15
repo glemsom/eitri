@@ -19,7 +19,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
-	agentrunner "github.com/glemsom/eitri/internal/runner"
+	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -34,12 +34,12 @@ type serveOptions struct {
 	OpenURL   func(string) error
 }
 
-func cleanupRuntime(server *api.Server, runMgr *api.RunManager, executorMgr *executor.SessionManager) {
+func cleanupRuntime(server *api.Server, runSvc *runner.RunService, executorMgr *executor.SessionManager) {
 	if server != nil {
 		server.CloseActiveStreams("Server shutting down")
 	}
-	if runMgr != nil {
-		runMgr.CancelAll()
+	if runSvc != nil {
+		runSvc.CancelAll()
 	}
 	if executorMgr != nil {
 		executorMgr.CloseAll()
@@ -85,21 +85,25 @@ func main() {
 	}
 
 	sessionMgr := session.NewManager(10)
-	runnerMgr := agentrunner.NewManager()
+	runnerMgr := runner.NewManager()
 	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
-	runMgr := api.NewRunManager(runnerMgr, executorMgr)
-	runMgr.UpdateProviderConfig(cfg)
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runnerMgr,
+		SessionManager: executorMgr,
+		UISessionMgr:   sessionMgr,
+	})
+	runSvc.UpdateProviderConfig(cfg)
 	executorMgr.StartTimeoutLoop(ctx, 30*time.Second)
 
 	skillsSvc := skills.NewService()
-	runMgr.SetSkillsService(skillsSvc)
-	runMgr.SetUISessionManager(sessionMgr)
+	runSvc.SetSkillsService(skillsSvc)
+	runSvc.SetUISessionManager(sessionMgr)
 
 	server := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
-		RunManager:     runMgr,
+		RunService:     runSvc,
 		SkillsService:  skillsSvc,
 		Logger:         slog.Default(),
 	})
@@ -114,7 +118,7 @@ func main() {
 		OpenURL:   openBrowserURL,
 	})
 
-	cleanupRuntime(server, runMgr, executorMgr)
+	cleanupRuntime(server, runSvc, executorMgr)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

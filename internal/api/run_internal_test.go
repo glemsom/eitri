@@ -7,6 +7,8 @@ import (
 	adksession "google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
 
+	"github.com/glemsom/eitri/internal/executor"
+	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
@@ -18,18 +20,23 @@ func TestAppendEvent_FinalEventWithContent_AppendsAssistantMessage(t *testing.T)
 		t.Fatalf("create session: %v", err)
 	}
 
+	// Use the real RunService to get runSvc for AppendEvent
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runner.NewManager(),
+		SessionManager: executor.NewSessionManager(t.TempDir(), 0, 0),
+		UISessionMgr:   uiMgr,
+	})
+
 	events := make(chan *adksession.Event, 1)
 	errs := make(chan error)
 	sseState := runstate.New()
-	state := &runState{
+	state := &runner.RunState{
 		SessionID: sess.ID,
 		Events:    events,
 		Errors:    errs,
 		Done:      make(chan struct{}),
 		SSE:       sseState,
 	}
-	rm := &RunManager{uiSessionMgr: uiMgr}
-	writer := runstate.NewWriter(sseState)
 
 	events <- &adksession.Event{
 		LLMResponse: model.LLMResponse{
@@ -42,7 +49,7 @@ func TestAppendEvent_FinalEventWithContent_AppendsAssistantMessage(t *testing.T)
 	}
 	close(events)
 
-	got := rm.AppendEvent(state, writer)
+	got := runSvc.AppendEvent(state)
 	if got != "hello from final event" {
 		t.Fatalf("AppendEvent() = %q, want %q", got, "hello from final event")
 	}
@@ -90,18 +97,22 @@ func TestAppendEvent_ToolCallTurnCompleteDoesNotEndRun(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runner.NewManager(),
+		SessionManager: executor.NewSessionManager(t.TempDir(), 0, 0),
+		UISessionMgr:   uiMgr,
+	})
+
 	events := make(chan *adksession.Event, 2)
 	errs := make(chan error)
 	sseState := runstate.New()
-	state := &runState{
+	state := &runner.RunState{
 		SessionID: sess.ID,
 		Events:    events,
 		Errors:    errs,
 		Done:      make(chan struct{}),
 		SSE:       sseState,
 	}
-	rm := &RunManager{uiSessionMgr: uiMgr}
-	writer := runstate.NewWriter(sseState)
 
 	events <- &adksession.Event{
 		LLMResponse: model.LLMResponse{
@@ -126,7 +137,7 @@ func TestAppendEvent_ToolCallTurnCompleteDoesNotEndRun(t *testing.T) {
 	}
 	close(events)
 
-	got := rm.AppendEvent(state, writer)
+	got := runSvc.AppendEvent(state)
 	if got != "done after tool" {
 		t.Fatalf("AppendEvent() = %q, want %q", got, "done after tool")
 	}
