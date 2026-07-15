@@ -694,6 +694,46 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sentinel check failed: %v", err)
 	}
+
+	// Verify #messages is the actual scroll container (overflow-y: auto)
+	var isScrollContainer bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`(() => {
+				const el = document.getElementById('messages');
+				if (!el) return false;
+				const style = window.getComputedStyle(el);
+				return style.overflowY === 'auto' || style.overflowY === 'scroll';
+			})()`,
+			&isScrollContainer,
+		),
+	)
+	if err != nil {
+		t.Fatalf("scroll container check failed: %v", err)
+	}
+	if !isScrollContainer {
+		t.Error("#messages should be a CSS scroll container (overflow-y: auto) for IntersectionObserver")
+	}
+
+	// Verify IntersectionObserver root is #messages
+	var observerRoot string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`(() => {
+				const sentinel = document.getElementById('scroll-sentinel');
+				if (!sentinel || !sentinel._scrollObserver) return 'no-observer';
+				const root = sentinel._scrollObserver.root;
+				return root ? (root.id || 'no-id') : 'null';
+			})()`,
+			&observerRoot,
+		),
+	)
+	if err != nil {
+		t.Fatalf("observer root check failed: %v", err)
+	}
+	if observerRoot != "messages" {
+		t.Errorf("IntersectionObserver root should be #messages (scroll container), got: %v", observerRoot)
+	}
 	if !sentinelExists {
 		t.Error("scroll sentinel element should exist in #messages")
 	}
@@ -3023,6 +3063,23 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 	}
 	if strings.TrimSpace(assistantText) == "" {
 		t.Fatal("assistant response did not render")
+	}
+
+	// Verify IntersectionObserver root is #messages (the scroll container)
+	var observerRoot string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var sentinel = document.getElementById('scroll-sentinel');
+			if (!sentinel || !sentinel._scrollObserver) return 'no-observer';
+			var root = sentinel._scrollObserver.root;
+			return root ? (root.id || 'no-id') : 'null';
+		})()`, &observerRoot),
+	)
+	if err != nil {
+		t.Fatalf("check observer root failed: %v", err)
+	}
+	if observerRoot != "messages" {
+		t.Errorf("IntersectionObserver root should be #messages (the scroll container), got: %v", observerRoot)
 	}
 
 	// After streaming and render, scroll-sentinel should exist in #messages

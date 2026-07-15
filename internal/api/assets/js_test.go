@@ -148,6 +148,24 @@ func TestJsFiles(t *testing.T) {
 		t.Fatalf("failed to read eitri.css: %v", err)
 	}
 	content4 := string(data4)
+
+	// Verify CSS has .messages as scroll container with overflow-y: auto
+	if !strings.Contains(content4, ".messages {") {
+		t.Error("eitri.css missing .messages selector for scroll container")
+	}
+	// Check overflow-y: auto within messages block
+	msgIdx := strings.Index(content4, ".messages {")
+	if msgIdx >= 0 {
+		// Scan forward from messages selector for overflow-y: auto
+		block := content4[msgIdx:]
+		closeIdx := strings.Index(block, "}")
+		if closeIdx >= 0 {
+			block = block[:closeIdx+1]
+			if !strings.Contains(block, "overflow-y: auto") {
+				t.Error(".messages CSS block missing overflow-y: auto (required for IntersectionObserver scroll container)")
+			}
+		}
+	}
 	if !strings.Contains(content4, "--composer-height") {
 		t.Error("eitri.css missing --composer-height CSS variable for scroll-to-bottom positioning")
 	}
