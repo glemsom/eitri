@@ -2619,42 +2619,40 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Poll for tool cards container to appear
+	// Poll for tool card slot to appear (direct child of #messages, not a container)
 	deadline := time.Now().Add(3 * time.Second)
-	var toolCardsContainerExists bool
+	var toolCardSlotFound bool
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(
-				`document.getElementById('tool-cards-`+sessionID+`') !== null`,
-				&toolCardsContainerExists,
+				`document.querySelector('#messages > [data-tool-id]') !== null`,
+				&toolCardSlotFound,
 			),
 		)
-		if err == nil && toolCardsContainerExists {
+		if err == nil && toolCardSlotFound {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !toolCardsContainerExists {
-		t.Fatalf("tool-cards-container not found: err=%v exists=%v", err, toolCardsContainerExists)
+	if !toolCardSlotFound {
+		t.Fatalf("tool card slot not found in #messages: err=%v found=%v", err, toolCardSlotFound)
 	}
 
-	// Verify tool cards container appears before scroll-sentinel
-	// (i.e., its next sibling or later sibling is scroll-sentinel, or it's before sentinel)
-	var toolCardsBeforeSentinel bool
+	// Verify tool card slot appears before scroll-sentinel
+	var slotBeforeSentinel bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
 			var messages = document.getElementById('messages');
 			var sentinel = document.getElementById('scroll-sentinel');
-			var toolCards = document.getElementById('tool-cards-`+sessionID+`');
-			if (!messages || !sentinel || !toolCards) return false;
-			// Check sentinel is after toolCards in messages children
-			var toolIdx = Array.prototype.indexOf.call(messages.children, toolCards);
+			var slot = messages.querySelector('[data-tool-id]');
+			if (!messages || !sentinel || !slot) return false;
+			var slotIdx = Array.prototype.indexOf.call(messages.children, slot);
 			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
-			return toolIdx >= 0 && sentinelIdx > toolIdx;
-		})()`, &toolCardsBeforeSentinel),
+			return slotIdx >= 0 && sentinelIdx > slotIdx;
+		})()`, &slotBeforeSentinel),
 	)
-	if err != nil || !toolCardsBeforeSentinel {
-		t.Fatalf("tool cards should be before scroll-sentinel: err=%v beforeSentinel=%v", err, toolCardsBeforeSentinel)
+	if err != nil || !slotBeforeSentinel {
+		t.Fatalf("tool card slot should be before scroll-sentinel: err=%v beforeSentinel=%v", err, slotBeforeSentinel)
 	}
 
 	// Now simulate streaming bubble creation (as would happen on first token after tools)
@@ -2689,21 +2687,23 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("streaming should be before scroll-sentinel: err=%v beforeSentinel=%v", err, streamingBeforeSentinel)
 	}
 
-	// Verify tool cards are still before streaming (not reordered)
-	var toolCardsBeforeStreaming bool
+	// Verify tool card appears after streaming (inline at tool call position)
+	// Previously this checked toolCardsBeforeStreaming (bug), now tool cards
+	// are inserted after #streaming for correct inline interleaving.
+	var slotAfterStreaming bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
 			var messages = document.getElementById('messages');
 			var streaming = document.getElementById('streaming');
-			var toolCards = document.getElementById('tool-cards-`+sessionID+`');
-			if (!messages || !streaming || !toolCards) return false;
-			var toolIdx = Array.prototype.indexOf.call(messages.children, toolCards);
+			var slot = messages.querySelector('[data-tool-id]');
+			if (!messages || !streaming || !slot) return false;
+			var slotIdx = Array.prototype.indexOf.call(messages.children, slot);
 			var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
-			return toolIdx >= 0 && streamingIdx > toolIdx;
-		})()`, &toolCardsBeforeStreaming),
+			return slotIdx >= 0 && slotIdx > streamingIdx;
+		})()`, &slotAfterStreaming),
 	)
-	if err != nil || !toolCardsBeforeStreaming {
-		t.Fatalf("tool cards should be before streaming: err=%v beforeStreaming=%v", err, toolCardsBeforeStreaming)
+	if err != nil || !slotAfterStreaming {
+		t.Fatalf("tool card slot should be after streaming (inline): err=%v afterStreaming=%v", err, slotAfterStreaming)
 	}
 }
 
@@ -2824,11 +2824,11 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 		var debugHTML string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`(function() {
-				var c = document.getElementById('tool-cards-`+sessionID+`');
-				return c ? c.innerHTML : 'no container';
+				var slot = document.querySelector('#messages [data-tool-id]');
+				return slot ? slot.innerHTML : 'no tool slot';
 			})()`, &debugHTML),
 		)
-		t.Fatalf("tool cards did not show 'done' within deadline; container HTML: %s", debugHTML)
+		t.Fatalf("tool cards did not show 'done' within deadline; slot HTML: %s", debugHTML)
 	}
 
 	// Verify each slot has a unique data-tool-id
@@ -2853,24 +2853,28 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 		seen[id] = true
 	}
 
-	// Verify tool-cards-container appears before scroll-sentinel
-	var cardsBeforeSentinel bool
+	// Verify tool card slots appear before scroll-sentinel
+	var slotsBeforeSentinel bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
 			var messages = document.getElementById('messages');
 			var sentinel = document.getElementById('scroll-sentinel');
-			var cards = document.getElementById('tool-cards-`+sessionID+`');
-			if (!messages || !sentinel || !cards) return false;
-			var cardsIdx = Array.prototype.indexOf.call(messages.children, cards);
+			var slots = messages.querySelectorAll('.tool-call-container[data-tool-id]');
+			if (!messages || !sentinel || slots.length === 0) return false;
+			// All slots should be before sentinel
 			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
-			return cardsIdx >= 0 && sentinelIdx > cardsIdx;
-		})()`, &cardsBeforeSentinel),
+			for (var i = 0; i < slots.length; i++) {
+				var slotIdx = Array.prototype.indexOf.call(messages.children, slots[i]);
+				if (slotIdx < 0 || slotIdx > sentinelIdx) return false;
+			}
+			return true;
+		})()`, &slotsBeforeSentinel),
 	)
 	if err != nil {
-		t.Fatalf("query cards before sentinel failed: %v", err)
+		t.Fatalf("query slots before sentinel failed: %v", err)
 	}
-	if !cardsBeforeSentinel {
-		t.Error("tool-cards-container should appear before scroll-sentinel")
+	if !slotsBeforeSentinel {
+		t.Error("tool card slots should appear before scroll-sentinel")
 	}
 }
 
@@ -3325,20 +3329,20 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 	// Wait for tool card to appear
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify tool card container exists and is inside #messages
+	// Verify tool card slot exists and is inside #messages
 	var toolCardInMessages bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
-			var container = document.querySelector('.tool-cards-container');
-			if (!container) return false;
-			return container.parentElement && container.parentElement.id === 'messages';
+			var slot = document.querySelector('#messages > [data-tool-id]');
+			if (!slot) return false;
+			return slot.parentElement && slot.parentElement.id === 'messages';
 		})()`, &toolCardInMessages),
 	)
 	if err != nil {
 		t.Fatalf("check tool card parent failed: %v", err)
 	}
 	if !toolCardInMessages {
-		t.Error("tool-cards-container should be a child of #messages")
+		t.Error("tool card slot should be a child of #messages")
 	}
 
 	// Verify streaming bubble still exists (tool card appends, doesn't replace)
