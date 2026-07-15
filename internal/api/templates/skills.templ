@@ -5,8 +5,7 @@ import (
 )
 
 templ SkillsPage(registry *skills.Registry, workspace string, chatPath string, currentPath string) {
-	@Base("Eitri — Skills", chatPath, nil, "", currentPath) {
-		@WorkspaceIndicator(workspace)
+	@Base("Eitri — Skills", chatPath, nil, "", currentPath, workspace) {
 		@SkillsView(registry)
 	}
 }

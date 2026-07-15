@@ -2,7 +2,7 @@ package templates
 
 import "github.com/glemsom/eitri/internal/session"
 
-templ Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string) {
+templ Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string, workspace string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -31,6 +31,10 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			<div id="app">
 				<header>
 					<h1><img src="/static/face.webp" alt="" class="header-face" width="28" height="28"/> Eitri</h1>
+					<div id="workspace-indicator" class="workspace-indicator" title={ workspace }>
+						Workspace: { pathBase(workspace) }
+					</div>
+					<span id="stream-indicator" class="stream-indicator idle">Idle</span>
 					<div class="dropdown" id="nav-dropdown">
 						<button class="gear-btn" title="Menu" aria-label="Menu">
 							&#9881;
@@ -74,7 +78,7 @@ templ NavLink(path string, label string, currentPath string) {
 
 // ChatPage renders the full chat page layout with session sidebar and chat view.
 templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string) {
-	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath) {
-		@ChatView(sess, workspace, configValid)
+	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace) {
+		@ChatView(sess, configValid)
 	}
 }
