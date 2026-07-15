@@ -549,9 +549,15 @@
     // appears below any HTMX-appended user bubbles. Fix: first-message
     // response rendered above user message because server-rendered streaming
     // div precedes the HTMX-appended user bubble.
-    if (messages.lastElementChild !== el) {
-      var sentinel = document.getElementById('scroll-sentinel');
-      // Move streaming first, then sentinel — sentinel stays as absolute last child
+    // Only reorder if streaming isn't already before sentinel.
+    // Preserve ordering with tool card slots (issue #201).
+    var sentinel = document.getElementById('scroll-sentinel');
+    // Check if streaming is somewhere before sentinel (not necessarily adjacent)
+    var streamingBeforeSentinel = false;
+    if (sentinel && el.compareDocumentPosition(sentinel) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      streamingBeforeSentinel = true;
+    }
+    if (!streamingBeforeSentinel && messages.lastElementChild !== el) {
       messages.appendChild(el);
       if (sentinel) messages.appendChild(sentinel);
     }
@@ -569,19 +575,34 @@
     var toolName = packet.tool || packet.name || 'tool';
     var argsStr = packet.args ? JSON.stringify(packet.args, null, 2) : '';
 
-    var container = getOrCreateToolContainer(sessionId, messages);
-    if (!container) return;
+    // Ensure streaming bubble exists to anchor after it
+    var streaming = document.getElementById('streaming');
+    if (!streaming) {
+      // First event is a tool_call before any token — create placeholder
+      showStreamingBubble();
+      streaming = document.getElementById('streaming');
+      if (!streaming) return;
+    }
 
     // Idempotent: skip if slot already exists (e.g. SSE reconnect)
-    if (container.querySelector('[data-tool-id="' + toolCallKey + '"]')) return;
+    if (messages.querySelector('[data-tool-id="' + toolCallKey + '"]')) return;
 
     var slot = document.createElement('div');
     slot.className = 'tool-call-container';
     slot.setAttribute('data-tool-id', toolCallKey);
-    container.appendChild(slot);
+    slot.id = toolCallKey;
 
-    // Build running card HTML (mirrors server-rendered ToolCard with status=running)
-    // Include an elapsed span that the live timer will update (issue #134)
+    // Insert slot right after the streaming element, before scroll-sentinel
+    var sentinel = document.getElementById('scroll-sentinel');
+    if (sentinel && sentinel.parentNode === messages) {
+      messages.insertBefore(slot, sentinel);
+    } else if (streaming.nextSibling) {
+      messages.insertBefore(slot, streaming.nextSibling);
+    } else {
+      messages.appendChild(slot);
+    }
+
+    // Build running card HTML
     var html = '<div class="tool-card tool-running" data-tool-id="' + toolCallKey + '">' +
       '<div class="tool-card-header">' +
       '<span class="tool-icon">\uD83D\uDD27</span>' +
@@ -593,37 +614,21 @@
       '</div>';
     slot.innerHTML = html;
 
-    // Start live elapsed timer (issue #134)
+    // Start live elapsed timer
     var startMs = Date.now();
     toolCardElapsed[toolCallKey] = { startMs: startMs, finalMs: null };
     startToolCardTimer(toolCallKey);
   }
 
-  function getOrCreateToolContainer(sessionId, messages) {
-    const containerId = 'tool-cards-' + sessionId;
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      container.className = 'tool-cards-container';
-      var sentinel = document.getElementById('scroll-sentinel');
-      if (sentinel && sentinel.parentNode === messages) {
-        messages.insertBefore(container, sentinel);
-      } else {
-        messages.appendChild(container);
-      }
-    }
-    return container;
+  function findToolCardSlot(toolCallKey) {
+    return document.querySelector('#messages [data-tool-id="' + toolCallKey + '"]');
   }
 
   function renderToolCard(sessionId, type, packet) {
-    const messages = document.getElementById('messages');
-    if (!messages) return;
-
     // Compute toolCallKey matching activity panel tracking
     var toolCallKey = sessionId + '-tool-' + (activityToolCount - 1);
 
-    // Stop live timer and record final elapsed (issue #134)
+    // Stop live timer and record final elapsed
     stopToolCardTimer(toolCallKey);
     var finalElapsed = '';
     if (toolCardElapsed[toolCallKey] && toolCardElapsed[toolCallKey].startMs) {
@@ -632,6 +637,7 @@
       finalElapsed = formatTimer(elapsedMs);
     }
 
+    // Build form data for render endpoint
     const formData = new FormData();
     formData.append('type', type);
     formData.append('tool', packet.tool || packet.name || '');
@@ -642,30 +648,36 @@
     if (packet.output) formData.append('output', String(packet.output));
     if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
 
-    var container = getOrCreateToolContainer(sessionId, messages);
-    if (!container) return;
-
     // Find existing slot created by injectToolCardSlot
-    var slot = container.querySelector('[data-tool-id="' + toolCallKey + '"]');
+    var slot = findToolCardSlot(toolCallKey);
     if (!slot) {
       // Fallback: create slot if injectToolCardSlot missed (shouldn't happen)
+      // Use streaming as anchor
+      var messages = document.getElementById('messages');
+      if (!messages) return;
       slot = document.createElement('div');
       slot.className = 'tool-call-container';
       slot.setAttribute('data-tool-id', toolCallKey);
-      container.appendChild(slot);
+      slot.id = toolCallKey;
+      var sentinel = document.getElementById('scroll-sentinel');
+      if (sentinel && sentinel.parentNode === messages) {
+        messages.insertBefore(slot, sentinel);
+      } else {
+        messages.appendChild(slot);
+      }
     }
 
-    // POST to unified render route with kind field (issue #195)
+    // POST to unified render route with kind field
     const jsonPayload = Object.assign(
       Object.fromEntries(formData),
       { kind: 'tool_card' }
     );
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
-      target: '#' + CSS.escape(slot.id || (slot.id = toolCallKey)),
+      target: '#' + CSS.escape(slot.id || toolCallKey),
       swap: 'innerHTML',
       contentType: 'application/json',
-      values: JSON.stringify(jsonPayload),
+      values: jsonPayload,
     });
   }
 
@@ -682,11 +694,11 @@
       target: '#messages',
       swap: 'beforeend',
       contentType: 'application/json',
-      values: JSON.stringify({
+      values: {
         kind: 'component',
         name: compName,
         data: compData,
-      }),
+      },
     });
   }
 
@@ -720,10 +732,10 @@
       target: '#streaming',
       swap: 'outerHTML',
       contentType: 'application/json',
-      values: JSON.stringify({
+      values: {
         kind: 'markdown',
         message_id: messageId || '',
-      }),
+      },
     });
 
     window.setTimeout(finish, 500);
@@ -735,10 +747,10 @@
       target: '#error-toasts',
       swap: 'beforeend',
       contentType: 'application/json',
-      values: JSON.stringify({
+      values: {
         kind: 'error',
         message: message || 'An error occurred',
-      }),
+      },
     });
   }
 
