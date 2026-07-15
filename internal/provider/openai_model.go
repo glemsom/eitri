@@ -26,6 +26,13 @@ type OpenAIModel struct {
 	client     *http.Client
 	MaxRetries int           // max retry attempts for retryable errors (default 3)
 	RetryDelay time.Duration // base delay for exponential backoff (default 1s)
+	SessionID  string        // per-conversation session ID for prompt caching
+}
+
+// SetSessionID sets the session ID for prompt caching. Returns the model for chaining.
+func (m *OpenAIModel) SetSessionID(id string) *OpenAIModel {
+	m.SessionID = id
+	return m
 }
 
 // NewOpenAIModel creates an OpenAI-compatible model.LLM using OpenCode Go profile.
@@ -66,11 +73,12 @@ func (m *OpenAIModel) Name() string { return m.name }
 // ————— wire types —————
 
 type openAIReq struct {
-	Model      string      `json:"model"`
-	Messages   []openAIMsg `json:"messages"`
-	Stream     bool        `json:"stream"`
-	Tools      interface{} `json:"tools,omitempty"`
-	ToolChoice string      `json:"tool_choice,omitempty"`
+	Model           string      `json:"model"`
+	Messages        []openAIMsg `json:"messages"`
+	Stream          bool        `json:"stream"`
+	Tools           interface{} `json:"tools,omitempty"`
+	ToolChoice      string      `json:"tool_choice,omitempty"`
+	PromptCacheKey  string      `json:"prompt_cache_key,omitempty"`
 }
 
 type openAIMsg struct {
@@ -233,11 +241,17 @@ func (m *OpenAIModel) toOpenAIReq(req *model.LLMRequest, stream bool) *openAIReq
 		tools = m.buildToolDefs(req.Tools)
 	}
 
+	cacheKey := ""
+	if m.profile.supportsPromptCache && m.SessionID != "" {
+		cacheKey = m.SessionID
+	}
+
 	return &openAIReq{
-		Model:    m.name,
-		Messages: msgs,
-		Stream:   stream,
-		Tools:    tools,
+		Model:          m.name,
+		Messages:       msgs,
+		Stream:         stream,
+		Tools:          tools,
+		PromptCacheKey: cacheKey,
 	}
 }
 

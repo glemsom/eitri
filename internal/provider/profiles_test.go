@@ -72,6 +72,26 @@ func TestDescribe_ExposesCallerSafeMetadata(t *testing.T) {
 	}
 }
 
+func TestProfile_SupportsPromptCache(t *testing.T) {
+	t.Parallel()
+
+	expected := map[string]bool{
+		"opencode_go":    false,
+		"custom_openai":  false,
+		"github_copilot": false,
+	}
+
+	for providerID, want := range expected {
+		prof, err := getProfile(providerID)
+		if err != nil {
+			t.Fatalf("getProfile(%q) error: %v", providerID, err)
+		}
+		if prof.supportsPromptCache != want {
+			t.Errorf("%s supportsPromptCache = %v, want %v", providerID, prof.supportsPromptCache, want)
+		}
+	}
+}
+
 func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 	t.Parallel()
 

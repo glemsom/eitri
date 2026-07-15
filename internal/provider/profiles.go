@@ -22,12 +22,13 @@ type Descriptor struct {
 // and request headers used by Eitri's OpenAI-style transport.
 type profile struct {
 	Descriptor
-	modelListPath  string
-	chatPath       string
-	stripV1Suffix  bool
-	applyHeaders   func(*http.Request, string)
-	parseModelList func(io.Reader) ([]string, error)
-	authHandler    authHandler
+	modelListPath       string
+	chatPath            string
+	stripV1Suffix       bool
+	applyHeaders        func(*http.Request, string)
+	parseModelList      func(io.Reader) ([]string, error)
+	authHandler         authHandler
+	supportsPromptCache bool
 }
 
 // ModelListURL returns absolute model discovery URL for baseURL.
