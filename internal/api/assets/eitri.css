@@ -207,8 +207,7 @@ header h1 {
 /* Main content area */
 main {
   grid-area: main;
-  padding: 1rem;
-  max-width: 960px;
+  padding: 1rem 1rem 0;
   width: 100%;
   overflow-y: hidden;
   display: flex;
@@ -216,12 +215,29 @@ main {
   min-height: 0;
 }
 
-/* Chat view — flex column so messages scroll and composer stays pinned */
+/* Chat view — grid so session-chrome, messages, and composer each get a fixed row */
 #chat-view {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "chrome"
+    "messages"
+    "composer";
   flex: 1;
   min-height: 0;
+  --composer-height: 130px;
+}
+
+#session-chrome {
+  grid-area: chrome;
+}
+
+#messages {
+  grid-area: messages;
+}
+
+eitri-composer {
+  grid-area: composer;
 }
 
 /* Utility */
@@ -427,9 +443,6 @@ noscript {
 }
 
 .session-chrome {
-  position: sticky;
-  top: 0;
-  z-index: 10;
   background: var(--bg);
   display: flex;
   align-items: center;
@@ -638,7 +651,6 @@ noscript {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem;
-  margin-top: 1rem;
 }
 
 .chat-input {
@@ -1183,17 +1195,13 @@ pre.code-wrapped code {
   }
 }
 
-/* eitri-composer positioning */
+/* eitri-composer lives in the grid so no extra positioning needed */
 eitri-composer {
   position: relative;
   display: block;
-  flex-shrink: 0;
 }
 
-/* Set CSS custom property so scroll-to-bottom button can reference composer height */
-#chat-view {
-  --composer-height: 130px;
-}
+
 
 /* Session rename input */
 .session-rename-input {
