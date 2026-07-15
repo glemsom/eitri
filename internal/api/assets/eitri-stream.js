@@ -538,28 +538,35 @@
     const messages = document.getElementById('messages');
     if (!messages) return;
 
+    var sentinel = document.getElementById('scroll-sentinel');
+
+    // If HTMX appended elements after sentinel (beforeend swap puts them
+    // past the scroll-sentinel), relocate them before sentinel while
+    // preserving correct chat ordering: user bubbles go before streaming,
+    // assistant/tool elements stay after streaming.
+    if (sentinel && sentinel.parentNode === messages) {
+      var after = sentinel.nextElementSibling;
+      while (after) {
+        var next = after.nextElementSibling;
+        var streaming = document.getElementById('streaming');
+        if (after.classList.contains('message-user') && streaming) {
+          messages.insertBefore(after, streaming);
+        } else {
+          messages.insertBefore(after, sentinel);
+        }
+        after = next;
+      }
+    }
+
     let el = document.getElementById('streaming');
     if (!el) {
       el = document.createElement('div');
       el.id = 'streaming';
-      messages.appendChild(el);
-    }
-
-    // Move streaming (and scroll-sentinel) to end of #messages so response
-    // appears below any HTMX-appended user bubbles. Fix: first-message
-    // response rendered above user message because server-rendered streaming
-    // div precedes the HTMX-appended user bubble.
-    // Only reorder if streaming isn't already before sentinel.
-    // Preserve ordering with tool card slots (issue #201).
-    var sentinel = document.getElementById('scroll-sentinel');
-    // Check if streaming is somewhere before sentinel (not necessarily adjacent)
-    var streamingBeforeSentinel = false;
-    if (sentinel && el.compareDocumentPosition(sentinel) & Node.DOCUMENT_POSITION_FOLLOWING) {
-      streamingBeforeSentinel = true;
-    }
-    if (!streamingBeforeSentinel && messages.lastElementChild !== el) {
-      messages.appendChild(el);
-      if (sentinel) messages.appendChild(sentinel);
+      if (sentinel && sentinel.parentNode === messages) {
+        messages.insertBefore(el, sentinel);
+      } else {
+        messages.appendChild(el);
+      }
     }
 
     if (!el.classList.contains('message-assistant')) {
