@@ -1930,7 +1930,7 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var title string
 	var htmxExists bool
 	var chatViewExists, messagesExists, composerExists bool
-	var sessionChromeExists, workspaceIndicatorExists, streamIndicatorExists, runStatusExists bool
+	var sessionChromeExists, headerWorkspaceIndicatorExists, headerStreamIndicatorExists bool
 	var sessionChromePosition string
 	var chatViewDisplay, chatViewGridRows string
 	var messagesOverflowY, messagesDisplay string
@@ -1945,11 +1945,10 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#chat-view') !== null", &chatViewExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#messages') !== null", &messagesExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
-		// Verify grid-based chat layout with pinned regions
+		// Verify indicators live in header, not session-chrome
 		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome') !== null", &sessionChromeExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #workspace-indicator') !== null", &workspaceIndicatorExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #stream-indicator') !== null", &streamIndicatorExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome #run-status') !== null", &runStatusExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('header #workspace-indicator') !== null", &headerWorkspaceIndicatorExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('header #stream-indicator') !== null", &headerStreamIndicatorExists),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('position')", &sessionChromePosition),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewDisplay),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('grid-template-rows')", &chatViewGridRows),
@@ -1987,14 +1986,11 @@ func TestBrowser_PageLoads(t *testing.T) {
 	if !sessionChromeExists {
 		t.Error("#session-chrome not found")
 	}
-	if !workspaceIndicatorExists {
-		t.Error("#workspace-indicator in #session-chrome not found")
+	if !headerWorkspaceIndicatorExists {
+		t.Error("#workspace-indicator in header not found")
 	}
-	if !streamIndicatorExists {
-		t.Error("#stream-indicator in #session-chrome not found")
-	}
-	if !runStatusExists {
-		t.Error("#run-status in #session-chrome not found")
+	if !headerStreamIndicatorExists {
+		t.Error("#stream-indicator in header not found")
 	}
 	if sessionChromePosition != "static" {
 		t.Errorf("#session-chrome position = %q, want 'static' (grid handles layout)", sessionChromePosition)
@@ -2416,23 +2412,32 @@ func TestBrowser_WorkspaceTrim(t *testing.T) {
 }
 
 // TestBrowser_RunStatusSlim verifies run-status no longer shows descriptive text.
-func TestBrowser_RunStatusSlim(t *testing.T) {
+func TestBrowser_HeaderHasStreamIndicator(t *testing.T) {
 	server := newTestServer(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	var runStatusDetailExists bool
+	var headerHasStream, headerHasRunStatus bool
+	var streamText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#run-status", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools("document.querySelector('#run-status-detail') !== null", &runStatusDetailExists),
+		chromedp.WaitVisible("header #stream-indicator", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools("document.querySelector('header #stream-indicator') !== null", &headerHasStream),
+		chromedp.EvaluateAsDevTools("document.querySelector('#run-status') !== null", &headerHasRunStatus),
+		chromedp.Text("header #stream-indicator", &streamText, chromedp.ByQuery),
 	)
 	if err != nil {
-		t.Fatalf("run status slim test failed: %v", err)
+		t.Fatalf("header stream indicator test failed: %v", err)
 	}
-	if runStatusDetailExists {
-		t.Error("run-status-detail should be removed; only stream-indicator badge should remain")
+	if !headerHasStream {
+		t.Error("header #stream-indicator not found")
+	}
+	if headerHasRunStatus {
+		t.Error("run-status should not exist; stream-indicator is now directly in header")
+	}
+	if streamText == "" {
+		t.Error("header #stream-indicator has no text content")
 	}
 }
 
