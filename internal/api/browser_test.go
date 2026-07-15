@@ -1888,6 +1888,8 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var title string
 	var htmxExists bool
 	var chatViewExists, messagesExists, composerExists bool
+	var chatViewFlex, messagesFlex, messagesFlex1, composerFlexShrink string
+	var messagesOverflowY string
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
@@ -1897,6 +1899,12 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#chat-view') !== null", &chatViewExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#messages') !== null", &messagesExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
+		// Verify flex layout for sticky composer
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewFlex),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('flex-direction')", &messagesFlex),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('flex')", &messagesFlex1),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('overflow-y')", &messagesOverflowY),
+		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('eitri-composer')).getPropertyValue('flex-shrink')", &composerFlexShrink),
 	)
 	if err != nil {
 		t.Fatalf("page load test failed: %v", err)
@@ -1916,6 +1924,24 @@ func TestBrowser_PageLoads(t *testing.T) {
 	}
 	if !composerExists {
 		t.Error("#composer not found")
+	}
+	if chatViewFlex != "flex" {
+		t.Errorf("#chat-view display = %q, want 'flex'", chatViewFlex)
+	}
+	if messagesFlex != "column" {
+		t.Errorf("#chat-view flex-direction = %q, want 'column'", messagesFlex)
+	}
+	if messagesFlex1 != "1 1 0%" && messagesFlex1 != "1 1 auto" && messagesFlex1 != "1 1 0px" && messagesFlex1 != "1 1 0" {
+		// Accept common flex:1 shorthand resolutions across browsers
+		if strings.TrimSpace(messagesFlex1) != "1" && messagesFlex1 != "1 0%" && messagesFlex1 != "1 0px" && messagesFlex1 != "1 0auto" && messagesFlex1 != "1 1 0%" && messagesFlex1 != "1 1 auto" && messagesFlex1 != "1 1 0px" && messagesFlex1 != "1 1 0" {
+			t.Errorf("#messages flex = %q, expected flex:1 equivalent", messagesFlex1)
+		}
+	}
+	if messagesOverflowY != "auto" {
+		t.Errorf("#messages overflow-y = %q, want 'auto'", messagesOverflowY)
+	}
+	if composerFlexShrink != "0" {
+		t.Errorf("eitri-composer flex-shrink = %q, want '0'", composerFlexShrink)
 	}
 }
 
