@@ -527,6 +527,18 @@
       el.id = 'streaming';
       messages.appendChild(el);
     }
+
+    // Move streaming (and scroll-sentinel) to end of #messages so response
+    // appears below any HTMX-appended user bubbles. Fix: first-message
+    // response rendered above user message because server-rendered streaming
+    // div precedes the HTMX-appended user bubble.
+    if (messages.lastElementChild !== el) {
+      var sentinel = document.getElementById('scroll-sentinel');
+      // Move streaming first, then sentinel — sentinel stays as absolute last child
+      messages.appendChild(el);
+      if (sentinel) messages.appendChild(sentinel);
+    }
+
     if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
       el.innerHTML = '<div class="message-avatar">E</div><div class="message-content"></div>';
@@ -550,7 +562,13 @@
       target = document.createElement('div');
       target.id = targetId;
       target.className = 'tool-cards-container';
-      messages.appendChild(target);
+      // Insert before streaming div so tool cards appear before assistant response
+      var streamingEl = document.getElementById('streaming');
+      if (streamingEl && streamingEl.parentNode === messages) {
+        messages.insertBefore(target, streamingEl);
+      } else {
+        messages.appendChild(target);
+      }
     }
 
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render/tool-card', {
