@@ -164,3 +164,122 @@ func TestDiscoverModels_MapsProviderAuthFailureToFriendlyError(t *testing.T) {
 		t.Fatalf("error = %q, want friendly auth failure", err.Error())
 	}
 }
+
+func TestDiscoverModels_PersistAuthCallbackInvokedOnGitHubCopilotRefresh(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+
+	oauthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-persisted","token_type":"bearer","scope":"read:user","refresh_token":"ghr-next","expires_in":28800,"refresh_token_expires_in":15897600}`)
+	}))
+	defer oauthSrv.Close()
+
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer modelsSrv.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	var persistCalled int
+	result, err := provider.DiscoverModels(context.Background(), provider.DiscoveryRequest{
+		ProviderID:   "github_copilot",
+		BaseURL:      modelsSrv.URL,
+		ProviderAuth: raw,
+	}, provider.DiscoveryOptions{
+		HTTPClient: http.DefaultClient,
+		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauthSrv.URL,
+		},
+		Now: now,
+		PersistAuth: func(apiKey string, providerAuth json.RawMessage) error {
+			persistCalled++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if result.AuthUpdate != nil {
+		t.Fatalf("AuthUpdate = %#v, want nil when PersistAuth is set", result.AuthUpdate)
+	}
+	if persistCalled != 1 {
+		t.Fatalf("PersistAuth called %d times, want 1", persistCalled)
+	}
+	if len(result.Models) != 1 || result.Models[0] != "gpt-4.1" {
+		t.Fatalf("Models = %#v, want [gpt-4.1]", result.Models)
+	}
+}
+
+func TestDiscoverModels_NilPersistAuthDoesNotCrashAndReturnsAuthUpdate(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+
+	oauthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"gho-refreshed","token_type":"bearer","scope":"read:user","refresh_token":"ghr-next","expires_in":28800,"refresh_token_expires_in":15897600}`)
+	}))
+	defer oauthSrv.Close()
+
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
+	}))
+	defer modelsSrv.Close()
+
+	raw, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken:           "gho-expired",
+		TokenType:             "bearer",
+		RefreshToken:          "ghr-refresh",
+		ExpiresAt:             now.Add(-time.Minute),
+		RefreshTokenExpiresAt: now.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	// PersistAuth is nil (zero value)
+	result, err := provider.DiscoverModels(context.Background(), provider.DiscoveryRequest{
+		ProviderID:   "github_copilot",
+		BaseURL:      modelsSrv.URL,
+		ProviderAuth: raw,
+	}, provider.DiscoveryOptions{
+		HTTPClient: http.DefaultClient,
+		GitHubCopilotOAuth: provider.GitHubCopilotOAuthConfig{
+			ClientID:       "client-id",
+			AccessTokenURL: oauthSrv.URL,
+		},
+		Now: now,
+		// PersistAuth not set — nil
+	})
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if result.AuthUpdate == nil {
+		t.Fatal("AuthUpdate = nil, want refreshed auth state when PersistAuth is nil")
+	}
+	if result.AuthUpdate.APIKey != "gho-refreshed" {
+		t.Fatalf("AuthUpdate.APIKey = %q, want gho-refreshed", result.AuthUpdate.APIKey)
+	}
+	if len(result.Models) != 1 || result.Models[0] != "gpt-4.1" {
+		t.Fatalf("Models = %#v, want [gpt-4.1]", result.Models)
+	}
+}
