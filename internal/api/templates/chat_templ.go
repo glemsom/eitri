@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
-// Renders setup banner (workspace and stream indicators are in header), message list, and composer.
+// Workspace and stream indicators are in header (see Base template).
 func ChatView(sess *session.UISession, configValid bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -33,17 +33,7 @@ func ChatView(sess *session.UISession, configValid bool) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"chat-view\"><div id=\"error-toasts\"></div><div id=\"session-chrome\" class=\"session-chrome\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if !configValid {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"setup-banner\" class=\"setup-banner\"><p>Provider setup required. <a href=\"/settings\">Open Settings</a> to configure your LLM provider.</p></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"chat-view\"><div id=\"error-toasts\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -51,9 +41,15 @@ func ChatView(sess *session.UISession, configValid bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"messages\" class=\"messages\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"messages\" class=\"messages\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
+		}
+		if !configValid {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div id=\"setup-banner\" class=\"message message-system\"><div class=\"message-avatar\">⚠</div><div class=\"message-content\"><p>Provider setup required. <a href=\"/settings\">Open Settings</a> to configure your LLM provider.</p></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		for _, msg := range sess.Messages {
 			if msg.Role == "assistant" {
@@ -68,7 +64,7 @@ func ChatView(sess *session.UISession, configValid bool) templ.Component {
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -76,7 +72,7 @@ func ChatView(sess *session.UISession, configValid bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
