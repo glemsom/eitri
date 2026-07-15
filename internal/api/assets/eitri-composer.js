@@ -32,13 +32,34 @@
 
       this._setupMenu();
       this._bindEvents();
+      this._trackComposerHeight();
+    }
+
+    _trackComposerHeight() {
+      var parent = this.parentElement;
+      if (!parent) return;
+      var updateHeight = function(el) {
+        var height = el.offsetHeight;
+        parent.style.setProperty('--composer-height', height + 'px');
+      };
+      updateHeight(this);
+      var ro = new ResizeObserver(function() {
+        updateHeight(this);
+      }.bind(this));
+      ro.observe(this);
+      this._composerResizeObserver = ro;
     }
 
     disconnectedCallback() {
       if (this._handleDocumentKeydown) {
         document.removeEventListener('keydown', this._handleDocumentKeydown);
       }
+      if (this._composerResizeObserver) {
+        this._composerResizeObserver.disconnect();
+      }
     }
+
+
 
     _extractSessionId() {
       const action = this.form.getAttribute('hx-post') || '';
