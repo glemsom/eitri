@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
-	agentrunner "github.com/glemsom/eitri/internal/runner"
+	runner "github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 func TestBuild(t *testing.T) {
@@ -90,8 +90,12 @@ func fakeSlowProvider(t *testing.T, delay time.Duration) *httptest.Server {
 func TestCleanupRuntimeCancelsRunsAndClosesExecutors(t *testing.T) {
 	provider := fakeSlowProvider(t, 2*time.Second)
 	executorMgr := executor.NewSessionManager(t.TempDir(), time.Second, time.Minute)
-	runMgr := api.NewRunManager(agentrunner.NewManager(), executorMgr)
-	runMgr.UpdateProviderConfig(&config.Config{
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runner.NewManager(),
+		SessionManager: executorMgr,
+		UISessionMgr:   session.NewManager(10),
+	})
+	runSvc.UpdateProviderConfig(&config.Config{
 		Provider: "custom_openai",
 		BaseURL:  provider.URL,
 		APIKey:   "sk-test",
@@ -102,23 +106,23 @@ func TestCleanupRuntimeCancelsRunsAndClosesExecutors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrCreate = %v", err)
 	}
-	if _, err := runMgr.StartRun(context.Background(), "session-1", "hello"); err != nil {
+	if _, err := runSvc.StartRun(context.Background(), "session-1", "hello"); err != nil {
 		t.Fatalf("StartRun = %v", err)
 	}
-	if runMgr.ActiveRun("session-1") == nil {
+	if runSvc.ActiveRun("session-1") == nil {
 		t.Fatal("run did not become active")
 	}
 
-	cleanupRuntime(nil, runMgr, executorMgr)
+	cleanupRuntime(nil, runSvc, executorMgr)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if runMgr.ActiveRun("session-1") == nil {
+		if runSvc.ActiveRun("session-1") == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if runMgr.ActiveRun("session-1") != nil {
+	if runSvc.ActiveRun("session-1") != nil {
 		t.Fatal("run still active after cleanup")
 	}
 

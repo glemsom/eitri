@@ -19,16 +19,16 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 	"github.com/glemsom/eitri/internal/provider"
-	agentrunner "github.com/glemsom/eitri/internal/runner"
+	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
 // newRunnerManager creates a test RunnerManager.
-func newRunnerManager(t *testing.T) *agentrunner.Manager {
+func newRunnerManager(t *testing.T) *runner.Manager {
 	t.Helper()
-	return agentrunner.NewManager()
+	return runner.NewManager()
 }
 
 type testServerWithRuns struct {
@@ -36,27 +36,29 @@ type testServerWithRuns struct {
 	configPath  string
 	sessionMgr  *session.Manager
 	executorMgr *executor.SessionManager
-	runMgr      *api.RunManager
+	runSvc      *runner.RunService
 }
-
-// newManagedTestServerWithRuns creates a test server with RunManager enabled
+// newManagedTestServerWithRuns creates a test server with RunService enabled
 // and returns test handles for session/run/executor assertions.
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	runnerMgr := newRunnerManager(t)
-	runMgr := api.NewRunManager(runnerMgr, executorMgr)
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runnerMgr,
+		SessionManager: executorMgr,
+		UISessionMgr:   sessionMgr,
+	})
 	skillsSvc := skills.NewService()
-	runMgr.SetSkillsService(skillsSvc)
-	runMgr.SetUISessionManager(sessionMgr)
+	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      t.TempDir(),
 		SessionManager: sessionMgr,
-		RunManager:     runMgr,
+		RunService:     runSvc,
 		SkillsService:  skillsSvc,
 	}
 	srv := api.NewServer(cfg)
@@ -67,11 +69,11 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 		configPath:  configPath,
 		sessionMgr:  sessionMgr,
 		executorMgr: executorMgr,
-		runMgr:      runMgr,
+		runSvc:      runSvc,
 	}
 }
 
-// newTestServerWithRuns creates a test server with RunManager enabled.
+// newTestServerWithRuns creates a test server with RunService enabled.
 func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	t.Helper()
 	return newManagedTestServerWithRuns(t).server
@@ -82,16 +84,19 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(workspace, 0, 0)
 	runnerMgr := newRunnerManager(t)
-	runMgr := api.NewRunManager(runnerMgr, executorMgr)
-	runMgr.SetSkillsService(skillsSvc)
-	runMgr.SetUISessionManager(sessionMgr)
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runnerMgr,
+		SessionManager: executorMgr,
+		UISessionMgr:   sessionMgr,
+	})
+	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
-		RunManager:     runMgr,
+		RunService:     runSvc,
 		SkillsService:  skillsSvc,
 	}
 	srv := api.NewServer(cfg)
@@ -102,7 +107,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 		configPath:  configPath,
 		sessionMgr:  sessionMgr,
 		executorMgr: executorMgr,
-		runMgr:      runMgr,
+		runSvc:      runSvc,
 	}
 }
 
@@ -292,11 +297,11 @@ func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http
 	}
 }
 
-func waitForRunToFinish(t *testing.T, runMgr *api.RunManager, sessionID string) {
+func waitForRunToFinish(t *testing.T, runSvc *runner.RunService, sessionID string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if runMgr.ActiveRun(sessionID) == nil {
+		if runSvc.ActiveRun(sessionID) == nil {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -436,12 +441,12 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if h.runMgr.ActiveRun(sessionID) != nil {
+	if h.runSvc.ActiveRun(sessionID) != nil {
 		t.Fatal("first run did not finish")
 	}
 
@@ -453,12 +458,12 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if h.runMgr.ActiveRun(sessionID) != nil {
+	if h.runSvc.ActiveRun(sessionID) != nil {
 		t.Fatal("second run did not finish")
 	}
 
@@ -559,7 +564,7 @@ func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *t
 
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 	first := <-requests
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 	firstCalls, firstResponses := countActivateSkillMessages(first)
 	if firstCalls != 1 || firstResponses != 1 {
 		t.Fatalf("first run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", firstCalls, firstResponses, first.Messages)
@@ -567,7 +572,7 @@ func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *t
 
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 	second := <-requests
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 	secondCalls, secondResponses := countActivateSkillMessages(second)
 	if secondCalls != 1 || secondResponses != 1 {
 		t.Fatalf("second run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", secondCalls, secondResponses, second.Messages)
@@ -658,7 +663,7 @@ func TestChatRun_SkipsDisappearedActiveSkillAndShowsWarning(t *testing.T) {
 	}
 
 	captured := <-requests
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 	calls, responses := countActivateSkillMessages(captured)
 	if calls != 0 || responses != 0 {
 		t.Fatalf("stale skill should not be re-applied, got (%d calls, %d responses); messages=%#v", calls, responses, captured.Messages)
@@ -784,10 +789,13 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	runnerMgr := newRunnerManager(t)
-	runMgr := api.NewRunManager(runnerMgr, executorMgr)
 	skillsSvc := skills.NewService()
-	runMgr.SetSkillsService(skillsSvc)
-	runMgr.SetUISessionManager(sessionMgr)
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runnerMgr,
+		SessionManager: executorMgr,
+		UISessionMgr:   sessionMgr,
+	})
+	runSvc.SetSkillsService(skillsSvc)
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
 
@@ -856,7 +864,7 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 		ConfigPath:     configPath,
 		Workspace:      t.TempDir(),
 		SessionManager: sessionMgr,
-		RunManager:     runMgr,
+		RunService:     runSvc,
 		SkillsService:  skillsSvc,
 		CopilotOAuth: api.GitHubCopilotOAuthConfig{
 			ClientID:       "client-id",
@@ -894,7 +902,7 @@ func TestChatRun_MaxTurnsStopsAfterToolTurn(t *testing.T) {
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 
 	if got := chatCalls.Load(); got != 1 {
 		t.Fatalf("chat completion calls = %d, want 1", got)
@@ -935,7 +943,7 @@ func TestChatRun_MaxTurnsConfigChangesOnlyAffectLaterRuns(t *testing.T) {
 
 	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","max_turns":1}`, llmSrv.URL))
 	close(secondTurnGate)
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 
 	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
 	if got := sess.Messages[1].Content; !strings.Contains(got, "final answer after tool") {
@@ -946,7 +954,7 @@ func TestChatRun_MaxTurnsConfigChangesOnlyAffectLaterRuns(t *testing.T) {
 	}
 
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
-	waitForRunToFinish(t, h.runMgr, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 	if got := chatCalls.Load(); got != 3 {
 		t.Fatalf("chat completion calls after second run = %d, want 3", got)
 	}
@@ -1033,12 +1041,16 @@ func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.
 	return ""
 }
 
-func TestRunManager_NewRunManager(t *testing.T) {
+func TestRunService_New(t *testing.T) {
 	runnerMgr := newRunnerManager(t)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
-	rm := api.NewRunManager(runnerMgr, executorMgr)
-	if rm == nil {
-		t.Fatal("RunManager is nil")
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		RunnerManager:  runnerMgr,
+		SessionManager: executorMgr,
+		UISessionMgr:   session.NewManager(10),
+	})
+	if runSvc == nil {
+		t.Fatal("RunService is nil")
 	}
 }
 
@@ -1091,12 +1103,12 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) != nil {
+		if h.runSvc.ActiveRun(sessionID) != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if h.runMgr.ActiveRun(sessionID) == nil {
+	if h.runSvc.ActiveRun(sessionID) == nil {
 		t.Fatal("run never became active")
 	}
 
@@ -1147,12 +1159,12 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if h.runMgr.ActiveRun(sessionID) != nil {
+	if h.runSvc.ActiveRun(sessionID) != nil {
 		t.Fatal("run still active after delete")
 	}
 
@@ -1226,7 +1238,7 @@ func TestStream_ClientDisconnectDoesNotBlockRunCompletion(t *testing.T) {
 
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -1587,7 +1599,7 @@ func TestConsecutiveChatEndpoint(t *testing.T) {
 	// Wait for first run to complete.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -1613,7 +1625,7 @@ func TestConsecutiveChatEndpoint(t *testing.T) {
 	// Wait for second run to also complete.
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.runMgr.ActiveRun(sessionID) == nil {
+		if h.runSvc.ActiveRun(sessionID) == nil {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)

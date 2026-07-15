@@ -2177,7 +2177,7 @@ func TestChatRejectsUnavailableSavedModel(t *testing.T) {
 	if !strings.Contains(string(body), "selected model") {
 		t.Errorf("chat error = %q, want stale model message", string(body))
 	}
-	if h.runMgr.ActiveRun(strings.TrimPrefix(loc, "/sessions/")) != nil {
+	if h.runSvc.ActiveRun(strings.TrimPrefix(loc, "/sessions/")) != nil {
 		t.Fatal("chat started run despite stale saved model")
 	}
 }
