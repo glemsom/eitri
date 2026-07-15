@@ -301,3 +301,170 @@ func createMissingDirs(parentDir string) ([]string, error) {
 	}
 	return missing, nil
 }
+
+// EditResult holds the result of a surgical edit operation.
+type EditResult struct {
+	Path  string `json:"path"`
+	Old   string `json:"old"`
+	New   string `json:"new"`
+}
+
+// parseAnchor parses a "LINE:HASH" anchor string.
+// Returns line number (1-indexed) and hash, or error.
+func parseAnchor(anchor string) (int, string, error) {
+	parts := strings.SplitN(anchor, ":", 2)
+	if len(parts) != 2 {
+		return 0, "", fmt.Errorf("invalid anchor format %q, want LINE:HASH", anchor)
+	}
+	var line int
+	if _, err := fmt.Sscanf(parts[0], "%d", &line); err != nil {
+		return 0, "", fmt.Errorf("invalid line number in anchor %q: %w", anchor, err)
+	}
+	return line, parts[1], nil
+}
+
+// EditFile performs a surgical text replacement in a file.
+// old is the exact text to find, new is the replacement.
+// If anchor is non-empty, it must be a "LINE:HASH" anchor. When anchor is provided:
+//   - The anchor line's hash must match the line content hash.
+//   - The old text must be found within the anchored line (for single-line edits).
+// Returns an error if old matches 0 or >1 times.
+func EditFile(absPath, old, new, anchor string) (EditResult, error) {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return EditResult{}, fmt.Errorf("cannot edit file: %w", err)
+	}
+	if info.IsDir() {
+		return EditResult{}, fmt.Errorf("path %q is a directory", absPath)
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return EditResult{}, fmt.Errorf("cannot read file: %w", err)
+	}
+
+	content := string(data)
+
+	if anchor != "" {
+		line, hash, err := parseAnchor(anchor)
+		if err != nil {
+			return EditResult{}, err
+		}
+
+		lines := strings.Split(content, "\n")
+		if line < 1 || line > len(lines) {
+			return EditResult{}, fmt.Errorf("anchor line %d exceeds file length %d", line, len(lines))
+		}
+
+		actualHash := LineHash(lines[line-1])
+		if actualHash != hash {
+			return EditResult{}, fmt.Errorf("anchor hash mismatch at line %d: got %q, want %q", line, actualHash, hash)
+		}
+
+		if !strings.Contains(lines[line-1], old) {
+			return EditResult{}, fmt.Errorf("anchor text %q not found at line %d", old, line)
+		}
+
+		lines[line-1] = strings.Replace(lines[line-1], old, new, 1)
+		newContent := strings.Join(lines, "\n")
+
+		if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+			return EditResult{}, fmt.Errorf("failed to write file: %w", err)
+		}
+
+		return EditResult{Path: absPath, Old: old, New: new}, nil
+	}
+
+	// Without anchor, search whole file
+	count := strings.Count(content, old)
+	if count == 0 {
+		return EditResult{}, fmt.Errorf("text %q not found in file (0 matches)", old)
+	}
+	if count > 1 {
+		return EditResult{}, fmt.Errorf("text %q found %d times in file, expected exactly 1 match", old, count)
+	}
+
+	newContent := strings.Replace(content, old, new, 1)
+	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+		return EditResult{}, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return EditResult{Path: absPath, Old: old, New: new}, nil
+}
+
+// InsertLine inserts content as new line(s) after the anchor line.
+// Anchor must be in "LINE:HASH" format.
+// If anchor hash doesn't match the line content, returns error.
+func InsertLine(absPath, anchor, content string) (FileEditorResult, error) {
+	line, hash, err := parseAnchor(anchor)
+	if err != nil {
+		return FileEditorResult{}, err
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return FileEditorResult{}, fmt.Errorf("cannot insert into file: %w", err)
+	}
+	if info.IsDir() {
+		return FileEditorResult{}, fmt.Errorf("path %q is a directory", absPath)
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return FileEditorResult{}, fmt.Errorf("cannot read file: %w", err)
+	}
+
+	if len(data) == 0 {
+		if line != 1 {
+			return FileEditorResult{}, fmt.Errorf("anchor line %d exceeds file length 0", line)
+		}
+		// Empty file: insert as content
+		newContent := content
+		if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
+			return FileEditorResult{}, fmt.Errorf("failed to write file: %w", err)
+		}
+		return FileEditorResult{
+			Path:         absPath,
+			Mode:         "insert",
+			BytesWritten: len([]byte(newContent)),
+			NewContent:   newContent,
+		}, nil
+	}
+
+	fileContent := string(data)
+	lines := strings.Split(fileContent, "\n")
+
+	if line < 1 || line > len(lines) {
+		return FileEditorResult{}, fmt.Errorf("anchor line %d exceeds file length %d", line, len(lines))
+	}
+
+	actualHash := LineHash(lines[line-1])
+	if actualHash != hash {
+		return FileEditorResult{}, fmt.Errorf("anchor hash mismatch at line %d: got %q, want %q", line, actualHash, hash)
+	}
+
+	// Insert content after the anchor line
+	var newLines []string
+	newLines = append(newLines, lines[:line]...)
+	newLines = append(newLines, strings.Split(content, "\n")...)
+	if line < len(lines) {
+		newLines = append(newLines, lines[line:]...)
+	}
+	newFileContent := strings.Join(newLines, "\n")
+
+	// Preserve trailing newline if original had one
+	if strings.HasSuffix(fileContent, "\n") && !strings.HasSuffix(newFileContent, "\n") {
+		newFileContent += "\n"
+	}
+
+	if err := os.WriteFile(absPath, []byte(newFileContent), 0644); err != nil {
+		return FileEditorResult{}, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return FileEditorResult{
+		Path:         absPath,
+		Mode:         "insert",
+		BytesWritten: len([]byte(newFileContent)),
+		NewContent:   newFileContent,
+	}, nil
+}

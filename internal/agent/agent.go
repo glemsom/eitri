@@ -150,13 +150,16 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	// file_editor
 	type fileEditorArgs struct {
 		Path    string `json:"path" jsonschema:"File path relative to workspace root"`
-		Content string `json:"content" jsonschema:"New file content (UTF-8 text)"`
-		Mode    string `json:"mode" jsonschema:"'create' for new files, 'overwrite' for existing files"`
+		Content string `json:"content,omitempty" jsonschema:"File content (UTF-8 text) — for create, overwrite, insert modes"`
+		Mode    string `json:"mode" jsonschema:"'create', 'overwrite', 'edit', or 'insert'"`
+		Old     string `json:"old,omitempty" jsonschema:"Exact text to find (for edit mode only)"`
+		New     string `json:"new,omitempty" jsonschema:"Replacement text (for edit mode only)"`
+		Anchor  string `json:"anchor,omitempty" jsonschema:"LINE:HASH anchor (for edit or insert mode). Get from file_viewer with include_line_info=true"`
 	}
 	type fileEditorResult struct {
 		Path         string   `json:"path"`
 		Mode         string   `json:"mode"`
-		BytesWritten int      `json:"bytes_written"`
+		BytesWritten int      `json:"bytes_written,omitempty"`
 		OldContent   string   `json:"old_content,omitempty"`
 		NewContent   string   `json:"new_content,omitempty"`
 		DirsCreated  []string `json:"dirs_created,omitempty"`
@@ -165,7 +168,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 	fileEditorTool, err := functiontool.New[fileEditorArgs, fileEditorResult](
 		functiontool.Config{
 			Name:        "file_editor",
-			Description: "Create or overwrite files in workspace. Mode 'create' creates a new file (rejects if exists), 'overwrite' replaces existing file content. Captures old content for diff display.",
+			Description: "Create or edit files in workspace. Supports multiple modes:\n\n- \"create\": Create a new file. Fails if file already exists. Creates parent directories automatically.\n- \"overwrite\": Replace entire existing file content. Captures old content for diff display.\n- \"edit\": Surgical text replacement. Provide old text to find and new text to replace it with.\n  Optionally provide an anchor (\"LINE:HASH\" from file_viewer with include_line_info=true) to\n  restrict the search to the anchored line. Use this for small, targeted changes instead of overwrite.\n  Fails with match count if old text matches 0 or multiple times.\n- \"insert\": Insert new content after a specific line identified by a line-hash anchor.\n  Anchor must be in \"LINE:HASH\" format (e.g. \"15:a1b2c3\") obtained from file_viewer with\n  include_line_info=true. Use this to add new code at precise locations.\n\nBest practice: First read the file with file_viewer(include_line_info=true), then use the returned\nline-hash anchors for edit or insert operations. This avoids accidents from duplicate strings.",
 		},
 		func(ctx agent.Context, args fileEditorArgs) (fileEditorResult, error) {
 			absPath, err := validateWorkspacePath(args.Path, workspace)
@@ -173,20 +176,56 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 				return fileEditorResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
 
-			er, err := WriteFile(absPath, args.Content, args.Mode)
-			if err != nil {
-				return fileEditorResult{}, err
+			switch args.Mode {
+			case "edit":
+				if args.Old == "" {
+					return fileEditorResult{}, fmt.Errorf("edit mode requires 'old' text")
+				}
+				er, err := EditFile(absPath, args.Old, args.New, args.Anchor)
+				if err != nil {
+					return fileEditorResult{}, err
+				}
+				return fileEditorResult{
+					Path:       args.Path,
+					Mode:       "edit",
+					OldContent: er.Old,
+					NewContent: er.New,
+				}, nil
+			case "insert":
+				if args.Content == "" {
+					return fileEditorResult{}, fmt.Errorf("insert mode requires 'content'")
+				}
+				if args.Anchor == "" {
+					return fileEditorResult{}, fmt.Errorf("insert mode requires 'anchor'")
+				}
+				er, err := InsertLine(absPath, args.Anchor, args.Content)
+				if err != nil {
+					return fileEditorResult{}, err
+				}
+				return fileEditorResult{
+					Path:         args.Path,
+					Mode:         "insert",
+					BytesWritten: er.BytesWritten,
+					NewContent:   er.NewContent,
+				}, nil
+			default:
+				// create / overwrite
+				er, err := WriteFile(absPath, args.Content, args.Mode)
+				if err != nil {
+					return fileEditorResult{}, err
+				}
+				return fileEditorResult{
+					Path:         args.Path,
+					Mode:         er.Mode,
+					BytesWritten: er.BytesWritten,
+					OldContent:   er.OldContent,
+					NewContent:   er.NewContent,
+					DirsCreated:  er.DirsCreated,
+				}, nil
 			}
-			return fileEditorResult{
-				Path:         args.Path,
-				Mode:         er.Mode,
-				BytesWritten: er.BytesWritten,
-				OldContent:   er.OldContent,
-				NewContent:   er.NewContent,
-				DirsCreated:  er.DirsCreated,
-			}, nil
 		},
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file_editor tool: %w", err)
 	}
