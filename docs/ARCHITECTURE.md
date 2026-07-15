@@ -95,7 +95,7 @@ Route contract and SSE packet semantics live in [SPEC.md §6](../SPEC.md#6-api-s
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |
 | `components/chat_bubble.templ` | User/assistant message bubbles |
-| `components/tool_card.templ` | Tool call + result cards |
+| `components/tool_card.templ` | Unified tool card (running/done status) |
 | `components/file_edit_card.templ` | Post-write diff/created-file card for `file_editor` results; overwrite mode reuses shared interactive diff viewer |
 | `components/error_toast.templ` | Error banner, auto-dismiss |
 | `components/mermaid_diagram.templ` | Mermaid diagram container |
