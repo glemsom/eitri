@@ -567,3 +567,87 @@ func TestWriteFile_NULContent(t *testing.T) {
 		t.Fatal("expected error for NUL content, got nil")
 	}
 }
+
+// ── ListDirectory ───────────────────────────────────────────────────────────
+
+func TestListDirectory_MixedFilesAndDirs(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create files
+	os.WriteFile(filepath.Join(dir, "file1.go"), []byte("a"), 0644)
+	os.WriteFile(filepath.Join(dir, "file2.go"), []byte("b"), 0644)
+
+	// Create subdirectory
+	os.MkdirAll(filepath.Join(dir, "subdir"), 0755)
+
+	result, err := ListDirectory(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"file1.go", "file2.go", "subdir/"}
+	if len(result.Entries) != len(want) {
+		t.Fatalf("got %d entries, want %d: %v", len(result.Entries), len(want), result.Entries)
+	}
+	for i := range want {
+		if result.Entries[i] != want[i] {
+			t.Errorf("entries[%d] = %q, want %q", i, result.Entries[i], want[i])
+		}
+	}
+}
+
+func TestListDirectory_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+
+	result, err := ListDirectory(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("got %d entries, want 0: %v", len(result.Entries), result.Entries)
+	}
+}
+
+func TestListDirectory_NonExistentPath(t *testing.T) {
+	_, err := ListDirectory("/nonexistent/dir-that-does-not-exist")
+	if err == nil {
+		t.Fatal("expected error for non-existent path, got nil")
+	}
+}
+
+func TestListDirectory_PathIsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "afile.txt")
+	if err := os.WriteFile(path, []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ListDirectory(path)
+	if err == nil {
+		t.Fatal("expected error for path-is-file, got nil")
+	}
+	if !strings.Contains(err.Error(), "is a file, use read mode") {
+		t.Errorf("error = %q, want to contain 'is a file, use read mode'", err.Error())
+	}
+}
+
+func TestListDirectory_SortedOrder(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create in reverse alphabetical order
+	os.WriteFile(filepath.Join(dir, "z.txt"), []byte("z"), 0644)
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
+	os.WriteFile(filepath.Join(dir, "m.txt"), []byte("m"), 0644)
+
+	result, err := ListDirectory(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"a.txt", "m.txt", "z.txt"}
+	for i := range want {
+		if result.Entries[i] != want[i] {
+			t.Errorf("entries[%d] = %q, want %q", i, result.Entries[i], want[i])
+		}
+	}
+}
