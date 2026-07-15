@@ -31,6 +31,8 @@
   var activityToolCount = 0;
   var activityToolSummary = []; // array of {label, brief} for summary display
   var activityElapsed = {}; // toolCallKey -> start time (Date.now)
+  var toolCardTimers = {}; // toolCallKey -> interval ID
+  var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
 
   function createStreamState() {
     return {
@@ -47,6 +49,8 @@
     activityToolCount = 0;
     activityToolSummary = [];
     activityElapsed = {};
+    toolCardTimers = {};
+    toolCardElapsed = {};
   }
 
   function autoOpenActivityPanel() {
@@ -100,6 +104,14 @@
 
   function formatElapsed(ms) {
     if (ms < 1000) return ms + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+    return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
+  }
+
+  // Format for tool card live timer (issue #134)
+  // Sub-second: '0.3s', under 1m: '1.2s', under 1h: '45s', over 1h: '2m 13s'
+  function formatTimer(ms) {
+    if (ms < 1000) return (ms / 1000).toFixed(1) + 's';
     if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
     return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
   }
@@ -567,15 +579,22 @@
     container.appendChild(slot);
 
     // Build running card HTML (mirrors server-rendered ToolCard with status=running)
+    // Include an elapsed span that the live timer will update (issue #134)
     var html = '<div class="tool-card tool-running" data-tool-id="' + toolCallKey + '">' +
       '<div class="tool-card-header">' +
       '<span class="tool-icon">\uD83D\uDD27</span>' +
       '<span class="tool-name">' + escapeHtml(toolName) + '</span>' +
       '<span class="tool-status">running...</span>' +
+      '<span class="tool-elapsed" data-tool-elapsed="' + toolCallKey + '"></span>' +
       '</div>' +
       (argsStr ? '<pre class="tool-args"><code>' + escapeHtml(argsStr) + '</code></pre>' : '') +
       '</div>';
     slot.innerHTML = html;
+
+    // Start live elapsed timer (issue #134)
+    var startMs = Date.now();
+    toolCardElapsed[toolCallKey] = { startMs: startMs, finalMs: null };
+    startToolCardTimer(toolCallKey);
   }
 
   function getOrCreateToolContainer(sessionId, messages) {
@@ -602,11 +621,21 @@
     // Compute toolCallKey matching activity panel tracking
     var toolCallKey = sessionId + '-tool-' + (activityToolCount - 1);
 
+    // Stop live timer and record final elapsed (issue #134)
+    stopToolCardTimer(toolCallKey);
+    var finalElapsed = '';
+    if (toolCardElapsed[toolCallKey] && toolCardElapsed[toolCallKey].startMs) {
+      var elapsedMs = Date.now() - toolCardElapsed[toolCallKey].startMs;
+      toolCardElapsed[toolCallKey].finalMs = elapsedMs;
+      finalElapsed = formatTimer(elapsedMs);
+    }
+
     const formData = new FormData();
     formData.append('type', type);
     formData.append('tool', packet.tool || packet.name || '');
     formData.append('tool_call_key', toolCallKey);
     formData.append('status', 'done');
+    formData.append('elapsed', finalElapsed);
     if (packet.args) formData.append('args', JSON.stringify(packet.args));
     if (packet.output) formData.append('output', String(packet.output));
     if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
@@ -771,6 +800,35 @@
     }
 
     messages.appendChild(footer);
+  }
+
+  // ---- Live elapsed timer for tool cards (issue #134) ----
+
+  function startToolCardTimer(toolCallKey) {
+    stopToolCardTimer(toolCallKey); // Ensure no duplicate timers
+    toolCardTimers[toolCallKey] = window.setInterval(function () {
+      var elapsedSpan = document.querySelector('[data-tool-elapsed="' + toolCallKey + '"]');
+      if (!elapsedSpan) return;
+      var elapsed = toolCardElapsed[toolCallKey];
+      if (!elapsed || !elapsed.startMs) return;
+      var diff = Date.now() - elapsed.startMs;
+      elapsedSpan.textContent = '\u2191 ' + formatTimer(diff);
+    }, 200);
+  }
+
+  function stopToolCardTimer(toolCallKey) {
+    if (toolCardTimers[toolCallKey]) {
+      window.clearInterval(toolCardTimers[toolCallKey]);
+      delete toolCardTimers[toolCallKey];
+    }
+  }
+
+  function stopAllToolCardTimers() {
+    for (var key in toolCardTimers) {
+      if (toolCardTimers.hasOwnProperty(key)) {
+        stopToolCardTimer(key);
+      }
+    }
   }
 
   // ---- Scroll-to-bottom floating button (issue #104) ----

@@ -928,7 +928,7 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var toolType, toolName, toolArgs, toolOutput, status, toolCallKey string
+	var toolType, toolName, toolArgs, toolOutput, status, toolCallKey, toolElapsed string
 
 	ct := r.Header.Get("Content-Type")
 	if strings.Contains(ct, "application/json") {
@@ -950,6 +950,7 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 			Output      string          `json:"output,omitempty"`
 			Status      string          `json:"status,omitempty"`
 			ToolCallKey string          `json:"tool_call_key,omitempty"`
+			Elapsed     string          `json:"elapsed,omitempty"`
 		}
 		if err := json.Unmarshal(body, &req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -961,6 +962,7 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		toolOutput = req.Output
 		status = req.Status
 		toolCallKey = req.ToolCallKey
+		toolElapsed = req.Elapsed
 	} else {
 		// Form-encoded (HTMX default)
 		if err := r.ParseForm(); err != nil {
@@ -977,11 +979,12 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 		toolOutput = r.FormValue("output")
 		status = r.FormValue("status")
 		toolCallKey = r.FormValue("tool_call_key")
+		toolElapsed = r.FormValue("elapsed")
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if status == "running" || toolType == "tool_call" {
-		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "running")
+		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "running", "")
 		component.Render(r.Context(), w)
 	} else if toolName == "file_editor" && toolOutput != "" {
 		// Parse file_editor result JSON to render FileEditCard
@@ -998,11 +1001,11 @@ func (s *Server) handleRenderToolCard(w http.ResponseWriter, r *http.Request) {
 			component.Render(r.Context(), w)
 		} else {
 			// Fallback to regular tool result card (done)
-			component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done")
+			component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done", toolElapsed)
 			component.Render(r.Context(), w)
 		}
 	} else {
-		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done")
+		component := templates.ToolCard(toolCallKey, toolName, toolArgs, toolOutput, "done", toolElapsed)
 		component.Render(r.Context(), w)
 	}
 }
