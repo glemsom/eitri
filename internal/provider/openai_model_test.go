@@ -27,12 +27,19 @@ func TestPromptCacheKey_AbsentByDefault(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// opencode_go profile has supportsPromptCache: false
-	m := NewOpenAIModel("gpt-4", srv.URL, "sk-test")
+	// github_copilot profile has supportsPromptCache: false
+	prof, err := getProfile("github_copilot")
+	if err != nil {
+		t.Fatalf("getProfile error: %v", err)
+	}
+	if prof.supportsPromptCache {
+		t.Fatal("github_copilot.supportsPromptCache must be false for this test")
+	}
+	m := newOpenAIModelForProfile("gpt-4", srv.URL, "sk-test", prof, nil)
 	m.MaxRetries = 0
 	m.SessionID = "session-123"
 
-	_, err := collectTestResponses(m.GenerateContent(context.Background(), &model.LLMRequest{
+	_, err = collectTestResponses(m.GenerateContent(context.Background(), &model.LLMRequest{
 		Model: "gpt-4", Contents: []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: "Hi"}}}},
 	}, true))
 	if err != nil {
