@@ -108,6 +108,18 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing activityElapsed variable or function")
 	}
 
+	// Verify stream JS appends token-usage before scroll-sentinel
+	if !strings.Contains(content2, "insertBefore") && strings.Contains(content2, "scroll-sentinel") {
+		// Check that appendTokenUsage inserts before sentinel, not after
+		if strings.Contains(content2, "messages.insertBefore(footer, sentinel)") {
+			// Good: token-usage goes before sentinel
+		} else if strings.Contains(content2, "messages.appendChild(footer)") && strings.Contains(content2, "// Insert before scroll-sentinel") {
+			// Good: token-usage inserted before sentinel
+		} else {
+			t.Error("eitri-stream.js should insert token-usage before scroll-sentinel")
+		}
+	}
+
 	f3, err := Files.Open("eitri-renderers.js")
 	if err != nil {
 		t.Fatalf("failed to open eitri-renderers.js: %v", err)

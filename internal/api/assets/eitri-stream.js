@@ -800,8 +800,13 @@
       }
       footer.textContent = 'Tokens: ~' + estimatedTotal + ' (estimate)';
     }
-
-    messages.appendChild(footer);
+    // Insert before scroll-sentinel so sentinel remains last child for IntersectionObserver
+    var sentinel = document.getElementById('scroll-sentinel');
+    if (sentinel && sentinel.parentNode === messages) {
+      messages.insertBefore(footer, sentinel);
+    } else {
+      messages.appendChild(footer);
+    }
   }
 
   // ---- Live elapsed timer for tool cards (issue #134) ----

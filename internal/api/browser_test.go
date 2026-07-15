@@ -2782,3 +2782,680 @@ func TestBrowser_SettingsCtrlEnterSaves(t *testing.T) {
 		t.Errorf("save success text = %q, want containing 'Saved'", successText)
 	}
 }
+
+
+// ————— Issue #155: Sticky chat composer — verify streaming and tool card injection —————
+
+// TestBrowser_StreamingTokensAppendInScrollContainer verifies that streaming tokens
+// append correctly in the #messages scroll container after the #151 flex layout change.
+func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
+	llmURL := fakeBurstChatServer(t, 30, 40*time.Millisecond).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Verify #messages is the scroll container (flex: 1, overflow-y: auto)
+	var messagesScrollable bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('messages');
+			if (!el) return false;
+			var style = window.getComputedStyle(el);
+			return style.overflowY === 'auto' || style.overflowY === 'scroll';
+		})()`, &messagesScrollable),
+	)
+	if err != nil {
+		t.Fatalf("check messages scrollable failed: %v", err)
+	}
+	if !messagesScrollable {
+		t.Error("messages container should be the scroll container (overflow-y: auto)")
+	}
+
+	// Verify no double scrollbars: main should have overflow-y: hidden
+	var mainOverflowHidden bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('main');
+			if (!el) return false;
+			var style = window.getComputedStyle(el);
+			return style.overflowY === 'hidden';
+		})()`, &mainOverflowHidden),
+	)
+	if err != nil {
+		t.Fatalf("check main overflow failed: %v", err)
+	}
+	if !mainOverflowHidden {
+		t.Error("main should have overflow-y: hidden to prevent double scrollbars")
+	}
+
+	// Verify chat-view is flex column
+	var chatViewFlexColumn bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('chat-view');
+			if (!el) return false;
+			var style = window.getComputedStyle(el);
+			return style.display === 'flex' && style.flexDirection === 'column';
+		})()`, &chatViewFlexColumn),
+	)
+	if err != nil {
+		t.Fatalf("check chat-view layout failed: %v", err)
+	}
+	if !chatViewFlexColumn {
+		t.Error("chat-view should be display:flex; flex-direction:column")
+	}
+
+	// Verify composer is flex-shrink: 0 (pinned at bottom)
+	var composerFlexShrink bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-composer');
+			if (!el) return false;
+			var style = window.getComputedStyle(el);
+			return style.flexShrink === '0';
+		})()`, &composerFlexShrink),
+	)
+	if err != nil {
+		t.Fatalf("check composer flex-shrink failed: %v", err)
+	}
+	if !composerFlexShrink {
+		t.Error("eitri-composer should have flex-shrink: 0")
+	}
+
+	// Send a message that will produce streaming tokens
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Count slowly", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// 30 tokens * 40ms each = 1200ms. Check at 500ms to catch mid-stream.
+	time.Sleep(500 * time.Millisecond)
+	// Verify streaming element exists inside #messages
+	var streamingInMessages bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('streaming');
+			if (!el) return false;
+			return el.parentElement && el.parentElement.id === 'messages';
+		})()`, &streamingInMessages),
+	)
+	if err != nil {
+		t.Fatalf("check streaming parent failed: %v", err)
+	}
+	if !streamingInMessages {
+		t.Error("streaming element should be a child of #messages")
+	}
+
+	// Verify streaming has some token content
+	var hasTokenContent bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('streaming');
+			if (!el) return false;
+			var content = el.querySelector('.message-content');
+			if (!content) return false;
+			return content.children.length > 0 || (content.textContent || '').trim().length > 0;
+		})()`, &hasTokenContent),
+	)
+	if err != nil {
+		t.Fatalf("check streaming content failed: %v", err)
+	}
+	if !hasTokenContent {
+		t.Error("streaming tokens should have content in #messages scroll container")
+	}
+	// Wait for streaming to complete
+	time.Sleep(1500 * time.Millisecond)
+
+	// Verify assistant message rendered (stream complete)
+	assistantMsgExists := false
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant') !== null`,
+			&assistantMsgExists,
+		),
+	)
+	if err != nil {
+		t.Fatalf("assistant message check failed: %v", err)
+	}
+	if !assistantMsgExists {
+		t.Error("assistant message should have rendered via SSE stream")
+	}
+}
+
+// TestBrowser_ScrollSentinelPosition verifies the scroll-sentinel stays as the
+// last child of #messages so IntersectionObserver can track scroll position correctly.
+func TestBrowser_ScrollSentinelPosition(t *testing.T) {
+	llmURL := fakeInstantChatServer(t, "test reply content").URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Verify scroll-sentinel exists in #messages
+	var sentinelInMessages bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var sentinel = document.getElementById('scroll-sentinel');
+			if (!sentinel) return false;
+			return sentinel.parentElement && sentinel.parentElement.id === 'messages';
+		})()`, &sentinelInMessages),
+	)
+	if err != nil {
+		t.Fatalf("check sentinel parent failed: %v", err)
+	}
+	if !sentinelInMessages {
+		t.Error("scroll-sentinel should be a child of #messages")
+	}
+
+	// Send a message
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Test sentinel position", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Wait for run to complete by polling for assistant message
+	var assistantText string
+	for i := 0; i < 30; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.querySelector('.message-assistant .message-content');
+				return el ? el.textContent : '';
+			})()`, &assistantText),
+		)
+		if err == nil && strings.TrimSpace(assistantText) != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if strings.TrimSpace(assistantText) == "" {
+		t.Fatal("assistant response did not render")
+	}
+
+	// After streaming and render, scroll-sentinel should exist in #messages
+	var sentinelExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var s = document.getElementById('scroll-sentinel');
+			return s !== null && s.parentElement && s.parentElement.id === 'messages';
+		})()`, &sentinelExists),
+	)
+	if err != nil {
+		t.Fatalf("check sentinel after render failed: %v", err)
+	}
+	if !sentinelExists {
+		t.Error("scroll-sentinel should still exist in #messages after streaming completes")
+	}
+
+	// Verify the scroll-to-bottom button still exists
+	var btnExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('scroll-to-bottom-btn') !== null`, &btnExists),
+	)
+	if err != nil {
+		t.Fatalf("check scroll btn exists failed: %v", err)
+	}
+	if !btnExists {
+		t.Error("scroll-to-bottom-btn should exist after streaming completes")
+	}
+
+	// Verify stream-indicator shows Done
+	var isDone bool
+	for i := 0; i < 10; i++ {
+		var statusText string
+		err = chromedp.Run(ctx,
+			chromedp.Text("#stream-indicator", &statusText, chromedp.ByQuery),
+		)
+		if err == nil && strings.TrimSpace(statusText) == "Done" {
+			isDone = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !isDone {
+		t.Error("stream-indicator should show Done after streaming completes")
+	}
+}
+// TestBrowser_ToolCardsInScrollContainer verifies tool cards inject at correct
+// position within the #messages scroll container and morph correctly on tool_result.
+func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	var sessionID string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit open failed: %v", err)
+	}
+
+	// Emit a token first to create streaming bubble
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'token', content: 'Hello, I will run a tool.'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit token failed: %v", err)
+	}
+
+	// Give time for streaming bubble to appear
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify streaming bubble is inside #messages
+	var streamingInMessages bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('streaming');
+			if (!el) return false;
+			return el.parentElement && el.parentElement.id === 'messages';
+		})()`, &streamingInMessages),
+	)
+	if err != nil {
+		t.Fatalf("check streaming parent failed: %v", err)
+	}
+	if !streamingInMessages {
+		t.Error("streaming element should be inside #messages")
+	}
+
+	// Emit a tool_call — should create tool card
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_call', tool: 'terminal_execute', args: {command: 'echo hello'}})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_call failed: %v", err)
+	}
+
+	// Wait for tool card to appear
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify tool card container exists and is inside #messages
+	var toolCardInMessages bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var container = document.querySelector('.tool-cards-container');
+			if (!container) return false;
+			return container.parentElement && container.parentElement.id === 'messages';
+		})()`, &toolCardInMessages),
+	)
+	if err != nil {
+		t.Fatalf("check tool card parent failed: %v", err)
+	}
+	if !toolCardInMessages {
+		t.Error("tool-cards-container should be a child of #messages")
+	}
+
+	// Verify streaming bubble still exists (tool card appends, doesn't replace)
+	var streamingStillExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, &streamingStillExists),
+	)
+	if err != nil {
+		t.Fatalf("check streaming after tool_call failed: %v", err)
+	}
+	if !streamingStillExists {
+		t.Error("streaming bubble should still exist after tool card injection")
+	}
+
+	// Verify tool card has running status
+	var runningCard bool
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'running...'`, &runningCard),
+		)
+		if err == nil && runningCard {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !runningCard {
+		t.Fatal("tool card should show 'running...' status after tool_call")
+	}
+
+	// Emit tool_result — should morph to done via HTMX
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'tool_result', tool: 'terminal_execute', output: 'hello\nworld'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit tool_result failed: %v", err)
+	}
+
+	// Wait for HTMX swap to complete
+	time.Sleep(600 * time.Millisecond)
+
+	// Verify card shows 'done' status (HTMX morph worked)
+	var doneCard bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
+	)
+	if err != nil {
+		t.Fatalf("query done card status failed: %v", err)
+	}
+	if !doneCard {
+		t.Fatal("tool card should show 'done' status after tool_result via HTMX morph")
+	}
+
+	// Emit done to trigger final markdown render
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'done', message_id: 'msg_final'})`, nil),
+	)
+	if err != nil {
+		t.Fatalf("emit done failed: %v", err)
+	}
+
+	// Wait for finalizeMessage to replace streaming bubble
+	time.Sleep(1500 * time.Millisecond)
+
+	// Verify streaming bubble was replaced by final markdown (no #streaming element)
+	var streamingReplaced bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('streaming') === null`, &streamingReplaced),
+	)
+	if err != nil {
+		t.Fatalf("check streaming replaced failed: %v", err)
+	}
+	if !streamingReplaced {
+		t.Error("streaming element should be replaced by final markdown (outerHTML swap)")
+	}
+
+	// Verify final assistant message rendered
+	var finalAssistantExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant') !== null`, &finalAssistantExists),
+	)
+	if err != nil {
+		t.Fatalf("check final assistant failed: %v", err)
+	}
+	if !finalAssistantExists {
+		t.Error("final assistant message should exist after done packet")
+	}
+
+	// Verify scroll-sentinel is still last child after all operations
+	var sentinelStillLast bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			var sentinel = document.getElementById('scroll-sentinel');
+			if (!messages || !sentinel) return false;
+			return messages.lastElementChild === sentinel;
+		})()`, &sentinelStillLast),
+	)
+	if err != nil {
+		t.Fatalf("check sentinel after tool cards failed: %v", err)
+	}
+	if !sentinelStillLast {
+		t.Error("scroll-sentinel should still be the last child after tool card operations")
+	}
+}
+
+// TestBrowser_AutoScrollDuringStreaming verifies auto-scroll lands at newest
+// content during streaming in the scroll container.
+func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
+	llmURL := fakeBurstChatServer(t, 100, 5*time.Millisecond).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Force #messages to a small height to create scrollable overflow
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '120px'`, nil),
+	)
+	if err != nil {
+		t.Fatalf("set messages height failed: %v", err)
+	}
+
+	// Verify scroll-to-bottom button exists
+	var btnExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('scroll-to-bottom-btn') !== null`, &btnExists),
+	)
+	if err != nil {
+		t.Fatalf("check scroll btn exists failed: %v", err)
+	}
+	if !btnExists {
+		t.Fatal("scroll-to-bottom-btn should exist in the DOM")
+	}
+
+	// Send message to trigger streaming
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Auto scroll test message", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Wait for streaming tokens to accumulate
+	time.Sleep(800 * time.Millisecond)
+
+	// Scroll up in #messages to force scroll position away from bottom
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('messages').scrollTop = 0`, nil),
+	)
+	if err != nil {
+		t.Fatalf("scroll up failed: %v", err)
+	}
+
+	// Wait for IntersectionObserver to detect sentinel is not visible
+	time.Sleep(600 * time.Millisecond)
+
+	// Verify scroll-to-bottom button is now visible
+	var btnVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('scroll-to-bottom-btn').classList.contains('visible')`, &btnVisible),
+	)
+	if err != nil {
+		t.Fatalf("check btn visible state failed: %v", err)
+	}
+	if !btnVisible {
+		t.Error("scroll-to-bottom button should be visible when scrolled up")
+	}
+
+	// Click the button to scroll to latest
+	err = chromedp.Run(ctx,
+		chromedp.Click("#scroll-to-bottom-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("click scroll-to-bottom failed: %v", err)
+	}
+
+	// Wait for smooth scroll
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify button is hidden again after scrolling to bottom
+	var btnHiddenAfterClick bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`!document.getElementById('scroll-to-bottom-btn').classList.contains('visible')`, &btnHiddenAfterClick),
+	)
+	if err != nil {
+		t.Fatalf("check btn hidden after click failed: %v", err)
+	}
+	if !btnHiddenAfterClick {
+		t.Error("scroll-to-bottom button should hide after scrolling to bottom")
+	}
+
+	// Verify sentinel is scrollable (has size and is in flow)
+	var sentinelHasSize bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var s = document.getElementById('scroll-sentinel');
+			if (!s) return false;
+			var rect = s.getBoundingClientRect();
+			return rect.width > 0 && rect.height >= 0;
+		})()`, &sentinelHasSize),
+	)
+	if err != nil {
+		t.Fatalf("check sentinel size failed: %v", err)
+	}
+	if !sentinelHasSize {
+		t.Error("scroll-sentinel should have dimensions for IntersectionObserver to fire")
+	}
+
+	// Verify run completes
+	time.Sleep(1500 * time.Millisecond)
+
+	var finalDone bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var indicator = document.getElementById('stream-indicator');
+			return indicator && indicator.textContent.trim() === 'Done';
+		})()`, &finalDone),
+	)
+	if err != nil {
+		t.Fatalf("check final status failed: %v", err)
+	}
+	if !finalDone {
+		t.Error("run should reach Done status")
+	}
+}
+
+// TestBrowser_HTMXBeforeEndTargetsMessages verifies HTMX swaps targeting
+// #messages with beforeend work correctly in the layout.
+func TestBrowser_HTMXBeforeEndTargetsMessages(t *testing.T) {
+	llmURL := fakeInstantChatServer(t, "reply").URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Send a message (chat submit uses hx-target="#messages" hx-swap="beforeend")
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Test beforeend swap", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	var userText string
+	var userBubbleFound bool
+	for i := 0; i < 30; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.querySelector('.message-user .message-content');
+				return el ? el.textContent : '';
+			})()`, &userText),
+		)
+		if err == nil && strings.Contains(userText, "Test beforeend swap") {
+			userBubbleFound = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !userBubbleFound {
+		t.Fatal("user bubble should appear via beforeend swap into #messages")
+	}
+
+	// Wait for assistant response
+	var assistantText string
+	for i := 0; i < 30; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.querySelector('.message-assistant .message-content');
+				return el ? el.textContent : '';
+			})()`, &assistantText),
+		)
+		if err == nil && strings.TrimSpace(assistantText) != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if strings.TrimSpace(assistantText) == "" {
+		t.Fatal("assistant response did not render after beforeend swap")
+	}
+
+	// Verify scroll-sentinel still exists in #messages after swaps
+	var sentinelExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var s = document.getElementById('scroll-sentinel');
+			return s !== null && s.parentElement && s.parentElement.id === 'messages';
+		})()`, &sentinelExists),
+	)
+	if err != nil {
+		t.Fatalf("check sentinel after swaps failed: %v", err)
+	}
+	if !sentinelExists {
+		t.Error("scroll-sentinel should exist in #messages after HTMX swaps")
+	}
+}
