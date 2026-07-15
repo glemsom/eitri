@@ -205,7 +205,17 @@ main {
   padding: 1rem;
   max-width: 960px;
   width: 100%;
-  overflow-y: auto;
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+/* Chat view — flex column so messages scroll and composer stays pinned */
+#chat-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Utility */
@@ -291,6 +301,9 @@ noscript {
 
 /* Messages */
 .messages {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1163,6 +1176,7 @@ pre.code-wrapped code {
 eitri-composer {
   position: relative;
   display: block;
+  flex-shrink: 0;
 }
 
 /* Session rename input */
