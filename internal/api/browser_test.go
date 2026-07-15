@@ -1930,8 +1930,7 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var title string
 	var htmxExists bool
 	var chatViewExists, messagesExists, composerExists bool
-	var sessionChromeExists, headerWorkspaceIndicatorExists, headerStreamIndicatorExists bool
-	var sessionChromePosition string
+	var headerWorkspaceIndicatorExists, headerStreamIndicatorExists bool
 	var chatViewDisplay, chatViewGridRows string
 	var messagesOverflowY, messagesDisplay string
 	var gearBtnColor, gearBtnBg, gearBtnBorder, gearBtnRadius, gearBtnCursor, gearBtnFontSize string
@@ -1945,11 +1944,9 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#chat-view') !== null", &chatViewExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#messages') !== null", &messagesExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
-		// Verify indicators live in header, not session-chrome
-		chromedp.EvaluateAsDevTools("document.querySelector('#session-chrome') !== null", &sessionChromeExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('header #workspace-indicator') !== null", &headerWorkspaceIndicatorExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('header #stream-indicator') !== null", &headerStreamIndicatorExists),
-		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#session-chrome')).getPropertyValue('position')", &sessionChromePosition),
+		// Verify indicators live in header
+		chromedp.EvaluateAsDevTools("document.querySelector('#workspace-indicator') !== null", &headerWorkspaceIndicatorExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('#stream-indicator') !== null", &headerStreamIndicatorExists),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewDisplay),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('grid-template-rows')", &chatViewGridRows),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('overflow-y')", &messagesOverflowY),
@@ -1983,17 +1980,11 @@ func TestBrowser_PageLoads(t *testing.T) {
 	if !composerExists {
 		t.Error("#composer not found")
 	}
-	if !sessionChromeExists {
-		t.Error("#session-chrome not found")
-	}
 	if !headerWorkspaceIndicatorExists {
 		t.Error("#workspace-indicator in header not found")
 	}
 	if !headerStreamIndicatorExists {
 		t.Error("#stream-indicator in header not found")
-	}
-	if sessionChromePosition != "static" {
-		t.Errorf("#session-chrome position = %q, want 'static' (grid handles layout)", sessionChromePosition)
 	}
 	if chatViewDisplay != "grid" {
 		t.Errorf("#chat-view display = %q, want 'grid'", chatViewDisplay)
@@ -2411,33 +2402,24 @@ func TestBrowser_WorkspaceTrim(t *testing.T) {
 	}
 }
 
-// TestBrowser_RunStatusSlim verifies run-status no longer shows descriptive text.
+// TestBrowser_HeaderHasStreamIndicator verifies stream-indicator is in the header.
 func TestBrowser_HeaderHasStreamIndicator(t *testing.T) {
 	server := newTestServer(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	var headerHasStream, headerHasRunStatus bool
 	var streamText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("header #stream-indicator", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools("document.querySelector('header #stream-indicator') !== null", &headerHasStream),
-		chromedp.EvaluateAsDevTools("document.querySelector('#run-status') !== null", &headerHasRunStatus),
-		chromedp.Text("header #stream-indicator", &streamText, chromedp.ByQuery),
+		chromedp.WaitVisible("#stream-indicator", chromedp.ByQuery),
+		chromedp.Text("#stream-indicator", &streamText, chromedp.ByQuery),
 	)
 	if err != nil {
-		t.Fatalf("header stream indicator test failed: %v", err)
-	}
-	if !headerHasStream {
-		t.Error("header #stream-indicator not found")
-	}
-	if headerHasRunStatus {
-		t.Error("run-status should not exist; stream-indicator is now directly in header")
+		t.Fatalf("stream indicator test failed: %v", err)
 	}
 	if streamText == "" {
-		t.Error("header #stream-indicator has no text content")
+		t.Error("#stream-indicator has no text content")
 	}
 }
 
