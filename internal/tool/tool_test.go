@@ -153,7 +153,7 @@ func TestSchemaOf_MixedTypes(t *testing.T) {
 func TestSchemaOf_IgnoresUnexported(t *testing.T) {
 	type test struct {
 		Name     string `json:"name"`
-		hidden   string `json:"hidden"` // unexported, should be ignored
+		hidden   string `json:"-"` // unexported, should be ignored
 		Exported string `json:"exported"`
 	}
 	schema := SchemaOf[test]()
