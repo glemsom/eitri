@@ -6,16 +6,16 @@ import (
 	"strings"
 )
 
-// validateWorkspacePath validates and cleans a file path against a workspace root.
+// ValidateWorkspacePath validates and cleans a file path against a workspace root.
 // It rejects ../ escapes, absolute paths outside workspace, and empty paths.
-func validateWorkspacePath(path, workspace string) (string, error) {
-	return validatePathWithAllowed(path, workspace, nil)
+func ValidateWorkspacePath(path, workspace string) (string, error) {
+	return ValidatePathWithAllowed(path, workspace, nil)
 }
 
-// validatePathWithAllowed validates a path against a workspace root and optional
+// ValidatePathWithAllowed validates a path against a workspace root and optional
 // additional allowed roots (e.g., skill directories). The path must be within
 // at least one of the allowed roots.
-func validatePathWithAllowed(path, workspace string, allowedRoots []string) (string, error) {
+func ValidatePathWithAllowed(path, workspace string, allowedRoots []string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("path is empty")
 	}

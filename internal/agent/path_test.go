@@ -16,7 +16,7 @@ func TestValidatePath_RelativePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := validateWorkspacePath("test.txt", workspace)
+	got, err := ValidateWorkspacePath("test.txt", workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestValidatePath_AbsoluteInsideWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := validateWorkspacePath(testFile, workspace)
+	got, err := ValidateWorkspacePath(testFile, workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestValidatePath_AbsoluteInsideWorkspace(t *testing.T) {
 func TestValidatePath_RejectDotDotEscape(t *testing.T) {
 	workspace := t.TempDir()
 
-	_, err := validateWorkspacePath("../etc/passwd", workspace)
+	_, err := ValidateWorkspacePath("../etc/passwd", workspace)
 	if err == nil {
 		t.Fatal("expected error for ../ escape, got nil")
 	}
@@ -56,7 +56,7 @@ func TestValidatePath_RejectDotDotEscape(t *testing.T) {
 func TestValidatePath_RejectAbsoluteOutsideWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 
-	_, err := validateWorkspacePath("/etc/passwd", workspace)
+	_, err := ValidateWorkspacePath("/etc/passwd", workspace)
 	if err == nil {
 		t.Fatal("expected error for absolute path outside workspace, got nil")
 	}
@@ -65,7 +65,7 @@ func TestValidatePath_RejectAbsoluteOutsideWorkspace(t *testing.T) {
 func TestValidatePath_RejectEmptyPath(t *testing.T) {
 	workspace := t.TempDir()
 
-	_, err := validateWorkspacePath("", workspace)
+	_, err := ValidateWorkspacePath("", workspace)
 	if err == nil {
 		t.Fatal("expected error for empty path, got nil")
 	}
@@ -82,7 +82,7 @@ func TestValidatePath_SubdirectoryPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := validateWorkspacePath("sub/nested/test.txt", workspace)
+	got, err := ValidateWorkspacePath("sub/nested/test.txt", workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestValidatePath_SkillDirectoryAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := validatePathWithAllowed("skill-ref.md", workspace, []string{skillDir})
+	got, err := ValidatePathWithAllowed("skill-ref.md", workspace, []string{skillDir})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestValidatePath_RejectSkillDirDotDotEscape(t *testing.T) {
 	workspace := t.TempDir()
 	skillDir := t.TempDir()
 
-	_, err := validatePathWithAllowed("../etc/passwd", workspace, []string{skillDir})
+	_, err := ValidatePathWithAllowed("../etc/passwd", workspace, []string{skillDir})
 	if err == nil {
 		t.Fatal("expected error for ../ escape")
 	}
@@ -139,7 +139,7 @@ func TestValidatePath_RejectNonWorkspaceSkillDirEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := validatePathWithAllowed("../neighbor.txt", workspace, []string{skillDir})
+	_, err := ValidatePathWithAllowed("../neighbor.txt", workspace, []string{skillDir})
 	if err == nil {
 		t.Fatal("expected error for path outside allowed roots")
 	}
