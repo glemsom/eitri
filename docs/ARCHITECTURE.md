@@ -42,7 +42,7 @@ Orchestrates startup:
 3. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
 4. **Session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace; startup also begins idle-timeout cleanup using configured `session_timeout`
 5. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
-6. **Built-in tools** — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
+6. **Built-in tools** — `bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_component`, `skill`. Implementations live in `internal/tool/` — each tool has one job and a minimal parameter schema.
 7. **History service** (`internal/history/`) — stores conversation history with sliding window
 8. **File utility** (`internal/fileutil/`) — file path validation, workspace checks, read/write operations
 9. **Runner manager** (`runner.NewManager`) — caches ADK runner, hot-reloads on config or skills-catalog changes
@@ -68,7 +68,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | `filetools.go` | `ReadFile`, `ReadFileWithLineInfo`, `LineHash`, `EditFile`, `InsertLine`, `WriteFile`, `ListDirectory`, `FileViewerResult` |
 | `filetools_test.go` | Unit tests for file operations |
 
-Used by `file_viewer` and `file_editor` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories.
+Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories.
 
 ### `internal/provider/` — provider profiles + caller-facing seams
 
@@ -82,7 +82,7 @@ Used by `file_viewer` and `file_editor` tools for all file I/O and path validati
 
 **Caller contract**: caller modules use narrow Provider seams, not raw profile/auth/transport internals. `config` reads caller-safe metadata via `Describe()` / `MustDescribe()` and validates persisted credentials via `ValidateCredentials()` plus `NormalizeConfigAuthState()`. Settings load/save, `/api/models`, and post-device-flow model refresh use `DiscoverModels()`. Chat-run startup uses `NewChatModel()`. GitHub device-flow UI polls through caller-safe `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`, not raw OAuth token payload handling. Provider package never writes app config itself; callers persist returned auth updates when needed.
 
-Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/tool/`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
+Built-in tools: `bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_component`, `skill`. Implementations live in `internal/tool/`. The `skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
 
 ### `internal/api/` — HTTP server + Templ templates
 
@@ -108,7 +108,7 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |
 | `components/chat_bubble.templ` | User/assistant message bubbles |
 | `components/tool_card.templ` | Unified tool card (running/done status) |
-| `components/file_edit_card.templ` | Post-write diff/created-file card for `file_editor` results; overwrite mode reuses shared interactive diff viewer |
+| `components/file_edit_card.templ` | Post-write diff/created-file card for `write` and `edit` tool results; overwrite mode reuses shared interactive diff viewer |
 | `components/error_toast.templ` | Error banner, auto-dismiss |
 | `components/mermaid_diagram.templ` | Mermaid diagram container |
 | `components/quick_replies.templ` | Suggestion chip buttons |
@@ -136,7 +136,7 @@ func (s *Service) Current() *Registry
 func (s *Service) Activate(ctx context.Context, sessionID, name string) (*ActivatedSkill, error)
 ```
 
-`api.Server` stores active skill names per UI session. The `activate_skill` tool (in `internal/tool/`) delegates to `skills.Service`. At chat-run start, `runner.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into conversation history. API and runner packages consume this service; they never scan skill files directly.
+`api.Server` stores active skill names per UI session. The `skill` tool (in `internal/tool/`) delegates to `skills.Service`. At chat-run start, `runner.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral skill tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into conversation history. API and runner packages consume this service; they never scan skill files directly.
 
 ### `internal/runner/` — Run service + runner cache
 
@@ -266,14 +266,14 @@ sequenceDiagram
         Agent->>Agent: LLM generates tool call
         RunSvc-->>Browser: SSE: tool_call
         Browser->>Browser: Activity panel entry only; no tool_call card rendered
-        alt activate_skill
+        alt skill
             Agent->>Skills: Activate(sessionID, name)
             Skills-->>Agent: structured skill_content
-        else terminal_execute
+        else bash
             Agent->>Executor: tool executes (tmux)
             Executor-->>Agent: result
-        else file_editor
-            Agent->>Agent: validate workspace path, capture old content, write file
+        else write / edit
+            Agent->>Agent: validate workspace path, write or modify file
         end
         RunSvc-->>Browser: SSE: tool_result
         Browser->>API: POST /api/sessions/{id}/render {kind: "tool_card"}
@@ -289,7 +289,7 @@ sequenceDiagram
 
 ### Adding a new built-in tool
 
-1. Define tool in `internal/tool/` implementing the `Tool` interface
+1. Define tool in `internal/tool/` implementing the `ToolHandler` interface (`Name()`, `Description()`, `JSONSchema()`, `Call()`) with a struct that embeds `SchemaOf[T]()` for parameter schemas
 2. Register with `tool.NewRegistry().Register(...)`
 3. Tool receives `context.Context` with `tool.SessionIDKey` for session-scoped state
 
@@ -298,7 +298,7 @@ sequenceDiagram
 1. Keep discovery/parsing/precedence logic in `internal/skills`; API and agent packages should consume the service API rather than scanning files directly.
 2. Add new skill roots only through a documented precedence change and ADR update.
 3. Keep `allowed-tools` advisory until Eitri has a real approval/permission model.
-4. Preserve resource access invariant: `file_viewer` can read workspace and skill directories; `file_editor` remains workspace-only.
+4. Preserve resource access invariant: `read` can read workspace and skill directories; `write` and `edit` remain workspace-only.
 
 ### Adding a new API route
 
