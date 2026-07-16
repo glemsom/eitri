@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -59,6 +60,8 @@ func RunAgent(
 			req.Tools = toolDefsFromRegistry(tools)
 		}
 
+		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(req.Tools)), slog.Int("messages", len(req.Messages)))
+
 		// Call LLM streaming
 		stream, err := llm.ChatStream(ctx, *req)
 		if err != nil {
@@ -89,6 +92,12 @@ func RunAgent(
 			}
 			sseWriter.Error(runstate.FormatErrorMessage(streamErr))
 			return streamErr
+		}
+		if len(toolCalls) > 0 {
+			slog.Debug("tool calls received", slog.Int("count", len(toolCalls)))
+			for _, tc := range toolCalls {
+				slog.Debug("tool call", slog.String("id", tc.ID), slog.String("tool", tc.Function.Name), slog.String("args", tc.Function.Arguments))
+			}
 		}
 
 		// No tool calls → done, append final assistant message
@@ -166,12 +175,14 @@ func RunAgent(
 						Content:    errMsg,
 					})
 				}
+				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
 				continue
 			}
 
 			// Extract result text from blocks
 			resultText := blocksToText(blocks)
 			isError := toolResultHasError(blocks)
+			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", truncateText(resultText, 200)), slog.Bool("error", isError))
 
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
@@ -363,4 +374,13 @@ func emitEditDiffCard(w *runstate.Writer, blocks []vocellitellm.Block) {
 			"lang": "",
 		},
 	})
+}
+
+// truncateText truncates s to at most n runes, appending "..." when truncated.
+func truncateText(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
 }

@@ -187,10 +187,25 @@ func toOpenAIRequest(req Request) openAIReq {
 		}
 		msgs = append(msgs, msg)
 	}
+
+	// Convert tool definitions to wire format
+	var tools []map[string]interface{}
+	for _, t := range req.Tools {
+		tools = append(tools, map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  t.Parameters,
+			},
+		})
+	}
+
 	return openAIReq{
 		Model:    req.Model,
 		Messages: msgs,
 		Stream:   req.Stream,
+		Tools:    tools,
 	}
 }
 
