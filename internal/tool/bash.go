@@ -10,40 +10,40 @@ import (
 	"github.com/glemsom/eitri/internal/executor"
 )
 
-type terminalExecuteArgs struct {
+type bashArgs struct {
 	Command string `json:"command" jsonschema:"Shell command to run in the session's tmux shell"`
 }
 
-// TerminalExecuteTool implements ToolHandler for running shell commands.
-type TerminalExecuteTool struct {
+// BashTool implements ToolHandler for running shell commands.
+type BashTool struct {
 	sessionMgr *executor.SessionManager
 	schema     litellm.Schema
 }
 
-// NewTerminalExecute creates a new TerminalExecuteTool.
-func NewTerminalExecute(sessionMgr *executor.SessionManager) *TerminalExecuteTool {
-	return &TerminalExecuteTool{
+// NewBashTool creates a new BashTool.
+func NewBashTool(sessionMgr *executor.SessionManager) *BashTool {
+	return &BashTool{
 		sessionMgr: sessionMgr,
-		schema:     SchemaOf[terminalExecuteArgs](),
+		schema:     SchemaOf[bashArgs](),
 	}
 }
 
-func (t *TerminalExecuteTool) Name() string {
-	return "terminal_execute"
+func (t *BashTool) Name() string {
+	return "bash"
 }
 
-func (t *TerminalExecuteTool) Description() string {
+func (t *BashTool) Description() string {
 	return "Execute a shell command in the session's tmux shell and return the output. Use for running commands, tests, builds, or any shell operations."
 }
 
-func (t *TerminalExecuteTool) JSONSchema() litellm.Schema {
+func (t *BashTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *TerminalExecuteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-	var parsed terminalExecuteArgs
+func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+	var parsed bashArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("terminal_execute: invalid args: %w", err), false
+		return nil, fmt.Errorf("bash: invalid args: %w", err), false
 	}
 
 	if parsed.Command == "" {

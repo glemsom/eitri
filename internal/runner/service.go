@@ -199,7 +199,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 	// Build tool registry with built-in tools
 	toolReg := tool.NewRegistry()
-	toolReg.Register(tool.NewTerminalExecute(s.sessionMgr))
+	toolReg.Register(tool.NewBashTool(s.sessionMgr))
 	toolReg.Register(tool.NewFileViewer(s.sessionMgr.Workspace(), s.skillDirectories()))
 	toolReg.Register(tool.NewFileEditor(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewRenderComponent())

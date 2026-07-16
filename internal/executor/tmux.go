@@ -78,7 +78,7 @@ func (e *TmuxExecutor) ExecuteCommand(ctx context.Context, command string) (Comm
 	startTime := time.Now()
 	timeout := e.cmdTimeout
 	if timeout <= 0 {
-		timeout = 60 * time.Second
+		timeout = 180 * time.Second
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
