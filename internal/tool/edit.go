@@ -42,7 +42,7 @@ func (t *EditTool) Description() string {
 Provide 'old_text' with enough surrounding context to uniquely identify the target location.
 Always include several surrounding lines of code as context anchors to avoid ambiguity.
 
-Returns old and new content for diff display.
+Returns a confirmation message and renders a DiffCard component with the change.
 
 Use this for surgical edits. For creating new files or complete rewrites, use the 'write' tool instead.`
 }
@@ -91,6 +91,6 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks(fmt.Sprintf("Error: failed to write file: %v", err)), nil, true
 	}
 
-	output := fmt.Sprintf("Edited file: %s\nOld: %q\nNew: %q", parsed.Path, parsed.OldText, parsed.NewText)
+	output := fmt.Sprintf("Edited file: %s", parsed.Path)
 	return textBlocks(output), nil, false
 }

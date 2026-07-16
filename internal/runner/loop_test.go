@@ -365,6 +365,156 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	}
 }
 
+func TestRunAgent_EditToolEmitsDiffCardComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "edit",
+					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "edit",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Edited file: test.txt"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "edit the file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+
+	foundComponent := false
+	for _, evt := range events {
+		if evt.Type == "component" {
+			foundComponent = true
+			break
+		}
+	}
+	if !foundComponent {
+		t.Errorf("expected a component event for edit tool, got types: %v", types)
+	}
+}
+
+func TestRunAgent_EditToolErrorSkipsDiffCard(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "edit",
+					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
+				},
+			}},
+		},
+		{content: "I see the error"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "edit",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "file not found"}}, nil, true
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "edit the file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "component" {
+			t.Error("component event should NOT be emitted when edit tool returns error")
+			break
+		}
+	}
+}
+
+func TestRunAgent_NonEditToolSkipsDiffCard(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "write",
+					Arguments: `{"path":"test.txt","content":"hello"}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "write",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Written file: test.txt"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "write the file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "component" {
+			t.Error("component event should NOT be emitted for non-edit tools")
+			break
+		}
+	}
+}
+
 func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
