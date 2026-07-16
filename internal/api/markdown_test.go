@@ -34,6 +34,57 @@ func TestRenderMarkdownToHTML_RendersThinkSectionsSafely(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownToHTML_MultipleThinkBlocks(t *testing.T) {
+	input := "Before\n<think>first reasoning</think>\nMiddle\n<think>second reasoning</think>\nAfter"
+	html := renderMarkdownToHTML(input)
+
+	for _, want := range []string{
+		`<details class="think-details">`,
+		`<summary>Thinking...</summary>`,
+		"first reasoning",
+		"second reasoning",
+		"<p>Before</p>",
+		"<p>Middle</p>",
+		"<p>After</p>",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in %s", want, html)
+		}
+	}
+
+	if strings.Count(html, "<details") != 2 {
+		t.Fatalf("expected 2 <details>, got %d in %s", strings.Count(html, "<details"), html)
+	}
+}
+
+func TestRenderMarkdownToHTML_EmptyThinkBlock(t *testing.T) {
+	input := "Before<think></think>After"
+	html := renderMarkdownToHTML(input)
+
+	if !strings.Contains(html, `<details class="think-details">`) {
+		t.Fatalf("missing think-details for empty think block in %s", html)
+	}
+	if !strings.Contains(html, `<summary>Thinking...</summary>`) {
+		t.Fatalf("missing Thinking summary for empty think block in %s", html)
+	}
+}
+
+func TestRenderMarkdownToHTML_ThinkInsideCodeBlock(t *testing.T) {
+	input := "```\n<think>this is literal</think>\n```"
+	html := renderMarkdownToHTML(input)
+
+	if strings.Contains(html, `<details class="think-details">`) {
+		t.Fatalf("think inside code block should not create details element: %s", html)
+	}
+	if strings.Contains(html, `<summary>Thinking...</summary>`) {
+		t.Fatalf("think inside code block should not create Thinking summary: %s", html)
+	}
+
+	if !strings.Contains(html, "&lt;think&gt;this is literal&lt;/think&gt;") {
+		t.Fatalf("literal think content missing from code block in %s", html)
+	}
+}
+
 func TestRenderMarkdownToHTML_EnhancesCodeMathAndMermaid(t *testing.T) {
 	input := strings.Join([]string{
 		"Inline math $a+b$.",
