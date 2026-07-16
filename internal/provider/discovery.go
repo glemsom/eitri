@@ -96,6 +96,23 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 	}, nil
 }
 
+// ResolveAuthRequest describes inputs for auth resolution without model discovery.
+type ResolveAuthRequest struct {
+	ProviderID   string
+	APIKey       string
+	ProviderAuth json.RawMessage
+}
+
+// ResolveAuth resolves provider credentials, refreshing tokens if needed.
+// Returns the effective API key and any auth update for persistence.
+func ResolveAuth(ctx context.Context, req ResolveAuthRequest, persistFn PersistAuthFunc) (apiKey string, authUpdate *AuthUpdate, err error) {
+	resolved, update, err := resolveAuthWithUpdate(ctx, req.ProviderID, req.APIKey, req.ProviderAuth, authResolveOptions{}, persistFn)
+	if err != nil {
+		return "", nil, err
+	}
+	return resolved.APIKey, update, nil
+}
+
 type authResolveOptions struct {
 	HTTPClient         *http.Client
 	GitHubCopilotOAuth GitHubCopilotOAuthConfig

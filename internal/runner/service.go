@@ -1,5 +1,5 @@
 // Package runner provides RunService — the seam for run lifecycle management.
-// It owns agent building, runner cache, SSE broadcast, session persistence,
+// It owns agent loop execution, SSE broadcast, session persistence,
 // and auth persistence callbacks.
 package runner
 
@@ -8,31 +8,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"iter"
 	"log/slog"
 	"sync"
 	"time"
 
-	"google.golang.org/genai"
-
-	adkagent "google.golang.org/adk/v2/agent"
-	"google.golang.org/adk/v2/model"
-	"google.golang.org/adk/v2/session"
-
-	eitriagent "github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
+	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/tool"
 )
 
-// RunState holds ADK event channels, cancel, and the SSE broadcast state for one run.
+// RunState holds SSE broadcast state and cancel for one run.
 type RunState struct {
 	SessionID string
-	Events    <-chan *session.Event
-	Errors    <-chan error
 	Cancel    context.CancelFunc
 	StartedAt time.Time
 	Done      chan struct{}
@@ -52,29 +44,27 @@ type PersistAuthFunc = provider.PersistAuthFunc
 
 // RunServiceDeps holds the dependencies for RunService.
 type RunServiceDeps struct {
-	RunnerManager  *Manager
 	SessionManager *executor.SessionManager
 	UISessionMgr   *uisession.Manager
 	SkillsService  *skills.Service
 }
 
-// RunService owns the run lifecycle: agent building, runner cache,
+// RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
-	mu            sync.Mutex
-	active        map[string]*RunState
-	runnerMgr     *Manager
-	sessionMgr    *executor.SessionManager
-	uiSessionMgr  *uisession.Manager
-	skillsSvc     *skills.Service
-	providerID    string
-	baseURL       string
-	apiKey        string
-	providerAuth  json.RawMessage
-	modelName     string
-	systemPrompt  string
-	maxTurns      int
-	persistAuth   PersistAuthFunc
+	mu           sync.Mutex
+	active       map[string]*RunState
+	sessionMgr   *executor.SessionManager
+	uiSessionMgr *uisession.Manager
+	skillsSvc    *skills.Service
+	providerID   string
+	baseURL      string
+	apiKey       string
+	providerAuth json.RawMessage
+	modelName    string
+	systemPrompt string
+	maxTurns     int
+	persistAuth  PersistAuthFunc
 }
 
 const completedRunRetention = 5 * time.Second
@@ -83,7 +73,6 @@ const completedRunRetention = 5 * time.Second
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
 		active:       make(map[string]*RunState),
-		runnerMgr:    deps.RunnerManager,
 		sessionMgr:   deps.SessionManager,
 		uiSessionMgr: deps.UISessionMgr,
 		skillsSvc:    deps.SkillsService,
@@ -105,7 +94,7 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
 }
 
-// UpdateProviderConfig stores provider config for creating model instances.
+// UpdateProviderConfig stores provider config for creating LLM service instances.
 func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,9 +107,10 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.maxTurns = cfg.MaxTurns
 }
 
-// InvalidateRunners clears all cached runners so they are recreated on next StartRun.
+// InvalidateRunners clears any cached state so new runs pick up config changes.
+// No-op in the new architecture (no runner cache).
 func (s *RunService) InvalidateRunners() {
-	s.runnerMgr.Invalidate()
+	// No runner cache to invalidate; config is read fresh on each StartRun.
 }
 
 // StartRun starts a new agent run for a session.
@@ -139,10 +129,10 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	providerID := s.providerID
 	baseURL := s.baseURL
 	apiKey := s.apiKey
-	providerAuth := append(json.RawMessage(nil), s.providerAuth...)
 	modelName := s.modelName
 	systemPrompt := s.systemPrompt
 	maxTurns := s.maxTurns
+	providerAuth := s.providerAuth
 	s.mu.Unlock()
 
 	if baseURL == "" || modelName == "" {
@@ -158,97 +148,142 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 		runSystemPrompt = "You are Eitri, an AI coding assistant."
 	}
 
-	// Build PersistAuth options
-	chatOpts := provider.ChatOptions{}
-	if s.persistAuth != nil {
-		chatOpts.PersistAuth = s.persistAuth
-	}
-
-	chatResult, err := provider.NewChatModel(ctx, provider.ChatRequest{
-		ProviderID:   providerID,
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		ProviderAuth: providerAuth,
-		Model:        modelName,
-	}, chatOpts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create model: %w", err)
-	}
-
-	effectiveAPIKey := apiKey
-	effectiveProviderAuth := append(json.RawMessage(nil), providerAuth...)
-	if chatResult.AuthUpdate != nil {
-		effectiveAPIKey = chatResult.AuthUpdate.APIKey
-		effectiveProviderAuth = append(json.RawMessage(nil), chatResult.AuthUpdate.ProviderAuth...)
-	}
-
-	// Set session ID on model for prompt caching before skill context wrapping.
-	chatModel := chatResult.Model
-	if setter, ok := chatModel.(interface{ SetSessionID(string) *provider.OpenAIModel }); ok {
-		chatModel = setter.SetSessionID(sessionID)
-	}
-
 	// Resolve skill context for this session
 	skillCtx := s.resolveSessionSkillContext(sessionID)
-	llm := s.wrapWithSkillContext(chatModel, skillCtx)
 
-	var ag adkagent.Agent
-	var agErr error
+	// Build system prompt with skills catalog
+	fullSystemPrompt := runSystemPrompt
 	if s.skillsSvc != nil {
-		ag, agErr = eitriagent.NewAgentWithPromptAndSkills(llm, s.sessionMgr, runSystemPrompt, s.skillsSvc, s.uiSessionMgr)
-	} else {
-		ag, agErr = eitriagent.NewAgentWithPrompt(llm, s.sessionMgr, runSystemPrompt)
+		catalog := s.skillsSvc.SkillsCatalogXML()
+		if catalog != "" {
+			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call activate_skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
+		}
 	}
-	if agErr != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", agErr)
+	// Append pre-activated skill content
+	for _, activation := range skillCtx.Activations {
+		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
 	}
 
-	cfg := &config.Config{
-		Provider:     providerID,
-		APIKey:       effectiveAPIKey,
-		ProviderAuth: effectiveProviderAuth,
-		BaseURL:      baseURL,
-		Model:        modelName,
-		SystemPrompt: runSystemPrompt,
+	// Resolve auth (token refresh for github_copilot, etc.)
+	reqAuth := provider.ResolveAuthRequest{
+		ProviderID:   providerID,
+		APIKey:       apiKey,
+		ProviderAuth: providerAuth,
 	}
-	r, err := s.runnerMgr.GetOrCreate(cfg, ag)
+	authPersist := s.persistAuth
+	resolvedKey, authUpdate, authErr := provider.ResolveAuth(ctx, reqAuth, authPersist)
+	if authErr != nil {
+		return nil, fmt.Errorf("auth resolution: %w", authErr)
+	}
+	if resolvedKey != "" {
+		apiKey = resolvedKey
+	}
+	_ = authUpdate // caller may persist auth update if needed
+
+	// Create LLM service via litellm adapter factory
+	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: providerID,
+		Model:      modelName,
+		BaseURL:    baseURL,
+		APIKey:     apiKey,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get runner: %w", err)
+		return nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
 
-	content := &genai.Content{
-		Role:  "user",
-		Parts: []*genai.Part{{Text: userMessage}},
+	// Build tool registry with built-in tools
+	toolReg := tool.NewRegistry()
+	toolReg.Register(tool.NewTerminalExecute(s.sessionMgr))
+	toolReg.Register(tool.NewFileViewer(s.sessionMgr.Workspace(), s.skillDirectories()))
+	toolReg.Register(tool.NewFileEditor(s.sessionMgr.Workspace()))
+	toolReg.Register(tool.NewRenderComponent())
+	if s.skillsSvc != nil {
+		toolReg.Register(tool.NewActivateSkill(s.skillsSvc, s.uiSessionMgr))
 	}
 
-	eventCh, errCh, cancel := s.runnerMgr.Run(ctx, r, sessionID, sessionID, content, maxTurns)
+	// Build request with system prompt and user message
+	maxTurnsVal := maxTurns
+	if maxTurnsVal <= 0 {
+		maxTurnsVal = 10
+	}
+
+	req := &litellm.Request{
+		Model: modelName,
+		Messages: []litellm.Message{
+			{Role: "system", Content: fullSystemPrompt},
+			{Role: "user", Content: userMessage},
+		},
+		Stream: true,
+	}
+
+	sseState := runstate.New()
+	runCtx, cancel := context.WithCancel(ctx)
+	runCtx = context.WithValue(runCtx, tool.SessionIDKey, sessionID)
 
 	state := &RunState{
-		SessionID:   sessionID,
-		Events:      eventCh,
-		Errors:      errCh,
-		Cancel:      cancel,
-		StartedAt:   time.Now(),
-		Done:        make(chan struct{}),
-		SSE:         runstate.New(),
+		SessionID: sessionID,
+		Cancel:    cancel,
+		StartedAt: time.Now(),
+		Done:      make(chan struct{}),
+		SSE:       sseState,
 	}
-
-	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
 
 	s.mu.Lock()
 	s.active[sessionID] = state
 	s.mu.Unlock()
 
+	// Start agent loop in background goroutine
 	go func() {
-		<-state.Done
-		slog.Info("run done", slog.String("session_id", sessionID))
-		time.Sleep(completedRunRetention)
-		s.mu.Lock()
-		if s.active[sessionID] == state {
-			delete(s.active, sessionID)
+		defer func() {
+			state.finish()
+			time.Sleep(completedRunRetention)
+			s.mu.Lock()
+			if s.active[sessionID] == state {
+				delete(s.active, sessionID)
+			}
+			s.mu.Unlock()
+		}()
+
+		if s.uiSessionMgr != nil {
+			defer s.uiSessionMgr.UpdateStatus(sessionID, uisession.StatusIdle)
 		}
-		s.mu.Unlock()
+
+		w := runstate.NewWriter(sseState)
+
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, w, toolReg)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return
+			}
+
+			var maxTurnsErr *MaxTurnsExceededError
+			if errors.As(err, &maxTurnsErr) {
+				content := sseState.BufferString()
+				limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
+				if content == "" {
+					sseState.AppendBuffer(limitMsg)
+					content = limitMsg
+				} else {
+					sseState.AppendBuffer("\n\n" + limitMsg)
+					content += "\n\n" + limitMsg
+				}
+				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content))
+				s.appendToSession(sessionID, content)
+				return
+			}
+
+			// Error already broadcast by RunAgent via sseWriter.Error()
+			return
+		}
+
+		// Success: append final assistant response to session
+		content := sseState.BufferString()
+		if content != "" {
+			s.appendToSession(sessionID, content)
+		}
 	}()
+
+	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
 
 	return skillCtx.Warnings, nil
 }
@@ -295,128 +330,13 @@ func (s *RunService) Unsubscribe(sessionID string, id uint64) {
 	state.SSE.Unsubscribe(id)
 }
 
-// AppendEvent processes ADK session events and broadcasts SSE events.
-// Returns the accumulated assistant response text.
+// AppendEvent is no longer used. The agent loop owns SSE broadcast directly.
+// Deprecated: kept for backward compatibility in tests; always returns "".
 func (s *RunService) AppendEvent(state *RunState) string {
-	w := runstate.NewWriter(state.SSE)
-	return s.appendEvent(state, w)
+	return ""
 }
 
-func (s *RunService) appendEvent(state *RunState, w *runstate.Writer) string {
-	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
-
-	for {
-		select {
-		case evt, ok := <-state.Events:
-			if !ok {
-				select {
-				case err, ok := <-state.Errors:
-					if ok && err != nil {
-						return s.finishWithError(state, w, messageID, err)
-					}
-				default:
-				}
-				content := state.SSE.BufferString()
-				if content != "" {
-					s.appendToSession(state.SessionID, content)
-				}
-				w.Done(messageID, runstate.EstimateUsage(content))
-				state.finish()
-				return content
-			}
-			if evt == nil {
-				continue
-			}
-
-			turnComplete := !evt.Partial && !contentHasFunctionCalls(evt.Content) && !contentHasFunctionResponses(evt.Content)
-			acceptFinalText := turnComplete && state.SSE.BufferString() == ""
-
-			if evt.Content != nil {
-				for _, part := range evt.Content.Parts {
-					if part == nil {
-						continue
-					}
-					if part.Text != "" && (!turnComplete || acceptFinalText) {
-						state.SSE.AppendBuffer(part.Text)
-						w.Token(part.Text)
-					}
-					if fc := part.FunctionCall; fc != nil {
-						if fc.Name == "render_component" {
-							argsMap := fc.Args
-							compName, _ := argsMap["name"].(string)
-							compData, _ := argsMap["data"].(map[string]interface{})
-							state.SSE.Broadcast(runstate.SSEEvent{
-								Type: "component",
-								Kind: runstate.RenderKindComponent,
-								Name: compName,
-								Data: compData,
-							})
-						} else {
-							w.ToolCall(fc.Name, fc.Args)
-						}
-					}
-					if fr := part.FunctionResponse; fr != nil {
-						if fr.Name == "render_component" {
-							state.SSE.AppendBuffer("[Component rendered]")
-						} else {
-							w.ToolResult(fr.Name, fr.Response)
-						}
-					}
-				}
-			}
-
-			if turnComplete {
-				content := state.SSE.BufferString()
-				s.appendToSession(state.SessionID, content)
-				w.Done(messageID, runstate.EstimateUsage(content))
-				state.finish()
-				return content
-			}
-
-		case err, ok := <-state.Errors:
-			if !ok {
-				content := state.SSE.BufferString()
-				if content != "" {
-					s.appendToSession(state.SessionID, content)
-				}
-				w.Done(messageID, runstate.EstimateUsage(content))
-				state.finish()
-				return content
-			}
-			if err != nil {
-				return s.finishWithError(state, w, messageID, err)
-			}
-
-		case <-state.Done:
-			state.SSE.BroadcastDone(messageID, runstate.EstimateUsage(state.SSE.BufferString()))
-			state.finish()
-			return state.SSE.BufferString()
-		}
-	}
-}
-
-func (s *RunService) finishWithError(state *RunState, w *runstate.Writer, messageID string, err error) string {
-	var maxTurnsErr *MaxTurnsExceededError
-	if errors.As(err, &maxTurnsErr) {
-		content := state.SSE.BufferString()
-		limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
-		if content == "" {
-			state.SSE.AppendBuffer(limitMsg)
-			content = limitMsg
-		} else {
-			state.SSE.AppendBuffer("\n\n" + limitMsg)
-			content += "\n\n" + limitMsg
-		}
-		s.appendToSession(state.SessionID, content)
-		w.Done(messageID, runstate.EstimateUsage(content))
-		state.finish()
-		return content
-	}
-	w.Error(runstate.FormatErrorMessage(err))
-	state.finish()
-	return state.SSE.BufferString()
-}
-
+// appendToSession persists an assistant message to the UI session.
 func (s *RunService) appendToSession(sessionID, content string) {
 	if s.uiSessionMgr != nil {
 		s.uiSessionMgr.AppendMessage(sessionID, uisession.Message{
@@ -497,6 +417,15 @@ func (s *RunService) NotifyAllStreamsClosed(message string) {
 
 // ————— Helper types and functions —————
 
+// MaxTurnsExceededError reports that a run hit its configured turn cap.
+type MaxTurnsExceededError struct {
+	Limit int
+}
+
+func (e *MaxTurnsExceededError) Error() string {
+	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
+}
+
 type runSkillActivation struct {
 	Name    string
 	Content string
@@ -545,85 +474,9 @@ func staleSkillWarning(name string) string {
 	return fmt.Sprintf("Active Skill %q no longer available. Skipped for this Run and removed from active Skills.", name)
 }
 
-type skillContextLLM struct {
-	base        model.LLM
-	activations []runSkillActivation
-}
-
-func (s *RunService) wrapWithSkillContext(base model.LLM, ctx sessionSkillContext) model.LLM {
-	if len(ctx.Activations) == 0 {
-		return base
+func (s *RunService) skillDirectories() []string {
+	if s.skillsSvc == nil {
+		return nil
 	}
-	copied := append([]runSkillActivation(nil), ctx.Activations...)
-	return &skillContextLLM{base: base, activations: copied}
-}
-
-func (m *skillContextLLM) Name() string {
-	return m.base.Name()
-}
-
-func (m *skillContextLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
-	if len(m.activations) == 0 {
-		return m.base.GenerateContent(ctx, req, stream)
-	}
-
-	cloned := *req
-	cloned.Contents = append(skillActivationContents(m.activations), req.Contents...)
-	return m.base.GenerateContent(ctx, &cloned, stream)
-}
-
-func skillActivationContents(activations []runSkillActivation) []*genai.Content {
-	contents := make([]*genai.Content, 0, len(activations)*2)
-	for i, activation := range activations {
-		callID := fmt.Sprintf("active_skill_%d_%s", i, activation.Name)
-		contents = append(contents,
-			&genai.Content{
-				Role: genai.RoleModel,
-				Parts: []*genai.Part{{
-					FunctionCall: &genai.FunctionCall{
-						ID:   callID,
-						Name: "activate_skill",
-						Args: map[string]any{"name": activation.Name},
-					},
-				}},
-			},
-			&genai.Content{
-				Role: genai.RoleUser,
-				Parts: []*genai.Part{{
-					FunctionResponse: &genai.FunctionResponse{
-						ID:       callID,
-						Name:     "activate_skill",
-						Response: map[string]any{"content": activation.Content},
-					},
-				}},
-			},
-		)
-	}
-	return contents
-}
-
-// ————— ADK content helpers —————
-
-func contentHasFunctionCalls(content *genai.Content) bool {
-	if content == nil {
-		return false
-	}
-	for _, part := range content.Parts {
-		if part != nil && part.FunctionCall != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func contentHasFunctionResponses(content *genai.Content) bool {
-	if content == nil {
-		return false
-	}
-	for _, part := range content.Parts {
-		if part != nil && part.FunctionResponse != nil {
-			return true
-		}
-	}
-	return false
+	return s.skillsSvc.SkillDirectories()
 }

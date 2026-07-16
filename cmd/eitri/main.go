@@ -85,10 +85,8 @@ func main() {
 	}
 
 	sessionMgr := session.NewManager(10)
-	runnerMgr := runner.NewManager()
 	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runnerMgr,
 		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})

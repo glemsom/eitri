@@ -91,7 +91,6 @@ func TestCleanupRuntimeCancelsRunsAndClosesExecutors(t *testing.T) {
 	provider := fakeSlowProvider(t, 2*time.Second)
 	executorMgr := executor.NewSessionManager(t.TempDir(), time.Second, time.Minute)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runner.NewManager(),
 		SessionManager: executorMgr,
 		UISessionMgr:   session.NewManager(10),
 	})

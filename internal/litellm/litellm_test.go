@@ -51,8 +51,8 @@ func TestNewLLMService_OpenCodeGoOpenAIRoute(t *testing.T) {
 
 	// Should route to OpenAI adapter — verify by making a request to a test server
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
-			t.Fatalf("path = %q, want /chat/completions", r.URL.Path)
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer sk-test" {
 			t.Fatalf("Authorization = %q, want Bearer sk-test", got)
@@ -225,8 +225,8 @@ func TestNewLLMService_GitHubCopilotRoute(t *testing.T) {
 func TestNewLLMService_CustomOpenAI(t *testing.T) {
 	t.Parallel()
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
-			t.Fatalf("path = %q, want /chat/completions", r.URL.Path)
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %q, want /v1/chat/completions", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

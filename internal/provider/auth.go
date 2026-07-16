@@ -14,6 +14,10 @@ const GitHubDeviceFlowGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 const GitHubRefreshTokenGrantType = "refresh_token"
 const DefaultGitHubCopilotOAuthClientID = "Iv1.b507a08c87ecfe98"
 
+// PersistAuthFunc persists refreshed provider auth state (api key + provider_auth JSON).
+// Called during auth refresh before the provider operation returns.
+type PersistAuthFunc func(apiKey string, providerAuth json.RawMessage) error
+
 // ResolvedAuth holds provider-specific auth material normalized for requests.
 type ResolvedAuth struct {
 	APIKey string
