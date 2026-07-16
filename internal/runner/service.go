@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/executor"
 	"github.com/glemsom/eitri/internal/litellm"
@@ -52,20 +53,21 @@ type RunServiceDeps struct {
 // RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
-	mu           sync.Mutex
-	active       map[string]*RunState
-	sessionMgr   *executor.SessionManager
-	uiSessionMgr *uisession.Manager
-	skillsSvc    *skills.Service
-	providerID   string
-	baseURL      string
-	apiKey       string
-	providerAuth json.RawMessage
-	modelName    string
-	systemPrompt string
-	maxTurns     int
-	maxHistory   int
-	persistAuth  PersistAuthFunc
+	mu              sync.Mutex
+	active          map[string]*RunState
+	sessionMgr      *executor.SessionManager
+	uiSessionMgr    *uisession.Manager
+	skillsSvc       *skills.Service
+	agentSessionMgr *agent.SessionManager
+	providerID      string
+	baseURL         string
+	apiKey          string
+	providerAuth    json.RawMessage
+	modelName       string
+	systemPrompt    string
+	maxTurns        int
+	maxHistory      int
+	persistAuth     PersistAuthFunc
 }
 
 const completedRunRetention = 5 * time.Second
@@ -107,6 +109,7 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.systemPrompt = cfg.SystemPrompt
 	s.maxTurns = cfg.MaxTurns
 	s.maxHistory = cfg.MaxHistory
+	s.agentSessionMgr = agent.NewSessionManager(cfg.MaxHistory)
 }
 
 // InvalidateRunners clears any cached state so new runs pick up config changes.
@@ -204,18 +207,20 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 		toolReg.Register(tool.NewActivateSkill(s.skillsSvc, s.uiSessionMgr))
 	}
 
-	// Build request with system prompt and user message
+	// Set up session manager with system prompt and user message
+	if s.agentSessionMgr != nil {
+		s.agentSessionMgr.Create(sessionID)
+		s.agentSessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
+		s.agentSessionMgr.AppendUser(sessionID, userMessage)
+	}
+
 	maxTurnsVal := maxTurns
 	if maxTurnsVal <= 0 {
 		maxTurnsVal = 10
 	}
 
 	req := &litellm.Request{
-		Model: modelName,
-		Messages: []litellm.Message{
-			{Role: "system", Content: fullSystemPrompt},
-			{Role: "user", Content: userMessage},
-		},
+		Model:  modelName,
 		Stream: true,
 	}
 
@@ -253,7 +258,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.agentSessionMgr, sessionID)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				// Save partial content to session on cancellation so the UI
@@ -395,6 +400,9 @@ func (s *RunService) CancelAll() {
 // CloseSession cancels the active run and closes the executor session.
 func (s *RunService) CloseSession(sessionID string) error {
 	s.Cancel(sessionID)
+	if s.agentSessionMgr != nil {
+		s.agentSessionMgr.Close(sessionID)
+	}
 	if s.sessionMgr == nil {
 		return nil
 	}

@@ -10,6 +10,7 @@ import (
 
 	vocellitellm "github.com/voocel/litellm"
 
+	"github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
@@ -34,6 +35,8 @@ func RunAgent(
 	maxHistory int,
 	sseWriter *runstate.Writer,
 	tools *tool.Registry,
+	sessionMgr *agent.SessionManager,
+	sessionID string,
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
@@ -44,6 +47,11 @@ func RunAgent(
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+
+		// Load conversation history from session manager when available
+		if sessionMgr != nil {
+			req.Messages = sessionMgr.History(sessionID)
 		}
 
 		// Attach tool definitions from registry
@@ -66,12 +74,16 @@ func RunAgent(
 				// Preserve partial result: append assistant message with accumulated
 				// content and any tool calls to conversation history before returning.
 				if content.Len() > 0 || len(toolCalls) > 0 {
-					req.Messages = append(req.Messages, litellm.Message{
-						Role:      "assistant",
-						Content:   content.String(),
-						ToolCalls: toolCalls,
-					})
-					trimMessages(req, maxHistory)
+					if sessionMgr != nil {
+						sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
+					} else {
+						req.Messages = append(req.Messages, litellm.Message{
+							Role:      "assistant",
+							Content:   content.String(),
+							ToolCalls: toolCalls,
+						})
+						trimMessages(req, maxHistory)
+					}
 				}
 				return streamErr
 			}
@@ -86,26 +98,37 @@ func RunAgent(
 			sseWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
 			if contentStr != "" || len(req.Messages) > 0 {
-				req.Messages = append(req.Messages, litellm.Message{
-					Role:    "assistant",
-					Content: contentStr,
-				})
+				if sessionMgr != nil {
+					sessionMgr.AppendAssistant(sessionID, contentStr, nil)
+				} else {
+					req.Messages = append(req.Messages, litellm.Message{
+						Role:    "assistant",
+						Content: contentStr,
+					})
+				}
 			}
-			// Trim conversation history if cap is set
-			trimMessages(req, maxHistory)
+			// Trim conversation history if cap is set (only when not using session manager)
+			if sessionMgr == nil {
+				trimMessages(req, maxHistory)
+			}
 			return nil
 		}
 
-		// Trim conversation history if cap is set
-		trimMessages(req, maxHistory)
+		// Trim conversation history if cap is set (only when not using session manager)
+		if sessionMgr == nil {
+			trimMessages(req, maxHistory)
+		}
 
 		// Has tool calls — add assistant message to history
-		assistantMsg := litellm.Message{
-			Role:      "assistant",
-			Content:   content.String(),
-			ToolCalls: toolCalls,
+		if sessionMgr != nil {
+			sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
+		} else {
+			req.Messages = append(req.Messages, litellm.Message{
+				Role:      "assistant",
+				Content:   content.String(),
+				ToolCalls: toolCalls,
+			})
 		}
-		req.Messages = append(req.Messages, assistantMsg)
 
 		// Execute each tool call sequentially
 		for _, tc := range toolCalls {
@@ -137,19 +160,20 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
-			// Trim conversation history if cap is set
-			trimMessages(req, maxHistory)
-
 			// Add tool result message to conversation history
 			resultContent := resultText
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Function.Name)
 			}
-			req.Messages = append(req.Messages, litellm.Message{
-				Role:       "tool",
-				ToolCallID: tc.ID,
-				Content:    resultContent,
-			})
+			if sessionMgr != nil {
+				sessionMgr.AppendTool(sessionID, tc.ID, resultContent, isError)
+			} else {
+				req.Messages = append(req.Messages, litellm.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    resultContent,
+				})
+			}
 		}
 	}
 
