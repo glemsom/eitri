@@ -84,9 +84,8 @@ func TestGlob_SuccessfulMatch(t *testing.T) {
 	if !ok {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
-	// *.go matches only root-level .go files: bar.go, foo.go
-	// sub/qux.go is in subdirectory, shouldn't match *.go
-	expected := "bar.go\nfoo.go"
+	// *.go matches all .go files including nested: bar.go, foo.go, sub/qux.go
+	expected := "bar.go\nfoo.go\nsub/qux.go"
 	if block.Text != expected {
 		t.Errorf("got %q, want %q", block.Text, expected)
 	}
@@ -233,8 +232,8 @@ func TestGlob_RecursivePattern(t *testing.T) {
 	if !ok {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
-	// Should only match root.go (not deep.go)
-	expected := "root.go"
+	// * matches everything: root.go, pkg/sub/deep.go
+	expected := "pkg/sub/deep.go\nroot.go"
 	if block.Text != expected {
 		t.Errorf("got %q, want %q", block.Text, expected)
 	}
@@ -248,5 +247,40 @@ func TestGlob_ArgsUnmarshal(t *testing.T) {
 	}
 	if parsed.Pattern != "*.go" {
 		t.Errorf("Pattern = %q, want '*.go'", parsed.Pattern)
+	}
+}
+
+func TestGlob_PathPrefixedPattern(t *testing.T) {
+	dir := t.TempDir()
+	files := []string{"main.go", "internal/tool/glob.go", "internal/tool/grep.go", "pkg/util/helper.go"}
+	for _, f := range files {
+		fp := filepath.Join(dir, f)
+		if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fp, []byte("package main"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tool := NewGlobTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"internal/tool/*.go"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	// Should match internal/tool/glob.go, internal/tool/grep.go only
+	expected := "internal/tool/glob.go\ninternal/tool/grep.go"
+	if block.Text != expected {
+		t.Errorf("got %q, want %q", block.Text, expected)
 	}
 }
