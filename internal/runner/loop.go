@@ -10,7 +10,7 @@ import (
 
 	vocellitellm "github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/agent"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
@@ -35,7 +35,7 @@ func RunAgent(
 	maxHistory int,
 	sseWriter *runstate.Writer,
 	tools *tool.Registry,
-	sessionMgr *agent.SessionManager,
+	sessionMgr *history.SessionManager,
 	sessionID string,
 ) error {
 	if maxTurns <= 0 {

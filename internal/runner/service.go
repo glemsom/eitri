@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/agent"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/executor"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/provider"
@@ -58,7 +58,7 @@ type RunService struct {
 	sessionMgr      *executor.SessionManager
 	uiSessionMgr    *uisession.Manager
 	skillsSvc       *skills.Service
-	agentSessionMgr *agent.SessionManager
+	historySessionMgr *history.SessionManager
 	providerID      string
 	baseURL         string
 	apiKey          string
@@ -109,7 +109,7 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.systemPrompt = cfg.SystemPrompt
 	s.maxTurns = cfg.MaxTurns
 	s.maxHistory = cfg.MaxHistory
-	s.agentSessionMgr = agent.NewSessionManager(cfg.MaxHistory)
+	s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
 }
 
 // InvalidateRunners clears any cached state so new runs pick up config changes.
@@ -208,10 +208,10 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	}
 
 	// Set up session manager with system prompt and user message
-	if s.agentSessionMgr != nil {
-		s.agentSessionMgr.Create(sessionID)
-		s.agentSessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
-		s.agentSessionMgr.AppendUser(sessionID, userMessage)
+	if s.historySessionMgr != nil {
+		s.historySessionMgr.Create(sessionID)
+		s.historySessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
+		s.historySessionMgr.AppendUser(sessionID, userMessage)
 	}
 
 	maxTurnsVal := maxTurns
@@ -258,7 +258,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.agentSessionMgr, sessionID)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, sessionID)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				// Save partial content to session on cancellation so the UI
@@ -400,8 +400,8 @@ func (s *RunService) CancelAll() {
 // CloseSession cancels the active run and closes the executor session.
 func (s *RunService) CloseSession(sessionID string) error {
 	s.Cancel(sessionID)
-	if s.agentSessionMgr != nil {
-		s.agentSessionMgr.Close(sessionID)
+	if s.historySessionMgr != nil {
+		s.historySessionMgr.Close(sessionID)
 	}
 	if s.sessionMgr == nil {
 		return nil

@@ -221,9 +221,9 @@ These test the Go backend without a browser:
 | File | Tests |
 |------|-------|
 | `internal/api/server_test.go` | HTTP endpoints (health, chat, config, SSE), request-body limits, request logging |
-| `internal/agent/agent_test.go` | Agent initialization |
-| `internal/agent/openai_model_test.go` | OpenAI-compatible model calls, OpenCode Go and GitHub Copilot provider paths/headers, Bearer auth, streaming text/tool-call assembly, unsupported provider behavior, all via fake provider servers |
-| `internal/agent/tools_test.go` | Tool execution, `file_editor` edit payloads, create-parent-dir behavior, direct write without confirmation |
+| `internal/history/session_test.go` | Session lifecycle, history, sliding window cap |
+| `internal/fileutil/path_test.go` | Path validation |
+| `internal/fileutil/filetools_test.go` | File operations (ReadFile, EditFile, InsertLine, WriteFile, ListDirectory) |
 | `internal/config/config_test.go` | Config load/save/merge, provider enum validation, model-discovery validation through fake provider servers, secure file/dir permissions |
 | `internal/executor/tmux_test.go` | Tmux command execution, cancellation/timeout cleanup, child-process cleanup, and initial working directory = launch workspace |
 | `internal/executor/session_test.go` | Session lifecycle |
