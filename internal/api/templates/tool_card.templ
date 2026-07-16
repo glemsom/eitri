@@ -4,6 +4,7 @@ package templates
 // When status="running", shows tool name + args + "running..." indicator + live elapsed timer.
 // When status="done", shows tool name + output + "done" indicator + final elapsed time.
 // elapsed is the final elapsed time string (e.g. "↑ 1.2s", "↑ 2m 13s"), empty for running cards.
+// The details element is open by default when output has fewer than 30 lines.
 templ ToolCard(toolCallKey string, toolName string, args string, output string, status string, elapsed string) {
 	if status == "running" {
 		<div class="tool-card tool-running" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
@@ -22,20 +23,36 @@ templ ToolCard(toolCallKey string, toolName string, args string, output string, 
 			}
 		</div>
 	} else {
-		<details class="tool-card tool-done" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
-			<summary class="tool-card-header">
-				<span class="tool-icon">✅</span>
-				<span class="tool-name">{ toolName }</span>
-				<span class="tool-status">done</span>
-				if elapsed != "" {
-					<span class="tool-elapsed">{ elapsed }</span>
-				}
-				<span class="tool-chevron">▸</span>
-			</summary>
-			if output != "" {
+		// Collapse if output has 30+ lines
+		if output != "" && countLines(output) >= 30 {
+			<details class="tool-card tool-done" if toolCallKey != "" { data-tool-id={ toolCallKey } }>
+				<summary class="tool-card-header">
+					<span class="tool-icon">✅</span>
+					<span class="tool-name">{ toolName }</span>
+					<span class="tool-status">done</span>
+					if elapsed != "" {
+						<span class="tool-elapsed">{ elapsed }</span>
+					}
+					<span class="tool-chevron">▸</span>
+				</summary>
 				<pre class="tool-output"><code>{ output }</code></pre>
-			}
-		</details>
+			</details>
+		} else {
+			<details class="tool-card tool-done" open if toolCallKey != "" { data-tool-id={ toolCallKey } }>
+				<summary class="tool-card-header">
+					<span class="tool-icon">✅</span>
+					<span class="tool-name">{ toolName }</span>
+					<span class="tool-status">done</span>
+					if elapsed != "" {
+						<span class="tool-elapsed">{ elapsed }</span>
+					}
+					<span class="tool-chevron">▸</span>
+				</summary>
+				if output != "" {
+					<pre class="tool-output"><code>{ output }</code></pre>
+				}
+			</details>
+		}
 	}
 }
 
