@@ -109,7 +109,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 			if args.Path == "" && args.FilePath != "" {
 				args.Path = args.FilePath
 			}
-			absPath, err := validatePathWithAllowed(args.Path, workspace, skillDirs)
+			absPath, err := ValidatePathWithAllowed(args.Path, workspace, skillDirs)
 			if err != nil {
 				return fileViewerResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
@@ -176,7 +176,7 @@ func newAgentWithSkills(llm model.LLM, sessionMgr *executor.SessionManager, work
 			Description: "Create or edit files in workspace. Supports multiple modes:\n\n- \"create\": Create a new file. Fails if file already exists. Creates parent directories automatically.\n- \"overwrite\": Replace entire existing file content. Captures old content for diff display.\n- \"edit\": Surgical text replacement. Provide old text to find and new text to replace it with.\n  Optionally provide an anchor (\"LINE:HASH\" from file_viewer with include_line_info=true) to\n  restrict the search to the anchored line. Use this for small, targeted changes instead of overwrite.\n  Fails with match count if old text matches 0 or multiple times.\n- \"insert\": Insert new content after a specific line identified by a line-hash anchor.\n  Anchor must be in \"LINE:HASH\" format (e.g. \"15:a1b2c3\") obtained from file_viewer with\n  include_line_info=true. Use this to add new code at precise locations.\n\nBest practice: First read the file with file_viewer(include_line_info=true), then use the returned\nline-hash anchors for edit or insert operations. This avoids accidents from duplicate strings.",
 		},
 		func(ctx agent.Context, args fileEditorArgs) (fileEditorResult, error) {
-			absPath, err := validateWorkspacePath(args.Path, workspace)
+			absPath, err := ValidateWorkspacePath(args.Path, workspace)
 			if err != nil {
 				return fileEditorResult{}, fmt.Errorf("path validation failed: %w", err)
 			}
