@@ -244,6 +244,27 @@ func (m *Manager) AppendMessage(id string, msg Message) {
 	}
 }
 
+// AppendComponent appends component data to the last assistant message in a session.
+// No-op if session not found or if last message is not by assistant.
+func (m *Manager) AppendComponent(id string, comp ComponentData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	if len(s.Messages) == 0 {
+		return nil
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	if last.Role != "assistant" {
+		return nil
+	}
+	last.Components = append(last.Components, comp)
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
 func sessionTitlePreview(message string) string {
 	normalized := strings.Join(strings.Fields(message), " ")
 	if normalized == "" {

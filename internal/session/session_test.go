@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/session"
@@ -407,5 +408,111 @@ func TestActiveSkills(t *testing.T) {
 	// Non-existent session
 	if skills := mgr.ActiveSkills("nonexistent"); skills != nil {
 		t.Errorf("ActiveSkills for nonexistent session = %v, want nil", skills)
+	}
+}
+
+func TestAppendComponent(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+
+	// No assistant message yet — append should be no-op
+	comp := session.ComponentData{Name: "diff_card", Data: map[string]interface{}{"key": "val"}}
+	err := mgr.AppendComponent(sess.ID, comp)
+	if err != nil {
+		t.Fatalf("AppendComponent on empty session should not error: %v", err)
+	}
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 0 {
+		t.Errorf("Messages count = %d, want 0 (no-op)", len(got.Messages))
+	}
+
+	// Add assistant message, then append component
+	assistantMsg := session.Message{Role: "assistant", Content: "Here is the diff"}
+	mgr.AppendMessage(sess.ID, assistantMsg)
+
+	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: map[string]interface{}{"diff": "+new code"}})
+	if err != nil {
+		t.Fatalf("AppendComponent failed: %v", err)
+	}
+
+	got = mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	}
+	if len(got.Messages[0].Components) != 1 {
+		t.Fatalf("Components count = %d, want 1", len(got.Messages[0].Components))
+	}
+	if got.Messages[0].Components[0].Name != "diff_card" {
+		t.Errorf("Component name = %q, want %q", got.Messages[0].Components[0].Name, "diff_card")
+	}
+	if got.Messages[0].Components[0].Data["diff"] != "+new code" {
+		t.Errorf("Component data diff = %v, want %v", got.Messages[0].Components[0].Data["diff"], "+new code")
+	}
+
+	// Append second component to same message
+	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "mermaid", Data: map[string]interface{}{"chart": "graph"}})
+	if err != nil {
+		t.Fatalf("AppendComponent second failed: %v", err)
+	}
+
+	got = mgr.Get(sess.ID)
+	if len(got.Messages[0].Components) != 2 {
+		t.Fatalf("Components count after second append = %d, want 2", len(got.Messages[0].Components))
+	}
+}
+
+func TestAppendComponent_NoAssistantMessage(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+
+	// Only user message — no assistant message yet
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+
+	err := mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: nil})
+	if err != nil {
+		t.Fatalf("AppendComponent without assistant message should not error: %v", err)
+	}
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	}
+	if len(got.Messages[0].Components) != 0 {
+		t.Errorf("Components should be empty when no assistant message, got %d", len(got.Messages[0].Components))
+	}
+}
+
+func TestAppendComponent_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	err := mgr.AppendComponent("nonexistent", session.ComponentData{Name: "test", Data: nil})
+	if err != nil {
+		t.Errorf("AppendComponent for nonexistent session should not error, got: %v", err)
+	}
+}
+
+func TestAppendComponent_ConcurrentSafety(t *testing.T) {
+	mgr := session.NewManager(10)
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+
+	// Run concurrent appends to check for races
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mgr.AppendComponent(sess.ID, session.ComponentData{Name: "comp", Data: map[string]interface{}{"i": i}})
+		}(i)
+	}
+	wg.Wait()
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages[0].Components) != 20 {
+		t.Errorf("Components count after concurrent appends = %d, want 20", len(got.Messages[0].Components))
 	}
 }
