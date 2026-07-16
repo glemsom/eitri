@@ -1,7 +1,6 @@
 package tool
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,6 +19,8 @@ const maxGrepOutputBytes = 128 * 1024
 type grepArgs struct {
 	Pattern     string `json:"pattern" jsonschema:"Go regex (RE2 syntax) pattern to search for in file contents."`
 	FilePattern string `json:"file_pattern,omitempty" jsonschema:"Optional glob pattern to filter files by path relative to workspace root (e.g. '*.go' to search only Go files)."`
+
+	Context     int    `json:"context,omitempty" jsonschema:"Number of surrounding context lines to include before and after each match (default 0)."`
 }
 
 // GrepTool implements ToolHandler for searching file contents with regex.
@@ -41,7 +42,7 @@ func (t *GrepTool) Name() string {
 }
 
 func (t *GrepTool) Description() string {
-	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Results are returned as file:line:content, sorted by file then line number. Output is capped at 128 KiB."
+	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Use context=N to include N lines of surrounding context before and after each match; match lines are prefixed with >. Results are sorted by file then line number. Output is capped at 128 KiB."
 }
 
 func (t *GrepTool) JSONSchema() litellm.Schema {
@@ -58,7 +59,6 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks("Error: pattern is required"), nil, true
 	}
 
-	// Compile regex
 	re, err := regexp.Compile(parsed.Pattern)
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: invalid regex %q: %v", parsed.Pattern, err)), nil, true
@@ -73,9 +73,19 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	var matches []match
 	outputSize := 0
 	truncated := false
+	contextN := parsed.Context
+	if contextN < 0 {
+		contextN = 0
+	}
+
+	// fileCache stores all lines per file for context extraction
+	type fileLines struct {
+		relPath string
+		lines   []string
+	}
+	var fileCache []fileLines
 
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
-		// Check if text file (skip binary)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil
@@ -84,17 +94,23 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 			return nil
 		}
 
-		scanner := bufio.NewScanner(strings.NewReader(string(data)))
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+		allLines := strings.Split(string(data), "\n")
+
+		if contextN > 0 {
+			fileCache = append(fileCache, fileLines{relPath: relPath, lines: allLines})
+		}
+
+		for lineNum, line := range allLines {
+			lineNum++ // 1-indexed
 			if re.MatchString(line) {
-				// Estimate output size: "path:line:content\n"
-				lineSize := len(relPath) + 1 + len(fmt.Sprintf("%d", lineNum)) + 1 + len(line) + 1
+				prefix := ""
+				if contextN > 0 {
+					prefix = ">"
+				}
+				lineSize := len(prefix) + len(relPath) + 1 + len(fmt.Sprintf("%d", lineNum)) + 1 + len(line) + 1
 				if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
 					truncated = true
-					return &fileutil.WalkStop{} // stop the entire walk
+					return &fileutil.WalkStop{}
 				}
 				matches = append(matches, match{path: relPath, lineNum: lineNum, content: line})
 				outputSize += lineSize
@@ -107,7 +123,6 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks(fmt.Sprintf("Error: grep walk failed: %v", err)), nil, true
 	}
 
-	// Sort by file then line number
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].path != matches[j].path {
 			return matches[i].path < matches[j].path
@@ -115,10 +130,70 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return matches[i].lineNum < matches[j].lineNum
 	})
 
-	// Build output
 	var sb strings.Builder
-	for _, m := range matches {
-		sb.WriteString(fmt.Sprintf("%s:%d:%s\n", m.path, m.lineNum, m.content))
+
+	if contextN == 0 || len(matches) == 0 {
+		for _, m := range matches {
+			sb.WriteString(fmt.Sprintf("%s:%d:%s\n", m.path, m.lineNum, m.content))
+		}
+	} else {
+		cacheMap := make(map[string][]string)
+		for _, fl := range fileCache {
+			cacheMap[fl.relPath] = fl.lines
+		}
+
+		var lastPath string
+		var lastLine int
+		for _, m := range matches {
+			lines, ok := cacheMap[m.path]
+			if !ok {
+				sb.WriteString(fmt.Sprintf(">%s:%d:%s\n", m.path, m.lineNum, m.content))
+				continue
+			}
+
+			start := m.lineNum - 1 - contextN
+			end := m.lineNum - 1 + contextN
+			if start < 0 {
+				start = 0
+			}
+			if end >= len(lines) {
+				end = len(lines) - 1
+			}
+			if m.path == lastPath && start < lastLine {
+				start = lastLine
+			}
+
+			for i := start; i <= end; i++ {
+				lineNum := i + 1
+				var lineOut string
+				if i == m.lineNum-1 {
+					lineOut = fmt.Sprintf(">%s:%d:%s\n", m.path, lineNum, lines[i])
+				} else {
+					lineOut = fmt.Sprintf("%s:%d:%s\n", m.path, lineNum, lines[i])
+				}
+				if outputSize+len(lineOut) > maxGrepOutputBytes {
+					truncated = true
+					goto done
+				}
+				sb.WriteString(lineOut)
+				outputSize += len(lineOut)
+				lastLine = lineNum
+			}
+		}
+	done:
+	}
+
+	if contextN > 0 {
+		output := sb.String()
+		outputLines := strings.Split(output, "\n")
+		sb.Reset()
+		var prev string
+		for _, line := range outputLines {
+			if line != prev && line != "" {
+				sb.WriteString(line + "\n")
+			}
+			prev = line
+		}
 	}
 
 	output := sb.String()
