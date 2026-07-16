@@ -62,8 +62,9 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 	}
 
-	// Ensure parent directory exists
+	// Ensure parent directory exists and track how many were created
 	dir := filepath.Dir(absPath)
+	dirsCreated := countNewDirs(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return textBlocks(fmt.Sprintf("Error: creating directories: %v", err)), nil, true
 	}
@@ -88,5 +89,55 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 		output = fmt.Sprintf("Wrote %d bytes to %s (new file)", bytesWritten, parsed.Path)
 	}
 
+	if dirsCreated > 0 {
+		output = fmt.Sprintf("%s, %d dirs created", output, dirsCreated)
+	}
+
 	return textBlocks(output), nil, false
+}
+
+// countNewDirs returns how many directories must be created for a given path.
+// It walks up from path to find the first existing parent, then counts
+// components from that parent down to path.
+func countNewDirs(path string) int {
+	// If path already exists, nothing to create
+	if _, err := os.Stat(path); err == nil {
+		return 0
+	}
+
+	dir := path
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		if _, err := os.Stat(parent); err == nil {
+			// Count components from parent down to path
+			remaining := path
+			count := 0
+			for remaining != parent {
+				count++
+				remaining = filepath.Dir(remaining)
+				if remaining == filepath.Dir(remaining) {
+					break
+				}
+			}
+			return count
+		}
+		dir = parent
+	}
+
+	// No existing ancestor — count all components of path
+	remaining := path
+	count := 0
+	for {
+		parent := filepath.Dir(remaining)
+		if parent == remaining {
+			break
+		}
+		count++
+		remaining = parent
+	}
+	// Trim one for the root segment (e.g., "/" itself)
+	return count
 }

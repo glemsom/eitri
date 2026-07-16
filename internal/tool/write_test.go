@@ -225,3 +225,87 @@ func TestWrite_MissingContent(t *testing.T) {
 		t.Errorf("expected 'content is required' error, got %q", block.Text)
 	}
 }
+
+func TestWrite_ReportsDirectoriesCreated(t *testing.T) {
+	dir := t.TempDir()
+	tool := NewWriteTool(dir)
+
+	// Writing to a deeply nested path should report directories created
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"a/b/c/d/newfile.txt","content":"content"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+
+	// Output should mention directories created
+	if !strings.Contains(block.Text, "directories") && !strings.Contains(block.Text, "dirs") {
+		t.Errorf("output should mention directories created, got %q", block.Text)
+	}
+}
+
+func TestWrite_NoDirectoriesCreatedOnExistingPath(t *testing.T) {
+	dir := t.TempDir()
+	subDir := filepath.Join(dir, "existing")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewWriteTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"existing/file.txt","content":"hello"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+
+	// Output should NOT mention directories created (0 dirs)
+	if strings.Contains(block.Text, "0 directories") || strings.Contains(block.Text, "0 dirs") {
+		t.Errorf("output should not mention zero directories, got %q", block.Text)
+	}
+}
+
+func TestWrite_PartialDirectoriesCreated(t *testing.T) {
+	dir := t.TempDir()
+	// Create 'a/b' but not 'a/b/c/d'
+	if err := os.MkdirAll(filepath.Join(dir, "a", "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewWriteTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"a/b/c/d/partial.txt","content":"partial"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+
+	// Output should mention directories created
+	if !strings.Contains(block.Text, "2 dirs created") {
+		t.Errorf("expected '2 dirs created' in output, got %q", block.Text)
+	}
+}
