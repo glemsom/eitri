@@ -9,7 +9,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	eitriagent "github.com/glemsom/eitri/internal/agent"
+	"github.com/glemsom/eitri/internal/fileutil"
 )
 
 func TestFileEditor_Schema(t *testing.T) {
@@ -187,7 +187,7 @@ func TestFileEditor_InsertLine(t *testing.T) {
 	}
 
 	// Need the anchor from line2's hash
-	hash := eitriagent.LineHash("line2")
+	hash := fileutil.LineHash("line2")
 	anchor := "2:" + hash
 
 	tool := NewFileEditor(dir)

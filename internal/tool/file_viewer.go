@@ -7,7 +7,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	eitriagent "github.com/glemsom/eitri/internal/agent"
+	"github.com/glemsom/eitri/internal/fileutil"
 )
 
 type fileViewerArgs struct {
@@ -78,13 +78,13 @@ func (t *FileViewerTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 	}
 
 	// Validate path against workspace and skill dirs
-	absPath, err := eitriagent.ValidatePathWithAllowed(parsed.Path, t.workspace, t.skillDirs)
+	absPath, err := fileutil.ValidatePathWithAllowed(parsed.Path, t.workspace, t.skillDirs)
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 	}
 
 	if parsed.Mode == "list" {
-		dr, err := eitriagent.ListDirectory(absPath)
+		dr, err := fileutil.ListDirectory(absPath)
 		if err != nil {
 			return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 		}
@@ -100,11 +100,11 @@ func (t *FileViewerTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 		limit = *parsed.Limit
 	}
 
-	var vr eitriagent.FileViewerResult
+	var vr fileutil.FileViewerResult
 	if parsed.IncludeLineInfo {
-		vr, err = eitriagent.ReadFileWithLineInfo(absPath, parsed.Offset, limit)
+		vr, err = fileutil.ReadFileWithLineInfo(absPath, parsed.Offset, limit)
 	} else {
-		vr, err = eitriagent.ReadFile(absPath, parsed.Offset, limit)
+		vr, err = fileutil.ReadFile(absPath, parsed.Offset, limit)
 	}
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
