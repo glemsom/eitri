@@ -263,7 +263,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, sessionID)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				// Save partial content to session on cancellation so the UI

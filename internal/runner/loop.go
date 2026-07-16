@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/runstate"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
 )
 
@@ -37,6 +38,7 @@ func RunAgent(
 	sseWriter *runstate.Writer,
 	tools *tool.Registry,
 	sessionMgr *history.SessionManager,
+	uisessionMgr *uisession.Manager,
 	sessionID string,
 ) error {
 	if maxTurns <= 0 {
@@ -189,7 +191,13 @@ func RunAgent(
 
 			// Emit component event for compatible tools
 			if !isError {
-				emitComponentForTool(sseWriter, tc.Function.Name, args)
+				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args)
+				if ok && uisessionMgr != nil {
+					uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
+						Name: compName,
+						Data: compData,
+					})
+				}
 			}
 
 			// Add tool result message to conversation history
@@ -349,10 +357,11 @@ var componentToolMap = map[string]string{
 // emitComponentForTool emits a component event based on the tool name and args.
 // Supported tools: render_mermaid_diagram, render_quick_replies, render_diff_card, edit.
 // The edit tool emits a DiffCard using old_text/new_text from args.
-func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage) {
+// Returns (componentName, data, ok) for the caller to also persist the component.
+func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage) (string, map[string]interface{}, bool) {
 	componentName, ok := componentToolMap[toolName]
 	if !ok {
-		return
+		return "", nil, false
 	}
 
 	data := make(map[string]interface{})
@@ -363,7 +372,7 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 			Code string `json:"code"`
 		}
 		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Code == "" {
-			return
+			return "", nil, false
 		}
 		data["code"] = parsed.Code
 
@@ -372,7 +381,7 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 			Options []string `json:"options"`
 		}
 		if err := json.Unmarshal(args, &parsed); err != nil || len(parsed.Options) == 0 {
-			return
+			return "", nil, false
 		}
 		data["options"] = parsed.Options
 
@@ -384,10 +393,10 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 				NewText string `json:"new_text"`
 			}
 			if err := json.Unmarshal(args, &parsed); err != nil {
-				return
+				return "", nil, false
 			}
 			if parsed.OldText == "" && parsed.NewText == "" {
-				return
+				return "", nil, false
 			}
 			data["old"] = parsed.OldText
 			data["new"] = parsed.NewText
@@ -400,10 +409,10 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 				Lang string `json:"lang,omitempty"`
 			}
 			if err := json.Unmarshal(args, &parsed); err != nil {
-				return
+				return "", nil, false
 			}
 			if parsed.Old == "" && parsed.New == "" {
-				return
+				return "", nil, false
 			}
 			data["old"] = parsed.Old
 			data["new"] = parsed.New
@@ -411,7 +420,7 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		}
 
 	default:
-		return
+		return "", nil, false
 	}
 
 	w.Component(map[string]interface{}{
@@ -419,6 +428,7 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		"name": componentName,
 		"data": data,
 	})
+	return componentName, data, true
 }
 
 // truncateText truncates s to at most n runes, appending "..." when truncated.
