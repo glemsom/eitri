@@ -357,13 +357,24 @@ func (s *RunService) AppendEvent(state *RunState) string {
 
 // appendToSession persists an assistant message to the UI session.
 func (s *RunService) appendToSession(sessionID, content string) {
-	if s.uiSessionMgr != nil {
-		s.uiSessionMgr.AppendMessage(sessionID, uisession.Message{
-			Role:      "assistant",
-			Content:   content,
-			CreatedAt: time.Now(),
-		})
+	if s.uiSessionMgr == nil || content == "" {
+		return
 	}
+	// If the last message is an empty assistant (created by AppendComponent),
+	// update its content instead of creating a duplicate.
+	sess := s.uiSessionMgr.Get(sessionID)
+	if sess != nil && len(sess.Messages) > 0 {
+		last := sess.Messages[len(sess.Messages)-1]
+		if last.Role == "assistant" && last.Content == "" {
+			s.uiSessionMgr.UpdateLastAssistantContent(sessionID, content)
+			return
+		}
+	}
+	s.uiSessionMgr.AppendMessage(sessionID, uisession.Message{
+		Role:      "assistant",
+		Content:   content,
+		CreatedAt: time.Now(),
+	})
 }
 
 // Cancel cancels the active run for a session.

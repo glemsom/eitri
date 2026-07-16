@@ -1647,3 +1647,443 @@ func TestSSEEventSerialization(t *testing.T) {
 		t.Errorf("content = %v, want 'Hello, world!'", decoded["content"])
 	}
 }
+
+
+func TestComponentReplay_RendersMermaidDiagramAfterPageReload(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			var body struct {
+				Messages []struct {
+					Role string `json:"role"`
+				} `json:"messages"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			hasToolResult := false
+			for _, msg := range body.Messages {
+				if msg.Role == "tool" {
+					hasToolResult = true
+					break
+				}
+			}
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			if !hasToolResult {
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","content":""},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"render_mermaid_diagram","arguments":"{\"code\":\"graph TD; A-->B;\"}"}}]},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"done"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(llmSrv.Close)
+
+	configureProvider(t, h.server, llmSrv.URL)
+
+	client := noRedirectClient()
+
+	resp, err := client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("missing session ID")
+	}
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	chatPath := "/api/sessions/" + sessionID + "/chat"
+	chatReq, err := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Show diagram"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	chatReq.Header.Set("HX-Request", "true")
+	chatReq.AddCookie(browserCookie)
+
+	chatResp, err := client.Do(chatReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatResp.Body.Close()
+	if chatResp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", chatResp.StatusCode)
+	}
+
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+
+	if len(sess.Messages) < 2 {
+		t.Fatal("expected at least 2 messages")
+	}
+	assistantMsg := sess.Messages[1]
+	if assistantMsg.Role != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", assistantMsg.Role, "assistant")
+	}
+	if len(assistantMsg.Components) == 0 {
+		t.Fatal("expected components on assistant message, got none")
+	}
+
+	foundMermaid := false
+	for _, comp := range assistantMsg.Components {
+		if comp.Name == "MermaidDiagram" {
+			foundMermaid = true
+			break
+		}
+	}
+	if !foundMermaid {
+		t.Errorf("components missing MermaidDiagram, got: %v", assistantMsg.Components)
+	}
+
+	sessionURL := h.server.URL + "/sessions/" + sessionID
+	getReq, err := http.NewRequest("GET", sessionURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getReq.AddCookie(browserCookie)
+
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(bodyBytes)
+
+	if !strings.Contains(body, `class="mermaid"`) && !strings.Contains(body, `class="mermaid-diagram"`) {
+		t.Error("rendered page is missing Mermaid diagram HTML")
+	}
+	// HTML-escaped: > becomes &gt; in the rendered output
+	if !strings.Contains(body, `A--&gt;B;`) {
+		t.Error("rendered page is missing Mermaid diagram code")
+	}
+}
+
+func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			var body struct {
+				Messages []struct {
+					Role string `json:"role"`
+				} `json:"messages"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			hasToolResult := false
+			for _, msg := range body.Messages {
+				if msg.Role == "tool" {
+					hasToolResult = true
+					break
+				}
+			}
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			if !hasToolResult {
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","content":""},"index":0}]}`, "\n\n")
+				flusher.Flush()
+
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"render_mermaid_diagram","arguments":"{\"code\":\"graph TD; A-->B;\"}"}}]},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"render_quick_replies","arguments":"{\"options\":[\"yes\",\"no\"]}"}}]},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_3","type":"function","function":{"name":"render_diff_card","arguments":"{\"old\":\"foo\",\"new\":\"bar\"}"}}]},"index":0}]}`, "\n\n")
+				flusher.Flush()
+
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"done"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(llmSrv.Close)
+
+	configureProvider(t, h.server, llmSrv.URL)
+
+	client := noRedirectClient()
+
+	resp, err := client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("missing session ID")
+	}
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	chatPath := "/api/sessions/" + sessionID + "/chat"
+	chatReq, err := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Show components"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	chatReq.Header.Set("HX-Request", "true")
+	chatReq.AddCookie(browserCookie)
+
+	chatResp, err := client.Do(chatReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatResp.Body.Close()
+	if chatResp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", chatResp.StatusCode)
+	}
+
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+
+	if len(sess.Messages) < 2 {
+		t.Fatal("expected at least 2 messages")
+	}
+	assistantMsg := sess.Messages[1]
+	if assistantMsg.Role != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", assistantMsg.Role, "assistant")
+	}
+	if len(assistantMsg.Components) == 0 {
+		t.Fatal("expected components on assistant message, got none")
+	}
+
+	foundComponents := make(map[string]bool)
+	for _, comp := range assistantMsg.Components {
+		foundComponents[comp.Name] = true
+	}
+	if !foundComponents["MermaidDiagram"] {
+		t.Errorf("components missing MermaidDiagram, got: %v", assistantMsg.Components)
+	}
+	if !foundComponents["QuickReplies"] {
+		t.Errorf("components missing QuickReplies, got: %v", assistantMsg.Components)
+	}
+	if !foundComponents["DiffCard"] {
+		t.Errorf("components missing DiffCard, got: %v", assistantMsg.Components)
+	}
+
+	sessionURL := h.server.URL + "/sessions/" + sessionID
+	getReq, err := http.NewRequest("GET", sessionURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getReq.AddCookie(browserCookie)
+
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(bodyBytes)
+
+	if !strings.Contains(body, `class="mermaid"`) && !strings.Contains(body, `class="mermaid-diagram"`) {
+		t.Error("rendered page is missing Mermaid diagram HTML")
+	}
+	// HTML-escaped: > becomes &gt; in the rendered output
+	if !strings.Contains(body, `A--&gt;B;`) {
+		t.Error("rendered page is missing Mermaid diagram code")
+	}
+	if !strings.Contains(body, `yes`) || !strings.Contains(body, `no`) {
+		t.Error("rendered page is missing QuickReplies options")
+	}
+	if !strings.Contains(body, `foo`) || !strings.Contains(body, `bar`) {
+		t.Error("rendered page is missing DiffCard content")
+	}
+}
+
+func TestComponentReplay_NoComponentOnToolError(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			var body struct {
+				Messages []struct {
+					Role string `json:"role"`
+				} `json:"messages"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			hasToolResult := false
+			for _, msg := range body.Messages {
+				if msg.Role == "tool" {
+					hasToolResult = true
+					break
+				}
+			}
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			if !hasToolResult {
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","content":""},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_err","type":"function","function":{"name":"render_mermaid_diagram","arguments":"{\"code\":\"\"}"}}]},"index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+				flusher.Flush()
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"ok error handled"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(llmSrv.Close)
+
+	configureProvider(t, h.server, llmSrv.URL)
+
+	client := noRedirectClient()
+
+	resp, err := client.Get(h.server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
+	if sessionID == "" {
+		t.Fatal("missing session ID")
+	}
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("missing browser cookie")
+	}
+
+	chatPath := "/api/sessions/" + sessionID + "/chat"
+	chatReq, err := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Show diagram"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	chatReq.Header.Set("HX-Request", "true")
+	chatReq.AddCookie(browserCookie)
+
+	chatResp, err := client.Do(chatReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatResp.Body.Close()
+	if chatResp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", chatResp.StatusCode)
+	}
+
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+
+	if len(sess.Messages) < 2 {
+		t.Fatal("expected at least 2 messages")
+	}
+	assistantMsg := sess.Messages[1]
+	if len(assistantMsg.Components) > 0 {
+		t.Errorf("expected no components on error, got %v", assistantMsg.Components)
+	}
+}

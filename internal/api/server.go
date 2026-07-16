@@ -285,7 +285,9 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 		case "QuickReplies":
 			var options []string
 			if opts, ok := comp.Data["options"]; ok {
-				if optsArr, ok := opts.([]interface{}); ok {
+				if optsArr, ok := opts.([]string); ok {
+					options = optsArr
+				} else if optsArr, ok := opts.([]interface{}); ok {
 					for _, o := range optsArr {
 						if s, ok := o.(string); ok {
 							options = append(options, s)
@@ -1043,7 +1045,9 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 			var options []string
 			if req.Data != nil {
 				if opts, ok := req.Data["options"]; ok {
-					if optsArr, ok := opts.([]interface{}); ok {
+					if optsArr, ok := opts.([]string); ok {
+						options = optsArr
+					} else if optsArr, ok := opts.([]interface{}); ok {
 						for _, o := range optsArr {
 							if s, ok := o.(string); ok {
 								options = append(options, s)

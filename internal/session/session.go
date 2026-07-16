@@ -244,8 +244,8 @@ func (m *Manager) AppendMessage(id string, msg Message) {
 	}
 }
 
-// AppendComponent appends component data to the last assistant message in a session.
-// No-op if session not found or if last message is not by assistant.
+// AppendComponent appends component data to a session.
+// Creates an empty assistant message if no assistant message exists yet.
 func (m *Manager) AppendComponent(id string, comp ComponentData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -258,11 +258,35 @@ func (m *Manager) AppendComponent(id string, comp ComponentData) error {
 	}
 	last := &s.Messages[len(s.Messages)-1]
 	if last.Role != "assistant" {
-		return nil
+		// Create an assistant message so components have a target to attach to.
+		// Content will be filled when the run completes.
+		s.Messages = append(s.Messages, Message{
+			Role:      "assistant",
+			Content:   "",
+			CreatedAt: time.Now(),
+		})
+		last = &s.Messages[len(s.Messages)-1]
 	}
 	last.Components = append(last.Components, comp)
 	s.UpdatedAt = time.Now()
 	return nil
+}
+
+// UpdateLastAssistantContent updates the content of the last assistant message.
+// Does nothing if session not found or last message is not assistant.
+func (m *Manager) UpdateLastAssistantContent(id, content string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	if last.Role != "assistant" {
+		return
+	}
+	last.Content = content
+	s.UpdatedAt = time.Now()
 }
 
 func sessionTitlePreview(message string) string {

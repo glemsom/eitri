@@ -477,11 +477,20 @@ func TestAppendComponent_NoAssistantMessage(t *testing.T) {
 	}
 
 	got := mgr.Get(sess.ID)
-	if len(got.Messages) != 1 {
-		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	// AppendComponent now creates an assistant message when the last message is not assistant
+	if len(got.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2 (user + auto-created assistant with component)", len(got.Messages))
 	}
+	// The user message should have 0 components
 	if len(got.Messages[0].Components) != 0 {
-		t.Errorf("Components should be empty when no assistant message, got %d", len(got.Messages[0].Components))
+		t.Errorf("User message components should be 0, got %d", len(got.Messages[0].Components))
+	}
+	// The auto-created assistant message should have the component
+	if got.Messages[1].Role != "assistant" {
+		t.Errorf("second message role = %q, want %q", got.Messages[1].Role, "assistant")
+	}
+	if len(got.Messages[1].Components) != 1 {
+		t.Errorf("Assistant message components count = %d, want 1", len(got.Messages[1].Components))
 	}
 }
 
