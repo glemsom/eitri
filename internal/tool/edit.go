@@ -77,8 +77,17 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	// Count matches
 	count := strings.Count(oldContent, parsed.OldText)
 	if count == 0 {
-		// Provide nearby content hint
-		return textBlocks(fmt.Sprintf("Error: text %q not found in file. Use grep to find the exact text in the file.", parsed.OldText)), nil, true
+		// Provide nearby content hint: show first lines so LLM can self-correct
+		lines := strings.SplitN(oldContent, "\n", 6)
+		trunc := lines
+		if len(lines) > 5 {
+			trunc = lines[:5]
+		}
+		prefix := strings.Join(trunc, "\n")
+		if len(lines) > 5 {
+			prefix += "..."
+		}
+		return textBlocks(fmt.Sprintf("Error: text %q not found in file. File starts with:\n%s", parsed.OldText, prefix)), nil, true
 	}
 	if count > 1 {
 		return textBlocks(fmt.Sprintf("Error: text %q matched %d times in file, expected exactly 1 match. Include more surrounding context in 'old_text' to make it unique.", parsed.OldText, count)), nil, true

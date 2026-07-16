@@ -84,6 +84,46 @@ func TestEdit_SuccessfulEdit(t *testing.T) {
 	}
 }
 
+func TestEdit_NoMatch_IncludesContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "line one\nline two\nline three\nline four\nline five\nline six\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	textBlock, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(textBlock.Text, "not found") {
+		t.Errorf("error text should contain 'not found', got: %q", textBlock.Text)
+	}
+	if !strings.Contains(textBlock.Text, "File starts with:") {
+		t.Errorf("error text should contain 'File starts with:' context hint, got: %q", textBlock.Text)
+	}
+	if !strings.Contains(textBlock.Text, "line one") {
+		t.Errorf("error text should contain first line of file, got: %q", textBlock.Text)
+	}
+	if !strings.Contains(textBlock.Text, "line five") {
+		t.Errorf("error text should contain up to 5 lines of file, got: %q", textBlock.Text)
+	}
+	if strings.Contains(textBlock.Text, "line six") {
+		t.Errorf("error text should not show more than 5 lines, got: %q", textBlock.Text)
+	}
+}
+
 func TestEdit_NoMatch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
