@@ -489,7 +489,7 @@ func hasActivatedSkillContent(req capturedChatRequest, name string) bool {
 			return true
 		}
 		for _, call := range msg.ToolCalls {
-			if call.Function.Name == "activate_skill" {
+			if call.Function.Name == "skill" {
 				return true
 			}
 		}

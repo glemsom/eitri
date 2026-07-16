@@ -13,10 +13,10 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-func TestActivateSkill_Schema(t *testing.T) {
-	tool := NewActivateSkill(nil, nil)
-	if tool.Name() != "activate_skill" {
-		t.Errorf("Name = %q, want 'activate_skill'", tool.Name())
+func TestSkill_Schema(t *testing.T) {
+	tool := NewSkill(nil, nil)
+	if tool.Name() != "skill" {
+		t.Errorf("Name = %q, want 'skill'", tool.Name())
 	}
 	if tool.Description() == "" {
 		t.Error("Description should not be empty")
@@ -30,16 +30,16 @@ func TestActivateSkill_Schema(t *testing.T) {
 	}
 }
 
-func TestActivateSkill_InvalidArgs(t *testing.T) {
-	tool := NewActivateSkill(nil, nil)
+func TestSkill_InvalidArgs(t *testing.T) {
+	tool := NewSkill(nil, nil)
 	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
 }
 
-func TestActivateSkill_EmptyName(t *testing.T) {
-	tool := NewActivateSkill(nil, nil)
+func TestSkill_EmptyName(t *testing.T) {
+	tool := NewSkill(nil, nil)
 	_, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,8 +49,8 @@ func TestActivateSkill_EmptyName(t *testing.T) {
 	}
 }
 
-func TestActivateSkill_NilSkillsService(t *testing.T) {
-	tool := NewActivateSkill(nil, nil)
+func TestSkill_NilSkillsService(t *testing.T) {
+	tool := NewSkill(nil, nil)
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"test"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -78,7 +78,7 @@ func writeSkillFile(t *testing.T, dir, name string) {
 	}
 }
 
-func TestActivateSkill_ValidSkill(t *testing.T) {
+func TestSkill_ValidSkill(t *testing.T) {
 	rootDir := t.TempDir()
 	skillName := "test-skill"
 	writeSkillFile(t, rootDir, skillName)
@@ -90,7 +90,7 @@ func TestActivateSkill_ValidSkill(t *testing.T) {
 
 	uiMgr := session.NewManager(10)
 
-	tool := NewActivateSkill(svc, uiMgr)
+	tool := NewSkill(svc, uiMgr)
 
 	// Call without session ID in context (no activation recorded)
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"test-skill"}`))
@@ -112,7 +112,7 @@ func TestActivateSkill_ValidSkill(t *testing.T) {
 	}
 }
 
-func TestActivateSkill_WithSessionContext(t *testing.T) {
+func TestSkill_WithSessionContext(t *testing.T) {
 	rootDir := t.TempDir()
 	skillName := "test-skill-2"
 	writeSkillFile(t, rootDir, skillName)
@@ -128,7 +128,7 @@ func TestActivateSkill_WithSessionContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewActivateSkill(svc, uiMgr)
+	tool := NewSkill(svc, uiMgr)
 
 	// Call with session ID in context
 	sessCtx := context.WithValue(context.Background(), sessionIDKey, sess.ID)
@@ -150,9 +150,9 @@ func TestActivateSkill_WithSessionContext(t *testing.T) {
 	}
 }
 
-func TestActivateSkill_UnknownSkill(t *testing.T) {
+func TestSkill_UnknownSkill(t *testing.T) {
 	svc := skills.NewService()
-	tool := NewActivateSkill(svc, nil)
+	tool := NewSkill(svc, nil)
 
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"unknown-skill"}`))
 	if err != nil {
@@ -169,9 +169,9 @@ func TestActivateSkill_UnknownSkill(t *testing.T) {
 	}
 }
 
-func TestActivateSkill_ArgsUnmarshal(t *testing.T) {
+func TestSkill_ArgsUnmarshal(t *testing.T) {
 	args := json.RawMessage(`{"name":"code-review"}`)
-	var parsed activateSkillArgs
+	var parsed skillArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
