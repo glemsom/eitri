@@ -160,6 +160,11 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
+			// For edit tool, additionally emit a DiffCard component event
+			if tc.Function.Name == "edit" && !isError {
+				emitEditDiffCard(sseWriter, args)
+			}
+
 			// Add tool result message to conversation history
 			resultContent := resultText
 			if isError && resultContent == "" {
@@ -304,4 +309,30 @@ func toolResultHasError(blocks []vocellitellm.Block) bool {
 		return tr.IsError
 	}
 	return false
+}
+
+// emitEditDiffCard parses edit tool args and emits a DiffCard component event.
+func emitEditDiffCard(w *runstate.Writer, args json.RawMessage) {
+	var parsed struct {
+		Path    string `json:"path"`
+		OldText string `json:"old_text"`
+		NewText string `json:"new_text"`
+	}
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return
+	}
+	if parsed.OldText == "" && parsed.NewText == "" {
+		return
+	}
+	oldStr := parsed.OldText
+	newStr := parsed.NewText
+	w.Component(map[string]interface{}{
+		"kind": "component",
+		"name": "DiffCard",
+		"data": map[string]interface{}{
+			"old":  oldStr,
+			"new":  newStr,
+			"lang": "",
+		},
+	})
 }
