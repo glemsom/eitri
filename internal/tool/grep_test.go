@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"fmt"
+
 	"github.com/voocel/litellm"
 )
 
@@ -301,6 +303,152 @@ func TestGrep_VendorExclusion(t *testing.T) {
 	if strings.Contains(block.Text, "dep.go") {
 		t.Errorf("output should not contain dep.go from vendor directory")
 	}
+}
+
+func TestGrep_ContextLines(t *testing.T) {
+	dir := t.TempDir()
+	content := []string{
+		"line1",
+		"line2",
+		"line3 match",
+		"line4",
+		"line5",
+		"line6 match",
+		"line7",
+	}
+	if err := os.WriteFile(filepath.Join(dir, "test.txt"), []byte(strings.Join(content, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("context zero produces same output as before", func(t *testing.T) {
+		tool := NewGrepTool(dir)
+		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":0}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if isError {
+			t.Error("isError = true, want false")
+		}
+		block, ok := blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", blocks[0])
+		}
+		// context 0: only match lines, no > prefix
+		lines := strings.Split(strings.TrimSpace(block.Text), "\n")
+		if len(lines) != 2 {
+			t.Errorf("expected 2 match lines, got %d: %v", len(lines), lines)
+		}
+		for _, line := range lines {
+			if strings.HasPrefix(line, ">") {
+				t.Errorf("context=0 should not have > prefix: %q", line)
+			}
+		}
+	})
+
+	t.Run("context two returns surrounding lines", func(t *testing.T) {
+		tool := NewGrepTool(dir)
+		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":2}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if isError {
+			t.Error("isError = true, want false")
+		}
+		block, ok := blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", blocks[0])
+		}
+		lines := strings.Split(strings.TrimSpace(block.Text), "\n")
+		if len(lines) < 4 {
+			t.Errorf("expected at least 4 lines (matches + context), got %d", len(lines))
+		}
+		// Match lines should have > prefix
+		hasMatchPrefix := false
+		for _, line := range lines {
+			if strings.HasPrefix(line, ">test.txt:") {
+				hasMatchPrefix = true
+				break
+			}
+		}
+		if !hasMatchPrefix {
+			t.Errorf("expected at least one line with > prefix for match line, got:\n%s", block.Text)
+		}
+		// Context lines should not have > prefix
+		hasContextLine := false
+		for _, line := range lines {
+			if strings.HasPrefix(line, "test.txt:") && !strings.HasPrefix(line, ">") {
+				hasContextLine = true
+				break
+			}
+		}
+		if !hasContextLine {
+			t.Errorf("expected at least one context line without > prefix, got:\n%s", block.Text)
+		}
+	})
+
+	t.Run("context respects output cap", func(t *testing.T) {
+		dir2 := t.TempDir()
+		// Create many lines with long content so context output exceeds 128 KiB
+		var bigLines []string
+		for i := 0; i < 5000; i++ {
+			bigLines = append(bigLines, fmt.Sprintf("line-%d-%s", i, strings.Repeat("x", 80)))
+		}
+		// Every line is a match
+		if err := os.WriteFile(filepath.Join(dir2, "big.txt"), []byte(strings.Join(bigLines, "\n")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		tool := NewGrepTool(dir2)
+		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"^line-","context":2}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if isError {
+			t.Error("isError = true, want false")
+		}
+		block, ok := blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", blocks[0])
+		}
+		if !strings.Contains(block.Text, "truncated at 128 KiB") {
+			t.Errorf("expected truncation marker in output, got length %d", len(block.Text))
+		}
+	})
+
+	t.Run("context with file_pattern filter", func(t *testing.T) {
+		dir3 := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir3, "a.go"), []byte("line1\nline2 match\nline3\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir3, "b.txt"), []byte("line1\nline2 match\nline3\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		tool := NewGrepTool(dir3)
+		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":1,"file_pattern":"*.go"}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if isError {
+			t.Error("isError = true, want false")
+		}
+		block, ok := blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", blocks[0])
+		}
+		if !strings.Contains(block.Text, "a.go") {
+			t.Errorf("expected a.go in output")
+		}
+		if strings.Contains(block.Text, "b.txt") {
+			t.Errorf("output should not contain b.txt")
+		}
+		if !strings.Contains(block.Text, "a.go:1:line1") {
+			t.Errorf("expected context line a.go:1:line1, got:\n%s", block.Text)
+		}
+		if !strings.Contains(block.Text, "a.go:3:line3") {
+			t.Errorf("expected context line a.go:3:line3, got:\n%s", block.Text)
+		}
+	})
 }
 
 func TestGrep_ArgsUnmarshal(t *testing.T) {
