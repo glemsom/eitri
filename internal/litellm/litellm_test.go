@@ -386,6 +386,78 @@ func TestChatStream_TextDeltas(t *testing.T) {
 	}
 }
 
+func TestChatStream_ToolCallDeltas_NonSequentialIndices(t *testing.T) {
+	t.Parallel()
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Chunk 1: delta for index 5 (arrives first, key >> len of eventual map)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":5,"id":"call_5","type":"function","function":{"name":"get_time","arguments":"{\"tz\":\"UTC\"}"}}]},"index":0}]}`, "\n\n")
+		// Chunk 2: delta for index 0 (arrives second)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_0","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Paris\"}"}}]},"index":0}]}`, "\n\n")
+		// Chunk 3: arguments for index 5
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":5,"function":{"arguments":"}"}}]},"index":0}]}`, "\n\n")
+		// Chunk 4: delta for index 2 (gap: no index 1)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_2","type":"function","function":{"name":"search_docs","arguments":"{\"query\":\"api\"}"}}]},"index":0}]}`, "\n\n")
+		// Finish
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "weather and time?"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	events, err := collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	// Collect names from the final tool call event
+	var names []string
+	for _, evt := range events {
+		if evt.Type == litellm.StreamEventTypeToolCall && len(evt.ToolCalls) > 0 {
+			names = nil // reset — only care about last emission
+			for _, tc := range evt.ToolCalls {
+				names = append(names, tc.Function.Name)
+			}
+		}
+	}
+
+	// All three tool calls must be present — the current buggy code
+	// loses index 5 (key >= len=3) and index 2 (key >= len=3 after index 5 removal)
+	// but actually with sequential loop i=0..2, it misses indices 5 and 2.
+	// Actually let's think: after all chunks: map has keys [0,2,5], len=3.
+	// Loop i=0→found(i=0), i=1→not found, i=2→found(i=2), exit (i<3).
+	// Key 5 is skipped. So we get 2 tool calls instead of 3.
+	if len(names) != 3 {
+		t.Fatalf("got %d tool calls %v, want 3 tool calls", len(names), names)
+	}
+	// All three tool calls must be present regardless of arrival order
+	got := make(map[string]bool)
+	for _, n := range names {
+		got[n] = true
+	}
+	if !got["get_weather"] || !got["get_time"] || !got["search_docs"] {
+		t.Fatalf("tool call names = %v, missing some of [get_weather, get_time, search_docs]", names)
+	}
+}
+
 func TestChatStream_ToolCallDeltas(t *testing.T) {
 	t.Parallel()
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

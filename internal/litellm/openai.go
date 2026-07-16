@@ -180,17 +180,15 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 			}
 
 			tcs := make([]ToolCall, 0, len(toolCallBuf))
-			for i := 0; i < len(toolCallBuf); i++ {
-				if tc, ok := toolCallBuf[i]; ok {
-					tcs = append(tcs, ToolCall{
-						ID:   tc.ID,
-						Type: tc.Type,
-						Function: FunctionCall{
-							Name:      tc.Function.Name,
-							Arguments: tc.Function.Arguments,
-						},
-					})
-				}
+			for _, tc := range toolCallBuf {
+				tcs = append(tcs, ToolCall{
+					ID:   tc.ID,
+					Type: tc.Type,
+					Function: FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				})
 			}
 			ch <- StreamEvent{
 				Type:      StreamEventTypeToolCall,
