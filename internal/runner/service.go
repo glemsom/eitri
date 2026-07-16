@@ -162,7 +162,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	if s.skillsSvc != nil {
 		catalog := s.skillsSvc.SkillsCatalogXML()
 		if catalog != "" {
-			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call activate_skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
+			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
 		}
 	}
 	// Append pre-activated skill content
@@ -205,7 +205,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	toolReg.Register(tool.NewFileEditor(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewRenderComponent())
 	if s.skillsSvc != nil {
-		toolReg.Register(tool.NewActivateSkill(s.skillsSvc, s.uiSessionMgr))
+		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
 	}
 
 	// Set up session manager with system prompt and user message

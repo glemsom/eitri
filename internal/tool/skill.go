@@ -11,42 +11,42 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-type activateSkillArgs struct {
+type skillArgs struct {
 	Name string `json:"name" jsonschema:"Name of the skill to activate"`
 }
 
-// ActivateSkillTool implements ToolHandler for activating skills.
-type ActivateSkillTool struct {
+// SkillTool implements ToolHandler for activating skills.
+type SkillTool struct {
 	skillsSvc    *skills.Service
 	uiSessionMgr *session.Manager
 	schema       litellm.Schema
 }
 
-// NewActivateSkill creates a new ActivateSkillTool.
-func NewActivateSkill(skillsSvc *skills.Service, uiSessionMgr *session.Manager) *ActivateSkillTool {
-	return &ActivateSkillTool{
+// NewSkill creates a new SkillTool.
+func NewSkill(skillsSvc *skills.Service, uiSessionMgr *session.Manager) *SkillTool {
+	return &SkillTool{
 		skillsSvc:    skillsSvc,
 		uiSessionMgr: uiSessionMgr,
-		schema:       SchemaOf[activateSkillArgs](),
+		schema:       SchemaOf[skillArgs](),
 	}
 }
 
-func (t *ActivateSkillTool) Name() string {
-	return "activate_skill"
+func (t *SkillTool) Name() string {
+	return "skill"
 }
 
-func (t *ActivateSkillTool) Description() string {
+func (t *SkillTool) Description() string {
 	return "Activate a skill by name. Skills provide reusable instructions, references, and scripts for specialized tasks. Call this when a task matches an available skill description. Returns structured skill content including instructions and resource manifest."
 }
 
-func (t *ActivateSkillTool) JSONSchema() litellm.Schema {
+func (t *SkillTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *ActivateSkillTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-	var parsed activateSkillArgs
+func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+	var parsed skillArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("activate_skill: invalid args: %w", err), false
+		return nil, fmt.Errorf("skill: invalid args: %w", err), false
 	}
 
 	if parsed.Name == "" {
