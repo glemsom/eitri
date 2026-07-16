@@ -179,6 +179,64 @@ func TestEdit_MultipleMatches(t *testing.T) {
 	}
 }
 
+func TestEdit_SuccessfulEdit_IncludesOldNewContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\nbaz qux\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) < 3 {
+		t.Fatalf("expected at least 3 blocks, got %d", len(blocks))
+	}
+
+	// Block 0: confirmation
+	confBlock, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block[0] is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(confBlock.Text, "Edited file:") {
+		t.Errorf("block[0] = %q, want confirmation message", confBlock.Text)
+	}
+
+	// Block 1: old content
+	oldBlock, ok := blocks[1].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block[1] is %T, want TextBlock", blocks[1])
+	}
+	if !strings.Contains(oldBlock.Text, "foo bar") {
+		t.Errorf("block[1] should contain old text 'foo bar', got: %q", oldBlock.Text)
+	}
+
+	// Block 2: new content
+	newBlock, ok := blocks[2].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block[2] is %T, want TextBlock", blocks[2])
+	}
+	if !strings.Contains(newBlock.Text, "FOO BAR") {
+		t.Errorf("block[2] should contain new text 'FOO BAR', got: %q", newBlock.Text)
+	}
+
+	// Verify file was changed on disk
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "hello world\nFOO BAR\nbaz qux\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
 func TestEdit_PathOutsideWorkspace(t *testing.T) {
 	tool := NewEditTool("/tmp/workspace")
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))

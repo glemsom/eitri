@@ -162,7 +162,7 @@ func RunAgent(
 
 			// For edit tool, additionally emit a DiffCard component event
 			if tc.Function.Name == "edit" && !isError {
-				emitEditDiffCard(sseWriter, args)
+				emitEditDiffCard(sseWriter, blocks)
 			}
 
 			// Add tool result message to conversation history
@@ -311,21 +311,33 @@ func toolResultHasError(blocks []vocellitellm.Block) bool {
 	return false
 }
 
-// emitEditDiffCard parses edit tool args and emits a DiffCard component event.
-func emitEditDiffCard(w *runstate.Writer, args json.RawMessage) {
-	var parsed struct {
-		Path    string `json:"path"`
-		OldText string `json:"old_text"`
-		NewText string `json:"new_text"`
-	}
-	if err := json.Unmarshal(args, &parsed); err != nil {
+// emitEditDiffCard extracts old/new content from edit tool result blocks
+// and emits a DiffCard component event.
+func emitEditDiffCard(w *runstate.Writer, blocks []vocellitellm.Block) {
+	// blocks[0] is ToolResultBlock wrapping the TextBlocks from edit tool Call()
+	if len(blocks) == 0 {
 		return
 	}
-	if parsed.OldText == "" && parsed.NewText == "" {
+	tr, ok := blocks[0].(vocellitellm.ToolResultBlock)
+	if !ok || len(tr.Content) < 3 {
 		return
 	}
-	oldStr := parsed.OldText
-	newStr := parsed.NewText
+	var oldStr, newStr string
+	for _, b := range tr.Content {
+		tb, ok := b.(vocellitellm.TextBlock)
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(tb.Text, "OLD:\n") {
+			oldStr = strings.TrimPrefix(tb.Text, "OLD:\n")
+		}
+		if strings.HasPrefix(tb.Text, "NEW:\n") {
+			newStr = strings.TrimPrefix(tb.Text, "NEW:\n")
+		}
+	}
+	if oldStr == "" && newStr == "" {
+		return
+	}
 	w.Component(map[string]interface{}{
 		"kind": "component",
 		"name": "DiffCard",
