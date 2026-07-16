@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/voocel/litellm"
+
+	"github.com/glemsom/eitri/internal/fileutil"
 )
 
 const maxGrepOutputBytes = 128 * 1024
@@ -73,32 +75,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	outputSize := 0
 	truncated := false
 
-	err = filepath.WalkDir(t.workspace, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip inaccessible files/dirs
-		}
-
-		// Skip hidden directories
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
-			return filepath.SkipDir
-		}
-
-		// Skip vendor directory
-		if d.IsDir() && d.Name() == "vendor" {
-			return filepath.SkipDir
-		}
-
-		// Skip directories, only process files
-		if d.IsDir() {
-			return nil
-		}
-
-		// Get relative path for output and file_pattern matching
-		relPath, err := filepath.Rel(t.workspace, path)
-		if err != nil {
-			return nil
-		}
-
+	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
 		// Apply file pattern filter against relative path
 		if parsed.FilePattern != "" {
 			matched, err := filepath.Match(parsed.FilePattern, relPath)
@@ -126,7 +103,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 				lineSize := len(relPath) + 1 + len(fmt.Sprintf("%d", lineNum)) + 1 + len(line) + 1
 				if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
 					truncated = true
-					return filepath.SkipDir // stop walking
+					return &fileutil.WalkStop{} // stop the entire walk
 				}
 				matches = append(matches, match{path: relPath, lineNum: lineNum, content: line})
 				outputSize += lineSize
@@ -134,7 +111,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		}
 
 		return nil
-	})
+	}, parsed.FilePattern)
 	if err != nil && !truncated {
 		return textBlocks(fmt.Sprintf("Error: grep walk failed: %v", err)), nil, true
 	}
