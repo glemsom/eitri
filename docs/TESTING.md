@@ -275,10 +275,10 @@ Because Agent Skills are v1 scope, release readiness requires tests for:
 - Shadowing by duplicate `name`.
 - Lenient validation hard skips vs warnings.
 - `/skills`, `/api/skills`, and `/api/skills/refresh` contracts, including refresh-trigger behavior and surfaced diagnostics for malformed/unreadable Skills.
-- `activate_skill` accepting only refreshed effective loaded skills, deduping per session, and enforcing 200KB body cap.
+- `skill` accepting only refreshed effective loaded skills, deduping per session, and enforcing 200KB body cap.
 - Resource manifest cap and depth behavior.
-- `file_viewer` path validation for workspace + skill directories, including path-escape rejection.
-- `file_editor` remaining workspace-only.
+- `read` path validation for workspace + skill directories, including path-escape rejection.
+- `write` and `edit` workspace-only validation.
 - Slash activation parser for `/skill`, `/skill prompt`, multiple leading skills, and unknown slash `422`.
 
 ---
