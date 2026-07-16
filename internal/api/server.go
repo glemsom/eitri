@@ -251,16 +251,59 @@ func renderSessionForPage(sess *session.UISession) *session.UISession {
 		return nil
 	}
 
+	ctx := context.Background()
 	rendered := *sess
 	rendered.ActiveSkills = append([]string(nil), sess.ActiveSkills...)
 	rendered.Messages = make([]session.Message, len(sess.Messages))
 	for i, msg := range sess.Messages {
 		rendered.Messages[i] = msg
 		if msg.Role == "assistant" {
-			rendered.Messages[i].Content = renderMarkdownToHTML(msg.Content)
+			content := renderMarkdownToHTML(msg.Content)
+			componentsHTML := renderComponentsToHTML(ctx, sess.ID, msg.Components)
+			if componentsHTML != "" {
+				content += "\n" + componentsHTML
+			}
+			rendered.Messages[i].Content = content
 		}
 	}
 	return &rendered
+}
+
+// renderComponentsToHTML renders stored component data into HTML strings.
+// Components are rendered using the same templates as the SSE render endpoint.
+func renderComponentsToHTML(ctx context.Context, sessionID string, components []session.ComponentData) string {
+	if len(components) == 0 {
+		return ""
+	}
+	var html strings.Builder
+	for _, comp := range components {
+		switch comp.Name {
+		case "MermaidDiagram":
+			code, _ := comp.Data["code"].(string)
+			compTempl := templates.MermaidDiagram(code)
+			_ = compTempl.Render(ctx, &html)
+		case "QuickReplies":
+			var options []string
+			if opts, ok := comp.Data["options"]; ok {
+				if optsArr, ok := opts.([]interface{}); ok {
+					for _, o := range optsArr {
+						if s, ok := o.(string); ok {
+							options = append(options, s)
+						}
+					}
+				}
+			}
+			compTempl := templates.QuickReplies(sessionID, options)
+			_ = compTempl.Render(ctx, &html)
+		case "DiffCard":
+			oldCode, _ := comp.Data["old"].(string)
+			newCode, _ := comp.Data["new"].(string)
+			lang, _ := comp.Data["lang"].(string)
+			compTempl := templates.DiffCard(oldCode, newCode, lang)
+			_ = compTempl.Render(ctx, &html)
+		}
+	}
+	return html.String()
 }
 
 func (s *Server) registerRoutes() {
