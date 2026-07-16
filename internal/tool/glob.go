@@ -63,15 +63,24 @@ func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	// Walk the workspace looking for matches
 	var matches []string
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
-		// Use the absolute pattern for matching — we validate it's in workspace above
-		matched, err := filepath.Match(absPattern, path)
+		// Match pattern against just the filename first (so *.go matches sub/qux.go)
+		matched, err := filepath.Match(parsed.Pattern, filepath.Base(relPath))
 		if err != nil {
 			matched = false
 		}
 
-		// Also try matching against relative path
+		// If filename-only match fails, try against full relative path
+		// (for path-prefixed patterns like internal/tool/*.go)
 		if !matched {
 			matched, err = filepath.Match(parsed.Pattern, relPath)
+			if err != nil {
+				matched = false
+			}
+		}
+
+		// Also try against absolute path (for patterns resolved by ValidateWorkspacePath)
+		if !matched {
+			matched, err = filepath.Match(absPattern, path)
 			if err != nil {
 				matched = false
 			}
