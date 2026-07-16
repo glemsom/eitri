@@ -3827,3 +3827,104 @@ func TestBrowser_ComposerMobileKeyboard(t *testing.T) {
 	t.Logf("mobile main.overflowY=%s", mainOverflow)
 }
 
+func fakeThinkingChatServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	return fakeInstantChatServer(t, "Before <think>hidden reasoning</think> After")
+}
+
+// TestBrowser_ThinkingRendering verifies that thinking/reasoning content
+// wrapped in <think> tags renders as collapsible <details class="think-details">
+// elements in the DOM.
+func TestBrowser_ThinkingRendering(t *testing.T) {
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, fakeThinkingChatServer(t).URL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Navigate and send a message that will trigger thinking response
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", "Show thinking", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation/send failed: %v", err)
+	}
+
+	// Wait for run to complete — poll for assistant message with think-details
+	deadline := time.Now().Add(5 * time.Second)
+	var thinkDetailsFound bool
+	var summaryFound bool
+	var reasoningContentVisible bool
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('.message-assistant details.think-details') !== null`,
+				&thinkDetailsFound,
+			),
+		)
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if thinkDetailsFound {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Check for the details element
+	if !thinkDetailsFound {
+		t.Fatal("think-details not found in assistant message after thinking response")
+	}
+
+	// Verify summary contains "Thinking..."
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant details.think-details summary') !== null &&
+			 document.querySelector('.message-assistant details.think-details summary').textContent === 'Thinking...'`,
+			&summaryFound,
+		),
+	)
+	if err != nil || !summaryFound {
+		t.Fatalf("summar found=%v err=%v", summaryFound, err)
+	}
+
+	// Verify reasoning content is inside the details (may be hidden)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant details.think-details') !== null &&
+			 document.querySelector('.message-assistant details.think-details').textContent.includes('reasoning')`,
+			&reasoningContentVisible,
+		),
+	)
+	if err != nil || !reasoningContentVisible {
+		t.Fatalf("reasoning content found=%v err=%v", reasoningContentVisible, err)
+	}
+
+	// Verify non-think text ("Before" and "After") appears outside the details element
+	var beforeText, afterText bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant .message-content').textContent.includes('Before')`,
+			&beforeText,
+		),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('.message-assistant .message-content').textContent.includes('After')`,
+			&afterText,
+		),
+	)
+	if err != nil {
+		t.Fatalf("check non-think text failed: %v", err)
+	}
+	if !beforeText {
+		t.Error("text before <think> not rendered")
+	}
+	if !afterText {
+		t.Error("text after </think> not rendered")
+	}
+}
+
