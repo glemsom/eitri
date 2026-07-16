@@ -1,6 +1,7 @@
 package litellm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -316,3 +317,80 @@ func (s *sseScanner) Scan() bool {
 
 func (s *sseScanner) Event() string { return s.event }
 func (s *sseScanner) Data() string  { return s.data }
+
+// ————— shared HTTP request helpers —————
+
+// doChatRequest is a generic helper for non-streaming chat requests.
+// It marshals req to JSON, sends an HTTP POST, reads the full response body,
+// and unmarshals the JSON into a new *Resp.
+//
+// setHeaders is called after Content-Type and Accept are set so the adapter
+// can add auth, tracking, or other headers.
+func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*Resp, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	setHeaders(httpReq)
+
+	resp, err := doRequest(ctx, client, httpReq)
+	if err != nil {
+		return nil, err
+	}
+
+	respBody, err := readAll(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, classifyHTTPError(resp.StatusCode, respBody)
+	}
+
+	var wireResp Resp
+	if err := json.Unmarshal(respBody, &wireResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &wireResp, nil
+}
+
+// doChatStreamRequest is a generic helper for streaming chat requests.
+// It marshals req to JSON, sends an HTTP POST with Accept: text/event-stream,
+// checks the response status, and returns the raw *http.Response.
+// The caller must start a goroutine to read the stream from resp.Body.
+//
+// setHeaders is called after Content-Type and Accept are set.
+func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*http.Response, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+	setHeaders(httpReq)
+
+	resp, err := doRequest(ctx, client, httpReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := readAll(resp)
+		return nil, classifyHTTPError(resp.StatusCode, body)
+	}
+
+	return resp, nil
+}

@@ -2,7 +2,6 @@ package litellm
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,65 +31,26 @@ func NewOpenAI(model, baseURL, apiKey string) *OpenAI {
 func (s *OpenAI) Chat(ctx context.Context, req Request) (*Response, error) {
 	wireReq := toOpenAIRequest(req)
 	wireReq.Stream = false
-	body, err := json.Marshal(wireReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
 
-		httpReq, err := http.NewRequestWithContext(ctx, "POST", s.baseURL+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := doRequest(ctx, s.client, httpReq)
+	resp, err := doChatRequest[openAIReq, openAIResp](ctx, s.client, s.baseURL+"/v1/chat/completions", wireReq, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+s.apiKey)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	respBody, err := readAll(resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, classifyHTTPError(resp.StatusCode, respBody)
-	}
-
-	var openAIResp openAIResp
-	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return fromOpenAIResponse(openAIResp), nil
+	return fromOpenAIResponse(*resp), nil
 }
 
 func (s *OpenAI) ChatStream(ctx context.Context, req Request) (<-chan StreamEvent, error) {
 	wireReq := toOpenAIRequest(req)
 	wireReq.Stream = true
-	body, err := json.Marshal(wireReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", s.baseURL+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
-	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
-
-	resp, err := doRequest(ctx, s.client, httpReq)
+	resp, err := doChatStreamRequest(ctx, s.client, s.baseURL+"/v1/chat/completions", wireReq, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+s.apiKey)
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := readAll(resp)
-		return nil, classifyHTTPError(resp.StatusCode, body)
 	}
 
 	ch := make(chan StreamEvent, 64)
