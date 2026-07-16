@@ -1,0 +1,157 @@
+package tool
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/voocel/litellm"
+)
+
+func TestEdit_Schema(t *testing.T) {
+	tool := NewEditTool("/tmp/workspace")
+	if tool.Name() != "edit" {
+		t.Errorf("Name = %q, want 'edit'", tool.Name())
+	}
+	if tool.Description() == "" {
+		t.Error("Description should not be empty")
+	}
+	schema := tool.JSONSchema()
+	if schema == nil {
+		t.Fatal("JSONSchema is nil")
+	}
+	if !json.Valid(schema) {
+		t.Error("JSONSchema is not valid JSON")
+	}
+}
+
+func TestEdit_InvalidArgs(t *testing.T) {
+	tool := NewEditTool("/tmp/workspace")
+	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	if err == nil {
+		t.Fatal("expected error for invalid args")
+	}
+}
+
+func TestEdit_EmptyPath(t *testing.T) {
+	tool := NewEditTool("/tmp/workspace")
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"old_text":"foo","new_text":"bar"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+	if len(blocks) > 0 {
+		result, ok := blocks[0].(litellm.TextBlock)
+		if ok && result.Text == "" {
+			t.Error("expected error text")
+		}
+	}
+}
+
+func TestEdit_SuccessfulEdit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "hello world\nfoo bar\nbaz qux\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+
+	// Verify file was changed on disk
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "hello world\nFOO BAR\nbaz qux\n"
+	if string(data) != want {
+		t.Errorf("content = %q, want %q", string(data), want)
+	}
+}
+
+func TestEdit_NoMatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(path, []byte("hello world"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	textBlock, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(textBlock.Text, "not found") {
+		t.Errorf("error text should mention 'not found', got: %q", textBlock.Text)
+	}
+}
+
+func TestEdit_MultipleMatches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	content := "repeat\nmiddle\nrepeat\nend\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"repeat","new_text":"unique"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	textBlock, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(textBlock.Text, "matched") && !strings.Contains(textBlock.Text, "times") {
+		t.Errorf("error text should mention match count, got: %q", textBlock.Text)
+	}
+}
+
+func TestEdit_PathOutsideWorkspace(t *testing.T) {
+	tool := NewEditTool("/tmp/workspace")
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true (path outside workspace)")
+	}
+	if len(blocks) > 0 {
+		result, ok := blocks[0].(litellm.TextBlock)
+		if ok && result.Text == "" {
+			t.Error("expected error text")
+		}
+	}
+}
