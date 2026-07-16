@@ -7,7 +7,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	eitriagent "github.com/glemsom/eitri/internal/agent"
+	"github.com/glemsom/eitri/internal/fileutil"
 )
 
 type fileEditorArgs struct {
@@ -68,7 +68,7 @@ func (t *FileEditorTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 		return textBlocks("Error: path is required"), nil, true
 	}
 
-	absPath, err := eitriagent.ValidateWorkspacePath(parsed.Path, t.workspace)
+	absPath, err := fileutil.ValidateWorkspacePath(parsed.Path, t.workspace)
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 	}
@@ -78,7 +78,7 @@ func (t *FileEditorTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 		if parsed.Old == "" {
 			return textBlocks("Error: edit mode requires 'old' text"), nil, true
 		}
-		er, err := eitriagent.EditFile(absPath, parsed.Old, parsed.New, parsed.Anchor)
+		er, err := fileutil.EditFile(absPath, parsed.Old, parsed.New, parsed.Anchor)
 		if err != nil {
 			return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 		}
@@ -91,7 +91,7 @@ func (t *FileEditorTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 		if parsed.Anchor == "" {
 			return textBlocks("Error: insert mode requires 'anchor'"), nil, true
 		}
-		er, err := eitriagent.InsertLine(absPath, parsed.Anchor, parsed.Content)
+		er, err := fileutil.InsertLine(absPath, parsed.Anchor, parsed.Content)
 		if err != nil {
 			return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 		}
@@ -102,7 +102,7 @@ func (t *FileEditorTool) Call(ctx context.Context, args json.RawMessage) ([]lite
 		if parsed.Content == "" {
 			return textBlocks("Error: content is required for create/overwrite mode"), nil, true
 		}
-		er, err := eitriagent.WriteFile(absPath, parsed.Content, parsed.Mode)
+		er, err := fileutil.WriteFile(absPath, parsed.Content, parsed.Mode)
 		if err != nil {
 			return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 		}
