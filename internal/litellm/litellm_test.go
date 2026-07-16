@@ -774,6 +774,179 @@ func TestChatStream_AnthropicTextDeltas(t *testing.T) {
 
 // ————— Unsupported provider —————
 
+func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
+	t.Parallel()
+	// Verify IsReasoning flag is set on reasoning token events and
+	// reasoning content is wrapped in <think> tags via buffering.
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","reasoning_content":"Reasoning text"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Answer text"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	events, err := collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	type token struct {
+		content     string
+		isReasoning bool
+	}
+	var tokens []token
+	for _, evt := range events {
+		if evt.Type == litellm.StreamEventTypeToken {
+			tokens = append(tokens, token{content: evt.Content, isReasoning: evt.IsReasoning})
+		}
+	}
+
+	if len(tokens) != 2 {
+		t.Fatalf("got %d tokens, want 2 (reasoning + content)", len(tokens))
+	}
+	if tokens[0].content != "<think>Reasoning text</think>" {
+		t.Fatalf("first token = %q, want %q", tokens[0].content, "<think>Reasoning text</think>")
+	}
+	if !tokens[0].isReasoning {
+		t.Fatal("first token should have IsReasoning=true")
+	}
+	if tokens[1].content != "Answer text" {
+		t.Fatalf("second token = %q, want %q", tokens[1].content, "Answer text")
+	}
+	if tokens[1].isReasoning {
+		t.Fatal("second token should have IsReasoning=false")
+	}
+}
+
+func TestChatStream_ReasoningContentWrappedInThinkTags(t *testing.T) {
+	t.Parallel()
+	// Provider sends reasoning_content deltas, then regular content deltas.
+	// The adapter should buffer reasoning and flush as <think>...</think> wrapper.
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		// Reasoning deltas
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","reasoning_content":"Let me think"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"reasoning_content":" about this"},"index":0}]}`, "\n\n")
+		// Regular content delta
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Here is the answer"},"index":0}]}`, "\n\n")
+		// Done
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	events, err := collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	var gotText strings.Builder
+	for _, evt := range events {
+		if evt.Type == litellm.StreamEventTypeToken {
+			gotText.WriteString(evt.Content)
+		}
+	}
+	// Expected: reasoning wrapped in <think>, then regular content
+	want := "<think>Let me think about this</think>Here is the answer"
+	if gotText.String() != want {
+		t.Fatalf("streamed text = %q, want %q", gotText.String(), want)
+	}
+}
+
+func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
+	t.Parallel()
+	// Provider sends only reasoning_content with no regular content.
+	// Should flush reasoning wrapped in <think> at end of stream.
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","reasoning_content":"Just thinking"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	events, err := collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	var gotText strings.Builder
+	for _, evt := range events {
+		if evt.Type == litellm.StreamEventTypeToken {
+			gotText.WriteString(evt.Content)
+		}
+	}
+	want := "<think>Just thinking</think>"
+	if gotText.String() != want {
+		t.Fatalf("streamed text = %q, want %q", gotText.String(), want)
+	}
+}
+
 func TestNewLLMService_UnsupportedProvider(t *testing.T) {
 	t.Parallel()
 	_, err := litellm.NewLLMService(litellm.AdapterConfig{

@@ -69,6 +69,21 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 	// Accumulate tool call fragments across chunks
 	toolCallBuf := make(map[int]*openAIToolCall) // index -> accumulated tool call
 
+	// Buffer for reasoning content deltas
+	var reasoningBuf strings.Builder
+
+	// flushReasoning sends buffered reasoning as a single <think>...</think> token.
+	flushReasoning := func() {
+		if reasoningBuf.Len() > 0 {
+			ch <- StreamEvent{
+				Type:        StreamEventTypeToken,
+				Content:     "<think>" + reasoningBuf.String() + "</think>",
+				IsReasoning: true,
+			}
+			reasoningBuf.Reset()
+		}
+	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -79,12 +94,14 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
+			flushReasoning()
 			ch <- StreamEvent{Type: StreamEventTypeDone}
 			return
 		}
 
 		var chunk openAIChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			flushReasoning()
 			ch <- StreamEvent{
 				Type:  StreamEventTypeError,
 				Error: fmt.Errorf("failed to parse stream chunk: %w", err),
@@ -93,6 +110,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		}
 
 		if chunk.Error != nil {
+			flushReasoning()
 			ch <- StreamEvent{
 				Type:  StreamEventTypeError,
 				Error: fmt.Errorf("LLM error: %s", chunk.Error.Message),
@@ -106,12 +124,11 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		choice := chunk.Choices[0]
 
 		if choice.Delta.ReasoningContent != "" {
-			ch <- StreamEvent{
-				Type:    StreamEventTypeToken,
-				Content: choice.Delta.ReasoningContent,
-			}
+			reasoningBuf.WriteString(choice.Delta.ReasoningContent)
 		}
 		if choice.Delta.Content != "" {
+			// Flush any buffered reasoning before regular content
+			flushReasoning()
 			ch <- StreamEvent{
 				Type:    StreamEventTypeToken,
 				Content: choice.Delta.Content,
@@ -163,6 +180,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		}
 
 		if choice.FinishReason != "" {
+			flushReasoning()
 			ch <- StreamEvent{
 				Type:         StreamEventTypeDone,
 				FinishReason: choice.FinishReason,
@@ -171,6 +189,8 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 			return
 		}
 	}
+
+	flushReasoning()
 
 	if err := scanner.Err(); err != nil {
 		ch <- StreamEvent{

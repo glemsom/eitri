@@ -65,12 +65,13 @@ const (
 
 // StreamEvent is one event from a streaming response.
 type StreamEvent struct {
-	Type       StreamEventType
-	Content    string      // text delta for Token events
-	ToolCalls  []ToolCall  // tool calls for ToolCall events
-	FinishReason string    // set on Done events
-	Usage      *Usage      // set on Done events (if provider sends it)
-	Error      error       // set on Error events
+	Type         StreamEventType
+	Content      string      // text delta for Token events
+	ToolCalls    []ToolCall  // tool calls for ToolCall events
+	FinishReason string      // set on Done events
+	Usage        *Usage      // set on Done events (if provider sends it)
+	Error        error       // set on Error events
+	IsReasoning  bool        // true if Content contains <think>...</think> reasoning tokens
 }
 
 // AdapterConfig configures an LLM adapter.
