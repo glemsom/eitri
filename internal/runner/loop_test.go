@@ -430,6 +430,75 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	}
 }
 
+// ── Blocking mock for cancellation tests ──────────────────────────────────
+
+// blockingMockLLM sends one token event, signals started, then blocks
+// until the context is cancelled. Useful for testing partial result preservation.
+type blockingMockLLM struct {
+	content string
+	started chan struct{} // closed after first token is sent
+}
+
+func (m *blockingMockLLM) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented, use ChatStream")
+}
+
+func (m *blockingMockLLM) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+	ch := make(chan litellm.StreamEvent, 1)
+	ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: m.content}
+	close(m.started)
+	return ch, nil
+}
+
+func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	started := make(chan struct{})
+	llm := &blockingMockLLM{
+		content: "Partial response text...",
+		started: started,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	// Start RunAgent in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil)
+	}()
+
+	// Wait for streaming to start (first token sent)
+	<-started
+
+	// Cancel context mid-stream
+	cancel()
+
+	err := <-errCh
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	// Verify partial result was appended to conversation history
+	if len(req.Messages) != 2 {
+		t.Fatalf("req.Messages length = %d, want 2 (user + partial assistant)", len(req.Messages))
+	}
+	if req.Messages[1].Role != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", req.Messages[1].Role, "assistant")
+	}
+	if !strings.Contains(req.Messages[1].Content, "Partial response") {
+		t.Errorf("message[1] content = %q, want to contain 'Partial response'", req.Messages[1].Content)
+	}
+}
+
 func TestRunAgent_StreamError(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()

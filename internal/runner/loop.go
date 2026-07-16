@@ -63,6 +63,16 @@ func RunAgent(
 		content, toolCalls, streamErr := drainStream(ctx, stream, sseWriter)
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
+				// Preserve partial result: append assistant message with accumulated
+				// content and any tool calls to conversation history before returning.
+				if content.Len() > 0 || len(toolCalls) > 0 {
+					req.Messages = append(req.Messages, litellm.Message{
+						Role:      "assistant",
+						Content:   content.String(),
+						ToolCalls: toolCalls,
+					})
+					trimMessages(req, maxHistory)
+				}
 				return streamErr
 			}
 			sseWriter.Error(runstate.FormatErrorMessage(streamErr))
