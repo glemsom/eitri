@@ -352,6 +352,21 @@ func splitLines(text string) []string {
 	return lines
 }
 
+// countLines returns the number of lines in s.
+// An empty string has 0 lines; a non-empty string with no newlines has 1.
+func countLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	n := 1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			n++
+		}
+	}
+	return n
+}
+
 // escapeDiff escapes HTML special characters in diff output.
 func escapeDiff(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
