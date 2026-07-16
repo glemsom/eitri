@@ -15,7 +15,8 @@ flowchart LR
         API["api/ (routes, SSE)"]
         RunSvc["runner/ (RunService)"]
         Runner["runner/ (Manager - cache)"]
-        Agent["agent/ (ADK runner)"]
+        History["history/ (session history)"]
+        FileUtil["fileutil/ (file operations)"]
         Skills["skills/ (Agent Skills registry)"]
         Executor["executor/ (tmux)"]
         Config["config/ (JSON file)"]
@@ -25,9 +26,10 @@ flowchart LR
     API --> RunSvc
     API --> Skills
     RunSvc --> Runner
-    RunSvc --> Agent
-    Agent --> Skills
-    Agent --> Executor
+    RunSvc --> History
+    RunSvc --> FileUtil
+    RunSvc --> Skills
+    RunSvc --> Executor
 ```
 
 ## Module map
@@ -40,24 +42,33 @@ Orchestrates startup:
 3. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
 4. **Session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace; startup also begins idle-timeout cleanup using configured `session_timeout`
 5. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
-6. **Built-in tools** (`agent.newAgentWithSkills`) — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
-7. **ADK session service** (`session.InMemoryService`) — stores conversation history
-8. **Runner manager** (`runner.NewManager`) — caches ADK runner, hot-reloads on config or skills-catalog changes
-9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux), delegates runner creation to RunnerManager; prints workspace + URL and optionally opens URL via `xdg-open`
+6. **Built-in tools** — `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`
+7. **History service** (`internal/history/`) — stores conversation history with sliding window
+8. **File utility** (`internal/fileutil/`) — file path validation, workspace checks, read/write operations
+9. **Runner manager** (`runner.NewManager`) — caches ADK runner, hot-reloads on config or skills-catalog changes
+10. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux), delegates runner creation to RunnerManager; prints workspace + URL and optionally opens URL via `xdg-open`
 
 Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, closes executors, then shuts down HTTP.
 
-### `internal/agent/` — ADK agent + model
+### `internal/history/` — Conversation session manager
 
 | File | Responsibility |
 |------|---------------|
-| `agent.go` | `NewAgent()` — factory wrapping `google.golang.org/adk/v2/agent/llmagent` |
-| `openai_model.go` | Thin agent-facing wrappers still used by transport-focused tests; production provider-aware chat setup goes through `internal/provider.NewChatModel()` |
-| `agent.go` | `newAgentWithSkills()` — registers 5 built-in function tools inline |
+| `session.go` | `SessionManager` — per-chat LLM conversation history with sliding window cap |
+| `session_test.go` | Unit tests for session lifecycle, history, sliding window |
 
-**Key design choice**: ADK v2 only ships `model/gemini` and `model/apigee`. Eitri implements `model.LLM` directly via plain HTTP through provider profiles, but transport ownership now lives in `internal/provider` so callers can ask Provider module for ready-to-use chat models instead of assembling provider-specific details themselves. Existing OpenAI-compatible profiles (`opencode_go`, `custom_openai`) discover models at `/v1/models` and chat at `/v1/chat/completions`; `custom_openai` remains advanced/best-effort when it satisfies Eitri's minimum OpenAI-compatible streaming tool-call contract. GitHub Copilot auth now resolves through `internal/provider` seams before both model discovery and chat requests, so Settings UX, validation, discovery, runtime requests, and expired-OAuth refresh can converge behind one Provider module instead of scattered caller logic.
+`SessionManager` stores per-session message history with a configurable exchange cap. System prompt stored separately and prepended on reads. Session creation, user/assistant/tool message append, sliding-window trim, and close are supported operations. Lost on server restart.
 
-**Tool model**: Tools are defined as Go structs with JSON tags + `jsonschema:` struct tags (parsed by ADK internally). Each tool maps to a Go function that receives `agent.Context` for session ID access.
+### `internal/fileutil/` — File path validation and operations
+
+| File | Responsibility |
+|------|---------------|
+| `path.go` | `ValidateWorkspacePath`, `ValidatePathWithAllowed` — workspace path validation |
+| `path_test.go` | Unit tests for path validation |
+| `filetools.go` | `ReadFile`, `ReadFileWithLineInfo`, `LineHash`, `EditFile`, `InsertLine`, `WriteFile`, `ListDirectory`, `FileViewerResult` |
+| `filetools_test.go` | Unit tests for file operations |
+
+Used by `file_viewer` and `file_editor` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories.
 
 ### `internal/provider/` — provider profiles + caller-facing seams
 
@@ -71,7 +82,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 
 **Caller contract**: caller modules use narrow Provider seams, not raw profile/auth/transport internals. `config` reads caller-safe metadata via `Describe()` / `MustDescribe()` and validates persisted credentials via `ValidateCredentials()` plus `NormalizeConfigAuthState()`. Settings load/save, `/api/models`, and post-device-flow model refresh use `DiscoverModels()`. Chat-run startup uses `NewChatModel()`. GitHub device-flow UI polls through caller-safe `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`, not raw OAuth token payload handling. Provider package never writes app config itself; callers persist returned auth updates when needed.
 
-Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/agent/agent.go`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
+Built-in tools: `terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`. Implementations live in `internal/tool/`. The `activate_skill` tool delegates to `internal/skills` and returns structured skill instructions/resources for the current session.
 
 ### `internal/api/` — HTTP server + Templ templates
 
@@ -125,7 +136,7 @@ func (s *Service) Current() *Registry
 func (s *Service) Activate(ctx context.Context, sessionID, name string) (*ActivatedSkill, error)
 ```
 
-`api.Server` stores active skill names per UI session. `agent` calls `Activate` through the built-in `activate_skill` tool. At chat-run start, `api.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into ADK session history. API and agent packages consume this service; they never scan skill files directly.
+`api.Server` stores active skill names per UI session. The `activate_skill` tool (in `internal/tool/`) delegates to `skills.Service`. At chat-run start, `runner.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral `activate_skill` tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into conversation history. API and runner packages consume this service; they never scan skill files directly.
 
 ### `internal/runner/` — Run service + runner cache
 
@@ -136,7 +147,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `manager.go` | `Manager` struct — caches ADK `runner.Runner`, hot-reloads on config change |
 | `manager_test.go` | Table-driven tests for cache hit, cache miss, invalidation |
 
-**RunService**: consolidates run lifecycle behind a single seam. `StartRun()` builds the agent (NewChatModel → skill context → ADK agent), gets or creates a cached runner, and starts the ADK event loop. `Subscribe()`/`Unsubscribe()` manage SSE fan-out. `AppendEvent()` processes ADK events, broadcasts SSE events, and persists assistant messages. `Cancel()`/`CancelAll()` stop active runs. Auth refresh persistence is handled via a `PersistAuth` callback, not duplicated in API handlers.
+**RunService**: consolidates run lifecycle behind a single seam. `StartRun()` builds the agent (LLM service → skill context → tool registry), gets or creates a cached runner, and starts the agent loop. Conversation history is managed via `internal/history.SessionManager`; file operations go through `internal/fileutil`. `Subscribe()`/`Unsubscribe()` manage SSE fan-out. `AppendEvent()` processes ADK events, broadcasts SSE events, and persists assistant messages. `Cancel()`/`CancelAll()` stop active runs. Auth refresh persistence is handled via a `PersistAuth` callback, not duplicated in API handlers.
 
 **Runner caching**: `Manager.GetOrCreate()` creates ADK `runner.Runner` lazily and caches it by config hash (`provider|apiKey|baseURL|model|systemPrompt`). Changing settings in the UI triggers runner invalidation — new runner created on next message. `Invalidate()` forces rebuild on next call.
 
@@ -278,9 +289,9 @@ sequenceDiagram
 
 ### Adding a new built-in tool
 
-1. Define args/result structs in `internal/agent/agent.go`
-2. Register with `functiontool.New()` and append to the returned `[]tool.Tool`
-3. Tool function receives `agent.Context` — call `ctx.SessionID()` to get executor/session-scoped state
+1. Define tool in `internal/tool/` implementing the `Tool` interface
+2. Register with `tool.NewRegistry().Register(...)`
+3. Tool receives `context.Context` with `tool.SessionIDKey` for session-scoped state
 
 ### Extending Agent Skills support
 
@@ -297,7 +308,7 @@ sequenceDiagram
 
 ### Adding a new generative UI component
 
-1. Add component name to `render_component` tool enum in `internal/agent/agent.go`
+1. Add component name to `render_component` tool enum in `internal/tool/render_component.go`
 2. Create Templ template in `internal/api/templates/components/`
 3. Wire server-side dispatch in `/api/sessions/{id}/render` handler with `kind: "component"`
 4. Add browser island initialization only if component needs local browser-native behavior
@@ -315,9 +326,9 @@ sequenceDiagram
 
 ### Supporting a non-OpenAI backend
 
-1. Study `internal/agent/openai_model.go` — implements `model.LLM` interface
-2. Create a new file (e.g. `anthropic_model.go`) with same interface
-3. Swap in `agent.NewAgentConfig.Model` based on provider config
+1. Study `internal/provider/openai_model.go` — implements LLM adapter interface
+2. Create a new adapter file (e.g. `anthropic_model.go`) in `internal/litellm/`
+3. Register in the adapter factory based on provider config
 
 ## Target repository layout
 
@@ -325,12 +336,14 @@ sequenceDiagram
 eitri/
 ├── cmd/eitri/                 # Entry point
 ├── internal/
-│   ├── agent/                 # ADK agent + model.LLM + built-in tools
+│   ├── history/               # Conversation session manager
+│   ├── fileutil/              # File path validation and I/O operations
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
 │   ├── config/                # Config loading, validation, atomic writes
 │   ├── executor/              # tmux command executor + session manager
-│   ├── provider/              # Provider profiles + auth seams: defaults, credential policy, provider_auth resolution, discovery/chat paths, parsers, headers, device-flow helpers
-│   ├── runner/                # ADK runner cache/invalidation
+│   ├── provider/              # Provider profiles + auth seams
+│   ├── runner/                # Run lifecycle + agent loop
+│   ├── tool/                  # Built-in tools
 │   └── skills/                # Agent Skills discovery, registry, activation
 ├── scripts/install.sh
 ├── docs/
