@@ -121,7 +121,41 @@ func TestWalkWorkspace_FilePatternFilter(t *testing.T) {
 		t.Fatalf("WalkWorkspace: %v", err)
 	}
 
-	expected := []string{"a.go"}
+	// Now *.go should match both a.go (root) and sub/c.go (nested)
+	expected := []string{"a.go", "sub/c.go"}
+	if len(visited) != len(expected) {
+		t.Fatalf("got %v, want %v", visited, expected)
+	}
+	for i := range expected {
+		if visited[i] != expected[i] {
+			t.Errorf("visited[%d] = %q, want %q", i, visited[i], expected[i])
+		}
+	}
+}
+
+func TestWalkWorkspace_FilePatternPathPrefixed(t *testing.T) {
+	dir := t.TempDir()
+	files := []string{"a.go", "sub/c.go", "other/d.go"}
+	for _, f := range files {
+		fp := filepath.Join(dir, f)
+		if err := os.MkdirAll(filepath.Dir(fp), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fp, []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var visited []string
+	err := WalkWorkspace(dir, func(path, relPath string, d os.DirEntry) error {
+		visited = append(visited, relPath)
+		return nil
+	}, "sub/*")
+	if err != nil {
+		t.Fatalf("WalkWorkspace: %v", err)
+	}
+
+	expected := []string{"sub/c.go"}
 	if len(visited) != len(expected) {
 		t.Fatalf("got %v, want %v", visited, expected)
 	}

@@ -47,7 +47,7 @@ Returns sorted list of matching file paths, one per line.
 ### Grep tool (new)
 
 - `pattern` (string, required): Regex pattern to search for.
-- `file_pattern` (string, optional): Glob to filter files (e.g. `*.go`). If omitted, searches all files.
+- `file_pattern` (string, optional): Glob to filter files (e.g. `*.go`). If omitted, searches all files. The pattern is matched against the filename only (not the full path), so `*.go` matches `.go` files in any subdirectory. For path-prefixed patterns (e.g. `internal/*.go`), the full relative path is also checked.
 
 Returns `file:line:content` results sorted by file and line. Output is capped at 128 KiB with truncation marker.
 

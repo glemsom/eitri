@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -76,14 +75,6 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	truncated := false
 
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
-		// Apply file pattern filter against relative path
-		if parsed.FilePattern != "" {
-			matched, err := filepath.Match(parsed.FilePattern, relPath)
-			if err != nil || !matched {
-				return nil
-			}
-		}
-
 		// Check if text file (skip binary)
 		data, err := os.ReadFile(path)
 		if err != nil {
