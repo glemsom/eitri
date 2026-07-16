@@ -60,37 +60,9 @@ func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 	}
 
-	// Determine the directory to search from
-	searchDir := t.workspace
-
 	// Walk the workspace looking for matches
 	var matches []string
-	err = filepath.WalkDir(searchDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip hidden directories
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
-			return filepath.SkipDir
-		}
-
-		// Skip vendor directory
-		if d.IsDir() && d.Name() == "vendor" {
-			return filepath.SkipDir
-		}
-
-		// Skip directories themselves, only match files
-		if d.IsDir() {
-			return nil
-		}
-
-		// Get relative path from workspace
-		relPath, err := filepath.Rel(searchDir, path)
-		if err != nil {
-			return nil // skip files we can't relativize
-		}
-
+	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
 		// Use the absolute pattern for matching — we validate it's in workspace above
 		matched, err := filepath.Match(absPattern, path)
 		if err != nil {
@@ -110,7 +82,7 @@ func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		}
 
 		return nil
-	})
+	}, "")
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: glob walk failed: %v", err)), nil, true
 	}
