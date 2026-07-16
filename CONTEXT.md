@@ -8,7 +8,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 |------|---------|
 | **Agent** | Synchronous turn loop that drives LLM → tool call → tool result → LLM until done or max turns. Lives in a single goroutine; SSE events fan out to UI concurrently. |
 | **Session** | Single in-memory chat conversation. Has unique ID, message/render history, active-run state, and session-scoped tmux executor. Lost on server restart in v1. |
-| **Tool** | Capability agent can invoke (`terminal_execute`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`). Defined as Go structs with `JSONSchema()` methods; dispatched by name in the agent loop. |
+| **Tool** | Capability agent can invoke (`bash`, `file_viewer`, `file_editor`, `render_component`, `activate_skill`). Defined as Go structs with `JSONSchema()` methods; dispatched by name in the agent loop. |
 | **Provider** | External LLM service integration that owns authentication, model discovery, endpoint selection, and chat transport. Eitri's auth/discovery/profile layer configures litellm Provider adapters underneath. A Provider exposes one or more Models. |
 | **Skill** | Agent Skills-compatible directory containing `SKILL.md` instructions and optional `scripts/`, `references/`, and `assets/`. Discovered from fixed project/user roots and activated per session. |
 | **Executor** | Session-scoped tmux-managed shell used for direct host command execution. No sandbox in v1. Starts in the launch workspace. |
