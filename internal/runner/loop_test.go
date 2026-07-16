@@ -1,0 +1,599 @@
+package runner
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/tool"
+	vocellitellm "github.com/voocel/litellm"
+)
+
+// ── Mock LLM service ────────────────────────────────────────────────────────
+
+// mockLLMService simulates an LLM with configurable responses per turn.
+type mockLLMService struct {
+	mu      sync.Mutex
+	turns   []mockTurn
+	current int
+}
+
+type mockTurn struct {
+	content   string          // text content
+	toolCalls []litellm.ToolCall
+	err       error
+}
+
+func (m *mockLLMService) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented for mock, use ChatStream")
+}
+
+func (m *mockLLMService) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.current >= len(m.turns) {
+		ch := make(chan litellm.StreamEvent, 1)
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeDone}
+		close(ch)
+		return ch, nil
+	}
+
+	turn := m.turns[m.current]
+	m.current++
+
+	ch := make(chan litellm.StreamEvent, 10)
+
+	if turn.err != nil {
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeError, Error: turn.err}
+		close(ch)
+		return ch, nil
+	}
+
+	// Send text content as token events
+	if turn.content != "" {
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: turn.content}
+	}
+
+	// Send tool calls
+	if len(turn.toolCalls) > 0 {
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToolCall, ToolCalls: turn.toolCalls}
+	}
+
+	// Send done
+	ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeDone}
+	close(ch)
+
+	return ch, nil
+}
+
+func newMockLLM(turns []mockTurn) *mockLLMService {
+	return &mockLLMService{turns: turns}
+}
+
+// ── Simple mock tool ────────────────────────────────────────────────────────
+
+type simpleMockTool struct {
+	name        string
+	description string
+	callFunc    func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool)
+}
+
+func (m *simpleMockTool) Name() string        { return m.name }
+func (m *simpleMockTool) Description() string { return m.description }
+func (m *simpleMockTool) JSONSchema() vocellitellm.Schema {
+	return vocellitellm.Schema(`{"type":"object","properties":{}}`)
+}
+func (m *simpleMockTool) Call(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+	if m.callFunc != nil {
+		return m.callFunc(ctx, args)
+	}
+	return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+}
+
+// ── Test helpers ────────────────────────────────────────────────────────────
+
+// collectSSE collects all SSE events from a state until a done event.
+func collectSSE(state *runstate.State) []runstate.SSEEvent {
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		return nil
+	}
+	var events []runstate.SSEEvent
+	for evt := range ch {
+		events = append(events, evt)
+	}
+	return events
+}
+
+// sseEventTypes returns the types of events for assertion.
+func sseEventTypes(events []runstate.SSEEvent) []string {
+	types := make([]string, len(events))
+	for i, e := range events {
+		types[i] = e.Type
+	}
+	return types
+}
+
+func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{content: "Hello! How can I help?"},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "hi"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+
+	// Should have token events followed by done
+	hasTokens := false
+	hasDone := false
+	for _, t := range types {
+		if t == "token" {
+			hasTokens = true
+		}
+		if t == "done" {
+			hasDone = true
+		}
+	}
+	if !hasTokens {
+		t.Error("expected token events, got none")
+	}
+	if !hasDone {
+		t.Errorf("expected done event, got %v", types)
+	}
+}
+
+func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// Turn 1: LLM returns tool call
+	// Turn 2: LLM returns final response
+	llm := newMockLLM([]mockTurn{
+		{
+			content: "Let me check that...",
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "test_tool",
+					Arguments: `{"input":"test"}`,
+				},
+			}},
+		},
+		{
+			content: "The result is 42.",
+		},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name:        "test_tool",
+		description: "A test tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "42"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "what is the answer?"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+
+	// Check event types include token, tool_call, tool_result, done
+	types := sseEventTypes(events)
+
+	found := make(map[string]bool)
+	for _, typ := range types {
+		found[typ] = true
+	}
+
+	if !found["tool_call"] {
+		t.Errorf("expected tool_call event, got %v", types)
+	}
+	if !found["tool_result"] {
+		t.Errorf("expected tool_result event, got %v", types)
+	}
+	if !found["done"] {
+		t.Errorf("expected done event, got %v", types)
+	}
+
+	// Verify tool result was included in conversation history
+	// The loop should have added assistant msg + tool msg to req.Messages
+	if len(req.Messages) != 4 {
+		t.Fatalf("req.Messages length = %d, want 4 (user + assistant + tool + final assistant)", len(req.Messages))
+	}
+
+	// Check message order: user, assistant, tool, assistant
+	if req.Messages[1].Role != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", req.Messages[1].Role, "assistant")
+	}
+	if req.Messages[2].Role != "tool" {
+		t.Errorf("message[2] role = %q, want %q", req.Messages[2].Role, "tool")
+	}
+	if req.Messages[2].Content != "42" {
+		t.Errorf("message[2] content = %q, want %q", req.Messages[2].Content, "42")
+	}
+	if req.Messages[3].Role != "assistant" {
+		t.Errorf("message[3] role = %q, want %q", req.Messages[3].Role, "assistant")
+	}
+	if req.Messages[3].Content != "The result is 42." {
+		t.Errorf("message[3] content = %q, want %q", req.Messages[3].Content, "The result is 42.")
+	}
+}
+
+func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	var execOrder []string
+	execMu := sync.Mutex{}
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{
+				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "tool_a", Arguments: `{}`}},
+				{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "tool_b", Arguments: `{}`}},
+			},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "tool_a",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			execMu.Lock()
+			execOrder = append(execOrder, "a")
+			execMu.Unlock()
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "a_result"}}, nil, false
+		},
+	})
+	toolReg.Register(&simpleMockTool{
+		name: "tool_b",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			execMu.Lock()
+			execOrder = append(execOrder, "b")
+			execMu.Unlock()
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "b_result"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run both tools"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	if len(execOrder) != 2 {
+		t.Fatalf("execOrder length = %d, want 2", len(execOrder))
+	}
+
+	// Check sequential execution (a before b since tool_calls are ordered)
+	if execOrder[0] != "a" || execOrder[1] != "b" {
+		t.Errorf("execOrder = %v, want [a b]", execOrder)
+	}
+}
+
+func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{
+				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "failing_tool", Arguments: `{}`}},
+			},
+		},
+		{content: "I see the error, let me handle it."},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "failing_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "command not found"}}, nil, true
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run failing tool"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Verify the tool result message is in history
+	// Expected: user, assistant(with tool call), tool(result), assistant(final)
+	if len(req.Messages) != 4 {
+		t.Fatalf("req.Messages length = %d, want 4 (user + assistant + tool + final assistant)", len(req.Messages))
+	}
+
+	if req.Messages[2].Role != "tool" {
+		t.Errorf("message[2] role = %q, want %q", req.Messages[2].Role, "tool")
+	}
+	if req.Messages[2].Content != "command not found" {
+		t.Errorf("message[2] content = %q, want %q", req.Messages[2].Content, "command not found")
+	}
+	// Final assistant message should reference the error
+	if req.Messages[3].Content != "I see the error, let me handle it." {
+		t.Errorf("message[3] content = %q, want %q", req.Messages[3].Content, "I see the error, let me handle it.")
+	}
+}
+
+func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// LLM keeps making tool calls — will exceed maxTurns
+	llm := newMockLLM([]mockTurn{
+		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []litellm.ToolCall{{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "loop_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "loop"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 1, w, toolReg)
+	if err == nil {
+		t.Fatal("expected MaxTurnsExceededError, got nil")
+	}
+
+	var maxTurnsErr *MaxTurnsExceededError
+	if !errors.As(err, &maxTurnsErr) {
+		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
+	}
+	if maxTurnsErr.Limit != 1 {
+		t.Errorf("Limit = %d, want 1", maxTurnsErr.Limit)
+	}
+}
+
+func TestRunAgent_ContextCancellation(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{content: "thinking..."},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	err := RunAgent(ctx, llm, &req, 5, w, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestRunAgent_StreamError(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{err: fmt.Errorf("rate limit exceeded")},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("error = %q, want rate limit", err.Error())
+	}
+}
+
+func TestRunAgent_NoTools(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{content: "I am a helpful assistant."},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "hello"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	// Should have token + done
+	types := sseEventTypes(events)
+	if len(types) < 2 {
+		t.Fatalf("expected at least 2 events, got %d: %v", len(types), types)
+	}
+
+	lastType := types[len(types)-1]
+	if lastType != "done" {
+		t.Errorf("last event type = %q, want %q", lastType, "done")
+	}
+}
+
+func TestRunAgent_EmptyToolCallList(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// Tool calls with zero length — treated as no tool calls
+	llm := newMockLLM([]mockTurn{
+		{
+			content:   "answer",
+			toolCalls: []litellm.ToolCall{}, // empty, not nil
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "hi"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+}
+
+func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// LLM keeps returning tool calls. With maxTurns=0, defaults to 10.
+	// We only provide 3 turns → should succeed (no max turns hit).
+	mockTurns := []mockTurn{
+		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []litellm.ToolCall{{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{content: "done"},
+	}
+
+	llm := newMockLLM(mockTurns)
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "loop_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 0, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+}
+
+func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{
+				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "empty_tool", Arguments: `{}`}},
+			},
+		},
+		{content: "Tool returned nothing"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "empty_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run empty tool"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Tool result (message[2]) should have empty content
+	if len(req.Messages) >= 3 {
+		toolMsg := req.Messages[2]
+		if toolMsg.Role != "tool" {
+			t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+		}
+		if toolMsg.Content != "" {
+			t.Errorf("tool result content = %q, want empty", toolMsg.Content)
+		}
+	}
+}
+
