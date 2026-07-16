@@ -3,6 +3,7 @@ package litellm
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // OpenRouter implements LLMService for OpenRouter API.
@@ -20,7 +21,7 @@ type OpenRouter struct {
 func NewOpenRouter(model, baseURL, apiKey, ref, title string) *OpenRouter {
 	return &OpenRouter{
 		model:   model,
-		baseURL: baseURL,
+		baseURL: strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
 		apiKey:  apiKey,
 		ref:     ref,
 		title:   title,

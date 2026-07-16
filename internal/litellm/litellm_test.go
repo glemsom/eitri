@@ -88,6 +88,45 @@ func TestNewLLMService_OpenCodeGoOpenAIRoute(t *testing.T) {
 	}
 }
 
+func TestNewOpenAI_BaseURLWithV1Suffix(t *testing.T) {
+	t.Parallel()
+	// When baseURL contains a trailing /v1, the adapter must not double it.
+	// Bug: baseURL="/v1" + append "/v1/chat/completions" → double /v1 → 404.
+	var gotPath string
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer chatSrv.Close()
+
+	// BaseURL that already has /v1 — must not double it
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL + "/v1",
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	_, err = svc.Chat(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat error: %v", err)
+	}
+	if gotPath == "/v1/v1/chat/completions" {
+		t.Fatal("BUG: baseURL had /v1 suffix, got double /v1/v1/chat/completions — need to strip /v1 from baseURL")
+	}
+	if gotPath != "/v1/chat/completions" {
+		t.Fatalf("path = %q, want /v1/chat/completions", gotPath)
+	}
+}
+
 func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 	t.Parallel()
 	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
@@ -139,6 +178,43 @@ func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 	}
 	if resp.Content != "hello from qwen" {
 		t.Fatalf("Content = %q, want %q", resp.Content, "hello from qwen")
+	}
+}
+
+func TestNewAnthropic_BaseURLWithV1Suffix(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"qwen2.5-72b","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	defer chatSrv.Close()
+
+	// BaseURL with /v1 suffix — must not double it (Anthropic adapter also strips)
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "qwen2.5-72b",
+		BaseURL:    chatSrv.URL + "/v1",
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	_, err = svc.Chat(context.Background(), litellm.Request{
+		Model:    "qwen2.5-72b",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat error: %v", err)
+	}
+	if gotPath == "/v1/messages" {
+		t.Fatal("BUG: baseURL had /v1 suffix, got /v1/messages instead of /messages — need to strip /v1 from baseURL")
+	}
+	if gotPath != "/messages" {
+		t.Fatalf("path = %q, want /messages", gotPath)
 	}
 }
 

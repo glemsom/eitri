@@ -22,7 +22,7 @@ type OpenAI struct {
 func NewOpenAI(model, baseURL, apiKey string) *OpenAI {
 	return &OpenAI{
 		model:   model,
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
 		apiKey:  apiKey,
 		client:  defaultHTTPClient,
 	}

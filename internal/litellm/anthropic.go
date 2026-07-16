@@ -22,7 +22,7 @@ type Anthropic struct {
 func NewAnthropic(model, baseURL, apiKey string) *Anthropic {
 	return &Anthropic{
 		model:   model,
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
 		apiKey:  apiKey,
 		client:  defaultHTTPClient,
 	}
