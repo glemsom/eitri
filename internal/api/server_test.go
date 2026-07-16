@@ -269,7 +269,7 @@ func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
 	}
 	wantHeaders := map[string]string{
 		"Authorization":        "Bearer ghu-token",
-		"User-Agent":           "Eitri",
+		"User-Agent":           "GithubCopilot/1.100.0",
 		"X-GitHub-Api-Version": "2026-06-01",
 		"Openai-Intent":        "conversation-panel",
 		"x-initiator":          "user",

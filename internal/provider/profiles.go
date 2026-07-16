@@ -166,7 +166,8 @@ func parseOpenAIModelList(r io.Reader) ([]string, error) {
 }
 
 func applyGitHubCopilotHeaders(req *http.Request, _ string) {
-	req.Header.Set("User-Agent", "Eitri")
+	// Copilot API expects headers matching the official VSCode extension.
+	req.Header.Set("User-Agent", "GithubCopilot/1.100.0")
 	req.Header.Set("X-GitHub-Api-Version", "2026-06-01")
 	req.Header.Set("Openai-Intent", "conversation-panel")
 	req.Header.Set("x-initiator", "user")

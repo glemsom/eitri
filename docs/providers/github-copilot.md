@@ -90,9 +90,9 @@ POST {base_url}/chat/completions
 Authorization: Bearer <token>
 Accept: application/json
 Content-Type: application/json
-User-Agent: eitri
+User-Agent: GithubCopilot/1.100.0
+Editor-Version: vscode/1.80.0
 X-GitHub-Api-Version: 2026-06-01
-Openai-Intent: conversation-edits
 x-initiator: user
 ```
 
