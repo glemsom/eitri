@@ -820,6 +820,65 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	}
 }
 
+func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// LLM calls a hallucinated tool "replace" (doesn't exist in registry).
+	// The loop should NOT terminate — it should feed the error back to the
+	// LLM as a tool result, letting the LLM self-correct on the next turn.
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{
+				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "replace", Arguments: `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`}},
+			},
+		},
+		{content: "corrected: using edit tool instead"},
+	})
+
+	toolReg := tool.NewRegistry()
+	// Only register "edit", not "replace"
+	toolReg.Register(&simpleMockTool{
+		name: "edit",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "edit the file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
+	}
+
+	// Verify the LLM got a tool result with the error message
+	if len(req.Messages) < 3 {
+		t.Fatalf("expected at least 3 messages (user + assistant + tool result), got %d", len(req.Messages))
+	}
+	toolMsg := req.Messages[2]
+	if toolMsg.Role != "tool" {
+		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	}
+	if !strings.Contains(toolMsg.Content, "Tool error") && !strings.Contains(toolMsg.Content, "unknown tool") {
+		t.Errorf("tool result should contain error about unknown tool, got: %q", toolMsg.Content)
+	}
+
+	// Final message should be the LLM's self-correction response
+	if len(req.Messages) >= 4 {
+		finalMsg := req.Messages[len(req.Messages)-1]
+		if finalMsg.Role != "assistant" {
+			t.Errorf("final message role = %q, want %q", finalMsg.Role, "assistant")
+		}
+	}
+}
+
 // ── Sliding window cap tests ────────────────────────────────────────────────
 
 func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {

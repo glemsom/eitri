@@ -23,10 +23,10 @@ import (
 // the LLM returns a response with no tool calls, maxTurns is reached,
 // or the context is cancelled.
 //
-// Tool execution errors (file not found, command failed) are fed back to
-// the LLM as tool result content — the LLM decides how to respond. Only
-// Go-level errors (unknown tool, context cancelled, max turns) terminate
-// the loop.
+// Tool execution errors (file not found, command failed) and dispatch errors
+// (unknown tool, e.g. LLM hallucinating "replace" instead of "edit") are
+// fed back to the LLM as tool result content — the LLM decides how to respond.
+// Only context cancellation and max turns terminate the loop.
 func RunAgent(
 	ctx context.Context,
 	llm litellm.LLMService,
@@ -148,9 +148,25 @@ func RunAgent(
 			// Dispatch tool via registry
 			blocks, err := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 			if err != nil {
-				msg := fmt.Sprintf("Tool error: %v", err)
-				sseWriter.Error(msg)
-				return fmt.Errorf("dispatch tool %q: %w", tc.Function.Name, err)
+				// Feed unknown tool / dispatch errors back to the LLM as tool
+				// result instead of terminating the loop. LLMs commonly hallucinate
+				// tool names (e.g. "replace" instead of "edit") — this gives them
+				// a chance to self-correct on the next turn.
+				errMsg := fmt.Sprintf("Tool error: %v", err)
+				// Broadcast tool result so the error shows in the tool card
+				// (not as a separate error toast that closes the stream).
+				sseWriter.ToolResult(tc.Function.Name, errMsg)
+				// Record the error as a tool result so the LLM can see it
+				if sessionMgr != nil {
+					sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+				} else {
+					req.Messages = append(req.Messages, litellm.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    errMsg,
+					})
+				}
+				continue
 			}
 
 			// Extract result text from blocks
