@@ -1,7 +1,7 @@
 package tool
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,11 +14,11 @@ import (
 	"github.com/voocel/litellm"
 )
 
-const maxGrepOutput = 128 * 1024 // 128 KiB
+const maxGrepOutputBytes = 128 * 1024
 
 type grepArgs struct {
-	Pattern     string  `json:"pattern" jsonschema:"Regular expression pattern to search for (Go RE2 syntax)."`
-	FilePattern *string `json:"file_pattern,omitempty" jsonschema:"Optional glob pattern to filter files by name (e.g. '*.go')."`
+	Pattern     string `json:"pattern" jsonschema:"Go regex (RE2 syntax) pattern to search for in file contents."`
+	FilePattern string `json:"file_pattern,omitempty" jsonschema:"Optional glob pattern to filter files by path relative to workspace root (e.g. '*.go' to search only Go files)."`
 }
 
 // GrepTool implements ToolHandler for searching file contents with regex.
@@ -40,7 +40,7 @@ func (t *GrepTool) Name() string {
 }
 
 func (t *GrepTool) Description() string {
-	return "Search file contents using a regular expression pattern (Go RE2 syntax). Results are returned as file:line:content, sorted by file then line number. Optionally filter by file_glob pattern (e.g. '*.go'). Output is capped at 128 KiB."
+	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Results are returned as file:line:content, sorted by file then line number. Output is capped at 128 KiB."
 }
 
 func (t *GrepTool) JSONSchema() litellm.Schema {
@@ -60,7 +60,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	// Compile regex
 	re, err := regexp.Compile(parsed.Pattern)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: invalid regex: %v", err)), nil, true
+		return textBlocks(fmt.Sprintf("Error: invalid regex %q: %v", parsed.Pattern, err)), nil, true
 	}
 
 	type match struct {
@@ -70,11 +70,12 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	}
 
 	var matches []match
-	var buf bytes.Buffer
+	outputSize := 0
+	truncated := false
 
 	err = filepath.WalkDir(t.workspace, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return nil // skip inaccessible files/dirs
 		}
 
 		// Skip hidden directories
@@ -87,52 +88,58 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 			return filepath.SkipDir
 		}
 
+		// Skip directories, only process files
 		if d.IsDir() {
 			return nil
 		}
 
-		// Apply file_pattern filter if set
-		if parsed.FilePattern != nil {
-			matched, err := filepath.Match(*parsed.FilePattern, d.Name())
-			if err != nil || !matched {
-				return nil
-			}
-		}
-
-		// Get relative path from workspace
+		// Get relative path for output and file_pattern matching
 		relPath, err := filepath.Rel(t.workspace, path)
 		if err != nil {
 			return nil
 		}
 
+		// Apply file pattern filter against relative path
+		if parsed.FilePattern != "" {
+			matched, err := filepath.Match(parsed.FilePattern, relPath)
+			if err != nil || !matched {
+				return nil
+			}
+		}
+
+		// Check if text file (skip binary)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil // skip unreadable files
+			return nil
+		}
+		if strings.ContainsRune(string(data), '\x00') {
+			return nil
 		}
 
-		// Check if file is binary (look for null bytes)
-		if bytes.Contains(data, []byte{0}) {
-			return nil // skip binary files
-		}
-
-		lines := bytes.Split(data, []byte("\n"))
-		for i, line := range lines {
-			if re.Match(line) {
-				matches = append(matches, match{
-					path:    relPath,
-					lineNum: i + 1,
-					content: string(line),
-				})
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			if re.MatchString(line) {
+				// Estimate output size: "path:line:content\n"
+				lineSize := len(relPath) + 1 + len(fmt.Sprintf("%d", lineNum)) + 1 + len(line) + 1
+				if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
+					truncated = true
+					return filepath.SkipDir // stop walking
+				}
+				matches = append(matches, match{path: relPath, lineNum: lineNum, content: line})
+				outputSize += lineSize
 			}
 		}
 
 		return nil
 	})
-	if err != nil {
+	if err != nil && !truncated {
 		return textBlocks(fmt.Sprintf("Error: grep walk failed: %v", err)), nil, true
 	}
 
-	// Sort by file path then line number
+	// Sort by file then line number
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].path != matches[j].path {
 			return matches[i].path < matches[j].path
@@ -140,21 +147,19 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return matches[i].lineNum < matches[j].lineNum
 	})
 
-	// Build output, capped at maxGrepOutput
-	truncated := false
+	// Build output
+	var sb strings.Builder
 	for _, m := range matches {
-		line := fmt.Sprintf("%s:%d:%s\n", m.path, m.lineNum, m.content)
-		if buf.Len()+len(line) > maxGrepOutput {
-			truncated = true
-			break
-		}
-		buf.WriteString(line)
+		sb.WriteString(fmt.Sprintf("%s:%d:%s\n", m.path, m.lineNum, m.content))
 	}
 
-	result := strings.TrimSuffix(buf.String(), "\n")
+	output := sb.String()
 	if truncated {
-		result += "\n... truncated (output exceeds 128 KiB limit)"
+		output += "... (output truncated at 128 KiB)"
 	}
 
-	return textBlocks(result), nil, false
+	return textBlocks(output), nil, false
 }
+
+// Ensure GrepTool implements ToolHandler at compile time.
+var _ ToolHandler = (*GrepTool)(nil)

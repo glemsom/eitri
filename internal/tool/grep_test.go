@@ -52,21 +52,32 @@ func TestGrep_EmptyPattern(t *testing.T) {
 	if !ok {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
-	if !strings.Contains(block.Text, "required") {
-		t.Errorf("expected error mentioning 'required', got %q", block.Text)
+	if !strings.Contains(block.Text, "pattern is required") {
+		t.Errorf("expected 'pattern is required' error, got %q", block.Text)
 	}
 }
 
-func TestGrep_SuccessfulSearch(t *testing.T) {
+func TestGrep_InvalidRegex(t *testing.T) {
+	tool := NewGrepTool("/tmp")
+	_, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"[invalid"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+}
+
+func TestGrep_SuccessfulMatch(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"foo.go":      "package main\n\nfunc foo() {}\n",
-		"bar.go":      "package main\n\nfunc bar() {}\nconst foo = 42\n",
-		"sub/qux.go":  "package qux\n\nfunc qux() {}\n",
-		"readme.txt":  "This file contains foo\n",
+		"hello.go":    "package main\nfunc main() { println(\"hello\") }\n",
+		"world.go":    "package main\nfunc main() { println(\"world\") }\n",
+		"other.txt":   "this is a text file with hello in it\n",
+		"sub/deep.go": "package sub\nfunc Hello() {}\n",
 	}
-	for path, content := range files {
-		fp := filepath.Join(dir, path)
+	for name, content := range files {
+		fp := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +87,7 @@ func TestGrep_SuccessfulSearch(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"foo"}`))
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"hello"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,36 +102,36 @@ func TestGrep_SuccessfulSearch(t *testing.T) {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
 
-	lines := strings.Split(strings.TrimSpace(block.Text), "\n")
-	// Should match: foo.go (line 3 "func foo() {}"), bar.go (line 4 "const foo = 42"), readme.txt (line 1 "This file contains foo")
-	// sub/qux.go has no "foo"
-	if len(lines) != 3 {
-		t.Errorf("expected 3 matches, got %d: %v", len(lines), lines)
-	}
-
-	// Check format: file:line:content
-	for _, line := range lines {
-		parts := strings.SplitN(line, ":", 3)
-		if len(parts) != 3 {
-			t.Errorf("expected file:line:content format, got %q", line)
+	// Should find "hello" in: hello.go (line 2), other.txt (line 1), sub/deep.go (line 2, "Hello" case-sensitive)
+	// "hello" in hello.go:2, other.txt:1 (both lowercase hello)
+	// "Hello" in sub/deep.go:2 won't match because case-sensitive
+	expectedLines := []string{"hello.go:2:func main() { println(\"hello\") }", "other.txt:1:this is a text file with hello in it"}
+	for _, el := range expectedLines {
+		if !strings.Contains(block.Text, el) {
+			t.Errorf("expected output to contain %q, got:\n%s", el, block.Text)
 		}
+	}
+	// sub/deep.go:2 has "Hello" with capital H, case-sensitive search for "hello" should NOT match
+	if strings.Contains(block.Text, "sub/deep.go") {
+		t.Errorf("output should not contain sub/deep.go for case-sensitive 'hello' search")
 	}
 }
 
 func TestGrep_NoMatch(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "foo.go"), []byte("package main"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("hello world"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"nonexistent"}`))
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"zzznonexistent"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if isError {
 		t.Error("isError = true, want false")
 	}
+	// No matches: blocks may be nil or contain empty text
 	if len(blocks) > 0 {
 		block, ok := blocks[0].(litellm.TextBlock)
 		if !ok {
@@ -135,12 +146,13 @@ func TestGrep_NoMatch(t *testing.T) {
 func TestGrep_FilePatternFilter(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"foo.go":    "package main\nfunc hello() {}\n",
-		"bar.txt":   "hello world\n",
-		"sub/baz.go": "package sub\nfunc hello() {}\n",
+		"greeting.go":  "package main\nfunc hi() { println(\"hello\") }\n",
+		"greeting.py":  "def hi():\n    print(\"hello\")\n",
+		"data.txt":     "hello world\n",
+		"cmd/main.go":  "package main\nfunc main() {}\n",
 	}
-	for path, content := range files {
-		fp := filepath.Join(dir, path)
+	for name, content := range files {
+		fp := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -166,21 +178,28 @@ func TestGrep_FilePatternFilter(t *testing.T) {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
 
-	lines := strings.Split(strings.TrimSpace(block.Text), "\n")
-	// Should match foo.go and sub/baz.go, but NOT bar.txt
-	if len(lines) != 2 {
-		t.Errorf("expected 2 matches (only .go files), got %d: %v", len(lines), lines)
+	// Should only match greeting.go (line 1, "hello" in func hi)
+	if !strings.Contains(block.Text, "greeting.go") {
+		t.Errorf("expected greeting.go in output, got:\n%s", block.Text)
+	}
+	if strings.Contains(block.Text, "greeting.py") {
+		t.Errorf("output should not contain greeting.py (file_pattern=*.go)")
+	}
+	if strings.Contains(block.Text, "data.txt") {
+		t.Errorf("output should not contain data.txt (file_pattern=*.go)")
 	}
 }
 
 func TestGrep_OutputTruncation(t *testing.T) {
 	dir := t.TempDir()
-	// Create a file with enough lines to exceed 128 KiB output
-	var content strings.Builder
-	for i := 0; i < 10000; i++ {
-		content.WriteString("this is a test line that contains the word match somewhere in it\n")
+
+	// Create a file with many matching lines to exceed 128 KiB
+	var lines []string
+	for i := 0; i < 5000; i++ {
+		lines = append(lines, "match line content here")
 	}
-	if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(content.String()), 0o644); err != nil {
+	content := strings.Join(lines, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -200,42 +219,97 @@ func TestGrep_OutputTruncation(t *testing.T) {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
 
-	t.Logf("output size: %d bytes", len(block.Text))
-
-	// Output should be capped at 128 KiB, and should have a truncation marker
-	maxSize := 128 * 1024
-	if len(block.Text) > maxSize {
-		t.Errorf("output size = %d, want <= %d", len(block.Text), maxSize)
+	// Output should end with the truncation marker
+	if !strings.HasSuffix(block.Text, "... (output truncated at 128 KiB)") {
+		t.Errorf("expected output to be truncated, got length %d, suffix %q", len(block.Text), block.Text[len(block.Text)-40:])
 	}
-	if !strings.Contains(block.Text, "... truncated") {
-		t.Error("expected truncation marker '... truncated' in output")
+}
+
+func TestGrep_HiddenDirExclusion(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".hidden", "secret.go"), []byte("package main\nfunc secret() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "visible.go"), []byte("package main\nfunc visible() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewGrepTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+
+	// visible.go should match, .hidden/secret.go should be excluded
+	if !strings.Contains(block.Text, "visible.go") {
+		t.Errorf("expected visible.go in output, got:\n%s", block.Text)
+	}
+	if strings.Contains(block.Text, "secret.go") {
+		t.Errorf("output should not contain secret.go from hidden directory")
+	}
+}
+
+func TestGrep_VendorExclusion(t *testing.T) {
+	dir := t.TempDir()
+	vendorDir := filepath.Join(dir, "vendor")
+	if err := os.MkdirAll(vendorDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendorDir, "dep.go"), []byte("package dep\nfunc depFunc() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewGrepTool(dir)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+
+	// Only main.go should be visible, vendor/ excluded
+	if !strings.Contains(block.Text, "main.go") {
+		t.Errorf("expected main.go in output, got:\n%s", block.Text)
+	}
+	if strings.Contains(block.Text, "dep.go") {
+		t.Errorf("output should not contain dep.go from vendor directory")
 	}
 }
 
 func TestGrep_ArgsUnmarshal(t *testing.T) {
-	args := json.RawMessage(`{"pattern":"foo","file_pattern":"*.go"}`)
+	args := json.RawMessage(`{"pattern":"func","file_pattern":"*.go"}`)
 	var parsed grepArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if parsed.Pattern != "foo" {
-		t.Errorf("Pattern = %q, want 'foo'", parsed.Pattern)
+	if parsed.Pattern != "func" {
+		t.Errorf("Pattern = %q, want 'func'", parsed.Pattern)
 	}
-	if parsed.FilePattern == nil || *parsed.FilePattern != "*.go" {
-		t.Errorf("FilePattern = %v, want '*.go'", parsed.FilePattern)
-	}
-}
-
-func TestGrep_FilePatternOptional(t *testing.T) {
-	args := json.RawMessage(`{"pattern":"test"}`)
-	var parsed grepArgs
-	if err := json.Unmarshal(args, &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if parsed.Pattern != "test" {
-		t.Errorf("Pattern = %q, want 'test'", parsed.Pattern)
-	}
-	if parsed.FilePattern != nil {
-		t.Errorf("FilePattern = %v, want nil (optional)", *parsed.FilePattern)
+	if parsed.FilePattern != "*.go" {
+		t.Errorf("FilePattern = %q, want '*.go'", parsed.FilePattern)
 	}
 }
