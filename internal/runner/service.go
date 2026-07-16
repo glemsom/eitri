@@ -256,6 +256,12 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				// Save partial content to session on cancellation so the UI
+				// reflects what was generated before the user pressed stop.
+				content := sseState.BufferString()
+				if content != "" {
+					s.appendToSession(sessionID, content)
+				}
 				return
 			}
 
