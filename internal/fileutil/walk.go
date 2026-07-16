@@ -64,10 +64,13 @@ func WalkWorkspace(workspace string, fn WalkWorkspaceFn, filePattern string) err
 			return nil // skip files we can't relativize
 		}
 
-		// Apply file pattern filter
+		// Apply file pattern filter: match against filename (base) first,
+		// then try full relative path for path-prefixed patterns.
 		if filePattern != "" {
-			matched, err := filepath.Match(filePattern, relPath)
-			if err != nil || !matched {
+			baseName := filepath.Base(relPath)
+			if matched, err := filepath.Match(filePattern, baseName); err == nil && matched {
+				// matched by filename — continue
+			} else if matched, err := filepath.Match(filePattern, relPath); err != nil || !matched {
 				return nil
 			}
 		}

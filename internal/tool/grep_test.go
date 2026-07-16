@@ -149,7 +149,7 @@ func TestGrep_FilePatternFilter(t *testing.T) {
 		"greeting.go":  "package main\nfunc hi() { println(\"hello\") }\n",
 		"greeting.py":  "def hi():\n    print(\"hello\")\n",
 		"data.txt":     "hello world\n",
-		"cmd/main.go":  "package main\nfunc main() {}\n",
+		"cmd/main.go":  "package main\nfunc main() { println(\"hello\") }\n",
 	}
 	for name, content := range files {
 		fp := filepath.Join(dir, name)
@@ -178,9 +178,12 @@ func TestGrep_FilePatternFilter(t *testing.T) {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
 
-	// Should only match greeting.go (line 1, "hello" in func hi)
+	// Should match greeting.go (root) and cmd/main.go (nested)
 	if !strings.Contains(block.Text, "greeting.go") {
 		t.Errorf("expected greeting.go in output, got:\n%s", block.Text)
+	}
+	if !strings.Contains(block.Text, "cmd/main.go") {
+		t.Errorf("expected cmd/main.go in output (nested *.go), got:\n%s", block.Text)
 	}
 	if strings.Contains(block.Text, "greeting.py") {
 		t.Errorf("output should not contain greeting.py (file_pattern=*.go)")
