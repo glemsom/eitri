@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/voocel/litellm"
+	"github.com/glemsom/eitri/internal/litellm"
 )
 
 func TestSessionManager_CreateAndGet(t *testing.T) {
@@ -33,21 +33,14 @@ func TestSessionManager_AppendUser(t *testing.T) {
 	if len(history) != 2 { // system prompt + user message
 		t.Fatalf("History length = %d, want 2", len(history))
 	}
-	if history[0].Role != litellm.RoleSystem {
-		t.Errorf("First message role = %q, want %q", history[0].Role, litellm.RoleSystem)
+	if history[0].Role != "system" {
+		t.Errorf("First message role = %q, want %q", history[0].Role, "system")
 	}
-	if history[1].Role != litellm.RoleUser {
-		t.Errorf("Second message role = %q, want %q", history[1].Role, litellm.RoleUser)
+	if history[1].Role != "user" {
+		t.Errorf("Second message role = %q, want %q", history[1].Role, "user")
 	}
-	if len(history[1].Blocks) != 1 {
-		t.Fatalf("User blocks count = %d, want 1", len(history[1].Blocks))
-	}
-	text, ok := history[1].Blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("User block type = %T, want TextBlock", history[1].Blocks[0])
-	}
-	if text.Text != "hello" {
-		t.Errorf("User text = %q, want %q", text.Text, "hello")
+	if history[1].Content != "hello" {
+		t.Errorf("User content = %q, want %q", history[1].Content, "hello")
 	}
 }
 
@@ -55,19 +48,18 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	blocks := []litellm.Block{litellm.TextBlock{Text: "Hi there!"}}
-	toolCalls := []litellm.ToolUseBlock{
-		{ID: "call-1", Name: "file_viewer", Arguments: []byte(`{"path":"test.txt"}`)},
+	toolCalls := []litellm.ToolCall{
+		{ID: "call-1", Type: "function", Function: litellm.FunctionCall{Name: "file_viewer", Arguments: `{"path":"test.txt"}`}},
 	}
 
-	m.AppendAssistant("sess-1", blocks, toolCalls)
+	m.AppendAssistant("sess-1", "Hi there!", toolCalls)
 	m.AppendUser("sess-1", "hello") // user to have something in front
 
 	history := m.History("sess-1")
 	// Find the assistant message
 	var assistantMsg *litellm.Message
 	for i := range history {
-		if history[i].Role == litellm.RoleAssistant {
+		if history[i].Role == "assistant" {
 			assistantMsg = &history[i]
 			break
 		}
@@ -75,22 +67,14 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 	if assistantMsg == nil {
 		t.Fatal("No assistant message found in history")
 	}
-	if len(assistantMsg.Blocks) != 2 {
-		t.Fatalf("Assistant blocks count = %d, want 2 (text + tool call)", len(assistantMsg.Blocks))
+	if assistantMsg.Content != "Hi there!" {
+		t.Errorf("Assistant content = %q, want %q", assistantMsg.Content, "Hi there!")
 	}
-	text, ok := assistantMsg.Blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("First block type = %T, want TextBlock", assistantMsg.Blocks[0])
+	if len(assistantMsg.ToolCalls) != 1 {
+		t.Fatalf("Assistant tool calls count = %d, want 1", len(assistantMsg.ToolCalls))
 	}
-	if text.Text != "Hi there!" {
-		t.Errorf("Assistant text = %q, want %q", text.Text, "Hi there!")
-	}
-	toolCall, ok := assistantMsg.Blocks[1].(litellm.ToolUseBlock)
-	if !ok {
-		t.Fatalf("Second block type = %T, want ToolUseBlock", assistantMsg.Blocks[1])
-	}
-	if toolCall.ID != "call-1" {
-		t.Errorf("Tool call ID = %q, want %q", toolCall.ID, "call-1")
+	if assistantMsg.ToolCalls[0].ID != "call-1" {
+		t.Errorf("Tool call ID = %q, want %q", assistantMsg.ToolCalls[0].ID, "call-1")
 	}
 }
 
@@ -98,15 +82,14 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	blocks := []litellm.Block{litellm.TextBlock{Text: "file contents"}}
-	m.AppendTool("sess-1", "call-1", blocks, false)
+	m.AppendTool("sess-1", "call-1", "file contents", false)
 
 	m.AppendUser("sess-1", "hello") // push a user to trigger history read
 
 	history := m.History("sess-1")
 	var toolMsg *litellm.Message
 	for i := range history {
-		if history[i].Role == litellm.RoleTool {
+		if history[i].Role == "tool" {
 			toolMsg = &history[i]
 			break
 		}
@@ -114,18 +97,11 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	if toolMsg == nil {
 		t.Fatal("No tool message found in history")
 	}
-	if len(toolMsg.Blocks) != 1 {
-		t.Fatalf("Tool blocks count = %d, want 1", len(toolMsg.Blocks))
+	if toolMsg.ToolCallID != "call-1" {
+		t.Errorf("ToolCallID = %q, want %q", toolMsg.ToolCallID, "call-1")
 	}
-	result, ok := toolMsg.Blocks[0].(litellm.ToolResultBlock)
-	if !ok {
-		t.Fatalf("Tool block type = %T, want ToolResultBlock", toolMsg.Blocks[0])
-	}
-	if result.ToolUseID != "call-1" {
-		t.Errorf("ToolUseID = %q, want %q", result.ToolUseID, "call-1")
-	}
-	if result.IsError {
-		t.Error("IsError should be false")
+	if toolMsg.Content != "file contents" {
+		t.Errorf("Tool content = %q, want %q", toolMsg.Content, "file contents")
 	}
 }
 
@@ -133,20 +109,15 @@ func TestSessionManager_AppendTool_IsError(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	blocks := []litellm.Block{litellm.TextBlock{Text: "command not found"}}
-	m.AppendTool("sess-1", "call-2", blocks, true)
+	m.AppendTool("sess-1", "call-2", "command not found", true)
 
 	m.AppendUser("sess-1", "hello")
 
 	history := m.History("sess-1")
 	for i := range history {
-		if history[i].Role == litellm.RoleTool {
-			result, ok := history[i].Blocks[0].(litellm.ToolResultBlock)
-			if !ok {
-				t.Fatal("Expected ToolResultBlock")
-			}
-			if !result.IsError {
-				t.Error("IsError should be true")
+		if history[i].Role == "tool" {
+			if history[i].Content != "command not found" {
+				t.Errorf("Tool content = %q, want %q", history[i].Content, "command not found")
 			}
 			return
 		}
@@ -164,18 +135,10 @@ func TestSessionManager_HistoryPrependsSystemPrompt(t *testing.T) {
 	if len(history) < 1 {
 		t.Fatal("History is empty")
 	}
-	if history[0].Role != litellm.RoleSystem {
+	if history[0].Role != "system" {
 		t.Errorf("First message role = %q, want system", history[0].Role)
 	}
-	// System prompt should be a single text block
-	if len(history[0].Blocks) != 1 {
-		t.Fatalf("System blocks = %d, want 1", len(history[0].Blocks))
-	}
-	sysText, ok := history[0].Blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("System block type = %T, want TextBlock", history[0].Blocks[0])
-	}
-	if sysText.Text == "" {
+	if history[0].Content == "" {
 		t.Error("System prompt text should not be empty")
 	}
 }
@@ -188,7 +151,7 @@ func TestSessionManager_EmptySessionReturnsPromptOnly(t *testing.T) {
 	if len(history) != 1 {
 		t.Fatalf("History length for empty session = %d, want 1 (system prompt only)", len(history))
 	}
-	if history[0].Role != litellm.RoleSystem {
+	if history[0].Role != "system" {
 		t.Errorf("Role = %q, want system", history[0].Role)
 	}
 }
@@ -221,12 +184,12 @@ func TestSessionManager_AppendUserUnknownSession(t *testing.T) {
 
 func TestSessionManager_AppendAssistantUnknownSession(t *testing.T) {
 	m := NewSessionManager(50)
-	m.AppendAssistant("nonexistent", nil, nil) // should not panic
+	m.AppendAssistant("nonexistent", "", nil) // should not panic
 }
 
 func TestSessionManager_AppendToolUnknownSession(t *testing.T) {
 	m := NewSessionManager(50)
-	m.AppendTool("nonexistent", "call-1", nil, false) // should not panic
+	m.AppendTool("nonexistent", "call-1", "", false) // should not panic
 }
 
 func TestSessionManager_CreateTwiceIsNoop(t *testing.T) {
@@ -271,7 +234,7 @@ func TestSessionManager_DefaultExchangeLimit(t *testing.T) {
 	// Add more than the default 50 exchanges
 	for i := 0; i < 60; i++ {
 		m.AppendUser("sess-1", "message")
-		m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "response"}}, nil)
+		m.AppendAssistant("sess-1", "response", nil)
 	}
 
 	history := m.History("sess-1")
@@ -286,13 +249,13 @@ func TestSessionManager_WindowCapTrimsOldestFirst(t *testing.T) {
 	m.Create("sess-1")
 
 	m.AppendUser("sess-1", "first")
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp1"}}, nil)
+	m.AppendAssistant("sess-1", "resp1", nil)
 	m.AppendUser("sess-1", "second")
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp2"}}, nil)
+	m.AppendAssistant("sess-1", "resp2", nil)
 	m.AppendUser("sess-1", "third")
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp3"}}, nil)
+	m.AppendAssistant("sess-1", "resp3", nil)
 	m.AppendUser("sess-1", "fourth")
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp4"}}, nil)
+	m.AppendAssistant("sess-1", "resp4", nil)
 
 	history := m.History("sess-1")
 	// Should have system + 3 most recent exchanges (3 user + 3 assistant = 6) = 7 messages
@@ -302,10 +265,8 @@ func TestSessionManager_WindowCapTrimsOldestFirst(t *testing.T) {
 
 	// Check that "first" is gone
 	for _, msg := range history {
-		for _, block := range msg.Blocks {
-			if text, ok := block.(litellm.TextBlock); ok && text.Text == "first" {
-				t.Error("Found trimmed message 'first' in history")
-			}
+		if msg.Content == "first" {
+			t.Error("Found trimmed message 'first' in history")
 		}
 	}
 
@@ -313,15 +274,11 @@ func TestSessionManager_WindowCapTrimsOldestFirst(t *testing.T) {
 	foundFourth := false
 	foundResp4 := false
 	for _, msg := range history {
-		for _, block := range msg.Blocks {
-			if text, ok := block.(litellm.TextBlock); ok {
-				if text.Text == "fourth" {
-					foundFourth = true
-				}
-				if text.Text == "resp4" {
-					foundResp4 = true
-				}
-			}
+		if msg.Content == "fourth" {
+			foundFourth = true
+		}
+		if msg.Content == "resp4" {
+			foundResp4 = true
 		}
 	}
 	if !foundFourth {
@@ -338,22 +295,22 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 
 	// Exchange 1: user -> assistant (with tool call) -> tool result -> assistant (final)
 	m.AppendUser("sess-1", "first")
-	m.AppendAssistant("sess-1", nil, []litellm.ToolUseBlock{
-		{ID: "call-1", Name: "file_viewer", Arguments: []byte(`{}`)},
+	m.AppendAssistant("sess-1", "", []litellm.ToolCall{
+		{ID: "call-1", Type: "function", Function: litellm.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
 	})
-	m.AppendTool("sess-1", "call-1", []litellm.Block{litellm.TextBlock{Text: "content"}}, false)
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp1"}}, nil)
+	m.AppendTool("sess-1", "call-1", "content", false)
+	m.AppendAssistant("sess-1", "resp1", nil)
 
 	// Exchange 2: user -> assistant (with tool call) -> tool result
 	m.AppendUser("sess-1", "second")
-	m.AppendAssistant("sess-1", nil, []litellm.ToolUseBlock{
-		{ID: "call-2", Name: "terminal_execute", Arguments: []byte(`{}`)},
+	m.AppendAssistant("sess-1", "", []litellm.ToolCall{
+		{ID: "call-2", Type: "function", Function: litellm.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
 	})
-	m.AppendTool("sess-1", "call-2", []litellm.Block{litellm.TextBlock{Text: "output"}}, false)
+	m.AppendTool("sess-1", "call-2", "output", false)
 
 	// Exchange 3: user -> assistant (triggers trim)
 	m.AppendUser("sess-1", "third")
-	m.AppendAssistant("sess-1", []litellm.Block{litellm.TextBlock{Text: "resp3"}}, nil)
+	m.AppendAssistant("sess-1", "resp3", nil)
 
 	history := m.History("sess-1")
 	userCount := countUserMessages(history)
@@ -364,10 +321,8 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 
 	// "first" should be gone
 	for _, msg := range history {
-		for _, block := range msg.Blocks {
-			if text, ok := block.(litellm.TextBlock); ok && text.Text == "first" {
-				t.Error("Found trimmed user message 'first' in history")
-			}
+		if msg.Content == "first" {
+			t.Error("Found trimmed user message 'first' in history")
 		}
 	}
 }
@@ -381,7 +336,7 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 	history := m.History("sess-1")
 	var userMsg *litellm.Message
 	for i := range history {
-		if history[i].Role == litellm.RoleUser {
+		if history[i].Role == "user" {
 			userMsg = &history[i]
 			break
 		}
@@ -389,15 +344,8 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 	if userMsg == nil {
 		t.Fatal("No user message found")
 	}
-	if len(userMsg.Blocks) != 1 {
-		t.Fatalf("User blocks = %d, want 1", len(userMsg.Blocks))
-	}
-	text, ok := userMsg.Blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("Block type = %T, want TextBlock", userMsg.Blocks[0])
-	}
-	if text.Text != "multi\nline\nmessage" {
-		t.Errorf("Text = %q, want %q", text.Text, "multi\nline\nmessage")
+	if userMsg.Content != "multi\nline\nmessage" {
+		t.Errorf("Content = %q, want %q", userMsg.Content, "multi\nline\nmessage")
 	}
 }
 
@@ -406,7 +354,7 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 func countUserMessages(history []litellm.Message) int {
 	count := 0
 	for _, m := range history {
-		if m.Role == litellm.RoleUser {
+		if m.Role == "user" {
 			count++
 		}
 	}
