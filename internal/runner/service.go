@@ -64,6 +64,7 @@ type RunService struct {
 	modelName    string
 	systemPrompt string
 	maxTurns     int
+	maxHistory   int
 	persistAuth  PersistAuthFunc
 }
 
@@ -105,6 +106,7 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.modelName = cfg.Model
 	s.systemPrompt = cfg.SystemPrompt
 	s.maxTurns = cfg.MaxTurns
+	s.maxHistory = cfg.MaxHistory
 }
 
 // InvalidateRunners clears any cached state so new runs pick up config changes.
@@ -132,6 +134,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	modelName := s.modelName
 	systemPrompt := s.systemPrompt
 	maxTurns := s.maxTurns
+	maxHistory := s.maxHistory
 	providerAuth := s.providerAuth
 	s.mu.Unlock()
 
@@ -250,7 +253,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, w, toolReg)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return

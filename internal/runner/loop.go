@@ -31,6 +31,7 @@ func RunAgent(
 	llm litellm.LLMService,
 	req *litellm.Request,
 	maxTurns int,
+	maxHistory int,
 	sseWriter *runstate.Writer,
 	tools *tool.Registry,
 ) error {
@@ -80,8 +81,13 @@ func RunAgent(
 					Content: contentStr,
 				})
 			}
+			// Trim conversation history if cap is set
+			trimMessages(req, maxHistory)
 			return nil
 		}
+
+		// Trim conversation history if cap is set
+		trimMessages(req, maxHistory)
 
 		// Has tool calls — add assistant message to history
 		assistantMsg := litellm.Message{
@@ -121,6 +127,9 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
+			// Trim conversation history if cap is set
+			trimMessages(req, maxHistory)
+
 			// Add tool result message to conversation history
 			resultContent := resultText
 			if isError && resultContent == "" {
@@ -138,6 +147,45 @@ func RunAgent(
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	sseWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
+}
+
+// trimMessages removes the oldest message pairs when total non-system messages
+// exceed maxHistory. System prompt is always preserved.
+// maxHistory of 0 means no limit.
+func trimMessages(req *litellm.Request, maxHistory int) {
+	if maxHistory <= 0 {
+		return
+	}
+
+	// Count non-system messages
+	nonSysCount := 0
+	for _, msg := range req.Messages {
+		if msg.Role != "system" {
+			nonSysCount++
+		}
+	}
+
+	if nonSysCount <= maxHistory {
+		return
+	}
+
+	toRemove := nonSysCount - maxHistory
+
+	// Build new slice preserving system prompt(s) and the most recent messages
+	var kept []litellm.Message
+	var removed int
+	for _, msg := range req.Messages {
+		if msg.Role == "system" {
+			kept = append(kept, msg)
+			continue
+		}
+		if removed < toRemove {
+			removed++
+			continue
+		}
+		kept = append(kept, msg)
+	}
+	req.Messages = kept
 }
 
 // drainStream reads all events from a stream channel and collects text content
