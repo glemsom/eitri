@@ -105,6 +105,12 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		}
 		choice := chunk.Choices[0]
 
+		if choice.Delta.ReasoningContent != "" {
+			ch <- StreamEvent{
+				Type:    StreamEventTypeToken,
+				Content: choice.Delta.ReasoningContent,
+			}
+		}
 		if choice.Delta.Content != "" {
 			ch <- StreamEvent{
 				Type:    StreamEventTypeToken,
