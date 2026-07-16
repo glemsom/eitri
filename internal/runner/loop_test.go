@@ -137,7 +137,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -424,7 +424,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(ctx, llm, &req, 5, w, nil)
+	err := RunAgent(ctx, llm, &req, 5, 0, w, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -446,7 +446,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -471,7 +471,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -545,7 +545,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 0, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -580,7 +580,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, w, toolReg)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -594,6 +594,210 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		if toolMsg.Content != "" {
 			t.Errorf("tool result content = %q, want empty", toolMsg.Content)
 		}
+	}
+}
+
+// ── Sliding window cap tests ────────────────────────────────────────────────
+
+func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: "system", Content: "You are a helpful assistant."},
+			{Role: "user", Content: "msg1"},
+			{Role: "assistant", Content: "resp1"},
+			{Role: "user", Content: "msg2"},
+			{Role: "assistant", Content: "resp2"},
+			{Role: "user", Content: "msg3"},
+			{Role: "assistant", Content: "resp3"},
+		},
+	}
+
+	trimMessages(req, 4) // cap at 4 non-system messages
+
+	// System prompt must remain
+	if len(req.Messages) < 1 || req.Messages[0].Role != "system" {
+		t.Fatalf("system prompt missing or moved, got %+v", req.Messages)
+	}
+
+	// Total messages: system (1) + 4 non-system = 5
+	if len(req.Messages) != 5 {
+		t.Fatalf("len(Messages) = %d, want 5 (system + 4 non-system)", len(req.Messages))
+	}
+
+	// Oldest 2 non-system messages removed (msg1/resp1), remaining: msg2/resp2/msg3/resp3
+	expected := []string{"msg2", "resp2", "msg3", "resp3"}
+	for i, exp := range expected {
+		idx := 1 + i // skip system
+		if req.Messages[idx].Content != exp {
+			t.Errorf("Messages[%d].Content = %q, want %q", idx, req.Messages[idx].Content, exp)
+		}
+	}
+}
+
+func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
+	msgs := []litellm.Message{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u1"},
+		{Role: "assistant", Content: "a1"},
+	}
+	req := &litellm.Request{Messages: msgs}
+
+	trimMessages(req, 5)
+
+	if len(req.Messages) != 3 {
+		t.Errorf("len = %d, want 3 (unchanged)", len(req.Messages))
+	}
+}
+
+func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
+	msgs := []litellm.Message{
+		{Role: "system", Content: "sys"},
+		{Role: "user", Content: "u1"},
+		{Role: "assistant", Content: "a1"},
+		{Role: "user", Content: "u2"},
+		{Role: "assistant", Content: "a2"},
+	}
+
+	// maxHistory = 0 (no limit)
+	req0 := &litellm.Request{Messages: append([]litellm.Message{}, msgs...)}
+	trimMessages(req0, 0)
+	if len(req0.Messages) != 5 {
+		t.Errorf("maxHistory=0: len = %d, want 5", len(req0.Messages))
+	}
+
+	// maxHistory = -1 (no limit)
+	reqNeg := &litellm.Request{Messages: append([]litellm.Message{}, msgs...)}
+	trimMessages(reqNeg, -1)
+	if len(reqNeg.Messages) != 5 {
+		t.Errorf("maxHistory=-1: len = %d, want 5", len(reqNeg.Messages))
+	}
+}
+
+func TestTrimMessages_NoSystemPromptIsFine(t *testing.T) {
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: "user", Content: "u1"},
+			{Role: "assistant", Content: "a1"},
+			{Role: "user", Content: "u2"},
+			{Role: "assistant", Content: "a2"},
+			{Role: "user", Content: "u3"},
+		},
+	}
+
+	trimMessages(req, 2)
+
+	// Should keep only the last 2 non-system messages
+	if len(req.Messages) != 2 {
+		t.Fatalf("len = %d, want 2", len(req.Messages))
+	}
+	if req.Messages[0].Content != "a2" {
+		t.Errorf("Messages[0].Content = %q, want %q", req.Messages[0].Content, "a2")
+	}
+	if req.Messages[1].Content != "u3" {
+		t.Errorf("Messages[1].Content = %q, want %q", req.Messages[1].Content, "u3")
+	}
+}
+
+func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// 3 turns: tool call → tool result → final answer
+	llm := newMockLLM([]mockTurn{
+		{
+			content: "thinking...",
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "test_tool",
+					Arguments: `{}`,
+				},
+			}},
+		},
+		{content: "final answer"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "test_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "tool result"}}, nil, false
+		},
+	})
+
+	// Start with 5 existing messages + system prompt, cap at 3
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "old1"},
+			{Role: "assistant", Content: "old1r"},
+			{Role: "user", Content: "old2"},
+			{Role: "assistant", Content: "old2r"},
+			{Role: "user", Content: "old3"},
+			{Role: "assistant", Content: "old3r"},
+			{Role: "user", Content: "run tool"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Verify: system prompt preserved, old1/old1r trimmed, old2/old2r trimmed,
+	// old3/old3r/run tool/assistant+tool+final kept but capped at 3 non-system
+	// With cap=3: only the last 3 non-system messages survive
+	// The run produces: user("run tool") → assistant(tool call) → tool(result) → assistant("final answer")
+	// After all appends and trims, we expect: system + last 3 non-system
+	sysFound := false
+	nonSys := 0
+	for _, msg := range req.Messages {
+		if msg.Role == "system" {
+			sysFound = true
+		} else {
+			nonSys++
+		}
+	}
+
+	if !sysFound {
+		t.Error("system prompt was removed by trimming")
+	}
+	if nonSys > 3 {
+		t.Errorf("non-system messages = %d, want at most 3", nonSys)
+	}
+	if !sysFound && nonSys > 3 {
+		t.Logf("Messages: %+v", req.Messages)
+	}
+}
+
+func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{content: "Hello!"},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "hi"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Should have system + user + assistant (3 total)
+	if len(req.Messages) != 3 {
+		t.Errorf("len(Messages) = %d, want 3 (no trimming)", len(req.Messages))
 	}
 }
 

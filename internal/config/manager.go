@@ -23,6 +23,7 @@ type Config struct {
 	CommandTimeout      int64           `json:"command_timeout"`
 	MaxTurns            int             `json:"max_turns"`
 	ContextWindowTokens int             `json:"context_window_tokens"`
+	MaxHistory          int             `json:"max_history"`
 }
 
 // Defaults returns a Config with default values.
@@ -35,6 +36,7 @@ func Defaults() Config {
 		CommandTimeout:      60 * 1_000_000_000,  // 60 seconds in ns
 		MaxTurns:            25,
 		ContextWindowTokens: 256000,
+		MaxHistory:          50,
 	}
 }
 
@@ -108,6 +110,10 @@ func Validate(cfg *Config) error {
 
 	if cfg.ContextWindowTokens < 1024 {
 		return fmt.Errorf("context_window_tokens must be at least 1024, got %d", cfg.ContextWindowTokens)
+	}
+
+	if cfg.MaxHistory < 0 {
+		return fmt.Errorf("max_history must be non-negative, got %d", cfg.MaxHistory)
 	}
 
 	return nil
@@ -195,6 +201,11 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 	if v, ok := patch["context_window_tokens"]; ok {
 		if f, ok := v.(float64); ok {
 			result.ContextWindowTokens = int(f)
+		}
+	}
+	if v, ok := patch["max_history"]; ok {
+		if f, ok := v.(float64); ok {
+			result.MaxHistory = int(f)
 		}
 	}
 
