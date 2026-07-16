@@ -187,9 +187,9 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
-			// For edit tool, additionally emit a DiffCard component event
-			if tc.Function.Name == "edit" && !isError {
-				emitEditDiffCard(sseWriter, blocks)
+			// Emit component event for compatible tools
+			if !isError {
+				emitComponentForTool(sseWriter, tc.Function.Name, args)
 			}
 
 			// Add tool result message to conversation history
@@ -338,47 +338,86 @@ func toolResultHasError(blocks []vocellitellm.Block) bool {
 	return false
 }
 
-// emitEditDiffCard extracts old/new content from edit tool result blocks
-// and emits a DiffCard component event.
-func emitEditDiffCard(w *runstate.Writer, blocks []vocellitellm.Block) {
-	// blocks[0] wraps a single TextBlock with format:
-	//   Edited file: <path>
-	//   OLD:
-	//   <old text>
-	//   NEW:
-	//   <new text>
-	if len(blocks) == 0 {
+// componentToolMap maps tool names to component names for component emission.
+var componentToolMap = map[string]string{
+	"render_mermaid_diagram": "MermaidDiagram",
+	"render_quick_replies":  "QuickReplies",
+	"render_diff_card":      "DiffCard",
+	"edit":                  "DiffCard",
+}
+
+// emitComponentForTool emits a component event based on the tool name and args.
+// Supported tools: render_mermaid_diagram, render_quick_replies, render_diff_card, edit.
+// The edit tool emits a DiffCard using old_text/new_text from args.
+func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage) {
+	componentName, ok := componentToolMap[toolName]
+	if !ok {
 		return
 	}
-	tr, ok := blocks[0].(vocellitellm.ToolResultBlock)
-	if !ok || len(tr.Content) == 0 {
-		return
-	}
-	var fullText string
-	for _, b := range tr.Content {
-		if tb, ok := b.(vocellitellm.TextBlock); ok {
-			fullText = tb.Text
-			break
+
+	data := make(map[string]interface{})
+
+	switch componentName {
+	case "MermaidDiagram":
+		var parsed struct {
+			Code string `json:"code"`
 		}
-	}
-	oldStart := strings.Index(fullText, "\nOLD:\n")
-	newStart := strings.Index(fullText, "\nNEW:\n")
-	if oldStart == -1 || newStart == -1 || newStart <= oldStart {
+		if err := json.Unmarshal(args, &parsed); err != nil || parsed.Code == "" {
+			return
+		}
+		data["code"] = parsed.Code
+
+	case "QuickReplies":
+		var parsed struct {
+			Options []string `json:"options"`
+		}
+		if err := json.Unmarshal(args, &parsed); err != nil || len(parsed.Options) == 0 {
+			return
+		}
+		data["options"] = parsed.Options
+
+	case "DiffCard":
+		if toolName == "edit" {
+			// Read old/new from edit tool's typed args (deterministic, no text parsing)
+			var parsed struct {
+				OldText string `json:"old_text"`
+				NewText string `json:"new_text"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return
+			}
+			if parsed.OldText == "" && parsed.NewText == "" {
+				return
+			}
+			data["old"] = parsed.OldText
+			data["new"] = parsed.NewText
+			data["lang"] = ""
+		} else {
+			// render_diff_card: read from its args
+			var parsed struct {
+				Old  string `json:"old"`
+				New  string `json:"new"`
+				Lang string `json:"lang,omitempty"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return
+			}
+			if parsed.Old == "" && parsed.New == "" {
+				return
+			}
+			data["old"] = parsed.Old
+			data["new"] = parsed.New
+			data["lang"] = parsed.Lang
+		}
+
+	default:
 		return
 	}
-	oldStr := fullText[oldStart+len("\nOLD:\n") : newStart]
-	newStr := fullText[newStart+len("\nNEW:\n"):]
-	if oldStr == "" && newStr == "" {
-		return
-	}
+
 	w.Component(map[string]interface{}{
 		"kind": "component",
-		"name": "DiffCard",
-		"data": map[string]interface{}{
-			"old":  oldStr,
-			"new":  newStr,
-			"lang": "",
-		},
+		"name": componentName,
+		"data": data,
 	})
 }
 

@@ -23,11 +23,18 @@ const (
 
 const sessionTitlePreviewMaxRunes = 31
 
+// ComponentData holds a rendered UI component attached to an assistant message.
+type ComponentData struct {
+	Name string                 `json:"name"`
+	Data map[string]interface{} `json:"data"`
+}
+
 // Message represents a single chat message in a session.
 type Message struct {
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	Role       string          `json:"role"`
+	Content    string          `json:"content"`
+	CreatedAt  time.Time       `json:"created_at"`
+	Components []ComponentData `json:"components,omitempty"`
 }
 
 // UISession represents a browser-facing chat session.

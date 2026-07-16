@@ -1081,3 +1081,255 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	}
 }
 
+
+func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "render_mermaid_diagram",
+					Arguments: `{"code":"graph TD; A-->B;"}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_mermaid_diagram",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered MermaidDiagram"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "render a diagram"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	foundComponent := false
+	for _, evt := range events {
+		if evt.Type == "component" {
+			foundComponent = true
+			break
+		}
+	}
+	if !foundComponent {
+		t.Errorf("expected component event for render_mermaid_diagram, got types: %v", sseEventTypes(events))
+	}
+}
+
+func TestRunAgent_RenderQuickRepliesEmitsComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "render_quick_replies",
+					Arguments: `{"options":["yes","no"]}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_quick_replies",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered QuickReplies"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "show quick replies"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	foundComponent := false
+	for _, evt := range events {
+		if evt.Type == "component" {
+			foundComponent = true
+			break
+		}
+	}
+	if !foundComponent {
+		t.Errorf("expected component event for render_quick_replies, got types: %v", sseEventTypes(events))
+	}
+}
+
+func TestRunAgent_RenderDiffCardEmitsComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "render_diff_card",
+					Arguments: `{"old":"foo","new":"bar"}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_diff_card",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered DiffCard"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "show diff"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	foundComponent := false
+	for _, evt := range events {
+		if evt.Type == "component" {
+			foundComponent = true
+			break
+		}
+	}
+	if !foundComponent {
+		t.Errorf("expected component event for render_diff_card, got types: %v", sseEventTypes(events))
+	}
+}
+
+func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "render_mermaid_diagram",
+					Arguments: `{"code":"graph TD; A-->B;"}`,
+				},
+			}},
+		},
+		{content: "error occurred"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_mermaid_diagram",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "something went wrong"}}, nil, true
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "render a diagram"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "component" {
+			t.Error("component event should NOT be emitted when render tool returns error")
+			break
+		}
+	}
+}
+
+func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "some_other_tool",
+					Arguments: `{}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "some_other_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run tool"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "component" {
+			t.Error("component event should NOT be emitted for non-render tools")
+			break
+		}
+	}
+}
