@@ -30,9 +30,9 @@ func NewGitHubCopilot(model, baseURL, apiKey string) *GitHubCopilot {
 func (s *GitHubCopilot) copilotHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Editor-Version", "Eitri/1.0")
-	req.Header.Set("User-Agent", "Eitri")
-	req.Header.Set("Openai-Intent", "conversation-panel")
+	// Copilot API expects headers matching the official VSCode extension.
+	req.Header.Set("Editor-Version", "vscode/1.80.0")
+	req.Header.Set("User-Agent", "GithubCopilot/1.100.0")
 }
 
 func (s *GitHubCopilot) Chat(ctx context.Context, req Request) (*Response, error) {

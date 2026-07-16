@@ -214,11 +214,11 @@ func TestNewLLMService_GitHubCopilotRoute(t *testing.T) {
 	if gotAuth != "Bearer gho-token" {
 		t.Fatalf("Authorization = %q, want Bearer gho-token", gotAuth)
 	}
-	if gotEditorVer == "" {
-		t.Fatal("Editor-Version header missing")
+	if gotEditorVer != "vscode/1.80.0" {
+		t.Fatalf("Editor-Version = %q, want vscode/1.80.0", gotEditorVer)
 	}
-	if gotUserAgent == "" {
-		t.Fatal("User-Agent header missing")
+	if gotUserAgent != "GithubCopilot/1.100.0" {
+		t.Fatalf("User-Agent = %q, want GithubCopilot/1.100.0", gotUserAgent)
 	}
 }
 

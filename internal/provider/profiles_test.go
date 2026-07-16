@@ -117,7 +117,7 @@ func TestGitHubCopilotProfileBuildsURLsAndHeaders(t *testing.T) {
 	prof.ApplyHeaders(req, "ghu-token")
 	want := map[string]string{
 		"Authorization":        "Bearer ghu-token",
-		"User-Agent":           "Eitri",
+		"User-Agent":           "GithubCopilot/1.100.0",
 		"X-GitHub-Api-Version": "2026-06-01",
 		"Openai-Intent":        "conversation-panel",
 		"x-initiator":          "user",
