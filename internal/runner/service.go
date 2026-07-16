@@ -201,8 +201,10 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	toolReg := tool.NewRegistry()
 	toolReg.Register(tool.NewBashTool(s.sessionMgr))
 	toolReg.Register(tool.NewGlobTool(s.sessionMgr.Workspace()))
-	toolReg.Register(tool.NewFileViewer(s.sessionMgr.Workspace(), s.skillDirectories()))
-	toolReg.Register(tool.NewFileEditor(s.sessionMgr.Workspace()))
+	toolReg.Register(tool.NewGrepTool(s.sessionMgr.Workspace()))
+	toolReg.Register(tool.NewReadTool(s.sessionMgr.Workspace(), s.skillDirectories()))
+	toolReg.Register(tool.NewWriteTool(s.sessionMgr.Workspace()))
+	toolReg.Register(tool.NewEditTool(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewRenderComponent())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
