@@ -105,39 +105,22 @@ func countNewDirs(path string) int {
 		return 0
 	}
 
-	dir := path
+	// Walk up to find first existing ancestor.
+	// Track components traversed from original path upward.
+	steps := 0
+	current := path
 	for {
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Hit root — all path components are new.
+			// steps already counts them all.
+			return steps
 		}
+		steps++
 		if _, err := os.Stat(parent); err == nil {
-			// Count components from parent down to path
-			remaining := path
-			count := 0
-			for remaining != parent {
-				count++
-				remaining = filepath.Dir(remaining)
-				if remaining == filepath.Dir(remaining) {
-					break
-				}
-			}
-			return count
+			// Found existing ancestor — steps is count of new dirs
+			return steps
 		}
-		dir = parent
+		current = parent
 	}
-
-	// No existing ancestor — count all components of path
-	remaining := path
-	count := 0
-	for {
-		parent := filepath.Dir(remaining)
-		if parent == remaining {
-			break
-		}
-		count++
-		remaining = parent
-	}
-	// Trim one for the root segment (e.g., "/" itself)
-	return count
 }
