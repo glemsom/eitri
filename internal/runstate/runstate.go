@@ -222,8 +222,9 @@ func (w *Writer) State() *State {
 	return w.state
 }
 
-// Token sends a text token event.
+// Token sends a text token event and appends to the text buffer.
 func (w *Writer) Token(content string) {
+	w.state.AppendBuffer(content)
 	w.state.Broadcast(SSEEvent{Type: "token", Content: content})
 }
 

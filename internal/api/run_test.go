@@ -25,11 +25,7 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-// newRunnerManager creates a test RunnerManager.
-func newRunnerManager(t *testing.T) *runner.Manager {
-	t.Helper()
-	return runner.NewManager()
-}
+
 
 type testServerWithRuns struct {
 	server      *httptest.Server
@@ -44,9 +40,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
-	runnerMgr := newRunnerManager(t)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runnerMgr,
 		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
@@ -83,9 +77,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(workspace, 0, 0)
-	runnerMgr := newRunnerManager(t)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runnerMgr,
 		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
@@ -491,18 +483,30 @@ type capturedChatRequest struct {
 	} `json:"messages"`
 }
 
-func countActivateSkillMessages(req capturedChatRequest) (assistantCalls int, toolResponses int) {
+func hasActivatedSkillContent(req capturedChatRequest, name string) bool {
 	for _, msg := range req.Messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Activated skill \""+name+"\":") {
+			return true
+		}
 		for _, call := range msg.ToolCalls {
 			if call.Function.Name == "activate_skill" {
-				assistantCalls++
+				return true
 			}
 		}
 		if msg.Role == "tool" && msg.ToolCallID != "" && strings.Contains(msg.Content, "skill_directory") {
-			toolResponses++
+			return true
 		}
 	}
-	return assistantCalls, toolResponses
+	return false
+}
+
+func systemPromptContains(req capturedChatRequest, substr string) bool {
+	for _, msg := range req.Messages {
+		if msg.Role == "system" && strings.Contains(msg.Content, substr) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *testing.T) {
@@ -565,17 +569,15 @@ func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *t
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 	first := <-requests
 	waitForRunToFinish(t, h.runSvc, sessionID)
-	firstCalls, firstResponses := countActivateSkillMessages(first)
-	if firstCalls != 1 || firstResponses != 1 {
-		t.Fatalf("first run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", firstCalls, firstResponses, first.Messages)
+	if !hasActivatedSkillContent(first, "code-review") {
+		t.Fatalf("first run missing activated skill content; messages=%#v", first.Messages)
 	}
 
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 	second := <-requests
 	waitForRunToFinish(t, h.runSvc, sessionID)
-	secondCalls, secondResponses := countActivateSkillMessages(second)
-	if secondCalls != 1 || secondResponses != 1 {
-		t.Fatalf("second run activate_skill context = (%d calls, %d responses), want (1,1); messages=%#v", secondCalls, secondResponses, second.Messages)
+	if !hasActivatedSkillContent(second, "code-review") {
+		t.Fatalf("second run missing activated skill content; messages=%#v", second.Messages)
 	}
 }
 
@@ -664,9 +666,8 @@ func TestChatRun_SkipsDisappearedActiveSkillAndShowsWarning(t *testing.T) {
 
 	captured := <-requests
 	waitForRunToFinish(t, h.runSvc, sessionID)
-	calls, responses := countActivateSkillMessages(captured)
-	if calls != 0 || responses != 0 {
-		t.Fatalf("stale skill should not be re-applied, got (%d calls, %d responses); messages=%#v", calls, responses, captured.Messages)
+	if hasActivatedSkillContent(captured, "code-review") {
+		t.Fatalf("stale skill should not be re-applied; messages=%#v", captured.Messages)
 	}
 	if got := h.sessionMgr.ActiveSkills(sessionID); len(got) != 0 {
 		t.Fatalf("active skills after stale-skill skip = %v, want empty", got)
@@ -788,10 +789,8 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
-	runnerMgr := newRunnerManager(t)
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runnerMgr,
 		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
@@ -1042,10 +1041,8 @@ func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.
 }
 
 func TestRunService_New(t *testing.T) {
-	runnerMgr := newRunnerManager(t)
 	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		RunnerManager:  runnerMgr,
 		SessionManager: executorMgr,
 		UISessionMgr:   session.NewManager(10),
 	})

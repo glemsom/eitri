@@ -771,17 +771,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		_ = templates.ErrorToast(warning).Render(r.Context(), w)
 	}
 
-	// Update session status
+	// StartRun spawns agent loop goroutine; it handles status + session persistence internally.
 	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
-
-	// Start SSE event processing in background
-	runState := s.config.RunService.ActiveRun(id)
-	if runState != nil {
-		go func() {
-			defer s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
-			s.config.RunService.AppendEvent(runState)
-		}()
-	}
 
 	// Render user bubble + session tab refresh + send JS events for SSE connect and run state
 	w.Header().Set("Content-Type", "text/html")
