@@ -389,9 +389,7 @@ func TestRunAgent_EditToolEmitsDiffCardComponent(t *testing.T) {
 		name: "edit",
 		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
 			return []vocellitellm.Block{
-				vocellitellm.TextBlock{Text: "Edited file: test.txt"},
-				vocellitellm.TextBlock{Text: "OLD:\nfoo"},
-				vocellitellm.TextBlock{Text: "NEW:\nbar"},
+				vocellitellm.TextBlock{Text: "Edited file: test.txt\nOLD:\nfoo\nNEW:\nbar"},
 			}, nil, false
 		},
 	})

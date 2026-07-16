@@ -195,35 +195,29 @@ func TestEdit_SuccessfulEdit_IncludesOldNewContent(t *testing.T) {
 	if isError {
 		t.Error("isError = true, want false")
 	}
-	if len(blocks) < 3 {
-		t.Fatalf("expected at least 3 blocks, got %d", len(blocks))
+	if len(blocks) < 1 {
+		t.Fatalf("expected at least 1 block, got %d", len(blocks))
 	}
 
-	// Block 0: confirmation
-	confBlock, ok := blocks[0].(litellm.TextBlock)
+	// Single block with combined text
+	block, ok := blocks[0].(litellm.TextBlock)
 	if !ok {
 		t.Fatalf("block[0] is %T, want TextBlock", blocks[0])
 	}
-	if !strings.Contains(confBlock.Text, "Edited file:") {
-		t.Errorf("block[0] = %q, want confirmation message", confBlock.Text)
+	if !strings.Contains(block.Text, "Edited file:") {
+		t.Errorf("block[0] = %q, want confirmation message", block.Text)
 	}
-
-	// Block 1: old content
-	oldBlock, ok := blocks[1].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block[1] is %T, want TextBlock", blocks[1])
+	if !strings.Contains(block.Text, "OLD:") {
+		t.Errorf("block[0] = %q, want OLD: section", block.Text)
 	}
-	if !strings.Contains(oldBlock.Text, "foo bar") {
-		t.Errorf("block[1] should contain old text 'foo bar', got: %q", oldBlock.Text)
+	if !strings.Contains(block.Text, "foo bar") {
+		t.Errorf("block[0] should contain old text 'foo bar', got: %q", block.Text)
 	}
-
-	// Block 2: new content
-	newBlock, ok := blocks[2].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block[2] is %T, want TextBlock", blocks[2])
+	if !strings.Contains(block.Text, "NEW:") {
+		t.Errorf("block[0] = %q, want NEW: section", block.Text)
 	}
-	if !strings.Contains(newBlock.Text, "FOO BAR") {
-		t.Errorf("block[2] should contain new text 'FOO BAR', got: %q", newBlock.Text)
+	if !strings.Contains(block.Text, "FOO BAR") {
+		t.Errorf("block[0] should contain new text 'FOO BAR', got: %q", block.Text)
 	}
 
 	// Verify file was changed on disk

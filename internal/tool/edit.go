@@ -100,10 +100,5 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks(fmt.Sprintf("Error: failed to write file: %v", err)), nil, true
 	}
 
-	output := fmt.Sprintf("Edited file: %s", parsed.Path)
-	return []litellm.Block{
-		litellm.TextBlock{Text: output},
-		litellm.TextBlock{Text: fmt.Sprintf("OLD:\n%s", parsed.OldText)},
-		litellm.TextBlock{Text: fmt.Sprintf("NEW:\n%s", parsed.NewText)},
-	}, nil, false
+	return []litellm.Block{litellm.TextBlock{Text: fmt.Sprintf("Edited file: %s\nOLD:\n%s\nNEW:\n%s", parsed.Path, parsed.OldText, parsed.NewText)}}, nil, false
 }

@@ -341,27 +341,33 @@ func toolResultHasError(blocks []vocellitellm.Block) bool {
 // emitEditDiffCard extracts old/new content from edit tool result blocks
 // and emits a DiffCard component event.
 func emitEditDiffCard(w *runstate.Writer, blocks []vocellitellm.Block) {
-	// blocks[0] is ToolResultBlock wrapping the TextBlocks from edit tool Call()
+	// blocks[0] wraps a single TextBlock with format:
+	//   Edited file: <path>
+	//   OLD:
+	//   <old text>
+	//   NEW:
+	//   <new text>
 	if len(blocks) == 0 {
 		return
 	}
 	tr, ok := blocks[0].(vocellitellm.ToolResultBlock)
-	if !ok || len(tr.Content) < 3 {
+	if !ok || len(tr.Content) == 0 {
 		return
 	}
-	var oldStr, newStr string
+	var fullText string
 	for _, b := range tr.Content {
-		tb, ok := b.(vocellitellm.TextBlock)
-		if !ok {
-			continue
-		}
-		if strings.HasPrefix(tb.Text, "OLD:\n") {
-			oldStr = strings.TrimPrefix(tb.Text, "OLD:\n")
-		}
-		if strings.HasPrefix(tb.Text, "NEW:\n") {
-			newStr = strings.TrimPrefix(tb.Text, "NEW:\n")
+		if tb, ok := b.(vocellitellm.TextBlock); ok {
+			fullText = tb.Text
+			break
 		}
 	}
+	oldStart := strings.Index(fullText, "\nOLD:\n")
+	newStart := strings.Index(fullText, "\nNEW:\n")
+	if oldStart == -1 || newStart == -1 || newStart <= oldStart {
+		return
+	}
+	oldStr := fullText[oldStart+len("\nOLD:\n") : newStart]
+	newStr := fullText[newStart+len("\nNEW:\n"):]
 	if oldStr == "" && newStr == "" {
 		return
 	}
