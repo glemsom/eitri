@@ -6,13 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
 
 // defaultHTTPClient is reused across all adapters.
 var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+
+// debugLogPayload dumps full LLM request JSON to slog.Info when set.
+// Enable via EITRI_DEBUG_PROMPT=1 or EITRI_DEBUG_REQUEST=1 env var.
+var debugLogPayload = os.Getenv("EITRI_DEBUG_PROMPT") == "1" || os.Getenv("EITRI_DEBUG_REQUEST") == "1"
 
 // doRequest sends the HTTP request and returns the response.
 func doRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
@@ -340,6 +346,12 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 	httpReq.Header.Set("Accept", "application/json")
 	setHeaders(httpReq)
 
+	if debugLogPayload {
+		slog.Info("llm request",
+			slog.String("endpoint", url),
+			slog.String("body", string(body)),
+		)
+	}
 	resp, err := doRequest(ctx, client, httpReq)
 	if err != nil {
 		return nil, err
@@ -382,6 +394,12 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 	httpReq.Header.Set("Accept", "text/event-stream")
 	setHeaders(httpReq)
 
+	if debugLogPayload {
+		slog.Info("llm request",
+			slog.String("endpoint", url),
+			slog.String("body", string(body)),
+		)
+	}
 	resp, err := doRequest(ctx, client, httpReq)
 	if err != nil {
 		return nil, err
