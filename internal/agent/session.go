@@ -5,7 +5,7 @@ package agent
 import (
 	"sync"
 
-	"github.com/voocel/litellm"
+	"github.com/glemsom/eitri/internal/litellm"
 )
 
 const (
@@ -88,53 +88,41 @@ func (m *SessionManager) AppendUser(id, text string) {
 		return
 	}
 	s.messages = append(s.messages, litellm.Message{
-		Role:   litellm.RoleUser,
-		Blocks: []litellm.Block{litellm.TextBlock{Text: text}},
+		Role:    "user",
+		Content: text,
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
 
-// AppendAssistant appends an assistant message with text blocks and optional
-// tool call blocks. No-op if session does not exist.
-func (m *SessionManager) AppendAssistant(id string, blocks []litellm.Block, toolCalls []litellm.ToolUseBlock) {
+// AppendAssistant appends an assistant message with text content and optional
+// tool calls. No-op if session does not exist.
+func (m *SessionManager) AppendAssistant(id, content string, toolCalls []litellm.ToolCall) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return
 	}
-	msgBlocks := make([]litellm.Block, 0, len(blocks)+len(toolCalls))
-	msgBlocks = append(msgBlocks, blocks...)
-	for _, tc := range toolCalls {
-		msgBlocks = append(msgBlocks, tc)
-	}
-	if len(msgBlocks) == 0 {
-		return
-	}
 	s.messages = append(s.messages, litellm.Message{
-		Role:   litellm.RoleAssistant,
-		Blocks: msgBlocks,
+		Role:      "assistant",
+		Content:   content,
+		ToolCalls: toolCalls,
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
 
 // AppendTool appends a tool result message. No-op if session does not exist.
-func (m *SessionManager) AppendTool(id, toolUseID string, blocks []litellm.Block, isError bool) {
+func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return
 	}
-	contentBlocks := make([]litellm.Block, len(blocks))
-	copy(contentBlocks, blocks)
 	s.messages = append(s.messages, litellm.Message{
-		Role: litellm.RoleTool,
-		Blocks: []litellm.Block{litellm.ToolResultBlock{
-			ToolUseID: toolUseID,
-			Content:   contentBlocks,
-			IsError:   isError,
-		}},
+		Role:       "tool",
+		ToolCallID: toolUseID,
+		Content:    content,
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
@@ -155,8 +143,8 @@ func (m *SessionManager) History(id string) []litellm.Message {
 		sysPrompt = DefaultSystemPrompt
 	}
 	sysMsg := litellm.Message{
-		Role:   litellm.RoleSystem,
-		Blocks: []litellm.Block{litellm.TextBlock{Text: sysPrompt}},
+		Role:    "system",
+		Content: sysPrompt,
 	}
 
 	// Deep copy messages
@@ -184,7 +172,7 @@ func (m *SessionManager) trimExchangesLocked(messages []litellm.Message) []litel
 	// Count user messages
 	var userCount int
 	for _, msg := range messages {
-		if msg.Role == litellm.RoleUser {
+		if msg.Role == "user" {
 			userCount++
 		}
 	}
@@ -199,19 +187,14 @@ func (m *SessionManager) trimExchangesLocked(messages []litellm.Message) []litel
 	var removeIdx int
 	count := 0
 	for i, msg := range messages {
-		if msg.Role == litellm.RoleUser {
+		if msg.Role == "user" {
 			count++
 			if count == toRemove {
-				// Remove everything from the start of this user message
 				removeIdx = i
 				break
 			}
 		}
 	}
 
-	// Also check if there's a preceding user message with same role we need to
-	// find the boundary better. Actually, we want to remove messages[0..removeIdx].
-	// But we want to keep the system prompt (not in messages slice) and the remaining
-	// messages.
 	return messages[removeIdx+1:]
 }
