@@ -30,7 +30,7 @@
 
   var toolCardTimers = {}; // toolCallKey -> interval ID
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
-  var toolCardCounter = 0; // monotonic counter for unique tool keys
+  var toolEntryCounter = 0; // monotonic counter for unique tool keys
 
   function clearToolActivity() {
     var list = document.querySelector('#tool-activity .tool-activity-list');
@@ -283,8 +283,8 @@
         updateRunStatus(STATES.TOOL_RUNNING, 'Running tool: ' + (packet.tool || 'unknown tool'), state);
 
         // Track tool call key for card slot (monotonic counter for rapid events)
-        toolCardCounter++;
-        var toolCallKey = sessionId + '-tool-' + Date.now() + '-' + toolCardCounter;
+        toolEntryCounter++;
+        var toolCallKey = sessionId + '-tool-' + Date.now() + '-' + toolEntryCounter;
 
         // Skip tool card for render_quick_replies — the actual quick reply chips
         // appear inline on the next assistant message (via InlineQuickReplies).
