@@ -310,6 +310,17 @@
         });
         break;
 
+      case 'needs_confirmation':
+        markStreamResumed(state);
+        state.status = STATES.STREAMING;
+        updateRunStatus(STATES.STREAMING, 'Awaiting user confirmation.', state);
+        var path = packet.data && packet.data.path;
+        var msg = packet.data && packet.data.message;
+        if (!path) path = packet.content || '';
+        if (!msg) msg = packet.content || '';
+        showConfirmationModal(sessionId, path, msg);
+        break;
+
       case 'error':
         clearDeadAirTimer(state);
         state.status = STATES.ERROR;
@@ -748,6 +759,99 @@
         stopToolCardTimer(key);
       }
     }
+  }
+
+  // ---- Confirmation modal for blocked read paths (issue #314) ----
+
+  var activeConfirmation = null; // { sessionId, path, message }
+
+  function showConfirmationModal(sessionId, path, message) {
+    closeConfirmationModal();
+
+    activeConfirmation = { sessionId: sessionId, path: path, message: message };
+
+    var overlay = document.createElement('div');
+    overlay.id = 'confirmation-overlay';
+    overlay.className = 'confirmation-overlay';
+
+    overlay.innerHTML =
+      '<div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">' +
+      '<h3 id="confirmation-title">&#9888; Path requires confirmation</h3>' +
+      '<div class="confirmation-path">' + escapeHtml(path) + '</div>' +
+      '<div class="confirmation-message">' + escapeHtml(message) + '</div>' +
+      '<div class="confirmation-actions">' +
+      '<button id="confirm-deny" class="confirm-deny" type="button">Deny</button>' +
+      '<button id="confirm-allow" class="confirm-allow" type="button">Allow</button>' +
+      '</div>' +
+      '</div>';
+
+    // Prevent clicks on overlay from closing (must choose Allow or Deny)
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) return;
+    });
+
+    document.body.appendChild(overlay);
+
+    document.getElementById('confirm-allow').addEventListener('click', function () {
+      resolveConfirmation(true);
+    });
+
+    document.getElementById('confirm-deny').addEventListener('click', function () {
+      resolveConfirmation(false);
+    });
+
+    // Keyboard: Enter on Allow button, Escape not allowed (must decide)
+    document.addEventListener('keydown', confirmationKeyHandler);
+  }
+
+  function closeConfirmationModal() {
+    var overlay = document.getElementById('confirmation-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+    document.removeEventListener('keydown', confirmationKeyHandler);
+    activeConfirmation = null;
+  }
+
+  function confirmationKeyHandler(e) {
+    if (e.key === 'Enter') {
+      var allowBtn = document.getElementById('confirm-allow');
+      if (allowBtn && document.activeElement === allowBtn) {
+        resolveConfirmation(true);
+      }
+      var denyBtn = document.getElementById('confirm-deny');
+      if (denyBtn && document.activeElement === denyBtn) {
+        resolveConfirmation(false);
+      }
+    }
+  }
+
+  function resolveConfirmation(approved) {
+    if (!activeConfirmation) return;
+
+    var allowBtn = document.getElementById('confirm-allow');
+    var denyBtn = document.getElementById('confirm-deny');
+    if (allowBtn) allowBtn.disabled = true;
+    if (denyBtn) denyBtn.disabled = true;
+
+    var sessionId = activeConfirmation.sessionId;
+    var path = activeConfirmation.path;
+
+    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path, approved: approved }),
+    })
+    .then(function (resp) {
+      if (!resp.ok) {
+        console.warn('Confirmation POST failed:', resp.status, resp.statusText);
+      }
+      closeConfirmationModal();
+    })
+    .catch(function (err) {
+      console.warn('Confirmation POST error:', err);
+      closeConfirmationModal();
+    });
   }
 
   // ---- Scroll-to-bottom floating button (issue #104) ----
