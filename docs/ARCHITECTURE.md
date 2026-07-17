@@ -100,9 +100,9 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 
 | Template | Purpose |
 |----------|---------|
-| `base.templ` | HTML document shell + embedded pinned assets + browser island scripts |
+| `base.templ` | HTML document shell + embedded pinned assets + browser island scripts. Sidebar is a three-panel flex column: `#session-panel` (sessions list, fixed height), `#tool-activity` (tool activity cards, max 6 entries), `#thinking-panel` (LLM reasoning content, flex-grows) |
 | `chat.templ` | `ChatView` — workspace indicator, setup banner for invalid provider config, message list, input, visible Stop button, completion menu container, SSE target for selected session |
-| `session_tabs.templ` | `SessionTabs` — top-bar session strip with title, status dot, close button, and new-session button |
+| `session_tabs.templ` | `SessionTabs` — session list with title, status dot, close button, and new-session button in header |
 | `settings.templ` | `SettingsView` — config form, provider + model selectors, custom system prompt |
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |

@@ -9,6 +9,7 @@ templ SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) 
 	<div id="session-tabs" class="session-tabs" if swapOOB { hx-swap-oob="outerHTML" }>
 		<div class="sidebar-header">
 			<span class="sidebar-title">Sessions</span>
+			<button class="new-session-btn" hx-post="/api/sessions" hx-target="body" hx-push-url="true" title="New session">+ New Session</button>
 		</div>
 		<div class="sidebar-list">
 			for _, s := range sessions {
@@ -20,9 +21,6 @@ templ SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) 
 					<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
 				</div>
 			}
-		</div>
-		<div class="sidebar-footer">
-			<button class="new-session-btn" hx-post="/api/sessions" hx-target="body" hx-push-url="true" title="New session">+ New Session</button>
 		</div>
 	</div>
 }

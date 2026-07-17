@@ -44,7 +44,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "><div class=\"sidebar-header\"><span class=\"sidebar-title\">Sessions</span></div><div class=\"sidebar-list\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "><div class=\"sidebar-header\"><span class=\"sidebar-title\">Sessions</span> <button class=\"new-session-btn\" hx-post=\"/api/sessions\" hx-target=\"body\" hx-push-url=\"true\" title=\"New session\">+ New Session</button></div><div class=\"sidebar-list\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -74,7 +74,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/sessions/" + s.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 16, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 17, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -87,7 +87,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 16, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 17, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -100,7 +100,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(s.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 17, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 18, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -135,7 +135,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/api/sessions/" + s.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 20, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/session_tabs.templ`, Line: 21, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
@@ -146,7 +146,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div><div class=\"sidebar-footer\"><button class=\"new-session-btn\" hx-post=\"/api/sessions\" hx-target=\"body\" hx-push-url=\"true\" title=\"New session\">+ New Session</button></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -48,10 +48,22 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 				</header>
 				if sessions != nil {
 					<div id="sidebar">
+					<div class="sidebar-panel" id="session-panel">
 						@SessionTabs(sessions, activeID, false)
 					</div>
+					<div class="sidebar-divider"></div>
+					<div class="sidebar-panel" id="tool-activity">
+						<div class="sidebar-header"><span class="sidebar-title">Tools</span></div>
+						<div class="tool-activity-list"></div>
+					</div>
+					<div class="sidebar-divider"></div>
+					<div class="sidebar-panel" id="thinking-panel">
+						<div class="sidebar-header"><span class="sidebar-title">Thinking</span></div>
+						<pre class="thinking-content"></pre>
+					</div>
+				</div>
 				} else {
-					<div id="sidebar"><div id="session-tabs"></div></div>
+					<div id="sidebar"><div id="session-tabs"></div><div id="tool-activity"><div class="sidebar-header"><span class="sidebar-title">Tools</span></div><div class="tool-activity-list"></div></div><div id="thinking-panel"><div class="sidebar-header"><span class="sidebar-title">Thinking</span></div><pre class="thinking-content"></pre></div></div>
 				}
 				<main>
 					<noscript>
