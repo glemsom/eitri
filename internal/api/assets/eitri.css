@@ -93,27 +93,202 @@ header h1 {
   min-height: 0;
 }
 
+/* Three-panel flex layout inside sidebar */
+#session-panel {
+  flex: 0 0 auto;
+  max-height: 40%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 #session-tabs {
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
+  overflow: hidden;
+  flex: 1;
 }
 
 .sidebar-header {
-  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.sidebar-header .sidebar-title {
+  flex: 1;
+}
+
+.sidebar-header .new-session-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.sidebar-header .new-session-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.25rem 0;
+  padding: 0.15rem 0;
+}
+
+/* Sidebar panel sections */
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#tool-activity {
+  flex: 0 0 auto;
+  max-height: 260px;
+  min-height: 0;
+}
+
+#thinking-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* Tool activity list */
+.tool-activity-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.15rem 0;
+  font-size: 0.82rem;
+}
+
+/* Compact tool entry row */
+.tool-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tool-entry:hover {
+  background: var(--surface-alt);
+}
+
+.tool-entry .tool-icon {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  width: 1.1rem;
+  text-align: center;
+}
+
+.tool-entry .tool-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+
+.tool-entry .tool-status-label {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.tool-entry .tool-elapsed {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 4em;
+  text-align: right;
+}
+
+.tool-entry.tool-done {
+  opacity: 0.85;
+}
+
+.tool-entry.tool-error {
+  background: rgba(231, 76, 60, 0.1);
+  border-radius: 4px;
+}
+
+.tool-entry.tool-error .tool-icon {
+  color: var(--error);
+}
+
+/* Inline expandable tool output in sidebar */
+.tool-output {
+  display: none;
+  padding: 0.25rem 0.75rem 0.35rem;
+  border-top: 1px solid var(--border);
+  margin: 0 0.25rem;
+}
+
+.tool-output.open {
+  display: block;
+}
+
+.tool-output pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem;
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Thinking panel content */
+.thinking-content {
+  flex: 1;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
 }
 
 .sidebar-footer {
@@ -1257,17 +1432,59 @@ eitri-composer {
     border-right: none;
     border-bottom: 1px solid var(--border);
     max-height: 160px;
+    flex-direction: row;
+    overflow-x: auto;
+    align-items: stretch;
   }
 
-  .sidebar-header {
+  #sidebar .sidebar-panel,
+  #sidebar .sidebar-divider,
+  #sidebar #tool-activity,
+  #sidebar #thinking-panel {
     display: none;
   }
 
-  .sidebar-list {
+  #sidebar #session-tabs {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: none;
+    width: auto;
+    overflow: visible;
+  }
+
+  #sidebar .sidebar-header {
+    display: flex;
+    padding: 0.35rem 0.5rem;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 0.35rem;
+  }
+
+  #sidebar .sidebar-header .sidebar-title {
+    display: none;
+  }
+
+  #sidebar .sidebar-header .new-session-btn {
+    font-size: 1rem;
+    padding: 0.15rem 0.4rem;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+  }
+
+  #sidebar .sidebar-header .new-session-btn:hover {
+    background: transparent;
+    color: var(--accent-hover);
+  }
+
+  #sidebar .sidebar-list {
     display: flex;
     flex-wrap: nowrap;
     overflow-x: auto;
     padding: 0.15rem 0.35rem;
+    flex: none;
   }
 
   .session-item {
