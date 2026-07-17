@@ -43,6 +43,13 @@ func (t *ReadTool) Name() string {
 	return "read"
 }
 
+// AppendAllowedPaths adds one or more paths to the temporary allowed paths
+// for this ReadTool. Used by the agent loop when a confirmation is approved
+// so the tool can re-execute without requiring another confirmation.
+func (t *ReadTool) AppendAllowedPaths(paths ...string) {
+	t.allowedPaths = append(t.allowedPaths, paths...)
+}
+
 func (t *ReadTool) Description() string {
 	return "Read a file from the workspace. Returns the specified line range. If the file has more lines than requested, a metadata prefix shows the total line count so you can continue reading."
 }
@@ -66,7 +73,10 @@ func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	allowedRoots = append(allowedRoots, t.allowedPaths...)
 	absPath, err := fileutil.ValidatePathWithAllowed(parsed.Path, t.workspace, allowedRoots)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
+		return nil, &ErrNeedsConfirmation{
+			Path:    parsed.Path,
+			Message: fmt.Sprintf("path %q is outside workspace and allowed read paths: %v", parsed.Path, err),
+		}, false
 	}
 
 	startLine := parsed.StartLine

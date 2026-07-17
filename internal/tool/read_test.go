@@ -1,10 +1,10 @@
 package tool
 
 import (
-
-	"fmt"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,21 +170,24 @@ func TestRead_PathTraversalRejection(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewReadTool(dir, nil)
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"../../../etc/passwd"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected ErrNeedsConfirmation, got nil error")
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	var needsConf *ErrNeedsConfirmation
+	if !errors.As(err, &needsConf) {
+		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
 	}
-	if len(blocks) == 0 {
-		t.Fatal("expected blocks")
+	if needsConf.Path != "../../../etc/passwd" {
+		t.Errorf("Path = %q, want %q", needsConf.Path, "../../../etc/passwd")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	if !strings.Contains(needsConf.Message, "outside") && !strings.Contains(needsConf.Message, "escapes") {
+		t.Errorf("expected error about path rejection, got %q", needsConf.Message)
 	}
-	if !strings.Contains(block.Text, "outside") && !strings.Contains(block.Text, "escapes") {
-		t.Errorf("expected error about path rejection, got %q", block.Text)
+	if blocks != nil {
+		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
+	}
+	if isError {
+		t.Error("isError = true, want false for confirmation")
 	}
 }
 
@@ -192,21 +195,21 @@ func TestRead_AbsolutePathOutsideWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewReadTool(dir, nil)
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected ErrNeedsConfirmation, got nil error")
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	var needsConf *ErrNeedsConfirmation
+	if !errors.As(err, &needsConf) {
+		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
 	}
-	if len(blocks) == 0 {
-		t.Fatal("expected blocks")
+	if needsConf.Path != "/etc/passwd" {
+		t.Errorf("Path = %q, want %q", needsConf.Path, "/etc/passwd")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	if blocks != nil {
+		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
 	}
-	if !strings.Contains(block.Text, "outside") {
-		t.Errorf("expected error about 'outside', got %q", block.Text)
+	if isError {
+		t.Error("isError = true, want false for confirmation")
 	}
 }
 
@@ -321,21 +324,18 @@ func TestRead_AllowedPathsRejectsPathNotInAllowed(t *testing.T) {
 
 	tool := NewReadTool(dir, nil, []string{extDir1})
 	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected ErrNeedsConfirmation, got nil error")
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	var needsConf *ErrNeedsConfirmation
+	if !errors.As(err, &needsConf) {
+		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
 	}
-	if len(blocks) == 0 {
-		t.Fatal("expected blocks")
+	if blocks != nil {
+		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
-	}
-	if !strings.Contains(block.Text, "outside") {
-		t.Errorf("expected error mentioning 'outside', got %q", block.Text)
+	if isError {
+		t.Error("isError = true, want false for confirmation")
 	}
 }
 

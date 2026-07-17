@@ -55,6 +55,8 @@ type RunServiceDeps struct {
 type RunService struct {
 	mu              sync.Mutex
 	active          map[string]*RunState
+	confirmMu       sync.Mutex
+	confirmations   map[string]chan ConfirmationResult // sessionID → confirmation channel
 	sessionMgr      *executor.SessionManager
 	uiSessionMgr    *uisession.Manager
 	skillsSvc       *skills.Service
@@ -76,10 +78,11 @@ const completedRunRetention = 5 * time.Second
 // NewRunService creates a RunService with the given dependencies.
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
-		active:       make(map[string]*RunState),
-		sessionMgr:   deps.SessionManager,
-		uiSessionMgr: deps.UISessionMgr,
-		skillsSvc:    deps.SkillsService,
+		active:        make(map[string]*RunState),
+		confirmations: make(map[string]chan ConfirmationResult),
+		sessionMgr:    deps.SessionManager,
+		uiSessionMgr:  deps.UISessionMgr,
+		skillsSvc:     deps.SkillsService,
 	}
 }
 
@@ -265,7 +268,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID, s.confirmPath)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				// Save partial content to session on cancellation so the UI
@@ -388,6 +391,14 @@ func (s *RunService) Cancel(sessionID string) bool {
 	}
 	s.mu.Unlock()
 
+	// Close any pending confirmation channel
+	s.confirmMu.Lock()
+	if ch, ok := s.confirmations[sessionID]; ok {
+		close(ch)
+		delete(s.confirmations, sessionID)
+	}
+	s.confirmMu.Unlock()
+
 	if !exists {
 		return false
 	}
@@ -396,6 +407,51 @@ func (s *RunService) Cancel(sessionID string) bool {
 	state.Cancel()
 	state.finish()
 	return true
+}
+
+// confirmPath implements ConfirmationFunc for RunAgent.
+// It creates a channel for the session, sends a needs_confirmation SSE event,
+// and blocks waiting for the user's response via the API endpoint.
+func (s *RunService) confirmPath(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error) {
+	s.confirmMu.Lock()
+	// Check if channel already exists (should not happen in normal flow)
+	if existing, ok := s.confirmations[sessionID]; ok {
+		close(existing)
+	}
+	ch := make(chan ConfirmationResult, 1)
+	s.confirmations[sessionID] = ch
+	s.confirmMu.Unlock()
+
+	// Clean up when done
+	defer func() {
+		s.confirmMu.Lock()
+		delete(s.confirmations, sessionID)
+		s.confirmMu.Unlock()
+	}()
+
+	select {
+	case result := <-ch:
+		return &result, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// ResolveConfirmation resolves a pending confirmation for a session.
+// Called by the API endpoint when the user allows or denies a path.
+func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) bool {
+	s.confirmMu.Lock()
+	ch, ok := s.confirmations[sessionID]
+	s.confirmMu.Unlock()
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- ConfirmationResult{Path: path, Approved: approved}:
+		return true
+	default:
+		return false
+	}
 }
 
 // CancelAll cancels every active run.

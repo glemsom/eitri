@@ -18,6 +18,17 @@ import (
 	"github.com/glemsom/eitri/internal/tool"
 )
 
+// ConfirmationResult carries the user's decision for a confirmation prompt.
+type ConfirmationResult struct {
+	Path     string
+	Approved bool
+}
+
+// ConfirmationFunc is called when a tool needs user confirmation before
+// proceeding. It sends the confirmation request and blocks until the user
+// responds or the context is cancelled.
+type ConfirmationFunc func(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
+
 // RunAgent drives the synchronous agent turn loop.
 //
 // It sends the request to the LLM, processes tool calls via the registry,
@@ -29,6 +40,10 @@ import (
 // (unknown tool, e.g. LLM hallucinating "replace" instead of "edit") are
 // fed back to the LLM as tool result content — the LLM decides how to respond.
 // Only context cancellation and max turns terminate the loop.
+//
+// When a tool returns ErrNeedsConfirmation, the loop calls confirmFn to
+// pause for user input. On approval, the tool is re-executed with the path
+// temporarily allowed. On denial, an error is returned to the LLM.
 func RunAgent(
 	ctx context.Context,
 	llm litellm.LLMService,
@@ -40,6 +55,7 @@ func RunAgent(
 	sessionMgr *history.SessionManager,
 	uisessionMgr *uisession.Manager,
 	sessionID string,
+	confirmFn ConfirmationFunc,
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
@@ -160,26 +176,95 @@ func RunAgent(
 			// Dispatch tool via registry
 			blocks, err := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 			if err != nil {
-				// Feed unknown tool / dispatch errors back to the LLM as tool
-				// result instead of terminating the loop. LLMs commonly hallucinate
-				// tool names (e.g. "replace" instead of "edit") — this gives them
-				// a chance to self-correct on the next turn.
-				errMsg := fmt.Sprintf("Tool error: %v", err)
-				// Broadcast tool result so the error shows in the tool card
-				// (not as a separate error toast that closes the stream).
-				sseWriter.ToolResult(tc.Function.Name, errMsg)
-				// Record the error as a tool result so the LLM can see it
-				if sessionMgr != nil {
-					sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-				} else {
-					req.Messages = append(req.Messages, litellm.Message{
-						Role:       "tool",
-						ToolCallID: tc.ID,
-						Content:    errMsg,
+				// Check if tool needs user confirmation
+				var needsConf *tool.ErrNeedsConfirmation
+				if errors.As(err, &needsConf) && confirmFn != nil {
+					slog.Debug("tool needs confirmation", slog.String("path", needsConf.Path), slog.String("message", needsConf.Message))
+
+					// Send needs_confirmation SSE event
+					sseWriter.State().Broadcast(runstate.SSEEvent{
+						Type:    "needs_confirmation",
+						Content: needsConf.Message,
+						Data:    map[string]interface{}{"path": needsConf.Path, "message": needsConf.Message},
 					})
+
+					// Wait for user response
+					result, confirmErr := confirmFn(ctx, sessionID, needsConf.Path, needsConf.Message)
+					if confirmErr != nil {
+						if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
+							return confirmErr
+						}
+						errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
+						sseWriter.ToolResult(tc.Function.Name, errMsg)
+						if sessionMgr != nil {
+							sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+						} else {
+							req.Messages = append(req.Messages, litellm.Message{
+								Role:       "tool",
+								ToolCallID: tc.ID,
+								Content:    errMsg,
+							})
+						}
+						continue
+					}
+
+					if result.Approved {
+						// Temporarily add the path to ReadTool's allowedPaths
+						// and re-dispatch
+						addReadToolAllowedPath(tools, needsConf.Path)
+						blocks, err = tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+						if err != nil {
+							errMsg := fmt.Sprintf("Tool error after approval: %v", err)
+							sseWriter.ToolResult(tc.Function.Name, errMsg)
+							if sessionMgr != nil {
+								sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+							} else {
+								req.Messages = append(req.Messages, litellm.Message{
+									Role:       "tool",
+									ToolCallID: tc.ID,
+									Content:    errMsg,
+								})
+							}
+							continue
+						}
+						// Continue to process blocks below (resultText, Broadcast, etc.)
+					} else {
+						// Denial — return error to LLM
+						errMsg := fmt.Sprintf("Access denied to path: %s", needsConf.Path)
+						sseWriter.ToolResult(tc.Function.Name, errMsg)
+						if sessionMgr != nil {
+							sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+						} else {
+							req.Messages = append(req.Messages, litellm.Message{
+								Role:       "tool",
+								ToolCallID: tc.ID,
+								Content:    errMsg,
+							})
+						}
+						continue
+					}
+				} else {
+					// Feed unknown tool / dispatch errors back to the LLM as tool
+					// result instead of terminating the loop. LLMs commonly hallucinate
+					// tool names (e.g. "replace" instead of "edit") — this gives them
+					// a chance to self-correct on the next turn.
+					errMsg := fmt.Sprintf("Tool error: %v", err)
+					// Broadcast tool result so the error shows in the tool card
+					// (not as a separate error toast that closes the stream).
+					sseWriter.ToolResult(tc.Function.Name, errMsg)
+					// Record the error as a tool result so the LLM can see it
+					if sessionMgr != nil {
+						sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+					} else {
+						req.Messages = append(req.Messages, litellm.Message{
+							Role:       "tool",
+							ToolCallID: tc.ID,
+							Content:    errMsg,
+						})
+					}
+					slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
+					continue
 				}
-				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
-				continue
 			}
 
 			// Extract result text from blocks
@@ -467,4 +552,19 @@ func truncateText(s string, n int) string {
 		return s
 	}
 	return string(runes[:n]) + "..."
+}
+
+// addReadToolAllowedPath looks up the ReadTool in the registry and appends a path
+// to its temporary allowed paths list. Used by the agent loop when a user approves
+// a blocked read path so the tool can re-execute without another confirmation.
+func addReadToolAllowedPath(tools *tool.Registry, path string) {
+	h := tools.Lookup("read")
+	if h == nil {
+		return
+	}
+	rt, ok := h.(*tool.ReadTool)
+	if !ok {
+		return
+	}
+	rt.AppendAllowedPaths(path)
 }

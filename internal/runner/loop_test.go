@@ -137,7 +137,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -531,7 +531,7 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -579,7 +579,7 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -619,7 +619,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, nil, nil, "", nil)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -652,7 +652,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -701,7 +701,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "")
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	}()
 
 	// Wait for streaming to start (first token sent)
@@ -743,7 +743,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -768,7 +768,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -806,7 +806,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -842,7 +842,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -877,7 +877,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -927,7 +927,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
 	}
@@ -1098,7 +1098,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1146,7 +1146,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1192,7 +1192,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1244,7 +1244,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1292,7 +1292,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1340,7 +1340,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
