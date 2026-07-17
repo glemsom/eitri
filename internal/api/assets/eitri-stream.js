@@ -265,6 +265,15 @@
         // Track tool call key for card slot
         var toolCallKey = sessionId + '-tool-' + Date.now();
 
+        // Skip tool card for render_quick_replies — the actual quick reply chips
+        // appear inline on the next assistant message (via InlineQuickReplies).
+        // Showing a tool card with "Rendered QuickReplies with options: …" is noise.
+        if (packet.tool === 'render_quick_replies') {
+          // Ensure streaming bubble exists for whatever follows
+          showStreamingBubble();
+          break;
+        }
+
         // Inject running tool card into message stream (issue #130)
         // Create slot and set running card HTML directly (synchronous, no HTMX race with tool_result)
         injectToolCardSlot(sessionId, packet, toolCallKey);
@@ -274,6 +283,11 @@
         markStreamResumed(state);
         state.status = STATES.STREAMING;
         updateRunStatus(STATES.STREAMING, 'Tool finished. Continuing response.', state);
+
+        // Skip tool card render for render_quick_replies (see tool_call above)
+        if (packet.tool === 'render_quick_replies') {
+          break;
+        }
 
         renderToolCard(sessionId, 'tool_result', packet);
         break;
