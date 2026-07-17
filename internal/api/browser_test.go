@@ -1503,32 +1503,32 @@ func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 		t.Fatalf("emit tool_call failed: %v", err)
 	}
 
-	// Verify tool card appears with running status
-	var runningCard bool
+	// Verify tool entry appears with running status in sidebar
+	var runningEntry bool
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'running...'`, &runningCard),
+			chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity .tool-entry .tool-status-label') !== null && document.querySelector('#tool-activity .tool-entry .tool-status-label').textContent === 'running...'`, &runningEntry),
 		)
-		if err == nil && runningCard {
+		if err == nil && runningEntry {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !runningCard {
-		t.Fatal("tool card should show 'running...' status after tool_call")
+	if !runningEntry {
+		t.Fatal("sidebar tool entry should show 'running...' status after tool_call")
 	}
 
-	// Verify elapsed timer appears on running card
+	// Verify elapsed timer appears on running entry
 	var hasElapsed bool
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelector('[data-tool-elapsed]') !== null`, &hasElapsed),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity [data-tool-elapsed]') !== null`, &hasElapsed),
 	)
 	if err != nil {
 		t.Fatalf("query elapsed element failed: %v", err)
 	}
 	if !hasElapsed {
-		t.Fatal("running tool card should have an elapsed timer element")
+		t.Fatal("running tool entry should have an elapsed timer element")
 	}
 
 	// Emit tool_result — should morph to done
@@ -1539,68 +1539,56 @@ func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Wait for HTMX swap to complete — poll for 'done' status
+	// Poll for done status in sidebar entry
 	deadline = time.Now().Add(3 * time.Second)
-	var doneCard bool
+	var doneEntry bool
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
+			chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity .tool-entry .tool-status-label') !== null && document.querySelector('#tool-activity .tool-entry .tool-status-label').textContent === 'done'`, &doneEntry),
 		)
-		if err == nil && doneCard {
+		if err == nil && doneEntry {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !doneCard {
-		t.Fatal("tool card should show 'done' status after tool_result")
+	if !doneEntry {
+		t.Fatal("sidebar tool entry should show 'done' status after tool_result")
 	}
 
-	// Verify done tool card is rendered as <details> (collapsible) and collapsed by default
-	var isDetails bool
+	// Verify done entry shows checkmark icon
+	var hasCheckmark bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.tool-card.tool-done') !== null && document.querySelector('.tool-card.tool-done').tagName === 'DETAILS'`,
-			&isDetails,
+			`document.querySelector('#tool-activity .tool-entry.tool-done .tool-icon') !== null && document.querySelector('#tool-activity .tool-entry.tool-done .tool-icon').textContent === '✅'`,
+			&hasCheckmark,
 		),
 	)
-	if err != nil || !isDetails {
-		t.Fatalf("done tool card should be <details> element: err=%v isDetails=%v", err, isDetails)
+	if err != nil || !hasCheckmark {
+		t.Fatalf("done tool entry should show checkmark icon: err=%v checkmark=%v", err, hasCheckmark)
 	}
 
-	// Verify done tool card is collapsed (no open attribute)
-	var isCollapsed bool
+	// Verify done entry shows tool name
+	var toolNameVisible bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.tool-card.tool-done') !== null && !document.querySelector('.tool-card.tool-done').hasAttribute('open')`,
-			&isCollapsed,
+			`document.querySelector('#tool-activity .tool-entry.tool-done .tool-name') !== null && document.querySelector('#tool-activity .tool-entry.tool-done .tool-name').textContent === 'terminal_execute'`,
+			&toolNameVisible,
 		),
 	)
-	if err != nil || !isCollapsed {
-		t.Fatalf("done tool card should be collapsed (no open attribute): err=%v isCollapsed=%v", err, isCollapsed)
+	if err != nil || !toolNameVisible {
+		t.Fatalf("done tool entry should show tool name: err=%v visible=%v", err, toolNameVisible)
 	}
 
-	// Verify collapsed card still shows header text (tool name)
-	var headerVisible bool
+	// Verify output container exists for click-to-expand
+	var hasOutput bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.tool-card.tool-done .tool-name') !== null && document.querySelector('.tool-card.tool-done .tool-name').textContent === 'terminal_execute'`,
-			&headerVisible,
+			`document.querySelector('#tool-activity .tool-output') !== null`,
+			&hasOutput,
 		),
 	)
-	if err != nil || !headerVisible {
-		t.Fatalf("collapsed done tool card should show tool name in header: err=%v visible=%v", err, headerVisible)
-	}
-
-	// Verify chevron indicator is present in collapsed card
-	var hasChevron bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.tool-card.tool-done .tool-chevron') !== null`,
-			&hasChevron,
-		),
-	)
-	if err != nil || !hasChevron {
-		t.Fatalf("collapsed done tool card should have .tool-chevron element: err=%v hasChevron=%v", err, hasChevron)
+	if err != nil || !hasOutput {
+		t.Fatalf("tool entry should have output container: err=%v hasOutput=%v", err, hasOutput)
 	}
 }
 
@@ -2669,40 +2657,39 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Poll for tool card slot to appear (direct child of #messages, not a container)
+	// Poll for tool entry to appear in sidebar
 	deadline := time.Now().Add(3 * time.Second)
-	var toolCardSlotFound bool
+	var toolEntryFound bool
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(
-				`document.querySelector('#messages > [data-tool-id]') !== null`,
-				&toolCardSlotFound,
+				`document.querySelector('#tool-activity .tool-entry-wrapper') !== null`,
+				&toolEntryFound,
 			),
 		)
-		if err == nil && toolCardSlotFound {
+		if err == nil && toolEntryFound {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !toolCardSlotFound {
-		t.Fatalf("tool card slot not found in #messages: err=%v found=%v", err, toolCardSlotFound)
+	if !toolEntryFound {
+		t.Fatalf("tool entry not found in sidebar: err=%v found=%v", err, toolEntryFound)
 	}
 
-	// Verify tool card slot appears before scroll-sentinel
-	var slotBeforeSentinel bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var messages = document.getElementById('messages');
-			var sentinel = document.getElementById('scroll-sentinel');
-			var slot = messages.querySelector('[data-tool-id]');
-			if (!messages || !sentinel || !slot) return false;
-			var slotIdx = Array.prototype.indexOf.call(messages.children, slot);
-			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
-			return slotIdx >= 0 && sentinelIdx > slotIdx;
-		})()`, &slotBeforeSentinel),
-	)
-	if err != nil || !slotBeforeSentinel {
-		t.Fatalf("tool card slot should be before scroll-sentinel: err=%v beforeSentinel=%v", err, slotBeforeSentinel)
+	// Verify tool entry has done status after tool_result
+	var entryDone bool
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity .tool-entry.tool-done') !== null`, &entryDone),
+		)
+		if err == nil && entryDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !entryDone {
+		t.Fatal("sidebar tool entry should have done status after tool_result")
 	}
 
 	// Now simulate streaming bubble creation (as would happen on first token after tools)
@@ -2737,23 +2724,19 @@ func TestBrowser_ToolCardsInsertBeforeSentinel(t *testing.T) {
 		t.Fatalf("streaming should be before scroll-sentinel: err=%v beforeSentinel=%v", err, streamingBeforeSentinel)
 	}
 
-	// Verify tool card appears after streaming (inline at tool call position)
-	// Previously this checked toolCardsBeforeStreaming (bug), now tool cards
-	// are inserted after #streaming for correct inline interleaving.
-	var slotAfterStreaming bool
+	// Verify no tool cards remain in #messages
+	var toolCardsInMessages bool
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var messages = document.getElementById('messages');
-			var streaming = document.getElementById('streaming');
-			var slot = messages.querySelector('[data-tool-id]');
-			if (!messages || !streaming || !slot) return false;
-			var slotIdx = Array.prototype.indexOf.call(messages.children, slot);
-			var streamingIdx = Array.prototype.indexOf.call(messages.children, streaming);
-			return slotIdx >= 0 && slotIdx > streamingIdx;
-		})()`, &slotAfterStreaming),
+		chromedp.EvaluateAsDevTools(
+			`document.querySelector('#messages [data-tool-id]') !== null`,
+			&toolCardsInMessages,
+		),
 	)
-	if err != nil || !slotAfterStreaming {
-		t.Fatalf("tool card slot should be after streaming (inline): err=%v afterStreaming=%v", err, slotAfterStreaming)
+	if err != nil {
+		t.Fatalf("query tool cards in messages failed: %v", err)
+	}
+	if toolCardsInMessages {
+		t.Error("tool cards should not appear in #messages after sidebar migration")
 	}
 }
 
@@ -2829,33 +2812,33 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 		}
 	}
 
-	// Poll for HTMX swaps to complete — all 3 slots must show 'done' status
+	// Poll for sidebar entries — all 3 must show 'done' status
 	deadline := time.Now().Add(3 * time.Second)
 	var allDone bool
 	for time.Now().Before(deadline) {
-		var slotIDs []string
+		var entryIDs []string
 		err = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`(function() {
-				var slots = document.querySelectorAll('.tool-call-container');
-				return Array.from(slots).map(function(s) { return s.getAttribute('data-tool-id'); });
-			})()`, &slotIDs),
+				var entries = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
+				return Array.from(entries).map(function(s) { return s.getAttribute('data-tool-key'); });
+			})()`, &entryIDs),
 		)
 		if err != nil {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
-		if len(slotIDs) != 3 {
+		if len(entryIDs) != 3 {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
 		allDone = true
-		for _, id := range slotIDs {
+		for _, id := range entryIDs {
 			var hasDone bool
 			err = chromedp.Run(ctx,
 				chromedp.EvaluateAsDevTools(
-					`document.querySelector('[data-tool-id="`+id+`"] .tool-status') !== null &&
-					 document.querySelector('[data-tool-id="`+id+`"] .tool-status').textContent === 'done'`,
+					`document.querySelector('#tool-activity [data-tool-key="`+id+`"] .tool-status-label') !== null &&
+					 document.querySelector('#tool-activity [data-tool-key="`+id+`"] .tool-status-label').textContent === 'done'`,
 					&hasDone,
 				),
 			)
@@ -2870,61 +2853,36 @@ func TestBrowser_ToolCardMorphInPlace(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !allDone {
-		// Dump debug info on failure
 		var debugHTML string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`(function() {
-				var slot = document.querySelector('#messages [data-tool-id]');
-				return slot ? slot.innerHTML : 'no tool slot';
+				var entry = document.querySelector('#tool-activity .tool-entry-wrapper');
+				return entry ? entry.innerHTML : 'no tool entry';
 			})()`, &debugHTML),
 		)
-		t.Fatalf("tool cards did not show 'done' within deadline; slot HTML: %s", debugHTML)
+		t.Fatalf("tool entries did not show 'done' within deadline; entry HTML: %s", debugHTML)
 	}
 
-	// Verify each slot has a unique data-tool-id
-	var slotIDs []string
+	// Verify each entry has a unique data-tool-key
+	var entryIDs []string
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
-			var slots = document.querySelectorAll('.tool-call-container');
-			return Array.from(slots).map(function(s) { return s.getAttribute('data-tool-id'); });
-		})()`, &slotIDs),
+			var entries = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
+			return Array.from(entries).map(function(s) { return s.getAttribute('data-tool-key'); });
+		})()`, &entryIDs),
 	)
 	if err != nil {
-		t.Fatalf("query slot IDs failed: %v", err)
+		t.Fatalf("query entry IDs failed: %v", err)
 	}
-	if len(slotIDs) != 3 {
-		t.Fatalf("expected 3 slot IDs, got %d", len(slotIDs))
+	if len(entryIDs) != 3 {
+		t.Fatalf("expected 3 entry IDs, got %d", len(entryIDs))
 	}
 	seen := make(map[string]bool)
-	for _, id := range slotIDs {
+	for _, id := range entryIDs {
 		if seen[id] {
-			t.Fatalf("duplicate data-tool-id: %s", id)
+			t.Fatalf("duplicate data-tool-key: %s", id)
 		}
 		seen[id] = true
-	}
-
-	// Verify tool card slots appear before scroll-sentinel
-	var slotsBeforeSentinel bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var messages = document.getElementById('messages');
-			var sentinel = document.getElementById('scroll-sentinel');
-			var slots = messages.querySelectorAll('.tool-call-container[data-tool-id]');
-			if (!messages || !sentinel || slots.length === 0) return false;
-			// All slots should be before sentinel
-			var sentinelIdx = Array.prototype.indexOf.call(messages.children, sentinel);
-			for (var i = 0; i < slots.length; i++) {
-				var slotIdx = Array.prototype.indexOf.call(messages.children, slots[i]);
-				if (slotIdx < 0 || slotIdx > sentinelIdx) return false;
-			}
-			return true;
-		})()`, &slotsBeforeSentinel),
-	)
-	if err != nil {
-		t.Fatalf("query slots before sentinel failed: %v", err)
-	}
-	if !slotsBeforeSentinel {
-		t.Error("tool card slots should appear before scroll-sentinel")
 	}
 }
 
@@ -3379,20 +3337,20 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 	// Wait for tool card to appear
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify tool card slot exists and is inside #messages
-	var toolCardInMessages bool
+	// Verify tool entry exists in sidebar
+	var toolEntryInSidebar bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {
-			var slot = document.querySelector('#messages > [data-tool-id]');
-			if (!slot) return false;
-			return slot.parentElement && slot.parentElement.id === 'messages';
-		})()`, &toolCardInMessages),
+			var entry = document.querySelector('#tool-activity .tool-entry-wrapper');
+			if (!entry) return false;
+			return entry.parentElement && entry.parentElement.matches('#tool-activity .tool-activity-list');
+		})()`, &toolEntryInSidebar),
 	)
 	if err != nil {
-		t.Fatalf("check tool card parent failed: %v", err)
+		t.Fatalf("check tool entry parent failed: %v", err)
 	}
-	if !toolCardInMessages {
-		t.Error("tool card slot should be a child of #messages")
+	if !toolEntryInSidebar {
+		t.Error("tool entry should be in sidebar tool-activity-list")
 	}
 
 	// Verify streaming bubble still exists (tool card appends, doesn't replace)
@@ -3407,20 +3365,20 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Error("streaming bubble should still exist after tool card injection")
 	}
 
-	// Verify tool card has running status
-	var runningCard bool
+	// Verify tool entry has running status
+	var runningEntry bool
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'running...'`, &runningCard),
+			chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity .tool-entry .tool-status-label') !== null && document.querySelector('#tool-activity .tool-entry .tool-status-label').textContent === 'running...'`, &runningEntry),
 		)
-		if err == nil && runningCard {
+		if err == nil && runningEntry {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !runningCard {
-		t.Fatal("tool card should show 'running...' status after tool_call")
+	if !runningEntry {
+		t.Fatal("sidebar tool entry should show 'running...' status after tool_call")
 	}
 
 	// Emit tool_result — should morph to done via HTMX
@@ -3431,20 +3389,20 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Fatalf("emit tool_result failed: %v", err)
 	}
 
-	// Wait for HTMX swap to complete — poll for 'done' status
+	// Poll for done status in sidebar entry
 	deadline = time.Now().Add(3 * time.Second)
-	var doneCard bool
+	var doneEntry bool
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.tool-card .tool-status') !== null && document.querySelector('.tool-card .tool-status').textContent === 'done'`, &doneCard),
+			chromedp.EvaluateAsDevTools(`document.querySelector('#tool-activity .tool-entry .tool-status-label') !== null && document.querySelector('#tool-activity .tool-entry .tool-status-label').textContent === 'done'`, &doneEntry),
 		)
-		if err == nil && doneCard {
+		if err == nil && doneEntry {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !doneCard {
-		t.Fatal("tool card should show 'done' status after tool_result via HTMX morph")
+	if !doneEntry {
+		t.Fatal("sidebar tool entry should show 'done' status after tool_result")
 	}
 
 	// Emit done to trigger final markdown render
