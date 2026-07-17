@@ -421,6 +421,82 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 	}
 }
 
+func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "edit",
+					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
+				},
+			}},
+		},
+		{content: "done"},
+	})
+
+	toolReg := tool.NewRegistry()
+	// Simulate real edit tool behavior: returns FULL_OLD_CONTENT/FULL_NEW_CONTENT blocks
+	// which get wrapped in ToolResultBlock by Dispatch.
+	fullOld := "line1\nline2\nline3\nfoo\nline5\nline6\nline7"
+	fullNew := "line1\nline2\nline3\nbar\nline5\nline6\nline7"
+	toolReg.Register(&simpleMockTool{
+		name: "edit",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{
+				vocellitellm.TextBlock{Text: "FULL_OLD_CONTENT:" + fullOld},
+				vocellitellm.TextBlock{Text: "FULL_NEW_CONTENT:" + fullNew},
+				vocellitellm.TextBlock{Text: "Edited file: test.txt"},
+			}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "edit the file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	var compData map[string]interface{}
+	for _, evt := range events {
+		if evt.Type == "component" {
+			// Component SSE event has Data containing {kind, name, data}
+			if d, ok := evt.Data.(map[string]interface{}); ok {
+				if name, _ := d["name"].(string); name == "FileEditCard" {
+					if inner, ok := d["data"].(map[string]interface{}); ok {
+						compData = inner
+						break
+					}
+				}
+			}
+		}
+	}
+	if compData == nil {
+		t.Fatal("expected FileEditCard component event, none found")
+	}
+	// The component data should contain the full file content, not just the snippet
+	gotOld, _ := compData["old"].(string)
+	gotNew, _ := compData["new"].(string)
+	if gotOld != fullOld {
+		t.Errorf("component data 'old' = %q (len=%d), want full file content %q (len=%d)", gotOld, len(gotOld), fullOld, len(fullOld))
+	}
+	if gotNew != fullNew {
+		t.Errorf("component data 'new' = %q (len=%d), want full file content %q (len=%d)", gotNew, len(gotNew), fullNew, len(fullNew))
+	}
+}
+
 func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
