@@ -30,6 +30,12 @@
 
   var toolCardTimers = {}; // toolCallKey -> interval ID
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
+  var toolCardCounter = 0; // monotonic counter for unique tool keys
+
+  function clearToolActivity() {
+    var list = document.querySelector('#tool-activity .tool-activity-list');
+    if (list) list.innerHTML = '';
+  }
 
   function createStreamState() {
     return {
@@ -181,6 +187,7 @@
     stopAllToolCardTimers();
     resetActivityTracking();
     clearThinkingPanel();
+    clearToolActivity();
 
     const state = createStreamState();
     state.status = STATES.CONNECTING;
@@ -279,8 +286,9 @@
         state.status = STATES.TOOL_RUNNING;
         updateRunStatus(STATES.TOOL_RUNNING, 'Running tool: ' + (packet.tool || 'unknown tool'), state);
 
-        // Track tool call key for card slot
-        var toolCallKey = sessionId + '-tool-' + Date.now();
+        // Track tool call key for card slot (monotonic counter for rapid events)
+        toolCardCounter++;
+        var toolCallKey = sessionId + '-tool-' + Date.now() + '-' + toolCardCounter;
 
         // Skip tool card for render_quick_replies — the actual quick reply chips
         // appear inline on the next assistant message (via InlineQuickReplies).
@@ -291,8 +299,7 @@
           break;
         }
 
-        // Inject running tool card into message stream (issue #130)
-        // Create slot and set running card HTML directly (synchronous, no HTMX race with tool_result)
+        // Inject running tool card into sidebar (issue #320)
         injectToolCardSlot(sessionId, packet, toolCallKey);
         break;
 
@@ -428,50 +435,39 @@
   }
 
   function injectToolCardSlot(sessionId, packet, toolCallKey) {
-    const messages = document.getElementById('messages');
-    if (!messages) return;
+    var list = document.querySelector('#tool-activity .tool-activity-list');
+    if (!list) return;
 
     var toolName = packet.tool || packet.name || 'tool';
-    var argsStr = packet.args ? JSON.stringify(packet.args, null, 2) : '';
 
-    // Ensure streaming bubble exists to anchor after it
-    var streaming = document.getElementById('streaming');
-    if (!streaming) {
-      // First event is a tool_call before any token — create placeholder
-      showStreamingBubble();
-      streaming = document.getElementById('streaming');
-      if (!streaming) return;
+    // Idempotent: skip if already exists (e.g. SSE reconnect)
+    if (list.querySelector('[data-tool-key="' + toolCallKey + '"]')) return;
+
+    // Max 6 entries — FIFO eviction
+    var existingWrappers = list.querySelectorAll('.tool-entry-wrapper');
+    while (existingWrappers.length >= 6) {
+      var firstKey = existingWrappers[0].getAttribute('data-tool-key');
+      if (firstKey) {
+        stopToolCardTimer(firstKey);
+        delete toolCardElapsed[firstKey];
+      }
+      existingWrappers[0].remove();
+      existingWrappers = list.querySelectorAll('.tool-entry-wrapper');
     }
 
-    // Idempotent: skip if slot already exists (e.g. SSE reconnect)
-    if (messages.querySelector('[data-tool-id="' + toolCallKey + '"]')) return;
-
-    var slot = document.createElement('div');
-    slot.className = 'tool-call-container';
-    slot.setAttribute('data-tool-id', toolCallKey);
-    slot.id = toolCallKey;
-
-    // Insert slot right after the streaming element, before scroll-sentinel
-    var sentinel = document.getElementById('scroll-sentinel');
-    if (sentinel && sentinel.parentNode === messages) {
-      messages.insertBefore(slot, sentinel);
-    } else if (streaming.nextSibling) {
-      messages.insertBefore(slot, streaming.nextSibling);
-    } else {
-      messages.appendChild(slot);
-    }
-
-    // Build running card HTML
-    var html = '<div class="tool-card tool-running" data-tool-id="' + toolCallKey + '">' +
-      '<div class="tool-card-header">' +
+    var wrapper = document.createElement('div');
+    wrapper.className = 'tool-entry-wrapper';
+    wrapper.id = toolCallKey;
+    wrapper.setAttribute('data-tool-key', toolCallKey);
+    // Build compact running row (client-side, no server render)
+    wrapper.innerHTML = '<div class="tool-entry tool-running">' +
       '<span class="tool-icon">\uD83D\uDD27</span>' +
       '<span class="tool-name">' + escapeHtml(toolName) + '</span>' +
-      '<span class="tool-status">running...</span>' +
+      '<span class="tool-status-label">running...</span>' +
       '<span class="tool-elapsed" data-tool-elapsed="' + toolCallKey + '"></span>' +
-      '</div>' +
-      (argsStr ? '<pre class="tool-args"><code>' + escapeHtml(argsStr) + '</code></pre>' : '') +
       '</div>';
-    slot.innerHTML = html;
+
+    list.appendChild(wrapper);
 
     // Start live elapsed timer
     var startMs = Date.now();
@@ -480,24 +476,25 @@
   }
 
   function findToolCardSlot(toolCallKey) {
-    return document.querySelector('#messages [data-tool-id="' + toolCallKey + '"]');
+    return document.querySelector('#tool-activity [data-tool-key="' + toolCallKey + '"]');
   }
 
   function renderToolCard(sessionId, type, packet) {
-    // Find the latest running tool card slot
+    // Find the latest running tool entry in sidebar
     var toolCallKey = '';
-    var runningSlot = document.querySelector('#messages [data-tool-id] .tool-running');
-    if (runningSlot) {
-      var parentSlot = runningSlot.closest('[data-tool-id]');
-      if (parentSlot) toolCallKey = parentSlot.getAttribute('data-tool-id') || '';
+    var runningEntry = document.querySelector('#tool-activity .tool-entry.tool-running');
+    if (runningEntry) {
+      var parentWrapper = runningEntry.closest('.tool-entry-wrapper');
+      if (parentWrapper) toolCallKey = parentWrapper.getAttribute('data-tool-key') || '';
     }
     if (!toolCallKey) {
-      // Fallback: use latest slot
-      var allSlots = document.querySelectorAll('#messages [data-tool-id]');
-      if (allSlots.length > 0) {
-        toolCallKey = allSlots[allSlots.length - 1].getAttribute('data-tool-id') || '';
+      // Fallback: use latest wrapper
+      var allWrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
+      if (allWrappers.length > 0) {
+        toolCallKey = allWrappers[allWrappers.length - 1].getAttribute('data-tool-key') || '';
       }
     }
+    if (!toolCallKey) return;
 
     // Stop live timer and record final elapsed
     stopToolCardTimer(toolCallKey);
@@ -508,6 +505,10 @@
       finalElapsed = formatTimer(elapsedMs);
     }
 
+    // Detect tool error from output
+    var output = packet.output || '';
+    var isError = typeof output === 'string' && output.indexOf('Tool error:') === 0;
+
     // Build form data for render endpoint
     const formData = new FormData();
     formData.append('type', type);
@@ -516,40 +517,69 @@
     formData.append('status', 'done');
     formData.append('elapsed', finalElapsed);
     if (packet.args) formData.append('args', JSON.stringify(packet.args));
-    if (packet.output) formData.append('output', String(packet.output));
+    if (output) formData.append('output', String(output));
     if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
 
-    // Find existing slot created by injectToolCardSlot
-    var slot = findToolCardSlot(toolCallKey);
-    if (!slot) {
-      // Fallback: create slot if injectToolCardSlot missed (shouldn't happen)
-      // Use streaming as anchor
-      var messages = document.getElementById('messages');
-      if (!messages) return;
-      slot = document.createElement('div');
-      slot.className = 'tool-call-container';
-      slot.setAttribute('data-tool-id', toolCallKey);
-      slot.id = toolCallKey;
-      var sentinel = document.getElementById('scroll-sentinel');
-      if (sentinel && sentinel.parentNode === messages) {
-        messages.insertBefore(slot, sentinel);
-      } else {
-        messages.appendChild(slot);
-      }
+    // Find the wrapper in sidebar
+    var wrapper = document.querySelector('#tool-activity .tool-entry-wrapper[data-tool-key="' + toolCallKey + '"]');
+    if (!wrapper) return;
+
+    // Update entry to done/error state before HTMX replaces it
+    var entry = wrapper.querySelector('.tool-entry');
+    if (entry) {
+      entry.className = 'tool-entry ' + (isError ? 'tool-error' : 'tool-done');
+      var icon = entry.querySelector('.tool-icon');
+      if (icon) icon.textContent = isError ? '\u274C' : '\u2705';
+      var label = entry.querySelector('.tool-status-label');
+      if (label) label.textContent = isError ? 'error' : 'done';
+      var elapsedSpan = entry.querySelector('.tool-elapsed');
+      if (elapsedSpan && finalElapsed) elapsedSpan.textContent = '\u2191 ' + finalElapsed;
     }
 
-    // POST to unified render route with kind field
-    const jsonPayload = Object.assign(
-      Object.fromEntries(formData),
-      { kind: 'tool_card' }
-    );
-    htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-      source: document.body,
-      target: '#' + CSS.escape(slot.id || toolCallKey),
-      swap: 'innerHTML',
-      contentType: 'application/json',
-      values: jsonPayload,
-    });
+    // Attach click-to-expand on entry
+    if (entry) {
+      entry.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var outputDiv = wrapper.querySelector('.tool-output');
+        if (!outputDiv) return;
+        // Close all other open outputs (only one at a time)
+        document.querySelectorAll('#tool-activity .tool-output.open').forEach(function (el) {
+          if (el !== outputDiv) el.classList.remove('open');
+        });
+        // Lazy-load output on first click via HTMX
+        if (!outputDiv.dataset.rendered) {
+          outputDiv.dataset.rendered = '1';
+          const jsonPayload = Object.assign(
+            Object.fromEntries(formData),
+            { kind: 'tool_card' }
+          );
+          htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
+            source: document.body,
+            target: '#' + CSS.escape(outputDiv.id),
+            swap: 'innerHTML',
+            contentType: 'application/json',
+            values: jsonPayload,
+          });
+        }
+        outputDiv.classList.toggle('open');
+        // Post-open: update error icon if server rendered error content
+        if (isError) {
+          var serverIcon = outputDiv.querySelector('.tool-icon');
+          if (serverIcon) serverIcon.textContent = '\u274C';
+        }
+      });
+    }
+
+    // Create output container for HTMX render (hidden until clicked)
+    var outputId = toolCallKey + '-output';
+    var existingOutput = wrapper.querySelector('.tool-output');
+    if (!existingOutput) {
+      var outputDiv = document.createElement('div');
+      outputDiv.className = 'tool-output';
+      outputDiv.id = outputId;
+      outputDiv.setAttribute('data-output-for', toolCallKey);
+      wrapper.appendChild(outputDiv);
+    }
   }
 
   function renderComponent(sessionId, packet) {
@@ -565,19 +595,15 @@
     }
     console.log('[eitri] renderComponent: name=' + compName + ' data keys=' + Object.keys(compData).join(','));
 
-    // FileEditCard components should render into the last tool card slot
-    // so the pretty diff replaces the raw tool result text.
-    // Use setTimeout to defer until after the tool_result HTMX completes.
     if (compName === 'FileEditCard') {
       var doRender = function () {
-        // Find the outermost tool-call-container (has the id).
-        // Skip inner .tool-card divs that also carry data-tool-id but no id.
-        var allSlots = document.querySelectorAll('#messages > .tool-call-container');
-        if (allSlots.length > 0) {
-          var slot = allSlots[allSlots.length - 1];
+        // Find the outermost tool-entry-wrapper in sidebar
+        var allWrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
+        if (allWrappers.length > 0) {
+          var wrapper = allWrappers[allWrappers.length - 1];
           htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
             source: document.body,
-            target: '#' + CSS.escape(slot.id),
+            target: '#' + CSS.escape(wrapper.id),
             swap: 'innerHTML',
             contentType: 'application/json',
             values: {
@@ -595,12 +621,7 @@
       return;
     }
 
-    // MermaidDiagram is now rendered inside the assistant bubble via the
-    // server-side markdown render (kind: 'markdown'). No progressive DOM
-    // insert needed — just clean up the tool card after the component event.
     if (compName === 'MermaidDiagram') {
-      setTimeout(removeDoneMermaidToolCards, 0);
-      setTimeout(removeDoneMermaidToolCards, 100);
       return;
     }
 
@@ -797,17 +818,14 @@
     }
   }
 
-  // Remove done tool cards for render_mermaid_diagram after the visual
-  // component has rendered. The diagram output is the result — the card
-  // is visual noise once the diagram is visible.
   function removeDoneMermaidToolCards() {
-    var slots = document.querySelectorAll('#messages [data-tool-id]');
-    for (var i = 0; i < slots.length; i++) {
-      var card = slots[i].querySelector('.tool-card.tool-done');
+    var wrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
+    for (var i = 0; i < wrappers.length; i++) {
+      var card = wrappers[i].querySelector('.tool-card.tool-done');
       if (!card) continue;
       var nameEl = card.querySelector('.tool-name');
       if (nameEl && nameEl.textContent === 'render_mermaid_diagram') {
-        slots[i].remove();
+        wrappers[i].remove();
       }
     }
   }
