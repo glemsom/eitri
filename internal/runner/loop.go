@@ -81,7 +81,7 @@ func RunAgent(
 		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(req.Tools)), slog.Int("messages", len(req.Messages)))
 
 		// Call LLM streaming with retry on transient errors
-		const maxRetries = 2
+		const maxRetries = 5
 		var (
 			stream <-chan litellm.StreamEvent
 			err    error
@@ -97,7 +97,7 @@ func RunAgent(
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
-				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 			msg := fmt.Sprintf("LLM error: %v", err)
