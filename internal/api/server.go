@@ -246,6 +246,58 @@ func writeRequestTooLarge(w http.ResponseWriter) {
 	http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
 }
 
+// hasMermaidComponent checks if a message has a MermaidDiagram component registered.
+func hasMermaidComponent(components []session.ComponentData) bool {
+	for _, c := range components {
+		if c.Name == "MermaidDiagram" {
+			return true
+		}
+	}
+	return false
+}
+
+// stripMermaidCodeBlocks removes mermaid fenced code blocks from markdown text.
+// Used to prevent duplicate diagram rendering when a MermaidDiagram component already exists.
+func stripMermaidCodeBlocks(md string) string {
+	if !strings.Contains(md, "```mermaid") {
+		return md
+	}
+	var buf strings.Builder
+	lines := strings.Split(md, "\n")
+	skip := false
+	lastEmpty := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !skip && strings.HasPrefix(trimmed, "```mermaid") {
+			suffix := strings.TrimPrefix(trimmed, "```mermaid")
+			if suffix == "" || suffix[0] == ' ' {
+				skip = true
+				continue
+			}
+		}
+		if skip && strings.HasPrefix(trimmed, "```") {
+			trail := strings.TrimLeft(trimmed[3:], " \t")
+			if trail == "" {
+				skip = false
+				continue
+			}
+		}
+		if skip {
+			continue
+		}
+		isEmpty := line == ""
+		if isEmpty && lastEmpty {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteString("\n")
+		}
+		buf.WriteString(line)
+		lastEmpty = isEmpty
+	}
+	return buf.String()
+}
+
 func renderSessionForPage(sess *session.UISession) *session.UISession {
 	if sess == nil {
 		return nil
@@ -258,12 +310,16 @@ func renderSessionForPage(sess *session.UISession) *session.UISession {
 	for i, msg := range sess.Messages {
 		rendered.Messages[i] = msg
 		if msg.Role == "assistant" {
-			content := renderMarkdownToHTML(msg.Content)
+			content := msg.Content
+			if hasMermaidComponent(msg.Components) {
+				content = stripMermaidCodeBlocks(content)
+			}
+			contentHTML := renderMarkdownToHTML(content)
 			componentsHTML := renderComponentsToHTML(ctx, sess.ID, msg.Components)
 			if componentsHTML != "" {
-				content += "\n" + componentsHTML
+				contentHTML += "\n" + componentsHTML
 			}
-			rendered.Messages[i].Content = content
+			rendered.Messages[i].Content = contentHTML
 		}
 	}
 	return &rendered
@@ -1082,15 +1138,20 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 
 	case "markdown":
 		var content string
+		var components []session.ComponentData
 		var quickReplies []string
 		if sess != nil {
 			for i := len(sess.Messages) - 1; i >= 0; i-- {
 				if sess.Messages[i].Role == "assistant" {
 					content = sess.Messages[i].Content
+					components = sess.Messages[i].Components
 					quickReplies = sess.Messages[i].QuickReplies
 					break
 				}
 			}
+		}
+		if hasMermaidComponent(components) {
+			content = stripMermaidCodeBlocks(content)
 		}
 		html := renderMarkdownToHTML(content)
 		component := templates.AssistantBubble(id, html, quickReplies)

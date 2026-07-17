@@ -115,3 +115,56 @@ func TestRenderMarkdownToHTML_EnhancesCodeMathAndMermaid(t *testing.T) {
 		}
 	}
 }
+
+func TestStripMermaidCodeBlocks(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		output string
+	}{
+		{
+			name:   "no mermaid block",
+			input:  "Hello world\n\nSome text",
+			output: "Hello world\n\nSome text",
+		},
+		{
+			name:   "mermaid block stripped",
+			input:  "Before\n\n```mermaid\ngraph TD; A-->B;\n```\n\nAfter",
+			output: "Before\n\nAfter",
+		},
+		{
+			name:   "mermaid block at start",
+			input:  "```mermaid\ngraph TD; A-->B;\n```\n\nAfter",
+			output: "After",
+		},
+		{
+			name:   "only mermaid block",
+			input:  "```mermaid\ngraph TD; A-->B;\n```",
+			output: "",
+		},
+		{
+			name:   "non-mermaid code block preserved",
+			input:  "Before\n\n```go\nfmt.Println(\"hi\")\n```\n\n```mermaid\ngraph TD; A-->B;\n```\n\nAfter",
+			output: "Before\n\n```go\nfmt.Println(\"hi\")\n```\n\nAfter",
+		},
+		{
+			name:   "multiple mermaid blocks stripped",
+			input:  "A\n\n```mermaid\ngraph1\n```\n\nB\n\n```mermaid\ngraph2\n```\n\nC",
+			output: "A\n\nB\n\nC",
+		},
+		{
+			name:   "mermaid with trailing spaces on delimiter",
+			input:  "```mermaid  \ngraph TD; A-->B;\n```\nAfter",
+			output: "After",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripMermaidCodeBlocks(tc.input)
+			if got != tc.output {
+				t.Errorf("stripMermaidCodeBlocks(%q)\n  got:  %q\n  want: %q", tc.input, got, tc.output)
+			}
+		})
+	}
+}
