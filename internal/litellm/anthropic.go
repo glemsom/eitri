@@ -221,7 +221,7 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 		if thinkingBuf.Len() > 0 {
 			ch <- StreamEvent{
 				Type:        StreamEventTypeToken,
-				Content:     "<think>" + thinkingBuf.String() + "</think>",
+				Content:     thinkingBuf.String(),
 				IsReasoning: true,
 			}
 			thinkingBuf.Reset()

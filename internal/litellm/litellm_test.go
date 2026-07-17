@@ -777,7 +777,7 @@ func TestChatStream_AnthropicTextDeltas(t *testing.T) {
 func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 	t.Parallel()
 	// Verify IsReasoning flag is set on reasoning token events and
-	// reasoning content is wrapped in <think> tags via buffering.
+	// reasoning content uses IsReasoning flag via buffering.
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -827,8 +827,8 @@ func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 	if len(tokens) != 2 {
 		t.Fatalf("got %d tokens, want 2 (reasoning + content)", len(tokens))
 	}
-	if tokens[0].content != "<think>Reasoning text</think>" {
-		t.Fatalf("first token = %q, want %q", tokens[0].content, "<think>Reasoning text</think>")
+	if tokens[0].content != "Reasoning text" {
+		t.Fatalf("first token = %q, want %q", tokens[0].content, "Reasoning text")
 	}
 	if !tokens[0].isReasoning {
 		t.Fatal("first token should have IsReasoning=true")
@@ -841,10 +841,10 @@ func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 	}
 }
 
-func TestChatStream_ReasoningContentWrappedInThinkTags(t *testing.T) {
+func TestChatStream_ReasoningContentBufferedAndFlushed(t *testing.T) {
 	t.Parallel()
 	// Provider sends reasoning_content deltas, then regular content deltas.
-	// The adapter should buffer reasoning and flush as <think>...</think> wrapper.
+	// The adapter should buffer reasoning and flush with IsReasoning=true.
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -890,8 +890,8 @@ func TestChatStream_ReasoningContentWrappedInThinkTags(t *testing.T) {
 			gotText.WriteString(evt.Content)
 		}
 	}
-	// Expected: reasoning wrapped in <think>, then regular content
-	want := "<think>Let me think about this</think>Here is the answer"
+	// Expected: clean reasoning text, then regular content
+	want := "Let me think about thisHere is the answer"
 	if gotText.String() != want {
 		t.Fatalf("streamed text = %q, want %q", gotText.String(), want)
 	}
@@ -900,7 +900,7 @@ func TestChatStream_ReasoningContentWrappedInThinkTags(t *testing.T) {
 func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 	t.Parallel()
 	// Provider sends only reasoning_content with no regular content.
-	// Should flush reasoning wrapped in <think> at end of stream.
+	// Should flush reasoning with IsReasoning=true at end of stream.
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -941,7 +941,7 @@ func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 			gotText.WriteString(evt.Content)
 		}
 	}
-	want := "<think>Just thinking</think>"
+	want := "Just thinking"
 	if gotText.String() != want {
 		t.Fatalf("streamed text = %q, want %q", gotText.String(), want)
 	}
@@ -1009,7 +1009,7 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 	foundToolCall := false
 	orderingOK := true
 	for _, o := range order {
-		if strings.HasPrefix(o, "token:") && strings.Contains(o, "<think>") {
+		if strings.HasPrefix(o, "token:") && strings.HasPrefix(o, "token:Let me think about this") {
 			foundReasoning = true
 		}
 		if o == "tool_call" {
@@ -1021,7 +1021,7 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 	}
 
 	if !foundReasoning {
-		t.Fatal("reasoning token (<think>...</think>) not found in stream events")
+		t.Fatal("reasoning token (with IsReasoning=true) not found in stream events")
 	}
 	if !foundToolCall {
 		t.Fatal("tool call not found in stream events")
