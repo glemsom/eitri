@@ -25,11 +25,9 @@ type mockLLMService struct {
 }
 
 type mockTurn struct {
-	content     string          // text content (single token)
-	tokens      []tokenEvent   // multiple token events (overrides content when set)
-	toolCalls   []litellm.ToolCall
-	err         error
-	isReasoning bool            // if true, content token has IsReasoning=true
+	tokens    []tokenEvent
+	toolCalls []litellm.ToolCall
+	err       error
 }
 
 type tokenEvent struct {
@@ -64,12 +62,8 @@ func (m *mockLLMService) ChatStream(ctx context.Context, req litellm.Request) (<
 	}
 
 	// Send text content as token events
-	if len(turn.tokens) > 0 {
-		for _, tok := range turn.tokens {
-			ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
-		}
-	} else if turn.content != "" {
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: turn.content, IsReasoning: turn.isReasoning}
+	for _, tok := range turn.tokens {
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
 	}
 
 	// Send tool calls
@@ -138,7 +132,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	llm := newMockLLM([]mockTurn{
-		{content: "Hello! How can I help?"},
+		{tokens: []tokenEvent{{content: "Hello! How can I help?"}}},
 	})
 
 	req := litellm.Request{
@@ -184,7 +178,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	// Turn 2: LLM returns final response
 	llm := newMockLLM([]mockTurn{
 		{
-			content: "Let me check that...",
+			tokens: []tokenEvent{{content: "Let me check that..."}},
 			toolCalls: []litellm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -195,7 +189,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 			}},
 		},
 		{
-			content: "The result is 42.",
+			tokens: []tokenEvent{{content: "The result is 42."}},
 		},
 	})
 
@@ -279,7 +273,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 				{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "tool_b", Arguments: `{}`}},
 			},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -335,7 +329,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "failing_tool", Arguments: `{}`}},
 			},
 		},
-		{content: "I see the error, let me handle it."},
+		{tokens: []tokenEvent{{content: "I see the error, let me handle it."}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -392,7 +386,7 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -448,7 +442,7 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -524,7 +518,7 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 				},
 			}},
 		},
-		{content: "I see the error"},
+		{tokens: []tokenEvent{{content: "I see the error"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -572,7 +566,7 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -650,7 +644,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	llm := newMockLLM([]mockTurn{
-		{content: "thinking..."},
+		{tokens: []tokenEvent{{content: "thinking..."}}},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -769,7 +763,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	llm := newMockLLM([]mockTurn{
-		{content: "I am a helpful assistant."},
+		{tokens: []tokenEvent{{content: "I am a helpful assistant."}}},
 	})
 
 	req := litellm.Request{
@@ -805,7 +799,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	// Tool calls with zero length — treated as no tool calls
 	llm := newMockLLM([]mockTurn{
 		{
-			content:   "answer",
+			tokens: []tokenEvent{{content: "answer"}},
 			toolCalls: []litellm.ToolCall{}, // empty, not nil
 		},
 	})
@@ -833,7 +827,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	mockTurns := []mockTurn{
 		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
 		{toolCalls: []litellm.ToolCall{{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	}
 
 	llm := newMockLLM(mockTurns)
@@ -870,7 +864,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "empty_tool", Arguments: `{}`}},
 			},
 		},
-		{content: "Tool returned nothing"},
+		{tokens: []tokenEvent{{content: "Tool returned nothing"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -919,7 +913,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "replace", Arguments: `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`}},
 			},
 		},
-		{content: "corrected: using edit tool instead"},
+		{tokens: []tokenEvent{{content: "corrected: using edit tool instead"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1207,7 +1201,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	// 3 turns: tool call → tool result → final answer
 	llm := newMockLLM([]mockTurn{
 		{
-			content: "thinking...",
+			tokens: []tokenEvent{{content: "thinking..."}},
 			toolCalls: []litellm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -1217,7 +1211,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 				},
 			}},
 		},
-		{content: "final answer"},
+		{tokens: []tokenEvent{{content: "final answer"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1280,7 +1274,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	llm := newMockLLM([]mockTurn{
-		{content: "Hello!"},
+		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
 	req := litellm.Request{
@@ -1319,7 +1313,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1371,7 +1365,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1419,7 +1413,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 				},
 			}},
 		},
-		{content: "error occurred"},
+		{tokens: []tokenEvent{{content: "error occurred"}}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1467,7 +1461,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 				},
 			}},
 		},
-		{content: "done"},
+		{tokens: []tokenEvent{{content: "done"}}},
 	})
 
 	toolReg := tool.NewRegistry()
