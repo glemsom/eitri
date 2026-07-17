@@ -30,6 +30,7 @@ import (
 type testServerWithRuns struct {
 	server      *httptest.Server
 	configPath  string
+	workspace   string
 	sessionMgr  *session.Manager
 	executorMgr *executor.SessionManager
 	runSvc      *runner.RunService
@@ -48,9 +49,10 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
+	workspace := t.TempDir()
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
-		Workspace:      t.TempDir(),
+		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
@@ -61,6 +63,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	return &testServerWithRuns{
 		server:      server,
 		configPath:  configPath,
+		workspace:   workspace,
 		sessionMgr:  sessionMgr,
 		executorMgr: executorMgr,
 		runSvc:      runSvc,
@@ -1804,7 +1807,7 @@ func TestComponentReplay_RendersMermaidDiagramAfterPageReload(t *testing.T) {
 	}
 }
 
-func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
+func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)
 
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1845,7 +1848,7 @@ func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
 				flusher.Flush()
 				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"render_quick_replies","arguments":"{\"options\":[\"yes\",\"no\"]}"}}]},"index":0}]}`, "\n\n")
 				flusher.Flush()
-				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_3","type":"function","function":{"name":"render_diff_card","arguments":"{\"old\":\"foo\",\"new\":\"bar\"}"}}]},"index":0}]}`, "\n\n")
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_3","type":"function","function":{"name":"edit","arguments":"{\"path\":\"test.txt\",\"old_text\":\"foo\",\"new_text\":\"bar\"}"}}]},"index":0}]}`, "\n\n")
 				flusher.Flush()
 
 				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
@@ -1893,6 +1896,11 @@ func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
 		t.Fatal("missing browser cookie")
 	}
 
+	// Create test file for edit tool to work (edit tool uses executorMgr.Workspace())
+	if err := os.WriteFile(filepath.Join(h.executorMgr.Workspace(), "test.txt"), []byte("foo"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	chatPath := "/api/sessions/" + sessionID + "/chat"
 	chatReq, err := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Show components"))
 	if err != nil {
@@ -1936,8 +1944,8 @@ func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
 	if !foundComponents["QuickReplies"] {
 		t.Errorf("components missing QuickReplies, got: %v", assistantMsg.Components)
 	}
-	if !foundComponents["DiffCard"] {
-		t.Errorf("components missing DiffCard, got: %v", assistantMsg.Components)
+	if !foundComponents["FileEditCard"] {
+		t.Errorf("components missing FileEditCard, got: %v", assistantMsg.Components)
 	}
 
 	sessionURL := h.server.URL + "/sessions/" + sessionID
@@ -1969,8 +1977,8 @@ func TestComponentReplay_QuickRepliesAndDiffCard(t *testing.T) {
 	if !strings.Contains(body, `yes`) || !strings.Contains(body, `no`) {
 		t.Error("rendered page is missing QuickReplies options")
 	}
-	if !strings.Contains(body, `foo`) || !strings.Contains(body, `bar`) {
-		t.Error("rendered page is missing DiffCard content")
+	if !strings.Contains(body, `foo`) || !strings.Contains(body, `bar`) || !strings.Contains(body, `test.txt`) {
+		t.Error("rendered page is missing FileEditCard content")
 	}
 }
 

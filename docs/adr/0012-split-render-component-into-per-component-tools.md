@@ -33,6 +33,17 @@ Each tool:
 - **Discriminated union in one tool**: JSON Schema `oneOf` per component shape. Clean but unsupported by `SchemaOf[T]()` reflection — would require manual schema construction.
 - **Per-component tools (chosen)**: Each tool is a struct with one job. LLM picks by intent. Zero runtime validation. New components simply add a new tool.
 
+## Reversal (2026-07-17): `render_diff_card` removed, `edit` emits richer `FileEditCard`
+
+`render_diff_card` was later removed as an LLM-facing tool. The LLM rarely,
+if ever, chooses to show a diff independently of editing. The `edit` tool
+already auto-emits a diff component — the LLM uses `edit` for its primary
+purpose and gets the diff as a side effect.
+
+Replaced `DiffCard` emission from the `edit` tool with `FileEditCard`, which
+wraps the diff viewer with file path, mode (overwrite/create), and byte count.
+This gives the user more context at a glance.
+
 ## Consequences
 
 - Tool count goes from 8 to 10 — still manageable, each is single-purpose

@@ -351,13 +351,12 @@ func toolResultHasError(blocks []vocellitellm.Block) bool {
 var componentToolMap = map[string]string{
 	"render_mermaid_diagram": "MermaidDiagram",
 	"render_quick_replies":  "QuickReplies",
-	"render_diff_card":      "DiffCard",
-	"edit":                  "DiffCard",
+	"edit":                  "FileEditCard",
 }
 
 // emitComponentForTool emits a component event based on the tool name and args.
-// Supported tools: render_mermaid_diagram, render_quick_replies, render_diff_card, edit.
-// The edit tool emits a DiffCard using old_text/new_text from args.
+// Supported tools: render_mermaid_diagram, render_quick_replies, edit.
+// The edit tool emits a FileEditCard using old_text/new_text/path from args.
 // Returns (componentName, data, ok) for the caller to also persist the component.
 func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage) (string, map[string]interface{}, bool) {
 	componentName, ok := componentToolMap[toolName]
@@ -386,39 +385,27 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		}
 		data["options"] = parsed.Options
 
-	case "DiffCard":
-		if toolName == "edit" {
-			// Read old/new from edit tool's typed args (deterministic, no text parsing)
-			var parsed struct {
-				OldText string `json:"old_text"`
-				NewText string `json:"new_text"`
-			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
-				return "", nil, false
-			}
-			if parsed.OldText == "" && parsed.NewText == "" {
-				return "", nil, false
-			}
-			data["old"] = parsed.OldText
-			data["new"] = parsed.NewText
-			data["lang"] = ""
-		} else {
-			// render_diff_card: read from its args
-			var parsed struct {
-				Old  string `json:"old"`
-				New  string `json:"new"`
-				Lang string `json:"lang,omitempty"`
-			}
-			if err := json.Unmarshal(args, &parsed); err != nil {
-				return "", nil, false
-			}
-			if parsed.Old == "" && parsed.New == "" {
-				return "", nil, false
-			}
-			data["old"] = parsed.Old
-			data["new"] = parsed.New
-			data["lang"] = parsed.Lang
+	case "FileEditCard":
+		var parsed struct {
+			Path    string `json:"path"`
+			OldText string `json:"old_text"`
+			NewText string `json:"new_text"`
 		}
+		if err := json.Unmarshal(args, &parsed); err != nil {
+			return "", nil, false
+		}
+		if parsed.Path == "" {
+			return "", nil, false
+		}
+		if parsed.OldText == "" && parsed.NewText == "" {
+			return "", nil, false
+		}
+		data["path"] = parsed.Path
+		data["mode"] = "overwrite"
+		data["old"] = parsed.OldText
+		data["new"] = parsed.NewText
+		data["bytes_written"] = len(parsed.NewText)
+		// Note: dirs_created always empty for edit tool
 
 	default:
 		return "", nil, false

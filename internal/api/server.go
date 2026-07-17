@@ -303,6 +303,14 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 			lang, _ := comp.Data["lang"].(string)
 			compTempl := templates.DiffCard(oldCode, newCode, lang)
 			_ = compTempl.Render(ctx, &html)
+		case "FileEditCard":
+			path, _ := comp.Data["path"].(string)
+			mode, _ := comp.Data["mode"].(string)
+			oldContent, _ := comp.Data["old"].(string)
+			newContent, _ := comp.Data["new"].(string)
+			bytesWritten, _ := comp.Data["bytes_written"].(int)
+			compTempl := templates.FileEditCard(path, mode, oldContent, newContent, bytesWritten, nil)
+			_ = compTempl.Render(ctx, &html)
 		}
 	}
 	return html.String()
@@ -1075,6 +1083,32 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			component := templates.DiffCard(oldCode, newCode, lang)
+			component.Render(r.Context(), w)
+
+		case "FileEditCard":
+			path := ""
+			mode := ""
+			oldContent := ""
+			newContent := ""
+			bytesWritten := 0
+			if req.Data != nil {
+				if p, ok := req.Data["path"].(string); ok {
+					path = p
+				}
+				if m, ok := req.Data["mode"].(string); ok {
+					mode = m
+				}
+				if o, ok := req.Data["old"].(string); ok {
+					oldContent = o
+				}
+				if n, ok := req.Data["new"].(string); ok {
+					newContent = n
+				}
+				if bw, ok := req.Data["bytes_written"].(float64); ok {
+					bytesWritten = int(bw)
+				}
+			}
+			component := templates.FileEditCard(path, mode, oldContent, newContent, bytesWritten, nil)
 			component.Render(r.Context(), w)
 
 		default:

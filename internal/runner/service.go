@@ -207,7 +207,6 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	toolReg.Register(tool.NewEditTool(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewRenderMermaidDiagram())
 	toolReg.Register(tool.NewRenderQuickReplies())
-	toolReg.Register(tool.NewRenderDiffCard())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
 	}

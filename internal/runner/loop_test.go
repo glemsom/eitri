@@ -365,7 +365,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	}
 }
 
-func TestRunAgent_EditToolEmitsDiffCardComponent(t *testing.T) {
+func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -421,7 +421,7 @@ func TestRunAgent_EditToolEmitsDiffCardComponent(t *testing.T) {
 	}
 }
 
-func TestRunAgent_EditToolErrorSkipsDiffCard(t *testing.T) {
+func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -469,7 +469,7 @@ func TestRunAgent_EditToolErrorSkipsDiffCard(t *testing.T) {
 	}
 }
 
-func TestRunAgent_NonEditToolSkipsDiffCard(t *testing.T) {
+func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -1183,58 +1183,6 @@ func TestRunAgent_RenderQuickRepliesEmitsComponent(t *testing.T) {
 	}
 	if !foundComponent {
 		t.Errorf("expected component event for render_quick_replies, got types: %v", sseEventTypes(events))
-	}
-}
-
-func TestRunAgent_RenderDiffCardEmitsComponent(t *testing.T) {
-	t.Parallel()
-	sseState := runstate.New()
-	w := runstate.NewWriter(sseState)
-
-	llm := newMockLLM([]mockTurn{
-		{
-			toolCalls: []litellm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: litellm.FunctionCall{
-					Name:      "render_diff_card",
-					Arguments: `{"old":"foo","new":"bar"}`,
-				},
-			}},
-		},
-		{content: "done"},
-	})
-
-	toolReg := tool.NewRegistry()
-	toolReg.Register(&simpleMockTool{
-		name: "render_diff_card",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered DiffCard"}}, nil, false
-		},
-	})
-
-	req := litellm.Request{
-		Model: "test-model",
-		Messages: []litellm.Message{
-			{Role: "user", Content: "show diff"},
-		},
-	}
-
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "")
-	if err != nil {
-		t.Fatalf("RunAgent error: %v", err)
-	}
-
-	events := collectSSE(sseState)
-	foundComponent := false
-	for _, evt := range events {
-		if evt.Type == "component" {
-			foundComponent = true
-			break
-		}
-	}
-	if !foundComponent {
-		t.Errorf("expected component event for render_diff_card, got types: %v", sseEventTypes(events))
 	}
 }
 
