@@ -269,10 +269,6 @@
         appendThinkingDelta(packet.content);
         break;
 
-      case 'thinking_done':
-        // Thinking stream complete — no action needed, done event follows.
-        break;
-
       case 'token':
         markStreamResumed(state);
         state.status = STATES.STREAMING;
