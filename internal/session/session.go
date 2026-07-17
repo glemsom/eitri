@@ -31,10 +31,11 @@ type ComponentData struct {
 
 // Message represents a single chat message in a session.
 type Message struct {
-	Role       string          `json:"role"`
-	Content    string          `json:"content"`
-	CreatedAt  time.Time       `json:"created_at"`
-	Components []ComponentData `json:"components,omitempty"`
+	Role         string          `json:"role"`
+	Content      string          `json:"content"`
+	CreatedAt    time.Time       `json:"created_at"`
+	Components   []ComponentData `json:"components,omitempty"`
+	QuickReplies []string        `json:"quick_replies,omitempty"`
 }
 
 // UISession represents a browser-facing chat session.
@@ -271,6 +272,29 @@ func (m *Manager) AppendComponent(id string, comp ComponentData) error {
 	s.UpdatedAt = time.Now()
 	return nil
 }
+
+// SetQuickReplies sets quick reply options on the last assistant message.
+// Creates an empty assistant message if no assistant message exists yet.
+func (m *Manager) SetQuickReplies(id string, options []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	if len(s.Messages) == 0 || s.Messages[len(s.Messages)-1].Role != "assistant" {
+		s.Messages = append(s.Messages, Message{
+			Role:      "assistant",
+			Content:   "",
+			CreatedAt: time.Now(),
+		})
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	last.QuickReplies = options
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
 
 // UpdateLastAssistantContent updates the content of the last assistant message.
 // Does nothing if session not found or last message is not assistant.

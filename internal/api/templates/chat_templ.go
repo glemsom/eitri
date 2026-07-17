@@ -53,7 +53,7 @@ func ChatView(sess *session.UISession, configValid bool) templ.Component {
 		}
 		for _, msg := range sess.Messages {
 			if msg.Role == "assistant" {
-				templ_7745c5c3_Err = AssistantBubble(msg.Content).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

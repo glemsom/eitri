@@ -20,3 +20,18 @@ templ QuickReplies(sessionID string, options []string) {
 		}
 	</div>
 }
+
+// InlineQuickReplies renders quick reply chips as an inline footer inside an assistant bubble.
+templ InlineQuickReplies(sessionID string, options []string) {
+	<div class="message-quick-replies">
+		<div class="quick-replies-separator"></div>
+		<div class="quick-replies">
+			for _, opt := range options {
+				<form class="quick-reply-form" style="display:inline" hx-post={ templ.URL(fmt.Sprintf("/api/sessions/%s/chat", sessionID)) } hx-target="#messages" hx-swap="beforeend">
+					<input type="hidden" name="message" value={ opt }/>
+					<button type="submit" class="quick-reply-chip">{ opt }</button>
+				</form>
+			}
+		</div>
+	</div>
+}

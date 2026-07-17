@@ -283,20 +283,8 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 			compTempl := templates.MermaidDiagram(code)
 			_ = compTempl.Render(ctx, &html)
 		case "QuickReplies":
-			var options []string
-			if opts, ok := comp.Data["options"]; ok {
-				if optsArr, ok := opts.([]string); ok {
-					options = optsArr
-				} else if optsArr, ok := opts.([]interface{}); ok {
-					for _, o := range optsArr {
-						if s, ok := o.(string); ok {
-							options = append(options, s)
-						}
-					}
-				}
-			}
-			compTempl := templates.QuickReplies(sessionID, options)
-			_ = compTempl.Render(ctx, &html)
+			// QuickReplies are now stored inline on the message, not as a component.
+			// Skip rendering here — inserted by AssistantBubble.
 		case "DiffCard":
 			oldCode, _ := comp.Data["old"].(string)
 			newCode, _ := comp.Data["new"].(string)
@@ -1025,16 +1013,18 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 
 	case "markdown":
 		var content string
+		var quickReplies []string
 		if sess != nil {
 			for i := len(sess.Messages) - 1; i >= 0; i-- {
 				if sess.Messages[i].Role == "assistant" {
 					content = sess.Messages[i].Content
+					quickReplies = sess.Messages[i].QuickReplies
 					break
 				}
 			}
 		}
 		html := renderMarkdownToHTML(content)
-		component := templates.AssistantBubble(html)
+		component := templates.AssistantBubble(id, html, quickReplies)
 		component.Render(r.Context(), w)
 
 	case "component":

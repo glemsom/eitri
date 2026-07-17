@@ -10,9 +10,13 @@ templ UserBubble(content string) {
 
 // AssistantBubble renders an assistant chat message bubble with rendered HTML.
 // The content is already-rendered Markdown HTML, safe to inject.
-templ AssistantBubble(htmlContent string) {
+// quickReplies are rendered as an inline footer with a thin separator when present.
+templ AssistantBubble(sessionID string, htmlContent string, quickReplies []string) {
 	<div class="message message-assistant">
 		<img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"/>
 		<div class="message-content">@templ.Raw(htmlContent)</div>
+		if len(quickReplies) > 0 {
+			@InlineQuickReplies(sessionID, quickReplies)
+		}
 	</div>
 }
