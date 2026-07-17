@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -46,6 +47,24 @@ func classifyNetError(err error) error {
 func readAll(resp *http.Response) ([]byte, error) {
 	defer resp.Body.Close()
 	return io.ReadAll(resp.Body)
+}
+
+// marshalJSONNoEscape marshals v to JSON without escaping HTML characters (<, >, &).
+// Go's json.Marshal escapes these by default (safe for embedding in HTML),
+// but for LLM API calls the literal characters are preferred and expected.
+func marshalJSONNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	// Encode appends a newline; strip it for consistency with json.Marshal.
+	b := buf.Bytes()
+	if len(b) > 0 && b[len(b)-1] == '\n' {
+		b = b[:len(b)-1]
+	}
+	return b, nil
 }
 
 // classifyHTTPError creates a user-facing error from an HTTP error response.
@@ -91,6 +110,50 @@ func classifyHTTPError(statusCode int, body []byte) error {
 	}
 }
 
+// writeLLMDebugFile writes the full request and response to a JSON debug file
+// when EITRI_DEBUG_LLM_DIR is set and an LLM request fails.
+func writeLLMDebugFile(url string, reqBody, respBody []byte, statusCode int, prefix string) {
+	dir := os.Getenv("EITRI_DEBUG_LLM_DIR")
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("cannot create LLM debug dir", slog.String("dir", dir), slog.Any("error", err))
+		return
+	}
+
+	timestamp := time.Now().UnixNano()
+	filename := fmt.Sprintf("%s-llm-debug-%d.json", prefix, timestamp)
+	path := filepath.Join(dir, filename)
+
+	type debugEntry struct {
+		URL            string          `json:"url"`
+		Request        json.RawMessage `json:"request"`
+		ResponseStatus int             `json:"response_status"`
+		ResponseBody   string          `json:"response_body"`
+	}
+
+	entry := debugEntry{
+		URL:            url,
+		Request:        json.RawMessage(reqBody),
+		ResponseStatus: statusCode,
+		ResponseBody:   string(respBody),
+	}
+
+	data, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		slog.Warn("failed to marshal LLM debug entry", slog.Any("error", err))
+		return
+	}
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		slog.Warn("failed to write LLM debug file", slog.String("path", path), slog.Any("error", err))
+		return
+	}
+
+	slog.Warn("LLM debug file written", slog.String("path", path), slog.Int("status", statusCode))
+}
+
 // ————— wire types for OpenAI-compatible API —————
 
 type openAIReq struct {
@@ -102,7 +165,7 @@ type openAIReq struct {
 
 type openAIMsg struct {
 	Role       string           `json:"role"`
-	Content    string           `json:"content,omitempty"`
+	Content    string           `json:"content"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
 	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 }
@@ -349,12 +412,12 @@ func (s *sseScanner) Data() string  { return s.data }
 // setHeaders is called after Content-Type and Accept are set so the adapter
 // can add auth, tracking, or other headers.
 func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*Resp, error) {
-	body, err := json.Marshal(req)
+	reqBody, err := marshalJSONNoEscape(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -365,7 +428,7 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 	if debugLogPayload {
 		slog.Info("llm request",
 			slog.String("endpoint", url),
-			slog.String("body", string(body)),
+			slog.String("body", string(reqBody)),
 		)
 	}
 	resp, err := doRequest(ctx, client, httpReq)
@@ -379,6 +442,7 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "chat")
 		return nil, classifyHTTPError(resp.StatusCode, respBody)
 	}
 
@@ -397,12 +461,12 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 //
 // setHeaders is called after Content-Type and Accept are set.
 func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*http.Response, error) {
-	body, err := json.Marshal(req)
+	reqBody, err := marshalJSONNoEscape(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -413,7 +477,7 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 	if debugLogPayload {
 		slog.Info("llm request",
 			slog.String("endpoint", url),
-			slog.String("body", string(body)),
+			slog.String("body", string(reqBody)),
 		)
 	}
 	resp, err := doRequest(ctx, client, httpReq)
@@ -422,8 +486,9 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := readAll(resp)
-		return nil, classifyHTTPError(resp.StatusCode, body)
+		respBody, _ := readAll(resp)
+		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "stream")
+		return nil, classifyHTTPError(resp.StatusCode, respBody)
 	}
 
 	return resp, nil

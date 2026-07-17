@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -97,9 +99,11 @@ func RunAgent(
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
+				dumpRequestOnError(req, err, attempt+1)
 				time.Sleep(1 * time.Second)
 				continue
 			}
+			dumpRequestOnError(req, err, maxRetries+1)
 			msg := fmt.Sprintf("LLM error: %v", err)
 			sseWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
@@ -592,6 +596,48 @@ func addReadToolAllowedPath(tools *tool.Registry, path string) {
 	rt.AppendAllowedPaths(path)
 }
 
+// dumpRequestOnError writes the full chat request as JSON to the debug directory
+// when EITRI_DEBUG_LLM_DIR is set and an LLM request fails.
+func dumpRequestOnError(req *litellm.Request, err error, attempt int) {
+	dir := os.Getenv("EITRI_DEBUG_LLM_DIR")
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("cannot create LLM debug dir", slog.String("dir", dir), slog.Any("error", err))
+		return
+	}
+
+	timestamp := time.Now().UnixNano()
+	filename := fmt.Sprintf("runner-llm-request-%d-attempt-%d.json", timestamp, attempt)
+	path := filepath.Join(dir, filename)
+
+	type debugEntry struct {
+		Request litellm.Request `json:"request"`
+		Error   string          `json:"error"`
+		Attempt int             `json:"attempt"`
+	}
+
+	entry := debugEntry{
+		Request: *req,
+		Error:   err.Error(),
+		Attempt: attempt,
+	}
+
+	data, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		slog.Warn("failed to marshal LLM request dump", slog.Any("error", err))
+		return
+	}
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		slog.Warn("failed to write LLM request dump", slog.String("path", path), slog.Any("error", err))
+		return
+	}
+
+	slog.Warn("LLM request dump written", slog.String("path", path), slog.Int("attempt", attempt))
+}
+
 // isRetryableLLMError checks if an LLM error is likely transient and worth retrying.
 // Returns false for auth errors, context-length errors, rate-limits, and context cancellation.
 func isRetryableLLMError(err error) bool {
@@ -609,6 +655,11 @@ func isRetryableLLMError(err error) bool {
 	}
 	// Don't retry context length errors
 	if strings.Contains(msg, "Context length") || strings.Contains(msg, "context length") {
+		return false
+	}
+	// Don't retry bad request (400) — indicates a problem with the request itself
+	// that won't resolve by re-sending (e.g. unknown model, invalid parameters).
+	if strings.Contains(msg, "400") || strings.Contains(msg, "Bad Request") {
 		return false
 	}
 	// Everything else (5xx, upstream failures, connection errors) is potentially transient

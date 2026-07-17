@@ -148,7 +148,7 @@ func mapAnthropicStopReason(reason string) string {
 
 func (s *Anthropic) Chat(ctx context.Context, req Request) (*Response, error) {
 	wireReq := s.toAnthropicReq(req, false)
-	body, err := json.Marshal(wireReq)
+	body, err := marshalJSONNoEscape(wireReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -183,7 +183,7 @@ func (s *Anthropic) Chat(ctx context.Context, req Request) (*Response, error) {
 
 func (s *Anthropic) ChatStream(ctx context.Context, req Request) (<-chan StreamEvent, error) {
 	wireReq := s.toAnthropicReq(req, true)
-	body, err := json.Marshal(wireReq)
+	body, err := marshalJSONNoEscape(wireReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}

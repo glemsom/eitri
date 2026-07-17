@@ -849,6 +849,47 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 	}
 }
 
+func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// inner mock will be called if retry happens (which would be the bug)
+	llm := &transientErrorLLM{
+		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
+		inner: newMockLLM([]mockTurn{
+			{tokens: []tokenEvent{{content: "should not be reached"}}},
+		}),
+	}
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	if err == nil {
+		t.Fatal("expected error for HTTP 400, got nil")
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Fatalf("error should mention 400, got: %v", err)
+	}
+
+	// Verify no retry: inner mock never produced events.
+	// transientErrorLLM returns error on first call, delegates to inner on subsequent.
+	// If inner called, we'd see token/tool/done events.
+	// The only SSE event should be the error event from the retry-exhausted path.
+	types := sseEventTypes(collectSSE(sseState))
+	if len(types) > 1 {
+		t.Fatalf("expected only error event (no retry), got: %v", types)
+	}
+	if len(types) == 1 && types[0] != "error" {
+		t.Fatalf("expected error event type, got: %s", types[0])
+	}
+}
+
 func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
