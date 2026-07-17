@@ -13,16 +13,13 @@ templ MessageInput(sessionID string, disabled bool, _ bool) {
 			hx-indicator="#send-btn"
 			hx-on::after-request="this.reset()"
 		>
-			<textarea
+				<textarea
 				id="chat-input"
 				name="message"
 				class="chat-input"
 				rows="3"
 				placeholder="Type a message..."
 				required
-				if disabled {
-					disabled
-				}
 				hx-trigger="keydown[ctrl+enter||meta+enter] from:#chat-input"
 			></textarea>
 			<div class="composer-actions">

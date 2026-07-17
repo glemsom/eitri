@@ -23,6 +23,11 @@
 
       this._initialized = true;
       this.sessionId = this._extractSessionId();
+
+      // Auto-focus the chat input on page load and HTMX swaps
+      if (!this.textarea.disabled) {
+        this.textarea.focus();
+      }
       this.menuEl = null;
       this.menuType = null;
       this.selectedIdx = -1;

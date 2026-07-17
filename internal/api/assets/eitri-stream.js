@@ -151,7 +151,10 @@
     const input = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
     const stopBtn = document.getElementById('stop-btn');
-    if (input) input.disabled = false;
+    if (input) {
+      input.disabled = false;
+      input.focus();
+    }
     if (sendBtn) {
       sendBtn.disabled = false;
       sendBtn.classList.remove('send-hidden');
