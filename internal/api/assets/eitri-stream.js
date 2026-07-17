@@ -508,12 +508,54 @@
   }
 
   function renderComponent(sessionId, packet) {
-    const messages = document.getElementById('messages');
-    if (!messages) return;
+    console.log('[eitri] renderComponent called', JSON.stringify(packet));
+    // The SSE 'component' event nests name/data inside packet.data:
+    //   {"type":"component","data":{"name":"FileEditCard","data":{...}}}
+    var nested = packet.data || {};
+    const compName = nested.name || '';
+    const compData = nested.data || {};
+    if (!compName) {
+      console.warn('[eitri] renderComponent: no compName, packet.data=', JSON.stringify(packet.data));
+      return;
+    }
+    console.log('[eitri] renderComponent: name=' + compName + ' data keys=' + Object.keys(compData).join(','));
 
-    const compName = packet.name || '';
-    const compData = packet.data || {};
-    if (!compName) return;
+    // FileEditCard components should render into the last tool card slot
+    // so the pretty diff replaces the raw tool result text.
+    // Use setTimeout to defer until after the tool_result HTMX completes.
+    if (compName === 'FileEditCard') {
+      var doRender = function () {
+        // Find the outermost tool-call-container (has the id).
+        // Skip inner .tool-card divs that also carry data-tool-id but no id.
+        var allSlots = document.querySelectorAll('#messages > .tool-call-container');
+        if (allSlots.length > 0) {
+          var slot = allSlots[allSlots.length - 1];
+          htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
+            source: document.body,
+            target: '#' + CSS.escape(slot.id),
+            swap: 'innerHTML',
+            contentType: 'application/json',
+            values: {
+              kind: 'component',
+              name: compName,
+              data: compData,
+            },
+          });
+        }
+      };
+      // First try on next tick (after tool_result HTMX settles).
+      // Then retry once after a short delay in case HTMX hasn't finished.
+      setTimeout(doRender, 0);
+      setTimeout(doRender, 100);
+      return;
+    }
+
+    const messages = document.getElementById('messages');
+    if (!messages) {
+      console.warn('[eitri] renderComponent: no messages element');
+      return;
+    }
+    console.log('[eitri] renderComponent: appending to #messages');
 
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,

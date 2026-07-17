@@ -192,7 +192,7 @@ func RunAgent(
 
 			// Emit component event for compatible tools
 			if !isError {
-				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args)
+				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args, blocks)
 				if ok && uisessionMgr != nil {
 					uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
 						Name: compName,
@@ -358,7 +358,7 @@ var componentToolMap = map[string]string{
 // Supported tools: render_mermaid_diagram, render_quick_replies, edit.
 // The edit tool emits a FileEditCard using old_text/new_text/path from args.
 // Returns (componentName, data, ok) for the caller to also persist the component.
-func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage) (string, map[string]interface{}, bool) {
+func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []vocellitellm.Block) (string, map[string]interface{}, bool) {
 	componentName, ok := componentToolMap[toolName]
 	if !ok {
 		return "", nil, false
@@ -400,10 +400,26 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		if parsed.OldText == "" && parsed.NewText == "" {
 			return "", nil, false
 		}
+		// Try to get full file content from blocks (added by edit tool)
+		fullOld, fullNew := "", ""
+		for _, block := range blocks {
+			if tb, ok := block.(vocellitellm.TextBlock); ok {
+				if strings.HasPrefix(tb.Text, "FULL_OLD_CONTENT:") {
+					fullOld = strings.TrimPrefix(tb.Text, "FULL_OLD_CONTENT:")
+				} else if strings.HasPrefix(tb.Text, "FULL_NEW_CONTENT:") {
+					fullNew = strings.TrimPrefix(tb.Text, "FULL_NEW_CONTENT:")
+				}
+			}
+		}
+		if fullOld == "" || fullNew == "" {
+			// Fallback to snippet-only diff
+			fullOld = parsed.OldText
+			fullNew = parsed.NewText
+		}
 		data["path"] = parsed.Path
 		data["mode"] = "overwrite"
-		data["old"] = parsed.OldText
-		data["new"] = parsed.NewText
+		data["old"] = fullOld
+		data["new"] = fullNew
 		data["bytes_written"] = len(parsed.NewText)
 		// Note: dirs_created always empty for edit tool
 

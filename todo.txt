@@ -1,0 +1,2 @@
+- Fix so edit tool shows a diffcard when done
+- Fix mermaid render
