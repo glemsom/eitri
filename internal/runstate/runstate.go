@@ -266,11 +266,6 @@ func (w *Writer) ThinkingDelta(content string) {
 	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content})
 }
 
-// ThinkingDone broadcasts a thinking_done SSE event.
-func (w *Writer) ThinkingDone() {
-	w.state.Broadcast(SSEEvent{Type: "thinking_done"})
-}
-
 // EstimateUsage estimates token counts from text length.
 // Uses a rough ratio: ~4 chars per token for English text.
 // This is a fallback when the provider doesn't return usage data.
