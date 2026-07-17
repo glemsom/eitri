@@ -250,6 +250,15 @@ header h1 {
   color: var(--error);
 }
 
+.tool-entry.tool-running {
+  background: rgba(243, 156, 18, 0.12);
+  border-radius: 4px;
+}
+
+.tool-entry.tool-running .tool-icon {
+  color: #f0b400;
+}
+
 /* Inline expandable tool output in sidebar */
 .tool-output {
   display: none;
