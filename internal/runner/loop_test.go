@@ -25,9 +25,16 @@ type mockLLMService struct {
 }
 
 type mockTurn struct {
-	content   string          // text content
-	toolCalls []litellm.ToolCall
-	err       error
+	content     string          // text content (single token)
+	tokens      []tokenEvent   // multiple token events (overrides content when set)
+	toolCalls   []litellm.ToolCall
+	err         error
+	isReasoning bool            // if true, content token has IsReasoning=true
+}
+
+type tokenEvent struct {
+	content     string
+	isReasoning bool
 }
 
 func (m *mockLLMService) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
@@ -57,8 +64,12 @@ func (m *mockLLMService) ChatStream(ctx context.Context, req litellm.Request) (<
 	}
 
 	// Send text content as token events
-	if turn.content != "" {
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: turn.content}
+	if len(turn.tokens) > 0 {
+		for _, tok := range turn.tokens {
+			ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
+		}
+	} else if turn.content != "" {
+		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: turn.content, IsReasoning: turn.isReasoning}
 	}
 
 	// Send tool calls
@@ -949,6 +960,144 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		finalMsg := req.Messages[len(req.Messages)-1]
 		if finalMsg.Role != "assistant" {
 			t.Errorf("final message role = %q, want %q", finalMsg.Role, "assistant")
+		}
+	}
+}
+
+func TestRunAgent_ThinkingDeltaEvent(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// One LLM turn: reasoning content then regular content (as adapters do).
+	// Within a single turn, IsReasoning=true tokens are routed to thinking_delta,
+	// IsReasoning=false tokens go to content accumulator + Token SSE.
+	llm := newMockLLM([]mockTurn{
+		{
+			tokens: []tokenEvent{
+				{content: "Let me think about this step by step...", isReasoning: true},
+				{content: "Here is the answer."},
+			},
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "what is the answer?"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+
+	// Check that reasoning content produced thinking_delta events
+	// and regular content produced token events
+	hasThinkingDelta := false
+	hasToken := false
+	for _, evt := range events {
+		if evt.Type == "thinking_delta" {
+			hasThinkingDelta = true
+			if evt.Content == "" {
+				t.Error("thinking_delta event has empty content")
+			}
+		}
+		if evt.Type == "token" {
+			hasToken = true
+		}
+	}
+
+	if !hasThinkingDelta {
+		t.Errorf("expected thinking_delta event(s), got types: %v", sseEventTypes(events))
+	}
+	if !hasToken {
+		t.Errorf("expected token event(s), got types: %v", sseEventTypes(events))
+	}
+
+	// Reasoning content must NOT appear in the accumulated assistant message.
+	// The assistant message should only have non-reasoning content.
+	if len(req.Messages) >= 2 {
+		lastAssistant := req.Messages[len(req.Messages)-1]
+		if lastAssistant.Role == "assistant" {
+			if strings.Contains(lastAssistant.Content, "Let me think about this") {
+				t.Error("reasoning content leaked into accumulated assistant content")
+			}
+			if !strings.Contains(lastAssistant.Content, "Here is the answer.") {
+				t.Errorf("assistant content = %q, want to contain 'Here is the answer.'", lastAssistant.Content)
+			}
+		}
+	}
+}
+
+func TestRunAgent_ThinkingInterleavedWithTokens(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// Single turn: reasoning, then regular, then more reasoning, then final.
+	// Tests ordering of thinking_delta vs token SSE events and correctness
+	// of the content accumulator (only non-reasoning text should appear).
+	llm := newMockLLM([]mockTurn{
+		{
+			tokens: []tokenEvent{
+				{content: "First reasoning...", isReasoning: true},
+				{content: "Intermediate text. "},
+				{content: "More reasoning...", isReasoning: true},
+				{content: "Final answer."},
+			},
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "complex question"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+
+	// Verify correct ordering: thinking_delta events interleaved with token events
+	thinkingDeltaCount := 0
+	tokenCount := 0
+	for _, typ := range types {
+		switch typ {
+		case "thinking_delta":
+			thinkingDeltaCount++
+		case "token":
+			tokenCount++
+		case "done":
+			// done is always last, OK
+		}
+	}
+
+	if thinkingDeltaCount != 2 {
+		t.Errorf("expected 2 thinking_delta events, got %d. Types: %v", thinkingDeltaCount, types)
+	}
+	if tokenCount != 2 {
+		t.Errorf("expected 2 token events, got %d. Types: %v", tokenCount, types)
+	}
+
+	// Accumulated content must only contain non-reasoning text
+	if len(req.Messages) >= 2 {
+		lastAssistant := req.Messages[len(req.Messages)-1]
+		if lastAssistant.Role == "assistant" {
+			if strings.Contains(lastAssistant.Content, "reasoning") {
+				t.Error("reasoning content leaked into accumulated assistant content")
+			}
+			if !strings.Contains(lastAssistant.Content, "Final answer.") {
+				t.Errorf("assistant content = %q, want to contain 'Final answer.'", lastAssistant.Content)
+			}
 		}
 	}
 }

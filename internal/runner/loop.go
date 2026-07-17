@@ -376,8 +376,16 @@ func drainStream(
 
 			switch evt.Type {
 			case litellm.StreamEventTypeToken:
-				content.WriteString(evt.Content)
-				sseWriter.Token(evt.Content)
+				if evt.IsReasoning {
+					// Strip <think> tags used by adapters to delimit reasoning.
+					reasoning := evt.Content
+					reasoning = strings.TrimPrefix(reasoning, "<think>")
+					reasoning = strings.TrimSuffix(reasoning, "</think>")
+					sseWriter.ThinkingDelta(reasoning)
+				} else {
+					content.WriteString(evt.Content)
+					sseWriter.Token(evt.Content)
+				}
 
 			case litellm.StreamEventTypeToolCall:
 				if len(evt.ToolCalls) > 0 {
