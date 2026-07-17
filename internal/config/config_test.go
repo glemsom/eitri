@@ -360,6 +360,122 @@ func TestMerge_PreservesAPIKeyWhenEmptyWithoutClear(t *testing.T) {
 	}
 }
 
+func TestLoad_SetsAllowedReadPaths(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{
+		"provider": "opencode_go",
+		"api_key": "sk-test",
+		"allowed_read_paths": ["/home/user/projects", "/tmp/shared"]
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+
+	if len(cfg.AllowedReadPaths) != 2 {
+		t.Fatalf("AllowedReadPaths = %v, want 2 entries", cfg.AllowedReadPaths)
+	}
+	if cfg.AllowedReadPaths[0] != "/home/user/projects" {
+		t.Errorf("AllowedReadPaths[0] = %q, want %q", cfg.AllowedReadPaths[0], "/home/user/projects")
+	}
+	if cfg.AllowedReadPaths[1] != "/tmp/shared" {
+		t.Errorf("AllowedReadPaths[1] = %q, want %q", cfg.AllowedReadPaths[1], "/tmp/shared")
+	}
+}
+
+func TestSave_RoundTripsAllowedReadPaths(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-save-test"
+	cfg.AllowedReadPaths = []string{"/home/user/projects", "/tmp/shared"}
+
+	if err := config.Save(cfgPath, &cfg); err != nil {
+		t.Fatalf("Save() = %v, want nil", err)
+	}
+
+	loaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() after save = %v", err)
+	}
+
+	if len(loaded.AllowedReadPaths) != 2 {
+		t.Fatalf("AllowedReadPaths = %v, want 2 entries", loaded.AllowedReadPaths)
+	}
+	if loaded.AllowedReadPaths[0] != "/home/user/projects" {
+		t.Errorf("AllowedReadPaths[0] = %q, want %q", loaded.AllowedReadPaths[0], "/home/user/projects")
+	}
+	if loaded.AllowedReadPaths[1] != "/tmp/shared" {
+		t.Errorf("AllowedReadPaths[1] = %q, want %q", loaded.AllowedReadPaths[1], "/tmp/shared")
+	}
+}
+
+func TestLoad_AllowedReadPathsNilWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{
+		"provider": "opencode_go",
+		"api_key": "sk-test"
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+
+	if cfg.AllowedReadPaths != nil {
+		t.Errorf("AllowedReadPaths = %v, want nil when field omitted", cfg.AllowedReadPaths)
+	}
+}
+
+func TestMerge_AllowedReadPaths(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	patch := map[string]interface{}{
+		"allowed_read_paths": []interface{}{"/home/user/projects", "/tmp/shared"},
+	}
+	result := config.Merge(&cfg, patch)
+
+	if result.AllowedReadPaths == nil {
+		t.Fatal("AllowedReadPaths is nil after merge")
+	}
+	if len(result.AllowedReadPaths) != 2 {
+		t.Fatalf("AllowedReadPaths = %v, want 2 entries", result.AllowedReadPaths)
+	}
+	if result.AllowedReadPaths[0] != "/home/user/projects" {
+		t.Errorf("AllowedReadPaths[0] = %q, want %q", result.AllowedReadPaths[0], "/home/user/projects")
+	}
+	if result.AllowedReadPaths[1] != "/tmp/shared" {
+		t.Errorf("AllowedReadPaths[1] = %q, want %q", result.AllowedReadPaths[1], "/tmp/shared")
+	}
+}
+
+func TestMerge_AllowedReadPathsIgnoresNonArray(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	patch := map[string]interface{}{
+		"allowed_read_paths": "not-an-array",
+	}
+	result := config.Merge(&cfg, patch)
+
+	if result.AllowedReadPaths != nil {
+		t.Errorf("AllowedReadPaths = %v, want nil for non-array patch", result.AllowedReadPaths)
+	}
+}
+
 func TestMerge_ProviderSwitchClearsModelAndResetsDefaultBaseURL(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Model = "opencode-model"

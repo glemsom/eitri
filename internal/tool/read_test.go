@@ -280,6 +280,90 @@ func TestRead_ArgsUnmarshal(t *testing.T) {
 	}
 }
 
+func TestRead_AllowedPathsAcceptsExternalPath(t *testing.T) {
+	dir := t.TempDir()
+	extDir := t.TempDir()
+	content := "external content"
+	extFile := filepath.Join(extDir, "ref.txt")
+	if err := os.WriteFile(extFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadTool(dir, nil, []string{extDir})
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(block.Text, "external content") {
+		t.Errorf("expected 'external content', got %q", block.Text)
+	}
+}
+
+func TestRead_AllowedPathsRejectsPathNotInAllowed(t *testing.T) {
+	dir := t.TempDir()
+	extDir1 := t.TempDir()
+	extDir2 := t.TempDir()
+	content := "secret"
+	extFile := filepath.Join(extDir2, "secret.txt")
+	if err := os.WriteFile(extFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadTool(dir, nil, []string{extDir1})
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(block.Text, "outside") {
+		t.Errorf("expected error mentioning 'outside', got %q", block.Text)
+	}
+}
+
+func TestRead_NilAllowedPathsBehavesLikeWorkspaceOnly(t *testing.T) {
+	dir := t.TempDir()
+	content := "workspace file"
+	fp := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(fp, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewReadTool(dir, nil)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	block, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(block.Text, "workspace file") {
+		t.Errorf("expected 'workspace file', got %q", block.Text)
+	}
+}
+
 func TestRead_DefaultLineRange(t *testing.T) {
 	dir := t.TempDir()
 	// 100 lines without trailing newline = exactly 100 lines in split
