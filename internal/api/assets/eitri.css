@@ -328,6 +328,7 @@ noscript {
 
 .message {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.75rem;
   border-radius: 8px;
@@ -862,6 +863,17 @@ pre:hover .copy-btn {
   margin-top: 0.25rem;
 }
 
+/* Inline quick replies inside assistant message bubble */
+.message-quick-replies {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.quick-replies-separator {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 0.5rem;
+}
 /* Quick reply chips */
 .quick-replies {
   display: flex;
