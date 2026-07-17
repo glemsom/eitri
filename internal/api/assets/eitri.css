@@ -642,6 +642,7 @@ details[open] .tool-chevron {
 
 /* Composer */
 .composer {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1068,6 +1069,7 @@ eitri-diff-card {
 /* Completion menu */
 .completion-menu {
   position: absolute;
+  bottom: calc(100% + 4px);
   z-index: 1000;
   background: var(--surface);
   border: 1px solid var(--border);
