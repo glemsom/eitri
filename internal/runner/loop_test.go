@@ -1210,7 +1210,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	}
 }
 
-func TestRunAgent_RenderQuickRepliesEmitsComponent(t *testing.T) {
+func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -1250,15 +1250,11 @@ func TestRunAgent_RenderQuickRepliesEmitsComponent(t *testing.T) {
 	}
 
 	events := collectSSE(sseState)
-	foundComponent := false
 	for _, evt := range events {
 		if evt.Type == "component" {
-			foundComponent = true
+			t.Errorf("unexpected component event for render_quick_replies (should be inline), got event: %+v", evt)
 			break
 		}
-	}
-	if !foundComponent {
-		t.Errorf("expected component event for render_quick_replies, got types: %v", sseEventTypes(events))
 	}
 }
 

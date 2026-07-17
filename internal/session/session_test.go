@@ -525,3 +525,65 @@ func TestAppendComponent_ConcurrentSafety(t *testing.T) {
 		t.Errorf("Components count after concurrent appends = %d, want 20", len(got.Messages[0].Components))
 	}
 }
+
+func TestSetQuickReplies(t *testing.T) {
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	// No assistant message yet
+	err := mgr.SetQuickReplies(sess.ID, []string{"yes", "no"})
+	if err != nil {
+		t.Fatalf("SetQuickReplies should not error: %v", err)
+	}
+
+	// Should have created an assistant message
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	}
+	if got.Messages[0].Role != "assistant" {
+		t.Errorf("message role = %q, want %q", got.Messages[0].Role, "assistant")
+	}
+	if len(got.Messages[0].QuickReplies) != 2 || got.Messages[0].QuickReplies[0] != "yes" || got.Messages[0].QuickReplies[1] != "no" {
+		t.Errorf("QuickReplies = %v, want [yes no]", got.Messages[0].QuickReplies)
+	}
+
+	// Overwrite existing quick replies
+	err = mgr.SetQuickReplies(sess.ID, []string{"maybe"})
+	if err != nil {
+		t.Fatalf("SetQuickReplies overwrite should not error: %v", err)
+	}
+	got = mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count after overwrite = %d, want 1", len(got.Messages))
+	}
+	if len(got.Messages[0].QuickReplies) != 1 || got.Messages[0].QuickReplies[0] != "maybe" {
+		t.Errorf("QuickReplies after overwrite = %v, want [maybe]", got.Messages[0].QuickReplies)
+	}
+
+	// Nonexistent session
+	err = mgr.SetQuickReplies("nonexistent", []string{"x"})
+	if err != nil {
+		t.Errorf("SetQuickReplies for nonexistent session should not error, got: %v", err)
+	}
+
+	// Set on existing assistant message preserves quick replies on that message
+	mgr2 := session.NewManager(10)
+	sess2, _ := mgr2.Create("browser-2")
+	mgr2.AppendMessage(sess2.ID, session.Message{Role: "user", Content: "hello"})
+	mgr2.AppendMessage(sess2.ID, session.Message{Role: "assistant", Content: "world"})
+	err = mgr2.SetQuickReplies(sess2.ID, []string{"a", "b"})
+	if err != nil {
+		t.Fatalf("SetQuickReplies on existing assistant should not error: %v", err)
+	}
+	got2 := mgr2.Get(sess2.ID)
+	if len(got2.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(got2.Messages))
+	}
+	if got2.Messages[1].Content != "world" {
+		t.Errorf("Assistant content changed from %q to %q", "world", got2.Messages[1].Content)
+	}
+	if len(got2.Messages[1].QuickReplies) != 2 || got2.Messages[1].QuickReplies[0] != "a" {
+		t.Errorf("Assistant QuickReplies = %v, want [a b]", got2.Messages[1].QuickReplies)
+	}
+}

@@ -190,14 +190,23 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
-			// Emit component event for compatible tools
-			if !isError {
+			// Emit component event for compatible tools (except QuickReplies which stores inline)
+			if !isError || tc.Function.Name == "render_quick_replies" {
 				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args, blocks)
 				if ok && uisessionMgr != nil {
-					uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
-						Name: compName,
-						Data: compData,
-					})
+					if tc.Function.Name == "render_quick_replies" {
+						// QuickReplies stores inline on the assistant message, not as a component event
+						if opts, ok := compData["options"]; ok {
+							if optStrs, ok := opts.([]string); ok {
+								uisessionMgr.SetQuickReplies(sessionID, optStrs)
+							}
+						}
+					} else {
+						uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
+							Name: compName,
+							Data: compData,
+						})
+					}
 				}
 			}
 
@@ -357,6 +366,7 @@ var componentToolMap = map[string]string{
 // emitComponentForTool emits a component event based on the tool name and args.
 // Supported tools: render_mermaid_diagram, render_quick_replies, edit.
 // The edit tool emits a FileEditCard using old_text/new_text/path from args.
+// QuickReplies does NOT emit a component SSE event (chips are stored inline on the message).
 // Returns (componentName, data, ok) for the caller to also persist the component.
 func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []vocellitellm.Block) (string, map[string]interface{}, bool) {
 	componentName, ok := componentToolMap[toolName]
@@ -384,6 +394,8 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 			return "", nil, false
 		}
 		data["options"] = parsed.Options
+		// QuickReplies renders inline — no separate SSE component event
+		return componentName, data, true
 
 	case "FileEditCard":
 		var parsed struct {

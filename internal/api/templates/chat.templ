@@ -19,7 +19,7 @@ templ ChatView(sess *session.UISession, configValid bool) {
 			}
 			for _, msg := range sess.Messages {
 				if msg.Role == "assistant" {
-					@AssistantBubble(msg.Content)
+					@AssistantBubble(sess.ID, msg.Content, msg.QuickReplies)
 				} else {
 					@UserBubble(msg.Content)
 				}

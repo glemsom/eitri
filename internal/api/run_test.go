@@ -1930,6 +1930,12 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	if assistantMsg.Role != "assistant" {
 		t.Errorf("message[1] role = %q, want %q", assistantMsg.Role, "assistant")
 	}
+	if len(assistantMsg.QuickReplies) == 0 {
+		t.Error("expected QuickReplies on assistant message, got none")
+	} else if len(assistantMsg.QuickReplies) != 2 || assistantMsg.QuickReplies[0] != "yes" || assistantMsg.QuickReplies[1] != "no" {
+		t.Errorf("QuickReplies = %v, want [yes no]", assistantMsg.QuickReplies)
+	}
+
 	if len(assistantMsg.Components) == 0 {
 		t.Fatal("expected components on assistant message, got none")
 	}
@@ -1940,9 +1946,6 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	}
 	if !foundComponents["MermaidDiagram"] {
 		t.Errorf("components missing MermaidDiagram, got: %v", assistantMsg.Components)
-	}
-	if !foundComponents["QuickReplies"] {
-		t.Errorf("components missing QuickReplies, got: %v", assistantMsg.Components)
 	}
 	if !foundComponents["FileEditCard"] {
 		t.Errorf("components missing FileEditCard, got: %v", assistantMsg.Components)
