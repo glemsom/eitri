@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -31,6 +32,18 @@ func (r *Registry) Register(h ToolHandler) {
 	r.handlers[h.Name()] = h
 }
 
+// Replace replaces an existing registered handler by name.
+// Panics if no handler with that name is registered or if the new name is empty.
+func (r *Registry) Replace(h ToolHandler) {
+	if h.Name() == "" {
+		panic("tool: cannot replace handler with empty name")
+	}
+	if _, exists := r.handlers[h.Name()]; !exists {
+		panic(fmt.Sprintf("tool: cannot replace handler %q — not registered", h.Name()))
+	}
+	r.handlers[h.Name()] = h
+}
+
 // Lookup returns the handler for the given name, or nil if not found.
 func (r *Registry) Lookup(name string) ToolHandler {
 	return r.handlers[name]
@@ -51,6 +64,12 @@ func (r *Registry) Dispatch(ctx context.Context, toolUseID, name string, args js
 
 	blocks, err, isError := h.Call(ctx, args)
 	if err != nil {
+		// Propagate ErrNeedsConfirmation directly (not wrapped) so the
+		// agent loop can detect it via errors.As and pause for confirmation.
+		var needsConf *ErrNeedsConfirmation
+		if errors.As(err, &needsConf) {
+			return nil, needsConf
+		}
 		return nil, fmt.Errorf("tool %q: %w", name, err)
 	}
 

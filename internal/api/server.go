@@ -331,6 +331,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/sessions/{id}/cancel", s.handleCancel)
 	s.mux.HandleFunc("POST /api/sessions/{id}/render", s.handleRender)
 
+	// Confirmation endpoint (issue #313)
+	s.mux.HandleFunc("POST /api/sessions/{id}/confirm", s.handleConfirm)
+
 	// Skills routes
 	s.mux.HandleFunc("GET /skills", s.handleSkills)
 	s.mux.HandleFunc("GET /api/skills", s.handleAPISkills)
@@ -909,6 +912,72 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	// Re-enabling is now client-side via CSS class toggle (issue #103).
 	// Return empty 200 so HTMX does not swap out the composer.
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	if s.config.RunService == nil {
+		http.Error(w, "No run service", http.StatusInternalServerError)
+		return
+	}
+
+	var body struct {
+		Path     string `json:"path"`
+		Approved bool   `json:"approved"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.Path == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+
+	// On approval, save the path to config before resolving so it persists
+	if body.Approved {
+		cfg, err := config.Load(s.config.ConfigPath)
+		if err != nil {
+			slog.Warn("failed to load config for approval", slog.Any("error", err))
+		} else {
+			// Add path to allowed_read_paths if not already present
+			found := false
+			for _, p := range cfg.AllowedReadPaths {
+				if p == body.Path {
+					found = true
+					break
+				}
+			}
+			if !found {
+				cfg.AllowedReadPaths = append(cfg.AllowedReadPaths, body.Path)
+				if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+					slog.Warn("failed to save config after approval", slog.Any("error", err))
+				}
+				// Update RunService's allowedReadPaths so subsequent creations pick it up
+				s.config.RunService.UpdateProviderConfig(cfg)
+			}
+		}
+	}
+
+	resolved := s.config.RunService.ResolveConfirmation(id, body.Path, body.Approved)
+	if !resolved {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "no pending confirmation for this session"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "approved": body.Approved})
 }
 
 // unifiedRenderRequest is the JSON body for the unified render route.
