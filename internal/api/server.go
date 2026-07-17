@@ -360,6 +360,33 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 	return html.String()
 }
 
+// renderInlineComponentsToHTML renders only components that belong inside the
+// assistant bubble content (not tool cards). FileEditCard is excluded because
+// it is rendered as a standalone tool card replacement.
+func renderInlineComponentsToHTML(ctx context.Context, sessionID string, components []session.ComponentData) string {
+	if len(components) == 0 {
+		return ""
+	}
+	var html strings.Builder
+	for _, comp := range components {
+		switch comp.Name {
+		case "MermaidDiagram":
+			code, _ := comp.Data["code"].(string)
+			compTempl := templates.MermaidDiagram(code)
+			_ = compTempl.Render(ctx, &html)
+		case "DiffCard":
+			oldCode, _ := comp.Data["old"].(string)
+			newCode, _ := comp.Data["new"].(string)
+			lang, _ := comp.Data["lang"].(string)
+			compTempl := templates.DiffCard(oldCode, newCode, lang)
+			_ = compTempl.Render(ctx, &html)
+		// FileEditCard is excluded — rendered as a tool card.
+		// QuickReplies is excluded — rendered by AssistantBubble.
+		}
+	}
+	return html.String()
+}
+
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.Files)))
@@ -1153,8 +1180,15 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		if hasMermaidComponent(components) {
 			content = stripMermaidCodeBlocks(content)
 		}
-		html := renderMarkdownToHTML(content)
-		component := templates.AssistantBubble(id, html, quickReplies)
+		contentHTML := renderMarkdownToHTML(content)
+		// Only inline components that belong inside the assistant bubble.
+		// FileEditCard is already rendered as a tool card; MermaidDiagram
+		// is the visual output of the LLM response and belongs inline.
+		componentsHTML := renderInlineComponentsToHTML(r.Context(), id, components)
+		if componentsHTML != "" {
+			contentHTML += "\n" + componentsHTML
+		}
+		component := templates.AssistantBubble(id, contentHTML, quickReplies)
 		component.Render(r.Context(), w)
 
 	case "component":

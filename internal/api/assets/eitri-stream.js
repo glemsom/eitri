@@ -578,17 +578,28 @@
       return;
     }
 
-    const messages = document.getElementById('messages');
-    if (!messages) {
-      console.warn('[eitri] renderComponent: no messages element');
+    // MermaidDiagram is now rendered inside the assistant bubble via the
+    // server-side markdown render (kind: 'markdown'). No progressive DOM
+    // insert needed — just clean up the tool card after the component event.
+    if (compName === 'MermaidDiagram') {
+      setTimeout(removeDoneMermaidToolCards, 0);
+      setTimeout(removeDoneMermaidToolCards, 100);
       return;
     }
-    console.log('[eitri] renderComponent: appending to #messages');
+
+    // Insert other visual components after the streaming bubble so they
+    // visually group with the LLM response.
+    var streaming = document.getElementById('streaming');
+    if (!streaming) {
+      console.warn('[eitri] renderComponent: no #streaming element');
+      return;
+    }
+    console.log('[eitri] renderComponent: inserting after #streaming');
 
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
-      target: '#messages',
-      swap: 'beforeend',
+      target: '#streaming',
+      swap: 'afterend',
       contentType: 'application/json',
       values: {
         kind: 'component',
@@ -757,6 +768,21 @@
     for (var key in toolCardTimers) {
       if (toolCardTimers.hasOwnProperty(key)) {
         stopToolCardTimer(key);
+      }
+    }
+  }
+
+  // Remove done tool cards for render_mermaid_diagram after the visual
+  // component has rendered. The diagram output is the result — the card
+  // is visual noise once the diagram is visible.
+  function removeDoneMermaidToolCards() {
+    var slots = document.querySelectorAll('#messages [data-tool-id]');
+    for (var i = 0; i < slots.length; i++) {
+      var card = slots[i].querySelector('.tool-card.tool-done');
+      if (!card) continue;
+      var nameEl = card.querySelector('.tool-name');
+      if (nameEl && nameEl.textContent === 'render_mermaid_diagram') {
+        slots[i].remove();
       }
     }
   }
