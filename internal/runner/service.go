@@ -63,11 +63,12 @@ type RunService struct {
 	baseURL         string
 	apiKey          string
 	providerAuth    json.RawMessage
-	modelName       string
-	systemPrompt    string
-	maxTurns        int
-	maxHistory      int
-	persistAuth     PersistAuthFunc
+	modelName          string
+	systemPrompt       string
+	maxTurns           int
+	maxHistory         int
+	allowedReadPaths   []string
+	persistAuth        PersistAuthFunc
 }
 
 const completedRunRetention = 5 * time.Second
@@ -109,6 +110,7 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.systemPrompt = cfg.SystemPrompt
 	s.maxTurns = cfg.MaxTurns
 	s.maxHistory = cfg.MaxHistory
+	s.allowedReadPaths = cfg.AllowedReadPaths
 	s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
 }
 
@@ -138,6 +140,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	systemPrompt := s.systemPrompt
 	maxTurns := s.maxTurns
 	maxHistory := s.maxHistory
+	allowedReadPaths := s.allowedReadPaths
 	providerAuth := s.providerAuth
 	s.mu.Unlock()
 
@@ -202,7 +205,7 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	toolReg.Register(tool.NewBashTool(s.sessionMgr))
 	toolReg.Register(tool.NewGlobTool(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewGrepTool(s.sessionMgr.Workspace()))
-	toolReg.Register(tool.NewReadTool(s.sessionMgr.Workspace(), s.skillDirectories()))
+	toolReg.Register(tool.NewReadTool(s.sessionMgr.Workspace(), s.skillDirectories(), allowedReadPaths))
 	toolReg.Register(tool.NewWriteTool(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewEditTool(s.sessionMgr.Workspace()))
 	toolReg.Register(tool.NewRenderMermaidDiagram())

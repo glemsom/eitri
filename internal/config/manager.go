@@ -16,6 +16,7 @@ type Config struct {
 	Provider            string          `json:"provider"`
 	APIKey              string          `json:"api_key"`
 	ProviderAuth        json.RawMessage `json:"provider_auth,omitempty"`
+	AllowedReadPaths    []string        `json:"allowed_read_paths,omitempty"`
 	BaseURL             string          `json:"base_url"`
 	Model               string          `json:"model"`
 	SystemPrompt        string          `json:"system_prompt"`
@@ -176,6 +177,17 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 	if v, ok := patch["model"]; ok {
 		if s, ok := v.(string); ok {
 			result.Model = s
+		}
+	}
+	if v, ok := patch["allowed_read_paths"]; ok {
+		if arr, ok := v.([]interface{}); ok {
+			paths := make([]string, 0, len(arr))
+			for _, item := range arr {
+				if s, ok := item.(string); ok {
+					paths = append(paths, s)
+				}
+			}
+			result.AllowedReadPaths = paths
 		}
 	}
 	if v, ok := patch["system_prompt"]; ok {

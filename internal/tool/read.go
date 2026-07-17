@@ -18,17 +18,24 @@ type readArgs struct {
 
 // ReadTool implements ToolHandler for reading files with line-range support.
 type ReadTool struct {
-	workspace string
-	skillDirs []string
-	schema    litellm.Schema
+	workspace    string
+	skillDirs    []string
+	allowedPaths []string
+	schema       litellm.Schema
 }
 
 // NewReadTool creates a new ReadTool.
-func NewReadTool(workspace string, skillDirs []string) *ReadTool {
+// allowedPaths may be nil — behavior is workspace-only validation.
+func NewReadTool(workspace string, skillDirs []string, allowedPaths ...[]string) *ReadTool {
+	var ap []string
+	if len(allowedPaths) > 0 {
+		ap = allowedPaths[0]
+	}
 	return &ReadTool{
-		workspace: workspace,
-		skillDirs: skillDirs,
-		schema:    SchemaOf[readArgs](),
+		workspace:    workspace,
+		skillDirs:    skillDirs,
+		allowedPaths: ap,
+		schema:       SchemaOf[readArgs](),
 	}
 }
 
@@ -54,8 +61,10 @@ func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks("Error: path is required"), nil, true
 	}
 
-	// Validate path against workspace and skill dirs
-	absPath, err := fileutil.ValidatePathWithAllowed(parsed.Path, t.workspace, t.skillDirs)
+	// Validate path against workspace, skill dirs, and allowed paths
+	allowedRoots := append([]string{}, t.skillDirs...)
+	allowedRoots = append(allowedRoots, t.allowedPaths...)
+	absPath, err := fileutil.ValidatePathWithAllowed(parsed.Path, t.workspace, allowedRoots)
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
 	}
