@@ -3928,3 +3928,83 @@ func TestBrowser_ThinkingRendering(t *testing.T) {
 	}
 }
 
+// TestBrowser_MermaidComponentHeight verifies MermaidDiagram components
+// appended via the real render endpoint (same as SSE component events) have
+// correct height after mermaid processes them (regression test for overflow clipping).
+func TestBrowser_MermaidComponentHeight(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err = chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie("browser_id", "browser-1").WithURL(server.URL).Do(ctx)
+		}),
+		chromedp.Navigate(server.URL+"/sessions/"+sess.ID),
+		chromedp.WaitVisible("#messages", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	// Simulate the exact flow: htmx.ajax POST to render endpoint,
+	// same as renderComponent does for SSE component events.
+	var diagramHeight float64
+	var svgHeight float64
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var messages = document.getElementById('messages');
+			if (!messages) return;
+			htmx.ajax('POST', '/api/sessions/`+sess.ID+`/render', {
+				source: document.body,
+				target: '#messages',
+				swap: 'beforeend',
+				contentType: 'application/json',
+				values: {
+					kind: 'component',
+					name: 'MermaidDiagram',
+					data: {code: 'graph TD; A-->B;'},
+				},
+			});
+		})()`, nil),
+		chromedp.Sleep(2000*time.Millisecond),
+		chromedp.EvaluateAsDevTools(`(function() {
+			var pre = document.querySelector('.mermaid-diagram pre.mermaid');
+			if (!pre) return 0;
+			var svg = pre.querySelector('svg');
+			if (!svg) return -1;
+			return svg.getBoundingClientRect().height;
+		})()`, &svgHeight),
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('.mermaid-diagram');
+			if (!el) return 0;
+			return el.getBoundingClientRect().height;
+		})()`, &diagramHeight),
+	)
+	if err != nil {
+		t.Fatalf("component render failed: %v", err)
+	}
+
+	if svgHeight <= 0 {
+		t.Fatalf("mermaid SVG has zero or negative height: %.1f", svgHeight)
+	}
+	if diagramHeight <= 0 {
+		t.Fatalf("mermaid diagram container has zero or negative height: %.1f", diagramHeight)
+	}
+	// Diagram container must be >= SVG height + 2rem padding
+	// (padding: 16px top + 16px bottom = 32px, borders: 1px each)
+	minExpected := svgHeight + 32.0
+	if diagramHeight < minExpected {
+		t.Errorf("diagram container height %.1f < SVG height+padding %.1f — overflow clipping bug", diagramHeight, minExpected)
+	}
+}
+
+

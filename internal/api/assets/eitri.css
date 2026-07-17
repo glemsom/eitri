@@ -906,13 +906,13 @@ pre:hover .copy-btn {
   border-radius: 8px;
   padding: 1rem;
   margin: 0.5rem 0;
-  overflow-x: auto;
 }
 
 pre.mermaid {
   background: transparent !important;
   border: none !important;
   text-align: center;
+  overflow-x: auto;
 }
 
 pre.mermaid.mermaid-error {

@@ -1,2 +1,2 @@
 - Fix so edit tool shows a diffcard when done
-- Fix mermaid render
++ Fix mermaid render — DONE: moved overflow-x:auto to pre.mermaid to prevent container height clipping
