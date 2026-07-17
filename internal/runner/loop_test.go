@@ -791,6 +791,64 @@ func TestRunAgent_NoTools(t *testing.T) {
 	}
 }
 
+// ————— Retry on transient ChatStream errors —————
+
+// transientErrorLLM returns a transient error on the first ChatStream call,
+// then delegates to a normal mock. Used to test retry logic.
+type transientErrorLLM struct {
+	mu           sync.Mutex
+	calls        int
+	transientErr error
+	inner        litellm.LLMService
+}
+
+func (m *transientErrorLLM) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+	return m.inner.Chat(ctx, req)
+}
+
+func (m *transientErrorLLM) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+	m.mu.Lock()
+	n := m.calls
+	m.calls++
+	m.mu.Unlock()
+	if n == 0 {
+		return nil, m.transientErr
+	}
+	return m.inner.ChatStream(ctx, req)
+}
+
+func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	inner := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
+	})
+	llm := &transientErrorLLM{
+		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
+		inner:        inner,
+	}
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	if err != nil {
+		t.Fatalf("RunAgent error after retry: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	if len(types) < 2 || types[len(types)-1] != "done" {
+		t.Fatalf("expected run to succeed after retry, events: %v", types)
+	}
+}
+
 func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()

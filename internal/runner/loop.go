@@ -80,9 +80,26 @@ func RunAgent(
 
 		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(req.Tools)), slog.Int("messages", len(req.Messages)))
 
-		// Call LLM streaming
-		stream, err := llm.ChatStream(ctx, *req)
-		if err != nil {
+		// Call LLM streaming with retry on transient errors
+		const maxRetries = 2
+		var (
+			stream <-chan litellm.StreamEvent
+			err    error
+		)
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			stream, err = llm.ChatStream(ctx, *req)
+			if err == nil {
+				break
+			}
+			if attempt < maxRetries && isRetryableLLMError(err) {
+				slog.Warn("llm chat stream transient error, retrying",
+					slog.Int("attempt", attempt+1),
+					slog.Int("max", maxRetries),
+					slog.Any("error", err),
+				)
+				time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+				continue
+			}
 			msg := fmt.Sprintf("LLM error: %v", err)
 			sseWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
@@ -573,4 +590,27 @@ func addReadToolAllowedPath(tools *tool.Registry, path string) {
 		return
 	}
 	rt.AppendAllowedPaths(path)
+}
+
+// isRetryableLLMError checks if an LLM error is likely transient and worth retrying.
+// Returns false for auth errors, context-length errors, rate-limits, and context cancellation.
+func isRetryableLLMError(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	msg := err.Error()
+	// Don't retry auth errors
+	if strings.Contains(msg, "401") || strings.Contains(msg, "Authentication") {
+		return false
+	}
+	// Don't retry rate limits
+	if strings.Contains(msg, "429") || strings.Contains(msg, "Rate limit") {
+		return false
+	}
+	// Don't retry context length errors
+	if strings.Contains(msg, "Context length") || strings.Contains(msg, "context length") {
+		return false
+	}
+	// Everything else (5xx, upstream failures, connection errors) is potentially transient
+	return true
 }
