@@ -947,6 +947,90 @@ func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 	}
 }
 
+func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
+	t.Parallel()
+	// Reasoning_content deltas followed by tool_call deltas (no regular content).
+	// Reasoning MUST be flushed before tool calls, not after.
+	// This is the bug: reasoning was only flushed when regular content arrived
+	// or at stream end, so tool calls appeared before the thinking card.
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		// Reasoning first
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","reasoning_content":"Let me think about this"},"index":0}]}`, "\n\n")
+		// Tool call — reasoning should flush BEFORE this
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"id":"call_1","type":"function","index":0,"function":{"name":"render_mermaid_diagram","arguments":"{\"code\":\"graph TD\"}"}}]},"index":0}]}`, "\n\n")
+		// Finish
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "draw a mermaid diagram"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	events, err := collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	// Collect event types in order
+	var order []string
+	for _, evt := range events {
+		switch evt.Type {
+		case litellm.StreamEventTypeToken:
+			order = append(order, "token:"+evt.Content)
+		case litellm.StreamEventTypeToolCall:
+			order = append(order, "tool_call")
+		case litellm.StreamEventTypeDone:
+			order = append(order, "done")
+		}
+	}
+
+	// Reasoning token MUST come before tool call
+	foundReasoning := false
+	foundToolCall := false
+	orderingOK := true
+	for _, o := range order {
+		if strings.HasPrefix(o, "token:") && strings.Contains(o, "<think>") {
+			foundReasoning = true
+		}
+		if o == "tool_call" {
+			if !foundReasoning {
+				orderingOK = false
+			}
+			foundToolCall = true
+		}
+	}
+
+	if !foundReasoning {
+		t.Fatal("reasoning token (<think>...</think>) not found in stream events")
+	}
+	if !foundToolCall {
+		t.Fatal("tool call not found in stream events")
+	}
+	if !orderingOK {
+		t.Fatalf("ordering wrong: reasoning must appear BEFORE tool_call, got order: %v", order)
+	}
+}
+
 func TestNewLLMService_UnsupportedProvider(t *testing.T) {
 	t.Parallel()
 	_, err := litellm.NewLLMService(litellm.AdapterConfig{

@@ -136,6 +136,9 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		}
 
 		if len(choice.Delta.ToolCalls) > 0 {
+			// Flush any buffered reasoning before tool calls so the
+			// thinking card appears before tool results in the UI.
+			flushReasoning()
 			for _, tc := range choice.Delta.ToolCalls {
 				idx := tc.Index
 				if existing, ok := toolCallBuf[idx]; ok {

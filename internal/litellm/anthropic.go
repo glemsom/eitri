@@ -216,6 +216,18 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 
 	scanner := newSSEScanner(body)
 
+	var thinkingBuf strings.Builder
+	flushThinking := func() {
+		if thinkingBuf.Len() > 0 {
+			ch <- StreamEvent{
+				Type:        StreamEventTypeToken,
+				Content:     "<think>" + thinkingBuf.String() + "</think>",
+				IsReasoning: true,
+			}
+			thinkingBuf.Reset()
+		}
+	}
+
 	for scanner.Scan() {
 		event := scanner.Event()
 		data := scanner.Data()
@@ -230,7 +242,9 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 			if err := json.Unmarshal([]byte(data), &block); err != nil {
 				continue
 			}
+			// Flush buffered thinking before any non-thinking content block
 			if block.ContentBlock.Type == "tool_use" {
+				flushThinking()
 				inputJSON, _ := json.Marshal(block.ContentBlock.Input)
 				ch <- StreamEvent{
 					Type: StreamEventTypeToolCall,
@@ -244,6 +258,9 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 					}},
 				}
 			}
+			if block.ContentBlock.Type == "text" {
+				flushThinking()
+			}
 
 		case "content_block_delta":
 			var delta struct {
@@ -255,6 +272,9 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 			}
 			if err := json.Unmarshal([]byte(data), &delta); err != nil {
 				continue
+			}
+			if delta.Delta.Type == "thinking_delta" && delta.Delta.Text != "" {
+				thinkingBuf.WriteString(delta.Delta.Text)
 			}
 			if delta.Delta.Type == "text_delta" && delta.Delta.Text != "" {
 				ch <- StreamEvent{
@@ -275,6 +295,7 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 				continue
 			}
 			if delta.Delta.StopReason != "" {
+				flushThinking()
 				usage := &Usage{}
 				if delta.Usage.InputTokens > 0 || delta.Usage.OutputTokens > 0 {
 					usage = &Usage{
@@ -292,9 +313,11 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 			}
 
 		case "message_stop":
+			flushThinking()
 			return
 
 		case "error":
+			flushThinking()
 			ch <- StreamEvent{
 				Type:  StreamEventTypeError,
 				Error: fmt.Errorf("Anthropic error: %s", data),
@@ -303,5 +326,6 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 		}
 	}
 
+	flushThinking()
 	ch <- StreamEvent{Type: StreamEventTypeDone}
 }
