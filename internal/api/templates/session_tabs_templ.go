@@ -44,7 +44,7 @@ func SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) t
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "><div class=\"sidebar-header\"><span class=\"sidebar-title\">Sessions</span> <button class=\"new-session-btn\" hx-post=\"/api/sessions\" hx-target=\"body\" hx-push-url=\"true\" title=\"New session\">+ New Session</button></div><div class=\"sidebar-list\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "><div class=\"sidebar-header\"><span class=\"sidebar-title\">Sessions</span> <button class=\"new-session-btn\" hx-post=\"/api/sessions\" hx-target=\"body\" hx-push-url=\"true\" title=\"New session\">+</button></div><div class=\"sidebar-list\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

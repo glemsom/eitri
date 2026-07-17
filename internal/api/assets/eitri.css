@@ -130,19 +130,21 @@ header h1 {
 }
 
 .sidebar-header .new-session-btn {
-  font-size: 0.7rem;
-  padding: 0.15rem 0.4rem;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
   background: var(--surface-alt);
   color: var(--text);
   border: 1px dashed var(--border);
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.15s;
-  text-transform: none;
-  letter-spacing: normal;
-  font-weight: 500;
   flex-shrink: 0;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-header .new-session-btn:hover {
@@ -1477,11 +1479,17 @@ eitri-composer {
   }
 
   #sidebar .sidebar-header .new-session-btn {
-    font-size: 0.9rem;
-    padding: 0.1rem 0.3rem;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
     border: none;
     background: transparent;
     color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   #sidebar .sidebar-header .new-session-btn:hover {
