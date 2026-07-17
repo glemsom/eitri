@@ -47,6 +47,11 @@
     toolCardElapsed = {};
   }
 
+  function clearThinkingPanel() {
+    var el = document.querySelector('#thinking-panel .thinking-content');
+    if (el) el.textContent = '';
+  }
+
   // Format for tool card live timer (issue #134)
   // Sub-second: '0.3s', under 1m: '1.2s', under 1h: '45s', over 1h: '2m 13s'
   function formatTimer(ms) {
@@ -175,6 +180,7 @@
     disconnectStream(sessionId);
     stopAllToolCardTimers();
     resetActivityTracking();
+    clearThinkingPanel();
 
     const state = createStreamState();
     state.status = STATES.CONNECTING;
@@ -247,6 +253,17 @@
         state.status = STATES.CONNECTING;
         updateRunStatus(STATES.CONNECTING, defaultStatusDetail(STATES.CONNECTING, state), state);
         armDeadAirTimer(state);
+        break;
+
+      case 'thinking_delta':
+        markStreamResumed(state);
+        state.status = STATES.STREAMING;
+        updateRunStatus(STATES.STREAMING, defaultStatusDetail(STATES.STREAMING, state), state);
+        appendThinkingDelta(packet.content);
+        break;
+
+      case 'thinking_done':
+        // Thinking stream complete — no action needed, done event follows.
         break;
 
       case 'token':
@@ -741,6 +758,14 @@
     } else {
       messages.appendChild(footer);
     }
+  }
+
+  function appendThinkingDelta(content) {
+    var el = document.querySelector('#thinking-panel .thinking-content');
+    if (!el) return;
+    el.textContent += content;
+    // Auto-scroll to bottom as content arrives
+    el.scrollTop = el.scrollHeight;
   }
 
   // ---- Live elapsed timer for tool cards (issue #134) ----
