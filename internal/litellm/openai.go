@@ -77,7 +77,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamE
 		if reasoningBuf.Len() > 0 {
 			ch <- StreamEvent{
 				Type:        StreamEventTypeToken,
-				Content:     "<think>" + reasoningBuf.String() + "</think>",
+				Content:     reasoningBuf.String(),
 				IsReasoning: true,
 			}
 			reasoningBuf.Reset()

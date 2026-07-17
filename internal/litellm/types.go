@@ -71,7 +71,7 @@ type StreamEvent struct {
 	FinishReason string      // set on Done events
 	Usage        *Usage      // set on Done events (if provider sends it)
 	Error        error       // set on Error events
-	IsReasoning  bool        // true if Content contains <think>...</think> reasoning tokens
+	IsReasoning  bool        // true when Content carries reasoning/thinking text (not final output)
 }
 
 // AdapterConfig configures an LLM adapter.
