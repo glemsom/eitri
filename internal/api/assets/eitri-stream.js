@@ -814,18 +814,6 @@
     }
   }
 
-  function removeDoneMermaidToolCards() {
-    var wrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
-    for (var i = 0; i < wrappers.length; i++) {
-      var card = wrappers[i].querySelector('.tool-card.tool-done');
-      if (!card) continue;
-      var nameEl = card.querySelector('.tool-name');
-      if (nameEl && nameEl.textContent === 'render_mermaid_diagram') {
-        wrappers[i].remove();
-      }
-    }
-  }
-
   // ---- Confirmation modal for blocked read paths (issue #314) ----
 
   var activeConfirmation = null; // { sessionId, path, message }
