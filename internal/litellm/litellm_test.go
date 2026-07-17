@@ -1009,7 +1009,7 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 	foundToolCall := false
 	orderingOK := true
 	for _, o := range order {
-		if strings.HasPrefix(o, "token:") && strings.HasPrefix(o, "token:Let me think about this") {
+		if strings.HasPrefix(o, "token:Let me think about this") {
 			foundReasoning = true
 		}
 		if o == "tool_call" {
