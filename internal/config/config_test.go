@@ -44,8 +44,8 @@ func TestLoadDefaultsWhenFileMissing(t *testing.T) {
 	if cfg.CommandTimeout != 60_000_000_000 {
 		t.Errorf("CommandTimeout = %d, want 60s in ns", cfg.CommandTimeout)
 	}
-	if cfg.MaxTurns != 25 {
-		t.Errorf("MaxTurns = %d, want 25", cfg.MaxTurns)
+	if cfg.MaxTurns != 75 {
+		t.Errorf("MaxTurns = %d, want 75", cfg.MaxTurns)
 	}
 	if cfg.ContextWindowTokens != 256000 {
 		t.Errorf("ContextWindowTokens = %d, want 256000", cfg.ContextWindowTokens)

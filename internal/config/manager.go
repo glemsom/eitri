@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -35,7 +36,7 @@ func Defaults() Config {
 		BaseURL:             prof.DefaultBaseURL,
 		SessionTimeout:      30 * 60_000_000_000, // 30 minutes in ns
 		CommandTimeout:      60 * 1_000_000_000,  // 60 seconds in ns
-		MaxTurns:            25,
+		MaxTurns:            75,
 		ContextWindowTokens: 256000,
 		MaxHistory:          50,
 	}
@@ -196,27 +197,27 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 		}
 	}
 	if v, ok := patch["session_timeout"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := parseNumeric(v); ok {
 			result.SessionTimeout = int64(f)
 		}
 	}
 	if v, ok := patch["command_timeout"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := parseNumeric(v); ok {
 			result.CommandTimeout = int64(f)
 		}
 	}
 	if v, ok := patch["max_turns"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := parseNumeric(v); ok {
 			result.MaxTurns = int(f)
 		}
 	}
 	if v, ok := patch["context_window_tokens"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := parseNumeric(v); ok {
 			result.ContextWindowTokens = int(f)
 		}
 	}
 	if v, ok := patch["max_history"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := parseNumeric(v); ok {
 			result.MaxHistory = int(f)
 		}
 	}
@@ -260,6 +261,22 @@ func cloneRawMessage(raw json.RawMessage) json.RawMessage {
 	clone := make([]byte, len(raw))
 	copy(clone, raw)
 	return json.RawMessage(clone)
+}
+
+// parseNumeric attempts to parse a numeric value from an interface{}.
+// It handles both float64 (from JSON unmarshalling) and string (from form-encoded data).
+func parseNumeric(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case string:
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	}
+	return 0, false
 }
 
 func shouldResetBaseURLOnProviderSwitch(oldProviderID, newProviderID, oldBaseURL string, baseURLPatched bool, baseURLPatch string) bool {
