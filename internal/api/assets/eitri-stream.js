@@ -312,8 +312,6 @@
         renderToolCard(sessionId, 'tool_result', packet);
         break;
 
-      case 'component':
-
       case 'context_update':
         markStreamResumed(state);
         state.status = STATES.STREAMING;
@@ -322,11 +320,16 @@
           window.dispatchContextUpdate(packet.data);
         }
         break;
+
+      case 'component':
         markStreamResumed(state);
         renderComponent(sessionId, packet);
         break;
 
       case 'done':
+        if (typeof window.resetContextPanel === 'function') {
+          window.resetContextPanel();
+        }
         clearDeadAirTimer(state);
         state.status = STATES.RENDERING;
         updateRunStatus(STATES.RENDERING, defaultStatusDetail(STATES.RENDERING, state), state);
