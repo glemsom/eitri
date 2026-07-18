@@ -27,7 +27,7 @@
         var self = this;
         self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 256000;
 
-        // Build inner DOM
+        // Build inner DOM (no template fallback — JS owns the full DOM)
         self.innerHTML =
           '<div class="context-idle">No active run</div>' +
           '<div class="context-compact" style="display:none">' +
@@ -72,7 +72,10 @@
 
         // Listen for context-update custom events
         self.addEventListener('context-update', function (e) {
-          self._lastData = e.detail;
+          var data = e.detail;
+          self._lastData = data;
+          // Persist per session for re-hydration across session switches
+          persistContextData(data);
           self._debouncedRender();
         });
 
@@ -88,6 +91,9 @@
             self._expandedEl.classList.toggle('open');
           });
         }
+
+        // Re-hydrate from persisted data when element is (re-)connected
+        rehydrateIfAvailable(self);
       }
 
       resetToIdle() {
@@ -194,6 +200,32 @@
 
     return EitriContext;
   })();
+
+  // ── Persistence layer ──────────────────────────────────────
+  // Store last context data per session so it survives session switches.
+  // Keyed by active session ID from the URL path.
+
+  function getActiveSessionId() {
+    var m = window.location.pathname.match(/\/sessions\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+
+  function persistContextData(data) {
+    var sid = getActiveSessionId();
+    if (!sid) return;
+    if (!window._eitriContextStore) window._eitriContextStore = {};
+    window._eitriContextStore[sid] = data;
+  }
+
+  function rehydrateIfAvailable(el) {
+    var sid = getActiveSessionId();
+    if (!sid) return;
+    if (!window._eitriContextStore) return;
+    var data = window._eitriContextStore[sid];
+    if (!data) return;
+    el._lastData = data;
+    el._debouncedRender();
+  }
 
   // Register custom element
   customElements.define('eitri-context', EitriContext);
