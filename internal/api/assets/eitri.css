@@ -2130,19 +2130,4 @@ textarea {
   padding-left: 0.75rem;
   font-size: 0.76rem;
 }
-.context-percent {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.context-percent.percent-green {
-  color: var(--success);
-}
-.context-percent.percent-yellow {
-  color: var(--warning);
-}
-.context-percent.percent-red {
-  color: var(--error);
-}
+
