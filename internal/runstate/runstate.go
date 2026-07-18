@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/glemsom/eitri/internal/litellm"
 )
 
 // RenderKind maps SSE events to the render kind the browser island should POST.
@@ -256,6 +258,11 @@ func (w *Writer) Component(data interface{}) {
 	w.state.Broadcast(SSEEvent{Type: "component", Kind: RenderKindComponent, Data: data})
 }
 
+// ContextUpdate broadcasts a context_update SSE event with token estimates.
+func (w *Writer) ContextUpdate(update *ContextUpdate) {
+	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update})
+}
+
 // Error sends an error event with kind "error" and closes streams.
 func (w *Writer) Error(msg string) {
 	w.state.BroadcastError(msg)
@@ -264,6 +271,74 @@ func (w *Writer) Error(msg string) {
 // ThinkingDelta broadcasts a thinking_delta SSE event with reasoning content.
 func (w *Writer) ThinkingDelta(content string) {
 	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content})
+}
+
+// ContextUpdate holds estimated token counts broken down by category.
+type ContextUpdate struct {
+	TotalTokens      int `json:"total_tokens"`
+	ContextWindow    int `json:"context_window"`
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	SystemTokens     int `json:"system_tokens"`
+	HistoryTokens    int `json:"history_tokens"`
+	SkillTokens      int `json:"skill_tokens"`
+}
+
+// ComputeContext estimates token counts for the given messages using a 4-char-per-token heuristic.
+//
+// Token breakdown:
+//   - System tokens: sum of content lengths for messages with role "system"
+//   - Skill tokens: portion of system prompt after the last "Activated skill" substring
+//   - History tokens: sum of all non-system messages (user + assistant + tool)
+//   - Prompt tokens: system + history (skill tokens are part of system)
+//   - Completion tokens: 0 (set by caller when known)
+//   - Total tokens: prompt + completion
+func ComputeContext(messages []litellm.Message, contextWindow int) *ContextUpdate {
+	const charsPerToken = 4
+
+	var historyLen int
+	var systemBuilder strings.Builder
+
+	for _, msg := range messages {
+		switch msg.Role {
+		case "system":
+			systemBuilder.WriteString(msg.Content)
+		default:
+			historyLen += len(msg.Content)
+		}
+	}
+
+	systemContent := systemBuilder.String()
+	systemTokens := len(systemContent) / charsPerToken
+	if systemTokens < 1 && len(systemContent) > 0 {
+		systemTokens = 1
+	}
+
+	// Skill tokens: content after last "Activated skill" in system prompt
+	var skillTokens int
+	if idx := strings.LastIndex(systemContent, "Activated skill"); idx >= 0 {
+		skillContent := systemContent[idx+len("Activated skill"):]
+		skillTokens = len(skillContent) / charsPerToken
+	}
+
+	historyTokens := historyLen / charsPerToken
+	if historyTokens < 1 && historyLen > 0 {
+		historyTokens = 1
+	}
+
+	promptTokens := systemTokens + historyTokens
+	completionTokens := 0
+	totalTokens := promptTokens + completionTokens
+
+	return &ContextUpdate{
+		TotalTokens:      totalTokens,
+		ContextWindow:    contextWindow,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		SystemTokens:     systemTokens,
+		HistoryTokens:    historyTokens,
+		SkillTokens:      skillTokens,
+	}
 }
 
 // EstimateUsage estimates token counts from text length.
