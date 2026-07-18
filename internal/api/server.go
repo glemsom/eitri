@@ -565,7 +565,11 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	renderedSession := renderSessionForPage(sess)
 
-	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path)
+	contextWindow := 256000 // default fallback
+	if s.config.RunService != nil {
+		contextWindow = s.config.RunService.ContextWindowTokens()
+	}
+	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)
 }
 
@@ -624,7 +628,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path)
+	contextWindow := 256000
+	if s.config.RunService != nil {
+		contextWindow = s.config.RunService.ContextWindowTokens()
+	}
+	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)
 }
 
@@ -1293,7 +1301,11 @@ func (s *Server) refreshSkillsRegistry() *skills.Registry {
 
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	registry := s.refreshSkillsRegistry()
-	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path)
+	contextWindow := 256000
+	if s.config.RunService != nil {
+		contextWindow = s.config.RunService.ContextWindowTokens()
+	}
+	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)
 }
 

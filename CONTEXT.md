@@ -18,6 +18,8 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **HTML-over-wire shell** | Go/Templ/HTMX-rendered application frame and fragments. Server owns canonical UI state and rendering. |
 | **Browser island** | Isolated client-side behavior attached to server-rendered markup; owns only local ephemeral UI state. |
 | **Stream island** | Browser island managing `EventSource` lifecycle and token display for one assistant run. |
+| **Context panel** | 4th sidebar section showing live context window utilization. Uses a progress bar in compact mode; click expands to per-category breakdown (system prompt, history, skills, completion). Updated after each turn via `context_update` SSE events. |
+| **Context update** | An SSE event (`type: "context_update"`) broadcast after each agent turn carrying estimated token counts. Fields: `total_tokens`, `context_window`, `prompt_tokens`, `completion_tokens`, `system_tokens`, `history_tokens`, `skill_tokens`. |
 
 ## Architecture decisions
 
@@ -38,6 +40,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0011](docs/adr/0011-refined-toolset.md) | Refined toolset (read, glob, grep, write, edit, bash, render_component, skill) | Superseded by [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) |
 | [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) | Split render_component into per-component tools | Accepted |
 | [0013](docs/adr/0013-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
+| [0014](docs/adr/0014-live-context-panel.md) | Live context window utilization panel | Accepted |
 
 ## Project structure
 

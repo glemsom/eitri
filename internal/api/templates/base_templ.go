@@ -10,7 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "github.com/glemsom/eitri/internal/session"
 
-func Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string, workspace string) templ.Component {
+func Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string, workspace string, contextWindow int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -99,12 +99,12 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><div class=\"sidebar-divider\"></div><div class=\"sidebar-panel\" id=\"tool-activity\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Tools</span></div><div class=\"tool-activity-list\"></div></div><div class=\"sidebar-divider\"></div><div class=\"sidebar-panel\" id=\"thinking-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Thinking</span></div><pre class=\"thinking-content\"></pre></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div><div class=\"sidebar-divider\"></div><div class=\"sidebar-panel\" id=\"tool-activity\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Tools</span></div><div class=\"tool-activity-list\"></div></div><div class=\"sidebar-divider\"></div><div class=\"sidebar-panel\" id=\"context-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Context</span></div><eitri-context data-context-window=\"{ contextWindow }\"><div class=\"context-idle\">No active run</div></eitri-context></div><div class=\"sidebar-divider\"></div><div class=\"sidebar-panel\" id=\"thinking-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Thinking</span></div><pre class=\"thinking-content\"></pre></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div id=\"sidebar\"><div id=\"session-tabs\"></div><div id=\"tool-activity\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Tools</span></div><div class=\"tool-activity-list\"></div></div><div id=\"thinking-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Thinking</span></div><pre class=\"thinking-content\"></pre></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div id=\"sidebar\"><div id=\"session-tabs\"></div><div id=\"tool-activity\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Tools</span></div><div class=\"tool-activity-list\"></div></div><div class=\"sidebar-divider\"></div><div id=\"context-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Context</span></div><eitri-context data-context-window=\"{ contextWindow }\"><div class=\"context-idle\">No active run</div></eitri-context></div><div class=\"sidebar-divider\"></div><div id=\"thinking-panel\"><div class=\"sidebar-header\"><span class=\"sidebar-title\">Thinking</span></div><pre class=\"thinking-content\"></pre></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -158,7 +158,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var7 templ.SafeURL
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 81, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 90, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -171,7 +171,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 82, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 91, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -197,7 +197,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 88, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 97, Col: 9}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -212,7 +212,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 }
 
 // ChatPage renders the full chat page layout with session sidebar and chat view.
-func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string) templ.Component {
+func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -251,7 +251,7 @@ func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISe
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace).Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace, contextWindow).Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
