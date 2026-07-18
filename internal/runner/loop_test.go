@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
@@ -142,7 +143,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 128000)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -209,7 +210,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -303,7 +304,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -347,7 +348,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -406,7 +407,7 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -468,7 +469,7 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -536,7 +537,7 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -584,7 +585,7 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -624,7 +625,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -657,7 +658,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -706,7 +707,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	}()
 
 	// Wait for streaming to start (first token sent)
@@ -748,7 +749,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -773,7 +774,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -837,7 +838,7 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error after retry: %v", err)
 	}
@@ -869,7 +870,7 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err == nil {
 		t.Fatal("expected error for HTTP 400, got nil")
 	}
@@ -910,7 +911,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -946,7 +947,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -981,7 +982,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1031,7 +1032,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
 	}
@@ -1141,7 +1142,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 				},
 			}
 
-			err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+			err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 			if err != nil {
 				t.Fatalf("RunAgent error: %v", err)
 			}
@@ -1336,7 +1337,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1384,7 +1385,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1430,7 +1431,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1482,7 +1483,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1530,7 +1531,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1578,7 +1579,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1589,5 +1590,291 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 			t.Error("component event should NOT be emitted for non-render tools")
 			break
 		}
+	}
+}
+
+// ── Context update tests ──────────────────────────────────────────────────────
+
+func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello!"}}},
+	})
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-1"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendUser(sessionID, "hi")
+
+	req := litellm.Request{
+		Model: "test-model",
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 128000)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	ctxUpdateCount := 0
+	for _, typ := range types {
+		if typ == "context_update" {
+			ctxUpdateCount++
+		}
+	}
+	if ctxUpdateCount != 1 {
+		t.Errorf("context_update count = %d, want 1 (before done). Types: %v", ctxUpdateCount, types)
+	}
+	// Last event should be done
+	if len(types) > 0 && types[len(types)-1] != "done" {
+		t.Errorf("last event type = %q, want %q", types[len(types)-1], "done")
+	}
+	// Verify context_update appears before done
+	ctxUpdateIdx := -1
+	doneIdx := -1
+	for i, typ := range types {
+		switch typ {
+		case "context_update":
+			ctxUpdateIdx = i
+		case "done":
+			doneIdx = i
+		}
+	}
+	if ctxUpdateIdx < 0 || doneIdx < 0 || ctxUpdateIdx > doneIdx {
+		t.Errorf("context_update (idx=%d) should come before done (idx=%d)", ctxUpdateIdx, doneIdx)
+	}
+}
+
+func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{
+			tokens: []tokenEvent{{content: "let me check"}},
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "test_tool",
+					Arguments: `{}`,
+				},
+			}},
+		},
+		{tokens: []tokenEvent{{content: "done"}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "test_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "result"}}, nil, false
+		},
+	})
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-2"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
+	sessionMgr.AppendUser(sessionID, "run tool")
+
+	req := litellm.Request{
+		Model: "test-model",
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, sessionMgr, nil, sessionID, nil, 128000)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	ctxUpdateCount := 0
+	for _, typ := range types {
+		if typ == "context_update" {
+			ctxUpdateCount++
+		}
+	}
+	// Turn 1: tool call turn -> 1 context_update
+	// Turn 2: final turn -> 1 context_update
+	// Total: 2
+	if ctxUpdateCount != 2 {
+		t.Errorf("context_update count = %d, want 2 (1 per turn). Types: %v", ctxUpdateCount, types)
+	}
+}
+
+func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello!"}}},
+	})
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-3"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
+	sessionMgr.AppendUser(sessionID, "hi")
+
+	req := litellm.Request{
+		Model: "test-model",
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 0)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "context_update" {
+			t.Error("unexpected context_update when contextWindow=0")
+			break
+		}
+	}
+}
+
+func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "loop_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		},
+	})
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-4"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
+	sessionMgr.AppendUser(sessionID, "run tool")
+
+	req := litellm.Request{
+		Model: "test-model",
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, sessionMgr, nil, sessionID, nil, 128000)
+	if err == nil {
+		t.Fatal("expected MaxTurnsExceededError, got nil")
+	}
+	var maxTurnsErr *MaxTurnsExceededError
+	if !errors.As(err, &maxTurnsErr) {
+		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	ctxUpdateCount := 0
+	for _, typ := range types {
+		if typ == "context_update" {
+			ctxUpdateCount++
+		}
+	}
+	// 1 turn that makes a tool call -> 1 context_update after history appended
+	// Then max turns exceeded: 1 context_update before error broadcast
+	// Total: 2
+	if ctxUpdateCount != 2 {
+		t.Errorf("context_update count = %d, want 2 (before tool turn + before error). Types: %v", ctxUpdateCount, types)
+	}
+}
+
+func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello!"}}},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "hi"},
+		},
+	}
+
+	// No sessionMgr passed
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	for _, evt := range events {
+		if evt.Type == "context_update" {
+			t.Error("unexpected context_update when sessionMgr is nil")
+			break
+		}
+	}
+}
+
+func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "answer"}}},
+	})
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-5"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendUser(sessionID, "hello")
+
+	req := litellm.Request{
+		Model: "test-model",
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 128000)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	var ctxUpdate *runstate.ContextUpdate
+	for _, evt := range events {
+		if evt.Type == "context_update" {
+			if data, ok := evt.Data.(*runstate.ContextUpdate); ok {
+				ctxUpdate = data
+				break
+			}
+		}
+	}
+	if ctxUpdate == nil {
+		t.Fatal("expected context_update event with ContextUpdate data")
+	}
+	if ctxUpdate.ContextWindow <= 0 {
+		t.Errorf("ContextWindow = %d, want > 0", ctxUpdate.ContextWindow)
+	}
+	if ctxUpdate.TotalTokens < 0 {
+		t.Errorf("TotalTokens = %d, want >= 0", ctxUpdate.TotalTokens)
+	}
+	if ctxUpdate.SystemTokens <= 0 {
+		t.Errorf("SystemTokens = %d, want > 0 (system prompt present)", ctxUpdate.SystemTokens)
+	}
+	if ctxUpdate.HistoryTokens <= 0 {
+		t.Errorf("HistoryTokens = %d, want > 0 (user message present)", ctxUpdate.HistoryTokens)
+	}
+	if ctxUpdate.CompletionTokens != 0 {
+		t.Errorf("CompletionTokens = %d, want 0 (set by caller when known)", ctxUpdate.CompletionTokens)
 	}
 }

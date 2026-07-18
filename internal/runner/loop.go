@@ -46,6 +46,10 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // When a tool returns ErrNeedsConfirmation, the loop calls confirmFn to
 // pause for user input. On approval, the tool is re-executed with the path
 // temporarily allowed. On denial, an error is returned to the LLM.
+//
+// contextWindow is the configured context window token limit. When > 0,
+// context_update SSE events are broadcast after each turn. When <= 0,
+// no context_update events are emitted.
 func RunAgent(
 	ctx context.Context,
 	llm litellm.LLMService,
@@ -58,9 +62,23 @@ func RunAgent(
 	uisessionMgr *uisession.Manager,
 	sessionID string,
 	confirmFn ConfirmationFunc,
+	contextWindow int,
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
+	}
+
+	// Helper to broadcast context_update if enabled and sessionMgr is available.
+	broadcastContextUpdate := func() {
+		if contextWindow <= 0 || sessionMgr == nil {
+			return
+		}
+		history := sessionMgr.History(sessionID)
+		if history == nil {
+			return
+		}
+		update := runstate.ComputeContext(history, contextWindow)
+		sseWriter.ContextUpdate(update)
 	}
 
 	req.Stream = true
@@ -142,6 +160,10 @@ func RunAgent(
 		// No tool calls → done, append final assistant message
 		if len(toolCalls) == 0 {
 			contentStr := content.String()
+
+			// Broadcast final context_update before done
+			broadcastContextUpdate()
+
 			usage := runstate.EstimateUsage(contentStr)
 			sseWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
@@ -331,9 +353,14 @@ func RunAgent(
 				})
 			}
 		}
+
+		// Broadcast context_update after tool results appended to history
+		broadcastContextUpdate()
 	}
 
 	// Max turns exceeded
+	// Broadcast final context_update before error
+	broadcastContextUpdate()
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	sseWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
