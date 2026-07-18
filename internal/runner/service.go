@@ -116,7 +116,11 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.maxHistory = cfg.MaxHistory
 	s.contextWindowTokens = cfg.ContextWindowTokens
 	s.allowedReadPaths = cfg.AllowedReadPaths
-	s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
+	// Preserve existing history sessions across config updates.
+	// Only create a new manager when none exists (first call).
+	if s.historySessionMgr == nil {
+		s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
+	}
 }
 
 // InvalidateRunners clears any cached state so new runs pick up config changes.

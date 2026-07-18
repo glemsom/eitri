@@ -37,6 +37,60 @@ func configureTestProvider(svc *RunService) {
 	})
 }
 
+func TestRunService_HistoryPersistsAcrossConfigUpdates(t *testing.T) {
+	svc, _, _ := newRunServiceForTest(t)
+
+	// First config update: creates historySessionMgr
+	cfg1 := &config.Config{
+		Provider: "opencode_go",
+		BaseURL:  "http://test.local",
+		APIKey:   "test-key",
+		Model:    "test-model",
+	}
+	svc.UpdateProviderConfig(cfg1)
+
+	// Simulate first run: create and populate a session
+	svc.historySessionMgr.Create("test-session")
+	svc.historySessionMgr.SetSystemPrompt("test-session", "You are Eitri.")
+	svc.historySessionMgr.AppendUser("test-session", "Hi, my name is Glenn")
+
+	// Simulate assistant response (e.g. agent loop appends this)
+	svc.historySessionMgr.AppendAssistant("test-session", "Hello Glenn!", nil)
+
+	hist1 := svc.historySessionMgr.History("test-session")
+	if len(hist1) != 3 {
+		t.Fatalf("History length after first run = %d, want 3 (sys + user + asst)", len(hist1))
+	}
+
+	// Second config update: simulates what happens on second chat message
+	cfg2 := &config.Config{
+		Provider: "opencode_go",
+		BaseURL:  "http://test.local",
+		APIKey:   "test-key",
+		Model:    "test-model",
+	}
+	svc.UpdateProviderConfig(cfg2)
+
+	// BUG: before fix, historySessionMgr was replaced with a fresh empty one.
+	// AFTER fix: historySessionMgr should still have the first run's data.
+	if svc.historySessionMgr == nil {
+		t.Fatal("historySessionMgr is nil after second UpdateProviderConfig")
+	}
+	hist2 := svc.historySessionMgr.History("test-session")
+	if len(hist2) != 3 {
+		t.Fatalf("History length after second config update = %d, want 3 (preserved). "+
+			"Bug: UpdateProviderConfig replaced historySessionMgr", len(hist2))
+	}
+
+	// Verify the content is intact
+	if hist2[0].Content != "You are Eitri." {
+		t.Errorf("System prompt changed: got %q", hist2[0].Content)
+	}
+	if len(hist2) >= 2 && hist2[1].Content != "Hi, my name is Glenn" {
+		t.Errorf("User message changed: got %q", hist2[1].Content)
+	}
+}
+
 func TestRunService_StartRun_RejectsDuplicateActiveRun(t *testing.T) {
 	svc, _, _ := newRunServiceForTest(t)
 	configureTestProvider(svc)
