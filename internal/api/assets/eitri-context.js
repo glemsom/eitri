@@ -20,12 +20,12 @@
         this._expandedEl = null;
         this._barFillEl = null;
         this._statsEl = null;
-        this._contextWindow = 128000;
+        this._contextWindow = 256000;
       }
 
       connectedCallback() {
         var self = this;
-        self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 128000;
+        self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 256000;
 
         // Build inner DOM
         self.innerHTML =
