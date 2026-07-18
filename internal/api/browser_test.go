@@ -4177,3 +4177,115 @@ func TestBrowser_ContextPanel(t *testing.T) {
 	}
 }
 
+// TestBrowser_ContextPanel_SessionSwitch verifies that context panel data
+// survives session switches via full page navigation.
+// Regression test for issue #363 (persist across session switches).
+func TestBrowser_ContextPanel_SessionSwitch(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+	server := h.server
+
+	// Use the server's session manager to create two sessions
+	sess1, err := h.sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session 1: %v", err)
+	}
+	sess2, err := h.sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session 2: %v", err)
+	}
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Step 1: Navigate to session 1
+	err = chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie("browser_id", "browser-1").WithURL(server.URL).Do(ctx)
+		}),
+		chromedp.Navigate(server.URL+"/sessions/"+sess1.ID),
+		chromedp.WaitVisible("eitri-context", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate to sess1 failed: %v", err)
+	}
+
+	// Step 2: Verify idle state
+	var idleText string
+	err = chromedp.Run(ctx,
+		chromedp.Text("eitri-context .context-idle", &idleText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("idle text check failed: %v", err)
+	}
+	if !strings.Contains(idleText, "No active run") {
+		t.Fatalf("expected idle state, got %q", idleText)
+	}
+
+	// Step 3: Dispatch a context_update via JS (simulating what SSE does)
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			if (typeof window.dispatchContextUpdate === 'function') {
+				window.dispatchContextUpdate({
+					total_tokens: 12847,
+					context_window: 128000,
+					prompt_tokens: 9500,
+					completion_tokens: 3347,
+					system_tokens: 4200,
+					history_tokens: 4800,
+					skill_tokens: 500,
+				});
+			}
+		})()`, nil),
+		chromedp.Sleep(300*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("dispatch context_update failed: %v", err)
+	}
+
+	// Step 4: Verify compact view is visible with correct data
+	var statsText string
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible("eitri-context .context-compact", chromedp.ByQuery),
+		chromedp.Text("eitri-context .context-stats", &statsText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("stats text check after dispatch failed: %v", err)
+	}
+	if !strings.Contains(statsText, "12,847 / 128K") {
+		t.Fatalf("expected stats containing '12,847 / 128K', got %q", statsText)
+	}
+
+	// Step 5: Navigate to session 2 (full page load)
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions/"+sess2.ID),
+		chromedp.WaitVisible("eitri-context", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate to sess2 failed: %v", err)
+	}
+
+	// Step 6: Navigate BACK to session 1 (full page load) and verify re-hydration
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions/"+sess1.ID),
+		chromedp.WaitVisible("eitri-context", chromedp.ByQuery),
+		// Wait for debounced render (100ms) + safety margin
+		chromedp.Sleep(500*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("navigate back to sess1 failed: %v", err)
+	}
+
+	// Verify context data was re-hydrated from sessionStorage (not "No active run")
+	var statsTextAfterSwitch string
+	err = chromedp.Run(ctx,
+		chromedp.WaitVisible("eitri-context .context-compact", chromedp.ByQuery),
+		chromedp.Text("eitri-context .context-stats", &statsTextAfterSwitch, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("stats text check after switch-back failed: %v", err)
+	}
+	if !strings.Contains(statsTextAfterSwitch, "12,847 / 128K") {
+		t.Fatalf("after switch-back stats = %q, want '12,847 / 128K' — re-hydration failed", statsTextAfterSwitch)
+	}
+}
+

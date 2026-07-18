@@ -210,21 +210,43 @@
     return m ? m[1] : null;
   }
 
+  var STORAGE_KEY_PREFIX = 'eitri-context-';
+
   function persistContextData(data) {
     var sid = getActiveSessionId();
     if (!sid) return;
-    if (!window._eitriContextStore) window._eitriContextStore = {};
-    window._eitriContextStore[sid] = data;
+    try {
+      sessionStorage.setItem(STORAGE_KEY_PREFIX + sid, JSON.stringify(data));
+    } catch (e) {
+      // sessionStorage may be full or unavailable — fall through
+    }
   }
 
   function rehydrateIfAvailable(el) {
     var sid = getActiveSessionId();
     if (!sid) return;
-    if (!window._eitriContextStore) return;
-    var data = window._eitriContextStore[sid];
-    if (!data) return;
-    el._lastData = data;
-    el._debouncedRender();
+    try {
+      var raw = sessionStorage.getItem(STORAGE_KEY_PREFIX + sid);
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      if (!data || !data.total_tokens) return;
+      el._lastData = data;
+      el._debouncedRender();
+    } catch (e) {
+      // Corrupted data — ignore
+    }
+  }
+
+  function clearContextData(sid) {
+    if (!sid) {
+      sid = getActiveSessionId();
+    }
+    if (!sid) return;
+    try {
+      sessionStorage.removeItem(STORAGE_KEY_PREFIX + sid);
+    } catch (e) {
+      // ignore
+    }
   }
 
   // Register custom element
@@ -238,6 +260,8 @@
   };
 
   window.resetContextPanel = function () {
+    // Clear persisted data for current session
+    clearContextData();
     var el = document.querySelector('eitri-context');
     if (!el) return;
     el.resetToIdle();

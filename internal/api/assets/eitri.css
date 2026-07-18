@@ -2046,7 +2046,7 @@ textarea {
   flex: 0 0 auto;
   max-height: 160px;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }

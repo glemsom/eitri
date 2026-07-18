@@ -156,8 +156,10 @@
     const sessionId = extractSessionId(e.detail, e.target);
     if (!sessionId) return;
     // Clear any persisted context data for this session when a new run starts
-    if (window._eitriContextStore) {
-      delete window._eitriContextStore[sessionId];
+    try {
+      sessionStorage.removeItem('eitri-context-' + sessionId);
+    } catch (e) {
+      // ignore
     }
     connectStream(sessionId);
   });
