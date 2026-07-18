@@ -267,4 +267,15 @@ func TestJsFiles(t *testing.T) {
 	if !strings.Contains(content5, "DEBOUNCE_MS") {
 		t.Error("eitri-context.js missing DEBOUNCE_MS constant")
 	}
+
+	// Per-category progress bars
+	if !strings.Contains(content5, "context-category-bar") {
+		t.Error("eitri-context.js missing context-category-bar class for per-category mini bars")
+	}
+	if !strings.Contains(content5, "context-category-bar-fill") {
+		t.Error("eitri-context.js missing context-category-bar-fill class for per-category mini bar fill")
+	}
+	if strings.Count(content5, "context-category-bar-fill") < 5 {
+		t.Errorf("eitri-context.js has %d category-bar-fill elements, want at least 5 (one per row)", strings.Count(content5, "context-category-bar-fill"))
+	}
 }

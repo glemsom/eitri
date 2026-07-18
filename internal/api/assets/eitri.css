@@ -2118,16 +2118,47 @@ textarea {
   justify-content: space-between;
   padding: 0.2rem 0;
   color: var(--text-muted);
+  gap: 0.4rem;
 }
 .context-category .context-category-label {
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .context-category .context-category-value {
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 3.5rem;
+  text-align: right;
 }
 .context-subrow {
   padding-left: 0.75rem;
   font-size: 0.76rem;
+}
+
+/* Mini progress bar inside each expanded category row */
+.context-category-bar {
+  flex: 1;
+  height: 6px;
+  max-width: 120px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 40px;
+}
+.context-category-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  width: 0%;
+}
+.context-category-bar-fill.fill-green {
+  background-color: var(--success);
+}
+.context-category-bar-fill.fill-yellow {
+  background-color: var(--warning);
+}
+.context-category-bar-fill.fill-red {
+  background-color: var(--error);
 }
 
