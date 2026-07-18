@@ -22,7 +22,7 @@ Add a 4th sidebar section titled "Context" between the Tools and Thinking panels
 
 ### Architecture
 
-- **New SSE event type**: `context_update` broadcast on the existing SSE stream after each agent turn (after tool results are appended to conversation history), plus one final broadcast after the `done` event. The event is broadcast via `Writer.State().Broadcast()` — no new SSE endpoint needed.
+- **New SSE event type**: `context_update` broadcast on the existing SSE stream after each agent turn (after tool results are appended to conversation history), plus one final broadcast before the `done` event. The event is broadcast via `Writer.State().Broadcast()` — no new SSE endpoint needed.
 
 - **New struct `ContextUpdate`** in `runstate` package:
   ```go
