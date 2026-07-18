@@ -313,6 +313,15 @@
         break;
 
       case 'component':
+
+      case 'context_update':
+        markStreamResumed(state);
+        state.status = STATES.STREAMING;
+        updateRunStatus(STATES.STREAMING, 'Processing context.', state);
+        if (typeof window.dispatchContextUpdate === 'function') {
+          window.dispatchContextUpdate(packet.data);
+        }
+        break;
         markStreamResumed(state);
         renderComponent(sessionId, packet);
         break;
@@ -342,6 +351,9 @@
         break;
 
       case 'error':
+        if (typeof window.resetContextPanel === 'function') {
+          window.resetContextPanel();
+        }
         clearDeadAirTimer(state);
         state.status = STATES.ERROR;
         updateRunStatus(STATES.ERROR, packet.message || defaultStatusDetail(STATES.ERROR, state), state);
@@ -351,6 +363,9 @@
         break;
 
       case 'closed':
+        if (typeof window.resetContextPanel === 'function') {
+          window.resetContextPanel();
+        }
         clearDeadAirTimer(state);
         updateRunStatus(STATES.IDLE, packet.message || 'Session closed.', state);
         disconnectStream(sessionId);

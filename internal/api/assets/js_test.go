@@ -20,6 +20,7 @@ func TestJsFiles(t *testing.T) {
 		"mermaid.min.js",
 		"prism.min.css",
 		"katex.min.css",
+		"eitri-context.js",
 	}
 	for _, name := range files {
 		f, err := Files.Open(name)
@@ -128,6 +129,17 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js should not contain activityToolSummary variable")
 	}
 
+	// Verify stream JS has context_update handler
+	if !strings.Contains(content2, "context_update") {
+		t.Error("eitri-stream.js missing context_update handler")
+	}
+	if !strings.Contains(content2, "dispatchContextUpdate") {
+		t.Error("eitri-stream.js missing dispatchContextUpdate call")
+	}
+	if !strings.Contains(content2, "resetContextPanel") {
+		t.Error("eitri-stream.js missing resetContextPanel call")
+	}
+
 	// Verify stream JS appends token-usage before scroll-sentinel
 	if !strings.Contains(content2, "insertBefore") && strings.Contains(content2, "scroll-sentinel") {
 		// Check that appendTokenUsage inserts before sentinel, not after
@@ -202,5 +214,57 @@ func TestJsFiles(t *testing.T) {
 	}
 	if !strings.Contains(content, "parent.style.setProperty") {
 		t.Error("eitri-composer.js should set --composer-height on parent element")
+	}
+
+	// Verify context JS exports
+	f5, err := Files.Open("eitri-context.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-context.js: %v", err)
+	}
+	data5, err := io.ReadAll(f5)
+	f5.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-context.js: %v", err)
+	}
+	content5 := string(data5)
+
+	if !strings.Contains(content5, "customElements.define") {
+		t.Error("eitri-context.js missing customElements.define call")
+	}
+	if !strings.Contains(content5, "eitri-context") {
+		t.Error("eitri-context.js missing eitri-context element name")
+	}
+	if !strings.Contains(content5, "context-update") {
+		t.Error("eitri-context.js missing context-update event listener")
+	}
+	if !strings.Contains(content5, "resetToIdle") {
+		t.Error("eitri-context.js missing resetToIdle method")
+	}
+	if !strings.Contains(content5, "dispatchContextUpdate") {
+		t.Error("eitri-context.js missing dispatchContextUpdate helper")
+	}
+	if !strings.Contains(content5, "resetContextPanel") {
+		t.Error("eitri-context.js missing resetContextPanel helper")
+	}
+	if !strings.Contains(content5, "_renderCompact") {
+		t.Error("eitri-context.js missing _renderCompact method")
+	}
+	if !strings.Contains(content5, "_renderExpanded") {
+		t.Error("eitri-context.js missing _renderExpanded method")
+	}
+	if !strings.Contains(content5, "fill-green") {
+		t.Error("eitri-context.js missing fill-green class name")
+	}
+	if !strings.Contains(content5, "fill-yellow") {
+		t.Error("eitri-context.js missing fill-yellow class name")
+	}
+	if !strings.Contains(content5, "fill-red") {
+		t.Error("eitri-context.js missing fill-red class name")
+	}
+	if !strings.Contains(content5, "No active run") {
+		t.Error("eitri-context.js missing idle state text")
+	}
+	if !strings.Contains(content5, "DEBOUNCE_MS") {
+		t.Error("eitri-context.js missing DEBOUNCE_MS constant")
 	}
 }
