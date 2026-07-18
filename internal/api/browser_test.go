@@ -4093,6 +4093,62 @@ func TestBrowser_ContextPanel(t *testing.T) {
 		t.Errorf("expanded classes = %q, want 'open'", expandedOpen)
 	}
 
+	// Verify per-category mini bars exist and have correct widths
+	// Data: prompt_tokens=9500 => 9500/128000=7% (<60% => green)
+	//       system_tokens=4200 => 4200/128000=3% (green)
+	//       history_tokens=4800 => 4800/128000=4% (green)
+	//       skill_tokens=500 => 500/128000=0% (green)
+	//       completion_tokens=3347 => 3347/128000=3% (green)
+	var barCount int
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var bars = document.querySelectorAll('eitri-context .context-category-bar-fill');
+			return bars.length;
+		})()`, &barCount),
+	)
+	if err != nil {
+		t.Fatalf("category bar count check failed: %v", err)
+	}
+	if barCount != 5 {
+		t.Errorf("category bar-fill count = %d, want 5 (one per category)", barCount)
+	}
+
+	// Verify each bar has fill-green class (all < 60%)
+	var barClassesList string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var bars = document.querySelectorAll('eitri-context .context-category-bar-fill');
+			var result = [];
+			bars.forEach(function(b) { result.push(b.className); });
+			return result.join('|');
+		})()`, &barClassesList),
+	)
+	if err != nil {
+		t.Fatalf("category bar classes check failed: %v", err)
+	}
+	barParts := strings.Split(barClassesList, "|")
+	for i, cls := range barParts {
+		if !strings.Contains(cls, "fill-green") {
+			t.Errorf("category bar %d class = %q, want fill-green (low pct)", i, cls)
+		}
+	}
+
+	// Verify total bar is separate (compact) and category bars are in expanded
+	var categoryBarsVisible string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var bars = document.querySelectorAll('eitri-context .context-expanded.open .context-category-bar-fill');
+			if (bars.length === 0) return 'not-found';
+			return 'visible';
+		})()`, &categoryBarsVisible),
+	)
+	if err != nil {
+		t.Fatalf("expanded category bars check failed: %v", err)
+	}
+	if categoryBarsVisible != "visible" {
+		t.Errorf("category bars visible = %q, want 'visible' in expanded.open", categoryBarsVisible)
+	}
+
 	// Test resetContextPanel transitions back to idle
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function() {

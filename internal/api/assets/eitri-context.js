@@ -37,11 +37,31 @@
             '<span class="context-stats"></span>' +
           '</div>' +
           '<div class="context-expanded">' +
-            '<div class="context-category"><span class="context-category-label">Prompt</span><span class="context-category-value"></span></div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">System</span><span class="context-category-value context-sub-value"></span></div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">History</span><span class="context-category-value context-sub-value"></span></div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">Skills</span><span class="context-category-value context-sub-value"></span></div>' +
-            '<div class="context-category"><span class="context-category-label">Completion</span><span class="context-category-value"></span></div>' +
+            '<div class="context-category">' +
+              '<span class="context-category-label">Prompt</span>' +
+              '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
+              '<span class="context-category-value"></span>' +
+            '</div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem">' +
+              '<span class="context-category-label">System</span>' +
+              '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
+              '<span class="context-category-value context-sub-value"></span>' +
+            '</div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem">' +
+              '<span class="context-category-label">History</span>' +
+              '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
+              '<span class="context-category-value context-sub-value"></span>' +
+            '</div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem">' +
+              '<span class="context-category-label">Skills</span>' +
+              '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
+              '<span class="context-category-value context-sub-value"></span>' +
+            '</div>' +
+            '<div class="context-category">' +
+              '<span class="context-category-label">Completion</span>' +
+              '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
+              '<span class="context-category-value"></span>' +
+            '</div>' +
           '</div>';
 
         self._idleEl = self.querySelector('.context-idle');
@@ -133,26 +153,41 @@
       }
 
       _renderExpanded(data) {
-        // Prompt row
-        var promptVal = this._expandedEl.querySelector('.context-category:first-child .context-category-value');
-        if (promptVal) {
-          promptVal.textContent = (data.prompt_tokens || 0).toLocaleString();
-        }
+        var cw = data.context_window;
+        if (!cw) return;
 
-        // Sub-rows
-        var subValues = this._expandedEl.querySelectorAll('.context-sub-value');
-        var fields = ['system_tokens', 'history_tokens', 'skill_tokens'];
-        fields.forEach(function (key, i) {
-          if (subValues[i]) {
-            subValues[i].textContent = (data[key] || 0).toLocaleString();
+        // Category definitions: [selectorKey, tokensKey]
+        var categories = [
+          { sel: '.context-category:nth-child(1) .context-category-value', tokens: 'prompt_tokens' },
+          { sel: '.context-category:nth-child(2) .context-sub-value', tokens: 'system_tokens' },
+          { sel: '.context-category:nth-child(3) .context-sub-value', tokens: 'history_tokens' },
+          { sel: '.context-category:nth-child(4) .context-sub-value', tokens: 'skill_tokens' },
+          { sel: '.context-category:nth-child(5) .context-category-value', tokens: 'completion_tokens' },
+        ];
+
+        var self = this;
+        categories.forEach(function (cat, idx) {
+          var tokens = data[cat.tokens] || 0;
+          var valEl = self._expandedEl.querySelector(cat.sel);
+          if (valEl) {
+            valEl.textContent = tokens.toLocaleString();
+          }
+
+          // Build mini bar for this category
+          var pct = cw > 0 ? Math.min(100, Math.round((tokens / cw) * 100)) : 0;
+          var barEl = self._expandedEl.querySelectorAll('.context-category-bar-fill')[idx];
+          if (barEl) {
+            barEl.style.width = pct + '%';
+            barEl.classList.remove('fill-green', 'fill-yellow', 'fill-red');
+            if (pct < 60) {
+              barEl.classList.add('fill-green');
+            } else if (pct < 85) {
+              barEl.classList.add('fill-yellow');
+            } else {
+              barEl.classList.add('fill-red');
+            }
           }
         });
-
-        // Completion row (last category)
-        var catValues = this._expandedEl.querySelectorAll('.context-category .context-category-value');
-        if (catValues.length > 0) {
-          catValues[catValues.length - 1].textContent = (data.completion_tokens || 0).toLocaleString();
-        }
       }
     }
 
