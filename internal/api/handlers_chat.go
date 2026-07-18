@@ -1,0 +1,222 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/glemsom/eitri/internal/api/templates"
+	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
+)
+
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse message
+	if err := r.ParseForm(); err != nil {
+		if isRequestTooLarge(err) {
+			writeRequestTooLarge(w)
+			return
+		}
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	message := r.FormValue("message")
+	if message == "" {
+		http.Error(w, "Message required", http.StatusBadRequest)
+		return
+	}
+
+	_ = s.refreshSkillsRegistry()
+
+	// Check for slash commands
+	slashResult, slashErr := skills.ParseSlashInput(message, func(name string) *skills.Skill {
+		return s.config.SkillsService.Lookup(name)
+	})
+	if slashErr != nil {
+		// Unknown slash command
+		if _, ok := slashErr.(*skills.UnknownCommandError); ok {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			w.Header().Set("Content-Type", "text/html")
+			component := templates.ErrorToast(slashErr.Error())
+			component.Render(r.Context(), w)
+			return
+		}
+	}
+
+	// Activate skills from slash command
+	if slashResult != nil && len(slashResult.ActivatedSkills) > 0 {
+		for _, skillName := range slashResult.ActivatedSkills {
+			s.config.SessionManager.ActivateSkill(id, skillName)
+		}
+	}
+
+	// If slash-only (no prompt), return activation event without starting a run
+	if slashResult != nil && slashResult.IsSlashOnly {
+		// Render the updated active skill chips
+		w.Header().Set("Content-Type", "text/html")
+		chips := templates.ActiveSkillChips(sess.ActiveSkills)
+		chips.Render(r.Context(), w)
+		return
+	}
+
+	// Determine the actual prompt to send
+	prompt := message
+	if slashResult != nil && slashResult.Prompt != "" {
+		prompt = slashResult.Prompt
+	}
+
+	cfgState := s.loadConfigState(r.Context())
+	if !cfgState.valid() {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		component := templates.ErrorToast(cfgState.err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+	if s.config.RunService != nil {
+		s.config.RunService.UpdateProviderConfig(cfgState.cfg)
+	}
+
+	// Check for active run (concurrent run protection)
+	if s.config.RunService.ActiveRun(id) != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusConflict)
+		component := templates.ErrorToast("This session already has an active run. Wait for it to complete or cancel it.")
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Append user message to session
+	s.config.SessionManager.AppendMessage(id, session.Message{
+		Role:      "user",
+		Content:   message,
+		CreatedAt: time.Now(),
+	})
+
+	// Start run in background
+	// Use context.Background() instead of r.Context() so the run survives
+	// the HTTP handler returning (which cancels the request context).
+	// Cancel() provides explicit cancellation via state.Cancel().
+	skillWarnings, err := s.config.RunService.StartRun(context.Background(), id, prompt)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusInternalServerError)
+		component := templates.ErrorToast(err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// Render skill warnings
+	for _, warning := range skillWarnings {
+		_ = templates.ErrorToast(warning).Render(r.Context(), w)
+	}
+
+	// StartRun spawns agent loop goroutine; it handles status + session persistence internally.
+	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
+
+	// Render user bubble + session tab refresh + send JS events for SSE connect and run state
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
+
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	_ = templates.UserBubble(message).Render(r.Context(), w)
+	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
+}
+
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	if s.config.RunService == nil {
+		http.Error(w, "No active run for this session", http.StatusNotFound)
+		return
+	}
+
+	subscriberID, sseCh, ok := s.config.RunService.Subscribe(id)
+	if !ok {
+		http.Error(w, "No active run for this session", http.StatusNotFound)
+		return
+	}
+	defer s.config.RunService.Unsubscribe(id, subscriberID)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Send initial connecting event
+	if initData := mustJSON(runstate.SSEEvent{Type: "connecting"}); initData != nil {
+		fmt.Fprintf(w, "data: %s\n\n", string(initData))
+		flusher.Flush()
+	}
+
+	ctx := r.Context()
+	keepAlive := time.NewTicker(15 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case evt, ok := <-sseCh:
+			if !ok {
+				return
+			}
+			data := mustJSON(evt)
+			if data == nil {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+			if evt.Type == "done" || evt.Type == "error" || evt.Type == "closed" {
+				return
+			}
+
+		case <-keepAlive.C:
+			// SSE keep-alive comment
+			fmt.Fprintf(w, ":keepalive\n\n")
+			flusher.Flush()
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	s.config.RunService.Cancel(id)
+	s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
+
+	// Re-enabling is now client-side via CSS class toggle (issue #103).
+	// Return empty 200 so HTMX does not swap out the composer.
+	w.WriteHeader(http.StatusOK)
+}
