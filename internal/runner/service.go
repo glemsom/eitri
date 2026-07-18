@@ -70,6 +70,7 @@ type RunService struct {
 	maxTurns           int
 	maxHistory         int
 	allowedReadPaths   []string
+	contextWindowTokens int
 	persistAuth        PersistAuthFunc
 }
 
@@ -113,6 +114,7 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.systemPrompt = cfg.SystemPrompt
 	s.maxTurns = cfg.MaxTurns
 	s.maxHistory = cfg.MaxHistory
+	s.contextWindowTokens = cfg.ContextWindowTokens
 	s.allowedReadPaths = cfg.AllowedReadPaths
 	s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
 }
@@ -121,6 +123,13 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 // No-op in the new architecture (no runner cache).
 func (s *RunService) InvalidateRunners() {
 	// No runner cache to invalidate; config is read fresh on each StartRun.
+}
+
+// ContextWindowTokens returns the configured context window size.
+func (s *RunService) ContextWindowTokens() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.contextWindowTokens
 }
 
 // StartRun starts a new agent run for a session.

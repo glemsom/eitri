@@ -2036,3 +2036,113 @@ textarea {
 .form-actions-sticky button:focus {
   box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.25);
 }
+
+/* ============================================
+   Context panel: Issue #347
+   Live context window utilization sidebar section
+   ============================================ */
+
+#context-panel {
+  flex: 0 0 auto;
+  max-height: 160px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#context-panel .sidebar-header {
+  cursor: pointer;
+  user-select: none;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.context-idle {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.context-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  min-height: 32px;
+  transition: background 0.15s;
+}
+.context-compact:hover {
+  background: var(--surface-alt);
+}
+.context-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 60px;
+}
+.context-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  width: 0%;
+}
+.context-bar-fill.fill-green {
+  background-color: var(--success);
+}
+.context-bar-fill.fill-yellow {
+  background-color: var(--warning);
+}
+.context-bar-fill.fill-red {
+  background-color: var(--error);
+}
+.context-stats {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.context-expanded {
+  display: none;
+  padding: 0.25rem 0.75rem 0.4rem;
+  font-size: 0.8rem;
+}
+.context-expanded.open {
+  display: block;
+}
+.context-category {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+  color: var(--text-muted);
+}
+.context-category .context-category-label {
+  color: var(--text-muted);
+}
+.context-category .context-category-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.context-subrow {
+  padding-left: 0.75rem;
+  font-size: 0.76rem;
+}
+.context-percent {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.context-percent.percent-green {
+  color: var(--success);
+}
+.context-percent.percent-yellow {
+  color: var(--warning);
+}
+.context-percent.percent-red {
+  color: var(--error);
+}
