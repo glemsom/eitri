@@ -1,272 +1,178 @@
-// eitri-context — Browser island for context window utilization panel.
-// Custom element <eitri-context> renders a compact progress bar with
-// per-category breakdown toggled on click.
+// eitri-context — Custom element for rendering context usage panel.
+// Receives ContextUpdate data via 'context-update' custom events and
+// renders compact (progress bar + numbers) or expanded (category breakdown) views.
 
 (function () {
   'use strict';
 
-  // Debounce interval for rapid context updates (ms)
   var DEBOUNCE_MS = 100;
 
-  function fmtNum(n) {
-    return n.toLocaleString();
-  }
+  var EitriContext = (function () {
 
-  function barColorClass(pct) {
-    if (pct < 60) return 'fill-green';
-    if (pct <= 85) return 'fill-yellow';
-    return 'fill-red';
-  }
-
-  function pctColorClass(pct) {
-    if (pct < 60) return 'percent-green';
-    if (pct <= 85) return 'percent-yellow';
-    return 'percent-red';
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
-
-  var ContextElement = window.customElements.get('eitri-context');
-  if (ContextElement) return; // Already registered
-
-  ContextElement = (function () {
-
-    function ContextElement() {
-      // Use Reflect.construct for proper subclassing
-      var self = Reflect.construct(HTMLElement, [], ContextElement);
-      self._contextWindow = 0;
-      self._debounceTimer = null;
-      self._pendingData = null;
-      self._lastData = null;
-      self._expanded = false;
-      self._compactEl = null;
-      self._expandedEl = null;
-      self._idleEl = null;
-      return self;
-    }
-
-    ContextElement.prototype = Object.create(HTMLElement.prototype);
-    ContextElement.prototype.constructor = ContextElement;
-
-    ContextElement.prototype.connectedCallback = function () {
-      var cw = this.getAttribute('data-context-window');
-      this._contextWindow = parseInt(cw, 10) || 0;
-
-      // Wrap existing children as idle content
-      this._idleEl = document.createElement('div');
-      this._idleEl.className = 'context-idle';
-      this._idleEl.textContent = 'No active run';
-
-      // Compact view (always present, hidden in idle)
-      this._compactEl = document.createElement('div');
-      this._compactEl.className = 'context-compact';
-      this._compactEl.style.display = 'none';
-      this._compactEl.addEventListener('click', this._toggleExpand.bind(this));
-
-      // Bar container
-      var bar = document.createElement('div');
-      bar.className = 'context-bar';
-      var fill = document.createElement('div');
-      fill.className = 'context-bar-fill';
-      fill.id = this._makeId('fill');
-      bar.appendChild(fill);
-      this._compactEl.appendChild(bar);
-
-      // Stats text
-      var stats = document.createElement('span');
-      stats.className = 'context-stats';
-      stats.id = this._makeId('stats');
-      this._compactEl.appendChild(stats);
-
-      // Expanded view (hidden by default)
-      this._expandedEl = document.createElement('div');
-      this._expandedEl.className = 'context-expanded';
-      this._expandedEl.id = this._makeId('expanded');
-
-      // Clear children and append
-      this.textContent = '';
-      this.appendChild(this._idleEl);
-      this.appendChild(this._compactEl);
-      this.appendChild(this._expandedEl);
-
-      // Listen for context-update events
-      this._boundHandler = this._onContextUpdate.bind(this);
-      this.addEventListener('context-update', this._boundHandler);
-    };
-
-    ContextElement.prototype.disconnectedCallback = function () {
-      if (this._boundHandler) {
-        this.removeEventListener('context-update', this._boundHandler);
-        this._boundHandler = null;
-      }
-      if (this._debounceTimer) {
-        clearTimeout(this._debounceTimer);
+    // Use a real class extending HTMLElement
+    class EitriContext extends HTMLElement {
+      constructor() {
+        super();
         this._debounceTimer = null;
+        this._lastData = null;
+        this._compactEl = null;
+        this._idleEl = null;
+        this._expandedEl = null;
+        this._barFillEl = null;
+        this._statsEl = null;
+        this._contextWindow = 128000;
       }
-    };
 
-    ContextElement.prototype._makeId = function (suffix) {
-      return 'ctx-' + suffix;
-    };
+      connectedCallback() {
+        var self = this;
+        self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 128000;
 
-    ContextElement.prototype._toggleExpand = function () {
-      this._expanded = !this._expanded;
-      if (this._expandedEl) {
-        this._expandedEl.classList.toggle('open', this._expanded);
+        // Build inner DOM
+        self.innerHTML =
+          '<div class="context-idle">No active run</div>' +
+          '<div class="context-compact" style="display:none">' +
+            '<div class="context-bar">' +
+              '<div class="context-bar-fill"></div>' +
+            '</div>' +
+            '<span class="context-stats"></span>' +
+          '</div>' +
+          '<div class="context-expanded">' +
+            '<div class="context-category"><span class="context-category-label">Prompt</span><span class="context-category-value"></span></div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">System</span><span class="context-category-value context-sub-value"></span></div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">History</span><span class="context-category-value context-sub-value"></span></div>' +
+            '<div class="context-category context-sub" style="padding-left:1rem"><span class="context-category-label">Skills</span><span class="context-category-value context-sub-value"></span></div>' +
+            '<div class="context-category"><span class="context-category-label">Completion</span><span class="context-category-value"></span></div>' +
+          '</div>';
+
+        self._idleEl = self.querySelector('.context-idle');
+        self._compactEl = self.querySelector('.context-compact');
+        self._expandedEl = self.querySelector('.context-expanded');
+        self._barFillEl = self.querySelector('.context-bar-fill');
+        self._statsEl = self.querySelector('.context-stats');
+
+        // Listen for context-update custom events
+        self.addEventListener('context-update', function (e) {
+          self._lastData = e.detail;
+          self._debouncedRender();
+        });
+
+        // Click compact view to toggle expanded
+        self._compactEl.addEventListener('click', function () {
+          self._expandedEl.classList.toggle('open');
+        });
+
+        // Click sidebar header to toggle expanded
+        var header = document.querySelector('#context-panel .sidebar-header');
+        if (header) {
+          header.addEventListener('click', function () {
+            self._expandedEl.classList.toggle('open');
+          });
+        }
       }
-    };
 
-    ContextElement.prototype._onContextUpdate = function (e) {
-      var data = e.detail;
-      if (!data) return;
-
-      // Debounce rapid updates
-      this._pendingData = data;
-      if (this._debounceTimer) {
-        clearTimeout(this._debounceTimer);
+      resetToIdle() {
+        var self = this;
+        self._lastData = null;
+        self._idleEl.style.display = 'block';
+        self._compactEl.style.display = 'none';
+        self._expandedEl.classList.remove('open');
+        self._expandedEl.style.display = 'none';
       }
-      this._debounceTimer = setTimeout(this._applyPending.bind(this), DEBOUNCE_MS);
-    };
 
-    ContextElement.prototype._applyPending = function () {
-      this._debounceTimer = null;
-      var data = this._pendingData;
-      this._pendingData = null;
-      if (!data) return;
-      this._lastData = data;
+      _debouncedRender() {
+        var self = this;
+        if (self._debounceTimer) {
+          clearTimeout(self._debounceTimer);
+        }
+        self._debounceTimer = window.setTimeout(function () {
+          self._debounceTimer = null;
+          self._render();
+        }, DEBOUNCE_MS);
+      }
 
-      // Transition from idle to active
-      if (this._idleEl) this._idleEl.style.display = 'none';
-      if (this._compactEl) this._compactEl.style.display = 'flex';
+      _render() {
+        var data = this._lastData;
+        if (!data) return;
 
-      this._renderCompact(data);
-      if (this._expanded) {
+        // Use actual context_window from data, fallback to attribute value
+        var cw = data.context_window || this._contextWindow;
+        data.context_window = cw;
+
+        // Transition from idle to active
+        this._idleEl.style.display = 'none';
+        this._compactEl.style.display = 'flex';
+        this._expandedEl.style.display = 'block';
+
+        this._renderCompact(data);
         this._renderExpanded(data);
       }
-    };
 
-    ContextElement.prototype._renderCompact = function (data) {
-      var cw = data.context_window || this._contextWindow || 1;
-      var total = data.total_tokens || 0;
-      var pct = Math.min(100, (total / cw) * 100);
+      _renderCompact(data) {
+        var pct = data.context_window > 0
+          ? Math.min(100, Math.round((data.total_tokens / data.context_window) * 100))
+          : 0;
 
-      var fill = document.getElementById(this._makeId('fill'));
-      if (fill) {
-        fill.style.width = pct.toFixed(1) + '%';
-        fill.className = 'context-bar-fill ' + barColorClass(pct);
+        this._barFillEl.style.width = pct + '%';
+
+        // Color class
+        this._barFillEl.classList.remove('fill-green', 'fill-yellow', 'fill-red');
+        if (pct < 60) {
+          this._barFillEl.classList.add('fill-green');
+        } else if (pct < 85) {
+          this._barFillEl.classList.add('fill-yellow');
+        } else {
+          this._barFillEl.classList.add('fill-red');
+        }
+
+        // Stats text: "12,847 / 128K (10%)"
+        var totalStr = data.total_tokens.toLocaleString();
+        var windowStr = data.context_window >= 1000
+          ? Math.round(data.context_window / 1000) + 'K'
+          : String(data.context_window);
+        this._statsEl.textContent = totalStr + ' / ' + windowStr + ' (' + pct + '%)';
       }
 
-      var stats = document.getElementById(this._makeId('stats'));
-      if (stats) {
-        stats.textContent = fmtNum(total) + ' / ' + fmtNum(cw) + ' (' + pct.toFixed(0) + '%)';
+      _renderExpanded(data) {
+        // Prompt row
+        var promptVal = this._expandedEl.querySelector('.context-category:first-child .context-category-value');
+        if (promptVal) {
+          promptVal.textContent = (data.prompt_tokens || 0).toLocaleString();
+        }
+
+        // Sub-rows
+        var subValues = this._expandedEl.querySelectorAll('.context-sub-value');
+        var fields = ['system_tokens', 'history_tokens', 'skill_tokens'];
+        fields.forEach(function (key, i) {
+          if (subValues[i]) {
+            subValues[i].textContent = (data[key] || 0).toLocaleString();
+          }
+        });
+
+        // Completion row (last category)
+        var catValues = this._expandedEl.querySelectorAll('.context-category .context-category-value');
+        if (catValues.length > 0) {
+          catValues[catValues.length - 1].textContent = (data.completion_tokens || 0).toLocaleString();
+        }
       }
-    };
+    }
 
-    ContextElement.prototype._renderExpanded = function (data) {
-      if (!this._expandedEl) return;
-
-      var cw = data.context_window || this._contextWindow || 1;
-      var total = data.total_tokens || 0;
-      var prompt = data.prompt_tokens || 0;
-      var completion = data.completion_tokens || 0;
-      var system = data.system_tokens || 0;
-      var history = data.history_tokens || 0;
-      var skill = data.skill_tokens || 0;
-      var pct = Math.min(100, (total / cw) * 100);
-
-      // Use textContent/text nodes for user-facing numbers (no innerHTML from LLM data)
-      this._expandedEl.textContent = '';
-
-      function addRow(container, label, value, extraClass) {
-        var row = document.createElement('div');
-        row.className = 'context-category' + (extraClass ? ' ' + extraClass : '');
-        var labelSpan = document.createElement('span');
-        labelSpan.className = 'context-category-label';
-        labelSpan.textContent = label;
-        row.appendChild(labelSpan);
-        var valSpan = document.createElement('span');
-        valSpan.className = 'context-category-value';
-        valSpan.textContent = fmtNum(value);
-        row.appendChild(valSpan);
-        container.appendChild(row);
-      }
-
-      // Overall percentage badge
-      var pctRow = document.createElement('div');
-      pctRow.style.display = 'flex';
-      pctRow.style.justifyContent = 'space-between';
-      pctRow.style.alignItems = 'center';
-      pctRow.style.marginBottom = '0.3rem';
-      var badge = document.createElement('span');
-      badge.className = 'context-percent ' + pctColorClass(pct);
-      badge.textContent = pct.toFixed(0) + '% used';
-      pctRow.appendChild(badge);
-      this._expandedEl.appendChild(pctRow);
-
-      // Prompt row
-      addRow(this._expandedEl, 'Prompt', prompt, '');
-      // System sub-row
-      addRow(this._expandedEl, 'System', system, 'context-subrow');
-      // Skill sub-row
-      addRow(this._expandedEl, 'Skills', skill, 'context-subrow');
-      // History row
-      addRow(this._expandedEl, 'History', history, '');
-      // Completion row
-      addRow(this._expandedEl, 'Completion', completion, '');
-    };
-
-    // Public method: reset to idle state (done/error/closed)
-    ContextElement.prototype.resetToIdle = function () {
-      this._lastData = null;
-      this._pendingData = null;
-      this._expanded = false;
-
-      if (this._idleEl) this._idleEl.style.display = '';
-      if (this._compactEl) this._compactEl.style.display = 'none';
-      if (this._expandedEl) {
-        this._expandedEl.classList.remove('open');
-        this._expandedEl.textContent = '';
-      }
-
-      // Reset bar
-      var fill = document.getElementById(this._makeId('fill'));
-      if (fill) {
-        fill.style.width = '0%';
-        fill.className = 'context-bar-fill';
-      }
-      var stats = document.getElementById(this._makeId('stats'));
-      if (stats) stats.textContent = '';
-    };
-
-    return ContextElement;
+    return EitriContext;
   })();
 
-  window.customElements.define('eitri-context', ContextElement);
+  // Register custom element
+  customElements.define('eitri-context', EitriContext);
 
-  // ---- Dispatch helper for eitri-stream.js ----
-
-  // Dispatch a context-update custom event on the <eitri-context> element
+  // Global helpers for eitri-stream.js to call
   window.dispatchContextUpdate = function (data) {
     var el = document.querySelector('eitri-context');
     if (!el) return;
-    var evt = new CustomEvent('context-update', {
-      bubbles: false,
-      cancelable: false,
-      detail: data,
-    });
-    el.dispatchEvent(evt);
+    el.dispatchEvent(new CustomEvent('context-update', { detail: data }));
   };
 
-  // Reset context panel to idle state
   window.resetContextPanel = function () {
     var el = document.querySelector('eitri-context');
-    if (el && typeof el.resetToIdle === 'function') {
-      el.resetToIdle();
-    }
+    if (!el) return;
+    el.resetToIdle();
   };
 
 })();

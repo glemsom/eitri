@@ -3965,4 +3965,159 @@ func TestBrowser_MermaidComponentHeight(t *testing.T) {
 	}
 }
 
+// TestBrowser_ContextPanel verifies the context panel renders compact view with
+// progress bar and stats, expanded view with category breakdown, and color classes.
+func TestBrowser_ContextPanel(t *testing.T) {
+	server := newTestServerWithRuns(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("eitri-context", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	// Verify idle state
+	var idleText string
+	err = chromedp.Run(ctx,
+		chromedp.Text("eitri-context .context-idle", &idleText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("idle text check failed: %v", err)
+	}
+	if !strings.Contains(idleText, "No active run") {
+		t.Errorf("idle text = %q, want 'No active run'", idleText)
+	}
+
+	// Dispatch a context_update directly via JS to test compact rendering
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			if (typeof window.dispatchContextUpdate === 'function') {
+				window.dispatchContextUpdate({
+					total_tokens: 12847,
+					context_window: 128000,
+					prompt_tokens: 9500,
+					completion_tokens: 3347,
+					system_tokens: 4200,
+					history_tokens: 4800,
+					skill_tokens: 500,
+				});
+			}
+		})()`, nil),
+		chromedp.Sleep(300*time.Millisecond),
+	)
+
+	// Verify compact view is visible
+	var compactDisplay string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-context .context-compact');
+			return el ? window.getComputedStyle(el).display : 'not-found';
+		})()`, &compactDisplay),
+	)
+	if err != nil {
+		t.Fatalf("compact display check failed: %v", err)
+	}
+	if compactDisplay == "none" || compactDisplay == "not-found" {
+		t.Errorf("compact view display = %q, expected visible (flex)", compactDisplay)
+	}
+
+	// Verify progress bar has a width set (indicating rendering happened)
+	var barWidth string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-context .context-bar-fill');
+			return el ? el.style.width : '';
+		})()`, &barWidth),
+	)
+	if err != nil {
+		t.Fatalf("bar width check failed: %v", err)
+	}
+	// 12847/128000 = 10%, which is < 60%, so green is expected
+	if barWidth == "" {
+		t.Error("bar fill width is empty, expected e.g. '10%'")
+	}
+
+	// Verify bar color class is fill-green (10% < 60%)
+	var barClasses string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-context .context-bar-fill');
+			return el ? el.className : '';
+		})()`, &barClasses),
+	)
+	if err != nil {
+		t.Fatalf("bar classes check failed: %v", err)
+	}
+	if !strings.Contains(barClasses, "fill-green") {
+		t.Errorf("bar classes = %q, want fill-green (12847/128K = 10%% < 60%%)", barClasses)
+	}
+
+	// Verify stats text
+	var statsText string
+	err = chromedp.Run(ctx,
+		chromedp.Text("eitri-context .context-stats", &statsText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("stats text check failed: %v", err)
+	}
+	expected := "12,847 / 128K (10%)"
+	if statsText != expected {
+		t.Errorf("stats text = %q, want %q", statsText, expected)
+	}
+
+	// Click compact view to toggle expanded
+	err = chromedp.Run(ctx,
+		chromedp.Click("eitri-context .context-compact", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("click compact failed: %v", err)
+	}
+
+	var expandedOpen string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-context .context-expanded');
+			return el ? el.className : '';
+		})()`, &expandedOpen),
+	)
+	if err != nil {
+		t.Fatalf("expanded open check failed: %v", err)
+	}
+	if !strings.Contains(expandedOpen, "open") {
+		t.Errorf("expanded classes = %q, want 'open'", expandedOpen)
+	}
+
+	// Test resetContextPanel transitions back to idle
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			if (typeof window.resetContextPanel === 'function') {
+				window.resetContextPanel();
+			}
+		})()`, nil),
+		chromedp.Sleep(200*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("resetContextPanel failed: %v", err)
+	}
+
+	var idleDisplay string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.querySelector('eitri-context .context-idle');
+			return el ? window.getComputedStyle(el).display : 'not-found';
+		})()`, &idleDisplay),
+	)
+	if err != nil {
+		t.Fatalf("idle after reset check failed: %v", err)
+	}
+	if idleDisplay == "none" || idleDisplay == "not-found" {
+		t.Errorf("idle display after reset = %q, expected visible (block)", idleDisplay)
+	}
+}
 
