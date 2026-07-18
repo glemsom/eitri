@@ -327,9 +327,6 @@
         break;
 
       case 'done':
-        if (typeof window.resetContextPanel === 'function') {
-          window.resetContextPanel();
-        }
         clearDeadAirTimer(state);
         state.status = STATES.RENDERING;
         updateRunStatus(STATES.RENDERING, defaultStatusDetail(STATES.RENDERING, state), state);

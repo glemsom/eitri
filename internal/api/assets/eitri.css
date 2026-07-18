@@ -2050,6 +2050,11 @@ textarea {
   display: flex;
   flex-direction: column;
 }
+
+/* eitri-context custom element needs display:block since it defaults to inline */
+eitri-context {
+  display: block;
+}
 #context-panel .sidebar-header {
   cursor: pointer;
   user-select: none;

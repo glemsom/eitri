@@ -96,7 +96,7 @@
         self._idleEl.style.display = 'block';
         self._compactEl.style.display = 'none';
         self._expandedEl.classList.remove('open');
-        self._expandedEl.style.display = 'none';
+        self._expandedEl.style.display = '';
       }
 
       _debouncedRender() {
@@ -121,7 +121,8 @@
         // Transition from idle to active
         this._idleEl.style.display = 'none';
         this._compactEl.style.display = 'flex';
-        this._expandedEl.style.display = 'block';
+        // Remove any inline display override from resetToIdle so CSS .open class works
+        this._expandedEl.style.display = '';
 
         this._renderCompact(data);
         this._renderExpanded(data);
