@@ -17,7 +17,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/executor"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -32,7 +31,6 @@ type testServerWithRuns struct {
 	configPath  string
 	workspace   string
 	sessionMgr  *session.Manager
-	executorMgr *executor.SessionManager
 	runSvc      *runner.RunService
 }
 // newManagedTestServerWithRuns creates a test server with RunService enabled
@@ -40,16 +38,15 @@ type testServerWithRuns struct {
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
-	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
+	workspace := t.TempDir()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
+	runSvc.SetWorkspace(workspace)
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
-	workspace := t.TempDir()
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
@@ -65,7 +62,6 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 		configPath:  configPath,
 		workspace:   workspace,
 		sessionMgr:  sessionMgr,
-		executorMgr: executorMgr,
 		runSvc:      runSvc,
 	}
 }
@@ -79,11 +75,10 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
-	executorMgr := executor.NewSessionManager(workspace, 0, 0)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
+	runSvc.SetWorkspace(workspace)
 	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
@@ -101,7 +96,6 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 		server:      server,
 		configPath:  configPath,
 		sessionMgr:  sessionMgr,
-		executorMgr: executorMgr,
 		runSvc:      runSvc,
 	}
 }
@@ -791,12 +785,11 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10)
-	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
+	runSvc.SetWorkspace(t.TempDir())
 	runSvc.SetSkillsService(skillsSvc)
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
@@ -1044,11 +1037,10 @@ func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.
 }
 
 func TestRunService_New(t *testing.T) {
-	executorMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		SessionManager: executorMgr,
 		UISessionMgr:   session.NewManager(10),
 	})
+	runSvc.SetWorkspace(t.TempDir())
 	if runSvc == nil {
 		t.Fatal("RunService is nil")
 	}
@@ -1082,10 +1074,6 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 		t.Fatal("missing browser cookie")
 	}
 
-	oldExecutor, err := h.executorMgr.GetOrCreate(sessionID)
-	if err != nil {
-		t.Fatalf("GetOrCreate(%s) = %v", sessionID, err)
-	}
 
 	chatPath := "/api" + loc + "/chat"
 	req, _ := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Delete+me"))
@@ -1168,13 +1156,6 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 		t.Fatal("run still active after delete")
 	}
 
-	newExecutor, err := h.executorMgr.GetOrCreate(sessionID)
-	if err != nil {
-		t.Fatalf("GetOrCreate(%s) after delete = %v", sessionID, err)
-	}
-	if newExecutor == oldExecutor {
-		t.Fatal("executor was not closed and removed on delete")
-	}
 
 	foundClosed := false
 	deadline = time.Now().Add(2 * time.Second)
@@ -1896,8 +1877,8 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 		t.Fatal("missing browser cookie")
 	}
 
-	// Create test file for edit tool to work (edit tool uses executorMgr.Workspace())
-	if err := os.WriteFile(filepath.Join(h.executorMgr.Workspace(), "test.txt"), []byte("foo"), 0644); err != nil {
+	// Create test file for edit tool to work (edit tool uses runSvc workspace)
+	if err := os.WriteFile(filepath.Join(h.workspace, "test.txt"), []byte("foo"), 0644); err != nil {
 		t.Fatal(err)
 	}
 

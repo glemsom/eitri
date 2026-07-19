@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/executor"
+
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -41,7 +41,6 @@ type PersistAuthFunc = provider.PersistAuthFunc
 
 // RunServiceDeps holds the dependencies for RunService.
 type RunServiceDeps struct {
-	SessionManager *executor.SessionManager
 	UISessionMgr   *uisession.Manager
 	SkillsService  *skills.Service
 }
@@ -53,7 +52,6 @@ type RunService struct {
 	active          map[string]*RunState
 	confirmMu       sync.Mutex
 	confirmations   map[string]chan ConfirmationResult // sessionID → confirmation channel
-	sessionMgr      *executor.SessionManager
 	uiSessionMgr    *uisession.Manager
 	skillsSvc       *skills.Service
 	historySessionMgr *history.SessionManager
@@ -65,9 +63,11 @@ type RunService struct {
 	systemPrompt       string
 	maxTurns           int
 	maxHistory         int
-	allowedReadPaths   []string
+	allowedReadPaths    []string
 	contextWindowTokens int
-	persistAuth        PersistAuthFunc
+	workspace           string
+	cmdTimeout          time.Duration
+	persistAuth         PersistAuthFunc
 }
 
 const completedRunRetention = 5 * time.Second
@@ -77,7 +77,6 @@ func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
 		active:        make(map[string]*RunState),
 		confirmations: make(map[string]chan ConfirmationResult),
-		sessionMgr:    deps.SessionManager,
 		uiSessionMgr:  deps.UISessionMgr,
 		skillsSvc:     deps.SkillsService,
 	}
@@ -96,6 +95,20 @@ func (s *RunService) SetUISessionManager(mgr *uisession.Manager) {
 // SetPersistAuth sets the auth persistence callback.
 func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
+}
+
+// SetWorkspace sets the workspace directory for tool execution.
+func (s *RunService) SetWorkspace(ws string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workspace = ws
+}
+
+// SetCommandTimeout sets the command timeout for tool execution.
+func (s *RunService) SetCommandTimeout(timeout time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cmdTimeout = timeout
 }
 
 // UpdateProviderConfig stores provider config for creating LLM service instances.
@@ -224,16 +237,13 @@ func (s *RunService) CancelAll() {
 	}
 }
 
-// CloseSession cancels the active run and closes the executor session.
+// CloseSession cancels the active run and closes the session.
 func (s *RunService) CloseSession(sessionID string) error {
 	s.Cancel(sessionID)
 	if s.historySessionMgr != nil {
 		s.historySessionMgr.Close(sessionID)
 	}
-	if s.sessionMgr == nil {
-		return nil
-	}
-	return s.sessionMgr.Close(sessionID)
+	return nil
 }
 
 // NotifySessionClosed broadcasts a closed event for a session.

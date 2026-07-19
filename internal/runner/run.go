@@ -107,12 +107,12 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 	// Build tool registry with built-in tools
 	toolReg := tool.NewRegistry()
-	toolReg.Register(tool.NewBashTool(s.sessionMgr))
-	toolReg.Register(tool.NewGlobTool(s.sessionMgr.Workspace()))
-	toolReg.Register(tool.NewGrepTool(s.sessionMgr.Workspace()))
-	toolReg.Register(tool.NewReadTool(s.sessionMgr.Workspace(), s.skillDirectories(), allowedReadPaths))
-	toolReg.Register(tool.NewWriteTool(s.sessionMgr.Workspace()))
-	toolReg.Register(tool.NewEditTool(s.sessionMgr.Workspace()))
+	toolReg.Register(tool.NewBashTool(s.workspace, s.cmdTimeout))
+	toolReg.Register(tool.NewGlobTool(s.workspace))
+	toolReg.Register(tool.NewGrepTool(s.workspace))
+	toolReg.Register(tool.NewReadTool(s.workspace, s.skillDirectories(), allowedReadPaths))
+	toolReg.Register(tool.NewWriteTool(s.workspace))
+	toolReg.Register(tool.NewEditTool(s.workspace))
 	toolReg.Register(tool.NewRenderMermaidDiagram())
 	toolReg.Register(tool.NewRenderQuickReplies())
 	if s.skillsSvc != nil {
