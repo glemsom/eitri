@@ -441,8 +441,12 @@
     clearStreamTimer(state);
     if (!state.streamBuf) return;
 
+    // Don't clear streamBuf — appendToken accumulates all text since
+    // the last time it was cleared, and we need the full accumulated
+    // text to re-render the complete markdown. If we cleared it here,
+    // each flush would only have the partial content since the last
+    // flush, overwriting the previous rendered DOM.
     const text = state.streamBuf;
-    state.streamBuf = '';
 
     const el = document.getElementById('streaming');
     if (!el) return;
