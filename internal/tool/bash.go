@@ -13,6 +13,8 @@ import (
 	"github.com/voocel/litellm"
 )
 
+const maxBashOutputBytes = 128 * 1024
+
 type bashArgs struct {
 	Command string `json:"command" jsonschema:"Shell command to run in the workspace directory"`
 }
@@ -119,6 +121,16 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 			output += "\n"
 		}
 		output += "[command timed out]"
+	}
+
+	// Truncate if output exceeds limit
+	const truncationMarker = "... (output truncated at 128 KiB)"
+	if len(output) > maxBashOutputBytes {
+		truncLen := maxBashOutputBytes - len(truncationMarker)
+		if truncLen < 0 {
+			truncLen = 0
+		}
+		output = output[:truncLen] + truncationMarker
 	}
 
 	return textBlocks(output), nil, exitCode != 0 || timedOut
