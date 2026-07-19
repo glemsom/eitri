@@ -18,6 +18,9 @@ func TestBash_Schema(t *testing.T) {
 	if tool.Description() == "" {
 		t.Error("Description should not be empty")
 	}
+	if !strings.Contains(tool.Description(), "fresh shell") {
+		t.Error("Description should mention fresh-shell semantics")
+	}
 	schema := tool.JSONSchema()
 	if schema == nil {
 		t.Fatal("JSONSchema is nil")
