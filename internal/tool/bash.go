@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -92,28 +93,32 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	stdoutStr := stdoutBuf.String()
 	stderrStr := stderrBuf.String()
 
-	// Build output text
+	// Trim trailing newlines so output between tags is clean
+	stdoutStr = strings.TrimRight(stdoutStr, "\n")
+	stderrStr = strings.TrimRight(stderrStr, "\n")
+
+	// Build output text with spec-compliant format
 	var output string
 	if stdoutStr != "" {
-		output += stdoutStr
+		output += "<stdout>\n" + stdoutStr + "\n</stdout>"
 	}
 	if stderrStr != "" {
 		if output != "" {
 			output += "\n"
 		}
-		output += stderrStr
+		output += "<stderr>\n" + stderrStr + "\n</stderr>"
 	}
 	if exitCode != 0 {
 		if output != "" {
 			output += "\n"
 		}
-		output += fmt.Sprintf("\n[exit code %d]", exitCode)
+		output += fmt.Sprintf("[exit code %d]", exitCode)
 	}
 	if timedOut {
 		if output != "" {
 			output += "\n"
 		}
-		output += "\n[command timed out]"
+		output += "[command timed out]"
 	}
 
 	return textBlocks(output), nil, exitCode != 0 || timedOut

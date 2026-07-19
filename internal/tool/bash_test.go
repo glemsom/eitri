@@ -87,8 +87,9 @@ func TestBash_RunsCommand(t *testing.T) {
 	if !ok {
 		t.Fatalf("block is %T, want TextBlock", blocks[0])
 	}
-	if !strings.Contains(result.Text, "hello world") {
-		t.Errorf("output = %q, want 'hello world'", result.Text)
+	expected := "<stdout>\nhello world\n</stdout>"
+	if result.Text != expected {
+		t.Errorf("output = %q, want %q", result.Text, expected)
 	}
 }
 
@@ -103,8 +104,9 @@ func TestBash_ExitCode(t *testing.T) {
 		t.Error("isError = false, want true for non-zero exit")
 	}
 	result := blocks[0].(litellm.TextBlock)
-	if !strings.Contains(result.Text, "[exit code 42]") {
-		t.Errorf("output = %q, want exit code 42", result.Text)
+	expected := "[exit code 42]"
+	if result.Text != expected {
+		t.Errorf("output = %q, want %q", result.Text, expected)
 	}
 }
 
@@ -119,8 +121,43 @@ func TestBash_StderrCapture(t *testing.T) {
 		t.Error("isError = true, want false")
 	}
 	result := blocks[0].(litellm.TextBlock)
-	if !strings.Contains(result.Text, "stderr_output") {
-		t.Errorf("output = %q, want stderr_output", result.Text)
+	expected := "<stderr>\nstderr_output\n</stderr>"
+	if result.Text != expected {
+		t.Errorf("output = %q, want %q", result.Text, expected)
+	}
+}
+
+func TestBash_StdoutAndStderr(t *testing.T) {
+	dir := t.TempDir()
+	tool := NewBashTool(dir, 10*time.Second)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo out; echo err >&2"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	result := blocks[0].(litellm.TextBlock)
+	expected := "<stdout>\nout\n</stdout>\n<stderr>\nerr\n</stderr>"
+	if result.Text != expected {
+		t.Errorf("output = %q, want %q", result.Text, expected)
+	}
+}
+
+func TestBash_ExitCodeWithOutput(t *testing.T) {
+	dir := t.TempDir()
+	tool := NewBashTool(dir, 10*time.Second)
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello && exit 3"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true for non-zero exit")
+	}
+	result := blocks[0].(litellm.TextBlock)
+	expected := "<stdout>\nhello\n</stdout>\n[exit code 3]"
+	if result.Text != expected {
+		t.Errorf("output = %q, want %q", result.Text, expected)
 	}
 }
 
