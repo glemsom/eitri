@@ -74,6 +74,18 @@ func NewManager(maxSessions int) *Manager {
 	}
 }
 
+// All returns a copy of all sessions. Used for bulk operations.
+func (m *Manager) All() []*UISession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*UISession, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		result = append(result, s)
+	}
+	return result
+}
+
+
 // newID generates a random hex identifier using crypto/rand.
 func newID() string {
 	b := make([]byte, 16)

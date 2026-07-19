@@ -209,6 +209,14 @@ func (r *Registry) Diagnostics() Diagnostics {
 	result := make(Diagnostics, len(r.diagnostics))
 	copy(result, r.diagnostics)
 	return result
+	}
+
+	// AppendDiagnostic adds a diagnostic to the registry.
+		func (r *Registry) AppendDiagnostic(d Diagnostic) {
+	if r == nil {
+		return
+	}
+	r.diagnostics = append(r.diagnostics, d)
 }
 
 // BuildRegistry resolves precedence across all discovered skills and builds a Registry.

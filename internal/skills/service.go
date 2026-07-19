@@ -151,6 +151,18 @@ func (s *Service) Lookup(name string) *Skill {
 	return nil
 }
 
+// IsDisabled returns true if the named skill is in the disabled set.
+func (s *Service) IsDisabled(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, d := range s.disabled {
+		if d == name {
+			return true
+		}
+	}
+	return false
+}
+
 // SkillsCatalogXML returns an XML fragment listing effective skills for the system prompt.
 // Returns empty string if no effective skills exist.
 func (s *Service) SkillsCatalogXML() string {

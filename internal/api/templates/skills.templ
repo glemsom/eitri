@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"fmt"
+
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -31,6 +33,7 @@ templ SkillsTable(registry *skills.Registry) {
 	@EffectiveSkills(registry)
 	@ShadowedSkills(registry)
 	@InvalidSkills(registry)
+	@DisabledSkills(registry)
 	@SkillDiagnostics(registry)
 }
 
@@ -43,6 +46,7 @@ templ EffectiveSkills(registry *skills.Registry) {
 					<span class="skill-name">{ skill.Name }</span>
 					<span class="skill-scope badge">{ string(skill.Scope) }</span>
 					<span class="skill-status badge badge-ok">effective</span>
+					<button hx-post={ fmt.Sprintf("/api/skills/%s/disable", skill.Name) } hx-target="#skills-table" class="btn btn-sm">Disable</button>
 				</div>
 				<p class="skill-description">{ skill.Description }</p>
 				<p class="skill-path text-muted">{ skill.Path }</p>
@@ -53,6 +57,26 @@ templ EffectiveSkills(registry *skills.Registry) {
 		<p class="text-muted">No effective skills found.</p>
 	}
 }
+
+templ DisabledSkills(registry *skills.Registry) {
+	if registry != nil && len(registry.Disabled()) > 0 {
+		<h3>Disabled Skills</h3>
+		for _, skill := range registry.Disabled() {
+			<div class="skill-card skill-disabled">
+				<div class="skill-card-header">
+					<span class="skill-name">{ skill.Name }</span>
+					<span class="skill-scope badge">{ string(skill.Scope) }</span>
+					<span class="skill-status badge badge-warn">disabled</span>
+					<button hx-post={ fmt.Sprintf("/api/skills/%s/enable", skill.Name) } hx-target="#skills-table" class="btn btn-sm">Enable</button>
+				</div>
+				<p class="skill-description">{ skill.Description }</p>
+				<p class="skill-path text-muted">{ skill.Path }</p>
+			</div>
+		}
+		}
+	}
+
+
 
 templ ShadowedSkills(registry *skills.Registry) {
 	if registry != nil && len(registry.Shadowed()) > 0 {

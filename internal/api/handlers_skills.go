@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/glemsom/eitri/internal/api/templates"
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -271,4 +273,82 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (s *Server) handleDisableSkill(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if s.config.SkillsService != nil {
+		s.config.SkillsService.SetDisabled(name, true, func(disabled []string) {
+			cfg, err := config.Load(s.config.ConfigPath)
+			if err != nil {
+				s.logger.Error("failed to load config for skill disable", "error", err)
+				return
+			}
+			cfg.DisabledSkills = disabled
+			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+				s.logger.Error("failed to save config for skill disable", "error", err)
+			}
+		})
+	}
+
+	registry := s.refreshSkillsRegistry()
+
+	// Auto-deactivate in all sessions
+	deactivatedCount := 0
+	for _, sess := range s.config.SessionManager.All() {
+		for _, activeSkill := range sess.ActiveSkills {
+			if activeSkill == name {
+				s.config.SessionManager.DeactivateSkill(sess.ID, name)
+				deactivatedCount++
+				break
+			}
+		}
+	}
+
+	if deactivatedCount > 0 {
+		registry.AppendDiagnostic(skills.Diagnostic{
+			Severity: skills.SeverityWarn,
+			Message:  fmt.Sprintf("Skill %q disabled and deactivated from %d session(s)", name, deactivatedCount),
+			Skill:    name,
+		})
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleEnableSkill(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if s.config.SkillsService != nil {
+		s.config.SkillsService.SetDisabled(name, false, func(disabled []string) {
+			cfg, err := config.Load(s.config.ConfigPath)
+			if err != nil {
+				s.logger.Error("failed to load config for skill enable", "error", err)
+				return
+			}
+			cfg.DisabledSkills = disabled
+			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+				s.logger.Error("failed to save config for skill enable", "error", err)
+			}
+		})
+	}
+
+	registry := s.refreshSkillsRegistry()
+
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

@@ -59,6 +59,10 @@ func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 
 	skill := t.skillsSvc.Lookup(parsed.Name)
 	if skill == nil {
+		// Check if disabled
+		if t.skillsSvc.IsDisabled(parsed.Name) {
+			return textBlocks(fmt.Sprintf("Error: skill %q is disabled. Enable it from the Skills page.", parsed.Name)), nil, true
+		}
 		return textBlocks(fmt.Sprintf("Error: skill %q not found in effective skills", parsed.Name)), nil, true
 	}
 
