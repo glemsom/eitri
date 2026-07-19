@@ -20,6 +20,9 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
+// streamFlushWindow is the delay before sending the stop signal in streaming
+// markdown tests, giving the browser's flush timer time to fire.
+const streamFlushWindow = 150 * time.Millisecond
 // findChrome searches common locations for a Chrome/Chromium binary.
 // Returns empty string if not found.
 func findChrome() string {
@@ -248,8 +251,10 @@ func fakeDelayedFirstTokenChatServer(t *testing.T, delay time.Duration, reply st
 
 // fakeMarkdownChatServer emits streaming tokens with markdown content for testing
 // streaming markdown formatting in the browser.
-// tokenDelay controls the delay between tokens (use a longer delay for test windows).
-func fakeMarkdownChatServer(t *testing.T, reply string, tokenDelay time.Duration) *httptest.Server {
+// preStopDelay controls how long the server waits before sending the stop signal
+// after all content tokens. This is NOT an inter-token pacing delay — it gives
+// the browser's flush timer window to fire before completion.
+func fakeMarkdownChatServer(t *testing.T, reply string, preStopDelay time.Duration) *httptest.Server {
 	t.Helper()
 
 	tokens := []string{reply}
@@ -290,7 +295,7 @@ func fakeMarkdownChatServer(t *testing.T, reply string, tokenDelay time.Duration
 			select {
 			case <-r.Context().Done():
 				return
-			case <-time.After(tokenDelay):
+			case <-time.After(preStopDelay):
 			}
 
 			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
@@ -377,75 +382,28 @@ func putBrowserConfig(t *testing.T, server *httptest.Server, body string) {
 }
 
 
-// streamingMarkdownTestHelper is a test helper for streaming markdown browser tests.
-// It creates the fake LLM server, test server, configures provider, opens the browser,
-// sends the input message, and invokes checkStream during streaming phase.
-// After checkStream returns, it waits for the message to complete.
-func streamingMarkdownTestHelper(t *testing.T, input, markdown string, tokenDelay time.Duration, checkStream func(ctx context.Context) bool) {
-	t.Helper()
-
-	llmSrv := fakeMarkdownChatServer(t, markdown, tokenDelay)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", input, chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming assertion
-	deadline := time.Now().Add(4 * time.Second)
-	var asserted bool
-	for time.Now().Before(deadline) {
-		if checkStream(ctx) {
-			asserted = true
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !asserted {
-		t.Error("streaming assertion never passed")
-	}
-
-	// Wait for done
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete (no final assistant message)")
-	}
+// streamingMarkdownTestOptions controls single-token vs multi-token streaming mode.
+type streamingMarkdownTestOptions struct {
+	// SingleToken sets whether the fake LLM server emits the full reply as one token.
+	// Used for final-render regression tests (code blocks, math, mermaid).
+	SingleToken bool
+	// Timeout overrides the default 4s deadline for the render assertion.
+	// Used when SingleToken=true (tests need longer for Prism/KaTeX/Mermaid).
+	Timeout time.Duration
 }
 
-// streamingMarkdownFinalRenderHelper is for final-render regression tests.
-// Uses fakeMarkdownReplyServer (single token with full reply).
-func streamingMarkdownFinalRenderHelper(t *testing.T, input, markdown string, timeout time.Duration, checkFinal func(ctx context.Context) bool) {
+// streamingMarkdownTestHelper is a unified test helper for streaming markdown browser tests.
+// For single-token mode (final-render tests), set SingleToken=true in opts.
+// For multi-token mode (streaming tests), leave opts zero-valued.
+func streamingMarkdownTestHelper(t *testing.T, markdown string, opts streamingMarkdownTestOptions, check func(ctx context.Context) bool) {
 	t.Helper()
 
-	llmSrv := fakeMarkdownReplyServer(t, markdown)
+	var llmSrv *httptest.Server
+	if opts.SingleToken {
+		llmSrv = fakeMarkdownReplyServer(t, markdown)
+	} else {
+		llmSrv = fakeMarkdownChatServer(t, markdown, streamFlushWindow)
+	}
 	defer llmSrv.Close()
 
 	server := newTestServerWithRuns(t)
@@ -463,24 +421,29 @@ func streamingMarkdownFinalRenderHelper(t *testing.T, input, markdown string, ti
 	}
 
 	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", input, chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", "test", chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("send failed: %v", err)
+	}
+
+	timeout := 4 * time.Second
+	if opts.Timeout > 0 {
+		timeout = opts.Timeout
 	}
 
 	deadline := time.Now().Add(timeout)
-	var found bool
+	var ok bool
 	for time.Now().Before(deadline) {
-		if checkFinal(ctx) {
-			found = true
+		if check(ctx) {
+			ok = true
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
-	if !found {
-		t.Error("final render assertion never passed")
+	if !ok {
+		t.Error("assertion never passed")
 	}
 }
 
@@ -5353,7 +5316,7 @@ func TestBrowser_ConfirmationKeydownRemovedOnClose(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownBold verifies **bold** renders as <strong> during streaming.
 func TestBrowser_StreamingMarkdownBold(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test bold", "This text is **bold** during streaming", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "This text is **bold** during streaming", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasBold bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
@@ -5364,7 +5327,7 @@ func TestBrowser_StreamingMarkdownBold(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownItalic verifies *italic* renders as <em> during streaming.
 func TestBrowser_StreamingMarkdownItalic(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test italic", "This text is *italic* during streaming", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "This text is *italic* during streaming", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasItalic bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content em') !== null`, &hasItalic),
@@ -5375,7 +5338,7 @@ func TestBrowser_StreamingMarkdownItalic(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownInlineCode verifies `code` renders as <code> during streaming.
 func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test code", "Use the `fmt.Println` function", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Use the `fmt.Println` function", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasCode bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content code') !== null`, &hasCode),
@@ -5386,7 +5349,7 @@ func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownLinkXSS verifies javascript: URLs render as plain text (no <a>).
 func TestBrowser_StreamingMarkdownLinkXSS(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test xss", "Click [here](javascript:alert(1)) for more", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Click [here](javascript:alert(1)) for more", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5412,7 +5375,7 @@ func TestBrowser_StreamingMarkdownLinkXSS(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownDataURL verifies data: URLs render as plain text (no <a>).
 func TestBrowser_StreamingMarkdownDataURL(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test data", "Check [bad](data:text/html,<b>XSS</b>) here", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Check [bad](data:text/html,<b>XSS</b>) here", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5437,7 +5400,7 @@ func TestBrowser_StreamingMarkdownDataURL(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownMailto verifies mailto: links produce <a> during streaming.
 func TestBrowser_StreamingMarkdownMailto(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test mail", "Email [me](mailto:user@example.com) now", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Email [me](mailto:user@example.com) now", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5471,7 +5434,7 @@ func TestBrowser_StreamingMarkdownMailto(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownHTTPLink verifies http: links produce <a> with target=_blank rel=noopener during streaming.
 func TestBrowser_StreamingMarkdownHTTPLink(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test http", "Check [example](http://example.com) here", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Check [example](http://example.com) here", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5503,7 +5466,7 @@ func TestBrowser_StreamingMarkdownHTTPLink(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownHTTPSLink verifies https: links produce <a> with target=_blank rel=noopener during streaming.
 func TestBrowser_StreamingMarkdownHTTPSLink(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test https", "Check [example](https://example.com) details", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Check [example](https://example.com) details", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5535,7 +5498,7 @@ func TestBrowser_StreamingMarkdownHTTPSLink(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownLink verifies [text](url) renders as <a> during streaming.
 func TestBrowser_StreamingMarkdownLink(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test link", "Check [example](https://example.com) for details", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Check [example](https://example.com) for details", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasLink bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
@@ -5557,7 +5520,7 @@ func TestBrowser_StreamingMarkdownLink(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownParagraphs verifies \n\n creates <p> boundaries during streaming.
 func TestBrowser_StreamingMarkdownParagraphs(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test paragraphs", "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var pCount int
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.querySelectorAll('p').length : 0`, &pCount),
@@ -5568,7 +5531,7 @@ func TestBrowser_StreamingMarkdownParagraphs(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownMixed verifies mixed formatting renders correctly during streaming.
 func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test mixed", "Mix of **bold**, *italic*, and `code` inline", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Mix of **bold**, *italic*, and `code` inline", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasBold, hasItalic, hasCode bool
 		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content strong')`, &hasBold),
@@ -5581,7 +5544,7 @@ func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownIncomplete verifies unclosed **text doesn't produce <strong> (graceful degradation).
 func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test incomplete", "This has **unclosed bold marker", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "This has **unclosed bold marker", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasBold bool
 		var contentText string
 		_ = chromedp.Run(ctx,
@@ -5605,7 +5568,7 @@ func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownRenderingPhaseCSS verifies .streaming-message.rendering after done.
 func TestBrowser_StreamingMarkdownRenderingPhaseCSS(t *testing.T) {
-	streamingMarkdownTestHelper(t, "test render phase", "Simple text to render", 150*time.Millisecond, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Simple text to render", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var renderingFound bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var s = document.getElementById('streaming'); s && s.classList.contains('rendering')`, &renderingFound),
@@ -5625,7 +5588,7 @@ func TestBrowser_StreamingMarkdownRenderingPhaseCSS(t *testing.T) {
 // TestBrowser_StreamingMarkdownFinalRenderCodeBlock verifies ```go fenced code block renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderCodeBlock(t *testing.T) {
 	markdown := "Here is a Go program:\n\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```"
-	streamingMarkdownFinalRenderHelper(t, "test code block", markdown, 8*time.Second, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, markdown, streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
 		var finalCodeBlock bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var msgs = document.querySelectorAll('.message-assistant:not(#streaming)'); if (msgs.length === 0) false; else msgs[msgs.length-1].querySelector('pre code') !== null`, &finalCodeBlock),
@@ -5647,7 +5610,7 @@ func TestBrowser_StreamingMarkdownFinalRenderCodeBlock(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownFinalRenderMath verifies $$a+b$$ renders with KaTeX after done.
 func TestBrowser_StreamingMarkdownFinalRenderMath(t *testing.T) {
-	streamingMarkdownFinalRenderHelper(t, "test math", "The formula: $$a+b$$ is simple", 8*time.Second, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "The formula: $$a+b$$ is simple", streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
 		var hasMath bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.querySelector('.katex') !== null || document.querySelector('.katex-html') !== null`, &hasMath),
@@ -5658,7 +5621,7 @@ func TestBrowser_StreamingMarkdownFinalRenderMath(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownFinalRenderMermaid verifies ```mermaid diagram renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderMermaid(t *testing.T) {
-	streamingMarkdownFinalRenderHelper(t, "test mermaid", "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", 8*time.Second, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
 		var hasMermaid bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.querySelector('.mermaid') !== null || document.querySelector('[id^="mermaid"]') !== null`, &hasMermaid),
