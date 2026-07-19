@@ -352,3 +352,70 @@ func (s *Server) handleEnableSkill(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
+
+func (s *Server) handleDisableAllSkills(w http.ResponseWriter, r *http.Request) {
+	registry := s.refreshSkillsRegistry()
+
+	var names []string
+	for _, skill := range registry.Effective() {
+		names = append(names, skill.Name)
+	}
+
+	if s.config.SkillsService != nil {
+		s.config.SkillsService.SetDisabledList(names, func(disabled []string) {
+			cfg, err := config.Load(s.config.ConfigPath)
+			if err != nil {
+				s.logger.Error("failed to load config for disable-all", "error", err)
+				return
+			}
+			cfg.DisabledSkills = disabled
+			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+				s.logger.Error("failed to save config for disable-all", "error", err)
+			}
+		})
+	}
+
+	registry = s.refreshSkillsRegistry()
+
+	for _, sess := range s.config.SessionManager.All() {
+		for _, active := range sess.ActiveSkills {
+			s.config.SessionManager.DeactivateSkill(sess.ID, active)
+		}
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleEnableAllSkills(w http.ResponseWriter, r *http.Request) {
+	if s.config.SkillsService != nil {
+		s.config.SkillsService.ClearDisabled(func(disabled []string) {
+			cfg, err := config.Load(s.config.ConfigPath)
+			if err != nil {
+				s.logger.Error("failed to load config for enable-all", "error", err)
+				return
+			}
+			cfg.DisabledSkills = disabled
+			if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+				s.logger.Error("failed to save config for enable-all", "error", err)
+			}
+		})
+	}
+
+	registry := s.refreshSkillsRegistry()
+
+	if r.Header.Get("HX-Request") == "true" {
+		component := templates.SkillsTable(registry)
+		component.Render(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}

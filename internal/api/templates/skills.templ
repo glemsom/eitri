@@ -21,6 +21,16 @@ templ SkillsView(registry *skills.Registry) {
 			<button hx-post="/api/skills/refresh" hx-target="#skills-table" class="btn">
 				Refresh Skills
 			</button>
+			if registry != nil && len(registry.Effective()) > 0 {
+				<button hx-post="/api/skills/disable-all" hx-target="#skills-table" class="btn">
+					Disable All
+				</button>
+			}
+			if registry != nil && len(registry.Disabled()) > 0 {
+				<button hx-post="/api/skills/enable-all" hx-target="#skills-table" class="btn">
+					Enable All
+				</button>
+			}
 		</div>
 
 		<div id="skills-table" class="skills-table">

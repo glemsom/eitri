@@ -220,6 +220,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/sessions/{id}/skills/{name}/activate", s.handleActivateSessionSkill)
 	s.mux.HandleFunc("POST /api/skills/{name}/disable", s.handleDisableSkill)
 	s.mux.HandleFunc("POST /api/skills/{name}/enable", s.handleEnableSkill)
+	s.mux.HandleFunc("POST /api/skills/disable-all", s.handleDisableAllSkills)
+	s.mux.HandleFunc("POST /api/skills/enable-all", s.handleEnableAllSkills)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

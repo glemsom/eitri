@@ -3606,3 +3606,113 @@ func TestSkillsEndpoint_AutoDeactivate(t *testing.T) {
 		}
 	}
 }
+
+func TestSkillsEndpoint_DisableAll(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "skill-a"), "skill-a", "# Skill A")
+	writeSkill(t, filepath.Join(rootDir, "skill-b"), "skill-b", "# Skill B")
+
+	// Disable all via POST
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/disable-all", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("disable-all status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, "Disabled Skills") {
+		t.Fatalf("disable-all response missing 'Disabled Skills' section: %s", content)
+	}
+	if !strings.Contains(content, "skill-a") {
+		t.Fatalf("disable-all response missing skill-a: %s", content)
+	}
+	if !strings.Contains(content, "skill-b") {
+		t.Fatalf("disable-all response missing skill-b: %s", content)
+	}
+
+	// Verify config has both skills disabled
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabledMap := make(map[string]bool)
+	for _, d := range cfg.DisabledSkills {
+		disabledMap[d] = true
+	}
+	if !disabledMap["skill-a"] {
+		t.Fatal("config.DisabledSkills missing skill-a")
+	}
+	if !disabledMap["skill-b"] {
+		t.Fatal("config.DisabledSkills missing skill-b")
+	}
+}
+
+func TestSkillsEndpoint_EnableAll(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "skill-a"), "skill-a", "# Skill A")
+	writeSkill(t, filepath.Join(rootDir, "skill-b"), "skill-b", "# Skill B")
+
+	// First disable all
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/disable-all", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Now enable all
+	req, _ = http.NewRequest("POST", server.URL+"/api/skills/enable-all", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enable-all status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, "Effective Skills") {
+		t.Fatalf("enable-all response missing 'Effective Skills' section: %s", content)
+	}
+	if !strings.Contains(content, "skill-a") {
+		t.Fatalf("enable-all response missing skill-a: %s", content)
+	}
+	if !strings.Contains(content, "skill-b") {
+		t.Fatalf("enable-all response missing skill-b: %s", content)
+	}
+
+	// Verify config has empty disabled list
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.DisabledSkills) != 0 {
+		t.Fatalf("config.DisabledSkills should be empty after enable-all, got %v", cfg.DisabledSkills)
+	}
+}
