@@ -832,6 +832,8 @@
     overlay.id = 'confirmation-overlay';
     overlay.className = 'confirmation-overlay';
 
+    overlay.setAttribute('aria-live', 'polite');
+
     overlay.innerHTML =
       '<div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">' +
       '<h3 id="confirmation-title">&#9888; Path requires confirmation</h3>' +
@@ -858,26 +860,55 @@
       resolveConfirmation(false);
     });
 
-    // Keyboard: Enter on Allow button, Escape not allowed (must decide)
-    document.addEventListener('keydown', confirmationKeyHandler);
+    // Autofocus Deny button (safety-first default)
+    document.getElementById('confirm-deny').focus();
+
+    // Keyboard: focus trap, Enter on focused button, Escape denies
+    overlay.addEventListener('keydown', confirmationKeyHandler);
   }
 
   function closeConfirmationModal() {
     var overlay = document.getElementById('confirmation-overlay');
     if (overlay) {
+      overlay.removeEventListener('keydown', confirmationKeyHandler);
       overlay.remove();
     }
-    document.removeEventListener('keydown', confirmationKeyHandler);
     activeConfirmation = null;
   }
 
   function confirmationKeyHandler(e) {
+    var allowBtn = document.getElementById('confirm-allow');
+    var denyBtn = document.getElementById('confirm-deny');
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      resolveConfirmation(false);
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      if (!allowBtn || !denyBtn) return;
+      var focusable = [denyBtn, allowBtn];
+      var currentIndex = focusable.indexOf(document.activeElement);
+      if (currentIndex === -1) return;
+
+      e.preventDefault();
+      if (e.shiftKey) {
+        // Shift+Tab: reverse wrap
+        var prevIndex = (currentIndex - 1 + focusable.length) % focusable.length;
+        focusable[prevIndex].focus();
+      } else {
+        // Tab: forward wrap
+        var nextIndex = (currentIndex + 1) % focusable.length;
+        focusable[nextIndex].focus();
+      }
+      return;
+    }
+
     if (e.key === 'Enter') {
-      var allowBtn = document.getElementById('confirm-allow');
       if (allowBtn && document.activeElement === allowBtn) {
         resolveConfirmation(true);
       }
-      var denyBtn = document.getElementById('confirm-deny');
       if (denyBtn && document.activeElement === denyBtn) {
         resolveConfirmation(false);
       }
