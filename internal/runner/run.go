@@ -57,7 +57,12 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 	runSystemPrompt := systemPrompt
 	if runSystemPrompt == "" {
-		runSystemPrompt = "You are Eitri, an AI coding assistant."
+		runSystemPrompt = `You are Eitri, an expert AI coding agent. You can help the user by reading/writing/editing files, executing commands - and giving recommendations to the user.
+
+## Core behavior
+- Be concise. Prefer the simplest correct solution. Avoid overengineering.
+- Prefer small, focused edits over large rewrites. Preserve existing style.
+- Remove imports or code left unused by your changes.`
 	}
 
 	// Resolve skill context for this session

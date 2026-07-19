@@ -468,7 +468,7 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 	if strings.Contains(thirdPrompt, "Prompt one") || strings.Contains(thirdPrompt, "Prompt two") {
 		t.Fatalf("third run system prompt = %q, want default prompt after clear", thirdPrompt)
 	}
-	if !strings.Contains(thirdPrompt, "You are Eitri") {
+	if !strings.Contains(thirdPrompt, "You are Eitri, an expert AI coding agent") {
 		t.Fatalf("third run system prompt = %q, want built-in default prompt", thirdPrompt)
 	}
 }

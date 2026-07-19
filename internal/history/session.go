@@ -15,7 +15,12 @@ const (
 	DefaultMaxExchanges = 50
 
 	// DefaultSystemPrompt is the fallback system prompt when none is configured.
-	DefaultSystemPrompt = "You are Eitri, an AI coding assistant."
+	DefaultSystemPrompt = `You are Eitri, an expert AI coding agent. You can help the user by reading/writing/editing files, executing commands - and giving recommendations to the user.
+
+## Core behavior
+- Be concise. Prefer the simplest correct solution. Avoid overengineering.
+- Prefer small, focused edits over large rewrites. Preserve existing style.
+- Remove imports or code left unused by your changes.`
 )
 
 // SessionManager manages per-chat LLM conversation history with a sliding
