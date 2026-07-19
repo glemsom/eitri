@@ -5349,53 +5349,55 @@ func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownLinkXSS verifies javascript: URLs render as plain text (no <a>).
 func TestBrowser_StreamingMarkdownLinkXSS(t *testing.T) {
+	var contentText string
 	streamingMarkdownTestHelper(t, "Click [here](javascript:alert(1)) for more", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasLink bool
+		var hasLink, streamingExists bool
 		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, &streamingExists),
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
 		)
-		if err != nil {
+		if err != nil || !streamingExists {
 			return false
 		}
 		if hasLink {
-			t.Error("javascript: URL should NOT produce <a> tag")
-			return true
+			return false
 		}
-		// Verify the text is still visible (plain text)
-		var contentText string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
 		)
-		if !strings.Contains(contentText, "here") {
-			t.Errorf("link text should appear in content, got %q", contentText)
-		}
-		return true
+		return strings.Contains(contentText, "here")
 	})
+	if contentText == "" {
+		t.Error("streaming element should contain text content")
+	} else if !strings.Contains(contentText, "here") {
+		t.Errorf("link text should appear in content, got %q", contentText)
+	}
 }
-
 // TestBrowser_StreamingMarkdownDataURL verifies data: URLs render as plain text (no <a>).
 func TestBrowser_StreamingMarkdownDataURL(t *testing.T) {
+	var contentText string
 	streamingMarkdownTestHelper(t, "Check [bad](data:text/html,<b>XSS</b>) here", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasLink bool
+		var hasLink, streamingExists bool
 		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, &streamingExists),
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
 		)
-		if err != nil {
+		if err != nil || !streamingExists {
 			return false
 		}
 		if hasLink {
-			t.Error("data: URL should NOT produce <a> tag")
-			return true
+			return false
 		}
-		var contentText string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
 		)
-		if !strings.Contains(contentText, "bad") {
-			t.Errorf("link text should appear in content, got %q", contentText)
-		}
-		return true
+		return strings.Contains(contentText, "bad")
 	})
+	if contentText == "" {
+		t.Error("streaming element should contain text content")
+	} else if !strings.Contains(contentText, "bad") {
+		t.Errorf("link text should appear in content, got %q", contentText)
+	}
 }
 
 // TestBrowser_StreamingMarkdownMailto verifies mailto: links produce <a> during streaming.
@@ -5544,26 +5546,25 @@ func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownIncomplete verifies unclosed **text doesn't produce <strong> (graceful degradation).
 func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
+	var (
+		hasBold    bool
+		contentText string
+	)
 	streamingMarkdownTestHelper(t, "This has **unclosed bold marker", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasBold bool
-		var contentText string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
 		)
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
 		)
-		if contentText == "" {
-			return false
-		}
-		if hasBold {
-			t.Error("unclosed **bold should NOT produce <strong> \u2014 graceful degradation expected")
-		}
-		if !strings.Contains(contentText, "**unclosed") && !strings.Contains(contentText, "unclosed") {
-			t.Errorf("raw text with unclosed marker should appear in content, got %q", contentText)
-		}
-		return true
+		return contentText != ""
 	})
+	if hasBold {
+		t.Error("unclosed **bold should NOT produce <strong> \u2014 graceful degradation expected")
+	}
+	if !strings.Contains(contentText, "**unclosed") && !strings.Contains(contentText, "unclosed") {
+		t.Errorf("raw text with unclosed marker should appear in content, got %q", contentText)
+	}
 }
 
 // TestBrowser_StreamingMarkdownRenderingPhaseCSS verifies .streaming-message.rendering after done.
