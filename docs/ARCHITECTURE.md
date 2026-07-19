@@ -5,7 +5,7 @@
 
 ## Overview
 
-Eitri is a self-hosted, single-binary AI coding agent for Linux. It launches an HTTP server with an HTMX-based chat UI for Chrome on Linux. A browser profile can keep up to 10 in-memory chat sessions via top-bar tabs. Each session gets a tmux-managed shell session for command execution, initially rooted at the launch workspace (process CWD). No sandbox.
+Eitri is a self-hosted, single-binary AI coding agent for Linux. It launches an HTTP server with an HTMX-based chat UI for Chrome on Linux. A browser profile can keep up to 10 in-memory chat sessions via top-bar tabs. Shell commands execute directly on the host via `os/exec.Command` with per-command timeout. No sandbox. No tmux dependency.
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,7 @@ flowchart LR
         RunSt["runstate/ (SSE broadcast)"]
         FileUtil["fileutil/ (file operations)"]
         Skills["skills/ (Agent Skills registry)"]
-        Executor["executor/ (tmux)"]
+        Tools["tool/ (built-in tools)"]
         Config["config/ (JSON file)"]
         Provider["provider/ (profiles + auth)"]
     end
@@ -35,9 +35,9 @@ flowchart LR
     RunSvc --> RunSt
     RunSvc --> FileUtil
     RunSvc --> Skills
-    RunSvc --> Executor
     RunSvc --> UISess
     RunSvc --> Provider
+    RunSvc --> Tools
 ```
 
 ## Module map
@@ -45,19 +45,17 @@ flowchart LR
 ### `cmd/eitri/main.go` — Entry point
 
 Orchestrates startup:
-1. **Runtime audit** (`executor.RunAudit`) — verifies `tmux` binary on `$PATH`
-2. **Workspace capture** — resolves process CWD as the launch workspace; v1 has no CLI workspace argument
-3. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
-4. **tmux session manager** (`executor.SessionManager`) — manages per-chat tmux executor lifecycle; sessions are in-memory; tmux sessions start in launch workspace; startup also begins idle-timeout cleanup using configured `session_timeout`
-5. **UI session manager** (`session.Manager`) — in-memory browser-facing session state with `browser_id` ownership and max-session cap
-6. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
-7. **Built-in tools** — `bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `render_quick_replies`, `skill`. Implementations live in `internal/tool/` — each tool has one job and a minimal parameter schema.
-8. **LLM history service** (`internal/history/`) — stores LLM conversation history with sliding window
-9. **File utility** (`internal/fileutil/`) — file path validation, workspace checks, read/write operations
-10. **Run service** (`runner.RunService`) — run lifecycle, agent loop, SSE broadcast via `runstate.State`
-11. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `config.Manager`, and `skills.Service`
+1. **Workspace capture** — resolves process CWD as the launch workspace; v1 has no CLI workspace argument
+2. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
+3. **Tool registry** — registers built-in tools (`bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `render_quick_replies`, `skill`). Implementations live in `internal/tool/` — each tool has one job and a minimal parameter schema.
+4. **UI session manager** (`session.Manager`) — in-memory browser-facing session state with `browser_id` ownership and max-session cap
+5. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
+6. **LLM history service** (`internal/history/`) — stores LLM conversation history with sliding window
+7. **File utility** (`internal/fileutil/`) — file path validation, workspace checks, read/write operations
+8. **Run service** (`runner.RunService`) — run lifecycle, agent loop, SSE broadcast via `runstate.State`
+9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `config.Manager`, and `skills.Service`
 
-Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, closes executors, then shuts down HTTP.
+Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, then shuts down HTTP.
 
 ### `internal/history/` — LLM conversation history
 
@@ -211,52 +209,29 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 
 **RunService**: consolidates run lifecycle behind a single seam. `RunState` holds `runstate.State` for SSE broadcast + cancel + done signal. `Subscribe()`/`Unsubscribe()` delegate to `runstate.State`. Auth refresh persistence handled via `PersistAuth` callback. Conversation history managed via `internal/history.SessionManager`; UI session state via `internal/session.Manager`. `Cancel()`/`CancelAll()` stop active runs. `AppendEvent()` broadcasts SSE events and persists assistant messages. Config is read fresh on each `StartRun()` — no runner cache persisting across runs.
 
-### `internal/executor/` — command execution
+### `internal/tool/` — built-in tools
 
 | File | Responsibility |
 |------|---------------|
-| `executor.go` | `CommandExecutor` interface — abstract command execution |
-| `tmux.go` | Real tmux implementation |
-| `session.go` | `SessionManager` — per-session executor lifecycle, idle timeout |
-| `audit.go` | `RunAudit()` — preflight check for tmux binary |
-| `mock.go` | `MockExecutor` — test double with canned responses |
+| `registry.go` | `NewRegistry()` — registry of tool handlers registered by name |
+| `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 128 KiB output cap |
+| `glob.go` | `GlobTool` — workspace-scoped glob pattern matching |
+| `grep.go` | `GrepTool` — workspace-scoped grep with context lines |
+| `read.go` | `ReadTool` — read file with line info and hashes |
+| `write.go` | `WriteTool` — write file with workspace validation |
+| `edit.go` | `EditTool` — edit file with line-hash anchors |
+| `render_mermaid.go` | `RenderMermaidTool` — emit mermaid diagram data for server-side rendering |
+| `render_quick_replies.go` | `RenderQuickRepliesTool` — emit suggestion chips for UI |
+| `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
 
-**CommandExecutor interface**:
-```go
-type CommandResult struct {
-    Stdout     string
-    Stderr     string
-    ExitCode   int
-    TimedOut   bool
-    DurationMs int64
-    Truncated  bool
-}
-
-type CommandExecutor interface {
-    ExecuteCommand(ctx context.Context, command string) (CommandResult, error)
-    Close() error
-}
-```
-
-`ExecuteCommand` is final-only in v1. It returns after command completion, timeout, cancellation, or executor failure. Non-zero shell exit is represented in `CommandResult.ExitCode`, not as a Go error. Timeout sets `TimedOut`; context cancellation stops active command promptly and returns a context error.
-
-**Tmux executor architecture**:
-1. Starts a long-running tmux session with a shell loop inside
-2. Commands sent via `tmux send-keys` with literal string (no shell interpolation)
-3. Output captured via `tmux capture-pane`, delimited by sentinel markers
-4. Shell state (env, cwd) persists between commands within same session
-5. Configurable timeout per command (default 60s). Concurrent commands in the same session are rejected with a clear error. Initial tmux working directory is the launch workspace; later shell `cd` persists inside that tmux session only.
-6. Output capped at 128 KiB; excess output sets `CommandResult.Truncated`.
-7. Process group killed on `Close()`.
-8. **Session death recovery** — if the tmux session is killed externally, `ExecuteCommand` recreates it automatically on the next call.
-
-**SessionManager**:
-- Map of `sessionID → managedSession` (holds `CommandExecutor` + timeout state)
-- `GetOrCreate(sessionID)` — returns existing executor or creates new one
-- `StartTimeoutLoop()` — background goroutine checks idle timeout every 30s (default 30m)
-- `Close(sessionID)` — cancels/tears down one executor and frees the slot
-- `CloseAll()` on graceful shutdown
-- No session metadata/history persistence; server restart loses sessions
+**BashTool** replaces the old `TmuxExecutor`:
+- Creates `exec.Command` per call — no persistent shell session
+- Receives `workspace` and `timeout` as constructor params
+- Captures stdout and stderr separately via pipes
+- Exit code from `cmd.ProcessState.ExitCode()`
+- Per-command timeout via `context.WithTimeout` (default 60s from `command_timeout` config)
+- Output capped at 128 KiB
+- No cross-turn shell state — agent must use `&&` chains or explicit env vars
 
 ### `internal/config/` — configuration
 
@@ -302,6 +277,7 @@ sequenceDiagram
     participant RunSvc as runner.RunService
     participant LLM as litellm.LLMService
     participant Skills as skills.Service
+    participant Tool as tool/
     participant Executor as executor/
 
     Browser->>API: GET /api/sessions/{id}/complete/skills or /complete/files
@@ -331,8 +307,8 @@ sequenceDiagram
             RunSvc->>Skills: Activate(sessionID, name)
             Skills-->>RunSvc: structured skill_content
         else bash
-            RunSvc->>Executor: tool executes (tmux)
-            Executor-->>RunSvc: result
+            RunSvc->>Tool: BashTool executes (exec.Command)
+            Tool-->>RunSvc: result (stdout, stderr, exit code)
         else write / edit
             RunSvc->>RunSvc: validate workspace path, write or modify file via fileutil
         end
@@ -404,13 +380,12 @@ eitri/
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
 │   ├── config/                # Config loading, validation, atomic writes
-│   ├── executor/              # tmux command executor + session manager
+│   ├── tool/                  # Built-in tools (bash, read, write, edit, glob, grep, render, skill)
 │   ├── litellm/               # LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot)
 │   ├── provider/              # Provider profiles + auth seams
 │   ├── runner/                # Run lifecycle + agent loop
 │   ├── runstate/              # SSE broadcast infrastructure + context tracking
 │   ├── session/               # UI session management (browser-facing)
-│   ├── tool/                  # Built-in tools
 │   └── skills/                # Agent Skills discovery, registry, activation
 ├── scripts/install.sh
 ├── docs/
@@ -430,7 +405,7 @@ Tests are colocated as `*_test.go`. Browser E2E tests live under `internal/api` 
 
 ## Testing patterns
 
-Canonical test commands, fixtures, browser setup, and per-layer coverage live in [TESTING.md](TESTING.md). Architecture-specific test seams: `CommandExecutor` is mockable via `internal/executor/mock.go`; API tests use `httptest`; browser E2E uses chromedp against server-rendered HTMX DOM.
+Canonical test commands, fixtures, browser setup, and per-layer coverage live in [TESTING.md](TESTING.md). BashTool is tested as part of `internal/tool/` tests. API tests use `httptest`; browser E2E uses chromedp against server-rendered HTMX DOM.
 
 ## Key ADRs
 

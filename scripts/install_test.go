@@ -104,7 +104,6 @@ func runInstallScript(t *testing.T, releaseDir, homeDir string, opts runInstallO
 
 	shimDir := t.TempDir()
 	writeExecutable(t, filepath.Join(shimDir, "curl"), fakeCurlScript)
-	writeExecutable(t, filepath.Join(shimDir, "tmux"), "#!/usr/bin/env bash\nexit 0\n")
 
 	cmd := exec.Command("bash", "install.sh")
 	cmd.Dir = "."

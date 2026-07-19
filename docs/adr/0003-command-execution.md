@@ -1,8 +1,10 @@
 # Direct tmux command execution, no sandbox
 
+> **Superseded by [ADR-0015](0015-remove-tmux-executor.md)** — the tmux-backed executor was replaced with direct `exec.Command` execution in the bash tool.
+
 Execute shell commands directly on the host via tmux instead of sandboxing with Bubblewrap. Removes an entire subsystem (namespace setup, mount management, isolation verification) for v1, where Eitri runs single-user on localhost. Sandboxing is deferred — the `CommandExecutor` interface is designed to accommodate it later.
 
-**Status**: Accepted
+**Status**: Superseded
 
 ## Considered Options
 

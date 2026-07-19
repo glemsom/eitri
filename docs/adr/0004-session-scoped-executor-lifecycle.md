@@ -1,8 +1,10 @@
 # Session-scoped executor lifecycle
 
+> **Superseded by [ADR-0015](0015-remove-tmux-executor.md)** — the tmux-backed executor was replaced with direct `exec.Command` execution in the bash tool.
+
 One long-lived tmux session per chat session, created on first command and destroyed on session timeout or explicit close. Shell state (env vars, CWD, running processes) persists between tool calls — matching how humans use a terminal. Idle timeout (default 30 min) and max session limit (10 concurrent) prevent resource exhaustion.
 
-**Status**: Accepted
+**Status**: Superseded
 
 ## Considered Options
 

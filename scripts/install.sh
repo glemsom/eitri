@@ -7,13 +7,6 @@ INSTALL_DIR="${HOME}/.local/bin"
 BINARY_NAME="eitri"
 TARBALL="eitri-linux-amd64.tar.gz"
 
-# Detect tmux
-TMUX_HINT=""
-if command -v tmux &>/dev/null; then
-  TMUX_HINT="ok"
-else
-  TMUX_HINT="missing"
-fi
 
 # Ensure install dir exists
 mkdir -p "${INSTALL_DIR}"
@@ -102,19 +95,6 @@ case ":${PATH}:" in
     ;;
 esac
 
-# Tmux hint
-if [ "${TMUX_HINT}" = "missing" ]; then
-  echo ""
-  echo "Note: tmux was not detected on your PATH."
-  echo "Eitri requires tmux to execute shell commands."
-  echo "Install it via your package manager:"
-  echo "  Debian/Ubuntu:  sudo apt-get install tmux"
-  echo "  Fedora:         sudo dnf install tmux"
-  echo "  Arch Linux:     sudo pacman -S tmux"
-  echo "  Alpine:         sudo apk add tmux"
-  echo "  openSUSE:       sudo zypper install tmux"
-  echo "  Void Linux:     sudo xbps-install tmux"
-fi
 
 echo ""
 echo "Eitri ${TAG} installed successfully!"
