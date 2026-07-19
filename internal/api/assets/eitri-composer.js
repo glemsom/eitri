@@ -117,9 +117,15 @@
       this._visualViewportHandler = viewportHandler;
     }
 
-    /** Auto-expand the textarea as the user types past the initial 3-line height. */
+    /** Auto-expand the textarea as the user types past the initial 3-line height.
+     * When the textarea is empty, resets to default height (3 lines via CSS min-height). */
     _autoResize() {
       var ta = this.textarea;
+      // Reset to default when empty
+      if (ta.value === '') {
+        ta.style.height = '';
+        return;
+      }
       // Temporarily collapse to measure natural scrollHeight
       ta.style.height = 'auto';
       var newHeight = ta.scrollHeight;
