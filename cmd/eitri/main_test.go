@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/config"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -91,15 +90,15 @@ func TestCleanupRuntimeCancelsRuns(t *testing.T) {
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:   session.NewManager(10),
 	})
-	runSvc.SetWorkspace(t.TempDir())
-	runSvc.UpdateProviderConfig(&config.Config{
-		Provider: "custom_openai",
-		BaseURL:  provider.URL,
-		APIKey:   "sk-test",
-		Model:    "test-model",
-	})
 
-	if _, err := runSvc.StartRun(context.Background(), "session-1", "hello"); err != nil {
+	runCfg := runner.RunConfig{
+		ProviderID: "custom_openai",
+		BaseURL:    provider.URL,
+		APIKey:     "sk-test",
+		ModelName:  "test-model",
+	}
+
+	if _, err := runSvc.StartRun(context.Background(), "session-1", "hello", runCfg); err != nil {
 		t.Fatalf("StartRun = %v", err)
 	}
 	if runSvc.ActiveRun("session-1") == nil {

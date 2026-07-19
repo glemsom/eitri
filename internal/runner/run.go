@@ -25,30 +25,10 @@ func (e *MaxTurnsExceededError) Error() string {
 	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
 }
 
-// StartRun starts a new agent run for a session with explicit RunConfig.
+// StartRun starts a new agent run for a session with an explicit RunConfig.
 // Returns warnings about stale skills, and error if run fails.
-func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg ...RunConfig) ([]string, error) {
-	if len(cfg) > 0 {
-		return s.startRunWithConfig(ctx, sessionID, userMessage, cfg[0])
-	}
-	// Legacy path: build RunConfig from stored service fields
-	s.mu.Lock()
-	runCfg := RunConfig{
-		ProviderID:          s.providerID,
-		BaseURL:             s.baseURL,
-		APIKey:              s.apiKey,
-		ModelName:           s.modelName,
-		SystemPrompt:        s.systemPrompt,
-		MaxTurns:            s.maxTurns,
-		MaxHistory:          s.maxHistory,
-		AllowedReadPaths:    s.allowedReadPaths,
-		ProviderAuth:        s.providerAuth,
-		Workspace:           s.workspace,
-		CmdTimeout:          s.cmdTimeout,
-		ContextWindowTokens: s.contextWindowTokens,
-	}
-	s.mu.Unlock()
-	return s.startRunWithConfig(ctx, sessionID, userMessage, runCfg)
+func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
+	return s.startRunWithConfig(ctx, sessionID, userMessage, cfg)
 }
 
 func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {

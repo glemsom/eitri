@@ -111,7 +111,6 @@ func NewServer(cfg ServerConfig) *Server {
 			if err := config.Save(cfg.ConfigPath, cfg2); err != nil {
 				return fmt.Errorf("failed to save refreshed provider auth: %w", err)
 			}
-			cfg.RunService.InvalidateRunners()
 			return nil
 		}
 		cfg.RunService.SetPersistAuth(s.persistAuthFn)

@@ -84,14 +84,9 @@ func main() {
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historyMgr,
 	})
-	runSvc.SetWorkspace(workspace)
-	runSvc.SetCommandTimeout(time.Duration(cfg.CommandTimeout))
-	runSvc.UpdateProviderConfig(cfg)
 
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
-	runSvc.SetUISessionManager(sessionMgr)
-
 	server := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
