@@ -166,6 +166,7 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_StreamingMarkdownFinalRenderCodeBlock` | Fenced code block with Prism highlighting renders after `done` |
 | `TestBrowser_StreamingMarkdownFinalRenderMath` | `$$formula$$` renders with KaTeX after `done` |
 | `TestBrowser_StreamingMarkdownFinalRenderMermaid` | `\`\`mermaid\`\`` diagram renders after `done` |
+| `TestBrowser_StreamingMarkdownAutoScrollRegression` | Multi-paragraph markdown scrolls to bottom during streaming |
 
 #### Planned (not yet implemented)
 
