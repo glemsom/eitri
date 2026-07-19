@@ -28,13 +28,21 @@
     return '';
   }
 
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
   var toolCardTimers = {}; // toolCallKey -> interval ID
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
   var toolArgs = {}; // toolCallKey -> args JSON
   var toolEntryCounter = 0; // monotonic counter for unique tool keys
+  var toolNames = {}; // toolCallKey -> tool name
 
   function clearToolActivity() {
     toolArgs = {};
+    toolNames = {};
     var list = document.querySelector('#tool-activity .tool-activity-list');
     if (list) list.innerHTML = '';
   }
@@ -54,6 +62,7 @@
     toolCardTimers = {};
     toolCardElapsed = {};
     toolArgs = {};
+    toolNames = {};
   }
 
   function clearThinkingPanel() {
@@ -463,6 +472,7 @@
     if (!list) return;
 
     var toolName = packet.tool || packet.name || 'tool';
+    toolNames[toolCallKey] = toolName;
 
     // Idempotent: skip if already exists (e.g. SSE reconnect)
     if (list.querySelector('[data-tool-key="' + toolCallKey + '"]')) return;
@@ -479,19 +489,20 @@
       existingWrappers = list.querySelectorAll('.tool-entry-wrapper');
     }
 
-    var wrapper = document.createElement('div');
-    wrapper.className = 'tool-entry-wrapper';
-    wrapper.id = toolCallKey;
-    wrapper.setAttribute('data-tool-key', toolCallKey);
-    // Build compact running row (client-side, no server render)
-    wrapper.innerHTML = '<div class="tool-entry tool-running">' +
+    // Create <details> element — the tool entry itself, no extra layers
+    var details = document.createElement('details');
+    details.className = 'tool-entry-wrapper';
+    details.id = toolCallKey;
+    details.setAttribute('data-tool-key', toolCallKey);
+    details.innerHTML = '<summary class="tool-entry tool-running">' +
       '<span class="tool-icon">\uD83D\uDD27</span>' +
       '<span class="tool-name">' + escapeHtml(toolName) + '</span>' +
       '<span class="tool-status-label">running...</span>' +
       '<span class="tool-elapsed" data-tool-elapsed="' + toolCallKey + '"></span>' +
-      '</div>';
+      '<span class="tool-chevron">\u25B8</span>' +
+      '</summary>';
 
-    list.appendChild(wrapper);
+    list.appendChild(details);
 
     // Start live elapsed timer
     var startMs = Date.now();
@@ -504,7 +515,7 @@
   }
 
   function renderToolCard(sessionId, type, packet) {
-    // Find the latest running tool entry in sidebar
+    // Find the latest running/active tool entry in sidebar
     var toolCallKey = '';
     var runningEntry = document.querySelector('#tool-activity .tool-entry.tool-running');
     if (runningEntry) {
@@ -533,81 +544,42 @@
     var output = packet.output || '';
     var isError = typeof output === 'string' && output.indexOf('Tool error:') === 0;
 
-    // Build form data for render endpoint
-    const formData = new FormData();
-    formData.append('type', type);
-    formData.append('tool', packet.tool || packet.name || '');
-    formData.append('tool_call_key', toolCallKey);
-    formData.append('status', 'done');
-    formData.append('elapsed', finalElapsed);
-    // Args captured during tool_call; tool_result doesn't carry them
-    if (toolArgs[toolCallKey]) {
-      formData.append('args', JSON.stringify(toolArgs[toolCallKey]));
-    } else if (packet.args) {
-      formData.append('args', JSON.stringify(packet.args));
-    } else if (packet.Args) {
-      formData.append('args', JSON.stringify(packet.Args));
+    // Get saved args
+    var argsStr = toolArgs[toolCallKey] || packet.args || packet.Args || '';
+    var argsObj = null;
+    if (typeof argsStr === 'string' && argsStr) {
+      try { argsObj = JSON.parse(argsStr); } catch(e) {}
+    } else if (typeof argsStr === 'object' && argsStr) {
+      argsObj = argsStr;
     }
 
-    // Find the wrapper in sidebar
-    var wrapper = document.querySelector('#tool-activity .tool-entry-wrapper[data-tool-key="' + toolCallKey + '"]');
-    if (!wrapper) return;
+    // Find the details element in sidebar
+    var details = document.querySelector('#tool-activity details[data-tool-key="' + toolCallKey + '"]');
+    if (!details) return;
 
-    // Update entry to done/error state before HTMX replaces it
-    var entry = wrapper.querySelector('.tool-entry');
-    if (entry) {
-      entry.className = 'tool-entry ' + (isError ? 'tool-error' : 'tool-done');
-      var icon = entry.querySelector('.tool-icon');
+    // Update summary to done/error state
+    var summary = details.querySelector('.tool-entry');
+    if (summary) {
+      summary.className = 'tool-entry ' + (isError ? 'tool-error' : 'tool-done');
+      var icon = summary.querySelector('.tool-icon');
       if (icon) icon.textContent = isError ? '\u274C' : '\u2705';
-      var label = entry.querySelector('.tool-status-label');
+      var label = summary.querySelector('.tool-status-label');
       if (label) label.textContent = isError ? 'error' : 'done';
-      var elapsedSpan = entry.querySelector('.tool-elapsed');
+      var elapsedSpan = summary.querySelector('.tool-elapsed');
       if (elapsedSpan && finalElapsed) elapsedSpan.textContent = '\u2191 ' + finalElapsed;
     }
 
-    // Attach click-to-expand on entry
-    if (entry) {
-      entry.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var outputDiv = wrapper.querySelector('.tool-output');
-        if (!outputDiv) return;
-        // Close all other open outputs (only one at a time)
-        document.querySelectorAll('#tool-activity .tool-output.open').forEach(function (el) {
-          if (el !== outputDiv) el.classList.remove('open');
-        });
-        // Lazy-load output on first click via HTMX
-        if (!outputDiv.dataset.rendered) {
-          outputDiv.dataset.rendered = '1';
-          const jsonPayload = Object.assign(
-            Object.fromEntries(formData),
-            { kind: 'tool_card' }
-          );
-          htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-            source: document.body,
-            target: '#' + CSS.escape(outputDiv.id),
-            swap: 'innerHTML',
-            contentType: 'application/json',
-            values: jsonPayload,
-          });
-        }
-        outputDiv.classList.toggle('open');
-        // Post-open: update error icon if server rendered error content
-        if (isError) {
-          var serverIcon = outputDiv.querySelector('.tool-icon');
-          if (serverIcon) serverIcon.textContent = '\u274C';
-        }
-      });
+    // Build output content — command line from args + result output
+    var outputContent = '';
+    if (argsObj && argsObj.command) {
+      outputContent += '<div class="tool-command"><span class="tool-prompt">$</span> <span class="tool-command-text">' + escapeHtml(argsObj.command) + '</span></div>';
     }
-
-    // Create output container for HTMX render (hidden until clicked)
-    var outputId = toolCallKey + '-output';
-    var existingOutput = wrapper.querySelector('.tool-output');
-    if (!existingOutput) {
-      var outputDiv = document.createElement('div');
-      outputDiv.className = 'tool-output';
-      outputDiv.id = outputId;
-      outputDiv.setAttribute('data-output-for', toolCallKey);
-      wrapper.appendChild(outputDiv);
+    if (output) {
+      outputContent += '<pre class="tool-result"><code>' + escapeHtml(output) + '</code></pre>';
+    }
+    // Only add content once (idempotent)
+    if (outputContent && !details.querySelector('.tool-result')) {
+      details.insertAdjacentHTML('beforeend', outputContent);
     }
   }
 

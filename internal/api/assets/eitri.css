@@ -290,25 +290,46 @@ header h1 {
   color: #f0b400;
 }
 
-/* Inline expandable tool output in sidebar */
-.tool-output {
+/* Sidebar tool entry details — summary row is .tool-entry */
+
+details.tool-entry-wrapper {
+  margin: 0;
+}
+details.tool-entry-wrapper summary::-webkit-details-marker {
   display: none;
-  padding: 0.25rem 0.75rem 0.35rem;
-  border-top: 1px solid var(--border);
-  margin: 0 0.25rem;
 }
 
-.tool-output.open {
-  display: block;
+/* Chevron at right of summary */
+details.tool-entry-wrapper .tool-entry .tool-chevron {
+  margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+  user-select: none;
+}
+details.tool-entry-wrapper[open] .tool-entry .tool-chevron {
+  transform: rotate(90deg);
 }
 
-.tool-output pre {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.4rem;
-  max-height: 150px;
-  overflow-y: auto;
+/* Command line inside expanded tool entry */
+.tool-command {
+  padding: 0.25rem 0.75rem 0.15rem;
+  font-size: 0.82rem;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: var(--text);
+}
+.tool-prompt {
+  color: var(--text-muted);
+  margin-right: 0.35rem;
+}
+.tool-command-text {
+  color: var(--text);
+}
+
+/* Tool result output inside expanded sidebar entry */
+details.tool-entry-wrapper .tool-result {
+  padding: 0.15rem 0.75rem 0.35rem;
+  margin: 0;
   font-size: 0.78rem;
   line-height: 1.35;
   white-space: pre-wrap;

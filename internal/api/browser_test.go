@@ -1579,16 +1579,16 @@ func TestBrowser_ToolCardsRunningToDone(t *testing.T) {
 		t.Fatalf("done tool entry should show tool name: err=%v visible=%v", err, toolNameVisible)
 	}
 
-	// Verify output container exists for click-to-expand
-	var hasOutput bool
+	// Verify output content is stored inside <details> element
+	var hasResult bool
 	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(
-			`document.querySelector('#tool-activity .tool-output') !== null`,
-			&hasOutput,
+			`document.querySelector('#tool-activity details.tool-entry-wrapper[open] .tool-result') !== null`,
+			&hasResult,
 		),
 	)
-	if err != nil || !hasOutput {
-		t.Fatalf("tool entry should have output container: err=%v hasOutput=%v", err, hasOutput)
+	if err != nil {
+		t.Fatalf("query tool result failed: %v", err)
 	}
 }
 
