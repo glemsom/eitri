@@ -674,7 +674,7 @@
   function finalizeMessage(sessionId, messageId, usage, onRendered) {
     const streamingEl = document.getElementById('streaming');
     if (streamingEl) {
-      streamingEl.style.opacity = '0.5';
+      streamingEl.style.opacity = '0.6';
       streamingEl.classList.add('rendering');
     }
 
