@@ -1300,6 +1300,9 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 		chromedp.EvaluateAsDevTools("typeof mermaid !== 'undefined'", &mermaidLoaded),
 		chromedp.EvaluateAsDevTools("document.querySelector('.message-assistant .copy-btn') !== null", &copyButtonExists),
 		chromedp.Click(".message-assistant .copy-btn", chromedp.ByQuery),
+		// Increased from 150ms to 1150ms: navigator.clipboard.writeText() in headless
+		// Chrome (no user-granted clipboard permission) silently discards the write
+		// but the copy-btn text change dispatches asynchronously; 150ms was flaky.
 		chromedp.Sleep(1150*time.Millisecond),
 		chromedp.Text(".message-assistant .copy-btn", &copyButtonState, chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(`(function () {
@@ -3250,6 +3253,8 @@ func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
 	err = chromedp.Run(ctx,
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
 		// Wait for beforeSend to fire (HTMX fires synchronously before XMLHttpRequest.send)
+		// Increased from 50ms to 150ms: on slower CI runners 50ms was too short for the
+		// HTMX submit lifecycle (beforeSend → text change → disable); 150ms is reliable.
 		chromedp.Sleep(150*time.Millisecond),
 		chromedp.Text("button[type=submit]", &loadingText, chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(
