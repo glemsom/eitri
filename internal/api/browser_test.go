@@ -5384,6 +5384,155 @@ func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
 	})
 }
 
+// TestBrowser_StreamingMarkdownLinkXSS verifies javascript: URLs render as plain text (no <a>).
+func TestBrowser_StreamingMarkdownLinkXSS(t *testing.T) {
+	streamingMarkdownTestHelper(t, "test xss", "Click [here](javascript:alert(1)) for more", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+		)
+		if err != nil {
+			return false
+		}
+		if hasLink {
+			t.Error("javascript: URL should NOT produce <a> tag")
+			return true
+		}
+		// Verify the text is still visible (plain text)
+		var contentText string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
+		)
+		if !strings.Contains(contentText, "here") {
+			t.Errorf("link text should appear in content, got %q", contentText)
+		}
+		return true
+	})
+}
+
+// TestBrowser_StreamingMarkdownDataURL verifies data: URLs render as plain text (no <a>).
+func TestBrowser_StreamingMarkdownDataURL(t *testing.T) {
+	streamingMarkdownTestHelper(t, "test data", "Check [bad](data:text/html,<b>XSS</b>) here", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+		)
+		if err != nil {
+			return false
+		}
+		if hasLink {
+			t.Error("data: URL should NOT produce <a> tag")
+			return true
+		}
+		var contentText string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
+		)
+		if !strings.Contains(contentText, "bad") {
+			t.Errorf("link text should appear in content, got %q", contentText)
+		}
+		return true
+	})
+}
+
+// TestBrowser_StreamingMarkdownMailto verifies mailto: links produce <a> during streaming.
+func TestBrowser_StreamingMarkdownMailto(t *testing.T) {
+	streamingMarkdownTestHelper(t, "test mail", "Email [me](mailto:user@example.com) now", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+		)
+		if err != nil || !hasLink {
+			return false
+		}
+		// Verify href attribute
+		var href string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
+		)
+		if href != "mailto:user@example.com" {
+			t.Errorf("link href should be 'mailto:user@example.com', got %q", href)
+		}
+		// Verify target and rel attributes
+		var target, rel string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('target') : ''`, &target),
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('rel') : ''`, &rel),
+		)
+		if target != "_blank" {
+			t.Errorf("link target should be '_blank', got %q", target)
+		}
+		if rel != "noopener" {
+			t.Errorf("link rel should be 'noopener', got %q", rel)
+		}
+		return true
+	})
+}
+
+// TestBrowser_StreamingMarkdownHTTPLink verifies http: links produce <a> with target=_blank rel=noopener during streaming.
+func TestBrowser_StreamingMarkdownHTTPLink(t *testing.T) {
+	streamingMarkdownTestHelper(t, "test http", "Check [example](http://example.com) here", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+		)
+		if err != nil || !hasLink {
+			return false
+		}
+		var href string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
+		)
+		if href != "http://example.com" {
+			t.Errorf("link href should be 'http://example.com', got %q", href)
+		}
+		var target, rel string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('target') : ''`, &target),
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('rel') : ''`, &rel),
+		)
+		if target != "_blank" {
+			t.Errorf("link target should be '_blank', got %q", target)
+		}
+		if rel != "noopener" {
+			t.Errorf("link rel should be 'noopener', got %q", rel)
+		}
+		return true
+	})
+}
+
+// TestBrowser_StreamingMarkdownHTTPSLink verifies https: links produce <a> with target=_blank rel=noopener during streaming.
+func TestBrowser_StreamingMarkdownHTTPSLink(t *testing.T) {
+	streamingMarkdownTestHelper(t, "test https", "Check [example](https://example.com) details", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+		)
+		if err != nil || !hasLink {
+			return false
+		}
+		var href string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
+		)
+		if href != "https://example.com" {
+			t.Errorf("link href should be 'https://example.com', got %q", href)
+		}
+		var target, rel string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('target') : ''`, &target),
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('rel') : ''`, &rel),
+		)
+		if target != "_blank" {
+			t.Errorf("link target should be '_blank', got %q", target)
+		}
+		if rel != "noopener" {
+			t.Errorf("link rel should be 'noopener', got %q", rel)
+		}
+		return true
+	})
+}
+
 // TestBrowser_StreamingMarkdownLink verifies [text](url) renders as <a> during streaming.
 func TestBrowser_StreamingMarkdownLink(t *testing.T) {
 	streamingMarkdownTestHelper(t, "test link", "Check [example](https://example.com) for details", 150*time.Millisecond, func(ctx context.Context) bool {
