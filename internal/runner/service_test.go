@@ -7,14 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
 
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
-func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager, string) {
+func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 	t.Helper()
 
 	uiSessionMgr := uisession.NewManager(10)
@@ -24,38 +23,22 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager, string
 		UISessionMgr:      uiSessionMgr,
 		HistorySessionMgr: historyMgr,
 	})
-	svc.SetWorkspace(t.TempDir())
-	return svc, uiSessionMgr, ""
+	return svc, uiSessionMgr
 }
 
-// configureTestProvider sets a basic provider config on the RunService.
-func configureTestProvider(svc *RunService) {
-	svc.UpdateProviderConfig(&config.Config{
-		Provider: "opencode_go",
-		BaseURL:  "http://test.local",
-		APIKey:   "test-key",
-		Model:    "test-model",
-	})
-}
-
-func TestRunService_HistoryPersistsAcrossConfigUpdates(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-
-	// First config update: creates historySessionMgr
-	cfg1 := &config.Config{
-		Provider: "opencode_go",
-		BaseURL:  "http://test.local",
-		APIKey:   "test-key",
-		Model:    "test-model",
+func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
 	}
-	svc.UpdateProviderConfig(cfg1)
 
-	// Simulate first run: create and populate a session
+	// Create and populate a session
 	svc.historySessionMgr.Create("test-session")
 	svc.historySessionMgr.SetSystemPrompt("test-session", "You are Eitri.")
 	svc.historySessionMgr.AppendUser("test-session", "Hi, my name is Glenn")
-
-	// Simulate assistant response (e.g. agent loop appends this)
 	svc.historySessionMgr.AppendAssistant("test-session", "Hello Glenn!", nil)
 
 	hist1 := svc.historySessionMgr.History("test-session")
@@ -63,57 +46,60 @@ func TestRunService_HistoryPersistsAcrossConfigUpdates(t *testing.T) {
 		t.Fatalf("History length after first run = %d, want 3 (sys + user + asst)", len(hist1))
 	}
 
-	// Second config update: simulates what happens on second chat message
-	cfg2 := &config.Config{
-		Provider: "opencode_go",
-		BaseURL:  "http://test.local",
-		APIKey:   "test-key",
-		Model:    "test-model",
+	// StartRun with explicit config — must not replace historySessionMgr
+	_, err := svc.StartRun(context.Background(), "test-session", "another message", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
 	}
-	svc.UpdateProviderConfig(cfg2)
+	defer svc.Cancel("test-session")
 
-	// BUG: before fix, historySessionMgr was replaced with a fresh empty one.
-	// AFTER fix: historySessionMgr should still have the first run's data.
+	// History should still be preserved
 	if svc.historySessionMgr == nil {
-		t.Fatal("historySessionMgr is nil after second UpdateProviderConfig")
+		t.Fatal("historySessionMgr is nil after StartRun")
 	}
 	hist2 := svc.historySessionMgr.History("test-session")
-	if len(hist2) != 3 {
-		t.Fatalf("History length after second config update = %d, want 3 (preserved). "+
-			"Bug: UpdateProviderConfig replaced historySessionMgr", len(hist2))
+	if len(hist2) < 3 {
+		t.Fatalf("History length after StartRun = %d, want >= 3 (preserved). "+
+			"Bug: StartRun replaced historySessionMgr", len(hist2))
 	}
-
-	// Verify the content is intact
-	if hist2[0].Content != "You are Eitri." {
-		t.Errorf("System prompt changed: got %q", hist2[0].Content)
+	// Verify the history order is preserved
+	// After StartRun: system prompt + user(Hi) + asst(Hello Glenn!) + user(another message)
+	// The original messages should still be there (StartRun appends, doesn't replace)
+	if len(hist2) != 4 {
+		t.Fatalf("History length after StartRun = %d, want 4 (sys+user+asst+user)", len(hist2))
 	}
-	if len(hist2) >= 2 && hist2[1].Content != "Hi, my name is Glenn" {
-		t.Errorf("User message changed: got %q", hist2[1].Content)
+	if hist2[1].Content != "Hi, my name is Glenn" {
+		t.Errorf("First user message changed: got %q", hist2[1].Content)
+	}
+	if hist2[2].Content != "Hello Glenn!" {
+		t.Errorf("Assistant message changed: got %q", hist2[2].Content)
+	}
+	if hist2[3].Content != "another message" {
+		t.Errorf("Second user message = %q, want 'another message'", hist2[3].Content)
 	}
 }
 
 func TestRunService_StartRun_RejectsDuplicateActiveRun(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-	configureTestProvider(svc)
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
 
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
 	defer svc.Cancel("session-1")
 
-	// Second StartRun for same session should fail (run active)
-	_, err = svc.StartRun(context.Background(), "session-1", "hello again")
+	_, err = svc.StartRun(context.Background(), "session-1", "hello again", cfg)
 	if err == nil {
 		t.Fatal("expected error for duplicate run, got nil")
 	}
 }
 
 func TestRunService_Subscribe_ReplaysHistoryForLateJoiners(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-	configureTestProvider(svc)
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
 
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
@@ -124,16 +110,13 @@ func TestRunService_Subscribe_ReplaysHistoryForLateJoiners(t *testing.T) {
 		t.Fatal("no active run after StartRun")
 	}
 
-	// Broadcast an event directly
 	state.SSE.Broadcast(runstate.SSEEvent{Type: "token", Content: "hello world"})
 
-	// Late joiner should see the broadcast event in history
 	_, ch, ok := svc.Subscribe("session-1")
 	if !ok {
 		t.Fatal("Subscribe returned ok=false")
 	}
 
-	// Drain initial events (connecting event may be present + our broadcast)
 	var found bool
 	deadline := time.After(2 * time.Second)
 	for {
@@ -160,10 +143,10 @@ check:
 }
 
 func TestRunService_Cancel_StopsRunAndBroadcastsDone(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-	configureTestProvider(svc)
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
 
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
@@ -195,11 +178,11 @@ func TestRunService_Cancel_StopsRunAndBroadcastsDone(t *testing.T) {
 }
 
 func TestRunService_CancelAll_StopsAllRuns(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-	configureTestProvider(svc)
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
 
 	for _, id := range []string{"session-a", "session-b"} {
-		_, err := svc.StartRun(context.Background(), id, "hello")
+		_, err := svc.StartRun(context.Background(), id, "hello", cfg)
 		if err != nil {
 			t.Fatalf("StartRun(%s): %v", id, err)
 		}
@@ -220,7 +203,7 @@ func TestRunService_AuthCallback(t *testing.T) {
 	var capturedAuth json.RawMessage
 	persistCalled := false
 
-	svc, _, _ := newRunServiceForTest(t)
+	svc, _ := newRunServiceForTest(t)
 
 	svc.SetPersistAuth(func(apiKey string, providerAuth json.RawMessage) error {
 		persistCalled = true
@@ -229,9 +212,8 @@ func TestRunService_AuthCallback(t *testing.T) {
 		return nil
 	})
 
-	configureTestProvider(svc)
-
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
@@ -243,7 +225,7 @@ func TestRunService_AuthCallback(t *testing.T) {
 }
 
 func TestRunService_StartRun_EmptyConfig_ReturnsError(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
+	svc, _ := newRunServiceForTest(t)
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello")
 	if err == nil {
@@ -255,7 +237,7 @@ func TestRunService_StartRun_EmptyConfig_ReturnsError(t *testing.T) {
 }
 
 func TestRunService_Subscribe_ReturnsOkFalseForNoActiveRun(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
+	svc, _ := newRunServiceForTest(t)
 
 	_, _, ok := svc.Subscribe("nonexistent")
 	if ok {
@@ -264,7 +246,7 @@ func TestRunService_Subscribe_ReturnsOkFalseForNoActiveRun(t *testing.T) {
 }
 
 func TestRunService_Cancel_ReturnsFalseForNoActiveRun(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
+	svc, _ := newRunServiceForTest(t)
 
 	if svc.Cancel("nonexistent") {
 		t.Fatal("Cancel should return false for session with no active run")
@@ -282,10 +264,10 @@ func TestRunService_MaxTurnsMessage(t *testing.T) {
 }
 
 func TestRunService_NotifySessionClosed_BroadcastsClosedEvent(t *testing.T) {
-	svc, _, _ := newRunServiceForTest(t)
-	configureTestProvider(svc)
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
 
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
 	}
