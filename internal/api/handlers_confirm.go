@@ -147,32 +147,6 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Kind {
-	case "tool_card":
-		switch {
-		case req.Status == "running" || req.Status == "":
-			component := templates.ToolCard(req.ToolCallKey, req.Tool, string(req.Args), req.Output, "running", "")
-			component.Render(r.Context(), w)
-		case req.Tool == "file_editor" && req.Output != "":
-			var feResult struct {
-				Path         string   `json:"path"`
-				Mode         string   `json:"mode"`
-				BytesWritten int      `json:"bytes_written"`
-				OldContent   string   `json:"old_content"`
-				NewContent   string   `json:"new_content"`
-				DirsCreated  []string `json:"dirs_created"`
-			}
-			if err := json.Unmarshal([]byte(req.Output), &feResult); err == nil {
-				component := templates.FileEditCard(feResult.Path, feResult.Mode, feResult.OldContent, feResult.NewContent, feResult.BytesWritten, feResult.DirsCreated)
-				component.Render(r.Context(), w)
-			} else {
-				component := templates.ToolCard(req.ToolCallKey, req.Tool, string(req.Args), req.Output, "done", req.Elapsed)
-				component.Render(r.Context(), w)
-			}
-		default:
-			component := templates.ToolCard(req.ToolCallKey, req.Tool, string(req.Args), req.Output, "done", req.Elapsed)
-			component.Render(r.Context(), w)
-		}
-
 	case "error":
 		component := templates.ErrorToast(req.Message)
 		component.Render(r.Context(), w)

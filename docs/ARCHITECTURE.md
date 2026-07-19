@@ -160,7 +160,6 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `message_input.templ` | `MessageInput` — textarea with skill `/` and file `@` completion |
 | `components/active_skill_chips.templ` | Active skill chips for the current chat session |
 | `components/chat_bubble.templ` | User/assistant message bubbles |
-| `components/tool_card.templ` | Unified tool card (running/done status) |
 | `components/file_edit_card.templ` | Post-write diff/created-file card for `write` and `edit` tool results; overwrite mode reuses shared interactive diff viewer |
 | `components/error_toast.templ` | Error banner, auto-dismiss |
 | `components/mermaid_diagram.templ` | Mermaid diagram container |

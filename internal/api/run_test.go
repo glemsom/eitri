@@ -1420,49 +1420,6 @@ func TestRenderMarkdown(t *testing.T) {
 	}
 }
 
-func TestRenderToolCard(t *testing.T) {
-	server := newTestServerWithRuns(t)
-	client := noRedirectClient()
-
-	// Create session
-	resp, err := client.Get(server.URL + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	loc := resp.Header.Get("Location")
-
-	var browserCookie *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == "browser_id" {
-			browserCookie = c
-			break
-		}
-	}
-
-	renderPath := "/api" + loc + "/render"
-	body := `{"kind":"tool_card","tool":"terminal_execute","args":"{\"command\":\"echo hello\"}"}`
-	req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	if browserCookie != nil {
-		req.AddCookie(browserCookie)
-	}
-	resp2, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp2.Body.Close()
-
-	if resp2.StatusCode != http.StatusOK {
-		t.Errorf("tool-card render status = %d, want 200", resp2.StatusCode)
-	} else {
-		ct := resp2.Header.Get("Content-Type")
-		if !strings.HasPrefix(ct, "text/html") {
-			t.Errorf("Content-Type = %q, want text/html", ct)
-		}
-	}
-}
-
 func TestRenderError(t *testing.T) {
 	server := newTestServerWithRuns(t)
 	client := noRedirectClient()
