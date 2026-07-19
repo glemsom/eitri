@@ -4,6 +4,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/dop251/goja"
 )
 
 func TestJsFiles(t *testing.T) {
@@ -283,5 +285,142 @@ func TestJsFiles(t *testing.T) {
 	// Verify stream JS exports lightweightMarkdown function
 	if !strings.Contains(content2, "lightweightMarkdown") {
 		t.Error("eitri-stream.js missing lightweightMarkdown function")
+	}
+}
+
+func TestLightweightMarkdown(t *testing.T) {
+	f, err := Files.Open("eitri-stream.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-stream.js: %v", err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("failed to read eitri-stream.js: %v", err)
+	}
+	content := string(data)
+
+	// Extract the lightweightMarkdown function body
+	// Defined as: function lightweightMarkdown(text) { ... }
+	startMatch := "function lightweightMarkdown(text) {"
+	startIdx := strings.Index(content, startMatch)
+	if startIdx < 0 {
+		t.Fatal("lightweightMarkdown function not found in eitri-stream.js")
+	}
+	// Opening brace position
+	braceIdx := startIdx + len(startMatch) - 1
+	// Body starts after the {
+	bodyStart := braceIdx + 1
+
+	// Find matching closing brace — scan counting braces
+	depth := 1
+	bodyEnd := bodyStart
+	for bodyEnd < len(content) {
+		switch content[bodyEnd] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				bodyEnd++
+				goto extractBody
+			}
+		}
+		bodyEnd++
+	}
+extractBody:
+	if depth != 0 {
+		t.Fatal("could not find matching closing brace for lightweightMarkdown function")
+	}
+
+	// Build JS function — extracted body only
+	fnSrc := "function lightweightMarkdown(text) {" + content[bodyStart:bodyEnd]
+
+	runtime := goja.New()
+	_, err = runtime.RunString(fnSrc)
+	if err != nil {
+		t.Fatalf("failed to parse lightweightMarkdown: %v", err)
+	}
+
+	var fn func(string) string
+	err = runtime.ExportTo(runtime.Get("lightweightMarkdown"), &fn)
+	if err != nil {
+		t.Fatalf("failed to export lightweightMarkdown: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		wantHTML string
+	}{
+		{
+			name:     "bold",
+			input:    "**bold**",
+			wantHTML: "<strong>bold</strong>",
+		},
+		{
+			name:     "italic",
+			input:    "*italic*",
+			wantHTML: "<em>italic</em>",
+		},
+		{
+			name:     "inline code",
+			input:    "`code`",
+			wantHTML: "<code>code</code>",
+		},
+		{
+			name:     "https link",
+			input:    "[text](https://example.com)",
+			wantHTML: `<a href="https://example.com" target="_blank" rel="noopener">text</a>`,
+		},
+		{
+			name:     "http link",
+			input:    "[text](http://example.com)",
+			wantHTML: `<a href="http://example.com" target="_blank" rel="noopener">text</a>`,
+		},
+		{
+			name:     "mailto link",
+			input:    "[me](mailto:u@h.com)",
+			wantHTML: `<a href="mailto:u@h.com" target="_blank" rel="noopener">me</a>`,
+		},
+		{
+			name:     "javascript: link — no <a>",
+			input:    "[click](javascript:alert(1))",
+			wantHTML: "[click](javascript:alert(1))",
+		},
+		{
+			name:     "data: link — no <a>",
+			input:    "[bad](data:text/html,<svg>)",
+			wantHTML: "[bad](data:text/html,&lt;svg&gt;)",
+		},
+		{
+			name:     "incomplete/unclosed bold",
+			input:    "**unclosed",
+			wantHTML: "**unclosed",
+		},
+		{
+			name:     "paragraph breaks",
+			input:    "para1\n\npara2",
+			wantHTML: "</p><p>",
+		},
+		{
+			name:     "mixed bold italic code",
+			input:    "**bold** *italic* `code`",
+			wantHTML: "<strong>bold</strong> <em>italic</em> <code>code</code>",
+		},
+		{
+			name:     "plain text wrapped in <p>",
+			input:    "hello world",
+			wantHTML: "<p>hello world</p>",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fn(tc.input)
+			if !strings.Contains(got, tc.wantHTML) {
+				t.Errorf("lightweightMarkdown(%q)\n  got:  %q\n  want substring: %q", tc.input, got, tc.wantHTML)
+			}
+		})
 	}
 }

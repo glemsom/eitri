@@ -235,11 +235,18 @@ EITRI_TEST_LLM_URL=https://my-opencode-server.example.com go test ./internal/api
 
 ## Unit & integration tests (no browser)
 
+`js_test.go` also contains `TestLightweightMarkdown`, a pure-function unit test that extracts the
+`lightweightMarkdown` function from `eitri-stream.js` and executes it via Goja (a Go JS runtime).
+This tests the function's correctness directly — bold, italic, inline code, links (http/https/mailto),
+disallowed schemes (javascript:, data:), incomplete/unclosed markers, paragraph breaks, and mixed
+patterns — without launching a browser. It runs as part of `go test ./internal/api/assets/`.
+
 These test the Go backend without a browser:
 
 | File | Tests |
 |------|-------|
 | `internal/api/server_test.go` | HTTP endpoints (health, chat, config, SSE), request-body limits, request logging |
+| `internal/api/assets/js_test.go` | Static checks: JS/CSS file presence, expected function exports, removed deactivated functions; `TestLightweightMarkdown` runs `lightweightMarkdown` via Goja |
 | `internal/history/session_test.go` | Session lifecycle, history, sliding window cap |
 | `internal/fileutil/path_test.go` | Path validation |
 | `internal/fileutil/filetools_test.go` | File operations (ReadFile, EditFile, InsertLine, WriteFile, ListDirectory) |
