@@ -75,8 +75,7 @@ func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
 				if err := config.Save(s.config.ConfigPath, cfg); err != nil {
 					s.logger.Warn("failed to save config after approval", slog.Any("error", err))
 				}
-				// Update RunService's allowedReadPaths so subsequent creations pick it up
-				s.config.RunService.UpdateProviderConfig(cfg)
+				// Config persisted; RunService picks up allowedReadPaths via RunConfig on next StartRun
 			}
 		}
 	}

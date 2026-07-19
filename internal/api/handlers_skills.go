@@ -23,9 +23,10 @@ func (s *Server) refreshSkillsRegistry() *skills.Registry {
 
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
 	registry := s.refreshSkillsRegistry()
+	cfg, err := config.Load(s.config.ConfigPath)
 	contextWindow := 256000
-	if s.config.RunService != nil {
-		contextWindow = s.config.RunService.ContextWindowTokens()
+	if err == nil && cfg.ContextWindowTokens > 0 {
+		contextWindow = cfg.ContextWindowTokens
 	}
 	component := templates.SkillsPage(registry, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)

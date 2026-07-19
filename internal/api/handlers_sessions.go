@@ -144,9 +144,9 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	renderedSession := renderSessionForPage(sess)
 
-	contextWindow := 256000 // default fallback
-	if s.config.RunService != nil {
-		contextWindow = s.config.RunService.ContextWindowTokens()
+	contextWindow := state.cfg.ContextWindowTokens
+	if contextWindow == 0 {
+		contextWindow = 256000 // default fallback
 	}
 	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)
