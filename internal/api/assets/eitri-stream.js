@@ -30,9 +30,11 @@
 
   var toolCardTimers = {}; // toolCallKey -> interval ID
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
+  var toolArgs = {}; // toolCallKey -> args JSON
   var toolEntryCounter = 0; // monotonic counter for unique tool keys
 
   function clearToolActivity() {
+    toolArgs = {};
     var list = document.querySelector('#tool-activity .tool-activity-list');
     if (list) list.innerHTML = '';
   }
@@ -51,6 +53,7 @@
   function resetActivityTracking() {
     toolCardTimers = {};
     toolCardElapsed = {};
+    toolArgs = {};
   }
 
   function clearThinkingPanel() {
@@ -452,6 +455,10 @@
   }
 
   function injectToolCardSlot(sessionId, packet, toolCallKey) {
+    // Store args for later use in renderToolCard (tool_result doesn't carry args)
+    if (packet.args) {
+      toolArgs[toolCallKey] = packet.args;
+    }
     var list = document.querySelector('#tool-activity .tool-activity-list');
     if (!list) return;
 
@@ -533,9 +540,14 @@
     formData.append('tool_call_key', toolCallKey);
     formData.append('status', 'done');
     formData.append('elapsed', finalElapsed);
-    if (packet.args) formData.append('args', JSON.stringify(packet.args));
-    if (output) formData.append('output', String(output));
-    if (packet.Args) formData.append('args', JSON.stringify(packet.Args));
+    // Args captured during tool_call; tool_result doesn't carry them
+    if (toolArgs[toolCallKey]) {
+      formData.append('args', JSON.stringify(toolArgs[toolCallKey]));
+    } else if (packet.args) {
+      formData.append('args', JSON.stringify(packet.args));
+    } else if (packet.Args) {
+      formData.append('args', JSON.stringify(packet.Args));
+    }
 
     // Find the wrapper in sidebar
     var wrapper = document.querySelector('#tool-activity .tool-entry-wrapper[data-tool-key="' + toolCallKey + '"]');

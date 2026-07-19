@@ -35,7 +35,7 @@ templ ToolCard(toolCallKey string, toolName string, args string, output string, 
 					}
 					<span class="tool-chevron">▸</span>
 				</summary>
-				<pre class="tool-output"><code>{ output }</code></pre>
+				<pre class="tool-result"><code>{ output }</code></pre>
 			</details>
 		} else {
 			<details class="tool-card tool-done" open if toolCallKey != "" { data-tool-id={ toolCallKey } }>
@@ -49,7 +49,7 @@ templ ToolCard(toolCallKey string, toolName string, args string, output string, 
 					<span class="tool-chevron">▸</span>
 				</summary>
 				if output != "" {
-					<pre class="tool-output"><code>{ output }</code></pre>
+				<pre class="tool-result"><code>{ output }</code></pre>
 				}
 			</details>
 		}
