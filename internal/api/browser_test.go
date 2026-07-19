@@ -376,6 +376,114 @@ func putBrowserConfig(t *testing.T, server *httptest.Server, body string) {
 	}
 }
 
+
+// streamingMarkdownTestHelper is a test helper for streaming markdown browser tests.
+// It creates the fake LLM server, test server, configures provider, opens the browser,
+// sends the input message, and invokes checkStream during streaming phase.
+// After checkStream returns, it waits for the message to complete.
+func streamingMarkdownTestHelper(t *testing.T, input, markdown string, tokenDelay time.Duration, checkStream func(ctx context.Context) bool) {
+	t.Helper()
+
+	llmSrv := fakeMarkdownChatServer(t, markdown, tokenDelay)
+	defer llmSrv.Close()
+
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", input, chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Poll for streaming assertion
+	deadline := time.Now().Add(4 * time.Second)
+	var asserted bool
+	for time.Now().Before(deadline) {
+		if checkStream(ctx) {
+			asserted = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !asserted {
+		t.Error("streaming assertion never passed")
+	}
+
+	// Wait for done
+	deadline = time.Now().Add(4 * time.Second)
+	done := false
+	for time.Now().Before(deadline) {
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
+		)
+		if done {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !done {
+		t.Error("message should complete (no final assistant message)")
+	}
+}
+
+// streamingMarkdownFinalRenderHelper is for final-render regression tests.
+// Uses fakeMarkdownReplyServer (single token with full reply).
+func streamingMarkdownFinalRenderHelper(t *testing.T, input, markdown string, timeout time.Duration, checkFinal func(ctx context.Context) bool) {
+	t.Helper()
+
+	llmSrv := fakeMarkdownReplyServer(t, markdown)
+	defer llmSrv.Close()
+
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", input, chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	deadline := time.Now().Add(timeout)
+	var found bool
+	for time.Now().Before(deadline) {
+		if checkFinal(ctx) {
+			found = true
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !found {
+		t.Error("final render assertion never passed")
+	}
+}
+
 // ————— Chat run browser tests (issue #22) —————
 
 func TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline(t *testing.T) {
@@ -5240,674 +5348,167 @@ func TestBrowser_ConfirmationKeydownRemovedOnClose(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownBold verifies **bold** renders as <strong> during streaming.
 func TestBrowser_StreamingMarkdownBold(t *testing.T) {
-	markdown := "This text is **bold** during streaming"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	// Send message
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test bold", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with <strong> content
-	var hasBold bool
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
+	streamingMarkdownTestHelper(t, "test bold", "This text is **bold** during streaming", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasBold bool
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
 		)
-		if err == nil && hasBold {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !hasBold {
-		t.Errorf("streaming bubble should contain <strong> for **bold** markdown")
-	}
-
-	// Wait for done
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete (no final assistant message)")
-	}
+		return err == nil && hasBold
+	})
 }
 
 // TestBrowser_StreamingMarkdownItalic verifies *italic* renders as <em> during streaming.
 func TestBrowser_StreamingMarkdownItalic(t *testing.T) {
-	markdown := "This text is *italic* during streaming"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test italic", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with <em> content
-	var hasItalic bool
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
+	streamingMarkdownTestHelper(t, "test italic", "This text is *italic* during streaming", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasItalic bool
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content em') !== null`, &hasItalic),
 		)
-		if err == nil && hasItalic {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !hasItalic {
-		t.Errorf("streaming bubble should contain <em> for *italic* markdown")
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return err == nil && hasItalic
+	})
 }
 
 // TestBrowser_StreamingMarkdownInlineCode verifies `code` renders as <code> during streaming.
 func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
-	markdown := "Use the `fmt.Println` function"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test code", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with <code> content
-	var hasCode bool
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
+	streamingMarkdownTestHelper(t, "test code", "Use the `fmt.Println` function", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasCode bool
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content code') !== null`, &hasCode),
 		)
-		if err == nil && hasCode {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !hasCode {
-		t.Errorf("streaming bubble should contain <code> for `code` markdown")
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return err == nil && hasCode
+	})
 }
 
 // TestBrowser_StreamingMarkdownLink verifies [text](url) renders as <a> during streaming.
 func TestBrowser_StreamingMarkdownLink(t *testing.T) {
-	markdown := "Check [example](https://example.com) for details"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test link", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with link
-	var hasLink bool
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
+	streamingMarkdownTestHelper(t, "test link", "Check [example](https://example.com) for details", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasLink bool
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
 		)
-		if err == nil && hasLink {
-			break
+		if err != nil || !hasLink {
+			return false
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !hasLink {
-		t.Errorf("streaming bubble should contain <a> for [text](url) markdown")
-	}
-
-	// Also verify href attribute
-	var href string
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
-	)
-	if err != nil {
-		t.Fatalf("check href failed: %v", err)
-	}
-	if href != "https://example.com" {
-		t.Errorf("link href should be 'https://example.com', got %q", href)
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
+		// Verify href attribute
+		var href string
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
+			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
 		)
-		if done {
-			break
+		if href != "https://example.com" {
+			t.Errorf("link href should be 'https://example.com', got %q", href)
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return true
+	})
 }
 
 // TestBrowser_StreamingMarkdownParagraphs verifies \n\n creates <p> boundaries during streaming.
 func TestBrowser_StreamingMarkdownParagraphs(t *testing.T) {
-	markdown := "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test paragraphs", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with paragraph content
-	var pCount int
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
+	streamingMarkdownTestHelper(t, "test paragraphs", "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.", 150*time.Millisecond, func(ctx context.Context) bool {
+		var pCount int
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.querySelectorAll('p').length : 0`, &pCount),
 		)
-		if pCount >= 1 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if pCount < 1 {
-		t.Errorf("streaming bubble should contain at least one <p>, got %d", pCount)
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return pCount >= 1
+	})
 }
 
 // TestBrowser_StreamingMarkdownMixed verifies mixed formatting renders correctly during streaming.
 func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
-	markdown := "Mix of **bold**, *italic*, and `code` inline"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test mixed", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Poll for streaming bubble with mixed formatting
-	var hasBold, hasItalic, hasCode bool
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		err = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, nil),
+	streamingMarkdownTestHelper(t, "test mixed", "Mix of **bold**, *italic*, and `code` inline", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasBold, hasItalic, hasCode bool
+		err := chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content strong')`, &hasBold),
 			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content em')`, &hasItalic),
 			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content code')`, &hasCode),
 		)
-		if err == nil && hasBold && hasItalic && hasCode {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !hasBold {
-		t.Error("streaming bubble should contain <strong> for mixed **bold**")
-	}
-	if !hasItalic {
-		t.Error("streaming bubble should contain <em> for mixed *italic*")
-	}
-	if !hasCode {
-		t.Error("streaming bubble should contain <code> for mixed `code`")
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return err == nil && hasBold && hasItalic && hasCode
+	})
 }
 
 // TestBrowser_StreamingMarkdownIncomplete verifies unclosed **text doesn't produce <strong> (graceful degradation).
 func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
-	markdown := "This has **unclosed bold marker"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test incomplete", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Wait for streaming to appear with content, then verify no <strong>
-	var hasBold bool
-	var contentText string
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, nil),
-		)
+	streamingMarkdownTestHelper(t, "test incomplete", "This has **unclosed bold marker", 150*time.Millisecond, func(ctx context.Context) bool {
+		var hasBold bool
+		var contentText string
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
 		)
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
 		)
-		if contentText != "" {
-			break
+		if contentText == "" {
+			return false
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if hasBold {
-		t.Error("unclosed **bold should NOT produce <strong> — graceful degradation expected")
-	}
-	// Raw text with unclosed marker should appear
-	if !strings.Contains(contentText, "**unclosed") && !strings.Contains(contentText, "unclosed") {
-		t.Errorf("raw text with unclosed marker should appear in content, got %q", contentText)
-	}
-
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
+		if hasBold {
+			t.Error("unclosed **bold should NOT produce <strong> \u2014 graceful degradation expected")
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		if !strings.Contains(contentText, "**unclosed") && !strings.Contains(contentText, "unclosed") {
+			t.Errorf("raw text with unclosed marker should appear in content, got %q", contentText)
+		}
+		return true
+	})
 }
 
 // TestBrowser_StreamingMarkdownRenderingPhaseCSS verifies .streaming-message.rendering after done.
 func TestBrowser_StreamingMarkdownRenderingPhaseCSS(t *testing.T) {
-	markdown := "Simple text to render"
-	llmSrv := fakeMarkdownChatServer(t, markdown, 150*time.Millisecond)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test render phase", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Wait for streaming to appear
-	time.Sleep(500 * time.Millisecond)
-
-	// Check that rendering class appears after done
-	deadline := time.Now().Add(6 * time.Second)
-	renderingFound := false
-	for time.Now().Before(deadline) {
+	streamingMarkdownTestHelper(t, "test render phase", "Simple text to render", 150*time.Millisecond, func(ctx context.Context) bool {
+		var renderingFound bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var s = document.getElementById('streaming'); s && s.classList.contains('rendering')`, &renderingFound),
 		)
 		if renderingFound {
-			break
+			return true
 		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if !renderingFound {
 		// The streaming element may have been replaced by final render.
-		// Check for .rendering on any element or verify final message exists.
 		var finalMsg bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &finalMsg),
 		)
-		if !finalMsg {
-			t.Error("rendering phase .rendering class should appear on streaming element before final swap")
-		}
-	}
-
-	// Wait for completion
-	deadline = time.Now().Add(4 * time.Second)
-	done := false
-	for time.Now().Before(deadline) {
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.message-assistant:not(#streaming)') !== null`, &done),
-		)
-		if done {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !done {
-		t.Error("message should complete")
-	}
+		return finalMsg
+	})
 }
 
 // TestBrowser_StreamingMarkdownFinalRenderCodeBlock verifies ```go fenced code block renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderCodeBlock(t *testing.T) {
 	markdown := "Here is a Go program:\n\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```"
-	llmSrv := fakeMarkdownReplyServer(t, markdown)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test code block", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Wait for final assistant message with code block
-	deadline := time.Now().Add(8 * time.Second)
-	var finalCodeBlock bool
-	for time.Now().Before(deadline) {
+	streamingMarkdownFinalRenderHelper(t, "test code block", markdown, 8*time.Second, func(ctx context.Context) bool {
+		var finalCodeBlock bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var msgs = document.querySelectorAll('.message-assistant:not(#streaming)'); if (msgs.length === 0) false; else msgs[msgs.length-1].querySelector('pre code') !== null`, &finalCodeBlock),
 		)
-		if finalCodeBlock {
-			break
+		if !finalCodeBlock {
+			return false
 		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if !finalCodeBlock {
-		t.Error("final message should contain a code block (<pre><code>) after done")
-	}
-
-	// Verify code contains expected content
-	var codeText string
-	_ = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`var msgs = document.querySelectorAll('.message-assistant:not(#streaming)'); if (msgs.length === 0) ''; else { var c = msgs[msgs.length-1].querySelector('pre code'); c ? c.textContent : '' }`, &codeText),
-	)
-	if !strings.Contains(codeText, "func main") {
-		t.Errorf("code block should contain 'func main'")
-	}
+		// Verify code contains expected content
+		var codeText string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`var msgs = document.querySelectorAll('.message-assistant:not(#streaming)'); if (msgs.length === 0) ''; else { var c = msgs[msgs.length-1].querySelector('pre code'); c ? c.textContent : '' }`, &codeText),
+		)
+		if !strings.Contains(codeText, "func main") {
+			t.Errorf("code block should contain 'func main'")
+		}
+		return true
+	})
 }
 
 // TestBrowser_StreamingMarkdownFinalRenderMath verifies $$a+b$$ renders with KaTeX after done.
 func TestBrowser_StreamingMarkdownFinalRenderMath(t *testing.T) {
-	markdown := "The formula: $$a+b$$ is simple"
-	llmSrv := fakeMarkdownReplyServer(t, markdown)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test math", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Wait for final assistant message with KaTeX-rendered math
-	deadline := time.Now().Add(8 * time.Second)
-	var hasMath bool
-	for time.Now().Before(deadline) {
+	streamingMarkdownFinalRenderHelper(t, "test math", "The formula: $$a+b$$ is simple", 8*time.Second, func(ctx context.Context) bool {
+		var hasMath bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.querySelector('.katex') !== null || document.querySelector('.katex-html') !== null`, &hasMath),
 		)
-		if hasMath {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if !hasMath {
-		t.Error("final message should contain KaTeX rendered math after done")
-	}
+		return hasMath
+	})
 }
 
 // TestBrowser_StreamingMarkdownFinalRenderMermaid verifies ```mermaid diagram renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderMermaid(t *testing.T) {
-	markdown := "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```"
-	llmSrv := fakeMarkdownReplyServer(t, markdown)
-	defer llmSrv.Close()
-
-	server := newTestServerWithRuns(t)
-	configureProvider(t, server, llmSrv.URL)
-
-	ctx, cancel := newBrowserCtx(t, server.URL)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("navigate failed: %v", err)
-	}
-
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys("#chat-input", "test mermaid", chromedp.ByQuery),
-		chromedp.Click("#send-btn", chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send failed: %v", err)
-	}
-
-	// Wait for final assistant message with mermaid element
-	deadline := time.Now().Add(8 * time.Second)
-	var hasMermaid bool
-	for time.Now().Before(deadline) {
+	streamingMarkdownFinalRenderHelper(t, "test mermaid", "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", 8*time.Second, func(ctx context.Context) bool {
+		var hasMermaid bool
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.mermaid') !== null || document.querySelector('[id^=\"mermaid\"]') !== null`, &hasMermaid),
+			chromedp.EvaluateAsDevTools(`document.querySelector('.mermaid') !== null || document.querySelector('[id^="mermaid"]') !== null`, &hasMermaid),
 		)
-		if hasMermaid {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if !hasMermaid {
-		t.Error("final message should contain a mermaid diagram element after done")
-	}
+		return hasMermaid
+	})
 }
