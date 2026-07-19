@@ -865,3 +865,64 @@ func TestService_RefreshPreservesDisabled(t *testing.T) {
 		t.Error("s2 should still be effective after Refresh")
 	}
 }
+
+func TestService_SetDisabledList(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+	writeSkill(t, filepath.Join(rootDir, "s2"), "s2", "# S2")
+	writeSkill(t, filepath.Join(rootDir, "s3"), "s3", "# S3")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Set disabled list to s1 and s3
+	var saved []string
+	svc.SetDisabledList([]string{"s1", "s3"}, func(disabled []string) {
+		saved = disabled
+	})
+
+	if len(saved) != 2 {
+		t.Fatalf("expected 2 disabled, got %d: %v", len(saved), saved)
+	}
+
+	// Verify effective
+	eff := svc.Effective()
+	if eff["s1"] != nil {
+		t.Error("s1 should not be effective")
+	}
+	if eff["s2"] == nil {
+		t.Error("s2 should be effective")
+	}
+	if eff["s3"] != nil {
+		t.Error("s3 should not be effective")
+	}
+}
+
+func TestService_ClearDisabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+	writeSkill(t, filepath.Join(rootDir, "s2"), "s2", "# S2")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// First disable s1
+	svc.SetDisabled("s1", true, nil)
+
+	// Now clear all
+	var saved []string
+	svc.ClearDisabled(func(disabled []string) {
+		saved = disabled
+	})
+
+	if len(saved) != 0 {
+		t.Fatalf("expected empty disabled, got %v", saved)
+	}
+
+	// Verify both effective
+	eff := svc.Effective()
+	if eff["s1"] == nil {
+		t.Error("s1 should be effective after clear")
+	}
+	if eff["s2"] == nil {
+		t.Error("s2 should be effective")
+	}
+}

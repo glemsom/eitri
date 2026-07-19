@@ -64,6 +64,29 @@ func (s *Service) Discover() ([]*Skill, Diagnostics) {
 	return DiscoverSkills(roots)
 }
 
+// SetDisabledList sets the full disabled list, replacing any existing disabled names.
+// The callback is invoked with the updated list for persistence.
+// After updating the set, the registry is refreshed.
+func (s *Service) SetDisabledList(names []string, callback func([]string)) {
+	s.mu.Lock()
+	s.disabled = append([]string(nil), names...) // copy
+	dCopy := make([]string, len(s.disabled))
+	copy(dCopy, s.disabled)
+	s.mu.Unlock()
+
+	if callback != nil {
+		callback(dCopy)
+	}
+	s.Refresh()
+}
+
+// ClearDisabled removes all names from the disabled list.
+// The callback is invoked with the empty list for persistence.
+// After updating, the registry is refreshed.
+func (s *Service) ClearDisabled(callback func([]string)) {
+	s.SetDisabledList(nil, callback)
+}
+
 // Refresh rescans all roots and rebuilds the registry.
 // Disabled skills are filtered out of effective, summary, catalog, etc.
 // Returns the updated registry.
