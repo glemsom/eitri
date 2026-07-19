@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/glemsom/eitri/internal/runner"
+
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
@@ -84,9 +86,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		component.Render(r.Context(), w)
 		return
 	}
-	if s.config.RunService != nil {
-		s.config.RunService.UpdateProviderConfig(cfgState.cfg)
-	}
+	cmdTimeout := time.Duration(cfgState.cfg.CommandTimeout)
+	runCfg := runner.FromConfig(cfgState.cfg, s.config.Workspace, cmdTimeout)
 
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {
@@ -108,7 +109,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Use context.Background() instead of r.Context() so the run survives
 	// the HTTP handler returning (which cancels the request context).
 	// Cancel() provides explicit cancellation via state.Cancel().
-	skillWarnings, err := s.config.RunService.StartRun(context.Background(), id, prompt)
+	skillWarnings, err := s.config.RunService.StartRun(context.Background(), id, prompt, runCfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)

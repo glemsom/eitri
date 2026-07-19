@@ -75,9 +75,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contextWindow := 256000
-	if s.config.RunService != nil {
-		contextWindow = s.config.RunService.ContextWindowTokens()
+	contextWindow := state.cfg.ContextWindowTokens
+	if contextWindow == 0 {
+		contextWindow = 256000
 	}
 	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow)
 	component.Render(r.Context(), w)
@@ -232,13 +232,7 @@ func (s *Server) persistAuth() provider.PersistAuthFunc {
 }
 
 func (s *Server) saveProviderConfig(cfg *config.Config) error {
-	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
-		return err
-	}
-	if s.config.RunService != nil {
-		s.config.RunService.UpdateProviderConfig(cfg)
-	}
-	return nil
+	return config.Save(s.config.ConfigPath, cfg)
 }
 
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
