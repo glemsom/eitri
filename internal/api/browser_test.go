@@ -248,25 +248,11 @@ func fakeDelayedFirstTokenChatServer(t *testing.T, delay time.Duration, reply st
 
 // fakeMarkdownChatServer emits streaming tokens with markdown content for testing
 // streaming markdown formatting in the browser.
-// The reply is split into progressive tokens that the browser's lightweightMarkdown()
-// should render during streaming.
-// fakeMarkdownChatServer emits streaming tokens with markdown content for testing
-// streaming markdown formatting in the browser.
 // tokenDelay controls the delay between tokens (use a longer delay for test windows).
 func fakeMarkdownChatServer(t *testing.T, reply string, tokenDelay time.Duration) *httptest.Server {
 	t.Helper()
 
-	// Split reply into streaming tokens. For markdown-formatted content, use
-	// word-based splitting so constructs like **bold** or `code` arrive whole.
-	// The flushStreamBuffer in JS replaces innerHTML with each flush, so constructs
-	// must be complete within a single flush interval to render correctly.
-	var tokens []string
-	// Use whole-reply as single token — fast enough for the test to catch it
-	// between first token and done event.
-	tokens = []string{reply}
-	if len(tokens) == 0 {
-		tokens = []string{" ", " ", " "}
-	}
+	tokens := []string{reply}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
