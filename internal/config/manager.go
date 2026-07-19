@@ -18,6 +18,7 @@ type Config struct {
 	APIKey              string          `json:"api_key"`
 	ProviderAuth        json.RawMessage `json:"provider_auth,omitempty"`
 	AllowedReadPaths    []string        `json:"allowed_read_paths,omitempty"`
+	DisabledSkills      []string        `json:"disabled_skills,omitempty"`
 	BaseURL             string          `json:"base_url"`
 	Model               string          `json:"model"`
 	SystemPrompt        string          `json:"system_prompt"`

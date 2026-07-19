@@ -35,7 +35,18 @@ If multiple skills share the same `name`, the highest-precedence skill is effect
 
 Eitri does not require a workspace trust gate for project-level skills in v1. Project skills are loaded automatically. The Skills UI must show detected skills, including scope and path, so users can notice unexpected repository-provided skills and act manually.
 
-A trust gate, per-skill enable/disable controls, and custom paths are deferred.
+### Disable/enable controls
+
+Skills can be disabled via the `Service.SetDisabled()` API, which moves them from the effective registry to a disabled list. Disabled skills are:
+
+- Excluded from `Lookup()` results
+- Excluded from `Effective()`, `Summary()`, and `SkillsCatalogXML()`
+- Excluded from `SkillDirectories()` (file_viewer path validation)
+- Added to the `Registry.Disabled()` list
+
+The disabled set is persisted in config as `disabled_skills` and round-trips through save/load.
+
+Custom paths remain deferred.
 
 ### Parsing and validation
 

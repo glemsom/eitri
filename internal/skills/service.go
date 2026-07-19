@@ -13,6 +13,7 @@ type Service struct {
 	home      string
 	workspace string
 	registry  *Registry
+	disabled  []string // names of disabled skills, persisted across refreshes
 }
 
 // NewService creates a Service with default discovery roots.
@@ -64,12 +65,13 @@ func (s *Service) Discover() ([]*Skill, Diagnostics) {
 }
 
 // Refresh rescans all roots and rebuilds the registry.
+// Disabled skills are filtered out of effective, summary, catalog, etc.
 // Returns the updated registry.
 func (s *Service) Refresh() *Registry {
 	discovered, diags := s.Discover()
-	registry := BuildRegistry(discovered, diags)
 
 	s.mu.Lock()
+	registry := BuildRegistry(discovered, diags, s.disabled)
 	s.registry = registry
 	s.mu.Unlock()
 
@@ -84,6 +86,7 @@ func (s *Service) Registry() *Registry {
 }
 
 // Effective returns the map of effective skills (name → skill).
+// Disabled skills are excluded.
 func (s *Service) Effective() map[string]*Skill {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -218,4 +221,49 @@ func (s *Service) DiagnosticSummary() string {
 		msg += "\n"
 	}
 	return msg
+}
+
+// SetDisabled enables or disables a skill by name.
+// When disable is true, the skill is added to the disabled set.
+// When disable is false, the skill is removed from the disabled set.
+// The callback is invoked with the updated disabled list for persistence.
+// After updating the set, the registry is refreshed.
+func (s *Service) SetDisabled(name string, disable bool, callback func([]string)) {
+	s.mu.Lock()
+
+	if disable {
+		// Add to disabled set if not already there
+		found := false
+		for _, d := range s.disabled {
+			if d == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.disabled = append(s.disabled, name)
+		}
+	} else {
+		// Remove from disabled set
+		filtered := make([]string, 0, len(s.disabled))
+		for _, d := range s.disabled {
+			if d != name {
+				filtered = append(filtered, d)
+			}
+		}
+		s.disabled = filtered
+	}
+
+	// Copy disabled list for callback (avoid holding lock during callback)
+	disabledCopy := make([]string, len(s.disabled))
+	copy(disabledCopy, s.disabled)
+	s.mu.Unlock()
+
+	// Callback with updated list
+	if callback != nil {
+		callback(disabledCopy)
+	}
+
+	// Refresh registry with updated disabled set
+	s.Refresh()
 }
