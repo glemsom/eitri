@@ -192,3 +192,23 @@ func TestBash_WorkspaceDir(t *testing.T) {
 		t.Errorf("output = %q, want directory %q", result.Text, dir)
 	}
 }
+
+func TestBash_Truncation(t *testing.T) {
+	dir := t.TempDir()
+	tool := NewBashTool(dir, 10*time.Second)
+	// Generate >128 KiB of output
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 140000)\""}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	result := blocks[0].(litellm.TextBlock)
+	if len(result.Text) > 132*1024 {
+		t.Errorf("truncated output too long: %d bytes, want <= ~129 KiB", len(result.Text))
+	}
+	if !strings.HasSuffix(result.Text, "... (output truncated at 128 KiB)") {
+		t.Errorf("output should end with truncation marker, got suffix: %q", result.Text[len(result.Text)-50:])
+	}
+}
