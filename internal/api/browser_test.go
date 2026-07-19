@@ -3761,3 +3761,235 @@ func TestBrowser_ContextPanel_SessionSwitch(t *testing.T) {
 	}
 }
 
+func TestBrowser_ConfirmationDenyShowsUndoToast(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Get session ID from URL
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect to trigger needs_confirmation
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	// Emit open then needs_confirmation event
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'needs_confirmation', data: {path: '/etc/passwd', message: 'This path requires confirmation'}})`, nil),
+	); err != nil {
+		t.Fatalf("emit needs_confirmation failed: %v", err)
+	}
+
+	// Verify confirmation overlay appeared
+	var overlayVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') !== null`, &overlayVisible),
+	)
+	if err != nil || !overlayVisible {
+		t.Fatalf("confirmation overlay not visible after needs_confirmation event")
+	}
+
+	// Verify Deny button exists
+	var denyVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('confirm-deny') !== null`, &denyVisible),
+	)
+	if err != nil || !denyVisible {
+		t.Fatalf("confirm-deny button not found")
+	}
+
+	// Click Deny — should trigger undo toast
+	if err := chromedp.Run(ctx,
+		chromedp.Click("#confirm-deny", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("click Deny failed: %v", err)
+	}
+
+	// Allow a brief moment for the undo toast to render
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify undo toast is visible, not the original modal buttons
+	var undoToastVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var toast = document.querySelector('.undo-toast');
+			return toast !== null && toast.offsetParent !== null;
+		})()`, &undoToastVisible),
+	)
+	if err != nil || !undoToastVisible {
+		t.Fatalf("undo toast not visible after Deny click")
+	}
+
+	// Verify progress bar exists inside undo toast
+	var progressBarExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('.undo-toast .undo-toast-bar') !== null`, &progressBarExists),
+	)
+	if err != nil || !progressBarExists {
+		t.Fatalf("undo-toast-bar not found inside undo toast")
+	}
+
+	// Verify Undo button exists
+	var undoBtnExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('.undo-toast .undo-toast-btn') !== null`, &undoBtnExists),
+	)
+	if err != nil || !undoBtnExists {
+		t.Fatalf("undo-toast-btn not found inside undo toast")
+	}
+
+	// Click Undo button
+	if err := chromedp.Run(ctx,
+		chromedp.Click(".undo-toast-btn", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("click Undo failed: %v", err)
+	}
+
+	// Allow brief moment for modal to close
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify modal/overlay is removed
+	var overlayGone bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') === null`, &overlayGone),
+	)
+	if err != nil || !overlayGone {
+		t.Fatalf("confirmation overlay still visible after Undo click")
+	}
+}
+
+func TestBrowser_ConfirmationDenyTimeoutClosesModal(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	// Emit needs_confirmation
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'needs_confirmation', data: {path: '/etc/shadow', message: 'This path requires confirmation'}})`, nil),
+	); err != nil {
+		t.Fatalf("emit needs_confirmation failed: %v", err)
+	}
+
+	// Verify overlay appeared
+	var overlayVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') !== null`, &overlayVisible),
+	)
+	if err != nil || !overlayVisible {
+		t.Fatalf("confirmation overlay not visible")
+	}
+
+	// Click Deny
+	if err := chromedp.Run(ctx,
+		chromedp.Click("#confirm-deny", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("click Deny failed: %v", err)
+	}
+
+	// Verify undo toast appears
+	time.Sleep(200 * time.Millisecond)
+	var toastVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelector('.undo-toast') !== null`, &toastVisible),
+	)
+	if err != nil || !toastVisible {
+		t.Fatalf("undo toast not visible after Deny")
+	}
+
+	// Wait for the 5-second timeout (use shorter timeout for test — we override the duration)
+	// Since we can't easily override JS timeout, wait for it naturally
+	// But 5s is long, so we test by waiting and checking overlay is eventually gone
+	// In test, we'll give it 6 seconds
+	var overlayGone bool
+	deadline := time.Now().Add(7 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') === null`, &overlayGone),
+		)
+		if err == nil && overlayGone {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !overlayGone {
+		t.Fatalf("confirmation overlay still visible after 5-second timeout")
+	}
+}

@@ -895,21 +895,80 @@
     var sessionId = activeConfirmation.sessionId;
     var path = activeConfirmation.path;
 
-    fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: path, approved: approved }),
-    })
-    .then(function (resp) {
-      if (!resp.ok) {
-        console.warn('Confirmation POST failed:', resp.status, resp.statusText);
-      }
+    if (approved) {
+      // Allow: POST approved=true, close modal
+      fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path, approved: true }),
+      })
+      .then(function (resp) {
+        if (!resp.ok) {
+          console.warn('Confirmation POST failed:', resp.status, resp.statusText);
+        }
+        closeConfirmationModal();
+      })
+      .catch(function (err) {
+        console.warn('Confirmation POST error:', err);
+        closeConfirmationModal();
+      });
+    } else {
+      // Deny: POST approved=false, show undo toast with 5s countdown
+      fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path, approved: false }),
+      })
+      .then(function (resp) {
+        if (!resp.ok) {
+          console.warn('Confirmation POST failed:', resp.status, resp.statusText);
+        }
+        showUndoToast(sessionId, path);
+      })
+      .catch(function (err) {
+        console.warn('Confirmation POST error:', err);
+        showUndoToast(sessionId, path);
+      });
+    }
+  }
+
+  function showUndoToast(sessionId, path) {
+    var modal = document.querySelector('.confirmation-modal');
+    if (!modal) return;
+
+    // Replace modal content with undo toast
+    modal.innerHTML =
+      '<div class="undo-toast">' +
+      '<div class="undo-toast-text">Access denied</div>' +
+      '<div class="undo-toast-bar"></div>' +
+      '<button class="undo-toast-btn" type="button">Undo</button>' +
+      '</div>';
+
+    var undoBtn = modal.querySelector('.undo-toast-btn');
+    var undoTimeout = setTimeout(function () {
       closeConfirmationModal();
-    })
-    .catch(function (err) {
-      console.warn('Confirmation POST error:', err);
-      closeConfirmationModal();
-    });
+    }, 5000);
+
+    if (undoBtn) {
+      undoBtn.addEventListener('click', function () {
+        clearTimeout(undoTimeout);
+        fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: path, approved: true }),
+        })
+        .then(function (resp) {
+          if (!resp.ok) {
+            console.warn('Undo POST failed:', resp.status, resp.statusText);
+          }
+          closeConfirmationModal();
+        })
+        .catch(function (err) {
+          console.warn('Undo POST error:', err);
+          closeConfirmationModal();
+        });
+      });
+    }
   }
 
   // ---- Scroll-to-bottom floating button (issue #104) ----

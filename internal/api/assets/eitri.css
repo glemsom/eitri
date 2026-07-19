@@ -1901,6 +1901,51 @@ eitri-composer {
   background: #c0392b;
 }
 
+/* ============================================
+   Confirmation undo toast: Issue #415
+   Toast shown after user denies file access
+   ============================================ */
+
+.undo-toast {
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.undo-toast-text {
+  font-size: 0.9rem;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.undo-toast-bar {
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+  margin-bottom: 1rem;
+  animation: undoShrink 5s linear forwards;
+}
+
+.undo-toast-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.undo-toast-btn:hover {
+  opacity: 0.9;
+}
+
+@keyframes undoShrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
