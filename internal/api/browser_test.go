@@ -251,10 +251,11 @@ func fakeDelayedFirstTokenChatServer(t *testing.T, delay time.Duration, reply st
 
 // fakeMarkdownChatServer emits streaming tokens with markdown content for testing
 // streaming markdown formatting in the browser.
+// When singleToken is true, emits the full reply as one chunk and skips the pre-stop delay.
 // preStopDelay controls how long the server waits before sending the stop signal
-// after all content tokens. This is NOT an inter-token pacing delay — it gives
-// the browser's flush timer window to fire before completion.
-func fakeMarkdownChatServer(t *testing.T, reply string, preStopDelay time.Duration) *httptest.Server {
+// after all content tokens (ignored when singleToken is true). This is NOT an inter-token
+// pacing delay — it gives the browser's flush timer window to fire before completion.
+func fakeMarkdownChatServer(t *testing.T, reply string, preStopDelay time.Duration, singleToken bool) *httptest.Server {
 	t.Helper()
 
 	tokens := []string{reply}
@@ -281,21 +282,27 @@ func fakeMarkdownChatServer(t *testing.T, reply string, preStopDelay time.Durati
 			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
 			flusher.Flush()
 
-			for _, tok := range tokens {
+			if singleToken {
+				// Emit entire reply as one token chunk, skip pre-stop delay
+				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, reply)
+				flusher.Flush()
+			} else {
+				for _, tok := range tokens {
+					select {
+					case <-r.Context().Done():
+						return
+					default:
+					}
+					fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, tok)
+					flusher.Flush()
+				}
+
+				// Wait before sending stop/done so browser flush timer fires (80ms)
 				select {
 				case <-r.Context().Done():
 					return
-				default:
+				case <-time.After(preStopDelay):
 				}
-				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, tok)
-				flusher.Flush()
-			}
-
-			// Wait before sending stop/done so browser flush timer fires (80ms)
-			select {
-			case <-r.Context().Done():
-				return
-			case <-time.After(preStopDelay):
 			}
 
 			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
@@ -310,48 +317,6 @@ func fakeMarkdownChatServer(t *testing.T, reply string, preStopDelay time.Durati
 	return srv
 }
 
-// fakeMarkdownReplyServer emits the complete reply as a single token chunk.
-// Used for final render regression tests (code blocks, math, mermaid).
-func fakeMarkdownReplyServer(t *testing.T, reply string) *httptest.Server {
-	t.Helper()
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/models":
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
-
-		case "/v1/chat/completions":
-			flusher, ok := w.(http.Flusher)
-			if !ok {
-				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
-				return
-			}
-
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Connection", "keep-alive")
-
-			now := time.Now().Unix()
-			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
-			flusher.Flush()
-
-			// Single token with full reply
-			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, reply)
-			flusher.Flush()
-
-			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			flusher.Flush()
-
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
 // configureProvider saves runnable LLM provider config to test server via HTTP.
 func configureProvider(t *testing.T, server *httptest.Server, llmURL string) {
 	t.Helper()
@@ -400,9 +365,9 @@ func streamingMarkdownTestHelper(t *testing.T, markdown string, opts streamingMa
 
 	var llmSrv *httptest.Server
 	if opts.SingleToken {
-		llmSrv = fakeMarkdownReplyServer(t, markdown)
+		llmSrv = fakeMarkdownChatServer(t, markdown, 0, true)
 	} else {
-		llmSrv = fakeMarkdownChatServer(t, markdown, streamFlushWindow)
+		llmSrv = fakeMarkdownChatServer(t, markdown, streamFlushWindow, false)
 	}
 	defer llmSrv.Close()
 
