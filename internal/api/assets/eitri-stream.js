@@ -49,8 +49,14 @@
     // 4. Inline code: \`code\`
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // 5. Links: [text](url)
-    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    // 5. Links: [text](url) — only http://, https://, mailto: allowed
+    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, linkText, url) {
+      if (/^(https?:|mailto:)/i.test(url)) {
+        return '<a href="' + url + '" target="_blank" rel="noopener">' + linkText + '</a>';
+      }
+      // Disallowed scheme (javascript:, data:, file:, vbscript:) → plain text
+      return match;
+    });
 
     // 6. Paragraph breaks: \n\n → </p><p>
     safe = safe.replace(/\n\n/g, '</p><p>');

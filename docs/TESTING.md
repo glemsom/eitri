@@ -154,6 +154,11 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_StreamingMarkdownItalic` | `*italic*` renders as `<em>` during streaming |
 | `TestBrowser_StreamingMarkdownInlineCode` | `` `code` `` renders as `<code>` during streaming |
 | `TestBrowser_StreamingMarkdownLink` | `[text](url)` renders as `<a href="...">` during streaming |
+| `TestBrowser_StreamingMarkdownLinkXSS` | `[click](javascript:alert(1))` renders as plain text (no `<a>`) |
+| `TestBrowser_StreamingMarkdownDataURL` | `[bad](data:text/html,...)` renders as plain text (no `<a>`) |
+| `TestBrowser_StreamingMarkdownMailto` | `[me](mailto:u@h.com)` produces `<a href="mailto:...">` with `target=_blank rel=noopener` |
+| `TestBrowser_StreamingMarkdownHTTPLink` | `[text](http://...)` produces `<a>` with `target=_blank rel=noopener` |
+| `TestBrowser_StreamingMarkdownHTTPSLink` | `[text](https://...)` produces `<a>` with `target=_blank rel=noopener` |
 | `TestBrowser_StreamingMarkdownParagraphs` | `\n\n` creates `<p>` boundaries during streaming |
 | `TestBrowser_StreamingMarkdownMixed` | Mixed **bold**, *italic*, and `code` render correctly during streaming |
 | `TestBrowser_StreamingMarkdownIncomplete` | Unclosed `**text` stays as raw text (graceful degradation) |
