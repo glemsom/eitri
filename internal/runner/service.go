@@ -41,8 +41,9 @@ type PersistAuthFunc = provider.PersistAuthFunc
 
 // RunServiceDeps holds the dependencies for RunService.
 type RunServiceDeps struct {
-	UISessionMgr   *uisession.Manager
-	SkillsService  *skills.Service
+	UISessionMgr      *uisession.Manager
+	HistorySessionMgr *history.SessionManager
+	SkillsService     *skills.Service
 }
 
 // RunService owns the run lifecycle: agent loop execution,
@@ -79,6 +80,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		confirmations: make(map[string]chan ConfirmationResult),
 		uiSessionMgr:  deps.UISessionMgr,
 		skillsSvc:     deps.SkillsService,
+		historySessionMgr: deps.HistorySessionMgr,
 	}
 }
 
@@ -112,6 +114,8 @@ func (s *RunService) SetCommandTimeout(timeout time.Duration) {
 }
 
 // UpdateProviderConfig stores provider config for creating LLM service instances.
+// Deprecated: callers should build RunConfig from config.Config and use
+// StartRun(ctx, sessionID, msg, cfg) instead.
 func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,11 +129,6 @@ func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
 	s.maxHistory = cfg.MaxHistory
 	s.contextWindowTokens = cfg.ContextWindowTokens
 	s.allowedReadPaths = cfg.AllowedReadPaths
-	// Preserve existing history sessions across config updates.
-	// Only create a new manager when none exists (first call).
-	if s.historySessionMgr == nil {
-		s.historySessionMgr = history.NewSessionManager(cfg.MaxHistory)
-	}
 }
 
 // InvalidateRunners clears any cached state so new runs pick up config changes.
