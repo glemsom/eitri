@@ -35,6 +35,31 @@
   }
 
   var toolCardTimers = {}; // toolCallKey -> interval ID
+
+  function lightweightMarkdown(text) {
+    // 1. HTML escape
+    var safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // 2. Bold: **text**
+    safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // 3. Italic: *text* (non-greedy, after bold so bold ** doesn't match)
+    safe = safe.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // 4. Inline code: \`code\`
+    safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // 5. Links: [text](url)
+    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+    // 6. Paragraph breaks: \n\n → </p><p>
+    safe = safe.replace(/\n\n/g, '</p><p>');
+
+    // 7. Wrap in <p>
+    safe = '<p>' + safe + '</p>';
+
+    return safe;
+  }
   var toolCardElapsed = {}; // toolCardKey -> {startMs, finalMs}
   var toolArgs = {}; // toolCallKey -> args JSON
   var toolEntryCounter = 0; // monotonic counter for unique tool keys
@@ -417,9 +442,7 @@
     if (!el) return;
 
     const contentEl = el.querySelector('.message-content') || el;
-    const span = document.createElement('span');
-    span.textContent = text;
-    contentEl.appendChild(span);
+    contentEl.innerHTML = lightweightMarkdown(text);
   }
 
   function showStreamingBubble() {

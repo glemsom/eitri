@@ -101,6 +101,7 @@ func TestJsFiles(t *testing.T) {
 	if strings.Contains(content2, "updateActivitySummary") {
 		t.Error("eitri-stream.js should not contain updateActivitySummary function")
 	}
+
 	if strings.Contains(content2, "activityElapsed") {
 		t.Error("eitri-stream.js should not contain activityElapsed variable or function")
 	}
@@ -277,5 +278,10 @@ func TestJsFiles(t *testing.T) {
 	}
 	if strings.Count(content5, "context-category-bar-fill") < 5 {
 		t.Errorf("eitri-context.js has %d category-bar-fill elements, want at least 5 (one per row)", strings.Count(content5, "context-category-bar-fill"))
+	}
+
+	// Verify stream JS exports lightweightMarkdown function
+	if !strings.Contains(content2, "lightweightMarkdown") {
+		t.Error("eitri-stream.js missing lightweightMarkdown function")
 	}
 }
