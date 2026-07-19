@@ -42,7 +42,6 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:   sessionMgr,
 	})
-	runSvc.SetWorkspace(workspace)
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
 
@@ -78,7 +77,6 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:   sessionMgr,
 	})
-	runSvc.SetWorkspace(workspace)
 	runSvc.SetSkillsService(skillsSvc)
 
 	configPath := t.TempDir() + "/config.json"
@@ -788,9 +786,8 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:   sessionMgr,
+		SkillsService:  skillsSvc,
 	})
-	runSvc.SetWorkspace(t.TempDir())
-	runSvc.SetSkillsService(skillsSvc)
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
 
@@ -1040,7 +1037,6 @@ func TestRunService_New(t *testing.T) {
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:   session.NewManager(10),
 	})
-	runSvc.SetWorkspace(t.TempDir())
 	if runSvc == nil {
 		t.Fatal("RunService is nil")
 	}
