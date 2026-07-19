@@ -5,7 +5,6 @@ Eitri uses multiple testing strategies: Go unit/integration tests, browser-based
 ## Development prerequisites
 
 - Go 1.22+
-- `tmux` on `$PATH`
 - `templ` CLI matching the module's templ dependency when editing `.templ` files
 - Chrome on Linux for browser E2E tests
 - `curl`, `tar`, and `sha256sum` for installer/release smoke tests
@@ -54,7 +53,7 @@ exit $status
 ## Quick start
 
 ```bash
-# Run all tests (browser tests skip gracefully if Chrome not found; tmux required)
+# Run all tests (browser tests skip gracefully if Chrome not found)
 go test ./...
 
 # Run a specific test package
@@ -67,7 +66,7 @@ Provider integration tests use local fake-provider HTTP servers. Automated tests
 
 | Layer | Tool | Run command | Requires |
 |-------|------|-------------|----------|
-| Unit + non-browser integration | `go test` | `go test ./...` | **tmux** |
+| Unit + non-browser integration | `go test` | `go test ./...` | Nothing |
 | API integration | `httptest` | `go test ./internal/api/` | Nothing |
 | **Browser E2E** | **chromedp** | `go test ./internal/api/` | **Chrome on Linux** |
 
@@ -225,9 +224,6 @@ These test the Go backend without a browser:
 | `internal/fileutil/path_test.go` | Path validation |
 | `internal/fileutil/filetools_test.go` | File operations (ReadFile, EditFile, InsertLine, WriteFile, ListDirectory) |
 | `internal/config/config_test.go` | Config load/save/merge, provider enum validation, model-discovery validation through fake provider servers, secure file/dir permissions |
-| `internal/executor/tmux_test.go` | Tmux command execution, cancellation/timeout cleanup, child-process cleanup, and initial working directory = launch workspace |
-| `internal/executor/session_test.go` | Session lifecycle |
-| `internal/executor/audit_test.go` | Preflight audit (tmux binary check) |
 | `internal/runner/manager_test.go` | Runner manager, including cache keys for config-dependent agent prompt changes |
 | `internal/skills/skills_test.go` | Agent Skills discovery roots, precedence, shadowing, lenient validation, diagnostics, resource manifests, 200KB activation cap |
 | `cmd/eitri/main_test.go` | CLI entry point, startup URL/workspace output, bind failure hint, non-loopback warning, `xdg-open` auto-open behavior |
@@ -264,7 +260,7 @@ Smoke installer behavior with a local fixture tarball/checksum before publishing
 - checksum mismatch fails before overwrite
 - missing `checksums.txt` fails before overwrite
 - successful install writes `~/.local/bin/eitri`
-- missing `tmux` prints distro-specific hint
+- missing `tmux` prints distro-specific hint (installer still works; tmux no longer required)
 - if no SHA256 tool exists locally, installer warns and skips verification only after `checksums.txt` download succeeds
 
 ### Agent Skills required coverage
