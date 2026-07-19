@@ -5630,3 +5630,67 @@ func TestBrowser_StreamingMarkdownFinalRenderMermaid(t *testing.T) {
 		return hasMermaid
 	})
 }
+
+// TestBrowser_StreamingMarkdownAutoScrollRegression verifies that multi-paragraph
+// markdown streaming does not break auto-scroll — after streaming completes, the
+// scroll container should be at the bottom (within tolerance).
+func TestBrowser_StreamingMarkdownAutoScrollRegression(t *testing.T) {
+	// Multi-paragraph markdown long enough to exceed viewport height
+	markdown := "# Title\n\nParagraph one with some descriptive text that goes on and on.\n\nParagraph two with even more content to fill up vertical space.\n\nParagraph three adding yet another block of text.\n\nParagraph four continuing the pattern with substantial content.\n\nParagraph five almost there with more filler text.\n\nParagraph six the last one to ensure enough scroll.\n\nFinal paragraph wrapping things up nicely."
+
+	var heightClamped bool
+
+	streamingMarkdownTestHelper(t, markdown, streamingMarkdownTestOptions{Timeout: 6 * time.Second}, func(ctx context.Context) bool {
+		// Clamp #messages height on first call to force scroll overflow
+		if !heightClamped {
+			_ = chromedp.Run(ctx,
+				chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '120px'`, nil),
+			)
+			heightClamped = true
+			return false
+		}
+
+		// Wait for streaming to complete — look for Done indicator or final render
+		var streamingDone bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var indicator = document.getElementById('stream-indicator');
+				if (indicator && indicator.textContent.trim() === 'Done') return true;
+				// Or check if final assistant message replaced streaming bubble
+				var final = document.querySelector('.message-assistant:not(#streaming)');
+				if (final) return true;
+				return false;
+			})()`, &streamingDone),
+		)
+		if !streamingDone {
+			return false
+		}
+
+		// Assert scroll position is at bottom (within 50px tolerance)
+		var atBottom bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('messages');
+				if (!el) return false;
+				var tolerance = 50;
+				return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - tolerance);
+			})()`, &atBottom),
+		)
+		if !atBottom {
+			return false
+		}
+
+		// Debug: log scroll position for diagnosis
+		var scrollInfo string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('messages');
+				if (!el) return 'no-messages';
+				return 'scrollTop=' + el.scrollTop + ' clientHeight=' + el.clientHeight + ' scrollHeight=' + el.scrollHeight;
+			})()`, &scrollInfo),
+		)
+		t.Logf("scroll position: %s", scrollInfo)
+
+		return true
+	})
+}
