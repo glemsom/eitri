@@ -18,7 +18,8 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
-	
+	"github.com/glemsom/eitri/internal/history"
+
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -78,8 +79,10 @@ func main() {
 	}
 
 	sessionMgr := session.NewManager(10)
+	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:   sessionMgr,
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historyMgr,
 	})
 	runSvc.SetWorkspace(workspace)
 	runSvc.SetCommandTimeout(time.Duration(cfg.CommandTimeout))

@@ -25,9 +25,33 @@ func (e *MaxTurnsExceededError) Error() string {
 	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
 }
 
-// StartRun starts a new agent run for a session.
+// StartRun starts a new agent run for a session with explicit RunConfig.
 // Returns warnings about stale skills, and error if run fails.
-func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string) ([]string, error) {
+func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg ...RunConfig) ([]string, error) {
+	if len(cfg) > 0 {
+		return s.startRunWithConfig(ctx, sessionID, userMessage, cfg[0])
+	}
+	// Legacy path: build RunConfig from stored service fields
+	s.mu.Lock()
+	runCfg := RunConfig{
+		ProviderID:          s.providerID,
+		BaseURL:             s.baseURL,
+		APIKey:              s.apiKey,
+		ModelName:           s.modelName,
+		SystemPrompt:        s.systemPrompt,
+		MaxTurns:            s.maxTurns,
+		MaxHistory:          s.maxHistory,
+		AllowedReadPaths:    s.allowedReadPaths,
+		ProviderAuth:        s.providerAuth,
+		Workspace:           s.workspace,
+		CmdTimeout:          s.cmdTimeout,
+		ContextWindowTokens: s.contextWindowTokens,
+	}
+	s.mu.Unlock()
+	return s.startRunWithConfig(ctx, sessionID, userMessage, runCfg)
+}
+
+func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
 	s.mu.Lock()
 	if existing, exists := s.active[sessionID]; exists {
 		select {
@@ -38,15 +62,18 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 			return nil, fmt.Errorf("session %s already has an active run", sessionID)
 		}
 	}
-	providerID := s.providerID
-	baseURL := s.baseURL
-	apiKey := s.apiKey
-	modelName := s.modelName
-	systemPrompt := s.systemPrompt
-	maxTurns := s.maxTurns
-	maxHistory := s.maxHistory
-	allowedReadPaths := s.allowedReadPaths
-	providerAuth := s.providerAuth
+	providerID := cfg.ProviderID
+	baseURL := cfg.BaseURL
+	apiKey := cfg.APIKey
+	modelName := cfg.ModelName
+	systemPrompt := cfg.SystemPrompt
+	maxTurns := cfg.MaxTurns
+	maxHistory := cfg.MaxHistory
+	allowedReadPaths := cfg.AllowedReadPaths
+	providerAuth := cfg.ProviderAuth
+	workspace := cfg.Workspace
+	cmdTimeout := cfg.CmdTimeout
+	contextWindowTokens := cfg.ContextWindowTokens
 	s.mu.Unlock()
 
 	if baseURL == "" || modelName == "" {
@@ -62,10 +89,8 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 		runSystemPrompt = history.DefaultSystemPrompt
 	}
 
-	// Resolve skill context for this session
 	skillCtx := s.resolveSessionSkillContext(sessionID)
 
-	// Build system prompt with skills catalog
 	fullSystemPrompt := runSystemPrompt
 	if s.skillsSvc != nil {
 		catalog := s.skillsSvc.SkillsCatalogXML()
@@ -73,12 +98,10 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
 		}
 	}
-	// Append pre-activated skill content
 	for _, activation := range skillCtx.Activations {
 		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
 	}
 
-	// Resolve auth (token refresh for github_copilot, etc.)
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   providerID,
 		APIKey:       apiKey,
@@ -92,9 +115,8 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	if resolvedKey != "" {
 		apiKey = resolvedKey
 	}
-	_ = authUpdate // caller may persist auth update if needed
+	_ = authUpdate
 
-	// Create LLM service via litellm adapter factory
 	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
 		ProviderID: providerID,
 		Model:      modelName,
@@ -105,21 +127,19 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 		return nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
 
-	// Build tool registry with built-in tools
 	toolReg := tool.NewRegistry()
-	toolReg.Register(tool.NewBashTool(s.workspace, s.cmdTimeout))
-	toolReg.Register(tool.NewGlobTool(s.workspace))
-	toolReg.Register(tool.NewGrepTool(s.workspace))
-	toolReg.Register(tool.NewReadTool(s.workspace, s.skillDirectories(), allowedReadPaths))
-	toolReg.Register(tool.NewWriteTool(s.workspace))
-	toolReg.Register(tool.NewEditTool(s.workspace))
+	toolReg.Register(tool.NewBashTool(workspace, cmdTimeout))
+	toolReg.Register(tool.NewGlobTool(workspace))
+	toolReg.Register(tool.NewGrepTool(workspace))
+	toolReg.Register(tool.NewReadTool(workspace, s.skillDirectories(), allowedReadPaths))
+	toolReg.Register(tool.NewWriteTool(workspace))
+	toolReg.Register(tool.NewEditTool(workspace))
 	toolReg.Register(tool.NewRenderMermaidDiagram())
 	toolReg.Register(tool.NewRenderQuickReplies())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
 	}
 
-	// Set up session manager with system prompt and user message
 	if s.historySessionMgr != nil {
 		s.historySessionMgr.Create(sessionID)
 		s.historySessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
@@ -152,7 +172,6 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 	s.active[sessionID] = state
 	s.mu.Unlock()
 
-	// Start agent loop in background goroutine
 	go func() {
 		defer func() {
 			state.finish()
@@ -170,11 +189,9 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID, s.confirmPath, s.contextWindowTokens)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID, s.confirmPath, contextWindowTokens)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				// Save partial content to session on cancellation so the UI
-				// reflects what was generated before the user pressed stop.
 				content := sseState.BufferString()
 				if content != "" {
 					s.appendToSession(sessionID, content)
@@ -198,11 +215,9 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 				return
 			}
 
-			// Error already broadcast by RunAgent via sseWriter.Error()
 			return
 		}
 
-		// Success: append final assistant response to session
 		content := sseState.BufferString()
 		if content != "" {
 			s.appendToSession(sessionID, content)

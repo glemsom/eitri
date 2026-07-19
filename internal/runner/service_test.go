@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/history"
 
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -17,9 +18,11 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager, string
 	t.Helper()
 
 	uiSessionMgr := uisession.NewManager(10)
+	historyMgr := history.NewSessionManager(50)
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:   uiSessionMgr,
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: historyMgr,
 	})
 	svc.SetWorkspace(t.TempDir())
 	return svc, uiSessionMgr, ""
