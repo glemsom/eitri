@@ -48,13 +48,39 @@ a:hover {
 /* Layout: sidebar | main */
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width, 240px) 1fr;
   grid-template-rows: auto 1fr;
   grid-template-areas:
     "sidebar header"
     "sidebar main";
   height: 100vh;
   overflow: hidden;
+}
+
+/* Resize handle between sidebar and main */
+#sidebar-resize-handle {
+  position: fixed;
+  left: calc(var(--sidebar-width, 240px) - 3px);
+  top: 0;
+  width: 6px;
+  height: 100vh;
+  cursor: col-resize;
+  z-index: 100;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+#sidebar-resize-handle:hover,
+#sidebar-resize-handle.dragging {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* Disable text selection during drag */
+#app.resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: col-resize;
 }
 
 header {
@@ -91,6 +117,8 @@ header h1 {
   height: 100%;
   overflow: hidden;
   min-height: 0;
+  min-width: 120px;
+  max-width: 600px;
 }
 
 /* Three-panel flex layout inside sidebar */
