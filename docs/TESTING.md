@@ -150,6 +150,17 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_ToolCardsInsertBeforeSentinel` | Sidebar entry appears for tools-run-first scenario (no streaming bubble); streaming correctly placed before scroll-sentinel; no tool entries in `#messages` |
 | `TestBrowser_ToolCardMorphInPlace` | Three sequential tool calls each produce unique sidebar entries with done status; no duplicate data-tool-key |
 | `TestBrowser_ToolCardsInScrollContainer` | Tool entry appears in scrollable sidebar panel after token creates streaming bubble; streaming unaffected; final render preserves scroll-sentinel; no tool entries in `#messages` |
+| `TestBrowser_StreamingMarkdownBold` | `**bold**` renders as `<strong>` during streaming |
+| `TestBrowser_StreamingMarkdownItalic` | `*italic*` renders as `<em>` during streaming |
+| `TestBrowser_StreamingMarkdownInlineCode` | `` `code` `` renders as `<code>` during streaming |
+| `TestBrowser_StreamingMarkdownLink` | `[text](url)` renders as `<a href="...">` during streaming |
+| `TestBrowser_StreamingMarkdownParagraphs` | `\n\n` creates `<p>` boundaries during streaming |
+| `TestBrowser_StreamingMarkdownMixed` | Mixed **bold**, *italic*, and `code` render correctly during streaming |
+| `TestBrowser_StreamingMarkdownIncomplete` | Unclosed `**text` stays as raw text (graceful degradation) |
+| `TestBrowser_StreamingMarkdownRenderingPhaseCSS` | `.streaming-message.rendering` appears after `done` before final swap |
+| `TestBrowser_StreamingMarkdownFinalRenderCodeBlock` | Fenced code block with Prism highlighting renders after `done` |
+| `TestBrowser_StreamingMarkdownFinalRenderMath` | `$$formula$$` renders with KaTeX after `done` |
+| `TestBrowser_StreamingMarkdownFinalRenderMermaid` | `\`\`mermaid\`\`` diagram renders after `done` |
 
 #### Planned (not yet implemented)
 
