@@ -25,6 +25,7 @@ const (
 	StatusEffective Status = "effective"
 	StatusShadowed  Status = "shadowed"
 	StatusInvalid   Status = "invalid"
+	StatusDisabled  Status = "disabled"
 )
 
 // Severity for diagnostics.
@@ -132,6 +133,7 @@ type Registry struct {
 	shadowed    []*Skill          // skills overridden by higher-precedence skills
 	all         []*Skill          // all parsed skills including shadowed
 	invalid     []*Skill          // skills that failed validation
+	disabled    []*Skill          // skills explicitly disabled
 	diagnostics Diagnostics       // discovery + registry diagnostics
 }
 
@@ -143,6 +145,7 @@ func NewRegistry() *Registry {
 }
 
 // Effective returns the map of effective skills (name → skill).
+// Disabled skills are excluded.
 func (r *Registry) Effective() map[string]*Skill {
 	if r == nil {
 		return nil
@@ -174,7 +177,15 @@ func (r *Registry) All() []*Skill {
 	return r.all
 }
 
-// Summary returns lightweight summaries for effective skills.
+// Disabled returns skills that have been explicitly disabled.
+func (r *Registry) Disabled() []*Skill {
+	if r == nil {
+		return nil
+	}
+	return r.disabled
+}
+
+// Summary returns lightweight summaries for effective skills (excluding disabled).
 func (r *Registry) Summary() []SkillSummary {
 	if r == nil {
 		return nil
@@ -202,11 +213,18 @@ func (r *Registry) Diagnostics() Diagnostics {
 
 // BuildRegistry resolves precedence across all discovered skills and builds a Registry.
 // Skills with the same name are resolved by root order (earlier = higher precedence).
-func BuildRegistry(discovered []*Skill, discoveryDiags Diagnostics) *Registry {
+// The disabled set specifies skill names to exclude from effective, summary, and other outputs.
+func BuildRegistry(discovered []*Skill, discoveryDiags Diagnostics, disabled []string) *Registry {
 	r := NewRegistry()
 	r.diagnostics = append(r.diagnostics, discoveryDiags...)
 	if len(discovered) == 0 {
 		return r
+	}
+
+	// Build disabled name set for fast lookup
+	disabledSet := make(map[string]bool, len(disabled))
+	for _, name := range disabled {
+		disabledSet[name] = true
 	}
 
 	// Track seen names for dedup
@@ -233,15 +251,28 @@ func BuildRegistry(discovered []*Skill, discoveryDiags Diagnostics) *Registry {
 				Skill:    skill.Name,
 			})
 
-			// Keep the higher-precedence one in effective
+			// Keep the higher-precedence one in effective (if not disabled)
 			if _, ok := r.effective[skill.Name]; !ok {
-				r.effective[skill.Name] = existing
+				if !disabledSet[skill.Name] {
+					r.effective[skill.Name] = existing
+				}
 			}
 		} else {
 			seen[skill.Name] = findIndex(skill, discovered)
-			skill.Status = StatusEffective
-			r.effective[skill.Name] = skill
+			if disabledSet[skill.Name] {
+				skill.Status = StatusDisabled
+				r.disabled = append(r.disabled, skill)
+			} else {
+				skill.Status = StatusEffective
+				r.effective[skill.Name] = skill
+			}
 		}
+	}
+
+	// Remove any effective skills that are in the disabled set (for cases like shadowed
+	// where the higher-precedence one might still be in effective even though it shouldn't be)
+	for name := range disabledSet {
+		delete(r.effective, name)
 	}
 
 	return r

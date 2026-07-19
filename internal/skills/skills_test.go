@@ -298,7 +298,7 @@ func TestRegistryPrecedence(t *testing.T) {
 		{Path: rootB, Scope: ScopeUserEitri},
 	}
 	skills, _ := svc.Discover()
-	registry := BuildRegistry(skills, nil)
+	registry := BuildRegistry(skills, nil, nil)
 
 	// "common" should be effective from project (higher precedence)
 	eff := registry.Effective()
@@ -337,7 +337,7 @@ func TestRegistryInvalidNotInEffective(t *testing.T) {
 	svc := NewService()
 	svc.roots = []Root{{Path: rootDir, Scope: ScopeProjectEitri}}
 	skills, _ := svc.Discover()
-	registry := BuildRegistry(skills, nil)
+	registry := BuildRegistry(skills, nil, nil)
 
 	eff := registry.Effective()
 	if eff["bad"] != nil {
@@ -601,5 +601,267 @@ func TestHasSeverity(t *testing.T) {
 	}
 	if HasSeverity(diags, SeverityError) {
 		t.Error("not expected to find error severity")
+	}
+}
+
+// --- Disabled skills tests ---
+
+func TestBuildRegistry_Disabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "enabled-skill"), "enabled-skill", "# Enabled")
+	writeSkill(t, filepath.Join(rootDir, "disabled-skill"), "disabled-skill", "# Disabled")
+
+	skills, _ := DiscoverSkills([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+	registry := BuildRegistry(skills, nil, []string{"disabled-skill"})
+
+	// Disabled skill should NOT be in effective
+	eff := registry.Effective()
+	if eff["disabled-skill"] != nil {
+		t.Error("disabled skill should not be in effective map")
+	}
+	if eff["enabled-skill"] == nil {
+		t.Error("enabled skill should be in effective map")
+	}
+
+	// Disabled skill should be in disabled list
+	disabled := registry.Disabled()
+	if len(disabled) != 1 {
+		t.Fatalf("expected 1 disabled skill, got %d", len(disabled))
+	}
+	if disabled[0].Name != "disabled-skill" {
+		t.Errorf("disabled skill name = %q, want %q", disabled[0].Name, "disabled-skill")
+	}
+	if disabled[0].Status != StatusDisabled {
+		t.Errorf("disabled skill status = %q, want %q", disabled[0].Status, StatusDisabled)
+	}
+}
+
+func TestBuildRegistry_DisabledShadowed(t *testing.T) {
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	writeSkill(t, filepath.Join(rootA, "common"), "common", "# Project common")
+	writeSkill(t, filepath.Join(rootB, "common"), "common", "# User common")
+
+	skills, _ := DiscoverSkills([]Root{
+		{Path: rootA, Scope: ScopeProjectEitri},
+		{Path: rootB, Scope: ScopeUserEitri},
+	})
+	// Disable "common" — the effective one (project scope) should be disabled;
+	// the shadowed one should remain shadowed
+	registry := BuildRegistry(skills, nil, []string{"common"})
+
+	eff := registry.Effective()
+	if eff["common"] != nil {
+		t.Error("disabled+previously-effective skill should not be in effective map")
+	}
+
+	// Skill should be in disabled list
+	disabled := registry.Disabled()
+	if len(disabled) != 1 {
+		t.Fatalf("expected 1 disabled skill, got %d", len(disabled))
+	}
+	if disabled[0].Name != "common" {
+		t.Errorf("disabled skill name = %q, want %q", disabled[0].Name, "common")
+	}
+
+	// Shadowed list should still have the shadowed copy
+	shadowed := registry.Shadowed()
+	if len(shadowed) != 1 {
+		t.Errorf("expected 1 shadowed skill, got %d", len(shadowed))
+	}
+}
+
+func TestService_DisableSkill(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "my-skill"), "my-skill", "# My Skill")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Initially effective
+	if svc.Lookup("my-skill") == nil {
+		t.Fatal("expected skill to be effective initially")
+	}
+
+	// Disable it
+	called := false
+	svc.SetDisabled("my-skill", true, func(disabled []string) {
+		called = true
+		if len(disabled) != 1 || disabled[0] != "my-skill" {
+			t.Errorf("callback disabled list = %v, want [my-skill]", disabled)
+		}
+	})
+
+	if !called {
+		t.Error("callback was not invoked")
+	}
+
+	// Lookup should now return nil
+	if svc.Lookup("my-skill") != nil {
+		t.Error("disabled skill should not be found by Lookup")
+	}
+
+	// Should no longer be in effective
+	eff := svc.Effective()
+	if eff["my-skill"] != nil {
+		t.Error("disabled skill should not be in effective map")
+	}
+}
+
+func TestService_EnableSkill(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "my-skill"), "my-skill", "# My Skill")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Disable first
+	called := false
+	svc.SetDisabled("my-skill", true, func(disabled []string) {
+		called = true
+	})
+	if !called {
+		t.Error("callback was not invoked on disable")
+	}
+	if svc.Lookup("my-skill") != nil {
+		t.Fatal("expected nil after disable")
+	}
+
+	// Enable it
+	called = false
+	svc.SetDisabled("my-skill", false, func(disabled []string) {
+		called = true
+		if len(disabled) != 0 {
+			t.Errorf("callback disabled list = %v, want empty", disabled)
+		}
+	})
+
+	if !called {
+		t.Error("callback was not invoked on enable")
+	}
+
+	// Lookup should return it again
+	if svc.Lookup("my-skill") == nil {
+		t.Error("enabled skill should be found by Lookup")
+	}
+}
+
+func TestService_CatalogXML_OmitDisabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "visible"), "visible", "# Visible")
+	writeSkill(t, filepath.Join(rootDir, "hidden"), "hidden", "# Hidden")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Disable "hidden"
+	svc.SetDisabled("hidden", true, nil)
+	svc.Refresh()
+
+	xml := svc.SkillsCatalogXML()
+	if strings.Contains(xml, "hidden") {
+		t.Error("SkillsCatalogXML should omit disabled skill")
+	}
+	if !strings.Contains(xml, "visible") {
+		t.Error("SkillsCatalogXML should include enabled skill")
+	}
+}
+
+func TestService_Summary_OmitDisabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "visible"), "visible", "# Visible")
+	writeSkill(t, filepath.Join(rootDir, "hidden"), "hidden", "# Hidden")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Disable "hidden"
+	svc.SetDisabled("hidden", true, nil)
+	svc.Refresh()
+
+	summary := svc.Registry().Summary()
+	for _, s := range summary {
+		if s.Name == "hidden" {
+			t.Error("Summary should omit disabled skill")
+		}
+	}
+	found := false
+	for _, s := range summary {
+		if s.Name == "visible" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Summary should include enabled skill")
+	}
+}
+
+func TestService_Directories_OmitDisabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "visible"), "visible", "# Visible")
+	hiddenDir := filepath.Join(rootDir, "hidden")
+	writeSkill(t, hiddenDir, "hidden", "# Hidden")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Initially both dirs present
+	dirs := svc.SkillDirectories()
+	foundHidden := false
+	for _, d := range dirs {
+		if d == hiddenDir {
+			foundHidden = true
+			break
+		}
+	}
+	if !foundHidden {
+		t.Error("SkillDirectories should include hidden dir before disable")
+	}
+
+	// Disable "hidden"
+	svc.SetDisabled("hidden", true, nil)
+	svc.Refresh()
+
+	dirs = svc.SkillDirectories()
+	for _, d := range dirs {
+		if d == hiddenDir {
+			t.Error("SkillDirectories should omit disabled skill path")
+		}
+	}
+}
+
+func TestService_SetDisabled_Persists(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+	writeSkill(t, filepath.Join(rootDir, "s2"), "s2", "# S2")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Disable s1 with a callback
+	var persisted []string
+	svc.SetDisabled("s1", true, func(disabled []string) {
+		persisted = disabled
+	})
+
+	if len(persisted) != 1 || persisted[0] != "s1" {
+		t.Fatalf("expected callback to be called with [s1], got %v", persisted)
+	}
+}
+
+func TestService_RefreshPreservesDisabled(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+	writeSkill(t, filepath.Join(rootDir, "s2"), "s2", "# S2")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	// Disable s1
+	svc.SetDisabled("s1", true, nil)
+
+	// Refresh should preserve disabled state
+	svc.Refresh()
+
+	// s1 should still be disabled
+	if svc.Lookup("s1") != nil {
+		t.Error("s1 should still be disabled after Refresh")
+	}
+	if svc.Lookup("s2") == nil {
+		t.Error("s2 should still be effective after Refresh")
 	}
 }
