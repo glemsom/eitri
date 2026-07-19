@@ -887,6 +887,9 @@ details[open] .tool-chevron {
 
 .chat-input {
   width: 100%;
+  min-height: calc(1.5em * 3 + 1rem); /* ~3 lines of text + vertical padding */
+  max-height: 50vh;
+  overflow-y: auto;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -894,7 +897,9 @@ details[open] .tool-chevron {
   padding: 0.5rem;
   font-family: inherit;
   font-size: 0.95rem;
+  line-height: 1.5;
   resize: vertical;
+  box-sizing: border-box;
 }
 
 .chat-input:focus {

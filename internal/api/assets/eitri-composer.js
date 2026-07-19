@@ -40,6 +40,8 @@
       this._bindEvents();
       this._trackComposerHeight();
       this._initMobileKeyboard();
+      // Set initial height in case the textarea has pre-filled content
+      this._autoResize();
     }
 
     _trackComposerHeight() {
@@ -115,6 +117,21 @@
       this._visualViewportHandler = viewportHandler;
     }
 
+    /** Auto-expand the textarea as the user types past the initial 3-line height. */
+    _autoResize() {
+      var ta = this.textarea;
+      // Temporarily collapse to measure natural scrollHeight
+      ta.style.height = 'auto';
+      var newHeight = ta.scrollHeight;
+      // Clamp to max-height (50vh) — matching the CSS
+      var maxHeight = parseInt(getComputedStyle(ta).maxHeight, 10);
+      if (maxHeight && newHeight > maxHeight) {
+        ta.style.height = maxHeight + 'px';
+      } else {
+        ta.style.height = newHeight + 'px';
+      }
+    }
+
     disconnectedCallback() {
       if (this._handleDocumentKeydown) {
         document.removeEventListener('keydown', this._handleDocumentKeydown);
@@ -147,7 +164,10 @@
     }
 
     _bindEvents() {
-      this.textarea.addEventListener('input', () => this._onInput());
+      this.textarea.addEventListener('input', () => {
+        this._onInput();
+        this._autoResize();
+      });
       this.textarea.addEventListener('keydown', (e) => this._onKeydown(e));
       this.textarea.addEventListener('blur', () => setTimeout(() => this._closeMenu(), 200));
       this.textarea.setAttribute('aria-controls', 'completion-menu');
