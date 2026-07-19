@@ -146,6 +146,10 @@ All currently implemented browser tests target the HTMX + SSE architecture (no A
 | `TestBrowser_ChromeNotFoundSkips` | Chrome-not-found skip behavior works (self-verifying) |
 | `TestBrowser_RichRenderingAssetsAndBehavior` | Embedded Prism/KaTeX/Mermaid assets load; code copy button, Mermaid blocks/components, and math rendering degrade/read correctly |
 | `TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap` | DiffCard and file edit diff UIs support unified/side-by-side toggle plus collapsed unchanged-region expansion after HTMX swaps |
+| `TestBrowser_ToolCardsRunningToDone` | Tool entry appears in sidebar with running timer, morphs to done with checkmark/name/output; no tool entries in `#messages` |
+| `TestBrowser_ToolCardsInsertBeforeSentinel` | Sidebar entry appears for tools-run-first scenario (no streaming bubble); streaming correctly placed before scroll-sentinel; no tool entries in `#messages` |
+| `TestBrowser_ToolCardMorphInPlace` | Three sequential tool calls each produce unique sidebar entries with done status; no duplicate data-tool-key |
+| `TestBrowser_ToolCardsInScrollContainer` | Tool entry appears in scrollable sidebar panel after token creates streaming bubble; streaming unaffected; final render preserves scroll-sentinel; no tool entries in `#messages` |
 
 #### Planned (not yet implemented)
 
