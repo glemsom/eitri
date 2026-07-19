@@ -175,7 +175,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	s.notifySessionClosed(id, "Session closed")
 	if s.config.RunService != nil {
 		if err := s.config.RunService.CloseSession(id); err != nil {
-			http.Error(w, "Failed to close session executor", http.StatusInternalServerError)
+			http.Error(w, "Failed to close session", http.StatusInternalServerError)
 			return
 		}
 	}

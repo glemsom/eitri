@@ -8,22 +8,20 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/executor"
+
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
-// newRunServiceForTest creates a RunService with test dependencies.
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager, string) {
 	t.Helper()
 
-	sessionMgr := executor.NewSessionManager(t.TempDir(), 0, 0)
 	uiSessionMgr := uisession.NewManager(10)
 
 	svc := NewRunService(RunServiceDeps{
-		SessionManager: sessionMgr,
 		UISessionMgr:   uiSessionMgr,
 	})
+	svc.SetWorkspace(t.TempDir())
 	return svc, uiSessionMgr, ""
 }
 

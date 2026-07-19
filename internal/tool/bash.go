@@ -1,30 +1,34 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os/exec"
+	"time"
 
 	"github.com/voocel/litellm"
-
-	"github.com/glemsom/eitri/internal/executor"
 )
 
 type bashArgs struct {
-	Command string `json:"command" jsonschema:"Shell command to run in the session's tmux shell"`
+	Command string `json:"command" jsonschema:"Shell command to run in the workspace directory"`
 }
 
 // BashTool implements ToolHandler for running shell commands.
 type BashTool struct {
-	sessionMgr *executor.SessionManager
-	schema     litellm.Schema
+	workspace string
+	timeout   time.Duration
+	schema    litellm.Schema
 }
 
 // NewBashTool creates a new BashTool.
-func NewBashTool(sessionMgr *executor.SessionManager) *BashTool {
+func NewBashTool(workspace string, timeout time.Duration) *BashTool {
 	return &BashTool{
-		sessionMgr: sessionMgr,
-		schema:     SchemaOf[bashArgs](),
+		workspace: workspace,
+		timeout:   timeout,
+		schema:    SchemaOf[bashArgs](),
 	}
 }
 
@@ -33,7 +37,7 @@ func (t *BashTool) Name() string {
 }
 
 func (t *BashTool) Description() string {
-	return "Execute a shell command in the session's tmux shell and return the output. Use for running commands, tests, builds, or any shell operations."
+	return "Execute a shell command in the workspace directory and return the output. Use for running commands, tests, builds, or any shell operations."
 }
 
 func (t *BashTool) JSONSchema() litellm.Schema {
@@ -50,55 +54,67 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks("Error: command is required"), nil, true
 	}
 
-	if t.sessionMgr == nil {
-		return textBlocks("Error: session manager not available"), nil, true
+	// Apply timeout if configured
+	execCtx := ctx
+	var cancel context.CancelFunc
+	if t.timeout > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, t.timeout)
+		defer cancel()
 	}
 
-	// Extract session ID from context — set by the agent loop
-	sessionID, _ := ctx.Value(sessionIDKey).(string)
-	if sessionID == "" {
-		return textBlocks("Error: session ID not available in context"), nil, true
-	}
+	cmd := exec.CommandContext(execCtx, "bash", "-c", parsed.Command)
+	cmd.Dir = t.workspace
 
-	exe, err := t.sessionMgr.GetOrCreate(sessionID)
+	// Capture stdout and stderr via pipes
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err := cmd.Run()
+
+	var exitCode int
+	var timedOut bool
+
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: failed to get session executor: %v", err)), nil, true
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+			// Check if this was a timeout: the context deadline was exceeded
+			if execCtx.Err() != nil {
+				timedOut = true
+			}
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(execCtx.Err(), context.DeadlineExceeded) {
+			timedOut = true
+		} else {
+			return textBlocks(fmt.Sprintf("Error: command execution failed: %v", err)), nil, true
+		}
 	}
 
-	result, err := exe.ExecuteCommand(ctx, parsed.Command)
-	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: command execution failed: %v", err)), nil, true
-	}
+	stdoutStr := stdoutBuf.String()
+	stderrStr := stderrBuf.String()
 
 	// Build output text
 	var output string
-	if result.Stdout != "" {
-		output += result.Stdout
+	if stdoutStr != "" {
+		output += stdoutStr
 	}
-	if result.Stderr != "" {
+	if stderrStr != "" {
 		if output != "" {
 			output += "\n"
 		}
-		output += result.Stderr
+		output += stderrStr
 	}
-	if result.ExitCode != 0 {
+	if exitCode != 0 {
 		if output != "" {
 			output += "\n"
 		}
-		output += fmt.Sprintf("\n[exit code %d]", result.ExitCode)
+		output += fmt.Sprintf("\n[exit code %d]", exitCode)
 	}
-	if result.TimedOut {
+	if timedOut {
 		if output != "" {
 			output += "\n"
 		}
 		output += "\n[command timed out]"
 	}
-	if result.Truncated {
-		if output != "" {
-			output += "\n"
-		}
-		output += "\n[output truncated — 128 KiB limit]"
-	}
 
-	return textBlocks(output), nil, result.ExitCode != 0 || result.TimedOut
+	return textBlocks(output), nil, exitCode != 0 || timedOut
 }

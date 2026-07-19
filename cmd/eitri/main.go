@@ -18,7 +18,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/executor"
+	
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -34,15 +34,12 @@ type serveOptions struct {
 	OpenURL   func(string) error
 }
 
-func cleanupRuntime(server *api.Server, runSvc *runner.RunService, executorMgr *executor.SessionManager) {
+func cleanupRuntime(server *api.Server, runSvc *runner.RunService) {
 	if server != nil {
 		server.CloseActiveStreams("Server shutting down")
 	}
 	if runSvc != nil {
 		runSvc.CancelAll()
-	}
-	if executorMgr != nil {
-		executorMgr.CloseAll()
 	}
 }
 
@@ -52,10 +49,6 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := executor.RunAudit(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 
 	workspace, err := os.Getwd()
 	if err != nil {
@@ -85,13 +78,12 @@ func main() {
 	}
 
 	sessionMgr := session.NewManager(10)
-	executorMgr := executor.NewSessionManager(workspace, time.Duration(cfg.CommandTimeout), time.Duration(cfg.SessionTimeout))
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		SessionManager: executorMgr,
 		UISessionMgr:   sessionMgr,
 	})
+	runSvc.SetWorkspace(workspace)
+	runSvc.SetCommandTimeout(time.Duration(cfg.CommandTimeout))
 	runSvc.UpdateProviderConfig(cfg)
-	executorMgr.StartTimeoutLoop(ctx, 30*time.Second)
 
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
@@ -116,7 +108,7 @@ func main() {
 		OpenURL:   openBrowserURL,
 	})
 
-	cleanupRuntime(server, runSvc, executorMgr)
+	cleanupRuntime(server, runSvc)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
