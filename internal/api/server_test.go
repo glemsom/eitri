@@ -51,14 +51,22 @@ func newTestServerWithConfigPath(t *testing.T, workspace, configPath string) *ht
 }
 
 type testServerOptions struct {
-	configPath   string
-	copilotOAuth api.GitHubCopilotOAuthConfig
+	configPath     string
+	copilotOAuth   api.GitHubCopilotOAuthConfig
+	sessionManager *session.Manager
+	skillsService  *skills.Service
 }
 
 func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOptions) *httptest.Server {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
-	skillsSvc := skills.NewService()
+	sessionMgr := opts.sessionManager
+	if sessionMgr == nil {
+		sessionMgr = session.NewManager(10)
+	}
+	skillsSvc := opts.skillsService
+	if skillsSvc == nil {
+		skillsSvc = skills.NewService()
+	}
 	configPath := opts.configPath
 	if configPath == "" {
 		configPath = t.TempDir() + "/config.json"
@@ -3371,5 +3379,230 @@ func TestUnifiedRender_OwnershipMismatch(t *testing.T) {
 
 	if resp2.StatusCode != http.StatusNotFound {
 		t.Errorf("unified render markdown without auth status = %d, want %d", resp2.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestSkillsEndpoint_DisableToggle(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "my-skill"), "my-skill", "# My Skill")
+
+	// Disable via POST
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/my-skill/disable", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("disable status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, "Disabled Skills") {
+		t.Fatalf("disable response missing 'Disabled Skills' section: %s", content)
+	}
+	if !strings.Contains(content, "my-skill") {
+		t.Fatalf("disable response missing skill name: %s", content)
+	}
+	if !strings.Contains(content, `hx-post="/api/skills/my-skill/enable"`) {
+		t.Fatalf("disable response missing enable button: %s", content)
+	}
+	if !strings.Contains(content, "disabled") {
+		t.Fatalf("disable response missing 'disabled' status badge: %s", content)
+	}
+
+	// Verify config reflects disabled skill
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range cfg.DisabledSkills {
+		if d == "my-skill" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("config.DisabledSkills does not contain 'my-skill'")
+	}
+}
+
+func TestSkillsEndpoint_EnableToggle(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "my-skill"), "my-skill", "# My Skill")
+
+	// First disable it
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/my-skill/disable", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Now enable it
+	req, _ = http.NewRequest("POST", server.URL+"/api/skills/my-skill/enable", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enable status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, "Effective Skills") {
+		t.Fatalf("enable response missing 'Effective Skills' section: %s", content)
+	}
+	if !strings.Contains(content, "my-skill") {
+		t.Fatalf("enable response missing skill name: %s", content)
+	}
+	if !strings.Contains(content, `hx-post="/api/skills/my-skill/disable"`) {
+		t.Fatalf("enable response missing disable button: %s", content)
+	}
+	if !strings.Contains(content, "effective") {
+		t.Fatalf("enable response missing 'effective' status badge: %s", content)
+	}
+
+	// Verify config reflects enabled skill
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range cfg.DisabledSkills {
+		if d == "my-skill" {
+			t.Fatal("config.DisabledSkills still contains 'my-skill' after enable")
+		}
+	}
+}
+
+func TestAPISkillsEndpoint_OmitDisabled(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "skill-a"), "skill-a", "# A")
+	writeSkill(t, filepath.Join(rootDir, "skill-b"), "skill-b", "# B")
+
+	// Disable skill-a
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/skill-a/disable", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// GET /api/skills JSON should omit disabled skill
+	resp, err = http.Get(server.URL + "/api/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	skillsJSON, ok := body["skills"].([]interface{})
+	if !ok {
+		t.Fatalf("response 'skills' field is not an array: %#v", body["skills"])
+	}
+
+	if len(skillsJSON) != 1 {
+		t.Fatalf("skills count = %d, want 1 (only skill-b)", len(skillsJSON))
+	}
+	first := skillsJSON[0].(map[string]interface{})
+	if first["name"] != "skill-b" {
+		t.Errorf("skill name = %q, want 'skill-b'", first["name"])
+	}
+}
+
+func TestSkillsEndpoint_AutoDeactivate(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	configPath := t.TempDir() + "/config.json"
+	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, sessionManager: sessionMgr, skillsService: skillsSvc})
+	client := noRedirectClient()
+
+	writeSkill(t, filepath.Join(rootDir, "my-skill"), "my-skill", "# My Skill")
+	sessionID, browserCookie := createSessionForBrowser(t, server, client)
+
+	// Activate the skill in the session
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/skills/my-skill/activate", nil)
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Verify skill is active
+	sess := sessionMgr.Get(sessionID)
+	if sess == nil {
+		t.Fatal("session not found")
+	}
+	hasActive := false
+	for _, name := range sess.ActiveSkills {
+		if name == "my-skill" {
+			hasActive = true
+			break
+		}
+	}
+	if !hasActive {
+		t.Fatal("skill should be active before disable")
+	}
+
+	// Disable the skill via POST
+	req, _ = http.NewRequest("POST", server.URL+"/api/skills/my-skill/disable", nil)
+	req.Header.Set("HX-Request", "true")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Verify skill is no longer active in the session
+	sess = sessionMgr.Get(sessionID)
+	if sess == nil {
+		t.Fatal("session not found")
+	}
+	for _, name := range sess.ActiveSkills {
+		if name == "my-skill" {
+			t.Fatal("skill should be deactivated after disable")
+		}
 	}
 }
