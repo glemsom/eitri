@@ -226,8 +226,9 @@ func TestRunService_AuthCallback(t *testing.T) {
 
 func TestRunService_StartRun_EmptyConfig_ReturnsError(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go"}
 
-	_, err := svc.StartRun(context.Background(), "session-1", "hello")
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err == nil {
 		t.Fatal("expected error for missing config, got nil")
 	}

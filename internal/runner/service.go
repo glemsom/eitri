@@ -5,12 +5,9 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/glemsom/eitri/internal/config"
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
@@ -56,18 +53,6 @@ type RunService struct {
 	uiSessionMgr    *uisession.Manager
 	skillsSvc       *skills.Service
 	historySessionMgr *history.SessionManager
-	providerID      string
-	baseURL         string
-	apiKey          string
-	providerAuth    json.RawMessage
-	modelName          string
-	systemPrompt       string
-	maxTurns           int
-	maxHistory         int
-	allowedReadPaths    []string
-	contextWindowTokens int
-	workspace           string
-	cmdTimeout          time.Duration
 	persistAuth         PersistAuthFunc
 }
 
@@ -99,50 +84,6 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
 }
 
-// SetWorkspace sets the workspace directory for tool execution.
-func (s *RunService) SetWorkspace(ws string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.workspace = ws
-}
-
-// SetCommandTimeout sets the command timeout for tool execution.
-func (s *RunService) SetCommandTimeout(timeout time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cmdTimeout = timeout
-}
-
-// UpdateProviderConfig stores provider config for creating LLM service instances.
-// Deprecated: callers should build RunConfig from config.Config and use
-// StartRun(ctx, sessionID, msg, cfg) instead.
-func (s *RunService) UpdateProviderConfig(cfg *config.Config) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.providerID = cfg.Provider
-	s.baseURL = cfg.BaseURL
-	s.apiKey = cfg.APIKey
-	s.providerAuth = append(s.providerAuth[:0], cfg.ProviderAuth...)
-	s.modelName = cfg.Model
-	s.systemPrompt = cfg.SystemPrompt
-	s.maxTurns = cfg.MaxTurns
-	s.maxHistory = cfg.MaxHistory
-	s.contextWindowTokens = cfg.ContextWindowTokens
-	s.allowedReadPaths = cfg.AllowedReadPaths
-}
-
-// InvalidateRunners clears any cached state so new runs pick up config changes.
-// No-op in the new architecture (no runner cache).
-func (s *RunService) InvalidateRunners() {
-	// No runner cache to invalidate; config is read fresh on each StartRun.
-}
-
-// ContextWindowTokens returns the configured context window size.
-func (s *RunService) ContextWindowTokens() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.contextWindowTokens
-}
 
 // ActiveRun returns the active RunState for a session, or nil if none.
 func (s *RunService) ActiveRun(sessionID string) *RunState {
