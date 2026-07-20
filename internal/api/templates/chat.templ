@@ -7,7 +7,6 @@ import "github.com/glemsom/eitri/internal/session"
 templ ChatView(sess *session.UISession, configValid bool) {
 	<div id="chat-view">
 		<div id="error-toasts"></div>
-		<div id="skill-toasts"></div>
 		@ActiveSkillChips(sess.ActiveSkills, false)
 		<div id="messages" class="messages">
 			if !configValid {

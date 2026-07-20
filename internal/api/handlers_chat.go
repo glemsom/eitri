@@ -133,21 +133,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	_ = templates.UserBubble(message).Render(r.Context(), w)
 	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
 
-	// Render OOB-active-skill-chips swap + skill activation toasts
+	// Render OOB-active-skill-chips swap for newly activated skills
 	if len(justActivatedSkills) > 0 {
 		_ = templates.ActiveSkillChips(sess.ActiveSkills, true).Render(r.Context(), w)
-
-		// Render a toast container with toasts for each newly activated skill
-		w.Write([]byte(`<div id="skill-toasts" hx-swap-oob="innerHTML">`))
-		for _, name := range justActivatedSkills {
-			skill := s.config.SkillsService.Lookup(name)
-			desc := ""
-			if skill != nil {
-				desc = skill.Description
-			}
-			_ = templates.SkillToast(name, desc).Render(r.Context(), w)
-		}
-		w.Write([]byte(`</div>`))
 	}
 }
 

@@ -45,19 +45,6 @@
     });
   }
 
-  // Show a brief skill-activated toast notification
-  function showSkillActivatedToast(skillName) {
-    var toast = document.createElement('div');
-    toast.className = 'skill-toast-stream';
-    toast.setAttribute('role', 'status');
-    toast.innerHTML = '<span class="skill-toast-icon">\uD83E\uDDE0</span><span class="skill-toast-name">' + escapeHtml(skillName) + '</span>';
-    document.getElementById('skill-toasts').appendChild(toast);
-    // Auto-dismiss after 3.5s
-    window.setTimeout(function () {
-      if (toast.parentNode) toast.remove();
-    }, 3500);
-  }
-
   function lightweightMarkdown(text) {
     // 1. HTML escape
     var safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -430,9 +417,6 @@
 
         // Fetch updated active skill chips from the server and swap them in
         fetchActiveSkillChips(sessionId);
-
-        // Show a brief toast notification
-        showSkillActivatedToast(packet.tool || 'Skill activated');
         break;
 
       case 'component':
