@@ -18,7 +18,7 @@ Add a built-in `web_fetch` tool in `internal/tool/web_fetch.go`:
 3. **32 KiB content cap** — prevents context-window blowup. Truncation marker appended when hit.
 4. **15s default timeout** — configurable per-call via `timeout` param. Short enough to not stall agent turn.
 5. **Plain HTTP** — no JS rendering. SPAs return minimal content. Acceptable trade-off for v1.
-6. **Proxy support** — `http.ProxyFromEnvironment` respects `HTTP_PROXY`/`HTTPS_PROXY` env vars. Free with Go's stdlib.
+6. **Proxy support** — `httpproxy.FromEnvironment().ProxyFunc()` reads `HTTP_PROXY`/`HTTPS_PROXY` env vars fresh on each request (unlike `http.ProxyFromEnvironment` which caches at process startup).
 7. **No auth** — public URLs only. Cookie/header injection deferred.
 8. **No search** — user provides the URL. `web_search` deferred to a separate decision.
 
@@ -27,6 +27,7 @@ Add a built-in `web_fetch` tool in `internal/tool/web_fetch.go`:
 - Positive: agent can read docs, GitHub pages, blogs, articles — any URL the user provides.
 - Positive: tool follows established patterns in `internal/tool/` — no new infrastructure needed.
 - Positive: `goquery` wraps `golang.org/x/net/html` which is already a transitive dep.
+- Positive: fresh-read proxy config picks up runtime environment changes (e.g., proxy started after the process). `httpproxy.FromEnvironment()` is called on every HTTP request rather than once at startup.
 - Negative: JS-heavy pages (SPA docs, React sites) return mostly empty content. Mitigation: documented limitation; can add chromedp fallback later.
 - Negative: no search means the agent cannot discover URLs independently. Mitigation: deferred, not foreclosed.
 - Negative: no caching means repeated fetches of the same URL do fresh HTTP requests each time. Mitigation: caching is premature optimization for v1.
