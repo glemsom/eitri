@@ -181,7 +181,16 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 		w := runstate.NewWriter(sseState)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, s.historySessionMgr, s.uiSessionMgr, sessionID, s.confirmPath, contextWindowTokens)
+		// Construct adapters from service dependencies.
+		var historyMgr HistoryManager
+		if s.historySessionMgr != nil {
+			historyMgr = newSessionHistoryManager(s.historySessionMgr, s.uiSessionMgr, sessionID)
+		} else {
+			historyMgr = newRequestHistoryManager(req)
+		}
+		confirmer := newFuncConfirmer(s.confirmPath)
+
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()
