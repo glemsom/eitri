@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +26,41 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 		HistorySessionMgr: historyMgr,
 	})
 	return svc, uiSessionMgr
+}
+
+func TestStartRun_InjectsRepoInstructions(t *testing.T) {
+	dir := t.TempDir()
+	content := "# My Repo\n\nBe specific."
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("write AGENTS.md: %v", err)
+	}
+
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  dir,
+	}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	defer svc.Cancel("session-1")
+
+	hist := svc.historySessionMgr.History("session-1")
+	if len(hist) < 1 {
+		t.Fatal("no history entries")
+	}
+	sysPrompt := hist[0].Content
+	if !strings.Contains(sysPrompt, "<repository_instructions>") {
+		t.Fatalf("system prompt should contain <repository_instructions> tags, got:\n%s", sysPrompt)
+	}
+	if !strings.Contains(sysPrompt, content) {
+		t.Fatalf("system prompt should contain AGENTS.md content %q, got:\n%s", content, sysPrompt)
+	}
 }
 
 func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
