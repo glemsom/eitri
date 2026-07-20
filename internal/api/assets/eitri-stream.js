@@ -163,6 +163,8 @@
       const statusText = document.querySelector('.stream-status-text');
       if (statusText) {
         statusText.textContent = statusLabel(status);
+        // Set CSS class for visibility/color (issue #451)
+        statusText.className = 'stream-status-text ' + status;
       }
 
       // Set glow status on the streaming message avatar (in the chat area)

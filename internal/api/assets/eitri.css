@@ -893,8 +893,9 @@ details[open] .tool-chevron {
   content: " \u00b7";
 }
 
-.stream-status-text.idle {
-  color: var(--text-muted);
+.stream-status-text.idle,
+.stream-status-text.idle::before {
+  display: none;
 }
 
 .stream-status-text.connecting {
