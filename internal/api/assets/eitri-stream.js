@@ -160,10 +160,15 @@
 
   function updateRunStatus(status, detail, state) {
     const indicator = document.getElementById('stream-indicator');
-    if (!indicator) return;
+    if (indicator) {
+      indicator.className = 'stream-indicator ' + status;
+      indicator.textContent = statusLabel(status);
+    }
 
-    indicator.className = 'stream-indicator ' + status;
-    indicator.textContent = statusLabel(status);
+    const faceContainer = document.querySelector('.header-face-container');
+    if (faceContainer) {
+      faceContainer.setAttribute('data-stream-status', status);
+    }
   }
 
   function ensureChatChrome() {

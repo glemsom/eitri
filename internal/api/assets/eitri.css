@@ -102,6 +102,41 @@ header h1 {
   gap: 0.35rem;
 }
 
+.header-face-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.header-face-container[data-stream-status="connecting"],
+.header-face-container[data-stream-status="tool-running"] {
+  animation: glow-pulse-amber 1.5s ease-in-out infinite;
+}
+
+.header-face-container[data-stream-status="streaming"] {
+  animation: glow-pulse-green 1.5s ease-in-out infinite;
+}
+
+.header-face-container[data-stream-status="error"] {
+  box-shadow: 0 0 12px 4px rgba(231, 76, 60, 0.5);
+}
+
+.header-face-container[data-stream-status="done"] {
+  box-shadow: 0 0 8px 3px rgba(46, 204, 113, 0.35);
+}
+
+@keyframes glow-pulse-amber {
+  0%, 100% { box-shadow: 0 0 4px 2px rgba(243, 156, 18, 0.3); }
+  50% { box-shadow: 0 0 14px 6px rgba(243, 156, 18, 0.6); }
+}
+
+@keyframes glow-pulse-green {
+  0%, 100% { box-shadow: 0 0 4px 2px rgba(46, 204, 113, 0.3); }
+  50% { box-shadow: 0 0 14px 6px rgba(46, 204, 113, 0.6); }
+}
+
 .header-face {
   border-radius: 50%;
   object-fit: cover;
