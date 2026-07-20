@@ -38,8 +38,15 @@ func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
 
 	registry := s.refreshSkillsRegistry()
 
+	// Read query filter
+	q := r.URL.Query().Get("q")
+	if q != "" {
+		registry = registry.FilterByName(q)
+	}
+
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html")
 		component := templates.SkillsTable(registry)
 		component.Render(r.Context(), w)
 		return

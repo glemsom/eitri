@@ -219,6 +219,50 @@ func (r *Registry) Diagnostics() Diagnostics {
 	r.diagnostics = append(r.diagnostics, d)
 }
 
+// FilterByName returns a new Registry with only skills whose name contains
+// the query string (case-insensitive). Empty/missing query returns all skills.
+func (r *Registry) FilterByName(q string) *Registry {
+	if r == nil {
+		return nil
+	}
+	if q == "" {
+		return r
+	}
+	q = strings.ToLower(q)
+
+	filtered := NewRegistry()
+	filtered.diagnostics = r.diagnostics
+
+	for name, skill := range r.effective {
+		if strings.Contains(strings.ToLower(name), q) {
+			if filtered.effective == nil {
+				filtered.effective = make(map[string]*Skill)
+			}
+			filtered.effective[name] = skill
+		}
+	}
+
+	for _, skill := range r.shadowed {
+		if strings.Contains(strings.ToLower(skill.Name), q) {
+			filtered.shadowed = append(filtered.shadowed, skill)
+		}
+	}
+
+	for _, skill := range r.invalid {
+		if strings.Contains(strings.ToLower(skill.Name), q) {
+			filtered.invalid = append(filtered.invalid, skill)
+		}
+	}
+
+	for _, skill := range r.disabled {
+		if strings.Contains(strings.ToLower(skill.Name), q) {
+			filtered.disabled = append(filtered.disabled, skill)
+		}
+	}
+
+	return filtered
+}
+
 // BuildRegistry resolves precedence across all discovered skills and builds a Registry.
 // Skills with the same name are resolved by root order (earlier = higher precedence).
 // The disabled set specifies skill names to exclude from effective, summary, and other outputs.
