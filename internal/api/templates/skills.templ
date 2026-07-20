@@ -17,6 +17,9 @@ templ SkillsView(registry *skills.Registry) {
 		<h2>Agent Skills</h2>
 		<p class="text-muted">Skills provide reusable instructions for specialized tasks.</p>
 
+
+		<input type="text" class="skills-filter-input" placeholder="Filter skills by name…" hx-get="/api/skills" hx-trigger="keyup changed delay:300ms" hx-target="#skills-table" name="q" />
+
 		<div id="skills-actions">
 			<button hx-post="/api/skills/refresh" hx-target="#skills-table" class="btn btn-primary">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>

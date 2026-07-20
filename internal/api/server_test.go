@@ -2622,6 +2622,118 @@ func TestSkillsPage_HasCollapsibleSections(t *testing.T) {
 	}
 }
 
+func TestSkillsPage_HasSearchFilter(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	writeSkill(t, filepath.Join(rootDir, "test-skill"), "test-skill", "# Test")
+
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, `class="skills-filter-input"`) {
+		t.Error("skills page missing skills-filter-input")
+	}
+}
+
+func TestAPISkillsFilter(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	// Create skills with matching and non-matching names
+	writeSkill(t, filepath.Join(rootDir, "foo-skill"), "foo-skill", "# Foo skill")
+	writeSkill(t, filepath.Join(rootDir, "bar-skill"), "bar-skill", "# Bar skill")
+	writeSkill(t, filepath.Join(rootDir, "foobar-skill"), "foobar-skill", "# Foobar skill")
+	writeSkill(t, filepath.Join(rootDir, "baz-skill"), "baz-skill", "# Baz skill")
+
+	t.Run("filter matches case-insensitive", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", server.URL+"/api/skills?q=foo", nil)
+		req.Header.Set("HX-Request", "true")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html (HTMX fragment)", ct)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		content := string(body)
+
+		if !strings.Contains(content, "foo-skill") {
+			t.Error("response missing foo-skill")
+		}
+		if !strings.Contains(content, "foobar-skill") {
+			t.Error("response missing foobar-skill")
+		}
+		if strings.Contains(content, `>bar-skill<`) {
+			t.Error("response should not contain bar-skill")
+		}
+		if strings.Contains(content, `>baz-skill<`) {
+			t.Error("response should not contain baz-skill")
+		}
+	})
+
+	t.Run("empty q returns all skills", func(t *testing.T) {
+		resp, err := http.Get(server.URL + "/api/skills")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		content := string(body)
+
+		if !strings.Contains(content, "foo-skill") {
+			t.Error("response missing foo-skill")
+		}
+		if !strings.Contains(content, "bar-skill") {
+			t.Error("response missing bar-skill")
+		}
+		if !strings.Contains(content, "foobar-skill") {
+			t.Error("response missing foobar-skill")
+		}
+		if !strings.Contains(content, "baz-skill") {
+			t.Error("response missing baz-skill")
+		}
+	})
+
+	t.Run("no-match q returns no skills", func(t *testing.T) {
+		resp, err := http.Get(server.URL + "/api/skills?q=nonexistent")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		content := string(body)
+
+		if strings.Contains(content, "skill-card") {
+			t.Error("no skill cards should be rendered for no-match query")
+		}
+	})
+}
 func TestSkillsEndpointRefreshesRegistry(t *testing.T) {
 	workspace := t.TempDir()
 	rootDir := t.TempDir()
