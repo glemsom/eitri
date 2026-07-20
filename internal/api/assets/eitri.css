@@ -1902,6 +1902,13 @@ eitri-composer {
 .settings-details summary:hover::before {
 }
 
+/* Skills page — scrollable container inside main (which has overflow-y:hidden) */
+.skills-view {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 /* Skill cards */
 .skill-card {
   background: var(--surface-raised);
