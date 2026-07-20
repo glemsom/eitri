@@ -740,6 +740,10 @@ noscript {
   max-width: 70ch;
 }
 
+.message-user .message-content {
+  white-space: pre-wrap;
+}
+
 .message-content p {
   margin-bottom: 0.5rem;
 }

@@ -1,6 +1,19 @@
 package templates
 
-import "path/filepath"
+import (
+	"html"
+	"path/filepath"
+	"strings"
+)
+
+// nl2br HTML-escapes the input and replaces newlines with <br> tags.
+// Used for user messages which are plain text, not Markdown.
+func nl2br(s string) string {
+	s = html.EscapeString(s)
+	s = strings.ReplaceAll(s, "\r\n", "<br>\n")
+	s = strings.ReplaceAll(s, "\n", "<br>\n")
+	return s
+}
 
 // pathBase returns the last component of a file path.
 // Used in templates to show only the basename of the workspace path.

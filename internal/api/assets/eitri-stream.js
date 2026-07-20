@@ -1134,7 +1134,9 @@
     const bubble = document.createElement('div');
     bubble.className = 'message message-user';
     bubble.setAttribute('data-optimistic', 'true');
-    bubble.innerHTML = '<div class="message-avatar">U</div><div class="message-body"><div class="message-content">' + escapeHtml(text) + '</div></div>';
+    // Escape HTML then convert newlines to <br> for display (matches server-side nl2br)
+    var safe = escapeHtml(text).replace(/\r?\n/g, '<br>\n');
+    bubble.innerHTML = '<div class="message-avatar">U</div><div class="message-body"><div class="message-content">' + safe + '</div></div>';
     messages.appendChild(bubble);
   }
 
