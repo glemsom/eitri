@@ -42,6 +42,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0013](docs/adr/0013-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
 | [0014](docs/adr/0014-live-context-panel.md) | Live context window utilization panel | Accepted |
 | [0015](docs/adr/0015-remove-tmux-executor.md) | Replace tmux executor with direct exec.Command | Accepted |
+| [0016](docs/adr/0016-runagent-seam-interfaces.md) | Extract HistoryManager and Confirmer seam interfaces from RunAgent | Accepted |
 
 ## Project structure
 
