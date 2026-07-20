@@ -84,11 +84,17 @@
           self._expandedEl.classList.toggle('open');
         });
 
-        // Click sidebar header to toggle expanded
+        // Click sidebar header to toggle content
         var header = document.querySelector('#context-panel .sidebar-header');
         if (header) {
           header.addEventListener('click', function () {
-            self._expandedEl.classList.toggle('open');
+            if (self._lastData) {
+              // Active: toggle expanded detail view
+              self._expandedEl.classList.toggle('open');
+            } else {
+              // Idle: toggle idle message
+              self._idleEl.classList.toggle('open');
+            }
           });
         }
 
@@ -99,7 +105,8 @@
       resetToIdle() {
         var self = this;
         self._lastData = null;
-        self._idleEl.style.display = 'block';
+        self._idleEl.classList.remove('open');
+        self._idleEl.style.display = '';
         self._compactEl.style.display = 'none';
         self._expandedEl.classList.remove('open');
         self._expandedEl.style.display = '';
@@ -125,7 +132,8 @@
         data.context_window = cw;
 
         // Transition from idle to active
-        this._idleEl.style.display = 'none';
+        this._idleEl.classList.remove('open');
+        this._idleEl.style.display = '';
         this._compactEl.style.display = 'flex';
         // Remove any inline display override from resetToIdle so CSS .open class works
         this._expandedEl.style.display = '';

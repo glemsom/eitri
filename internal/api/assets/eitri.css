@@ -2307,10 +2307,14 @@ eitri-context {
   align-items: center;
 }
 .context-idle {
+  display: none;
   padding: 0.5rem 0.75rem;
   font-size: 0.82rem;
   color: var(--text-muted);
   font-style: italic;
+}
+.context-idle.open {
+  display: block;
 }
 .context-compact {
   display: flex;
