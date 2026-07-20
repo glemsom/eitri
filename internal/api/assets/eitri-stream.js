@@ -524,7 +524,7 @@
 
     if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
-      el.innerHTML = '<span class="message-avatar-container"><img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"></span><div class="message-content"></div>';
+      el.innerHTML = '<span class="message-avatar-container"><img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"></span><div class="message-body"><div class="message-content"></div></div>';
     }
   }
 
@@ -1134,7 +1134,7 @@
     const bubble = document.createElement('div');
     bubble.className = 'message message-user';
     bubble.setAttribute('data-optimistic', 'true');
-    bubble.innerHTML = '<div class="message-avatar">U</div><div class="message-content">' + escapeHtml(text) + '</div>';
+    bubble.innerHTML = '<div class="message-avatar">U</div><div class="message-body"><div class="message-content">' + escapeHtml(text) + '</div></div>';
     messages.appendChild(bubble);
   }
 

@@ -4,7 +4,9 @@ package templates
 templ UserBubble(content string) {
 	<div class="message message-user">
 		<div class="message-avatar">U</div>
-		<div class="message-content">{ content }</div>
+		<div class="message-body">
+			<div class="message-content">{ content }</div>
+		</div>
 	</div>
 }
 
@@ -14,9 +16,11 @@ templ UserBubble(content string) {
 templ AssistantBubble(sessionID string, htmlContent string, quickReplies []string) {
 	<div class="message message-assistant">
 		<img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"/>
-		<div class="message-content">@templ.Raw(htmlContent)</div>
-		if len(quickReplies) > 0 {
-			@InlineQuickReplies(sessionID, quickReplies)
-		}
+		<div class="message-body">
+			<div class="message-content">@templ.Raw(htmlContent)</div>
+			if len(quickReplies) > 0 {
+				@InlineQuickReplies(sessionID, quickReplies)
+			}
+		</div>
 	</div>
 }
