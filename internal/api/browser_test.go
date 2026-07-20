@@ -4158,6 +4158,14 @@ func TestBrowser_ContextPanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("navigate failed: %v", err)
 	}
+	// Click Context header to reveal idle message (hidden by default)
+	err = chromedp.Run(ctx,
+		chromedp.Click("#context-panel .sidebar-header", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("click header failed: %v", err)
+	}
 
 	// Verify idle state
 	var idleText string
@@ -4170,6 +4178,12 @@ func TestBrowser_ContextPanel(t *testing.T) {
 	if !strings.Contains(idleText, "No active run") {
 		t.Errorf("idle text = %q, want 'No active run'", idleText)
 	}
+
+	// Click header again to hide idle
+	err = chromedp.Run(ctx,
+		chromedp.Click("#context-panel .sidebar-header", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
+	)
 
 	// Dispatch a context_update directly via JS to test compact rendering
 	err = chromedp.Run(ctx,
@@ -4350,8 +4364,8 @@ func TestBrowser_ContextPanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("idle after reset check failed: %v", err)
 	}
-	if idleDisplay == "none" || idleDisplay == "not-found" {
-		t.Errorf("idle display after reset = %q, expected visible (block)", idleDisplay)
+	if idleDisplay != "none" && idleDisplay != "not-found" {
+		t.Errorf("idle display after reset = %q, expected hidden (none)", idleDisplay)
 	}
 }
 
@@ -4386,8 +4400,16 @@ func TestBrowser_ContextPanel_SessionSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("navigate to sess1 failed: %v", err)
 	}
+	// Step 2: Click Context header to reveal idle message
+	err = chromedp.Run(ctx,
+		chromedp.Click("#context-panel .sidebar-header", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("click header failed: %v", err)
+	}
 
-	// Step 2: Verify idle state
+	// Verify idle state
 	var idleText string
 	err = chromedp.Run(ctx,
 		chromedp.Text("eitri-context .context-idle", &idleText, chromedp.ByQuery),
@@ -4397,6 +4419,14 @@ func TestBrowser_ContextPanel_SessionSwitch(t *testing.T) {
 	}
 	if !strings.Contains(idleText, "No active run") {
 		t.Fatalf("expected idle state, got %q", idleText)
+	}
+
+	// Re-hide idle before dispatch
+	err = chromedp.Run(ctx,
+		chromedp.Click("#context-panel .sidebar-header", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("click header to hide failed: %v", err)
 	}
 
 	// Step 3: Dispatch a context_update via JS (simulating what SSE does)
