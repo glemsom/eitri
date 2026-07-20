@@ -492,7 +492,7 @@
 
     if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
-      el.innerHTML = '<div class="message-avatar">E</div><div class="message-content"></div>';
+      el.innerHTML = '<img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"><div class="message-content"></div>';
     }
   }
 
