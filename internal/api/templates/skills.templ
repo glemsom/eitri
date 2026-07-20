@@ -161,12 +161,15 @@ templ SkillDiagnostics(registry *skills.Registry) {
 	}
 }
 
-templ ActiveSkillChips(skillsList []string) {
-	<div id="active-skills" class="active-skills">
+templ ActiveSkillChips(skillsList []string, swapOOB bool) {
+	<div id="active-skills" class="active-skills" if swapOOB { hx-swap-oob="outerHTML" }>
 		if len(skillsList) > 0 {
 			<span class="active-skills-label">Active skills:</span>
 			for _, name := range skillsList {
-				<span class="skill-chip" data-skill={ name }>{ name }</span>
+				<span class="skill-chip" data-skill={ name }>
+					<span class="skill-chip-icon">&#x1F9E0;</span>
+					{ name }
+				</span>
 			}
 		}
 	</div>

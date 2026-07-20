@@ -58,9 +58,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Activate skills from slash command
+	var justActivatedSkills []string
 	if slashResult != nil && len(slashResult.ActivatedSkills) > 0 {
 		for _, skillName := range slashResult.ActivatedSkills {
-			s.config.SessionManager.ActivateSkill(id, skillName)
+			if s.config.SessionManager.ActivateSkill(id, skillName) {
+				justActivatedSkills = append(justActivatedSkills, skillName)
+			}
 		}
 	}
 
@@ -129,6 +132,23 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	_ = templates.UserBubble(message).Render(r.Context(), w)
 	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
+
+	// Render OOB-active-skill-chips swap + skill activation toasts
+	if len(justActivatedSkills) > 0 {
+		_ = templates.ActiveSkillChips(sess.ActiveSkills, true).Render(r.Context(), w)
+
+		// Render a toast container with toasts for each newly activated skill
+		w.Write([]byte(`<div id="skill-toasts" hx-swap-oob="innerHTML">`))
+		for _, name := range justActivatedSkills {
+			skill := s.config.SkillsService.Lookup(name)
+			desc := ""
+			if skill != nil {
+				desc = skill.Description
+			}
+			_ = templates.SkillToast(name, desc).Render(r.Context(), w)
+		}
+		w.Write([]byte(`</div>`))
+	}
 }
 
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {

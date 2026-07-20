@@ -217,6 +217,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/complete/skills", s.handleCompleteSkills)
 	s.mux.HandleFunc("GET /api/sessions/{id}/complete/files", s.handleCompleteFiles)
 	s.mux.HandleFunc("POST /api/sessions/{id}/skills/{name}/activate", s.handleActivateSessionSkill)
+	s.mux.HandleFunc("GET /api/sessions/{id}/skills/chips", s.handleSessionSkillChips)
 	s.mux.HandleFunc("POST /api/skills/{name}/disable", s.handleDisableSkill)
 	s.mux.HandleFunc("POST /api/skills/{name}/enable", s.handleEnableSkill)
 	s.mux.HandleFunc("POST /api/skills/disable-all", s.handleDisableAllSkills)

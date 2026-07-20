@@ -263,6 +263,11 @@ func (w *Writer) ContextUpdate(update *ContextUpdate) {
 	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update})
 }
 
+// SkillActivated broadcasts a skill_activated event with the skill name.
+func (w *Writer) SkillActivated(name string) {
+	w.state.Broadcast(SSEEvent{Type: "skill_activated", Tool: name})
+}
+
 // Error sends an error event with kind "error" and closes streams.
 func (w *Writer) Error(msg string) {
 	w.state.BroadcastError(msg)

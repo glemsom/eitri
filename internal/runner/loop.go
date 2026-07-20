@@ -269,6 +269,17 @@ func RunAgent(
 			// Broadcast tool result event
 			sseWriter.ToolResult(tc.Function.Name, resultText)
 
+			// Broadcast skill_activated if this was a successful skill load
+			if tc.Function.Name == "skill" && !isError {
+				// Extract the skill name from the tool call arguments
+				var skillArgs struct {
+					Name string `json:"name"`
+				}
+				if err := json.Unmarshal(args, &skillArgs); err == nil && skillArgs.Name != "" {
+					sseWriter.SkillActivated(skillArgs.Name)
+				}
+			}
+
 			// Emit component event for compatible tools (except QuickReplies which stores inline)
 			if !isError || tc.Function.Name == "render_quick_replies" {
 				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args, blocks)

@@ -269,18 +269,35 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 	if r.Header.Get("HX-Request") == "true" {
 		if activated {
 			// Swap the active skills section
-			chips := templates.ActiveSkillChips(sess.ActiveSkills)
+			chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
 			chips.Render(r.Context(), w)
 			return
 		}
 		// Already active - return current state
-		chips := templates.ActiveSkillChips(sess.ActiveSkills)
+		chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
 		chips.Render(r.Context(), w)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+// handleSessionSkillChips returns the active skill chips HTML fragment for a session.
+// Used by the stream island's skill_activated handler to refresh chips reactively.
+func (s *Server) handleSessionSkillChips(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil || sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
+	chips.Render(r.Context(), w)
 }
 
 func (s *Server) handleDisableSkill(w http.ResponseWriter, r *http.Request) {

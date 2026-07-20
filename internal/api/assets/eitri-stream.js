@@ -36,6 +36,28 @@
 
   var toolCardTimers = {}; // toolCallKey -> interval ID
 
+  // Fetch updated active skill chips from the server and OOB-swap them
+  function fetchActiveSkillChips(sessionId) {
+    htmx.ajax('GET', '/api/sessions/' + sessionId + '/skills/chips', {
+      source: document.body,
+      target: '#active-skills',
+      swap: 'outerHTML',
+    });
+  }
+
+  // Show a brief skill-activated toast notification
+  function showSkillActivatedToast(skillName) {
+    var toast = document.createElement('div');
+    toast.className = 'skill-toast-stream';
+    toast.setAttribute('role', 'status');
+    toast.innerHTML = '<span class="skill-toast-icon">\uD83E\uDDE0</span><span class="skill-toast-name">' + escapeHtml(skillName) + '</span>';
+    document.getElementById('skill-toasts').appendChild(toast);
+    // Auto-dismiss after 3.5s
+    window.setTimeout(function () {
+      if (toast.parentNode) toast.remove();
+    }, 3500);
+  }
+
   function lightweightMarkdown(text) {
     // 1. HTML escape
     var safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -399,6 +421,18 @@
         if (typeof window.dispatchContextUpdate === 'function') {
           window.dispatchContextUpdate(packet.data);
         }
+        break;
+
+      case 'skill_activated':
+        markStreamResumed(state);
+        state.status = STATES.STREAMING;
+        updateRunStatus(STATES.STREAMING, 'Skill loaded: ' + (packet.tool || 'unknown'), state);
+
+        // Fetch updated active skill chips from the server and swap them in
+        fetchActiveSkillChips(sessionId);
+
+        // Show a brief toast notification
+        showSkillActivatedToast(packet.tool || 'Skill activated');
         break;
 
       case 'component':
