@@ -21,6 +21,28 @@
   --error: #e74c3c;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 48px;
+
+  /* Font families */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-code: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Type scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+
+  /* Visual design tokens */
+  --glass-bg: rgba(22, 33, 62, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --accent-gradient: linear-gradient(135deg, #e94560, #ff6b81);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --surface-raised: #1a2740;
+  --surface-overlay: rgba(22, 33, 62, 0.95);
 }
 
 html {
@@ -28,10 +50,10 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.6;
   height: 100vh;
   overflow: hidden;
 }
@@ -409,7 +431,7 @@ details.tool-entry-wrapper[open] .tool-entry .tool-chevron {
 .tool-command {
   padding: 0.25rem 0.75rem 0.15rem;
   font-size: 0.82rem;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-code);
   color: var(--text);
 }
 .tool-prompt {
@@ -435,7 +457,7 @@ details.tool-entry-wrapper .tool-result {
   flex: 1;
   margin: 0;
   padding: 0.5rem 0.75rem;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-code);
   font-size: 0.78rem;
   line-height: 1.4;
   overflow-y: auto;
@@ -722,7 +744,7 @@ noscript {
 }
 
 .message-content code {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-code);
   font-size: 0.9em;
 }
 
@@ -1360,7 +1382,7 @@ eitri-diff-card {
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-code);
   font-size: 0.85rem;
   line-height: 1.45;
 }
@@ -1857,7 +1879,7 @@ eitri-composer {
 
 /* System prompt textarea: monospace + pre-wrap */
 .monospace-textarea {
-  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-family: var(--font-code);
   font-size: 0.9rem;
   resize: vertical;
   white-space: pre-wrap;
@@ -1873,7 +1895,7 @@ eitri-composer {
 .char-count {
   font-size: 0.75rem;
   color: var(--text-muted);
-  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-family: var(--font-code);
 }
 
 /* Form-actions sticky on desktop: scoped to form-actions-sticky so device-flow
@@ -1937,7 +1959,7 @@ eitri-composer {
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
   margin: 0.75rem 0;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-code);
   font-size: 0.85rem;
   word-break: break-all;
   color: var(--text);
