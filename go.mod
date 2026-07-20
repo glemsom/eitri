@@ -13,6 +13,8 @@ require (
 )
 
 require (
+	github.com/PuerkitoBio/goquery v1.12.0 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/dop251/goja v0.0.0-20260701091749-b07b74453ea9 // indirect
