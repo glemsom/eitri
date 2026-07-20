@@ -697,15 +697,19 @@ noscript {
 
 .message-user {
   align-self: flex-end;
-  background: var(--surface-alt);
-  border: 1px solid var(--border);
+  background: rgba(233, 69, 96, 0.08);
 }
 
 .message-assistant {
   align-self: flex-start;
   background: var(--surface-raised);
-  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
 }
+
+.message + .message {
+  margin-top: 0.25rem;
+}
+
 
 .message-avatar {
   width: 32px;
@@ -720,6 +724,10 @@ noscript {
   font-size: 0.85rem;
   flex-shrink: 0;
 }
+.message-user .message-avatar {
+  background: var(--accent-gradient);
+}
+
 
 .message-body {
   flex: 1 1 auto;
@@ -729,6 +737,7 @@ noscript {
 .message-content {
   word-wrap: break-word;
   overflow-wrap: break-word;
+  max-width: 70ch;
 }
 
 .message-content p {
