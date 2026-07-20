@@ -3135,6 +3135,64 @@ func TestBrowser_HeaderHasStreamIndicator(t *testing.T) {
 	}
 }
 
+// TestBrowser_FaceBreathingAnimation verifies the face image gets the breathe animation
+// during streaming and tool-running states (issue #449).
+func TestBrowser_FaceBreathingAnimation(t *testing.T) {
+	server := newTestServer(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var animName string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible(".header-face", chromedp.ByQuery),
+		// Set streaming status to trigger breathing animation
+		chromedp.EvaluateAsDevTools(`(function() {
+			var container = document.querySelector('.header-face-container');
+			if (container) {
+				container.setAttribute('data-stream-status', 'streaming');
+				return 'set';
+			}
+			return 'not-found';
+		})()`, nil),
+		// Read computed animation-name from the face img
+		chromedp.EvaluateAsDevTools(`(function() {
+			var face = document.querySelector('.header-face');
+			if (!face) return '';
+			return window.getComputedStyle(face).animationName;
+		})()`, &animName),
+	)
+	if err != nil {
+		t.Fatalf("test failed: %v", err)
+	}
+	if !strings.Contains(animName, "breathe") {
+		t.Errorf("face animation-name = %q, want it to contain 'breathe'", animName)
+	}
+
+	// Verify idle state has no breathing animation
+	var idleAnimName string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var container = document.querySelector('.header-face-container');
+			if (container) {
+				container.setAttribute('data-stream-status', 'idle');
+			}
+		})()`, nil),
+		chromedp.EvaluateAsDevTools(`(function() {
+			var face = document.querySelector('.header-face');
+			if (!face) return '';
+			return window.getComputedStyle(face).animationName;
+		})()`, &idleAnimName),
+	)
+	if err != nil {
+		t.Fatalf("idle check failed: %v", err)
+	}
+	if strings.Contains(idleAnimName, "breathe") {
+		t.Errorf("face animation-name = %q, should NOT contain 'breathe' when idle", idleAnimName)
+	}
+}
+
 // TestBrowser_SettingsSaveButtonLoadingState verifies that when the save button is clicked,
 // it shows "Saving…" text and is disabled during the HTMX request, then re-enabled after.
 func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
