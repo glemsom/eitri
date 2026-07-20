@@ -30,7 +30,7 @@ func (t *RenderQuickRepliesTool) Name() string {
 }
 
 func (t *RenderQuickRepliesTool) Description() string {
-	return "Render suggestion chips (quick replies) in the chat. Provide a list of option labels (e.g. ['Yes', 'No', 'Maybe']). Use this to give the user clickable suggestions."
+	return "Render suggestion chips (quick replies) in the chat. Provide option labels like ['Yes', 'No', 'Maybe']. Gives user clickable suggestions."
 }
 
 func (t *RenderQuickRepliesTool) JSONSchema() litellm.Schema {

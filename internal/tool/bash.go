@@ -40,7 +40,7 @@ func (t *BashTool) Name() string {
 }
 
 func (t *BashTool) Description() string {
-	return "Execute a shell command in the workspace directory and return the output. Each call runs in a fresh shell — chain commands with && or use env vars to persist state between calls. Use for running commands, tests, builds, or any shell operations."
+	return "Run a shell command in the workspace. Each call is a fresh shell — chain with && or use env vars to persist state. For commands, tests, builds, or shell operations."
 }
 
 func (t *BashTool) JSONSchema() litellm.Schema {

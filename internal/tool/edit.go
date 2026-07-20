@@ -37,14 +37,7 @@ func (t *EditTool) Name() string {
 }
 
 func (t *EditTool) Description() string {
-	return `Make precise, targeted modifications to an existing file using search-and-replace blocks.
-
-Provide 'old_text' with enough surrounding context to uniquely identify the target location.
-Always include several surrounding lines of code as context anchors to avoid ambiguity.
-
-Returns a confirmation message and renders a DiffCard component with the change.
-
-Use this for surgical edits. For creating new files or complete rewrites, use the 'write' tool instead.`
+	return "Precise search-and-replace on an existing file. old_text must uniquely match one location. Always include surrounding context lines for uniqueness. Shows diff in UI. For new files use write instead."
 }
 
 func (t *EditTool) JSONSchema() litellm.Schema {

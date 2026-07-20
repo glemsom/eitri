@@ -37,7 +37,7 @@ func (t *GlobTool) Name() string {
 }
 
 func (t *GlobTool) Description() string {
-	return "Find files matching a glob pattern relative to workspace root. Returns sorted unique file paths, one per line. Excludes hidden directories (prefix '.') and vendor/ directory by default."
+	return "Find files by glob pattern relative to workspace root. Returns sorted unique paths, one per line. Excludes .hidden and vendor/ dirs."
 }
 
 func (t *GlobTool) JSONSchema() litellm.Schema {

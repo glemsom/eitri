@@ -36,7 +36,7 @@ func (t *SkillTool) Name() string {
 }
 
 func (t *SkillTool) Description() string {
-	return "Activate a skill by name. Skills provide reusable instructions, references, and scripts for specialized tasks. Call this when a task matches an available skill description. Returns structured skill content including instructions and resource manifest."
+	return "Activate a skill by name. Skills provide reusable instructions, references, and scripts for specialized tasks. Returns skill content with instructions and resources."
 }
 
 func (t *SkillTool) JSONSchema() litellm.Schema {

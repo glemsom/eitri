@@ -36,7 +36,7 @@ func (t *WriteTool) Name() string {
 }
 
 func (t *WriteTool) Description() string {
-	return "Create a brand new file, or completely overwrite an existing file. Creates parent directories automatically. Returns bytes written and directories created. Do not use for minor changes — use the edit tool for precise search-and-replace modifications instead."
+	return "Create or overwrite a file. Creates parent dirs automatically. Returns bytes written and dirs created. For minor changes use edit instead."
 }
 
 func (t *WriteTool) JSONSchema() litellm.Schema {

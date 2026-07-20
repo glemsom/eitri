@@ -42,7 +42,7 @@ func (t *GrepTool) Name() string {
 }
 
 func (t *GrepTool) Description() string {
-	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Use context=N to include N lines of surrounding context before and after each match; match lines are prefixed with >. Results show file:lineNum:content - use the line numbers as start_line with the read tool for targeted reading. Results sorted by file then line number. Output capped at 128 KiB."
+	return "Search file contents by regex (RE2). Filter files with file_pattern glob. context=N shows N surrounding lines; match lines prefixed >. Output: file:line:content. Capped at 128 KiB."
 }
 
 func (t *GrepTool) JSONSchema() litellm.Schema {
