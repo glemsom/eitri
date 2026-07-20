@@ -8,27 +8,28 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/voocel/litellm"
 	"golang.org/x/net/html"
+	"golang.org/x/net/http/httpproxy"
 )
 
 type webFetchArgs struct {
-	URL string `json:"url" jsonschema:"URL to fetch and extract text from"`
+	URL     string `json:"url" jsonschema:"URL to fetch and extract text from"`
+	Timeout int    `json:"timeout,omitempty" jsonschema:"Timeout in seconds (default 15)"`
 }
 
 // WebFetchTool implements ToolHandler for fetching web pages as raw text.
 type WebFetchTool struct {
 	schema litellm.Schema
-	client *http.Client
 }
 
-// NewWebFetchTool creates a new WebFetchTool with the default HTTP client.
+// NewWebFetchTool creates a new WebFetchTool.
 func NewWebFetchTool() *WebFetchTool {
 	return &WebFetchTool{
 		schema: SchemaOf[webFetchArgs](),
-		client: http.DefaultClient,
 	}
 }
 
@@ -37,12 +38,19 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a web page and return its text content converted to Markdown. Returns the page title, source URL, and body content as Markdown. Use this to read documentation, articles, or any web-accessible content."
+	return "Fetch a web page and return its text content converted to Markdown. Returns the page title, source URL, and body content as Markdown. Configurable timeout (default 15s), 32 KiB content cap, proxy support. Use this to read documentation, articles, or any web-accessible content."
 }
 
 func (t *WebFetchTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
+
+const (
+	// contentCap is the maximum size of extracted Markdown content (32 KiB).
+	contentCap = 32 * 1024
+	// truncationMsg is appended when content is truncated.
+	truncationMsg = "\n\n[Content truncated at 32 KiB — use a more specific URL or section]"
+)
 
 func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 	var parsed webFetchArgs
@@ -59,13 +67,27 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 		return textBlocks(fmt.Sprintf("Error: invalid URL %q — must be a valid http or https URL", parsed.URL)), nil, true
 	}
 
+	// Build request with context for cancellation
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("web_fetch: create request: %w", err), false
 	}
 
 	req.Header.Set("User-Agent", "Eitri/1.0")
-	resp, err := t.client.Do(req)
+
+	// Create client with timeout and proxy from environment
+	timeout := parsed.Timeout
+	if timeout <= 0 {
+		timeout = 15 // default 15 seconds
+	}
+	client := &http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+		Transport: &http.Transport{
+			Proxy: proxyFromEnv,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return textBlocks(fmt.Sprintf("Error: request failed: %v", err)), nil, true
 	}
@@ -115,7 +137,41 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 		return textBlocks("(empty page)"), nil, false
 	}
 
+	// Apply content cap with element-boundary truncation
+	result = truncateContent(result)
+
 	return textBlocks(result), nil, false
+}
+
+// proxyFromEnv reads proxy configuration from environment variables on every call,
+// unlike http.ProxyFromEnvironment which caches at process startup.
+func proxyFromEnv(req *http.Request) (*url.URL, error) {
+	return httpproxy.FromEnvironment().ProxyFunc()(req.URL)
+}
+
+// truncateContent truncates content at ~32 KiB, breaking at element boundaries
+// (defined as double-newline separators between Markdown block elements).
+func truncateContent(content string) string {
+	if len(content) <= contentCap {
+		return content
+	}
+
+	// Find the last element boundary (double newline) before the cap
+	truncateAt := strings.LastIndex(content[:contentCap], "\n\n")
+	if truncateAt < 0 {
+		// No element boundary found, truncate at exact cap (but try last newline)
+		truncateAt = strings.LastIndex(content[:contentCap], "\n")
+		if truncateAt < 0 {
+			truncateAt = contentCap
+		}
+	}
+
+	// Ensure we don't truncate in the middle of the title/source header
+	if truncateAt < 30 {
+		truncateAt = contentCap
+	}
+
+	return content[:truncateAt] + truncationMsg
 }
 
 // htmlToMarkdown converts an HTML selection to Markdown text.
