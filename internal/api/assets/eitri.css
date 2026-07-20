@@ -1943,24 +1943,74 @@ eitri-composer {
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
-  margin-bottom: 1rem;
-  box-shadow: var(--shadow-md);
+  margin-bottom: 0.75rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .skill-card.skill-effective {
-  border-left: 4px solid var(--success);
+  border-left: 3px solid var(--success);
 }
 
 .skill-card.skill-disabled {
-  border-left: 4px solid var(--warning);
+  background: var(--surface, #0d1117);
+  opacity: 0.75;
+  border-left: 3px solid var(--warning);
 }
 
 .skill-card.skill-shadowed {
-  border-left: 4px dashed var(--text-muted);
+  background: var(--surface, #0d1117);
+  opacity: 0.65;
+  border-left: 3px dashed var(--text-muted);
 }
 
 .skill-card.skill-invalid {
-  border-left: 4px solid var(--error);
+  border-left: 3px solid var(--error);
+}
+
+.skill-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 0.25rem;
+}
+
+.skill-scope-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.skill-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.skill-scope-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.skill-status-dot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  line-height: 0;
+}
+
+.skill-description {
+  padding: 0.25rem 1rem 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.skill-path {
+  padding: 0.25rem 1rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: var(--font-code, monospace);
 }
 
 

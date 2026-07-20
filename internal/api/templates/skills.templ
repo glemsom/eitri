@@ -60,9 +60,10 @@ templ EffectiveSkills(registry *skills.Registry) {
 			for _, skill := range registry.Effective() {
 				<div class="skill-card skill-effective">
 					<div class="skill-card-header">
+						@templ.Raw(scopeIcon(string(skill.Scope)))
 						<span class="skill-name">{ skill.Name }</span>
-						<span class="skill-scope badge">{ string(skill.Scope) }</span>
-						<span class="skill-status badge badge-ok">effective</span>
+						<span class="skill-scope-label">{ scopeLabel(string(skill.Scope)) }</span>
+						<span class="skill-status-dot">@templ.Raw(statusDot("effective"))</span>
 						<button hx-post={ fmt.Sprintf("/api/skills/%s/disable", skill.Name) } hx-target="#skills-table" class="btn btn-sm">Disable</button>
 					</div>
 					<p class="skill-description">{ skill.Description }</p>
@@ -83,9 +84,10 @@ templ DisabledSkills(registry *skills.Registry) {
 			for _, skill := range registry.Disabled() {
 				<div class="skill-card skill-disabled">
 					<div class="skill-card-header">
+						@templ.Raw(scopeIcon(string(skill.Scope)))
 						<span class="skill-name">{ skill.Name }</span>
-						<span class="skill-scope badge">{ string(skill.Scope) }</span>
-						<span class="skill-status badge badge-warn">disabled</span>
+						<span class="skill-scope-label">{ scopeLabel(string(skill.Scope)) }</span>
+						<span class="skill-status-dot">@templ.Raw(statusDot("disabled"))</span>
 						<button hx-post={ fmt.Sprintf("/api/skills/%s/enable", skill.Name) } hx-target="#skills-table" class="btn btn-sm">Enable</button>
 					</div>
 					<p class="skill-description">{ skill.Description }</p>
@@ -104,9 +106,10 @@ templ ShadowedSkills(registry *skills.Registry) {
 			for _, skill := range registry.Shadowed() {
 				<div class="skill-card skill-shadowed">
 					<div class="skill-card-header">
+						@templ.Raw(scopeIcon(string(skill.Scope)))
 						<span class="skill-name">{ skill.Name }</span>
-						<span class="skill-scope badge">{ string(skill.Scope) }</span>
-						<span class="skill-status badge badge-warn">shadowed</span>
+						<span class="skill-scope-label">{ scopeLabel(string(skill.Scope)) }</span>
+						<span class="skill-status-dot">@templ.Raw(statusDot("shadowed"))</span>
 					</div>
 					<p class="skill-description">{ skill.Description }</p>
 					<p class="skill-path text-muted">{ skill.Path }</p>
@@ -125,7 +128,7 @@ templ InvalidSkills(registry *skills.Registry) {
 				<div class="skill-card skill-invalid">
 					<div class="skill-card-header">
 						<span class="skill-name">{ skill.Name }</span>
-						<span class="skill-status badge badge-error">invalid</span>
+						<span class="skill-status-dot">@templ.Raw(statusDot("invalid"))</span>
 					</div>
 					<p class="skill-path text-muted">{ skill.Path }</p>
 				</div>
