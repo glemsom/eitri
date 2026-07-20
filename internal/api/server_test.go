@@ -2596,6 +2596,32 @@ func TestSkillsPage_ButtonClasses(t *testing.T) {
 	}
 }
 
+func TestSkillsPage_HasCollapsibleSections(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	writeSkill(t, filepath.Join(rootDir, "test-skill"), "test-skill", "# Test")
+
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /skills status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, `<details class="settings-details"`) {
+		t.Error("skills page missing collapsible <details class=\"settings-details\">")
+	}
+}
+
 func TestSkillsEndpointRefreshesRegistry(t *testing.T) {
 	workspace := t.TempDir()
 	rootDir := t.TempDir()
