@@ -72,6 +72,14 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	skillCtx := s.resolveSessionSkillContext(sessionID)
 
 	fullSystemPrompt := runSystemPrompt
+
+	repoInstructions, err := readRepositoryInstructions(workspace)
+	if err != nil {
+		return nil, fmt.Errorf("read repository instructions: %w", err)
+	}
+	if repoInstructions != "" {
+		fullSystemPrompt += "\n\n" + repoInstructions
+	}
 	if s.skillsSvc != nil {
 		catalog := s.skillsSvc.SkillsCatalogXML()
 		if catalog != "" {
