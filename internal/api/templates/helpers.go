@@ -8,10 +8,12 @@ import (
 
 // nl2br HTML-escapes the input and replaces newlines with <br> tags.
 // Used for user messages which are plain text, not Markdown.
+// Order matters: handle \r\n before standalone \n to avoid doubling.
 func nl2br(s string) string {
 	s = html.EscapeString(s)
-	s = strings.ReplaceAll(s, "\r\n", "<br>\n")
-	s = strings.ReplaceAll(s, "\n", "<br>\n")
+	s = strings.ReplaceAll(s, "\r\n", "<br>")
+	s = strings.ReplaceAll(s, "\n", "<br>")
+	s = strings.ReplaceAll(s, "\r", "<br>")
 	return s
 }
 
