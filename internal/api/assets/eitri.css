@@ -874,55 +874,45 @@ details[open] .tool-chevron {
   margin-top: 0.5rem;
 }
 
-/* Streaming indicator */
-.stream-indicator {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.3rem 0.65rem;
+/* Status text in header h1 (issue #451) */
+.stream-status-text {
   font-size: 0.8rem;
   font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
 }
 
-.stream-indicator.idle {
+.stream-status-text::before {
+  content: " \u00b7";
+}
+
+.stream-status-text.idle {
   color: var(--text-muted);
 }
 
-.stream-indicator.connecting {
-  background: rgba(243, 156, 18, 0.18);
+.stream-status-text.connecting {
   color: #ffd08a;
 }
 
-.stream-indicator.streaming {
-  background: rgba(46, 204, 113, 0.14);
+.stream-status-text.streaming {
   color: #7ff0aa;
 }
 
-.stream-indicator.tool-running {
-  background: rgba(243, 156, 18, 0.18);
+.stream-status-text.tool-running {
   color: #ffd08a;
 }
 
-.stream-indicator.rendering {
-  background: rgba(233, 69, 96, 0.14);
+.stream-status-text.rendering {
   color: #ff9aac;
 }
 
-.stream-indicator.done {
-  background: rgba(46, 204, 113, 0.14);
+.stream-status-text.done {
   color: #7ff0aa;
 }
 
-.stream-indicator.error {
-  background: rgba(231, 76, 60, 0.18);
+.stream-status-text.error {
   color: #ff9b90;
 }
 
-.stream-indicator.reconnecting {
-  background: rgba(243, 156, 18, 0.18);
+.stream-status-text.reconnecting {
   color: #ffd08a;
 }
 

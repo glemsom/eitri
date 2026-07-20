@@ -159,35 +159,34 @@
   }
 
   function updateRunStatus(status, detail, state) {
-    const indicator = document.getElementById('stream-indicator');
-    if (indicator) {
-      indicator.className = 'stream-indicator ' + status;
-      indicator.textContent = statusLabel(status);
-    }
+      const statusText = document.querySelector('.stream-status-text');
+      if (statusText) {
+        statusText.textContent = statusLabel(status);
+      }
 
-    const faceContainer = document.querySelector('.header-face-container');
-    if (faceContainer) {
-      faceContainer.setAttribute('data-stream-status', status);
-    }
+      const faceContainer = document.querySelector('.header-face-container');
+      if (faceContainer) {
+        faceContainer.setAttribute('data-stream-status', status);
+      }
 
-    // Toggle typing dots visibility (issue #450)
-    const typingDots = document.querySelector('.typing-dots');
-    if (typingDots) {
-      if (status === STATES.CONNECTING || status === STATES.TOOL_RUNNING) {
-        typingDots.hidden = false;
-      } else {
-        typingDots.hidden = true;
+      // Toggle typing dots visibility (issue #450)
+      const typingDots = document.querySelector('.typing-dots');
+      if (typingDots) {
+        if (status === STATES.CONNECTING || status === STATES.TOOL_RUNNING) {
+          typingDots.hidden = false;
+        } else {
+          typingDots.hidden = true;
+        }
       }
     }
-  }
 
   function ensureChatChrome() {
-    const indicator = document.getElementById('stream-indicator');
-    if (!indicator) return;
-    if (!indicator.textContent || !indicator.textContent.trim()) {
-      updateRunStatus(STATES.IDLE, defaultStatusDetail(STATES.IDLE), null);
+      const statusText = document.querySelector('.stream-status-text');
+      if (!statusText) return;
+      if (!statusText.textContent || !statusText.textContent.trim()) {
+        updateRunStatus(STATES.IDLE, defaultStatusDetail(STATES.IDLE), null);
+      }
     }
-  }
 
   function clearDeadAirTimer(state) {
     if (!state || !state.deadAirTimer) return;
