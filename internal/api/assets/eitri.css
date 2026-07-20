@@ -107,8 +107,10 @@ a:hover {
 
 header {
   grid-area: header;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border);
   padding: 0.5rem 1rem;
   display: flex;
   align-items: center;
@@ -226,7 +228,7 @@ header h1 {
 /* Sidebar */
 #sidebar {
   grid-area: sidebar;
-  background: var(--surface);
+  background: var(--surface-raised);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -490,8 +492,12 @@ details.tool-entry-wrapper .tool-result {
 }
 
 .session-item.active {
-  background: var(--surface-alt);
-  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-left: 3px solid var(--accent);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: 0 6px 6px 0;
 }
 
 .session-item-link {
@@ -623,10 +629,12 @@ eitri-composer {
   right: 0;
   top: 100%;
   min-width: 160px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow-md);
   z-index: 100;
   padding: 0.6rem 0.35rem 0.35rem;
 }
@@ -684,6 +692,7 @@ noscript {
   padding: 0.75rem;
   border-radius: 8px;
   max-width: 85%;
+  box-shadow: var(--shadow-sm);
 }
 
 .message-user {
@@ -694,7 +703,7 @@ noscript {
 
 .message-assistant {
   align-self: flex-start;
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
 }
 
@@ -836,7 +845,7 @@ noscript {
 
 /* Tool cards */
 .tool-card {
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin: 0.5rem 0;
@@ -985,7 +994,7 @@ details[open] .tool-chevron {
 /* Composer */
 .composer {
   position: relative;
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem;
@@ -1249,7 +1258,7 @@ pre:hover .copy-btn {
 
 /* Mermaid diagram */
 .mermaid-diagram {
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1rem;
@@ -1275,7 +1284,7 @@ eitri-diff-card {
 }
 
 .diff-card {
-  background: var(--surface);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin: 0.5rem 0;
@@ -1418,7 +1427,11 @@ eitri-diff-card {
   position: absolute;
   bottom: calc(100% + 4px);
   z-index: 1000;
-  background: var(--surface);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
   border: 1px solid var(--border);
   border-radius: 8px;
   max-height: 240px;
@@ -1833,11 +1846,12 @@ eitri-composer {
 
 /* Settings collapsible sections */
 .settings-details {
-  background: var(--bg);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 1rem;
   padding: 0.5rem 1rem;
+  box-shadow: var(--shadow-md);
 }
 
 .settings-details summary {
@@ -1874,8 +1888,17 @@ eitri-composer {
 }
 
 .settings-details summary:hover::before {
-  color: var(--accent);
+
+/* Skill cards */
+.skill-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-md);
 }
+
+
 
 /* System prompt textarea: monospace + pre-wrap */
 .monospace-textarea {
@@ -1904,12 +1927,12 @@ eitri-composer {
   .form-actions-sticky {
     position: sticky;
     bottom: 0;
-    background: rgba(26, 26, 46, 0.92);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     padding: 1rem;
     margin: 1rem -1rem -1rem -1rem;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--glass-border);
     z-index: 10;
   }
 }
@@ -1926,6 +1949,8 @@ eitri-composer {
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1934,13 +1959,15 @@ eitri-composer {
 }
 
 .confirmation-modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 1.5rem;
   max-width: 520px;
   width: 90%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
   animation: slideUp 0.25s ease;
 }
 
