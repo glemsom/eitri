@@ -1947,6 +1947,22 @@ eitri-composer {
   box-shadow: var(--shadow-md);
 }
 
+.skill-card.skill-effective {
+  border-left: 4px solid var(--success);
+}
+
+.skill-card.skill-disabled {
+  border-left: 4px solid var(--warning);
+}
+
+.skill-card.skill-shadowed {
+  border-left: 4px dashed var(--text-muted);
+}
+
+.skill-card.skill-invalid {
+  border-left: 4px solid var(--error);
+}
+
 
 
 /* System prompt textarea: monospace + pre-wrap */
