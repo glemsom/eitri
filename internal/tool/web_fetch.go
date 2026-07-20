@@ -11,6 +11,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/voocel/litellm"
+	"golang.org/x/net/html"
 )
 
 type webFetchArgs struct {
@@ -36,7 +37,7 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a web page and return its text content. The response is raw text with HTML tags stripped. Use this to read documentation, articles, or any web-accessible content."
+	return "Fetch a web page and return its text content converted to Markdown. Returns the page title, source URL, and body content as Markdown. Use this to read documentation, articles, or any web-accessible content."
 }
 
 func (t *WebFetchTool) JSONSchema() litellm.Schema {
@@ -84,16 +85,295 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 		return textBlocks(fmt.Sprintf("Error: parsing HTML: %v", err)), nil, true
 	}
 
-	text := doc.Find("body").Text()
-	if text == "" {
-		text = doc.Text()
+	// Extract title and source URL
+	pageTitle := ""
+	if doc.Find("title").Length() > 0 {
+		pageTitle = strings.TrimSpace(doc.Find("title").Text())
 	}
 
-	// Clean up whitespace
-	text = strings.TrimSpace(text)
-	if text == "" {
+	// Remove unwanted elements
+	doc.Find("script, style, nav, footer, header, aside").Remove()
+
+	// Convert body to Markdown
+	markdown := htmlToMarkdown(doc.Find("body"))
+	markdown = strings.TrimSpace(markdown)
+
+	// Build structured output
+	var output strings.Builder
+	if pageTitle != "" {
+		output.WriteString("Title: ")
+		output.WriteString(pageTitle)
+		output.WriteString("\n")
+	}
+	output.WriteString("Source: ")
+	output.WriteString(parsed.URL)
+	output.WriteString("\n\n")
+	output.WriteString(markdown)
+
+	result := strings.TrimSpace(output.String())
+	if result == "" {
 		return textBlocks("(empty page)"), nil, false
 	}
 
-	return textBlocks(text), nil, false
+	return textBlocks(result), nil, false
+}
+
+// htmlToMarkdown converts an HTML selection to Markdown text.
+// It traverses the DOM tree and handles common block and inline elements.
+func htmlToMarkdown(sel *goquery.Selection) string {
+	var result strings.Builder
+	sel.Contents().Each(func(i int, child *goquery.Selection) {
+		renderNode(child, &result, 0)
+	})
+	return result.String()
+}
+
+// renderNode renders a single DOM node (and its children) to Markdown.
+func renderNode(sel *goquery.Selection, buf *strings.Builder, depth int) {
+	node := sel.Get(0)
+	if node == nil {
+		return
+	}
+
+	switch node.Data {
+	case "h1", "h2", "h3", "h4", "h5", "h6":
+		level := int(node.Data[1] - '0')
+		buf.WriteString("\n\n")
+		buf.WriteString(strings.Repeat("#", level))
+		buf.WriteString(" ")
+		renderInline(sel, buf)
+		buf.WriteString("\n\n")
+
+	case "p":
+		buf.WriteString("\n\n")
+		renderInline(sel, buf)
+		buf.WriteString("\n\n")
+
+	case "pre":
+		code := sel.Find("code")
+		if code.Length() > 0 {
+			renderCodeBlock(code, buf)
+		} else {
+			renderCodeBlock(sel, buf)
+		}
+
+	case "code":
+		// Check if parent is <pre> — if so, skip (handled by pre case)
+		if sel.Parent().Is("pre") {
+			return
+		}
+		// Inline code
+		text := sel.Text()
+		text = strings.TrimSpace(text)
+		if text != "" {
+			buf.WriteString("`")
+			buf.WriteString(text)
+			buf.WriteString("`")
+		}
+
+	case "ul":
+		buf.WriteString("\n\n")
+		sel.Children().Each(func(i int, li *goquery.Selection) {
+			if li.Is("li") {
+				buf.WriteString(strings.Repeat("  ", depth))
+				buf.WriteString("- ")
+				renderInline(li, buf)
+				buf.WriteString("\n")
+			}
+		})
+		buf.WriteString("\n")
+
+	case "ol":
+		buf.WriteString("\n\n")
+		sel.Children().Each(func(i int, li *goquery.Selection) {
+			if li.Is("li") {
+				buf.WriteString(strings.Repeat("  ", depth))
+				buf.WriteString(fmt.Sprintf("%d. ", i+1))
+				renderInline(li, buf)
+				buf.WriteString("\n")
+			}
+		})
+		buf.WriteString("\n")
+
+	case "li":
+		// Handled by ul/ol parents above; if li appears standalone render as unordered
+		buf.WriteString(strings.Repeat("  ", depth))
+		buf.WriteString("- ")
+		renderInline(sel, buf)
+		buf.WriteString("\n")
+
+	case "a":
+		href := ""
+		if h, exists := sel.Attr("href"); exists {
+			href = h
+		}
+		text := sel.Text()
+		if text == "" {
+			text = href
+		}
+		if href != "" && href != text {
+			buf.WriteString("[")
+			buf.WriteString(text)
+			buf.WriteString("](")
+			buf.WriteString(href)
+			buf.WriteString(")")
+		} else {
+			buf.WriteString(text)
+		}
+
+	case "img":
+		src, _ := sel.Attr("src")
+		alt, _ := sel.Attr("alt")
+		if src != "" {
+			buf.WriteString("![")
+			buf.WriteString(alt)
+			buf.WriteString("](")
+			buf.WriteString(src)
+			buf.WriteString(")")
+		}
+
+	case "br":
+		buf.WriteString("\n")
+
+	case "hr":
+		buf.WriteString("\n\n---\n\n")
+
+	case "blockquote":
+		buf.WriteString("\n\n")
+		text := sel.Text()
+		text = strings.TrimSpace(text)
+		lines := strings.Split(text, "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				buf.WriteString("> ")
+				buf.WriteString(trimmed)
+				buf.WriteString("\n")
+			}
+		}
+		buf.WriteString("\n")
+
+	case "strong", "b":
+		text := sel.Text()
+		text = strings.TrimSpace(text)
+		if text != "" {
+			buf.WriteString("**")
+			buf.WriteString(text)
+			buf.WriteString("**")
+		}
+
+	case "em", "i":
+		text := sel.Text()
+		text = strings.TrimSpace(text)
+		if text != "" {
+			buf.WriteString("*")
+			buf.WriteString(text)
+			buf.WriteString("*")
+		}
+
+	case "table":
+		// Skip tables in v1 — just inline text
+		buf.WriteString("\n\n")
+		renderInline(sel, buf)
+		buf.WriteString("\n\n")
+
+	default:
+		// For text nodes and other inline elements, render inline
+		if node.Type == html.TextNode {
+			text := node.Data
+			text = strings.TrimSpace(text)
+			if text != "" {
+				buf.WriteString(text)
+				buf.WriteString(" ")
+			}
+			return
+		}
+		// For unknown elements, just render children
+		renderInline(sel, buf)
+	}
+}
+
+// renderInline renders the text content of a selection for inline use (no block-level formatting).
+func renderInline(sel *goquery.Selection, buf *strings.Builder) {
+	sel.Contents().Each(func(i int, child *goquery.Selection) {
+		node := child.Get(0)
+		if node == nil {
+			return
+		}
+		if node.Type == html.TextNode {
+			text := node.Data
+			text = strings.TrimSpace(text)
+			if text != "" {
+				buf.WriteString(text)
+				buf.WriteString(" ")
+			}
+			return
+		}
+
+		switch node.Data {
+		case "a":
+			href, _ := child.Attr("href")
+			text := child.Text()
+			if text == "" {
+				text = href
+			}
+			if href != "" && href != text {
+				buf.WriteString("[")
+				buf.WriteString(text)
+				buf.WriteString("](")
+				buf.WriteString(href)
+				buf.WriteString(")")
+			} else {
+				buf.WriteString(text)
+			}
+		case "img":
+			src, _ := child.Attr("src")
+			alt, _ := child.Attr("alt")
+			if src != "" {
+				buf.WriteString("![")
+				buf.WriteString(alt)
+				buf.WriteString("](")
+				buf.WriteString(src)
+				buf.WriteString(")")
+			}
+		case "code":
+			text := child.Text()
+			text = strings.TrimSpace(text)
+			if text != "" {
+				buf.WriteString("`")
+				buf.WriteString(text)
+				buf.WriteString("`")
+			}
+		case "strong", "b":
+			text := child.Text()
+			text = strings.TrimSpace(text)
+			if text != "" {
+				buf.WriteString("**")
+				buf.WriteString(text)
+				buf.WriteString("**")
+			}
+		case "em", "i":
+			text := child.Text()
+			text = strings.TrimSpace(text)
+			if text != "" {
+				buf.WriteString("*")
+				buf.WriteString(text)
+				buf.WriteString("*")
+			}
+		case "br":
+			buf.WriteString("\n")
+		default:
+			renderInline(child, buf)
+		}
+	})
+}
+
+// renderCodeBlock renders a <pre><code> or <code> block as a fenced code block.
+func renderCodeBlock(sel *goquery.Selection, buf *strings.Builder) {
+	buf.WriteString("\n\n```\n")
+	text := sel.Text()
+	// Remove trailing newline for cleaner output
+	text = strings.TrimRight(text, "\n")
+	buf.WriteString(text)
+	buf.WriteString("\n```\n\n")
 }

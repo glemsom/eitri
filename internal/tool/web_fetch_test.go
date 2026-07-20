@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/voocel/litellm"
 )
 
@@ -138,8 +139,184 @@ func TestWebFetch_FetchSuccess(t *testing.T) {
 	if !ok {
 		t.Fatalf("block type = %T, want TextBlock", blocks[0])
 	}
-	if !strings.Contains(tb.Text, "Hello") || !strings.Contains(tb.Text, "World") {
-		t.Errorf("unexpected text content: %q", tb.Text)
+	// Should contain title, source, and markdown
+	if !strings.Contains(tb.Text, "Test Page") {
+		t.Errorf("output missing title 'Test Page': %q", tb.Text)
+	}
+	if !strings.Contains(tb.Text, srv.URL) {
+		t.Errorf("output missing source URL %q: %q", srv.URL, tb.Text)
+	}
+	if !strings.Contains(tb.Text, "# Hello") {
+		t.Errorf("output missing heading '# Hello': %q", tb.Text)
+	}
+}
+
+func TestWebFetch_StripUnwantedElements(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Clean Page</title></head><body>
+<script>alert('bad')</script>
+<style>.foo{}</style>
+<nav>Nav links</nav>
+<footer>Footer text</footer>
+<header>Header text</header>
+<aside>Sidebar</aside>
+<p>Real content</p>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	tb := blocks[0].(litellm.TextBlock)
+	// Unwanted elements should not appear
+	for _, unwanted := range []string{"alert('bad')", ".foo{}", "Nav links", "Footer text", "Header text", "Sidebar"} {
+		if strings.Contains(tb.Text, unwanted) {
+			t.Errorf("output contains unwanted text %q", unwanted)
+		}
+	}
+	if !strings.Contains(tb.Text, "Real content") {
+		t.Errorf("output missing real content")
+	}
+}
+
+func TestWebFetch_Headings(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Headings</title></head><body>
+<h1>Level 1</h1>
+<h2>Level 2</h2>
+<h3>Level 3</h3>
+<h4>Level 4</h4>
+<h5>Level 5</h5>
+<h6>Level 6</h6>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := blocks[0].(litellm.TextBlock)
+
+	checks := []struct {
+		level int
+		want  string
+	}{
+		{1, "# Level 1"},
+		{2, "## Level 2"},
+		{3, "### Level 3"},
+		{4, "#### Level 4"},
+		{5, "##### Level 5"},
+		{6, "###### Level 6"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(tb.Text, c.want) {
+			t.Errorf("output missing heading level %d marker: %q", c.level, c.want)
+		}
+	}
+}
+
+func TestWebFetch_CodeBlocks(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Code</title></head><body>
+<pre><code>func main() {
+    fmt.Println("hello")
+}</code></pre>
+<p>Inline <code>code()</code> here.</p>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := blocks[0].(litellm.TextBlock)
+
+	if !strings.Contains(tb.Text, "```") {
+		t.Error("output missing fenced code block markers")
+	}
+	if !strings.Contains(tb.Text, "func main()") {
+		t.Error("output missing code block content")
+	}
+	if !strings.Contains(tb.Text, "`code()`") {
+		t.Errorf("output missing inline code: %q", tb.Text)
+	}
+}
+
+func TestWebFetch_Links(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Links</title></head><body>
+<p>Visit <a href="https://example.com">Example</a> for more.</p>
+<p>Also <a href="/relative">relative</a> link.</p>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := blocks[0].(litellm.TextBlock)
+
+	if !strings.Contains(tb.Text, "[Example](https://example.com)") {
+		t.Errorf("output missing converted link: %q", tb.Text)
+	}
+}
+
+func TestWebFetch_Images(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Images</title></head><body>
+<p><img src="https://example.com/pic.png" alt="A picture"> here.</p>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := blocks[0].(litellm.TextBlock)
+
+	if !strings.Contains(tb.Text, "![A picture](https://example.com/pic.png)") {
+		t.Errorf("output missing converted image: %q", tb.Text)
+	}
+}
+
+func TestWebFetch_Lists(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Lists</title></head><body>
+<ul>
+<li>Item one</li>
+<li>Item two</li>
+<li>Item three</li>
+</ul>
+<ol>
+<li>First</li>
+<li>Second</li>
+</ol>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := blocks[0].(litellm.TextBlock)
+
+	for _, want := range []string{"- Item one", "- Item two", "- Item three"} {
+		if !strings.Contains(tb.Text, want) {
+			t.Errorf("output missing list item %q: %q", want, tb.Text)
+		}
+	}
+	if !strings.Contains(tb.Text, "1. First") {
+		t.Errorf("output missing ordered list item '1. First': %q", tb.Text)
+	}
+	if !strings.Contains(tb.Text, "2. Second") {
+		t.Errorf("output missing ordered list item '2. Second': %q", tb.Text)
 	}
 }
 
@@ -181,4 +358,103 @@ func TestWebFetch_HTTPServerError(t *testing.T) {
 		t.Error("isError = false, want true for HTTP 500")
 	}
 	_ = blocks
+}
+
+// --- htmlToMarkdown unit tests ---
+
+func TestHTMLToMarkdown_Headings(t *testing.T) {
+	t.Parallel()
+	html := `<h1>H1</h1><h2>H2</h2><h3>H3</h3>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	if !strings.Contains(result, "# H1") {
+		t.Errorf("h1 not converted: %q", result)
+	}
+	if !strings.Contains(result, "## H2") {
+		t.Errorf("h2 not converted: %q", result)
+	}
+	if !strings.Contains(result, "### H3") {
+		t.Errorf("h3 not converted: %q", result)
+	}
+}
+
+func TestHTMLToMarkdown_CodeBlock(t *testing.T) {
+	t.Parallel()
+	html := `<pre><code>fmt.Println("hi")</code></pre>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	if !strings.Contains(result, "```") {
+		t.Errorf("code fence missing: %q", result)
+	}
+	if !strings.Contains(result, `fmt.Println("hi")`) {
+		t.Errorf("code content missing: %q", result)
+	}
+}
+
+func TestHTMLToMarkdown_Link(t *testing.T) {
+	t.Parallel()
+	html := `<a href="https://go.dev">Go</a>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	want := "[Go](https://go.dev)"
+	if !strings.Contains(result, want) {
+		t.Errorf("link not converted, got: %q", result)
+	}
+}
+
+func TestHTMLToMarkdown_Image(t *testing.T) {
+	t.Parallel()
+	html := `<img src="https://example.com/pic.png" alt="Photo">`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	want := "![Photo](https://example.com/pic.png)"
+	if !strings.Contains(result, want) {
+		t.Errorf("image not converted, got: %q", result)
+	}
+}
+
+func TestHTMLToMarkdown_UnorderedList(t *testing.T) {
+	t.Parallel()
+	html := `<ul><li>A</li><li>B</li><li>C</li></ul>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	for _, item := range []string{"- A", "- B", "- C"} {
+		if !strings.Contains(result, item) {
+			t.Errorf("missing list item %q: %q", item, result)
+		}
+	}
+}
+
+func TestHTMLToMarkdown_OrderedList(t *testing.T) {
+	t.Parallel()
+	html := `<ol><li>First</li><li>Second</li><li>Third</li></ol>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := htmlToMarkdown(doc.Find("body"))
+	if !strings.Contains(result, "1. First") {
+		t.Errorf("missing '1. First': %q", result)
+	}
+	if !strings.Contains(result, "2. Second") {
+		t.Errorf("missing '2. Second': %q", result)
+	}
+	if !strings.Contains(result, "3. Third") {
+		t.Errorf("missing '3. Third': %q", result)
+	}
 }
