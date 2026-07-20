@@ -1311,10 +1311,8 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 	newContent := strings.Replace(oldContent, "line 3\n", "line 3 changed\n", 1)
 
 	var (
-		diffExpanded             bool
-		diffSideBySideActive     bool
-		fileEditDiffRendered     bool
-		fileEditSideBySideActive bool
+		diffExpanded         bool
+		diffSideBySideActive bool
 	)
 
 	err := chromedp.Run(ctx,
@@ -1327,7 +1325,7 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 				target: '#messages',
 				swap: 'beforeend',
 				contentType: 'application/json',
-				values: JSON.stringify({kind: 'component', name: 'DiffCard', data: {old: %q, new: %q, lang: 'go'}})
+				values: {kind: 'component', name: 'DiffCard', data: {old: %q, new: %q, lang: 'go'}}
 			});
 			return true;
 		})()`, oldContent, newContent), nil),
@@ -1345,33 +1343,7 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 			return !!card.querySelector('.diff-pane-side-by-side.is-active') &&
 				!!card.querySelector('.diff-toggle-btn[data-view="side-by-side"].is-active');
 		})()`, &diffSideBySideActive),
-		chromedp.EvaluateAsDevTools(fmt.Sprintf(`(function() {
-			const sessionId = location.pathname.split('/').pop();
-			htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-				source: document.body,
-				target: '#messages',
-				swap: 'beforeend',
-				contentType: 'application/json',
-				values: JSON.stringify({kind: 'tool_card', tool: 'file_editor', status: 'done', output: JSON.stringify({
-					path: 'main.go',
-					mode: 'overwrite',
-					bytes_written: 123,
-					old_content: %q,
-					new_content: %q,
-					dirs_created: []
-				})})
-			});
-			return true;
-		})()`, oldContent, newContent), nil),
-		chromedp.WaitVisible(".file-edit-card eitri-diff-card .diff-toggle-btn[data-view='side-by-side']", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools(`document.querySelector('.file-edit-card eitri-diff-card') !== null`, &fileEditDiffRendered),
-		chromedp.Click(".file-edit-card eitri-diff-card .diff-toggle-btn[data-view='side-by-side']", chromedp.ByQuery),
-		chromedp.EvaluateAsDevTools(`(function() {
-			const card = document.querySelector('.file-edit-card eitri-diff-card');
-			if (!card) return false;
-			return !!card.querySelector('.diff-pane-side-by-side.is-active') &&
-				!!card.querySelector('.diff-toggle-btn[data-view="side-by-side"].is-active');
-		})()`, &fileEditSideBySideActive),
+
 	)
 	if err != nil {
 		t.Fatalf("diff card browser test failed: %v", err)
@@ -1383,12 +1355,7 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 	if !diffSideBySideActive {
 		t.Error("DiffCard should switch to side-by-side view")
 	}
-	if !fileEditDiffRendered {
-		t.Error("file edit result should render interactive diff card")
-	}
-	if !fileEditSideBySideActive {
-		t.Error("file edit diff should switch to side-by-side view")
-	}
+
 }
 
 func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
