@@ -887,12 +887,6 @@ details[open] .tool-chevron {
 .stream-status-text {
   font-size: 0.8rem;
   font-weight: 600;
-}
-
-.stream-status-text::before {
-  content: " \u00b7";
-}
-
 .stream-status-text.idle,
 .stream-status-text.idle::before {
   display: none;
