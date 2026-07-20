@@ -1931,6 +1931,13 @@ eitri-composer {
 .settings-details summary:hover::before {
 }
 
+/* Settings page — scrollable container inside main (which has overflow-y:hidden) */
+.settings-view {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 /* Skills page — scrollable container inside main (which has overflow-y:hidden) */
 .skills-view {
   flex: 1;

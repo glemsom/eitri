@@ -9,7 +9,7 @@ templ SettingsView(cfg *config.Config, models []string, workspace string, chatPa
 }
 
 templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string) {
-	<div id="settings-form">
+	<div id="settings-form" class="settings-view">
 		if errorMessage != "" {
 			@ErrorToast(errorMessage)
 		}
