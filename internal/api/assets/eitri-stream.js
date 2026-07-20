@@ -654,21 +654,33 @@
         return;
       }
       var wrapper = document.querySelector('#tool-activity details[data-tool-key="' + toolCallKey + '"]');
-      if (wrapper) {
-        htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-          source: document.body,
-          target: '#' + CSS.escape(wrapper.id),
-          swap: 'innerHTML',
-          contentType: 'application/json',
-          values: {
-            kind: 'component',
-            name: compName,
-            data: compData,
-          },
-        });
-      } else {
+      if (!wrapper) {
         console.warn('[eitri] renderComponent: wrapper not found for toolCallKey=' + toolCallKey);
+        return;
       }
+      // Find or create a container for component content inside the wrapper.
+      // Never swap innerHTML on the whole details element — that would
+      // overwrite the <summary> (and any done/error status renderToolCard set).
+      var contentContainer = wrapper.querySelector('.tool-component-content');
+      if (!contentContainer) {
+        contentContainer = document.createElement('div');
+        contentContainer.className = 'tool-component-content';
+        wrapper.appendChild(contentContainer);
+        if (!contentContainer.id) {
+          contentContainer.id = 'comp-' + toolCallKey;
+        }
+      }
+      htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
+        source: document.body,
+        target: '#' + CSS.escape(contentContainer.id),
+        swap: 'innerHTML',
+        contentType: 'application/json',
+        values: {
+          kind: 'component',
+          name: compName,
+          data: compData,
+        },
+      });
       return;
     }
 
