@@ -63,12 +63,30 @@ func RunAgent(
 		maxTurns = 10
 	}
 
-	// Helper to broadcast context_update if enabled and sessionMgr is available.
+	// Construct HistoryManager adapter from existing params.
+	var historyMgr HistoryManager
+	if sessionMgr != nil {
+		historyMgr = newSessionHistoryManager(sessionMgr, uisessionMgr, sessionID)
+	} else {
+		historyMgr = newRequestHistoryManager(req)
+	}
+
+	// Construct Confirmer adapter from existing params.
+	var confirmer Confirmer
+	if confirmFn != nil {
+		confirmer = newFuncConfirmer(confirmFn)
+	}
+
+	// Helper to broadcast context_update if enabled and historyMgr is available.
 	broadcastContextUpdate := func() {
-		if contextWindow <= 0 || sessionMgr == nil {
+		if contextWindow <= 0 {
 			return
 		}
-		history := sessionMgr.History(sessionID)
+		// Only broadcast for session-based (UI) history, not request-based.
+		if sessionMgr == nil {
+			return
+		}
+		history := historyMgr.History(sessionID)
 		if history == nil {
 			return
 		}
@@ -83,10 +101,8 @@ func RunAgent(
 			return err
 		}
 
-		// Load conversation history from session manager when available
-		if sessionMgr != nil {
-			req.Messages = sessionMgr.History(sessionID)
-		}
+		// Load conversation history via adapter
+		req.Messages = historyMgr.History(sessionID)
 
 		// Attach tool definitions from registry
 		if tools != nil {
@@ -131,14 +147,8 @@ func RunAgent(
 				// Always save even when empty (e.g. thinking-only stream) to maintain
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
-				if sessionMgr != nil {
-					sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-				} else {
-					req.Messages = append(req.Messages, litellm.Message{
-						Role:      "assistant",
-						Content:   content.String(),
-						ToolCalls: toolCalls,
-					})
+				historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
+				if sessionMgr == nil {
 					trimMessages(req, maxHistory)
 				}
 				return streamErr
@@ -164,14 +174,7 @@ func RunAgent(
 			sseWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
 			if contentStr != "" || len(req.Messages) > 0 {
-				if sessionMgr != nil {
-					sessionMgr.AppendAssistant(sessionID, contentStr, nil)
-				} else {
-					req.Messages = append(req.Messages, litellm.Message{
-						Role:    "assistant",
-						Content: contentStr,
-					})
-				}
+				historyMgr.AppendAssistant(sessionID, contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
 			if sessionMgr == nil {
@@ -186,15 +189,7 @@ func RunAgent(
 		}
 
 		// Has tool calls — add assistant message to history
-		if sessionMgr != nil {
-			sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-		} else {
-			req.Messages = append(req.Messages, litellm.Message{
-				Role:      "assistant",
-				Content:   content.String(),
-				ToolCalls: toolCalls,
-			})
-		}
+		historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
 
 // Execute each tool call sequentially
 		
@@ -217,7 +212,7 @@ func RunAgent(
 			if err != nil {
 				// Check if tool needs user confirmation
 				var needsConf *tool.ErrNeedsConfirmation
-				if errors.As(err, &needsConf) && confirmFn != nil {
+				if errors.As(err, &needsConf) && confirmer != nil {
 					slog.Debug("tool needs confirmation", slog.String("path", needsConf.Path), slog.String("message", needsConf.Message))
 
 					// Send needs_confirmation SSE event
@@ -228,22 +223,14 @@ func RunAgent(
 					})
 
 					// Wait for user response
-					result, confirmErr := confirmFn(ctx, sessionID, needsConf.Path, needsConf.Message)
+					result, confirmErr := confirmer.Confirm(ctx, sessionID, needsConf.Path, needsConf.Message)
 					if confirmErr != nil {
 						if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
 							return confirmErr
 						}
 						errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
 						sseWriter.ToolResult(tc.Function.Name, errMsg)
-						if sessionMgr != nil {
-							sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-						} else {
-							req.Messages = append(req.Messages, litellm.Message{
-								Role:       "tool",
-								ToolCallID: tc.ID,
-								Content:    errMsg,
-							})
-						}
+						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 						continue
 					}
 
@@ -255,15 +242,7 @@ func RunAgent(
 						if err != nil {
 							errMsg := fmt.Sprintf("Tool error after approval: %v", err)
 							sseWriter.ToolResult(tc.Function.Name, errMsg)
-							if sessionMgr != nil {
-								sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-							} else {
-								req.Messages = append(req.Messages, litellm.Message{
-									Role:       "tool",
-									ToolCallID: tc.ID,
-									Content:    errMsg,
-								})
-							}
+							historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 							continue
 						}
 						// Continue to process blocks below (resultText, Broadcast, etc.)
@@ -271,15 +250,7 @@ func RunAgent(
 						// Denial — return error to LLM
 						errMsg := fmt.Sprintf("Access denied to path: %s", needsConf.Path)
 						sseWriter.ToolResult(tc.Function.Name, errMsg)
-						if sessionMgr != nil {
-							sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-						} else {
-							req.Messages = append(req.Messages, litellm.Message{
-								Role:       "tool",
-								ToolCallID: tc.ID,
-								Content:    errMsg,
-							})
-						}
+						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 						continue
 					}
 				} else {
@@ -292,15 +263,7 @@ func RunAgent(
 					// (not as a separate error toast that closes the stream).
 					sseWriter.ToolResult(tc.Function.Name, errMsg)
 					// Record the error as a tool result so the LLM can see it
-					if sessionMgr != nil {
-						sessionMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-					} else {
-						req.Messages = append(req.Messages, litellm.Message{
-							Role:       "tool",
-							ToolCallID: tc.ID,
-							Content:    errMsg,
-						})
-					}
+					historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 					slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
 					continue
 				}
@@ -339,15 +302,7 @@ func RunAgent(
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Function.Name)
 			}
-			if sessionMgr != nil {
-				sessionMgr.AppendTool(sessionID, tc.ID, resultContent, isError)
-			} else {
-				req.Messages = append(req.Messages, litellm.Message{
-					Role:       "tool",
-					ToolCallID: tc.ID,
-					Content:    resultContent,
-				})
-			}
+			historyMgr.AppendTool(sessionID, tc.ID, resultContent, isError)
 		}
 
 		// Broadcast context_update after tool results appended to history

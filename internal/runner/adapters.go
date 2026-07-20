@@ -119,4 +119,25 @@ func (s *testConfirmerStub) Confirm(_ context.Context, sessionID, path, message 
 		return nil, fmt.Errorf("testConfirmerStub: %w", s.err)
 	}
 	return s.result, nil
+
+}
+
+
+// ── funcConfirmer ────────────────────────────────────────────────────────
+
+// funcConfirmer implements Confirmer by wrapping a ConfirmationFunc.
+// This adapter allows existing callers that pass a function to continue
+// working after RunAgent switches to the Confirmer interface.
+type funcConfirmer struct {
+	fn ConfirmationFunc
+}
+
+// newFuncConfirmer creates a funcConfirmer from a ConfirmationFunc.
+func newFuncConfirmer(fn ConfirmationFunc) Confirmer {
+	return &funcConfirmer{fn: fn}
+}
+
+// Confirm delegates to the wrapped ConfirmationFunc.
+func (c *funcConfirmer) Confirm(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error) {
+	return c.fn(ctx, sessionID, path, message)
 }
