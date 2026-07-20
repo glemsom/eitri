@@ -1403,7 +1403,7 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
-		chromedp.Text("#stream-indicator", &idleStatus, chromedp.ByQuery),
+		chromedp.Text(".stream-status-text", &idleStatus, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("navigate chat failed: %v", err)
@@ -1423,7 +1423,7 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 
 	var connectingStatus string
 	err = chromedp.Run(ctx,
-		chromedp.Text("#stream-indicator", &connectingStatus, chromedp.ByQuery),
+		chromedp.Text(".stream-status-text", &connectingStatus, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("read connecting status failed: %v", err)
@@ -1436,7 +1436,7 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.Text("#stream-indicator", &finalStatus, chromedp.ByQuery),
+			chromedp.Text(".stream-status-text", &finalStatus, chromedp.ByQuery),
 		)
 		if err == nil && strings.TrimSpace(finalStatus) == "Done" {
 			break
@@ -1518,7 +1518,7 @@ func TestBrowser_RunStatusChrome_Reconnect(t *testing.T) {
 
 	var reconnectingStatus string
 	err = chromedp.Run(ctx,
-		chromedp.Text("#stream-indicator", &reconnectingStatus, chromedp.ByQuery),
+		chromedp.Text(".stream-status-text", &reconnectingStatus, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("read reconnecting status failed: %v", err)
@@ -1540,7 +1540,7 @@ func TestBrowser_RunStatusChrome_Reconnect(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.Text("#stream-indicator", &toolRunningStatus, chromedp.ByQuery),
+			chromedp.Text(".stream-status-text", &toolRunningStatus, chromedp.ByQuery),
 		)
 		if err == nil && strings.TrimSpace(toolRunningStatus) == "Tool running" {
 			break
@@ -1576,7 +1576,7 @@ func TestBrowser_RunStatusChrome_Reconnect(t *testing.T) {
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		err = chromedp.Run(ctx,
-			chromedp.Text("#stream-indicator", &doneStatus, chromedp.ByQuery),
+			chromedp.Text(".stream-status-text", &doneStatus, chromedp.ByQuery),
 		)
 		if err == nil && strings.TrimSpace(doneStatus) == "Done" {
 			break
@@ -2658,7 +2658,7 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("document.querySelector('#composer') !== null", &composerExists),
 		// Verify indicators live in header
 		chromedp.EvaluateAsDevTools("document.querySelector('#workspace-indicator') !== null", &headerWorkspaceIndicatorExists),
-		chromedp.EvaluateAsDevTools("document.querySelector('#stream-indicator') !== null", &headerStreamIndicatorExists),
+		chromedp.EvaluateAsDevTools("document.querySelector('.stream-status-text') !== null", &headerStreamIndicatorExists),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('display')", &chatViewDisplay),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#chat-view')).getPropertyValue('grid-template-rows')", &chatViewGridRows),
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('#messages')).getPropertyValue('overflow-y')", &messagesOverflowY),
@@ -2696,7 +2696,7 @@ func TestBrowser_PageLoads(t *testing.T) {
 		t.Error("#workspace-indicator in header not found")
 	}
 	if !headerStreamIndicatorExists {
-		t.Error("#stream-indicator in header not found")
+		t.Error(".stream-status-text in header not found")
 	}
 	if chatViewDisplay != "grid" {
 		t.Errorf("#chat-view display = %q, want 'grid'", chatViewDisplay)
@@ -3124,14 +3124,14 @@ func TestBrowser_HeaderHasStreamIndicator(t *testing.T) {
 	var streamText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
-		chromedp.WaitVisible("#stream-indicator", chromedp.ByQuery),
-		chromedp.Text("#stream-indicator", &streamText, chromedp.ByQuery),
+		chromedp.WaitVisible(".stream-status-text", chromedp.ByQuery),
+		chromedp.Text(".stream-status-text", &streamText, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("stream indicator test failed: %v", err)
 	}
 	if streamText == "" {
-		t.Error("#stream-indicator has no text content")
+		t.Error(".stream-status-text has no text content")
 	}
 }
 
@@ -3658,7 +3658,7 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		var statusText string
 		err = chromedp.Run(ctx,
-			chromedp.Text("#stream-indicator", &statusText, chromedp.ByQuery),
+			chromedp.Text(".stream-status-text", &statusText, chromedp.ByQuery),
 		)
 		if err == nil && strings.TrimSpace(statusText) == "Done" {
 			isDone = true
@@ -3667,7 +3667,7 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !isDone {
-		t.Error("stream-indicator should show Done after streaming completes")
+		t.Error(".stream-status-text should show Done after streaming completes")
 	}
 }
 // TestBrowser_AutoScrollDuringStreaming verifies auto-scroll lands at newest

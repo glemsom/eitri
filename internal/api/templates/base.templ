@@ -32,11 +32,10 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 		<body hx-ext="head-support">
 			<div id="app">
 				<header>
-					<h1><span class="header-face-container" data-stream-status="idle"><img src="/static/face.webp" alt="" class="header-face" width="28" height="28"/></span><span class="typing-dots" hidden><span>.</span><span>.</span><span>.</span></span> Eitri</h1>
+					<h1><span class="header-face-container" data-stream-status="idle"><img src="/static/face.webp" alt="" class="header-face" width="28" height="28"/></span><span class="typing-dots" hidden><span>.</span><span>.</span><span>.</span></span> Eitri<span class="stream-status-text">Idle</span></h1>
 					<div id="workspace-indicator" class="workspace-indicator" title={ workspace }>
 						Workspace: { pathBase(workspace) }
 					</div>
-					<span id="stream-indicator" class="stream-indicator idle">Idle</span>
 					<div class="dropdown" id="nav-dropdown">
 						<button class="gear-btn" title="Menu" aria-label="Menu">
 							&#9881;
