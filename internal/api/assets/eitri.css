@@ -110,21 +110,35 @@ header h1 {
   line-height: 0;
 }
 
-.header-face-container[data-stream-status="connecting"],
-.header-face-container[data-stream-status="tool-running"] {
+/* Streaming message avatar container — receives the same glow that was on the header face */
+.message-avatar-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.streaming-message .message-avatar-container[data-stream-status="connecting"],
+.streaming-message .message-avatar-container[data-stream-status="tool-running"] {
   animation: glow-pulse-amber 1.5s ease-in-out infinite;
 }
 
-.header-face-container[data-stream-status="streaming"] {
+.streaming-message .message-avatar-container[data-stream-status="streaming"] {
   animation: glow-pulse-green 1.5s ease-in-out infinite;
 }
 
-.header-face-container[data-stream-status="error"] {
+.streaming-message .message-avatar-container[data-stream-status="error"] {
   box-shadow: 0 0 12px 4px rgba(231, 76, 60, 0.5);
 }
 
-.header-face-container[data-stream-status="done"] {
+.streaming-message .message-avatar-container[data-stream-status="done"] {
   box-shadow: 0 0 8px 3px rgba(46, 204, 113, 0.35);
+}
+
+.streaming-message .message-avatar-container[data-stream-status="streaming"] .message-avatar,
+.streaming-message .message-avatar-container[data-stream-status="tool-running"] .message-avatar {
+  animation: breathe 2s ease-in-out infinite;
 }
 
 /* Typing dots next to header face (issue #450) */
@@ -179,11 +193,6 @@ header h1 {
   0% { transform: scale(1.0); opacity: 1.0; }
   50% { transform: scale(1.06); opacity: 0.85; }
   100% { transform: scale(1.0); opacity: 1.0; }
-}
-
-.header-face-container[data-stream-status="streaming"] .header-face,
-.header-face-container[data-stream-status="tool-running"] .header-face {
-  animation: breathe 2s ease-in-out infinite;
 }
 
 .header-face {

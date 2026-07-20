@@ -86,6 +86,7 @@
       streamBuf: '',
       streamTimer: null,
       deadAirTimer: null,
+      needsSectionBreak: false,
     };
   }
 
@@ -164,9 +165,10 @@
         statusText.textContent = statusLabel(status);
       }
 
-      const faceContainer = document.querySelector('.header-face-container');
-      if (faceContainer) {
-        faceContainer.setAttribute('data-stream-status', status);
+      // Set glow status on the streaming message avatar (in the chat area)
+      const avatarContainer = document.querySelector('.streaming-message .message-avatar-container');
+      if (avatarContainer) {
+        avatarContainer.setAttribute('data-stream-status', status);
       }
 
       // Toggle typing dots visibility (issue #450)
@@ -328,6 +330,8 @@
       case 'thinking_delta':
         markStreamResumed(state);
         state.status = STATES.STREAMING;
+        // Ensure streaming bubble exists so the avatar glow shows in the chat area
+        showStreamingBubble();
         updateRunStatus(STATES.STREAMING, defaultStatusDetail(STATES.STREAMING, state), state);
         appendThinkingDelta(packet.content);
         break;
@@ -336,6 +340,11 @@
         markStreamResumed(state);
         state.status = STATES.STREAMING;
         showStreamingBubble();
+        // Insert paragraph break between turns (after tool calls)
+        if (state.needsSectionBreak) {
+          packet.content = '\n\n' + packet.content;
+          state.needsSectionBreak = false;
+        }
         updateRunStatus(STATES.STREAMING, defaultStatusDetail(STATES.STREAMING, state), state);
         appendToken(state, packet.content);
         break;
@@ -371,6 +380,9 @@
         if (packet.tool === 'render_quick_replies') {
           break;
         }
+
+        // Next text token from the LLM starts a new section
+        state.needsSectionBreak = true;
 
         renderToolCard(sessionId, 'tool_result', packet);
         break;
@@ -506,7 +518,7 @@
 
     if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
-      el.innerHTML = '<img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"><div class="message-content"></div>';
+      el.innerHTML = '<span class="message-avatar-container"><img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"></span><div class="message-content"></div>';
     }
   }
 
