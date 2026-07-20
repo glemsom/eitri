@@ -41,15 +41,14 @@ templ fileEditBody(mode string, oldContent string, newContent string) {
 }
 
 templ FileEditCard(path string, mode string, oldContent string, newContent string, bytesWritten int, dirsCreated []string) {
-	<details class="tool-card file-edit-card">
-		<summary class="tool-card-header">
+	<div class="tool-card file-edit-card">
+		<div class="tool-card-header">
 			@fileEditIcon(mode)
 			@fileEditLabel(path, mode)
 			<span class="text-muted">{ bytesWritten } bytes</span>
-			<span class="tool-chevron">▸</span>
-		</summary>
+		</div>
 		<div class="file-edit-body">
 			@fileEditBody(mode, oldContent, newContent)
 		</div>
-	</details>
+	</div>
 }
