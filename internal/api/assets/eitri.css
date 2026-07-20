@@ -127,6 +127,43 @@ header h1 {
   box-shadow: 0 0 8px 3px rgba(46, 204, 113, 0.35);
 }
 
+/* Typing dots next to header face (issue #450) */
+.typing-dots {
+  display: inline-flex;
+  gap: 1px;
+  visibility: hidden;
+  margin-left: 2px;
+}
+
+.typing-dots:not([hidden]) {
+  visibility: visible;
+}
+
+.typing-dots span {
+  display: inline-block;
+  animation: dot-bounce 1.4s ease-in-out infinite;
+  font-size: 1.2em;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
 @keyframes glow-pulse-amber {
   0%, 100% { box-shadow: 0 0 4px 2px rgba(243, 156, 18, 0.3); }
   50% { box-shadow: 0 0 14px 6px rgba(243, 156, 18, 0.6); }

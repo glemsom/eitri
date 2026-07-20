@@ -169,6 +169,16 @@
     if (faceContainer) {
       faceContainer.setAttribute('data-stream-status', status);
     }
+
+    // Toggle typing dots visibility (issue #450)
+    const typingDots = document.querySelector('.typing-dots');
+    if (typingDots) {
+      if (status === STATES.CONNECTING || status === STATES.TOOL_RUNNING) {
+        typingDots.hidden = false;
+      } else {
+        typingDots.hidden = true;
+      }
+    }
   }
 
   function ensureChatChrome() {
