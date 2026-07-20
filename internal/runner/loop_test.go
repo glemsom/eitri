@@ -1946,4 +1946,171 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	}
 }
 
+// ── Confirmation flow tests ────────────────────────────────────────────────
+
+// needsConfirmTool returns ErrNeedsConfirmation on the first call, then
+// succeeds on subsequent calls. Used to test the approve path.
+type needsConfirmTool struct {
+	mu      sync.Mutex
+	callNum int
+	name    string
+	result  string
+}
+
+func (t *needsConfirmTool) Name() string        { return t.name }
+func (t *needsConfirmTool) Description() string { return "A tool that needs confirmation" }
+func (t *needsConfirmTool) JSONSchema() vocellitellm.Schema {
+	return vocellitellm.Schema(`{"type":"object","properties":{}}`)
+}
+func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+	t.mu.Lock()
+	n := t.callNum
+	t.callNum++
+	t.mu.Unlock()
+	if n == 0 {
+		// First call — needs confirmation
+		return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/test.txt", Message: "Allow reading /tmp/test.txt?"}, false
+	}
+	// Subsequent call — succeeds
+	return []vocellitellm.Block{vocellitellm.TextBlock{Text: t.result}}, nil, false
+}
+
+func (t *needsConfirmTool) AppendAllowedPaths(path string) {}
+
+func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// LLM: first turn calls needs_confirm_tool, second turn finishes
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "needs_confirm_tool",
+					Arguments: `{}`,
+				},
+			}},
+		},
+		{tokens: []tokenEvent{{content: "Done reading the file."}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	confirmTool := &needsConfirmTool{name: "needs_confirm_tool", result: "file content"}
+	toolReg.Register(confirmTool)
+
+	// Stub approves
+	confirmer := newTestConfirmerStub(&ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "read file"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Verify tool result in conversation history
+	if len(req.Messages) < 3 {
+		t.Fatalf("req.Messages length = %d, want >= 3 (user + assistant + tool)", len(req.Messages))
+	}
+	toolMsg := req.Messages[2]
+	if toolMsg.Role != "tool" {
+		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	}
+	if toolMsg.Content != "file content" {
+		t.Errorf("tool result content = %q, want %q", toolMsg.Content, "file content")
+	}
+
+	// Verify SSE events include needs_confirmation
+	events := collectSSE(sseState)
+	foundNeedsConf := false
+	for _, evt := range events {
+		if evt.Type == "needs_confirmation" {
+			foundNeedsConf = true
+			break
+		}
+	}
+	if !foundNeedsConf {
+		t.Errorf("expected needs_confirmation SSE event, got types: %v", sseEventTypes(events))
+	}
+}
+
+func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// alwaysNeedsConfirmTool always returns ErrNeedsConfirmation
+	alwaysNeedsTool := &simpleMockTool{
+		name: "needs_confirm_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/secret.txt", Message: "Allow?"}, false
+		},
+	}
+
+	llm := newMockLLM([]mockTurn{
+		{
+			toolCalls: []litellm.ToolCall{{
+				ID:   "call_1",
+				Type: "function",
+				Function: litellm.FunctionCall{
+					Name:      "needs_confirm_tool",
+					Arguments: `{}`,
+				},
+			}},
+		},
+		{tokens: []tokenEvent{{content: "Access denied, will skip."}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(alwaysNeedsTool)
+
+	// Stub denies
+	confirmer := newTestConfirmerStub(&ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "read secret"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// Verify access denied message in conversation history
+	if len(req.Messages) < 3 {
+		t.Fatalf("req.Messages length = %d, want >= 3 (user + assistant + tool)", len(req.Messages))
+	}
+	toolMsg := req.Messages[2]
+	if toolMsg.Role != "tool" {
+		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	}
+	if !strings.Contains(toolMsg.Content, "Access denied") {
+		t.Errorf("tool result content = %q, want to contain 'Access denied'", toolMsg.Content)
+	}
+
+	// Verify SSE events include needs_confirmation
+	events := collectSSE(sseState)
+	foundNeedsConf := false
+	for _, evt := range events {
+		if evt.Type == "needs_confirmation" {
+			foundNeedsConf = true
+			break
+		}
+	}
+	if !foundNeedsConf {
+		t.Errorf("expected needs_confirmation SSE event, got types: %v", sseEventTypes(events))
+	}
+}
+
 
