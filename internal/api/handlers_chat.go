@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/glemsom/eitri/internal/runner"
@@ -63,19 +64,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If slash-only (no prompt), return activation event without starting a run
-	if slashResult != nil && slashResult.IsSlashOnly {
-		// Render the updated active skill chips
-		w.Header().Set("Content-Type", "text/html")
-		chips := templates.ActiveSkillChips(sess.ActiveSkills)
-		chips.Render(r.Context(), w)
-		return
-	}
-
 	// Determine the actual prompt to send
+
 	prompt := message
 	if slashResult != nil && slashResult.Prompt != "" {
 		prompt = slashResult.Prompt
+	} else if slashResult != nil && slashResult.IsSlashOnly && len(slashResult.ActivatedSkills) > 0 {
+		// Slash-only activation: use skill names as the user prompt
+		prompt = strings.Join(slashResult.ActivatedSkills, " ")
 	}
 
 	cfgState := s.loadConfigState(r.Context())
@@ -101,7 +97,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Append user message to session
 	s.config.SessionManager.AppendMessage(id, session.Message{
 		Role:      "user",
-		Content:   message,
+		Content:   prompt,
 		CreatedAt: time.Now(),
 	})
 

@@ -353,6 +353,10 @@
           e.preventDefault();
           if (this.selectedIdx >= 0) {
             this._selectItem(this.selectedIdx);
+          } else {
+            // No selection — close menu and submit form
+            this._closeMenu();
+            this._submitForm();
           }
           break;
 
@@ -438,6 +442,10 @@
 
       if (!keepMenuOpen) {
         this._closeMenu();
+        // Auto-submit for skill activation — if user selected a skill, no prompt needed
+        if (this.menuType === 'skill') {
+          this._submitForm();
+        }
       }
     }
 
