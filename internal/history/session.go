@@ -20,7 +20,8 @@ const (
 ## Core behavior
 - Be concise. Prefer the simplest correct solution. Avoid overengineering.
 - Prefer small, focused edits over large rewrites. Preserve existing style.
-- Remove imports or code left unused by your changes.`
+- Remove imports or code left unused by your changes.
+- Before reading a file, first use grep to locate relevant code by regex. Then use read with start_line and end_line (populated from grep's output line numbers) to read only the needed section. Avoid reading entire files unless grep confirms the full content is relevant.`
 )
 
 // SessionManager manages per-chat LLM conversation history with a sliding

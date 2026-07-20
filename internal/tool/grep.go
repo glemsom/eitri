@@ -20,7 +20,7 @@ type grepArgs struct {
 	Pattern     string `json:"pattern" jsonschema:"Go regex (RE2 syntax) pattern to search for in file contents."`
 	FilePattern string `json:"file_pattern,omitempty" jsonschema:"Optional glob pattern to filter files by path relative to workspace root (e.g. '*.go' to search only Go files)."`
 
-	Context     int    `json:"context,omitempty" jsonschema:"Number of surrounding context lines to include before and after each match (default 0)."`
+	Context int `json:"context,omitempty" jsonschema:"Number of surrounding context lines to include before and after each match (default 0)."`
 }
 
 // GrepTool implements ToolHandler for searching file contents with regex.
@@ -42,7 +42,7 @@ func (t *GrepTool) Name() string {
 }
 
 func (t *GrepTool) Description() string {
-	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Use context=N to include N lines of surrounding context before and after each match; match lines are prefixed with >. Results are sorted by file then line number. Output is capped at 128 KiB."
+	return "Search file contents using regex (RE2 syntax). Optionally filter by file pattern (glob). Use context=N to include N lines of surrounding context before and after each match; match lines are prefixed with >. Results show file:lineNum:content - use the line numbers as start_line with the read tool for targeted reading. Results sorted by file then line number. Output capped at 128 KiB."
 }
 
 func (t *GrepTool) JSONSchema() litellm.Schema {
