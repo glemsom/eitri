@@ -3488,3 +3488,103 @@ func TestSkillsEndpoint_EnableAll(t *testing.T) {
 		t.Fatalf("config.DisabledSkills should be empty after enable-all, got %v", cfg.DisabledSkills)
 	}
 }
+
+func TestPutConfigOpenCodeGoPreservesAPIKey(t *testing.T) {
+	// Regression test for GH-454: fetchModelList PersistAuth reload branch
+	// must not overwrite a new API key with the old empty config from disk.
+	ts := newManagedTestServerWithRuns(t)
+	server := ts.server
+
+	// Write initial config with empty API key and opencode_go provider
+	initialCfg := &config.Config{
+		Provider:            "opencode_go",
+		BaseURL:             "https://api.opencode.ai/v1",
+		Model:               "gpt-4",
+		APIKey:              "",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}
+	if err := config.Save(ts.configPath, initialCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Provider server that always succeeds
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+
+	// PUT config with a real API key — this triggers fetchModelList which
+	// should NOT reload the API key from disk (where it's still empty).
+	body := fmt.Sprintf(`{"provider":"opencode_go","base_url":%q,"api_key":"sk-test-key-123","model":"gpt-4"}`, provider.URL)
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/config status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, string(bodyBytes))
+	}
+
+	// Read config from disk and verify API key was saved
+	savedCfg, err := config.Load(ts.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if savedCfg.APIKey != "sk-test-key-123" {
+		t.Fatalf("saved api_key = %q, want %q", savedCfg.APIKey, "sk-test-key-123")
+	}
+}
+
+func TestPutConfigCustomOpenAIPreservesAPIKey(t *testing.T) {
+	// Regression test for GH-454: same bug for custom_openai (no auth handler).
+	ts := newManagedTestServerWithRuns(t)
+	server := ts.server
+
+	initialCfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             "https://api.custom.com/v1",
+		Model:               "gpt-4",
+		APIKey:              "",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}
+	if err := config.Save(ts.configPath, initialCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+
+	body := fmt.Sprintf(`{"provider":"custom_openai","base_url":%q,"api_key":"sk-custom-key","model":"gpt-4"}`, provider.URL)
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/config status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, string(bodyBytes))
+	}
+
+	savedCfg, err := config.Load(ts.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if savedCfg.APIKey != "sk-custom-key" {
+		t.Fatalf("saved api_key = %q, want %q", savedCfg.APIKey, "sk-custom-key")
+	}
+}
