@@ -27,8 +27,8 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](docs/adr/0001-google-adk-go-sdk.md) | Google ADK Go SDK for agent orchestration | Superseded by [0010](docs/adr/0010-remove-adk-litellm-transport.md) |
-| [0002](docs/adr/0002-openai-compatible-model.md) | OpenAI-compatible model abstraction | Accepted |
+| [0001](docs/adr/0001-google-adk-go-sdk.md) | Google ADK Go SDK for agent orchestration | Superseded by [0010](docs/adr/0010-remove-adk-litellm-transport.md) (file removed) |
+| [0002](docs/adr/0002-openai-compatible-model.md) | OpenAI-compatible model abstraction | Accepted (file removed) |
 | [0003](docs/adr/0003-command-execution.md) | Direct tmux command execution, no sandbox | Superseded by [0015](docs/adr/0015-remove-tmux-executor.md) |
 | [0004](docs/adr/0004-session-scoped-executor-lifecycle.md) | Session-scoped executor lifecycle | Superseded by [0015](docs/adr/0015-remove-tmux-executor.md) |
 | [0005](docs/adr/0005-htmx-templ-ui.md) | HTMX + Templ shell with browser islands | Accepted |
@@ -37,7 +37,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0008](docs/adr/0008-merge-tool-activity-into-inline-tool-cards.md) | Merge tool activity into inline tool cards | Accepted |
 | [0009](docs/adr/0009-prompt-caching.md) | Session-scoped prompt caching | Accepted |
 | [0010](docs/adr/0010-remove-adk-litellm-transport.md) | Remove ADK, adopt litellm transport + custom agent loop | Accepted |
-| [0011](docs/adr/0011-refined-toolset.md) | Refined toolset (read, glob, grep, write, edit, bash, render_component, skill) | Superseded by [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) |
+| [0011](docs/adr/0011-refined-toolset.md) | Refined toolset (read, glob, grep, write, edit, bash, render_component, skill) | Partially superseded — bash superseded by [0015](docs/adr/0015-remove-tmux-executor.md), render_component superseded by [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) |
 | [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) | Split render_component into per-component tools | Accepted |
 | [0013](docs/adr/0013-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
 | [0014](docs/adr/0014-live-context-panel.md) | Live context window utilization panel | Accepted |

@@ -2,7 +2,11 @@
 
 Replace the 5 current tools (`file_viewer`, `file_editor`, `terminal_execute`, `render_component`, `activate_skill`) with a refined set of 8 tools that are simpler, more intent-aligned, and harder for the LLM to misuse.
 
-**Status**: Accepted
+**Status**: Partially superseded
+
+> **Superseded sections**:
+> - The `bash` tool described below (tmux-backed, 180s timeout) was replaced with direct `exec.Command` execution by [ADR-0015](0015-remove-tmux-executor.md) (60s default timeout, no persistent shell state, stdout/stderr separation).
+> - The `render_component` single-tool design was replaced by per-component tools (`render_mermaid_diagram`, `render_quick_replies`) in [ADR-0012](0012-split-render-component-into-per-component-tools.md).
 
 ## Context
 

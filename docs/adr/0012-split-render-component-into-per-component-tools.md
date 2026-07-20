@@ -46,7 +46,7 @@ This gives the user more context at a glance.
 
 ## Consequences
 
-- Tool count goes from 8 to 10 — still manageable, each is single-purpose
-- Adding a new component requires a new tool registration in `runner/service.go` and a switch case in `handleRender`
-- The `render_component` Go file is deleted; replaced by three files
+- Tool count goes from 8 to 9 — still manageable, each is single-purpose (8 - 1 old `render_component` + 2 active replacements = 9; `render_diff_card` was removed, see reversal above)
+- Adding a new component requires a new tool registration in `runner/service.go` and a case in `loop_helpers.go` component-name map
+- The `render_component` Go file is deleted; replaced by two files (`render_mermaid_diagram.go`, `render_quick_replies.go`)
 - The agent loop in `loop.go` gets a generic component-emission hook keyed by tool name, not a special case per tool
