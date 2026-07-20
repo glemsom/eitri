@@ -2557,6 +2557,44 @@ func TestAPISkillsEndpoint(t *testing.T) {
 		t.Errorf("response missing 'skills' field")
 	}
 }
+func TestSkillsPage_ButtonClasses(t *testing.T) {
+	workspace := t.TempDir()
+	rootDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
+	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+
+	// Write two skills — one stays effective, one gets disabled
+	writeSkill(t, filepath.Join(rootDir, "eff-skill"), "eff-skill", "# Effective")
+	writeSkill(t, filepath.Join(rootDir, "dis-skill"), "dis-skill", "# Disabled")
+
+	// Disable one so both Disable All and Enable All are rendered
+	req, _ := http.NewRequest("POST", server.URL+"/api/skills/dis-skill/disable", nil)
+	req.Header.Set("HX-Request", "true")
+	disableResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disableResp.Body.Close()
+
+	resp, err := http.Get(server.URL + "/skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	if !strings.Contains(content, `class="btn btn-primary"`) {
+		t.Error("skills page missing btn-primary class on Refresh button")
+	}
+	if !strings.Contains(content, `class="btn btn-danger"`) {
+		t.Error("skills page missing btn-danger class on Disable All button")
+	}
+	if !strings.Contains(content, `class="btn btn-secondary"`) {
+		t.Error("skills page missing btn-secondary class on Enable All button")
+	}
+}
 
 func TestSkillsEndpointRefreshesRegistry(t *testing.T) {
 	workspace := t.TempDir()
