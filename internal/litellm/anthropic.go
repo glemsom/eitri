@@ -36,6 +36,7 @@ func (s *Anthropic) anthropicHeaders(req *http.Request) {
 	req.Header.Set("anthropic-version", "2023-06-01")
 }
 
+// toAnthropicReq converts a litellm.Request to an Anthropic Messages API request.
 func (s *Anthropic) toAnthropicReq(req Request, stream bool) anthropicReq {
 	var system string
 	var msgs []anthropicMsg
@@ -57,12 +58,27 @@ func (s *Anthropic) toAnthropicReq(req Request, stream bool) anthropicReq {
 		})
 	}
 
+	// Convert tool definitions to Anthropic wire format
+	var tools []anthropicTool
+	for _, t := range req.Tools {
+		var params map[string]any
+		if raw, ok := t.Parameters.(json.RawMessage); ok {
+			json.Unmarshal(raw, &params)
+		}
+		tools = append(tools, anthropicTool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: params,
+		})
+	}
+
 	return anthropicReq{
 		Model:     s.model,
 		MaxTokens: anthropicDefaultMaxTokens,
 		System:    system,
 		Messages:  msgs,
 		Stream:    stream,
+		Tools:     tools,
 	}
 }
 

@@ -153,6 +153,13 @@ type anthropicReq struct {
 	Messages  []anthropicMsg  `json:"messages"`
 	System    string          `json:"system,omitempty"`
 	Stream    bool            `json:"stream"`
+	Tools     []anthropicTool `json:"tools,omitempty"`
+}
+
+type anthropicTool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 type anthropicMsg struct {
