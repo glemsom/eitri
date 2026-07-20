@@ -21,6 +21,7 @@ type Config struct {
 	DisabledSkills      []string        `json:"disabled_skills,omitempty"`
 	BaseURL             string          `json:"base_url"`
 	Model               string          `json:"model"`
+	ThinkingLevel       string          `json:"thinking_level"`
 	SystemPrompt        string          `json:"system_prompt"`
 	SessionTimeout      int64           `json:"session_timeout"`
 	CommandTimeout      int64           `json:"command_timeout"`
@@ -195,6 +196,11 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 	if v, ok := patch["system_prompt"]; ok {
 		if s, ok := v.(string); ok {
 			result.SystemPrompt = s
+		}
+	}
+	if v, ok := patch["thinking_level"]; ok {
+		if s, ok := v.(string); ok {
+			result.ThinkingLevel = s
 		}
 	}
 	if v, ok := patch["session_timeout"]; ok {

@@ -84,6 +84,17 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					</select>
 					<small class="hint">Models are discovered from current provider settings on load and save.</small>
 				</div>
+
+				<div class="form-group">
+					<label for="thinking_level">Thinking Level</label>
+					<select id="thinking_level" name="thinking_level">
+						<option value="" if cfg.ThinkingLevel == "" { selected }>Default (off)</option>
+						<option value="low" if cfg.ThinkingLevel == "low" { selected }>Low</option>
+						<option value="medium" if cfg.ThinkingLevel == "medium" { selected }>Medium</option>
+						<option value="high" if cfg.ThinkingLevel == "high" { selected }>High</option>
+					</select>
+					<small class="hint">Controls reasoning depth. Supported by DeepSeek, O-series, and other reasoning models. Requires provider support.</small>
+				</div>
 			</details>
 
 			<details class="settings-details">

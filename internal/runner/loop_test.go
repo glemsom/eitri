@@ -1878,3 +1878,72 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		t.Errorf("CompletionTokens = %d, want 0 (set by caller when known)", ctxUpdate.CompletionTokens)
 	}
 }
+
+
+func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
+	t.Parallel()
+
+	// When streaming is cancelled mid-turn (e.g. user clicks stop during thinking),
+	// an assistant message must be preserved in history to maintain user→assistant→user
+	// message alternation. Without this, the next user prompt creates consecutive
+	// user messages which some providers reject as malformed (HTTP 400).
+
+	started := make(chan struct{})
+	llm := &blockingMockLLM{
+		content: "thinking...",
+		started: started,
+	}
+
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-cancel-think"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
+	sessionMgr.AppendUser(sessionID, "analyze code")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req := litellm.Request{Model: "test-model"}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 0)
+	}()
+
+	<-started // Wait for first token to be sent
+	cancel()  // Cancel mid-stream (simulates user clicking stop)
+
+	err := <-errCh
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	// An assistant message must be saved even for mid-stream cancel
+	hist := sessionMgr.History(sessionID)
+	if len(hist) < 3 {
+		t.Fatalf("history has %d messages after cancel, want at least 3 (sys + user + assistant)", len(hist))
+	}
+	if hist[len(hist)-1].Role != "assistant" {
+		t.Errorf("last message role = %q, want %q", hist[len(hist)-1].Role, "assistant")
+	}
+
+	// Simulate new prompt after cancel
+	sessionMgr.AppendUser(sessionID, "new question")
+	hist2 := sessionMgr.History(sessionID)
+
+	// Verify no consecutive user messages — would cause 400 errors with some providers
+	lastRole := ""
+	for _, msg := range hist2 {
+		if msg.Role == "user" && lastRole == "user" {
+			t.Errorf("Consecutive user messages found — provider would reject as malformed")
+			break
+		}
+		if msg.Role != "system" {
+			lastRole = msg.Role
+		}
+	}
+}
+
+

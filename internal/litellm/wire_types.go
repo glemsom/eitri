@@ -5,10 +5,11 @@ import "encoding/json"
 // ————— wire types for OpenAI-compatible API —————
 
 type openAIReq struct {
-	Model    string      `json:"model"`
-	Messages []openAIMsg `json:"messages"`
-	Stream   bool        `json:"stream"`
-	Tools    interface{} `json:"tools,omitempty"`
+	Model           string      `json:"model"`
+	Messages        []openAIMsg `json:"messages"`
+	Stream          bool        `json:"stream"`
+	Tools           interface{} `json:"tools,omitempty"`
+	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 }
 
 type openAIMsg struct {
@@ -113,10 +114,11 @@ func toOpenAIRequest(req Request) openAIReq {
 	}
 
 	return openAIReq{
-		Model:    req.Model,
-		Messages: msgs,
-		Stream:   req.Stream,
-		Tools:    tools,
+		Model:           req.Model,
+		Messages:        msgs,
+		Stream:          req.Stream,
+		Tools:           tools,
+		ReasoningEffort: req.ReasoningEffort,
 	}
 }
 

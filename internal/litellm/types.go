@@ -4,10 +4,11 @@ package litellm
 
 // Request is a chat completion request.
 type Request struct {
-	Model       string
-	Messages    []Message
-	Tools       []ToolDef
-	Stream      bool
+	Model           string
+	Messages        []Message
+	Tools           []ToolDef
+	Stream          bool
+	ReasoningEffort string // "low", "medium", "high", or "" to omit
 }
 
 // Message is a single chat message in the conversation.

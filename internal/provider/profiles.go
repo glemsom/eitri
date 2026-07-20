@@ -18,6 +18,25 @@ type Descriptor struct {
 	CredentialName string
 }
 
+// SupportedThinkingLevels returns the thinking levels a model supports,
+// or nil if the model/provider doesn't support thinking level control.
+// Most reasoning models (deepseek*, o1, o3, etc.) support "low", "medium", "high".
+func SupportedThinkingLevels(providerID, modelName string) []string {
+	model := strings.ToLower(modelName)
+	// OpenAI-compatible reasoning models
+	if strings.HasPrefix(model, "deepseek") ||
+		strings.HasPrefix(model, "o1") ||
+		strings.HasPrefix(model, "o3") ||
+		strings.Contains(model, "reasoning") {
+		return []string{"low", "medium", "high"}
+	}
+	// Anthropic-compatible models (via OpenCode Go route)
+	if strings.HasPrefix(model, "qwen") || strings.HasPrefix(model, "minimax") {
+		return []string{"low", "medium", "high"}
+	}
+	return nil
+}
+
 // profile captures provider-internal URLs, credential policy, model discovery,
 // and request headers used by Eitri's OpenAI-style transport.
 type profile struct {

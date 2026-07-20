@@ -144,6 +144,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Stream: true,
 	}
 
+	if cfg.ThinkingLevel != "" {
+		req.ReasoningEffort = cfg.ThinkingLevel
+	}
+
 	sseState := runstate.New()
 	runCtx, cancel := context.WithCancel(ctx)
 	runCtx = context.WithValue(runCtx, tool.SessionIDKey, sessionID)

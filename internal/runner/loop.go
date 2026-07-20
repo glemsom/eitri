@@ -128,17 +128,18 @@ func RunAgent(
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
 				// content and any tool calls to conversation history before returning.
-				if content.Len() > 0 || len(toolCalls) > 0 {
-					if sessionMgr != nil {
-						sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-					} else {
-						req.Messages = append(req.Messages, litellm.Message{
-							Role:      "assistant",
-							Content:   content.String(),
-							ToolCalls: toolCalls,
-						})
-						trimMessages(req, maxHistory)
-					}
+				// Always save even when empty (e.g. thinking-only stream) to maintain
+				// user→assistant→user alternation — otherwise next user message creates
+				// consecutive user messages which some providers reject as malformed.
+				if sessionMgr != nil {
+					sessionMgr.AppendAssistant(sessionID, content.String(), toolCalls)
+				} else {
+					req.Messages = append(req.Messages, litellm.Message{
+						Role:      "assistant",
+						Content:   content.String(),
+						ToolCalls: toolCalls,
+					})
+					trimMessages(req, maxHistory)
 				}
 				return streamErr
 			}

@@ -24,6 +24,7 @@ type RunConfig struct {
 	Workspace           string
 	CmdTimeout          time.Duration
 	ContextWindowTokens int
+	ThinkingLevel       string
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -39,6 +40,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		BaseURL:             cfg.BaseURL,
 		APIKey:              cfg.APIKey,
 		ModelName:           cfg.Model,
+		ThinkingLevel:       cfg.ThinkingLevel,
 		SystemPrompt:        sp,
 		MaxTurns:            cfg.MaxTurns,
 		MaxHistory:          cfg.MaxHistory,
