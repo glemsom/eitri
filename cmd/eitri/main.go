@@ -86,6 +86,9 @@ func main() {
 	})
 
 	skillsSvc := skills.NewService()
+	if len(cfg.DisabledSkills) > 0 {
+		skillsSvc.SetDisabledList(cfg.DisabledSkills, nil)
+	}
 	runSvc.SetSkillsService(skillsSvc)
 	server := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
