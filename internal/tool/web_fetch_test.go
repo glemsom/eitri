@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/voocel/litellm"
@@ -338,6 +339,189 @@ func TestWebFetch_FetchLargePage(t *testing.T) {
 	}
 	if len(blocks) == 0 {
 		t.Fatal("expected blocks for large page")
+	}
+}
+
+func TestWebFetch_SchemaHasTimeoutParam(t *testing.T) {
+	t.Parallel()
+	schema := NewWebFetchTool().JSONSchema()
+	var schemaObj map[string]interface{}
+	if err := json.Unmarshal(schema, &schemaObj); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+	props, ok := schemaObj["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	timeoutProp, ok := props["timeout"]
+	if !ok {
+		t.Fatal("schema missing 'timeout' property")
+	}
+	timeoutMap, ok := timeoutProp.(map[string]interface{})
+	if !ok {
+		t.Fatal("timeout property is not a map")
+	}
+	if timeoutMap["type"] != "integer" {
+		t.Errorf("timeout type = %v, want 'integer'", timeoutMap["type"])
+	}
+	desc, ok := timeoutMap["description"]
+	if !ok || desc == "" {
+		t.Error("timeout property missing description")
+	}
+	// timeout should not be in required array
+	required, ok := schemaObj["required"].([]interface{})
+	if ok {
+		for _, r := range required {
+			if r == "timeout" {
+				t.Error("'timeout' should not be in required array (optional)")
+			}
+		}
+	}
+}
+
+func TestWebFetch_Timeout(t *testing.T) {
+	t.Parallel()
+	// Create a slow server that takes longer than timeout
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		fmt.Fprint(w, "<html><body><p>slow response</p></body></html>")
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	// Use timeout of 1 second
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`","timeout":1}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !isError {
+		t.Error("isError = false, want true for timeout")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	tb, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(tb.Text, "timed out") && !strings.Contains(tb.Text, "timeout") && !strings.Contains(tb.Text, "Timeout") && !strings.Contains(tb.Text, "context deadline") && !strings.Contains(tb.Text, "canceled") && !strings.Contains(tb.Text, "Canceled") {
+		t.Errorf("output should mention timeout, got: %q", tb.Text)
+	}
+}
+
+func TestWebFetch_ContentCap(t *testing.T) {
+	t.Parallel()
+	// Generate HTML with enough content to exceed 32 KiB
+	var body strings.Builder
+	body.WriteString("<html><head><title>Large Page</title></head><body>")
+	// Each paragraph is ~100 bytes, need > 328 paragraphs for > 32K
+	for i := 0; i < 500; i++ {
+		body.WriteString(fmt.Sprintf("<p>Paragraph %d: %s</p>", i, strings.Repeat("content ", 15)))
+	}
+	body.WriteString("</body></html>")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body.String())
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	tb, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+	}
+	// Check truncation marker present
+	if !strings.Contains(tb.Text, "truncated at 32 KiB") {
+		t.Errorf("output missing truncation marker, length=%d, suffix=%q", len(tb.Text), tb.Text[max(0, len(tb.Text)-100):])
+	}
+	// Check total size is roughly 32 KiB + marker overhead
+	if len(tb.Text) > 40*1024 {
+		t.Errorf("output too long: %d bytes, want <= ~40 KiB", len(tb.Text))
+	}
+}
+
+func TestWebFetch_ContentCapNoMidElement(t *testing.T) {
+	t.Parallel()
+	// Generate HTML with large paragraphs followed by a distinct marker
+	var body strings.Builder
+	body.WriteString("<html><head><title>Cap Test</title></head><body>")
+	for i := 0; i < 100; i++ {
+		body.WriteString(fmt.Sprintf("<p>P%d: %s</p>", i, strings.Repeat("word ", 80)))
+	}
+	// Add a unique final paragraph that should NOT appear if truncated at element boundary
+	body.WriteString("<p>FINAL_MARKER_SHOULD_NOT_APPEAR</p>")
+	body.WriteString("</body></html>")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body.String())
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Error("isError = true, want false")
+	}
+	tb := blocks[0].(litellm.TextBlock)
+	// The truncation should not leave partial content - FINAL_MARKER should not be present
+	// and output should be a valid truncation
+	if strings.Contains(tb.Text, "FINAL_MARKER_SHOULD_NOT_APPEAR") {
+		t.Error("output contains final marker that should have been truncated")
+	}
+}
+
+func TestWebFetch_Proxy(t *testing.T) {
+	// Test that proxyFromEnv reads HTTP_PROXY env var correctly.
+	// We test with a non-loopback URL (example.com) because the vendored
+	// httpproxy package bypasses proxy for loopback addresses.
+	
+	// Set HTTP_PROXY to a known proxy URL
+	t.Setenv("HTTP_PROXY", "http://proxy.example.com:8080")
+	
+	// Create a request to a non-loopback URL
+	req, err := http.NewRequest("GET", "http://example.com/page", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	
+	proxyURL, err := proxyFromEnv(req)
+	if err != nil {
+		t.Fatalf("proxyFromEnv error: %v", err)
+	}
+	if proxyURL == nil {
+		t.Fatal("proxyFromEnv returned nil, want proxy URL")
+	}
+	if proxyURL.String() != "http://proxy.example.com:8080" {
+		t.Errorf("proxy URL = %q, want %q", proxyURL.String(), "http://proxy.example.com:8080")
+	}
+	
+	// Clear HTTP_PROXY and verify proxy is not used
+	t.Setenv("HTTP_PROXY", "")
+	proxyURL, err = proxyFromEnv(req)
+	if err != nil {
+		t.Fatalf("proxyFromEnv error after clearing: %v", err)
+	}
+	if proxyURL != nil {
+		t.Errorf("proxyFromEnv = %v, want nil after clearing HTTP_PROXY", proxyURL)
+	}
+	
+	// Verify the description mentions proxy support
+	tool := NewWebFetchTool()
+	if !strings.Contains(tool.Description(), "proxy") {
+		t.Error("Description should mention proxy support")
 	}
 }
 
