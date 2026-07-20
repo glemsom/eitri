@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"net"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -640,5 +641,44 @@ func TestHTMLToMarkdown_OrderedList(t *testing.T) {
 	}
 	if !strings.Contains(result, "3. Third") {
 		t.Errorf("missing '3. Third': %q", result)
+	}
+}
+
+func TestWebFetch_FetchRealURL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network test in short mode")
+	}
+
+	// Quick connectivity check before making real request
+	conn, err := net.DialTimeout("tcp", "example.com:80", 2*time.Second)
+	if err != nil {
+		t.Skipf("network not available (cannot reach example.com:80): %v", err)
+	}
+	conn.Close()
+
+	tool := NewWebFetchTool()
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"https://example.com","timeout":5}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isError {
+		t.Fatal("isError = true, want false for example.com")
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	tb, ok := blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+	}
+	if !strings.Contains(tb.Text, "Example Domain") {
+		t.Errorf("output missing title 'Example Domain': %q", tb.Text)
+	}
+	if !strings.Contains(tb.Text, "https://example.com") {
+		t.Errorf("output missing source URL: %q", tb.Text)
+	}
+	// Verify markdown content is present (heading, paragraphs)
+	if !strings.Contains(tb.Text, "#") && !strings.Contains(tb.Text, "Example") {
+		t.Errorf("output missing markdown content: %q", tb.Text)
 	}
 }
