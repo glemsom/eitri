@@ -78,22 +78,27 @@ func RunAgent(
 ) error
 ```
 
-After (10 params + 2 interface deps replace the 4 session/confirm params):
+After (12 params — 2 replaced, 2 kept):
 
 ```go
 func RunAgent(
     ctx context.Context, llm litellm.LLMService, req *litellm.Request,
     maxTurns int, maxHistory int, sseWriter *runstate.Writer,
     tools *tool.Registry, historyMgr HistoryManager,
-    confirmer Confirmer, contextWindow int,
+    confirmer Confirmer, uisessionMgr *uisession.Manager,
+    sessionID string, contextWindow int,
 ) error
 ```
+
+(Kept `uisessionMgr` and `sessionID` — the former is needed for
+quick-reply and component event emission, the latter is forwarded to
+`confirmer.Confirm` and used as a key for some history operations.)
 
 ### Migration strategy (inside-out)
 
 1. Define `HistoryManager` and `Confirmer` interfaces. Write the two adapters each. Write unit tests for each adapter.
 2. Rewrite `RunAgent`'s internals to use the adapters (constructed from existing params). No signature change. All existing tests pass.
-3. Change `RunAgent`'s signature to take the interfaces. Update callers (`run.go`, `service_test.go`, `loop_test.go`). Delete the 8 conditional branches.
+3. Change `RunAgent`'s signature to take the interfaces. Update callers (`run.go`, `loop_test.go`). Remove adapter-construction code inside `RunAgent`.
 4. Add confirmation-flow tests using `testConfirmerStub`. Remove `confirm.go` (fold `Confirm` method onto `RunService`).
 
 ## Considered Options

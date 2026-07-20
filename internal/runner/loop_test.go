@@ -143,7 +143,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 128000)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 128000)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -469,7 +469,7 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -537,7 +537,7 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -625,7 +625,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -658,7 +658,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -707,7 +707,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	}()
 
 	// Wait for streaming to start (first token sent)
@@ -749,7 +749,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -774,7 +774,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -838,7 +838,7 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error after retry: %v", err)
 	}
@@ -870,7 +870,7 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err == nil {
 		t.Fatal("expected error for HTTP 400, got nil")
 	}
@@ -911,7 +911,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -947,7 +947,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -982,7 +982,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1032,7 +1032,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
 	}
@@ -1142,7 +1142,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 				},
 			}
 
-			err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+			err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 			if err != nil {
 				t.Fatalf("RunAgent error: %v", err)
 			}
@@ -1337,7 +1337,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1385,7 +1385,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1431,7 +1431,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1483,7 +1483,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1531,7 +1531,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1579,7 +1579,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1614,7 +1614,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 128000)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1688,7 +1688,7 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, sessionMgr, nil, sessionID, nil, 128000)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1728,7 +1728,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1769,7 +1769,7 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, sessionMgr, nil, sessionID, nil, 128000)
+	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -1811,7 +1811,7 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 	}
 
 	// No sessionMgr passed
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, nil, nil, "", nil, 0)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1844,7 +1844,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 128000)
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1909,7 +1909,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, sessionMgr, nil, sessionID, nil, 0)
+		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0)
 	}()
 
 	<-started // Wait for first token to be sent

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/litellm"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -38,13 +37,20 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // fed back to the LLM as tool result content — the LLM decides how to respond.
 // Only context cancellation and max turns terminate the loop.
 //
-// When a tool returns ErrNeedsConfirmation, the loop calls confirmFn to
+// When a tool returns ErrNeedsConfirmation, the loop calls confirmer to
 // pause for user input. On approval, the tool is re-executed with the path
 // temporarily allowed. On denial, an error is returned to the LLM.
 //
 // contextWindow is the configured context window token limit. When > 0,
 // context_update SSE events are broadcast after each turn. When <= 0,
 // no context_update events are emitted.
+//
+// historyMgr handles reading and appending conversation history. Two concrete
+// types exist: sessionHistoryManager (browser UI path) and requestHistoryManager
+// (headless/direct-messages path).
+//
+// confirmer handles user confirmation for path-based tool access. When nil,
+// confirmation-dependent operations return errors to the LLM.
 func RunAgent(
 	ctx context.Context,
 	llm litellm.LLMService,
@@ -53,28 +59,14 @@ func RunAgent(
 	maxHistory int,
 	sseWriter *runstate.Writer,
 	tools *tool.Registry,
-	sessionMgr *history.SessionManager,
+	historyMgr HistoryManager,
+	confirmer Confirmer,
 	uisessionMgr *uisession.Manager,
 	sessionID string,
-	confirmFn ConfirmationFunc,
 	contextWindow int,
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
-	}
-
-	// Construct HistoryManager adapter from existing params.
-	var historyMgr HistoryManager
-	if sessionMgr != nil {
-		historyMgr = newSessionHistoryManager(sessionMgr, uisessionMgr, sessionID)
-	} else {
-		historyMgr = newRequestHistoryManager(req)
-	}
-
-	// Construct Confirmer adapter from existing params.
-	var confirmer Confirmer
-	if confirmFn != nil {
-		confirmer = newFuncConfirmer(confirmFn)
 	}
 
 	// Helper to broadcast context_update if enabled and historyMgr is available.
@@ -83,7 +75,7 @@ func RunAgent(
 			return
 		}
 		// Only broadcast for session-based (UI) history, not request-based.
-		if sessionMgr == nil {
+		if _, ok := historyMgr.(*requestHistoryManager); ok {
 			return
 		}
 		history := historyMgr.History(sessionID)
@@ -148,9 +140,9 @@ func RunAgent(
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
 				historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-				if sessionMgr == nil {
-					trimMessages(req, maxHistory)
-				}
+			if isRequestBasedHistory(historyMgr) {
+				trimMessages(req, maxHistory)
+			}
 				return streamErr
 			}
 			sseWriter.Error(runstate.FormatErrorMessage(streamErr))
@@ -177,14 +169,14 @@ func RunAgent(
 				historyMgr.AppendAssistant(sessionID, contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
-			if sessionMgr == nil {
+			if isRequestBasedHistory(historyMgr) {
 				trimMessages(req, maxHistory)
 			}
 			return nil
 		}
 
 		// Trim conversation history if cap is set (only when not using session manager)
-		if sessionMgr == nil {
+		if isRequestBasedHistory(historyMgr) {
 			trimMessages(req, maxHistory)
 		}
 
@@ -315,4 +307,12 @@ func RunAgent(
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	sseWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
+}
+
+// isRequestBasedHistory returns true when the history manager is the
+// request-based variant, meaning history is stored directly on the
+// *litellm.Request and must be trimmed by RunAgent when caps are set.
+func isRequestBasedHistory(mgr HistoryManager) bool {
+	_, ok := mgr.(*requestHistoryManager)
+	return ok
 }
