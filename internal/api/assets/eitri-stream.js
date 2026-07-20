@@ -87,6 +87,7 @@
       streamTimer: null,
       deadAirTimer: null,
       needsSectionBreak: false,
+      lastToolCallKey: '', // set on tool_call, consumed on tool_result and component
     };
   }
 
@@ -359,6 +360,7 @@
         // Track tool call key for card slot (monotonic counter for rapid events)
         toolEntryCounter++;
         var toolCallKey = sessionId + '-tool-' + Date.now() + '-' + toolEntryCounter;
+        state.lastToolCallKey = toolCallKey;
 
         // Skip tool card for render_quick_replies — the actual quick reply chips
         // appear inline on the next assistant message (via InlineQuickReplies).
@@ -386,7 +388,8 @@
         // Next text token from the LLM starts a new section
         state.needsSectionBreak = true;
 
-        renderToolCard(sessionId, 'tool_result', packet);
+        renderToolCard(sessionId, 'tool_result', packet, state.lastToolCallKey);
+        state.lastToolCallKey = '';
         break;
 
       case 'context_update':
@@ -400,7 +403,8 @@
 
       case 'component':
         markStreamResumed(state);
-        renderComponent(sessionId, packet);
+        renderComponent(sessionId, packet, state.lastToolCallKey);
+        state.lastToolCallKey = '';
         break;
 
       case 'done':
@@ -575,21 +579,7 @@
     return document.querySelector('#tool-activity [data-tool-key="' + toolCallKey + '"]');
   }
 
-  function renderToolCard(sessionId, type, packet) {
-    // Find the latest running/active tool entry in sidebar
-    var toolCallKey = '';
-    var runningEntry = document.querySelector('#tool-activity .tool-entry.tool-running');
-    if (runningEntry) {
-      var parentWrapper = runningEntry.closest('.tool-entry-wrapper');
-      if (parentWrapper) toolCallKey = parentWrapper.getAttribute('data-tool-key') || '';
-    }
-    if (!toolCallKey) {
-      // Fallback: use latest wrapper
-      var allWrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
-      if (allWrappers.length > 0) {
-        toolCallKey = allWrappers[allWrappers.length - 1].getAttribute('data-tool-key') || '';
-      }
-    }
+  function renderToolCard(sessionId, type, packet, toolCallKey) {
     if (!toolCallKey) return;
 
     // Stop live timer and record final elapsed
@@ -644,7 +634,7 @@
     }
   }
 
-  function renderComponent(sessionId, packet) {
+  function renderComponent(sessionId, packet, toolCallKey) {
     console.log('[eitri] renderComponent called', JSON.stringify(packet));
     // The SSE 'component' event nests name/data inside packet.data:
     //   {"type":"component","data":{"name":"FileEditCard","data":{...}}}
@@ -658,28 +648,27 @@
     console.log('[eitri] renderComponent: name=' + compName + ' data keys=' + Object.keys(compData).join(','));
 
     if (compName === 'FileEditCard') {
-      var doRender = function () {
-        // Find the outermost tool-entry-wrapper in sidebar
-        var allWrappers = document.querySelectorAll('#tool-activity .tool-entry-wrapper');
-        if (allWrappers.length > 0) {
-          var wrapper = allWrappers[allWrappers.length - 1];
-          htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-            source: document.body,
-            target: '#' + CSS.escape(wrapper.id),
-            swap: 'innerHTML',
-            contentType: 'application/json',
-            values: {
-              kind: 'component',
-              name: compName,
-              data: compData,
-            },
-          });
-        }
-      };
-      // First try on next tick (after tool_result HTMX settles).
-      // Then retry once after a short delay in case HTMX hasn't finished.
-      setTimeout(doRender, 0);
-      setTimeout(doRender, 100);
+      // Use data-tool-key lookup instead of allWrappers[last]
+      if (!toolCallKey) {
+        console.warn('[eitri] renderComponent: no toolCallKey for FileEditCard');
+        return;
+      }
+      var wrapper = document.querySelector('#tool-activity details[data-tool-key="' + toolCallKey + '"]');
+      if (wrapper) {
+        htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
+          source: document.body,
+          target: '#' + CSS.escape(wrapper.id),
+          swap: 'innerHTML',
+          contentType: 'application/json',
+          values: {
+            kind: 'component',
+            name: compName,
+            data: compData,
+          },
+        });
+      } else {
+        console.warn('[eitri] renderComponent: wrapper not found for toolCallKey=' + toolCallKey);
+      }
       return;
     }
 
