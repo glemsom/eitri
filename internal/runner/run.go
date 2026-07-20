@@ -124,6 +124,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	toolReg.Register(tool.NewEditTool(workspace))
 	toolReg.Register(tool.NewRenderMermaidDiagram())
 	toolReg.Register(tool.NewRenderQuickReplies())
+	toolReg.Register(tool.NewWebFetchTool())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
 	}
