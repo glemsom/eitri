@@ -164,13 +164,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.RunService == nil {
-		http.Error(w, "No active run for this session", http.StatusNotFound)
+		s.notifyNoActiveRun(w, r, id)
 		return
 	}
 
 	subscriberID, sseCh, ok := s.config.RunService.Subscribe(id)
 	if !ok {
-		http.Error(w, "No active run for this session", http.StatusNotFound)
+		s.notifyNoActiveRun(w, r, id)
 		return
 	}
 	defer s.config.RunService.Unsubscribe(id, subscriberID)
@@ -219,6 +219,20 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+// notifyNoActiveRun sends a valid SSE response indicating no active run exists.
+// This lets the client gracefully handle the case without retry storms.
+func (s *Server) notifyNoActiveRun(w http.ResponseWriter, r *http.Request, sessionID string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	if data := mustJSON(runstate.SSEEvent{Type: "no_active_run", Message: "No active run for session " + sessionID}); data != nil {
+		fmt.Fprintf(w, "data: %s\n\n", string(data))
+	}
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
 

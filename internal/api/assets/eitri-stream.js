@@ -27,6 +27,11 @@
     if (target && typeof target.value === 'string') return target.value;
     return '';
   }
+  function getSessionIdFromUrl() {
+    var match = window.location.pathname.match(/^\/sessions\/([a-f0-9]+)/);
+    return match ? match[1] : '';
+  }
+
 
   function escapeHtml(str) {
     var div = document.createElement('div');
@@ -468,6 +473,21 @@
         clearDeadAirTimer(state);
         updateRunStatus(STATES.IDLE, packet.message || 'Session closed.', state);
         disconnectStream(sessionId);
+        break;
+
+      case 'no_active_run':
+        // No active run — go idle without retry
+        clearDeadAirTimer(state);
+        state.status = STATES.IDLE;
+        updateRunStatus(STATES.IDLE, 'No active run.', state);
+        // Close the EventSource (no retry)
+        if (streams.has(sessionId)) {
+          var entry = streams.get(sessionId);
+          if (entry && entry.eventSource) {
+            entry.eventSource.close();
+          }
+          streams.delete(sessionId);
+        }
         break;
     }
   }
@@ -1142,6 +1162,24 @@
     reinitScrollObserver();
   });
   document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
+  // Auto-connect stream for current session on page load
+  function autoConnectOnPageLoad() {
+    var sessionId = getSessionIdFromUrl();
+    if (sessionId && !streams.has(sessionId)) {
+      connectStream(sessionId);
+    }
+  }
+
+  // Add auto-connect to existing page load handlers (preserving existing init order)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoConnectOnPageLoad);
+  } else {
+    autoConnectOnPageLoad();
+  }
+  document.addEventListener('htmx:afterSwap', function () {
+    autoConnectOnPageLoad();
+  });
+
 
   // ---- Optimistic user bubble and auto-scroll (issue #95) ----
 

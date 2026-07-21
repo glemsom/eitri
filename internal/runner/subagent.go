@@ -145,6 +145,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	s.subAgents[taskID] = record
 	s.subMu.Unlock()
 
+	var childRunState *RunState
+
 	// Create child UI session if the manager is available
 	if s.uiSessionMgr != nil {
 		parentSess := s.uiSessionMgr.Get(sessionID)
@@ -175,9 +177,44 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}
 	}
 
+	// Register child session in active runs so SSE subscribers can connect
+	if record.ChildSessionID != "" {
+		childRunState = &RunState{
+			SessionID: record.ChildSessionID,
+			Cancel:    cancel,
+			StartedAt: time.Now(),
+			Done:      make(chan struct{}),
+			SSE:       sseState,
+		}
+
+		s.mu.Lock()
+		if existing, exists := s.active[record.ChildSessionID]; exists {
+			select {
+			case <-existing.Done:
+				delete(s.active, record.ChildSessionID)
+			default:
+				slog.Warn("child session already has active run", slog.String("child_session_id", record.ChildSessionID))
+				s.mu.Unlock()
+				cancel()
+				return "", fmt.Errorf("child session %s already has an active run", record.ChildSessionID)
+			}
+		}
+		s.active[record.ChildSessionID] = childRunState
+		s.mu.Unlock()
+	}
+
 	go func() {
 		defer func() {
 			record.finish()
+			// Clean up child session's RunState from active runs
+			if record.ChildSessionID != "" {
+				s.mu.Lock()
+				existing, exists := s.active[record.ChildSessionID]
+				if exists && existing == childRunState {
+					delete(s.active, record.ChildSessionID)
+				}
+				s.mu.Unlock()
+			}
 			// Reap after TTL
 			time.AfterFunc(subAgentReapTTL, func() {
 				s.subMu.Lock()
