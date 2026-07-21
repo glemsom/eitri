@@ -45,7 +45,7 @@ func MessageInput(sessionID string, disabled bool, _ bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-indicator=\"#send-btn\" hx-on::after-request=\"this.reset()\"><textarea id=\"chat-input\" name=\"message\" class=\"chat-input\" placeholder=\"Type a message...\" required hx-trigger=\"keydown[ctrl+enter||meta+enter] from:#chat-input\"></textarea><div class=\"composer-actions\"><button id=\"send-btn\" type=\"submit\" class=\"send-btn\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-indicator=\"#send-btn\" hx-on::after-request=\"this.reset()\"><textarea id=\"chat-input\" name=\"message\" class=\"chat-input\" placeholder=\"Type a message...\" required rows=\"3\" hx-trigger=\"keydown[ctrl+enter||meta+enter] from:#chat-input\"></textarea><div class=\"composer-actions\"><button id=\"send-btn\" type=\"submit\" class=\"send-btn\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -62,7 +62,7 @@ func MessageInput(sessionID string, disabled bool, _ bool) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/api/sessions/" + sessionID + "/cancel"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/message_input.templ`, Line: 39, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/message_input.templ`, Line: 40, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {

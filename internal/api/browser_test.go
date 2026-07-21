@@ -2728,7 +2728,7 @@ func TestBrowser_SetupBannerVisible(t *testing.T) {
 	defer cancel()
 
 	var bannerVisible bool
-	var inputDisabled bool
+	var sendBtnDisabled bool
 	var bannerHTML string
 
 	err := chromedp.Run(ctx,
@@ -2742,7 +2742,7 @@ func TestBrowser_SetupBannerVisible(t *testing.T) {
 				return style.display !== 'none' && style.visibility !== 'hidden';
 			})()
 		`, &bannerVisible),
-		chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === true", &inputDisabled),
+		chromedp.EvaluateAsDevTools("document.querySelector('#send-btn').disabled === true", &sendBtnDisabled),
 		chromedp.OuterHTML("#setup-banner", &bannerHTML, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -2752,8 +2752,8 @@ func TestBrowser_SetupBannerVisible(t *testing.T) {
 	if !bannerVisible {
 		t.Error("#setup-banner should be visible when no config")
 	}
-	if !inputDisabled {
-		t.Error("#chat-input should be disabled when no config")
+	if !sendBtnDisabled {
+		t.Error("#send-btn should be disabled when no config")
 	}
 	if !strings.Contains(bannerHTML, "/settings") {
 		t.Error("setup banner should link to /settings")

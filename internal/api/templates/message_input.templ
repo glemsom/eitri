@@ -19,6 +19,7 @@ templ MessageInput(sessionID string, disabled bool, _ bool) {
 				class="chat-input"
 				placeholder="Type a message..."
 				required
+				rows="3"
 				hx-trigger="keydown[ctrl+enter||meta+enter] from:#chat-input"
 			></textarea>
 			<div class="composer-actions">

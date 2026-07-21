@@ -220,6 +220,11 @@ header h1 {
   100% { transform: scale(1.0); opacity: 1.0; }
 }
 
+.header-face-container[data-stream-status="streaming"] .header-face,
+.header-face-container[data-stream-status="tool-running"] .header-face {
+  animation: breathe 2s ease-in-out infinite;
+}
+
 .header-face {
   border-radius: 50%;
   object-fit: cover;
