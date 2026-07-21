@@ -198,19 +198,31 @@ func TestRunService_Cancel_StopsRunAndBroadcastsDone(t *testing.T) {
 		t.Fatal("Cancel returned false")
 	}
 
+	// Verify: done event is received AND channel is then closed
 	deadline := time.After(2 * time.Second)
+	gotDone := false
+loop:
 	for {
 		select {
 		case evt, ok := <-ch:
 			if !ok {
-				t.Fatal("channel closed before done event")
+				break loop
 			}
 			if evt.Type == "done" {
-				return
+				gotDone = true
+				continue
 			}
 		case <-deadline:
-			t.Fatal("timed out waiting for done event")
+			t.Fatal("timed out waiting for channel close")
 		}
+	}
+	if !gotDone {
+		t.Fatal("channel closed without receiving done event")
+	}
+
+	// Verify: new Subscribe returns ok=false after cancel
+	if _, _, ok := svc.Subscribe("session-1"); ok {
+		t.Fatal("Subscribe returned ok=true after cancel, expected false")
 	}
 }
 
