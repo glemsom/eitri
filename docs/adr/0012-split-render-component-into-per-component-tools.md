@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-ADR-0011 defined `render_component` as a single tool with `name` and `data` fields. In practice, the LLM sees a weak schema (`data: object`) and must guess which fields each component expects — `data.code` for Mermaid, `data.options` for QuickReplies, `data.old`/`data.new` for DiffCard. Wrong guesses waste turns on validation errors.
+An earlier ADR defined `render_component` as a single tool with `name` and `data` fields. In practice, the LLM sees a weak schema (`data: object`) and must guess which fields each component expects — `data.code` for Mermaid, `data.options` for QuickReplies, `data.old`/`data.new` for DiffCard. Wrong guesses waste turns on validation errors.
 
 Additionally, the tool never actually emitted SSE `component` events — it returned stub text `[Component rendered: %s]` but the agent loop had no code to broadcast a visual component to the browser. The fix for that bug also makes a per-tool dispatch structure cleaner (tool name maps directly to component name).
 

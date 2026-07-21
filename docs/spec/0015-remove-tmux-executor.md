@@ -84,4 +84,4 @@ Non-zero `[exit code N]` triggers `isError=true` so LLM sees a tool error. Timeo
 ## Further Notes
 
 - `session_timeout` config field remains in UI and JSON schema but has no runtime effect. Marked as "not used in current runtime" in config documentation.
-- The ADR-0015 supersedes ADR-0003 and ADR-0004 (both accepted the tmux approach).
+- The ADR-0015 supersedes the earlier tmux-based executor ADRs.

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The `grep` tool (introduced in ADR-0011) returns matching lines only: `file:line:content`. When the LLM wants to edit matched code with the `edit` tool, it needs surrounding context to construct unique `old_text` anchors. Currently it must call `read` for context — one extra turn per edit.
+The `grep` tool (introduced in an earlier ADR) returns matching lines only: `file:line:content`. When the LLM wants to edit matched code with the `edit` tool, it needs surrounding context to construct unique `old_text` anchors. Currently it must call `read` for context — one extra turn per edit.
 
 The `edit` tool's `old_text` is most reliable when it includes several surrounding lines. Having grep return context lines directly makes the grep→edit workflow single-turn.
 

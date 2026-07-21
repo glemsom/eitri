@@ -390,10 +390,8 @@ eitri/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── TESTING.md
-│   ├── ROADMAP.md
 │   ├── adr/
 │   ├── agents/
-│   ├── drafts/                # Design drafts (e.g., context panel)
 │   └── providers/             # Provider integration notes (e.g., GitHub Copilot)
 ├── CONTEXT.md
 ├── AGENTS.md

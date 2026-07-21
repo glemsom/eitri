@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The `bash` tool (ADR-0011) currently delegates command execution to a per-session `TmuxExecutor`, which manages a long-running tmux session for each chat session. This was designed (ADR-0003, ADR-0004) to provide:
+The `bash` tool currently delegates command execution to a per-session `TmuxExecutor`, which manages a long-running tmux session for each chat session. This was designed to provide:
 
 - Persistent shell state (cwd, env, vars) across turns
 - Background process lifetime management
