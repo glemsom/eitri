@@ -261,7 +261,7 @@ func (s *RunService) Cancel(sessionID string) bool {
 	s.CancelSubAgents(sessionID)
 
 	slog.Info("run canceled", slog.String("session_id", sessionID))
-	state.SSE.Broadcast(runstate.SSEEvent{Type: "done", Kind: runstate.RenderKindMarkdown})
+	state.SSE.BroadcastDone("", nil)
 	state.Cancel()
 	state.finish()
 	return true
