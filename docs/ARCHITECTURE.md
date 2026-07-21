@@ -207,6 +207,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 || `batch.go` | `BatchRun()` — headless batch execution: synchronous agent run with request-based history, token streaming to `io.Writer`, automatic confirmation denial |
 || `batch_test.go` | Tests for BatchRun — config validation, context cancellation, connection failure handling |
 | `loop_test.go` | Unit tests for agent loop edge cases (empty input, turn caps, error recovery, context updates) |
+| `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, restricted tool registry build, cancellation cascade |
 
 **RunService**: consolidates run lifecycle behind a single seam. `RunState` holds `runstate.State` for SSE broadcast + cancel + done signal. `Subscribe()`/`Unsubscribe()` delegate to `runstate.State`. Auth refresh persistence handled via `PersistAuth` callback. Conversation history managed via `internal/history.SessionManager`; UI session state via `internal/session.Manager`. `Cancel()`/`CancelAll()` stop active runs. `AppendEvent()` broadcasts SSE events and persists assistant messages. Config is read fresh on each `StartRun()` — no runner cache persisting across runs.
 
@@ -224,6 +225,9 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `render_mermaid.go` | `RenderMermaidTool` — emit mermaid diagram data for server-side rendering |
 | `render_quick_replies.go` | `RenderQuickRepliesTool` — emit suggestion chips for UI |
 | `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
+| `delegate.go` | `DelegateTool` — spawn a sub-agent in the background, returns task_id immediately |
+| `collect.go` | `CollectTool` — block until sub-agent tasks complete, returns structured JSON results |
+| `helpers.go` | Shared types: `SubAgentManager` interface, `SubAgentResult`, `ErrNeedsConfirmation`, `SessionIDKey`, text block helpers |
 
 **BashTool** replaces the old `TmuxExecutor`:
 - Creates `exec.Command` per call — no persistent shell session
