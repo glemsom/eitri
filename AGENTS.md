@@ -1,5 +1,11 @@
 ## Agent skills
 
+### Batch mode
+
+Eitri supports headless batch mode via the `-b` flag. See `docs/agents/batch.md`.
+
+The `scripts/agent-loop.sh` script loops over `ready-for-agent` issues and runs them in sequence using batch mode.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `glemsom/eitri`. Use the `gh` CLI. See `docs/agents/issue-tracker.md`.
