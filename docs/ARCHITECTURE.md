@@ -204,6 +204,8 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `loop.go` | `RunAgent()` — synchronous agent turn loop (LLM call → tool execution → feedback loop), handles streaming, turn caps, SSE events, context updates |
 | `loop_helpers.go` | Helper functions for the agent loop |
 | `service_test.go` | Unit tests exercising the RunService seam |
+|| `batch.go` | `BatchRun()` — headless batch execution: synchronous agent run with request-based history, token streaming to `io.Writer`, automatic confirmation denial |
+|| `batch_test.go` | Tests for BatchRun — config validation, context cancellation, connection failure handling |
 | `loop_test.go` | Unit tests for agent loop edge cases (empty input, turn caps, error recovery, context updates) |
 
 **RunService**: consolidates run lifecycle behind a single seam. `RunState` holds `runstate.State` for SSE broadcast + cancel + done signal. `Subscribe()`/`Unsubscribe()` delegate to `runstate.State`. Auth refresh persistence handled via `PersistAuth` callback. Conversation history managed via `internal/history.SessionManager`; UI session state via `internal/session.Manager`. `Cancel()`/`CancelAll()` stop active runs. `AppendEvent()` broadcasts SSE events and persists assistant messages. Config is read fresh on each `StartRun()` — no runner cache persisting across runs.
