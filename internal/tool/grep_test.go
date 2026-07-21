@@ -198,7 +198,7 @@ func TestGrep_FilePatternFilter(t *testing.T) {
 func TestGrep_OutputTruncation(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create a file with many matching lines to exceed 128 KiB
+	// Create a file with many matching lines to exceed 2 KiB
 	var lines []string
 	for i := 0; i < 5000; i++ {
 		lines = append(lines, "match line content here")
@@ -225,7 +225,7 @@ func TestGrep_OutputTruncation(t *testing.T) {
 	}
 
 	// Output should end with the truncation marker
-	if !strings.HasSuffix(block.Text, "... (output truncated at 128 KiB)") {
+	if !strings.HasSuffix(block.Text, "... (output truncated at 2 KiB)") {
 		t.Errorf("expected output to be truncated, got length %d, suffix %q", len(block.Text), block.Text[len(block.Text)-40:])
 	}
 }
@@ -388,7 +388,7 @@ func TestGrep_ContextLines(t *testing.T) {
 
 	t.Run("context respects output cap", func(t *testing.T) {
 		dir2 := t.TempDir()
-		// Create many lines with long content so context output exceeds 128 KiB
+		// Create many lines with long content so context output exceeds 2 KiB
 		var bigLines []string
 		for i := 0; i < 5000; i++ {
 			bigLines = append(bigLines, fmt.Sprintf("line-%d-%s", i, strings.Repeat("x", 80)))
@@ -410,7 +410,7 @@ func TestGrep_ContextLines(t *testing.T) {
 		if !ok {
 			t.Fatalf("block is %T, want TextBlock", blocks[0])
 		}
-		if !strings.Contains(block.Text, "truncated at 128 KiB") {
+		if !strings.Contains(block.Text, "truncated at 2 KiB") {
 			t.Errorf("expected truncation marker in output, got length %d", len(block.Text))
 		}
 	})

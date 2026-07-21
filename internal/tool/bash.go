@@ -13,7 +13,7 @@ import (
 	"github.com/voocel/litellm"
 )
 
-const maxBashOutputBytes = 128 * 1024
+const maxBashOutputBytes = 4 * 1024
 
 type bashArgs struct {
 	Command string `json:"command" jsonschema:"Shell command to run in the workspace directory"`
@@ -40,7 +40,7 @@ func (t *BashTool) Name() string {
 }
 
 func (t *BashTool) Description() string {
-	return "Run a shell command in the workspace. Each call is a fresh shell — chain with && or use env vars to persist state. For commands, tests, builds, or shell operations."
+	return "Run a shell command in the workspace. Each call is a fresh shell — chain with && or use env vars to persist state. For commands, tests, builds, or shell operations. Capped at 4 KiB of output."
 }
 
 func (t *BashTool) JSONSchema() litellm.Schema {
@@ -124,7 +124,7 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	}
 
 	// Truncate if output exceeds limit
-	const truncationMarker = "... (output truncated at 128 KiB)"
+	const truncationMarker = "... (output truncated at 4 KiB)"
 	if len(output) > maxBashOutputBytes {
 		truncLen := maxBashOutputBytes - len(truncationMarker)
 		if truncLen < 0 {

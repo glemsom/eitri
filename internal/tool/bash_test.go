@@ -196,8 +196,8 @@ func TestBash_WorkspaceDir(t *testing.T) {
 func TestBash_Truncation(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	// Generate >128 KiB of output
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 140000)\""}`))
+	// Generate >4 KiB of output
+	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 6000)\""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -205,10 +205,10 @@ func TestBash_Truncation(t *testing.T) {
 		t.Error("isError = true, want false")
 	}
 	result := blocks[0].(litellm.TextBlock)
-	if len(result.Text) > 132*1024 {
-		t.Errorf("truncated output too long: %d bytes, want <= ~129 KiB", len(result.Text))
+	if len(result.Text) > 5*1024 {
+		t.Errorf("truncated output too long: %d bytes, want <= ~4 KiB", len(result.Text))
 	}
-	if !strings.HasSuffix(result.Text, "... (output truncated at 128 KiB)") {
+	if !strings.HasSuffix(result.Text, "... (output truncated at 4 KiB)") {
 		t.Errorf("output should end with truncation marker, got suffix: %q", result.Text[len(result.Text)-50:])
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/fileutil"
 )
 
-const maxGrepOutputBytes = 128 * 1024
+const maxGrepOutputBytes = 2 * 1024
 
 type grepArgs struct {
 	Pattern     string `json:"pattern" jsonschema:"Go regex (RE2 syntax) pattern to search for in file contents."`
@@ -42,7 +42,7 @@ func (t *GrepTool) Name() string {
 }
 
 func (t *GrepTool) Description() string {
-	return "Search file contents by regex (RE2). Filter files with file_pattern glob. context=N shows N surrounding lines; match lines prefixed >. Output: file:line:content. Capped at 128 KiB."
+	return "Search file contents by regex (RE2). Filter files with file_pattern glob. context=N shows N surrounding lines; match lines prefixed >. Output: file:line:content. Capped at 2 KiB."
 }
 
 func (t *GrepTool) JSONSchema() litellm.Schema {
@@ -198,7 +198,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 
 	output := sb.String()
 	if truncated {
-		output += "... (output truncated at 128 KiB)"
+		output += "... (output truncated at 2 KiB)"
 	}
 
 	return textBlocks(output), nil, false

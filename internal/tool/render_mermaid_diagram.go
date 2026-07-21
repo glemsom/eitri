@@ -29,7 +29,7 @@ func (t *RenderMermaidDiagramTool) Name() string {
 }
 
 func (t *RenderMermaidDiagramTool) Description() string {
-	return "Render a Mermaid diagram in the chat. Provide diagram code like 'graph TD; A-->B;'. Use for visual diagrams over ASCII art."
+	return "Render a Mermaid diagram visible to the user in the chat UI. Provide diagram code like 'graph TD; A-->B;'. The rendering happens client-side in the browser. Use for visual diagrams over ASCII art."
 }
 
 func (t *RenderMermaidDiagramTool) JSONSchema() litellm.Schema {
