@@ -587,6 +587,8 @@
       if (firstKey) {
         stopToolCardTimer(firstKey);
         delete toolCardElapsed[firstKey];
+        delete toolArgs[firstKey];
+        delete toolNames[firstKey];
       }
       existingWrappers[0].remove();
       existingWrappers = list.querySelectorAll('.tool-entry-wrapper');
