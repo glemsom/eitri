@@ -222,6 +222,13 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/skills/{name}/enable", s.handleEnableSkill)
 	s.mux.HandleFunc("POST /api/skills/disable-all", s.handleDisableAllSkills)
 	s.mux.HandleFunc("POST /api/skills/enable-all", s.handleEnableAllSkills)
+
+
+	// Browser-level event stream for real-time UI updates (issue #514)
+	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
+
+	// Session tabs fragment for OOB swap updates
+	s.mux.HandleFunc("GET /api/session-tabs", s.handleSessionTabs)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
