@@ -544,6 +544,18 @@ details.tool-entry-wrapper .tool-result {
   opacity: 1 !important;
 }
 
+.session-item-child {
+  padding-left: 2rem !important;
+  margin-left: 0.5rem;
+  border-left: 2px solid var(--border);
+  border-radius: 0 !important;
+}
+
+.session-item-child .child-session-title {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
 .new-session-btn {
   width: 100%;
   padding: 0.5rem;

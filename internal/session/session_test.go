@@ -693,3 +693,104 @@ func TestReasoningContentInAppendMessage(t *testing.T) {
 		t.Errorf("Content = %q, want %q", sess.Messages[0].Content, "final answer")
 	}
 }
+
+func TestCreateChildSession(t *testing.T) {
+	mgr := session.NewManager(10)
+	parent, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create parent: %v", err)
+	}
+	if parent.ParentID != "" {
+		t.Errorf("parent session should have empty ParentID")
+	}
+
+	child, err := mgr.CreateChild(parent.ID, "browser-1", "Sub-agent task")
+	if err != nil {
+		t.Fatalf("CreateChild: %v", err)
+	}
+	if child.ParentID != parent.ID {
+		t.Errorf("child ParentID = %q, want %q", child.ParentID, parent.ID)
+	}
+	if child.BrowserID != "browser-1" {
+		t.Errorf("child BrowserID = %q, want %q", child.BrowserID, "browser-1")
+	}
+	if child.Title != "Sub-agent task" {
+		t.Errorf("child Title = %q, want %q", child.Title, "Sub-agent task")
+	}
+
+	// Verify child listed in browser sessions
+	sessions := mgr.ListByBrowser("browser-1")
+	found := false
+	for _, s := range sessions {
+		if s.ID == child.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("child session not found in browser session list")
+	}
+}
+
+func TestCreateChild_InvalidParent(t *testing.T) {
+	mgr := session.NewManager(10)
+	_, err := mgr.CreateChild("nonexistent", "browser-1", "task")
+	if err == nil {
+		t.Fatal("expected error for nonexistent parent")
+	}
+}
+
+func TestDelete_CascadesToChildren(t *testing.T) {
+	mgr := session.NewManager(10)
+	parent, _ := mgr.Create("browser-1")
+	child1, _ := mgr.CreateChild(parent.ID, "browser-1", "task 1")
+	child2, _ := mgr.CreateChild(parent.ID, "browser-1", "task 2")
+
+	mgr.Delete(parent.ID)
+
+	// Parent should be gone
+	if got := mgr.Get(parent.ID); got != nil {
+		t.Error("parent session should be deleted")
+	}
+	// Children should be gone too
+	if got := mgr.Get(child1.ID); got != nil {
+		t.Error("child session 1 should be cascade-deleted")
+	}
+	if got := mgr.Get(child2.ID); got != nil {
+		t.Error("child session 2 should be cascade-deleted")
+	}
+}
+
+func TestChildrenOf(t *testing.T) {
+	mgr := session.NewManager(10)
+	parent, _ := mgr.Create("browser-1")
+	mgr.CreateChild(parent.ID, "browser-1", "task 1")
+	mgr.CreateChild(parent.ID, "browser-1", "task 2")
+
+	children := mgr.ChildrenOf(parent.ID)
+	if len(children) != 2 {
+		t.Fatalf("ChildrenOf returned %d children, want 2", len(children))
+	}
+	if children[0].ParentID != parent.ID {
+		t.Errorf("child 0 ParentID = %q, want %q", children[0].ParentID, parent.ID)
+	}
+}
+
+func TestDelete_OnlyChildDeleted(t *testing.T) {
+	mgr := session.NewManager(10)
+	parent1, _ := mgr.Create("browser-1")
+	parent2, _ := mgr.Create("browser-1")
+	child, _ := mgr.CreateChild(parent1.ID, "browser-1", "task")
+
+	// Delete parent2 (no children) — child under parent1 should survive
+	mgr.Delete(parent2.ID)
+	if mgr.Get(child.ID) == nil {
+		t.Error("child under parent1 should survive after deleting unrelated parent")
+	}
+
+	// Delete parent1 — child should be gone
+	mgr.Delete(parent1.ID)
+	if mgr.Get(child.ID) != nil {
+		t.Error("child should be cascade-deleted with parent")
+	}
+}
