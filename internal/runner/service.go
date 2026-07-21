@@ -16,6 +16,20 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
+// BrowserEvent is an event sent to browser-level SSE subscribers.
+// Used for broadcasting events that affect the entire browser UI
+// (e.g., session status changes across all sessions).
+type BrowserEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data,omitempty"`
+}
+
+// browserSubscriber represents one browser-level SSE subscriber.
+type browserSubscriber struct {
+	id   uint64
+	ch   chan BrowserEvent
+}
+
 // RunState holds SSE broadcast state and cancel for one run.
 type RunState struct {
 	SessionID string
@@ -54,6 +68,11 @@ type RunService struct {
 	skillsSvc       *skills.Service
 	historySessionMgr *history.SessionManager
 	persistAuth         PersistAuthFunc
+
+	// Browser-level SSE subscribers: browserID → subscribers
+	browserMu        sync.Mutex
+	browserSubs      map[string]map[uint64]chan BrowserEvent
+	nextBrowserSubID uint64
 }
 
 const completedRunRetention = 5 * time.Second
@@ -66,6 +85,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		uiSessionMgr:  deps.UISessionMgr,
 		skillsSvc:     deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
+		browserSubs:   make(map[string]map[uint64]chan BrowserEvent),
 	}
 }
 
@@ -84,6 +104,78 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
 }
 
+// SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.
+// Returns subscriber ID and receive-only channel.
+func (s *RunService) SubscribeBrowser(browserID string) (uint64, <-chan BrowserEvent) {
+	s.browserMu.Lock()
+	defer s.browserMu.Unlock()
+
+	if s.browserSubs[browserID] == nil {
+		s.browserSubs[browserID] = make(map[uint64]chan BrowserEvent)
+	}
+
+	id := s.nextBrowserSubID
+	s.nextBrowserSubID++
+
+	ch := make(chan BrowserEvent, 64)
+	s.browserSubs[browserID][id] = ch
+	return id, ch
+}
+
+// UnsubscribeBrowser removes a browser-level SSE subscriber.
+func (s *RunService) UnsubscribeBrowser(browserID string, id uint64) {
+	s.browserMu.Lock()
+	defer s.browserMu.Unlock()
+
+	subs := s.browserSubs[browserID]
+	if subs == nil {
+		return
+	}
+	ch, ok := subs[id]
+	if !ok {
+		return
+	}
+	delete(subs, id)
+	close(ch)
+	if len(subs) == 0 {
+		delete(s.browserSubs, browserID)
+	}
+}
+
+// BroadcastToBrowser sends an event to all browser-level SSE subscribers for the given browserID.
+func (s *RunService) BroadcastToBrowser(browserID string, evt BrowserEvent) {
+	s.browserMu.Lock()
+	subs := s.browserSubs[browserID]
+	if subs == nil {
+		s.browserMu.Unlock()
+		return
+	}
+	// Collect channels under lock, send outside
+	channels := make([]chan BrowserEvent, 0, len(subs))
+	for _, ch := range subs {
+		channels = append(channels, ch)
+	}
+	s.browserMu.Unlock()
+
+	for _, ch := range channels {
+		select {
+		case ch <- evt:
+		default:
+			// Subscriber too slow; drop event
+		}
+	}
+}
+
+// BrowserSubscribersCount returns the number of browser-level subscribers for logging/diagnostics.
+func (s *RunService) BrowserSubscribersCount(browserID string) int {
+	s.browserMu.Lock()
+	defer s.browserMu.Unlock()
+	subs := s.browserSubs[browserID]
+	if subs == nil {
+		return 0
+	}
+	return len(subs)
+}
 
 // ActiveRun returns the active RunState for a session, or nil if none.
 func (s *RunService) ActiveRun(sessionID string) *RunState {

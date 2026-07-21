@@ -22,6 +22,7 @@ import (
 //go:embed eitri-settings.js
 //go:embed eitri-context.js
 //go:embed eitri-resize.js
+//go:embed eitri-events.js
 //go:embed face.webp
 //go:embed favicon-32.png
 //go:embed favicon-16.png

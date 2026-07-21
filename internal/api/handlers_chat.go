@@ -125,6 +125,20 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// StartRun spawns agent loop goroutine; it handles status + session persistence internally.
 	s.config.SessionManager.UpdateStatus(id, session.StatusRunning)
 
+	// Broadcast run-started status to browser subscribers for real-time sidebar update
+	if s.config.RunService != nil {
+		sess := s.config.SessionManager.Get(id)
+		if sess != nil && sess.BrowserID != "" {
+			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
+				Type: "session_status",
+				Data: map[string]interface{}{
+					"session_id": id,
+					"status":     string(session.StatusRunning),
+				},
+			})
+		}
+	}
+
 	// Render user bubble + session tab refresh + send JS events for SSE connect and run state
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
@@ -221,7 +235,99 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	s.config.RunService.Cancel(id)
 	s.config.SessionManager.UpdateStatus(id, session.StatusIdle)
 
+	// Broadcast session status update for real-time sidebar refresh
+	if s.config.RunService != nil {
+		if sess.BrowserID != "" {
+			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
+				Type: "session_status",
+				Data: map[string]interface{}{
+					"session_id": id,
+					"status":     string(session.StatusIdle),
+				},
+			})
+		}
+	}
+
 	// Re-enabling is now client-side via CSS class toggle (issue #103).
 	// Return empty 200 so HTMX does not swap out the composer.
 	w.WriteHeader(http.StatusOK)
+}
+
+
+func (s *Server) handleBrowserEvents(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
+
+	if s.config.RunService == nil {
+		http.Error(w, "Service not available", http.StatusInternalServerError)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	subscriberID, ch := s.config.RunService.SubscribeBrowser(browserID)
+	defer s.config.RunService.UnsubscribeBrowser(browserID, subscriberID)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Send initial connected event
+	fmt.Fprintf(w, "data: %s\n\n", string(mustJSON(runner.BrowserEvent{Type: "connected"})))
+	flusher.Flush()
+
+	ctx := r.Context()
+	keepAlive := time.NewTicker(30 * time.Second)
+	defer keepAlive.Stop()
+
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			data := mustJSON(evt)
+			if data == nil {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
+		case <-keepAlive.C:
+			fmt.Fprintf(w, ":keepalive\n\n")
+			flusher.Flush()
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleSessionTabs(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
+
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+
+	// Determine active session from query param or last active
+	activeID := r.URL.Query().Get("active")
+	if activeID == "" {
+		if last := s.config.SessionManager.LastActive(browserID); last != nil {
+			activeID = last.ID
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	component := templates.SessionTabs(sessions, activeID, true)
+	component.Render(r.Context(), w)
 }

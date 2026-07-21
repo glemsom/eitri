@@ -176,9 +176,8 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			s.mu.Unlock()
 		}()
 
-		if s.uiSessionMgr != nil {
-			defer s.uiSessionMgr.UpdateStatus(sessionID, uisession.StatusIdle)
-		}
+		// Ensure session status is reset and browser subscribers notified when the run completes.
+		defer s.broadcastSessionStatusUpdate(sessionID, uisession.StatusIdle)
 
 		w := runstate.NewWriter(sseState)
 
@@ -257,5 +256,30 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 		Content:          content,
 		ReasoningContent: reasoningContent,
 		CreatedAt:        time.Now(),
+	})
+}
+
+
+// broadcastSessionStatusUpdate updates the session status and broadcasts the change
+// to all browser-level SSE subscribers for this session's browser.
+func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uisession.Status) {
+	if s.uiSessionMgr == nil {
+		return
+	}
+	s.uiSessionMgr.UpdateStatus(sessionID, status)
+
+	sess := s.uiSessionMgr.Get(sessionID)
+	if sess == nil {
+		return
+	}
+	if sess.BrowserID == "" {
+		return
+	}
+	s.BroadcastToBrowser(sess.BrowserID, BrowserEvent{
+		Type: "session_status",
+		Data: map[string]interface{}{
+			"session_id": sessionID,
+			"status":     string(sess.Status),
+		},
 	})
 }
