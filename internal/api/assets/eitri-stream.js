@@ -302,6 +302,9 @@
         return;
       }
       clearDeadAirTimer(state);
+      clearToolActivity();
+      clearThinkingPanel();
+      resetActivityTracking();
       state.awaitingResume = state.firstEventSeen;
       state.status = STATES.RECONNECTING;
       updateRunStatus(STATES.RECONNECTING, defaultStatusDetail(STATES.RECONNECTING, state), state);

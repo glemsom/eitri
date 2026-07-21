@@ -283,6 +283,39 @@ func TestJsFiles(t *testing.T) {
 	}
 
 	// Verify stream JS exports lightweightMarkdown function
+
+	// Verify stream JS es.onerror handler calls cleanup before RECONNECTING
+	if !strings.Contains(content2, "clearToolActivity") {
+		t.Error("eitri-stream.js missing clearToolActivity function")
+	}
+	if !strings.Contains(content2, "clearThinkingPanel") {
+		t.Error("eitri-stream.js missing clearThinkingPanel function")
+	}
+	if !strings.Contains(content2, "resetActivityTracking") {
+		t.Error("eitri-stream.js missing resetActivityTracking function")
+	}
+	// Verify es.onerror calls all three cleanup functions before RECONNECTING
+	errReconnectIdx := strings.Index(content2, "state.status = STATES.RECONNECTING")
+	if errReconnectIdx < 0 {
+		t.Error("eitri-stream.js missing RECONNECTING state transition")
+	} else {
+		// Find es.onerror block — search backwards for it
+		onerrorStart := strings.LastIndex(content2[:errReconnectIdx], "es.onerror = function")
+		if onerrorStart < 0 {
+			t.Error("eitri-stream.js missing es.onerror handler")
+		} else {
+			onerrorBlock := content2[onerrorStart:errReconnectIdx]
+			if !strings.Contains(onerrorBlock, "clearToolActivity()") {
+				t.Error("es.onerror handler missing clearToolActivity() call before RECONNECTING")
+			}
+			if !strings.Contains(onerrorBlock, "clearThinkingPanel()") {
+				t.Error("es.onerror handler missing clearThinkingPanel() call before RECONNECTING")
+			}
+			if !strings.Contains(onerrorBlock, "resetActivityTracking()") {
+				t.Error("es.onerror handler missing resetActivityTracking() call before RECONNECTING")
+			}
+		}
+	}
 	if !strings.Contains(content2, "lightweightMarkdown") {
 		t.Error("eitri-stream.js missing lightweightMarkdown function")
 	}
