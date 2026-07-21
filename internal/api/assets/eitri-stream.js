@@ -297,7 +297,7 @@
     };
 
     es.onerror = function () {
-      if (state.status === STATES.DONE || state.status === STATES.ERROR) {
+      if (state.status === STATES.DONE || state.status === STATES.ERROR || state.status === STATES.IDLE) {
         es.close();
         return;
       }
@@ -1165,9 +1165,15 @@
   // Auto-connect stream for current session on page load
   function autoConnectOnPageLoad() {
     var sessionId = getSessionIdFromUrl();
-    if (sessionId && !streams.has(sessionId)) {
-      connectStream(sessionId);
+    if (!sessionId || streams.has(sessionId)) return;
+    // Don't auto-connect if the run completed or is idle — prevents
+    // htmx:afterSwap from reconnecting after finalizeMessage closes the stream.
+    var st = document.querySelector('.stream-status-text');
+    if (st) {
+      var cls = st.className;
+      if (cls.indexOf('done') !== -1 || cls.indexOf('idle') !== -1) return;
     }
+    connectStream(sessionId);
   }
 
   // Add auto-connect to existing page load handlers (preserving existing init order)
