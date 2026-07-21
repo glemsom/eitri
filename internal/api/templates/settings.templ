@@ -3,7 +3,7 @@ package templates
 import "github.com/glemsom/eitri/internal/config"
 
 templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string, contextWindow int) {
-	@Base("Eitri — Settings", chatPath, nil, "", currentPath, workspace, contextWindow) {
+	@Base("Eitri — Settings", chatPath, nil, "", currentPath, workspace, contextWindow, "") {
 		@SettingsForm(cfg, models, "", "", nil, "")
 	}
 }
