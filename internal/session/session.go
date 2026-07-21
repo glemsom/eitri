@@ -31,11 +31,12 @@ type ComponentData struct {
 
 // Message represents a single chat message in a session.
 type Message struct {
-	Role         string          `json:"role"`
-	Content      string          `json:"content"`
-	CreatedAt    time.Time       `json:"created_at"`
-	Components   []ComponentData `json:"components,omitempty"`
-	QuickReplies []string        `json:"quick_replies,omitempty"`
+	Role             string          `json:"role"`
+	Content          string          `json:"content"`
+	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+	Components       []ComponentData `json:"components,omitempty"`
+	QuickReplies     []string        `json:"quick_replies,omitempty"`
 }
 
 // UISession represents a browser-facing chat session.
@@ -322,6 +323,40 @@ func (m *Manager) UpdateLastAssistantContent(id, content string) {
 		return
 	}
 	last.Content = content
+	s.UpdatedAt = time.Now()
+}
+
+// AppendingReasoningContent appends reasoning content to the last assistant message.
+// Does nothing if session not found or last message is not assistant.
+func (m *Manager) AppendLastReasoningContent(id, reasoningContent string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	if last.Role != "assistant" {
+		return
+	}
+	last.ReasoningContent += reasoningContent
+	s.UpdatedAt = time.Now()
+}
+
+// SetLastReasoningContent sets the reasoning content on the last assistant message.
+// Does nothing if session not found or last message is not assistant.
+func (m *Manager) SetLastReasoningContent(id, reasoningContent string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	if last.Role != "assistant" {
+		return
+	}
+	last.ReasoningContent = reasoningContent
 	s.UpdatedAt = time.Now()
 }
 

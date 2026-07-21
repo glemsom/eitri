@@ -195,8 +195,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()
+				reasoningContent := sseState.ReasoningBufferString()
 				if content != "" {
-					s.appendToSession(sessionID, content)
+					s.appendToSession(sessionID, content, reasoningContent)
 				}
 				return
 			}
@@ -212,8 +213,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					sseState.AppendBuffer("\n\n" + limitMsg)
 					content += "\n\n" + limitMsg
 				}
+				reasoningContent := sseState.ReasoningBufferString()
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content))
-				s.appendToSession(sessionID, content)
+				s.appendToSession(sessionID, content, reasoningContent)
 				return
 			}
 
@@ -221,8 +223,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 
 		content := sseState.BufferString()
+		reasoningContent := sseState.ReasoningBufferString()
 		if content != "" {
-			s.appendToSession(sessionID, content)
+			s.appendToSession(sessionID, content, reasoningContent)
 		}
 	}()
 
@@ -232,7 +235,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 }
 
 // appendToSession persists an assistant message to the UI session.
-func (s *RunService) appendToSession(sessionID, content string) {
+func (s *RunService) appendToSession(sessionID, content, reasoningContent string) {
 	if s.uiSessionMgr == nil || content == "" {
 		return
 	}
@@ -243,12 +246,16 @@ func (s *RunService) appendToSession(sessionID, content string) {
 		last := sess.Messages[len(sess.Messages)-1]
 		if last.Role == "assistant" && last.Content == "" {
 			s.uiSessionMgr.UpdateLastAssistantContent(sessionID, content)
+			if reasoningContent != "" {
+				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
+			}
 			return
 		}
 	}
 	s.uiSessionMgr.AppendMessage(sessionID, uisession.Message{
-		Role:      "assistant",
-		Content:   content,
-		CreatedAt: time.Now(),
+		Role:             "assistant",
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		CreatedAt:        time.Now(),
 	})
 }

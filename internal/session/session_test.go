@@ -587,3 +587,109 @@ func TestSetQuickReplies(t *testing.T) {
 		t.Errorf("Assistant QuickReplies = %v, want [a b]", got2.Messages[1].QuickReplies)
 	}
 }
+
+func TestSetLastReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	// No assistant message yet → no-op
+	mgr.SetLastReasoningContent(sess.ID, "should not appear")
+	sess = mgr.Get(sess.ID)
+	if len(sess.Messages) != 0 {
+		t.Errorf("Messages count after no-op = %d, want 0", len(sess.Messages))
+	}
+
+	// Add user message first
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+
+	// No assistant message yet → still no-op
+	mgr.SetLastReasoningContent(sess.ID, "should not appear 2")
+	sess = mgr.Get(sess.ID)
+	if len(sess.Messages) != 1 {
+		t.Errorf("Messages count after second no-op = %d, want 1", len(sess.Messages))
+	}
+
+	// Add assistant message
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+
+	// Set reasoning content
+	mgr.SetLastReasoningContent(sess.ID, "reasoning text")
+	sess = mgr.Get(sess.ID)
+	if len(sess.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(sess.Messages))
+	}
+	if sess.Messages[1].ReasoningContent != "reasoning text" {
+		t.Errorf("ReasoningContent = %q, want %q", sess.Messages[1].ReasoningContent, "reasoning text")
+	}
+	if sess.Messages[1].Content != "answer" {
+		t.Errorf("Content changed from %q to %q", "answer", sess.Messages[1].Content)
+	}
+
+	// Overwrite reasoning content
+	mgr.SetLastReasoningContent(sess.ID, "new reasoning")
+	sess = mgr.Get(sess.ID)
+	if sess.Messages[1].ReasoningContent != "new reasoning" {
+		t.Errorf("ReasoningContent after overwrite = %q, want %q", sess.Messages[1].ReasoningContent, "new reasoning")
+	}
+
+	// Nonexistent session
+	mgr.SetLastReasoningContent("nonexistent", "x")
+}
+
+func TestAppendLastReasoningContent(t *testing.T) {
+	t.Parallel()
+
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	// No assistant message yet → no-op
+	mgr.AppendLastReasoningContent(sess.ID, "should not appear")
+	sess = mgr.Get(sess.ID)
+	if len(sess.Messages) != 0 {
+		t.Errorf("Messages count after no-op = %d, want 0", len(sess.Messages))
+	}
+
+	// Add assistant message
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+
+	// Append reasoning content (simulating streaming)
+	mgr.AppendLastReasoningContent(sess.ID, "part1")
+	mgr.AppendLastReasoningContent(sess.ID, "part2")
+	mgr.AppendLastReasoningContent(sess.ID, "part3")
+
+	sess = mgr.Get(sess.ID)
+	if len(sess.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(sess.Messages))
+	}
+	want := "part1part2part3"
+	if sess.Messages[0].ReasoningContent != want {
+		t.Errorf("ReasoningContent after appends = %q, want %q", sess.Messages[0].ReasoningContent, want)
+	}
+
+	// Nonexistent session
+	mgr.AppendLastReasoningContent("nonexistent", "x")
+}
+
+func TestReasoningContentInAppendMessage(t *testing.T) {
+	t.Parallel()
+
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	// Create message with reasoning content directly
+	mgr.AppendMessage(sess.ID, session.Message{
+		Role:             "assistant",
+		Content:          "final answer",
+		ReasoningContent: "my reasoning",
+	})
+
+	sess = mgr.Get(sess.ID)
+	if sess.Messages[0].ReasoningContent != "my reasoning" {
+		t.Errorf("ReasoningContent = %q, want %q", sess.Messages[0].ReasoningContent, "my reasoning")
+	}
+	if sess.Messages[0].Content != "final answer" {
+		t.Errorf("Content = %q, want %q", sess.Messages[0].Content, "final answer")
+	}
+}

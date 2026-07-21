@@ -56,6 +56,9 @@ type State struct {
 
 	bufferMu sync.Mutex
 	buffer   strings.Builder
+
+	reasoningMu sync.Mutex
+	reasoning   strings.Builder
 }
 
 // New creates a new State ready for use.
@@ -77,6 +80,20 @@ func (s *State) AppendBuffer(text string) {
 	s.bufferMu.Lock()
 	defer s.bufferMu.Unlock()
 	s.buffer.WriteString(text)
+}
+
+// ReasoningBufferString returns accumulated reasoning text.
+func (s *State) ReasoningBufferString() string {
+	s.reasoningMu.Lock()
+	defer s.reasoningMu.Unlock()
+	return s.reasoning.String()
+}
+
+// AppendReasoningBuffer appends reasoning text to accumulator.
+func (s *State) AppendReasoningBuffer(text string) {
+	s.reasoningMu.Lock()
+	defer s.reasoningMu.Unlock()
+	s.reasoning.WriteString(text)
 }
 
 // Subscribe allocates a subscriber channel and replays history.
@@ -273,8 +290,10 @@ func (w *Writer) Error(msg string) {
 	w.state.BroadcastError(msg)
 }
 
-// ThinkingDelta broadcasts a thinking_delta SSE event with reasoning content.
+// ThinkingDelta broadcasts a thinking_delta SSE event with reasoning content
+// and appends to the reasoning buffer for persistence across session switches.
 func (w *Writer) ThinkingDelta(content string) {
+	w.state.AppendReasoningBuffer(content)
 	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content})
 }
 

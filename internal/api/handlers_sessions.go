@@ -148,7 +148,19 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	if contextWindow == 0 {
 		contextWindow = 256000 // default fallback
 	}
-	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path, contextWindow)
+
+	// Extract reasoning content from last assistant message for thinking panel
+	var reasoningContent string
+	if renderedSession != nil {
+		for i := len(renderedSession.Messages) - 1; i >= 0; i-- {
+			if renderedSession.Messages[i].Role == "assistant" {
+				reasoningContent = renderedSession.Messages[i].ReasoningContent
+				break
+			}
+		}
+	}
+
+	component := templates.ChatPage(sessions, id, renderedSession, s.config.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent)
 	component.Render(r.Context(), w)
 }
 

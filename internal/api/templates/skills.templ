@@ -7,7 +7,7 @@ import (
 )
 
 templ SkillsPage(registry *skills.Registry, workspace string, chatPath string, currentPath string, contextWindow int) {
-	@Base("Eitri — Skills", chatPath, nil, "", currentPath, workspace, contextWindow) {
+	@Base("Eitri — Skills", chatPath, nil, "", currentPath, workspace, contextWindow, "") {
 		@SkillsView(registry)
 	}
 }
