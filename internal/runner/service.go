@@ -69,6 +69,15 @@ type RunService struct {
 	historySessionMgr *history.SessionManager
 	persistAuth         PersistAuthFunc
 
+	// Sub-agent tracking
+	subMu        sync.Mutex
+	subAgents    map[string]*subAgentRecord
+	nextTaskID   uint64
+
+	// Parent run configs per session (for sub-agent setup)
+	parentCfgMu sync.Mutex
+	parentCfgs  map[string]RunConfig
+
 	// Browser-level SSE subscribers: browserID → subscribers
 	browserMu        sync.Mutex
 	browserSubs      map[string]map[uint64]chan BrowserEvent
@@ -85,6 +94,8 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		uiSessionMgr:  deps.UISessionMgr,
 		skillsSvc:     deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
+		subAgents:     make(map[string]*subAgentRecord),
+		parentCfgs:    make(map[string]RunConfig),
 		browserSubs:   make(map[string]map[uint64]chan BrowserEvent),
 	}
 }
@@ -245,6 +256,10 @@ func (s *RunService) Cancel(sessionID string) bool {
 	if !exists {
 		return false
 	}
+
+	// Cancel any sub-agents spawned by this session
+	s.CancelSubAgents(sessionID)
+
 	slog.Info("run canceled", slog.String("session_id", sessionID))
 	state.SSE.Broadcast(runstate.SSEEvent{Type: "done", Kind: runstate.RenderKindMarkdown})
 	state.Cancel()
