@@ -403,7 +403,6 @@
         state.needsSectionBreak = true;
 
         renderToolCard(sessionId, 'tool_result', packet, state.lastToolCallKey);
-        state.lastToolCallKey = '';
         break;
 
       case 'context_update':
