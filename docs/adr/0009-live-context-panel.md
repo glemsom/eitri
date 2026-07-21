@@ -1,4 +1,4 @@
-# 0014 — Live context window utilization panel
+# 0009 — Live context window utilization panel
 
 Context window overflows cause silent truncation or errors in Eitri sessions, but users have no visibility into how much of the window is consumed. The existing per-message token-usage footer is not cumulative and offers no visual proximity indicator.
 

@@ -1,4 +1,4 @@
-# 0017 — web_fetch tool
+# 0012 — web_fetch tool
 
 - **Status:** Accepted
 - **Date:** 2025-07-17

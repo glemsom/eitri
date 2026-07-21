@@ -29,18 +29,19 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0005](docs/adr/0005-htmx-templ-ui.md) | HTMX + Templ shell with browser islands | Accepted |
-| [0006](docs/adr/0006-agent-skills.md) | Agent Skills support | Accepted |
-| [0007](docs/adr/0007-provider-profiles-and-github-copilot.md) | Provider profiles and GitHub Copilot | Accepted |
-| [0008](docs/adr/0008-merge-tool-activity-into-inline-tool-cards.md) | Merge tool activity into inline tool cards | Accepted |
-| [0009](docs/adr/0009-prompt-caching.md) | Session-scoped prompt caching | Accepted |
-| [0010](docs/adr/0010-remove-adk-litellm-transport.md) | Remove ADK, adopt litellm transport + custom agent loop | Accepted |
-| [0012](docs/adr/0012-split-render-component-into-per-component-tools.md) | Split render_component into per-component tools | Accepted |
-| [0013](docs/adr/0013-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
-| [0014](docs/adr/0014-live-context-panel.md) | Live context window utilization panel | Accepted |
-| [0015](docs/adr/0015-remove-tmux-executor.md) | Replace tmux executor with direct exec.Command | Accepted |
-| [0016](docs/adr/0016-runagent-seam-interfaces.md) | Extract HistoryManager and Confirmer seam interfaces from RunAgent | Accepted |
-| [0017](docs/adr/0017-web-fetch-tool.md) | web_fetch tool for fetching URLs | Accepted |
+| [0001](docs/adr/0001-htmx-templ-ui.md) | HTMX + Templ shell with browser islands | Accepted |
+| [0002](docs/adr/0002-agent-skills.md) | Agent Skills support | Accepted |
+| [0003](docs/adr/0003-provider-profiles-and-github-copilot.md) | Provider profiles and GitHub Copilot | Accepted |
+| [0004](docs/adr/0004-merge-tool-activity-into-inline-tool-cards.md) | Merge tool activity into inline tool cards | Accepted |
+| [0005](docs/adr/0005-prompt-caching.md) | Session-scoped prompt caching | Accepted |
+| [0006](docs/adr/0006-remove-adk-litellm-transport.md) | Remove ADK, adopt litellm transport + custom agent loop | Accepted |
+| [0007](docs/adr/0007-split-render-component-into-per-component-tools.md) | Split render_component into per-component tools | Accepted |
+| [0008](docs/adr/0008-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
+| [0009](docs/adr/0009-live-context-panel.md) | Live context window utilization panel | Accepted |
+| [0010](docs/adr/0010-remove-tmux-executor.md) | Replace tmux executor with direct exec.Command | Accepted |
+| [0011](docs/adr/0011-runagent-seam-interfaces.md) | Extract HistoryManager and Confirmer seam interfaces from RunAgent | Accepted |
+| [0012](docs/adr/0012-web-fetch-tool.md) | web_fetch tool for fetching URLs | Accepted |
+| [0013](docs/adr/0013-sub-agents.md) | Sub-agent support via delegate/collect tools | Accepted |
 
 ## Project structure
 

@@ -1,4 +1,4 @@
-# 0018 — Sub-agent support via delegate/collect tools
+# 0013 — Sub-agent support via delegate/collect tools
 
 - **Status:** Accepted
 - **Date:** 2025-07-17
