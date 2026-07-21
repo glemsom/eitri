@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -47,19 +48,16 @@ func cleanupRuntime(server *api.Server, runSvc *runner.RunService) {
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
+	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout")
+	flag.Parse()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
 
 	workspace, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get workspace: %v\n", err)
 		os.Exit(1)
-	}
-
-	addr := os.Getenv("EITRI_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8080"
 	}
 
 	configPath := os.Getenv("EITRI_CONFIG")
@@ -76,6 +74,27 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
+	}
+
+	if *batchPrompt != "" {
+		// Batch mode: headless, no UI session manager
+		cmdTimeout := time.Duration(cfg.CommandTimeout)
+		runCfg := runner.FromConfig(cfg, workspace, cmdTimeout)
+
+		runSvc := runner.NewRunService(runner.RunServiceDeps{})
+		runSvc.SetPersistAuth(nil)
+		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
+			if !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		return
+	}
+
+	addr := os.Getenv("EITRI_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8080"
 	}
 
 	sessionMgr := session.NewManager(10)
