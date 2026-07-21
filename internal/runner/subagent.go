@@ -28,15 +28,16 @@ const (
 
 // subAgentRecord tracks one in-flight sub-agent spawned via delegate().
 type subAgentRecord struct {
-	TaskID    string
-	SessionID string
-	Status    subAgentStatus
-	Result    string
-	TurnCount int
-	Err       error
-	Done      chan struct{}
-	Cancel    context.CancelFunc
-	StartedAt time.Time
+	TaskID         string
+	SessionID      string
+	ChildSessionID string // UI session ID if child session created
+	Status         subAgentStatus
+	Result         string
+	TurnCount      int
+	Err            error
+	Done           chan struct{}
+	Cancel         context.CancelFunc
+	StartedAt      time.Time
 }
 
 func (r *subAgentRecord) finish() {
@@ -143,6 +144,36 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	s.subMu.Lock()
 	s.subAgents[taskID] = record
 	s.subMu.Unlock()
+
+	// Create child UI session if the manager is available
+	if s.uiSessionMgr != nil {
+		parentSess := s.uiSessionMgr.Get(sessionID)
+		if parentSess != nil {
+			title := truncateString(task, 60)
+			childSess, childErr := s.uiSessionMgr.CreateChild(sessionID, parentSess.BrowserID, title)
+			if childErr != nil {
+				slog.Warn("failed to create child session for sub-agent",
+					slog.String("task_id", taskID),
+					slog.Any("error", childErr),
+				)
+			} else {
+				record.ChildSessionID = childSess.ID
+				slog.Info("created child session for sub-agent",
+					slog.String("task_id", taskID),
+					slog.String("child_session_id", childSess.ID),
+				)
+				// Broadcast session_status so the child appears in sidebar immediately
+				s.BroadcastToBrowser(parentSess.BrowserID, BrowserEvent{
+					Type: "session_status",
+					Data: map[string]interface{}{
+						"session_id": childSess.ID,
+						"parent_id":  sessionID,
+						"status":     string(childSess.Status),
+					},
+				})
+			}
+		}
+	}
 
 	go func() {
 		defer func() {

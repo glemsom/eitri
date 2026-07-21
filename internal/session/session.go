@@ -41,9 +41,11 @@ type Message struct {
 
 // UISession represents a browser-facing chat session.
 // UISession represents a browser-facing chat session with id, browser_id, title, status, messages.
+// ParentID is empty for root sessions and non-empty for child sessions (sub-agents).
 type UISession struct {
 	ID           string    `json:"id"`
 	BrowserID    string    `json:"browser_id"`
+	ParentID     string    `json:"parent_id,omitempty"`
 	Title        string    `json:"title"`
 	Status       Status    `json:"status"`
 	Messages     []Message `json:"messages"`
@@ -150,8 +152,58 @@ func (m *Manager) GetValidated(id, browserID string) (*UISession, bool) {
 	return sess, true
 }
 
+// CreateChild creates a child session under a parent session.
+// Returns error if parent session does not exist or cap is reached.
+func (m *Manager) CreateChild(parentID, browserID, title string) (*UISession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Verify parent exists
+	parent := m.sessions[parentID]
+	if parent == nil {
+		return nil, fmt.Errorf("parent session %s not found", parentID)
+	}
+
+	// Check global cap
+	if len(m.sessions) >= m.maxSessions {
+		return nil, fmt.Errorf("session cap of %d reached", m.maxSessions)
+	}
+
+	id := newID()
+
+	sess := &UISession{
+		ID:        id,
+		BrowserID: browserID,
+		ParentID:  parentID,
+		Title:     title,
+		Status:    StatusRunning,
+		Messages:  make([]Message, 0),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	m.sessions[id] = sess
+	m.browserSessions[browserID] = append(m.browserSessions[browserID], id)
+
+	return sess, nil
+}
+
+// ChildrenOf returns all child sessions for a given parent session ID.
+func (m *Manager) ChildrenOf(parentID string) []*UISession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []*UISession
+	for _, s := range m.sessions {
+		if s.ParentID == parentID {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // Delete removes a session by ID. Cancels any active run (delegated to caller).
-// Returns the deleted session if found.
+// Cascade-deletes any child sessions. Returns the deleted session if found.
 func (m *Manager) Delete(id string) *UISession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -161,14 +213,32 @@ func (m *Manager) Delete(id string) *UISession {
 		return nil
 	}
 
+	// Cascade delete children first (collect IDs before deleting entries)
+	var childIDs []string
+	for _, s := range m.sessions {
+		if s.ParentID == id {
+			childIDs = append(childIDs, s.ID)
+		}
+	}
+	browserID := sess.BrowserID
+	for _, cid := range childIDs {
+		delete(m.sessions, cid)
+		bSessions := m.browserSessions[browserID]
+		for i, sid := range bSessions {
+			if sid == cid {
+				m.browserSessions[browserID] = append(bSessions[:i], bSessions[i+1:]...)
+				break
+			}
+		}
+	}
+
 	delete(m.sessions, id)
 
 	// Remove from browser sessions list
-	browserID := sess.BrowserID
-	sessions := m.browserSessions[browserID]
-	for i, sid := range sessions {
+	browserSessions := m.browserSessions[browserID]
+	for i, sid := range browserSessions {
 		if sid == id {
-			m.browserSessions[browserID] = append(sessions[:i], sessions[i+1:]...)
+			m.browserSessions[browserID] = append(browserSessions[:i], browserSessions[i+1:]...)
 			break
 		}
 	}

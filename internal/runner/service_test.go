@@ -539,3 +539,87 @@ func TestRunService_ParentConfig_StoredOnStartRun(t *testing.T) {
 		t.Fatalf("stored model = %q, want %q", stored.ModelName, "test-model")
 	}
 }
+
+func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
+	svc, uiMgr := newRunServiceForTest(t)
+
+	// Create a parent session
+	parent, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create parent: %v", err)
+	}
+
+	// Store parent config
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+	}
+	svc.parentCfgMu.Lock()
+	svc.parentCfgs[parent.ID] = cfg
+	svc.parentCfgMu.Unlock()
+
+	taskID, err := svc.SpawnSubAgent(context.Background(), parent.ID, "research X", 5)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+
+	svc.subMu.Lock()
+	rec, exists := svc.subAgents[taskID]
+	svc.subMu.Unlock()
+	if !exists {
+		t.Fatal("sub-agent record not found")
+	}
+	if rec.ChildSessionID == "" {
+		t.Fatal("expected child session ID to be set")
+	}
+
+	child := uiMgr.Get(rec.ChildSessionID)
+	if child == nil {
+		t.Fatal("child session not found in UI manager")
+	}
+	if child.ParentID != parent.ID {
+		t.Errorf("child ParentID = %q, want %q", child.ParentID, parent.ID)
+	}
+	if child.BrowserID != "browser-1" {
+		t.Errorf("child BrowserID = %q, want %q", child.BrowserID, "browser-1")
+	}
+	if child.Status != uisession.StatusRunning {
+		t.Errorf("child Status = %q, want %q", child.Status, uisession.StatusRunning)
+	}
+}
+
+func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      nil,
+		HistorySessionMgr: nil,
+	})
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+	}
+	svc.parentCfgMu.Lock()
+	svc.parentCfgs["session-1"] = cfg
+	svc.parentCfgMu.Unlock()
+
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+
+	svc.subMu.Lock()
+	rec, exists := svc.subAgents[taskID]
+	svc.subMu.Unlock()
+	if !exists {
+		t.Fatal("sub-agent record not found")
+	}
+	if rec.ChildSessionID != "" {
+		t.Error("expected no child session ID when uiSessionMgr is nil")
+	}
+}
