@@ -2852,8 +2852,13 @@ func TestChatSlashActivationRefreshesRegistryAtRunStart(t *testing.T) {
 	workspace := t.TempDir()
 	rootDir := t.TempDir()
 	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
-	server := newTestServerWithSkillsService(t, workspace, skillsSvc)
+	ts := newManagedTestServerWithRunsAndSkillsService(t, workspace, skillsSvc)
+	server := ts.server
 	client := noRedirectClient()
+
+	// Configure a valid provider so run start succeeds
+	providerSrv := fakeProviderServer(t, 200, `{"object":"list","data":[{"id":"test-model","object":"model"}]}`)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":%q,"api_key":"sk-test","model":"test-model"}`, providerSrv.URL))
 
 	sessionID, browserCookie := createSessionForBrowser(t, server, client)
 	writeSkill(t, filepath.Join(rootDir, "code-review"), "code-review", "# Review")

@@ -17,6 +17,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -39,8 +40,10 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	workspace := t.TempDir()
+	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:   sessionMgr,
+		UISessionMgr:       sessionMgr,
+		HistorySessionMgr:  historySessionMgr,
 	})
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
@@ -75,7 +78,8 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:   sessionMgr,
+		UISessionMgr:       sessionMgr,
+		HistorySessionMgr:  history.NewSessionManager(50),
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
@@ -560,7 +564,19 @@ func TestChatRun_ReappliesSlashActivatedSkillsOnEveryRunWithoutAccumulating(t *t
 	if activateResp.StatusCode != http.StatusOK {
 		t.Fatalf("slash activation status = %d, want 200", activateResp.StatusCode)
 	}
+	waitForRunToFinish(t, h.runSvc, sessionID)
 
+	// Drain requests from the first (slash-activation) run before proceeding
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-requests:
+		default:
+			// Channel empty or already drained
+			deadline = time.Now() // stop after one attempt if empty
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 	first := <-requests
 	waitForRunToFinish(t, h.runSvc, sessionID)
@@ -632,6 +648,19 @@ func TestChatRun_SkipsDisappearedActiveSkillAndShowsWarning(t *testing.T) {
 	activateResp.Body.Close()
 	if activateResp.StatusCode != http.StatusOK {
 		t.Fatalf("slash activation status = %d, want 200", activateResp.StatusCode)
+	}
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	// Drain requests from the first (slash-activation) run before proceeding
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-requests:
+		default:
+			// Channel empty or already drained
+			deadline = time.Now() // stop after one attempt if empty
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	if err := os.RemoveAll(skillDir); err != nil {
