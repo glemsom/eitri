@@ -45,7 +45,7 @@ func MessageInput(sessionID string, disabled bool, _ bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-indicator=\"#send-btn\" hx-on::after-request=\"this.reset()\"><textarea id=\"chat-input\" name=\"message\" class=\"chat-input\" placeholder=\"Type a message...\" required rows=\"3\" hx-trigger=\"keydown[ctrl+enter||meta+enter] from:#chat-input\"></textarea><div class=\"composer-actions\"><button id=\"send-btn\" type=\"submit\" class=\"send-btn\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-target=\"#messages\" hx-swap=\"beforeend\" hx-indicator=\"#send-btn\"><textarea id=\"chat-input\" name=\"message\" class=\"chat-input\" placeholder=\"Type a message...\" required rows=\"3\" hx-trigger=\"keydown[ctrl+enter||meta+enter] from:#chat-input\"></textarea><div class=\"composer-actions\"><button id=\"send-btn\" type=\"submit\" class=\"send-btn\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

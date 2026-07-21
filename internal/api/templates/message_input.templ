@@ -11,7 +11,6 @@ templ MessageInput(sessionID string, disabled bool, _ bool) {
 			hx-target="#messages"
 			hx-swap="beforeend"
 			hx-indicator="#send-btn"
-			hx-on::after-request="this.reset()"
 		>
 				<textarea
 				id="chat-input"

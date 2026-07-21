@@ -190,6 +190,13 @@
         }
       };
       document.addEventListener('keydown', this._handleDocumentKeydown);
+
+      // After HTMX request completes, reset the form (clears textarea) and restore default height.
+      // This replaces hx-on::after-request="this.reset()" so we can also reset the textarea height.
+      this.form.addEventListener('htmx:afterRequest', () => {
+        this.form.reset();
+        this._autoResize();
+      });
     }
 
     _onInput() {
