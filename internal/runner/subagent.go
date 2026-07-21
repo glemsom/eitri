@@ -1,0 +1,336 @@
+package runner
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runstate"
+	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/tool"
+)
+
+// subAgentStatus tracks the lifecycle of a sub-agent task.
+type subAgentStatus string
+
+const (
+	subAgentRunning   subAgentStatus = "running"
+	subAgentCompleted subAgentStatus = "completed"
+	subAgentError     subAgentStatus = "error"
+	subAgentCancelled subAgentStatus = "cancelled"
+)
+
+// subAgentRecord tracks one in-flight sub-agent spawned via delegate().
+type subAgentRecord struct {
+	TaskID    string
+	SessionID string
+	Status    subAgentStatus
+	Result    string
+	TurnCount int
+	Err       error
+	Done      chan struct{}
+	Cancel    context.CancelFunc
+	StartedAt time.Time
+}
+
+func (r *subAgentRecord) finish() {
+	// Non-blocking close; idempotent via select.
+	select {
+	case <-r.Done:
+	default:
+		close(r.Done)
+	}
+}
+
+// SubAgentResult is the result type for CollectSubAgents, aliased from the tool package.
+type SubAgentResult = tool.SubAgentResult
+
+// subAgentReapTTL controls how long completed sub-agent records are kept
+// after finishing before they are automatically reaped.
+const subAgentReapTTL = 30 * time.Second
+
+// SpawnSubAgent starts a sub-agent in the background to complete the given task.
+// Returns a unique task ID immediately. The sub-agent runs with its own LLM
+// service, tool registry (restricted — no delegate/collect/quick_replies/skill),
+// and request-based history manager (no browser session persistence).
+//
+// Cancelling the parent run cascades to cancel all in-flight sub-agents.
+func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int) (taskID string, err error) {
+	// Retrieve parent config for this session
+	s.parentCfgMu.Lock()
+	parentCfg, ok := s.parentCfgs[sessionID]
+	s.parentCfgMu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("no parent run config found for session %s", sessionID)
+	}
+
+	// Generate task ID
+	s.subMu.Lock()
+	s.nextTaskID++
+	taskID = fmt.Sprintf("task_%d", s.nextTaskID)
+	s.subMu.Unlock()
+
+	slog.Info("spawning sub-agent",
+		slog.String("task_id", taskID),
+		slog.String("parent_session", sessionID),
+		slog.String("task", truncateString(task, 100)),
+		slog.Int("max_turns", maxTurns),
+	)
+
+	// Build system prompt: default + task description
+	systemPrompt := history.DefaultSystemPrompt + "\n\nYou are performing the following task: " + task
+
+	// Resolve auth (same as parent)
+	reqAuth := provider.ResolveAuthRequest{
+		ProviderID:   parentCfg.ProviderID,
+		APIKey:       parentCfg.APIKey,
+		ProviderAuth: parentCfg.ProviderAuth,
+	}
+	resolvedKey, _, authErr := provider.ResolveAuth(ctx, reqAuth, s.persistAuth)
+	if authErr != nil {
+		return "", fmt.Errorf("sub-agent auth: %w", authErr)
+	}
+	apiKey := parentCfg.APIKey
+	if resolvedKey != "" {
+		apiKey = resolvedKey
+	}
+
+	// Build LLM service (same provider/model as parent)
+	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: parentCfg.ProviderID,
+		Model:      parentCfg.ModelName,
+		BaseURL:    parentCfg.BaseURL,
+		APIKey:     apiKey,
+	})
+	if err != nil {
+		return "", fmt.Errorf("sub-agent LLM service: %w", err)
+	}
+
+	// Build restricted tool registry (no delegate/collect/quick_replies/skill)
+	toolReg := buildBaseToolRegistry(parentCfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
+
+	// Create request and set up messages
+	req := &litellm.Request{
+		Model:  parentCfg.ModelName,
+		Stream: true,
+	}
+	if parentCfg.ThinkingLevel != "" {
+		req.ReasoningEffort = parentCfg.ThinkingLevel
+	}
+	req.Messages = []litellm.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: task},
+	}
+
+	sseState := runstate.New()
+	subCtx, cancel := context.WithCancel(ctx)
+
+	record := &subAgentRecord{
+		TaskID:    taskID,
+		SessionID: sessionID,
+		Status:    subAgentRunning,
+		Done:      make(chan struct{}),
+		Cancel:    cancel,
+		StartedAt: time.Now(),
+	}
+
+	s.subMu.Lock()
+	s.subAgents[taskID] = record
+	s.subMu.Unlock()
+
+	go func() {
+		defer func() {
+			record.finish()
+			// Reap after TTL
+			time.AfterFunc(subAgentReapTTL, func() {
+				s.subMu.Lock()
+				if existing, exists := s.subAgents[taskID]; exists && existing == record {
+					delete(s.subAgents, taskID)
+				}
+				s.subMu.Unlock()
+			})
+		}()
+
+		w := runstate.NewWriter(sseState)
+		historyMgr := newRequestHistoryManager(req)
+
+		runErr := RunAgent(subCtx, llm, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0)
+
+		s.subMu.Lock()
+		defer s.subMu.Unlock()
+
+		// Extract result from last assistant message
+		msgs := req.Messages
+		var result string
+		var turnCount int
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Role == "assistant" {
+				result = msgs[i].Content
+				// Count assistant messages with content (tool-calling turns + final)
+				if msgs[i].Content != "" {
+					turnCount++
+				}
+			}
+		}
+		// Count tool-calling turns
+		for _, msg := range msgs {
+			if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+				turnCount++
+			}
+		}
+
+		record.Result = result
+		record.TurnCount = turnCount
+
+		if runErr != nil {
+			if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+				record.Status = subAgentCancelled
+				slog.Info("sub-agent cancelled", slog.String("task_id", taskID))
+			} else {
+				record.Status = subAgentError
+				record.Err = runErr
+				slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
+			}
+			return
+		}
+
+		record.Status = subAgentCompleted
+		slog.Info("sub-agent completed",
+			slog.String("task_id", taskID),
+			slog.Int("turn_count", turnCount),
+			slog.Int("result_len", len(result)),
+		)
+	}()
+
+	return taskID, nil
+}
+
+// CollectSubAgents blocks until all specified tasks complete or the context is cancelled.
+// Returns a map keyed by task ID with status, result, and turn_count.
+func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (map[string]SubAgentResult, error) {
+	if len(taskIDs) == 0 {
+		return map[string]SubAgentResult{}, nil
+	}
+
+	slog.Info("collecting sub-agents", slog.Int("count", len(taskIDs)))
+
+	// Gather all done channels under lock
+	type recordInfo struct {
+		done   chan struct{}
+		record *subAgentRecord
+	}
+	records := make([]recordInfo, 0, len(taskIDs))
+
+	s.subMu.Lock()
+	for _, tid := range taskIDs {
+		rec, exists := s.subAgents[tid]
+		if !exists {
+			s.subMu.Unlock()
+			return nil, fmt.Errorf("unknown task_id: %s", tid)
+		}
+		records = append(records, recordInfo{done: rec.Done, record: rec})
+	}
+	s.subMu.Unlock()
+
+	// Wait for each task to complete
+	for _, ri := range records {
+		select {
+		case <-ri.done:
+			// Task completed
+		case <-ctx.Done():
+			// Context cancelled — return partial results
+			slog.Info("collect cancelled, returning partial results")
+			results := make(map[string]SubAgentResult, len(taskIDs))
+			s.subMu.Lock()
+			for _, tid := range taskIDs {
+				rec, exists := s.subAgents[tid]
+				if !exists {
+					results[tid] = SubAgentResult{
+						Status: "cancelled",
+					}
+					continue
+				}
+				results[tid] = subAgentRecordToResult(rec)
+			}
+			s.subMu.Unlock()
+			return results, nil
+		}
+	}
+
+	// Collect results
+	results := make(map[string]SubAgentResult, len(taskIDs))
+	s.subMu.Lock()
+	for _, tid := range taskIDs {
+		rec, exists := s.subAgents[tid]
+		if !exists {
+			results[tid] = SubAgentResult{Status: "cancelled"}
+			continue
+		}
+		results[tid] = subAgentRecordToResult(rec)
+	}
+	s.subMu.Unlock()
+
+	return results, nil
+}
+
+// subAgentRecordToResult converts an internal record to the public result type.
+func subAgentRecordToResult(rec *subAgentRecord) SubAgentResult {
+	status := string(rec.Status)
+	if rec.Status == subAgentRunning {
+		// If task hasn't finished yet (shouldn't happen if properly awaited)
+		status = "cancelled"
+	}
+	return SubAgentResult{
+		Status:    status,
+		Result:    rec.Result,
+		TurnCount: rec.TurnCount,
+	}
+}
+
+// CancelSubAgents cancels all in-flight sub-agents for a given parent session.
+func (s *RunService) CancelSubAgents(sessionID string) {
+	s.subMu.Lock()
+	var toCancel []*subAgentRecord
+	for _, rec := range s.subAgents {
+		if rec.SessionID == sessionID {
+			toCancel = append(toCancel, rec)
+		}
+	}
+	s.subMu.Unlock()
+
+	for _, rec := range toCancel {
+		slog.Info("cancelling sub-agent", slog.String("task_id", rec.TaskID))
+		rec.Cancel()
+	}
+}
+
+// buildBaseToolRegistry creates a tool registry with all standard tools
+// except delegate, collect, render_quick_replies, and skill (which are
+// only available to parent agents, not sub-agents).
+func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
+	reg := tool.NewRegistry()
+	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout))
+	reg.Register(tool.NewGlobTool(cfg.Workspace))
+	reg.Register(tool.NewGrepTool(cfg.Workspace))
+	reg.Register(tool.NewReadTool(cfg.Workspace, skillDirs, cfg.AllowedReadPaths))
+	reg.Register(tool.NewWriteTool(cfg.Workspace))
+	reg.Register(tool.NewEditTool(cfg.Workspace))
+	reg.Register(tool.NewRenderMermaidDiagram())
+	reg.Register(tool.NewWebFetchTool())
+	return reg
+}
+
+// truncateString truncates a string to at most n runes for logging.
+func truncateString(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
+}

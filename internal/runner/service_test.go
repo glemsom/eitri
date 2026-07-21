@@ -333,3 +333,209 @@ func TestRunService_NotifySessionClosed_BroadcastsClosedEvent(t *testing.T) {
 		}
 	}
 }
+
+// ── Sub-agent tests ─────────────────────────────────────────────────────────
+
+func TestRunService_SpawnSubAgent_NoParentConfig(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	_, err := svc.SpawnSubAgent(context.Background(), "nonexistent-session", "test task", 5)
+	if err == nil {
+		t.Fatal("expected error for missing parent config")
+	}
+	if !strings.Contains(err.Error(), "no parent run config found") {
+		t.Fatalf("error = %q, want 'no parent run config found'", err.Error())
+	}
+}
+
+func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Store a parent config
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+	}
+	svc.parentCfgMu.Lock()
+	svc.parentCfgs["session-1"] = cfg
+	svc.parentCfgMu.Unlock()
+
+	taskID1, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 1", 5)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+	if !strings.HasPrefix(taskID1, "task_") {
+		t.Fatalf("task ID = %q, want 'task_...'", taskID1)
+	}
+
+	taskID2, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 2", 10)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+	if taskID1 == taskID2 {
+		t.Fatal("expected unique task IDs")
+	}
+
+	// Verify records are stored
+	svc.subMu.Lock()
+	_, exists1 := svc.subAgents[taskID1]
+	_, exists2 := svc.subAgents[taskID2]
+	svc.subMu.Unlock()
+
+	if !exists1 {
+		t.Fatal("taskID1 not found in subAgents")
+	}
+	if !exists2 {
+		t.Fatal("taskID2 not found in subAgents")
+	}
+}
+
+func TestRunService_CollectSubAgents_Empty(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	results, err := svc.CollectSubAgents(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("CollectSubAgents: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected empty results, got %v", results)
+	}
+
+	results, err = svc.CollectSubAgents(context.Background(), []string{})
+	if err != nil {
+		t.Fatalf("CollectSubAgents: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected empty results, got %v", results)
+	}
+}
+
+func TestRunService_CollectSubAgents_UnknownID(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	_, err := svc.CollectSubAgents(context.Background(), []string{"nonexistent"})
+	if err == nil {
+		t.Fatal("expected error for unknown task ID")
+	}
+	if !strings.Contains(err.Error(), "unknown task_id") {
+		t.Fatalf("error = %q, want 'unknown task_id'", err.Error())
+	}
+}
+
+func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://test.local",
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+	}
+	svc.parentCfgMu.Lock()
+	svc.parentCfgs["session-1"] = cfg
+	svc.parentCfgMu.Unlock()
+
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+
+	// Cancel sub-agents for this session
+	svc.CancelSubAgents("session-1")
+
+	// Wait briefly for the cancellation to propagate
+	time.Sleep(100 * time.Millisecond)
+
+	// Collect should show cancelled status
+	results, err := svc.CollectSubAgents(context.Background(), []string{taskID})
+	if err != nil {
+		t.Fatalf("CollectSubAgents: %v", err)
+	}
+	result, ok := results[taskID]
+	if !ok {
+		t.Fatalf("task %s not found in results", taskID)
+	}
+	if result.Status != "cancelled" {
+		t.Fatalf("status = %q, want %q", result.Status, "cancelled")
+	}
+}
+
+func TestRunService_Cancel_CancelsSubAgents(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Spawn a sub-agent (should now have parent config)
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "sub task", 5)
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+
+	// Cancel the parent run — should cascade to sub-agents
+	svc.Cancel("session-1")
+
+	// Sub-agent should be cancelled
+	svc.subMu.Lock()
+	rec, exists := svc.subAgents[taskID]
+	svc.subMu.Unlock()
+	if !exists {
+		t.Fatal("sub-agent record not found after cancel")
+	}
+	// Wait briefly for goroutine to process cancellation
+	time.Sleep(100 * time.Millisecond)
+	svc.subMu.Lock()
+	status := rec.Status
+	svc.subMu.Unlock()
+	if status != subAgentCancelled {
+		t.Fatalf("sub-agent status = %q, want %q", status, subAgentCancelled)
+	}
+}
+
+func TestRunService_BuildBaseToolRegistry_ExcludesDelegateCollect(t *testing.T) {
+	cfg := RunConfig{Workspace: t.TempDir()}
+	reg := buildBaseToolRegistry(cfg, nil, nil, nil)
+
+	// Must include basic tools
+	for _, name := range []string{"bash", "glob", "grep", "read", "write", "edit", "render_mermaid_diagram", "web_fetch"} {
+		if reg.Lookup(name) == nil {
+			t.Errorf("base tool registry missing %q", name)
+		}
+	}
+
+	// Must NOT include delegate/collect/quick_replies/skill
+	for _, name := range []string{"delegate", "collect", "render_quick_replies", "skill"} {
+		if reg.Lookup(name) != nil {
+			t.Errorf("base tool registry should NOT include %q", name)
+		}
+	}
+}
+
+func TestRunService_ParentConfig_StoredOnStartRun(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	defer svc.Cancel("session-1")
+
+	svc.parentCfgMu.Lock()
+	stored, exists := svc.parentCfgs["session-1"]
+	svc.parentCfgMu.Unlock()
+
+	if !exists {
+		t.Fatal("parent config not stored")
+	}
+	if stored.ModelName != "test-model" {
+		t.Fatalf("stored model = %q, want %q", stored.ModelName, "test-model")
+	}
+}

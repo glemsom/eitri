@@ -49,12 +49,15 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	systemPrompt := cfg.SystemPrompt
 	maxTurns := cfg.MaxTurns
 	maxHistory := cfg.MaxHistory
-	allowedReadPaths := cfg.AllowedReadPaths
 	providerAuth := cfg.ProviderAuth
 	workspace := cfg.Workspace
-	cmdTimeout := cfg.CmdTimeout
 	contextWindowTokens := cfg.ContextWindowTokens
 	s.mu.Unlock()
+
+	// Store parent config for sub-agent setup
+	s.parentCfgMu.Lock()
+	s.parentCfgs[sessionID] = cfg
+	s.parentCfgMu.Unlock()
 
 	if baseURL == "" || modelName == "" {
 		return nil, fmt.Errorf("provider not configured: set base_url and model in settings")
@@ -115,19 +118,14 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		return nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
 
-	toolReg := tool.NewRegistry()
-	toolReg.Register(tool.NewBashTool(workspace, cmdTimeout))
-	toolReg.Register(tool.NewGlobTool(workspace))
-	toolReg.Register(tool.NewGrepTool(workspace))
-	toolReg.Register(tool.NewReadTool(workspace, s.skillDirectories(), allowedReadPaths))
-	toolReg.Register(tool.NewWriteTool(workspace))
-	toolReg.Register(tool.NewEditTool(workspace))
-	toolReg.Register(tool.NewRenderMermaidDiagram())
+	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 	toolReg.Register(tool.NewRenderQuickReplies())
-	toolReg.Register(tool.NewWebFetchTool())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
 	}
+	// Sub-agent tools: only parent agents get delegate/collect
+	toolReg.Register(tool.NewDelegate(s))
+	toolReg.Register(tool.NewCollect(s))
 
 	if s.historySessionMgr != nil {
 		s.historySessionMgr.Create(sessionID)
@@ -174,6 +172,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				delete(s.active, sessionID)
 			}
 			s.mu.Unlock()
+
+			// Clean up parent config for sub-agent setup
+			s.parentCfgMu.Lock()
+			delete(s.parentCfgs, sessionID)
+			s.parentCfgMu.Unlock()
 		}()
 
 		// Ensure session status is reset and browser subscribers notified when the run completes.
