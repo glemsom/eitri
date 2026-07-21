@@ -214,6 +214,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 					delete(s.active, record.ChildSessionID)
 				}
 				s.mu.Unlock()
+				// Update child session status to idle
+				s.broadcastSessionStatusUpdate(record.ChildSessionID, uisession.StatusIdle)
 			}
 			// Reap after TTL
 			time.AfterFunc(subAgentReapTTL, func() {
@@ -229,6 +231,15 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		historyMgr := newRequestHistoryManager(req)
 
 		runErr := RunAgent(subCtx, llm, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0)
+
+		// Persist sub-agent response to child UI session
+		if record.ChildSessionID != "" {
+			content := sseState.BufferString()
+			reasoningContent := sseState.ReasoningBufferString()
+			if content != "" {
+				s.appendToSession(record.ChildSessionID, content, reasoningContent)
+			}
+		}
 
 		s.subMu.Lock()
 		defer s.subMu.Unlock()
