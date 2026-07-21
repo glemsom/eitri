@@ -7,7 +7,13 @@ import "github.com/glemsom/eitri/internal/session"
 // Child sessions (with ParentID) are rendered indented under their parent.
 // Active session is visually distinct.
 templ SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) {
-	<div id="session-tabs" class="session-tabs" if swapOOB { hx-swap-oob="outerHTML" }>
+	<div
+		id="session-tabs"
+		class="session-tabs"
+		if swapOOB {
+			hx-swap-oob="outerHTML"
+		}
+	>
 		<div class="sidebar-header">
 			<span class="sidebar-title">Sessions</span>
 			<button class="new-session-btn" hx-post="/api/sessions" hx-target="body" hx-push-url="true" title="New session">+</button>
@@ -37,25 +43,24 @@ func buildTreeAndRender(sessions []*session.UISession, activeID string) templ.Co
 
 templ renderSessionTree(sessions []*session.UISession, children map[string][]*session.UISession, activeID string) {
 	for _, s := range sessions {
-		if s.ParentID != "" {
-			continue
-		}
-		<div class={ "session-item", templ.KV("active", s.ID == activeID) }>
-			<a href={ templ.URL("/sessions/" + s.ID) } class="session-item-link" title={ s.Title }>
-				<span class="session-title">{ s.Title }</span>
-				<span class={ "status-dot", templ.KV("status-idle", s.Status == session.StatusIdle), templ.KV("status-running", s.Status == session.StatusRunning), templ.KV("status-error", s.Status == session.StatusError) }></span>
-			</a>
-			<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
-		</div>
-		// Render children indented under this parent
-		if childList, has := children[s.ID]; has && len(childList) > 0 {
-			for _, child := range childList {
-				<div class={ "session-item", "session-item-child", templ.KV("active", child.ID == activeID) }>
-					<a href={ templ.URL("/sessions/" + child.ID) } class="session-item-link" title={ child.Title }>
-						<span class="session-title child-session-title">{ child.Title }</span>
-						<span class={ "status-dot", templ.KV("status-idle", child.Status == session.StatusIdle), templ.KV("status-running", child.Status == session.StatusRunning), templ.KV("status-error", child.Status == session.StatusError) }></span>
-					</a>
-				</div>
+		if s.ParentID == "" {
+			<div class={ "session-item", templ.KV("active", s.ID == activeID) }>
+				<a href={ templ.URL("/sessions/" + s.ID) } class="session-item-link" title={ s.Title }>
+					<span class="session-title">{ s.Title }</span>
+					<span class={ "status-dot", templ.KV("status-idle", s.Status == session.StatusIdle), templ.KV("status-running", s.Status == session.StatusRunning), templ.KV("status-error", s.Status == session.StatusError) }></span>
+				</a>
+				<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
+			</div>
+			// Render children indented under this parent
+			if childList, has := children[s.ID]; has && len(childList) > 0 {
+				for _, child := range childList {
+					<div class={ "session-item", "session-item-child", templ.KV("active", child.ID == activeID) }>
+						<a href={ templ.URL("/sessions/" + child.ID) } class="session-item-link" title={ child.Title }>
+							<span class="session-title child-session-title">{ child.Title }</span>
+							<span class={ "status-dot", templ.KV("status-idle", child.Status == session.StatusIdle), templ.KV("status-running", child.Status == session.StatusRunning), templ.KV("status-error", child.Status == session.StatusError) }></span>
+						</a>
+					</div>
+				}
 			}
 		}
 	}
