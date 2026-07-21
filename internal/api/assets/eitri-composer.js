@@ -243,8 +243,24 @@
       }
 
       if (start >= pos || start < 0) return null;
-      const firstChar = text[start];
+      let firstChar = text[start];
       if (firstChar !== '/' && firstChar !== '@') return null;
+
+      // If we stopped at '/', it could be a path separator inside a @file path.
+      // Scan further back for '@' to extend the token.
+      if (firstChar === '/') {
+        var scan = start - 1;
+        while (scan >= 0) {
+          var sc = text[scan];
+          if (sc === '@') {
+            start = scan;
+            firstChar = '@';
+            break;
+          }
+          if (sc === ' ' || sc === '\n' || sc === '\t') break;
+          scan--;
+        }
+      }
 
       return {
         prefix: firstChar,
