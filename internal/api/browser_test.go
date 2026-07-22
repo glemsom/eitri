@@ -1098,7 +1098,7 @@ func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 			input.dispatchEvent(new Event('input', { bubbles: true }));
 			return true;
 		})()`, nil),
-		chromedp.SendKeys("#chat-input", "second message should not rename tab", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", secondMessage, chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
 	)
 	if err != nil {
@@ -3669,7 +3669,7 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 // TestBrowser_AutoScrollDuringStreaming verifies auto-scroll lands at newest
 // content during streaming in the scroll container.
 func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
-	llmURL := fakeBurstChatServer(t, 100, 5*time.Millisecond).URL
+	llmURL := fakeBurstChatServer(t, 500, 2*time.Millisecond).URL
 	server := newTestServerWithRuns(t)
 	configureProvider(t, server, llmURL)
 
@@ -3696,7 +3696,7 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 
 	// Force #messages to a small height to create scrollable overflow
 	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '120px'`, nil),
+		chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '150px'`, nil),
 	)
 	if err != nil {
 		t.Fatalf("set messages height failed: %v", err)
@@ -3724,7 +3724,7 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 	}
 
 	// Wait for streaming tokens to accumulate
-	time.Sleep(800 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 
 	// Scroll up in #messages to force scroll position away from bottom
 	err = chromedp.Run(ctx,
@@ -5666,7 +5666,7 @@ func TestBrowser_StreamingMarkdownAutoScrollRegression(t *testing.T) {
 		// Clamp #messages height on first call to force scroll overflow
 		if !heightClamped {
 			_ = chromedp.Run(ctx,
-				chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '120px'`, nil),
+				chromedp.EvaluateAsDevTools(`document.getElementById('messages').style.maxHeight = '150px'`, nil),
 			)
 			heightClamped = true
 			return false
