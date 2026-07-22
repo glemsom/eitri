@@ -39,6 +39,32 @@ Sub-agents can optionally create child sessions in the `SessionManager`. A `Pare
 
 Child sessions are created only when `delegate` is called from a parent that has a browser session (`uiSessionMgr != nil`).
 
+### When to delegate: context management pattern
+
+Sub-agents have their **own independent context window**, separate from the parent.
+The parent system prompt (skills, repo instructions, history) is **not** forwarded —
+the sub-agent starts fresh with `DefaultSystemPrompt + task description`.
+
+This makes delegation ideal for data-intensive work that would bloat the
+parent's context window:
+
+- **Fetching multiple URLs** — delegate parallel `web_fetch` calls to a sub-agent
+  and collect summaries back. Raw page content stays in the sub-agent's context.
+- **Reading large files** — delegate file analysis to a sub-agent so file contents
+  don't accumulate in parent history.
+- **Wide searches** — delegate `grep`/`glob` across large trees to keep results
+  contained.
+
+Pattern:
+```
+1. delegate(task: "fetch URL1, URL2, URL3 and summarize each")
+2. delegate(task: "read big_file.go and extract the AuthService type")
+3. collect(task_1, task_2)  →  returns concise results
+```
+
+Parallel delegates can be fired in the same parent turn. `collect` blocks
+until all are done.
+
 ### Non-goals for the initial scope
 
 - Recursive sub-agents (sub-agents cannot spawn further sub-agents)

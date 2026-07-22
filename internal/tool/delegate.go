@@ -32,9 +32,11 @@ func (t *DelegateTool) Name() string { return "delegate" }
 
 func (t *DelegateTool) Description() string {
 	return "Delegate a task to a sub-agent. Returns a task_id immediately as JSON {\"task_id\": \"...\"}. " +
-		"The sub-agent runs independently with its own tool access. " +
-		"Call collect() with the task_id to retrieve results. " +
-		"Multiple delegates can be fired in one turn and collected together."
+		"The sub-agent runs independently with its own tool access and its own context window. " +
+		"Use delegate for data-intensive work (fetching multiple URLs, reading large files, " +
+		"wide searches) to avoid filling the parent\u2019s context window with raw data. " +
+		"Multiple delegates can be fired in one turn and collected together. " +
+		"Call collect() with the task_id to retrieve results."
 }
 
 func (t *DelegateTool) JSONSchema() litellm.Schema { return t.schema }

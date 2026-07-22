@@ -38,7 +38,10 @@ func (t *WebFetchTool) Name() string {
 }
 
 func (t *WebFetchTool) Description() string {
-	return "Fetch a web page and convert to Markdown. Returns title, source URL, and body. Configurable timeout (default 15s), 32 KiB cap, proxy support. For docs, articles, or web content."
+	return "Fetch a web page and convert to Markdown. Returns title, source URL, and body. " +
+		"Configurable timeout (default 15s), 32 KiB cap, proxy support. " +
+		"For docs, articles, or web content. " +
+		"Combine with delegate() to fetch multiple pages in parallel without filling the parent context window."
 }
 
 func (t *WebFetchTool) JSONSchema() litellm.Schema {
