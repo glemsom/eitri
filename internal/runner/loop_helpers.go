@@ -106,8 +106,14 @@ func drainStream(
 	}
 }
 
-// toolDefsFromRegistry converts tool registry tools to internal ToolDefs.
-func toolDefsFromRegistry(reg *tool.Registry) []litellm.ToolDef {
+// toolLister is the interface for listing tool definitions, used by toolDefsFromRegistry.
+// *tool.Registry satisfies this interface.
+type toolLister interface {
+	LitellmTools() []vocellitellm.Tool
+}
+
+// toolDefsFromRegistry converts tool definitions from a tool lister to internal ToolDefs.
+func toolDefsFromRegistry(reg toolLister) []litellm.ToolDef {
 	vooTools := reg.LitellmTools()
 	defs := make([]litellm.ToolDef, len(vooTools))
 	for i, t := range vooTools {
