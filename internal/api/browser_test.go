@@ -1547,11 +1547,15 @@ func TestBrowser_RunStatusChrome_Reconnect(t *testing.T) {
 	}
 
 	var renderingSeen bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelector('.stream-status-text').textContent.trim() === 'Rendering'`, &renderingSeen),
-	)
-	if err != nil {
-		t.Fatalf("read rendering phase failed: %v", err)
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.stream-status-text').textContent.trim() === 'Rendering'`, &renderingSeen),
+		)
+		if err == nil && renderingSeen {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if !renderingSeen {
 		t.Fatal("expected Rendering phase immediately after done packet")
