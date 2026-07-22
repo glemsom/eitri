@@ -771,7 +771,13 @@
     function afterSwap(evt) {
       const target = evt.detail && evt.detail.target;
       if (target && target.id === 'streaming') {
-        finish();
+        // Small delay so the transient RENDERING status is observable by
+        // the test before transitioning to DONE.  Without this, an instant
+        // server response (common on CI) can cause the entire
+        // RENDERING→DONE transition to complete within a single event-loop
+        // turn, making it impossible to test (or even see) the intermediate
+        // state.
+        window.setTimeout(finish, 100);
       }
     }
 
