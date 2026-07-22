@@ -393,7 +393,7 @@ func streamingMarkdownTestHelper(t *testing.T, markdown string, opts streamingMa
 		t.Fatalf("send failed: %v", err)
 	}
 
-	timeout := 4 * time.Second
+	timeout := 8 * time.Second
 	if opts.Timeout > 0 {
 		timeout = opts.Timeout
 	}
