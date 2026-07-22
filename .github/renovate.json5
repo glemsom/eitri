@@ -49,6 +49,9 @@
     },
   ],
 
+  // When a config file is found, Renovate skips the onboarding PR flow
+  // and goes straight to scanning + creating updates per the schedule below.
+  
   // ── Safeguards ──────────────────────────────────────────────────────
   // Don't auto-merge anything (you want to vet dependency bumps).
   automerge: false,
