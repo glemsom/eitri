@@ -91,7 +91,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {
 		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusConflict)
+		w.Header().Set("HX-Retarget", "#error-toasts")
+		w.WriteHeader(http.StatusOK)
 		component := templates.ErrorToast("This session already has an active run. Wait for it to complete or cancel it.")
 		component.Render(r.Context(), w)
 		return

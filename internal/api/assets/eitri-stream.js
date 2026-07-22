@@ -482,6 +482,8 @@
         clearDeadAirTimer(state);
         state.status = STATES.IDLE;
         updateRunStatus(STATES.IDLE, 'No active run.', state);
+        // Record timestamp to prevent reconnect storms in autoConnectOnPageLoad
+        noActiveRunTimestamps[sessionId] = Date.now();
         // Close the EventSource (no retry)
         if (streams.has(sessionId)) {
           var entry = streams.get(sessionId);
@@ -1172,17 +1174,16 @@
     reinitScrollObserver();
   });
   document.addEventListener('htmx:afterSettle', initCodeBlockButtons);
+
+  // Guard against reconnect storms after no_active_run
+  var noActiveRunTimestamps = {};
   // Auto-connect stream for current session on page load
   function autoConnectOnPageLoad() {
     var sessionId = getSessionIdFromUrl();
     if (!sessionId || streams.has(sessionId)) return;
-    // Don't auto-connect if the run completed or is idle — prevents
-    // htmx:afterSwap from reconnecting after finalizeMessage closes the stream.
-    var st = document.querySelector('.stream-status-text');
-    if (st) {
-      var cls = st.className;
-      if (cls.indexOf('done') !== -1 || cls.indexOf('idle') !== -1) return;
-    }
+    // Guard against reconnect storms: skip if we got 'no_active_run' within 10s.
+    var lastNoActive = noActiveRunTimestamps[sessionId];
+    if (lastNoActive && Date.now() - lastNoActive < 10000) return;
     connectStream(sessionId);
   }
 
