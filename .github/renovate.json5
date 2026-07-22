@@ -27,8 +27,7 @@
   // ── Scheduling ──────────────────────────────────────────────────────
   // Weekly PRs are quiet enough.  Adjust to "daily" or "monthly" as you
   // prefer.  You can also set timezone with `timezone: "Europe/Stockholm"`.
-  // TEMP: run immediately to test. Will switch to weekly after confirming.
-  schedule: ["at any time"],
+  schedule: ["before 9am on Monday"],
 
   // ── PR conventions ──────────────────────────────────────────────────
   labels: ["dependencies"],
