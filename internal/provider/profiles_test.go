@@ -82,12 +82,12 @@ func TestProfile_SupportsPromptCache(t *testing.T) {
 	}
 
 	for providerID, want := range expected {
-		prof, err := getProfile(providerID)
+		desc, err := Describe(providerID)
 		if err != nil {
-			t.Fatalf("getProfile(%q) error: %v", providerID, err)
+			t.Fatalf("Describe(%q) error: %v", providerID, err)
 		}
-		if prof.supportsPromptCache != want {
-			t.Errorf("%s supportsPromptCache = %v, want %v", providerID, prof.supportsPromptCache, want)
+		if desc.SupportsPromptCache != want {
+			t.Errorf("%s SupportsPromptCache = %v, want %v", providerID, desc.SupportsPromptCache, want)
 		}
 	}
 }
