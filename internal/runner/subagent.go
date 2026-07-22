@@ -122,6 +122,12 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		Stream: true,
 	}
 	if parentCfg.ThinkingLevel != "" {
+
+	// Set task ID as prompt cache key if the provider supports it
+	providerDesc, _ := provider.Describe(parentCfg.ProviderID)
+	if providerDesc.SupportsPromptCache {
+		req.SessionID = taskID
+	}
 		req.ReasoningEffort = parentCfg.ThinkingLevel
 	}
 	req.Messages = []litellm.Message{

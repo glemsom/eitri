@@ -1094,6 +1094,188 @@ func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 	}
 }
 
+// ————— Prompt cache key —————
+
+func TestChat_PromptCacheKey_SentWhenSet(t *testing.T) {
+	t.Parallel()
+	var gotBody map[string]interface{}
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	_, err = svc.Chat(context.Background(), litellm.Request{
+		Model:     "gpt-4.1",
+		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		SessionID: "session-123",
+	})
+	if err != nil {
+		t.Fatalf("Chat error: %v", err)
+	}
+
+	key, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from request body when SessionID is set")
+	}
+	if key != "session-123" {
+		t.Fatalf("prompt_cache_key = %q, want %q", key, "session-123")
+	}
+}
+
+func TestChat_PromptCacheKey_OmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+	var gotBody map[string]interface{}
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	// SessionID is empty string by default
+	_, err = svc.Chat(context.Background(), litellm.Request{
+		Model:    "gpt-4.1",
+		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat error: %v", err)
+	}
+
+	if _, ok := gotBody["prompt_cache_key"]; ok {
+		t.Fatal("prompt_cache_key present in request body when SessionID is empty, should be omitted")
+	}
+}
+
+func TestChat_PromptCacheKey_TruncatedTo64Chars(t *testing.T) {
+	t.Parallel()
+	var gotBody map[string]interface{}
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"index":0,"finish_reason":"stop"}]}`)
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	// 80-char session ID
+	longID := "session-1234567890-abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+	if len(longID) <= 64 {
+		t.Fatalf("test session ID is only %d chars, need > 64", len(longID))
+	}
+
+	_, err = svc.Chat(context.Background(), litellm.Request{
+		Model:     "gpt-4.1",
+		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		SessionID: longID,
+	})
+	if err != nil {
+		t.Fatalf("Chat error: %v", err)
+	}
+
+	key, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from request body when SessionID is set")
+	}
+	keyStr, ok := key.(string)
+	if !ok {
+		t.Fatalf("prompt_cache_key is not a string: %T", key)
+	}
+	if len(keyStr) > 64 {
+		t.Fatalf("prompt_cache_key length = %d, want <= 64", len(keyStr))
+	}
+	if keyStr != longID[:64] {
+		t.Fatalf("prompt_cache_key = %q, want %q (first 64 chars)", keyStr, longID[:64])
+	}
+}
+
+func TestChat_PromptCacheKey_SentInStreamRequest(t *testing.T) {
+	t.Parallel()
+	var gotBody map[string]interface{}
+	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","content":"ok"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer chatSrv.Close()
+
+	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+		ProviderID: "opencode_go",
+		Model:      "gpt-4.1",
+		BaseURL:    chatSrv.URL,
+		APIKey:     "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("NewLLMService error: %v", err)
+	}
+
+	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+		Model:     "gpt-4.1",
+		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		SessionID: "stream-session",
+	})
+	if err != nil {
+		t.Fatalf("ChatStream error: %v", err)
+	}
+
+	_, err = collectStreamEvents(context.Background(), stream)
+	if err != nil {
+		t.Fatalf("collectStreamEvents error: %v", err)
+	}
+
+	key, ok := gotBody["prompt_cache_key"]
+	if !ok {
+		t.Fatal("prompt_cache_key missing from stream request body when SessionID is set")
+	}
+	if key != "stream-session" {
+		t.Fatalf("prompt_cache_key = %q, want %q", key, "stream-session")
+	}
+}
+
 // ————— Network error —————
 
 func TestChat_NetworkError(t *testing.T) {

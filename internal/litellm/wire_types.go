@@ -10,6 +10,7 @@ type openAIReq struct {
 	Stream          bool        `json:"stream"`
 	Tools           interface{} `json:"tools,omitempty"`
 	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
+	PromptCacheKey  string      `json:"prompt_cache_key,omitempty"`
 }
 
 type openAIMsg struct {
@@ -113,12 +114,19 @@ func toOpenAIRequest(req Request) openAIReq {
 		})
 	}
 
+	// Truncate SessionID to 64 chars for prompt_cache_key
+	cacheKey := req.SessionID
+	if len(cacheKey) > 64 {
+		cacheKey = cacheKey[:64]
+	}
+
 	return openAIReq{
 		Model:           req.Model,
 		Messages:        msgs,
 		Stream:          req.Stream,
 		Tools:           tools,
 		ReasoningEffort: req.ReasoningEffort,
+		PromptCacheKey:  cacheKey,
 	}
 }
 

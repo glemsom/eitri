@@ -9,6 +9,7 @@ type Request struct {
 	Tools           []ToolDef
 	Stream          bool
 	ReasoningEffort string // "low", "medium", "high", or "" to omit
+	SessionID       string // session-scoped prompt cache key; set only when provider supports prompt caching
 }
 
 // Message is a single chat message in the conversation.
@@ -75,12 +76,12 @@ type StreamEvent struct {
 	IsReasoning  bool        // true when Content carries reasoning/thinking text (not final output)
 }
 
-// AdapterConfig configures an LLM adapter.
 type AdapterConfig struct {
-	ProviderID      string
-	Model           string
-	BaseURL         string
-	APIKey          string
-	OpenRouterRef   string // HTTP-Referer for OpenRouter tracking
-	OpenRouterTitle string // X-Title for OpenRouter tracking
+	ProviderID          string
+	Model               string
+	BaseURL             string
+	APIKey              string
+	OpenRouterRef       string // HTTP-Referer for OpenRouter tracking
+	OpenRouterTitle     string // X-Title for OpenRouter tracking
+	SupportsPromptCache bool   // provider supports prompt_cache_key field
 }

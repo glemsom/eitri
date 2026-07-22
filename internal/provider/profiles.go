@@ -11,11 +11,12 @@ import (
 
 // Descriptor exposes caller-safe provider metadata for config/UI decisions.
 type Descriptor struct {
-	ID             string
-	DisplayName    string
-	DefaultBaseURL string
-	APIKeyRequired bool
-	CredentialName string
+	ID                  string
+	DisplayName         string
+	DefaultBaseURL      string
+	APIKeyRequired      bool
+	CredentialName      string
+	SupportsPromptCache bool // provider supports prompt_cache_key on chat requests
 }
 
 // SupportedThinkingLevels returns the thinking levels a model supports,
@@ -47,7 +48,6 @@ type profile struct {
 	applyHeaders        func(*http.Request, string)
 	parseModelList      func(io.Reader) ([]string, error)
 	authHandler         authHandler
-	supportsPromptCache bool
 }
 
 // ModelListURL returns absolute model discovery URL for baseURL.
@@ -94,29 +94,29 @@ func (p profile) join(baseURL, path string) string {
 var profiles = map[string]profile{
 	"opencode_go": {
 		Descriptor: Descriptor{
-			ID:             "opencode_go",
-			DisplayName:    "OpenCode Go",
-			DefaultBaseURL: "https://opencode.ai/zen/go",
-			APIKeyRequired: true,
+			ID:                  "opencode_go",
+			DisplayName:         "OpenCode Go",
+			DefaultBaseURL:      "https://opencode.ai/zen/go",
+			APIKeyRequired:      true,
+			SupportsPromptCache: true,
 		},
-		modelListPath:       "/v1/models",
-		chatPath:            "/v1/chat/completions",
-		stripV1Suffix:       true,
-		parseModelList:      parseOpenAIModelList,
-		supportsPromptCache: true,
+		modelListPath:  "/v1/models",
+		chatPath:       "/v1/chat/completions",
+		stripV1Suffix:  true,
+		parseModelList: parseOpenAIModelList,
 	},
 	"custom_openai": {
 		Descriptor: Descriptor{
-			ID:             "custom_openai",
-			DisplayName:    "Custom OpenAI (advanced/best-effort)",
-			DefaultBaseURL: "",
-			APIKeyRequired: false,
+			ID:                  "custom_openai",
+			DisplayName:         "Custom OpenAI (advanced/best-effort)",
+			DefaultBaseURL:      "",
+			APIKeyRequired:      false,
+			SupportsPromptCache: true,
 		},
-		modelListPath:       "/v1/models",
-		chatPath:            "/v1/chat/completions",
-		stripV1Suffix:       true,
-		parseModelList:      parseOpenAIModelList,
-		supportsPromptCache: true,
+		modelListPath:  "/v1/models",
+		chatPath:       "/v1/chat/completions",
+		stripV1Suffix:  true,
+		parseModelList: parseOpenAIModelList,
 	},
 	"github_copilot": {
 		Descriptor: Descriptor{
