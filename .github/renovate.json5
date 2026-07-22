@@ -27,7 +27,8 @@
   // ── Scheduling ──────────────────────────────────────────────────────
   // Weekly PRs are quiet enough.  Adjust to "daily" or "monthly" as you
   // prefer.  You can also set timezone with `timezone: "Europe/Stockholm"`.
-  schedule: ["before 9am on Monday"],
+  // TEMP: run immediately to test. Will switch to weekly after confirming.
+  schedule: ["at any time"],
 
   // ── PR conventions ──────────────────────────────────────────────────
   labels: ["dependencies"],
@@ -49,9 +50,6 @@
     },
   ],
 
-  // When a config file is found, Renovate skips the onboarding PR flow
-  // and goes straight to scanning + creating updates per the schedule below.
-  
   // ── Safeguards ──────────────────────────────────────────────────────
   // Don't auto-merge anything (you want to vet dependency bumps).
   automerge: false,
