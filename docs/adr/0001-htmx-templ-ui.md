@@ -34,7 +34,7 @@ Positive:
 - Fits structured SSE event stream better than HTMX SSE auto-swap.
 - Allows rich browser features (Mermaid, KaTeX, Prism, Clipboard, View Transitions, future xterm.js) without moving app to SPA.
 - Keeps chat protocol simple with SSE request/response rendering endpoints.
-- Maintains single-binary deployment path by embedding pinned vendor assets for v1 hardening.
+- Maintains single-binary deployment path by embedding pinned vendor assets for release hardening.
 
 Negative / tradeoffs:
 

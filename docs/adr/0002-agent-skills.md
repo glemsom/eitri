@@ -12,7 +12,7 @@ Eitri is a local, direct-host coding agent. Skills can affect model behavior and
 
 ## Decision
 
-Eitri supports Agent Skills as a v1 feature with actual agent use, not only UI listing.
+Eitri supports Agent Skills as a first-class feature with actual agent use, not only UI listing.
 
 ### Discovery roots
 
@@ -33,7 +33,7 @@ If multiple skills share the same `name`, the highest-precedence skill is effect
 
 ### Trust model
 
-Eitri does not require a workspace trust gate for project-level skills in v1. Project skills are loaded automatically. The Skills UI must show detected skills, including scope and path, so users can notice unexpected repository-provided skills and act manually.
+Eitri does not require a workspace trust gate for project-level skills initially. Project skills are loaded automatically. The Skills UI must show detected skills, including scope and path, so users can notice unexpected repository-provided skills and act manually.
 
 ### Disable/enable controls
 
@@ -55,7 +55,7 @@ Eitri uses lenient validation with hard minimums:
 - Skip if `SKILL.md` is missing, YAML frontmatter is missing/unparseable, `name` is missing/empty, or `description` is missing/empty.
 - Warn but load when strict spec constraints are violated but enough metadata exists to use the skill.
 - Parse optional `license`, `compatibility`, `metadata`, and `allowed-tools`.
-- Treat `allowed-tools` as advisory only in v1.
+- Treat `allowed-tools` as advisory only initially.
 
 This favors interoperability with skills authored for other clients while surfacing diagnostics to users.
 
@@ -120,7 +120,7 @@ Users can activate skills explicitly in chat input:
 
 ### Negative
 
-- Project repositories can influence agent behavior without a trust prompt in v1.
+- Project repositories can influence agent behavior without a trust prompt initially.
 - `allowed-tools` is not enforced, so users must not treat it as a security boundary.
 - Runner prompt construction now depends on skills registry state.
 - File read validation must account for skill directories in addition to workspace paths.

@@ -78,7 +78,7 @@ Browser tests verify the frontend UI loads, HTMX initializes correctly, config p
 
 ### Prerequisites
 
-- **Chrome on Linux** is the v1 supported browser and automated release gate. The test helper `findChrome()` searches common locations:
+- **Chrome on Linux** is the primary supported browser and automated release gate. The test helper `findChrome()` searches common locations:
   - `google-chrome-stable`, `google-chrome`, `chromium-browser`, `chromium`
   - `/usr/bin/google-chrome-stable`, `/usr/bin/chromium-browser`
 - Chrome runs **headless** automatically — no display needed. Other browsers are best-effort and not release-gated.
@@ -293,7 +293,7 @@ Smoke installer behavior with a local fixture tarball/checksum before publishing
 
 ### Agent Skills required coverage
 
-Because Agent Skills are v1 scope, release readiness requires tests for:
+Because Agent Skills are initial-scope features, release readiness requires tests for:
 
 - Fixed discovery roots and precedence (`project-eitri` > `project-agents` > `user-eitri` > `user-agents`).
 - Shadowing by duplicate `name`.

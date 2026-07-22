@@ -45,7 +45,7 @@ flowchart LR
 ### `cmd/eitri/main.go` — Entry point
 
 Orchestrates startup:
-1. **Workspace capture** — resolves process CWD as the launch workspace; v1 has no CLI workspace argument
+1. **Workspace capture** — resolves process CWD as the launch workspace; currently has no CLI workspace argument
 2. **Config manager** (`config.Manager`) — reads `~/.eitri/config.json`
 3. **Tool registry** — registers built-in tools (`bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `render_quick_replies`, `skill`). Implementations live in `internal/tool/` — each tool has one job and a minimal parameter schema.
 4. **UI session manager** (`session.Manager`) — in-memory browser-facing session state with `browser_id` ownership and max-session cap

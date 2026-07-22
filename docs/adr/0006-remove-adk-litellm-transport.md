@@ -20,10 +20,10 @@ The Go-native `github.com/voocel/litellm` package provides `Provider` implementa
 1. **Remove all ADK dependencies**: `google.golang.org/adk/v2`, `google.golang.org/genai`, `google.golang.org/api`, and their transitive Google-cloud tree.
 2. **Adopt `github.com/voocel/litellm`** as the sole LLM transport library. The Eitri layer wraps litellm Providers inside a unified adapter that satisfies a minimal, project-owned `LLMService` interface.
 3. **Keep Eitri's provider auth/discovery/profile layer** (`internal/provider/auth.go`, `discovery.go`, `profiles.go`). These handle GitHub OAuth device flow, token refresh, structured `provider_auth` state, model discovery/filtering, and UI-facing provider metadata. Litellm replaces only the chat HTTP transport inside `internal/provider/openai_model.go`.
-4. **Keep in-memory session storage** with a sliding window cap (last 50 exchanges), managed by a `session.Manager` API (`AppendUser`, `AppendAssistant`, `AppendTool`). Same loss-on-restart semantics as v1.
+4. **Keep in-memory session storage** with a sliding window cap (last 50 exchanges), managed by a `session.Manager` API (`AppendUser`, `AppendAssistant`, `AppendTool`). Same loss-on-restart semantics as the current design.
 5. **Build a synchronous agent loop**: `LLM → parse tool_calls → execute → feed back → LLM`, running in a goroutine with concurrent SSE fan-out to the UI. No state machine, no multi-agent routing.
 6. **Tool definitions** live in `internal/tool/` with explicit Go structs + `JSONSchema() litellm.Schema` methods. A generic `SchemaOf[T]` helper (maps struct fields + `jsonschema:` tags to JSON Schema) reduces boilerplate.
-7. **Session management** lives in `internal/history/` with sliding window cap (last 50 exchanges), managed by a `SessionManager` API (`AppendUser`, `AppendAssistant`, `AppendTool`). Same loss-on-restart semantics as v1.
+7. **Session management** lives in `internal/history/` with sliding window cap (last 50 exchanges), managed by a `SessionManager` API (`AppendUser`, `AppendAssistant`, `AppendTool`). Same loss-on-restart semantics as the current design.
 7. **No runner cache** for the LLM wrapper — litellm `Client` construction is cheap. Auth resolution (the costly path) is already cached by Eitri's existing `resolveAuthForRequest` expiry check.
 8. **OpenCode Go model routing**: prefix-based rules (`qwen*`/`minimax*` → Anthropic `/v1/messages`, everything else → OpenAI `/v1/chat/completions`). Default to OpenAI-compatible for unknown prefixes.
 9. **GitHub Copilot adapter**: use litellm's `provider/openai` with `Config.Headers` map for `Editor-Version` and `User-Agent`. Auth token is resolved by Eitri's auth layer before provider creation; refresh means creating a new provider (cheap).
@@ -40,7 +40,7 @@ The hand-rolled `OpenAIModel` already demonstrates the maintenance burden of raw
 
 ### Event-driven agent state machine
 
-A state machine with explicit LLMToken/ToolCall/ToolResult events is more flexible for multi-agent or human-in-the-loop scenarios. Eitri v1 has none of those. The synchronous loop is simpler and can be wrapped in an event-driven shell later if needed.
+A state machine with explicit LLMToken/ToolCall/ToolResult events is more flexible for multi-agent or human-in-the-loop scenarios. The initial release has none of those. The synchronous loop is simpler and can be wrapped in an event-driven shell later if needed.
 
 ## Consequences
 
@@ -54,7 +54,7 @@ A state machine with explicit LLMToken/ToolCall/ToolResult events is more flexib
 ### Risks
 
 - **Agent loop bugs** — the synchronous loop replaces ADK's battle-tested runner. Edge cases (tool errors mid-loop, context cancellation, max-turns exceeded) must be handled explicitly.
-- **Session format migration** — existing in-memory conversations use `[]*genai.Content`. Must migrate to `[]litellm.Message` on upgrades or reset on restart (acceptable for v1).
+- **Session format migration** — existing in-memory conversations use `[]*genai.Content`. Must migrate to `[]litellm.Message` on upgrades or reset on restart (acceptable for the initial scope).
 - **Litellm version stability** — `github.com/voocel/litellm` is younger than ADK. Monitor for API breaks; pin to a known-good version.
 
 ### Migration
