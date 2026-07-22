@@ -297,7 +297,7 @@
     };
 
     es.onerror = function () {
-      if (state.status === STATES.DONE || state.status === STATES.ERROR || state.status === STATES.IDLE) {
+      if (state.status === STATES.DONE || state.status === STATES.ERROR || state.status === STATES.IDLE || state.status === STATES.RENDERING) {
         es.close();
         return;
       }
@@ -441,6 +441,8 @@
           state.status = STATES.DONE;
           updateRunStatus(STATES.DONE, defaultStatusDetail(STATES.DONE, state), state);
           disconnectStream(sessionId);
+          // Prevent autoConnectOnPageLoad from reconnecting to a stale session.
+          noActiveRunTimestamps[sessionId] = Date.now();
           reenableComposer();
         });
         break;

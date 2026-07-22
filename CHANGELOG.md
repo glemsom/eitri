@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Response card duplication when run completes: EventSource no longer reconnects
+  after receiving the "done" event (RENDERING state now treated as terminal in
+  onerror handler). Also sets a no-active-run timestamp after cleanup to prevent
+  autoConnectOnPageLoad from reconnecting stale sessions. (#N/A)
+
 ### Added
 
 - Perf: tool definitions computed once per run instead of every turn (hoist tool defs out of agent loop) (#551)
