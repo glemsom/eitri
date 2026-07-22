@@ -1010,7 +1010,6 @@ func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 	defer cancel()
 
 	const firstMessage = "Fix flaky session tab title behavior across browser tabs and runs"
-	const secondMessage = "second message should not rename tab"
 	const expectedTitle = "Fix flaky session tab title be…"
 
 	var titles []string
