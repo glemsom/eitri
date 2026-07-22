@@ -1,0 +1,64 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // ── Go modules ──────────────────────────────────────────────────────
+  // Renovate's built-in Go manager reads go.mod automatically.
+  gomod: {
+    enabled: true,
+  },
+
+  // ── Vendored JS/CSS assets (htmx, KaTeX, Mermaid, Prism) ────────────
+  // These are copied into the repo directly (no package.json / lockfile).
+  // A small manifest file pins each asset's version; the regex manager
+  // below checks npm for newer releases and opens a PR to bump the
+  // version string.  You then manually download & replace the .min.js/.css.
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Track vendored JS/CSS asset versions in .vendor-versions.json",
+      fileMatch: ["^internal/api/assets/\\.vendor-versions\\.json$"],
+      matchStrings: [
+        '"(?<packageName>\\S+?)": *"(?<currentValue>[^"]+?)"',
+      ],
+      datasourceTemplate: "npm",
+    },
+  ],
+
+  // ── Scheduling ──────────────────────────────────────────────────────
+  // Weekly PRs are quiet enough.  Adjust to "daily" or "monthly" as you
+  // prefer.  You can also set timezone with `timezone: "Europe/Stockholm"`.
+  schedule: ["before 9am on Monday"],
+
+  // ── PR conventions ──────────────────────────────────────────────────
+  labels: ["dependencies"],
+  assignees: [],                // set to ["glemsom"] or leave empty
+  reviewers: [],                // set to ["glemsom"] or leave empty
+
+  // Group all minor/patch Go bumps into one PR to reduce noise.
+  // Major bumps (breaking changes) get individual PRs.
+  packageRules: [
+    {
+      matchManagers: ["gomod"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "Go module minor & patch updates",
+    },
+    {
+      // Separate htmx group — it's a core UI lib, changes are worth reviewing
+      matchPackageNames: ["htmx.org"],
+      groupName: "htmx",
+    },
+  ],
+
+  // ── Safeguards ──────────────────────────────────────────────────────
+  // Don't auto-merge anything (you want to vet dependency bumps).
+  automerge: false,
+
+  // Pin digests only for Go modules that use pseudo-versions (commits).
+  // For versioned releases just use the semver tag.
+  pinDigests: false,
+
+  // ── Extras ──────────────────────────────────────────────────────────
+  // Enable this if you want Renovate to also look at GitHub Actions
+  // workflows under .github/workflows/.
+  // "github-actions": { enabled: true },
+}
