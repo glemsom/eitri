@@ -203,12 +203,8 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		if parsed.OldText == "" && parsed.NewText == "" {
 			return "", nil, false
 		}
-		fullOld, fullNew := extractFullContentFromBlocks(blocks)
-		if fullOld == "" || fullNew == "" {
-			// Fallback to snippet-only diff
-			fullOld = parsed.OldText
-			fullNew = parsed.NewText
-		}
+		fullOld := parsed.OldText
+		fullNew := parsed.NewText
 		data["path"] = parsed.Path
 		data["mode"] = "overwrite"
 		data["old"] = fullOld
@@ -226,30 +222,6 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		"data": data,
 	})
 	return componentName, data, true
-}
-
-// extractFullContentFromBlocks searches blocks (including nested ToolResultBlock.Content)
-// for FULL_OLD_CONTENT and FULL_NEW_CONTENT markers added by the edit tool.
-func extractFullContentFromBlocks(blocks []vocellitellm.Block) (fullOld, fullNew string) {
-	for _, block := range blocks {
-		switch b := block.(type) {
-		case vocellitellm.TextBlock:
-			if strings.HasPrefix(b.Text, "FULL_OLD_CONTENT:") {
-				fullOld = strings.TrimPrefix(b.Text, "FULL_OLD_CONTENT:")
-			} else if strings.HasPrefix(b.Text, "FULL_NEW_CONTENT:") {
-				fullNew = strings.TrimPrefix(b.Text, "FULL_NEW_CONTENT:")
-			}
-		case vocellitellm.ToolResultBlock:
-			o, n := extractFullContentFromBlocks(b.Content)
-			if fullOld == "" && o != "" {
-				fullOld = o
-			}
-			if fullNew == "" && n != "" {
-				fullNew = n
-			}
-		}
-	}
-	return
 }
 
 // truncateText truncates s to at most n runes, appending "..." when truncated.

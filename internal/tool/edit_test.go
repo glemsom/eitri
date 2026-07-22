@@ -179,7 +179,7 @@ func TestEdit_MultipleMatches(t *testing.T) {
 	}
 }
 
-func TestEdit_SuccessfulEdit_IncludesFullContent(t *testing.T) {
+func TestEdit_SuccessfulEdit_ReturnsSummary(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.txt")
 	content := "hello world\nfoo bar\nbaz qux\n"
@@ -195,43 +195,20 @@ func TestEdit_SuccessfulEdit_IncludesFullContent(t *testing.T) {
 	if isError {
 		t.Error("isError = true, want false")
 	}
-	if len(blocks) != 3 {
-		t.Fatalf("expected 3 blocks, got %d", len(blocks))
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
 	}
 
-	// Block 0: full old content
+	// Block 0: concise summary
 	b0, ok := blocks[0].(litellm.TextBlock)
 	if !ok {
 		t.Fatalf("block[0] is %T, want TextBlock", blocks[0])
 	}
-	if !strings.HasPrefix(b0.Text, "FULL_OLD_CONTENT:") {
-		t.Errorf("block[0] should start with FULL_OLD_CONTENT:, got %q", b0.Text)
+	if !strings.HasPrefix(b0.Text, "Edited file: test.txt") {
+		t.Errorf("block[0] should start with 'Edited file: test.txt', got %q", b0.Text)
 	}
-	wantOld := strings.TrimPrefix(b0.Text, "FULL_OLD_CONTENT:")
-	if wantOld != content {
-		t.Errorf("full old content = %q, want %q", wantOld, content)
-	}
-
-	// Block 1: full new content
-	b1, ok := blocks[1].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block[1] is %T, want TextBlock", blocks[1])
-	}
-	if !strings.HasPrefix(b1.Text, "FULL_NEW_CONTENT:") {
-		t.Errorf("block[1] should start with FULL_NEW_CONTENT:, got %q", b1.Text)
-	}
-	wantNew := strings.TrimPrefix(b1.Text, "FULL_NEW_CONTENT:")
-	if wantNew != "hello world\nFOO BAR\nbaz qux\n" {
-		t.Errorf("full new content = %q, want %q", wantNew, "hello world\\nFOO BAR\\nbaz qux\\n")
-	}
-
-	// Block 2: confirmation
-	b2, ok := blocks[2].(litellm.TextBlock)
-	if !ok {
-		t.Fatalf("block[2] is %T, want TextBlock", blocks[2])
-	}
-	if b2.Text != "Edited file: test.txt" {
-		t.Errorf("block[2] = %q, want %q", b2.Text, "Edited file: test.txt")
+	if !strings.Contains(b0.Text, "1 line changed") {
+		t.Errorf("block[0] should contain line change count, got %q", b0.Text)
 	}
 
 	// Verify file was changed on disk

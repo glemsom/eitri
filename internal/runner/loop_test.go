@@ -447,17 +447,12 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	})
 
 	toolReg := tool.NewRegistry()
-	// Simulate real edit tool behavior: returns FULL_OLD_CONTENT/FULL_NEW_CONTENT blocks
-	// which get wrapped in ToolResultBlock by Dispatch.
-	fullOld := "line1\nline2\nline3\nfoo\nline5\nline6\nline7"
-	fullNew := "line1\nline2\nline3\nbar\nline5\nline6\nline7"
+	// Simulate real edit tool behavior: returns concise summary, not full content.
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
 		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
 			return []vocellitellm.Block{
-				vocellitellm.TextBlock{Text: "FULL_OLD_CONTENT:" + fullOld},
-				vocellitellm.TextBlock{Text: "FULL_NEW_CONTENT:" + fullNew},
-				vocellitellm.TextBlock{Text: "Edited file: test.txt"},
+				vocellitellm.TextBlock{Text: "Edited file: test.txt (1 line changed)"},
 			}, nil, false
 		},
 	})
@@ -492,14 +487,14 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	if compData == nil {
 		t.Fatal("expected FileEditCard component event, none found")
 	}
-	// The component data should contain the full file content, not just the snippet
+	// The component data should contain the snippet from args, not full file content
 	gotOld, _ := compData["old"].(string)
 	gotNew, _ := compData["new"].(string)
-	if gotOld != fullOld {
-		t.Errorf("component data 'old' = %q (len=%d), want full file content %q (len=%d)", gotOld, len(gotOld), fullOld, len(fullOld))
+	if gotOld != "foo" {
+		t.Errorf("component data 'old' = %q, want snippet 'foo'", gotOld)
 	}
-	if gotNew != fullNew {
-		t.Errorf("component data 'new' = %q (len=%d), want full file content %q (len=%d)", gotNew, len(gotNew), fullNew, len(fullNew))
+	if gotNew != "bar" {
+		t.Errorf("component data 'new' = %q, want snippet 'bar'", gotNew)
 	}
 }
 
