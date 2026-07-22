@@ -4,6 +4,9 @@ on:
   push:
     tags: 'v*'
 
+permissions:
+  contents: write
+
 env:
   GO_VERSION: "1.26"
 
