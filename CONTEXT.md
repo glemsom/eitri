@@ -56,13 +56,15 @@ eitri/
 │   ├── runner/                # RunService — run lifecycle + agent loop orchestrator, SSE broadcast, auth persist callbacks
 │   ├── tool/                  # Built-in tools
 │   └── skills/                # Agent Skills discovery, registry, activation
-├── scripts/                   # Install script
+├── scripts/                   # Install script, release tools
 ├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
 ├── docs/TESTING.md            # Test runbook
 ├── docs/providers/            # User-facing provider setup/operation guides
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
 ├── go.mod
+├── VERSION                    # Canonical version string (semver)
+├── CHANGELOG.md               # Keep a Changelog-formatted release notes
 ├── initial.md                 # Original product vision
 ```
 
@@ -76,3 +78,96 @@ go run ./cmd/eitri
 ```
 
 Start Eitri from the workspace you want it to read/write. Configure the OpenCode Go API key and model via Settings or `~/.eitri/config.json`.
+
+## Development & release flow
+
+### Versioning
+
+Eitri follows [Semantic Versioning 2.0](https://semver.org/). The canonical version lives in `VERSION` at the repo root.
+
+| Phase | Version format | Notes |
+|-------|----------------|-------|
+| Pre-1.0 development | `0.Y.Z` | Anything may change (semver §4). `minor` bumps can include breaking changes. |
+| Stable release | `1.Y.Z` | Future. |
+
+### Daily development
+
+```mermaid
+flowchart LR
+    A["Open an issue or\nstart coding"] --> B["Make changes\non main"]
+    B --> C["Push"]
+    C --> D["GitHub Actions CI:\ngo test ./...\nmake build\nversion check"]
+```
+
+There is **no required branch strategy** — you can push directly to `main` or use PRs. CI runs on both.
+
+Optional developer tools:
+
+- `make run` — build and start the server locally
+- `make test` — run all unit tests
+- `make build` — compile the binary with embedded version
+- `./eitri --version` — print the compiled version
+
+The `scripts/agent-loop.sh` script is an optional convenience for those with `gh` installed. It iterates `ready-for-agent` issues and runs each via `eitri -b`. See `docs/agents/batch.md`.
+
+### Cutting a release
+
+An AI agent or human can release with a single command:
+
+```bash
+./scripts/release.sh [patch|minor|major|<explicit-version>]
+```
+
+For example, from a clean `main` branch:
+
+```bash
+./scripts/release.sh patch   # 0.1.0 → 0.1.1
+./scripts/release.sh minor   # 0.1.0 → 0.2.0
+./scripts/release.sh 0.3.0   # explicit version
+```
+
+The release script:
+
+1. **`scripts/bump-version.sh`** — reads `VERSION`, applies the semver bump, writes it back
+2. **`scripts/update-changelog.sh`** — moves `[Unreleased]` entries under the new version heading, inserts a fresh `[Unreleased]` section
+3. Commits `VERSION` + `CHANGELOG.md`
+4. Tags with `v<VERSION>` (e.g. `v0.2.0`)
+5. Pushes the commit and tag to GitHub
+
+### Release publishing (CI)
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`:
+
+1. Verifies the tag matches `VERSION` (safety check)
+2. Builds release tarballs for all supported platforms via `make release-all`
+3. Generates a GitHub Release with attached tarballs and checksums
+
+| Target platform | Tarball |
+|----------------|---------|
+| Linux amd64 | `dist/eitri-linux-amd64.tar.gz` |
+| Linux arm64 | `dist/eitri-linux-arm64.tar.gz` |
+| macOS amd64 (Intel) | `dist/eitri-darwin-amd64.tar.gz` |
+| macOS arm64 (Apple Silicon) | `dist/eitri-darwin-arm64.tar.gz` |
+
+### User installation
+
+Users install the latest release:
+
+```bash
+curl -sSf https://raw.githubusercontent.com/glemsom/eitri/main/scripts/install.sh | bash
+```
+
+Or download a tarball from the GitHub Releases page and verify the SHA256 checksum.
+
+### Key files summary
+
+| File | Purpose | Maintained by |
+|------|---------|---------------|
+| `VERSION` | Canonical semver string | `bump-version.sh` / hand-edit |
+| `CHANGELOG.md` | Human-readable release notes | `update-changelog.sh` / hand-edit |
+| `scripts/bump-version.sh` | Semver bump tool (reads/writes VERSION) | AI agent or human |
+| `scripts/update-changelog.sh` | Version a new changelog section | AI agent or human |
+| `scripts/release.sh` | Orchestrate bump → changelog → tag → push | AI agent or human |
+| `.github/workflows/ci.yml` | CI: test + build on push/PR | Committed |
+| `.github/workflows/release.yml` | Build + publish on `v*` tag | Committed |
+| `scripts/agent-loop.sh` | Batch issue processing (optional) | Committed, optional use |

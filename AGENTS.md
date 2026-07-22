@@ -18,6 +18,10 @@ Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `read
 
 Single-context — `CONTEXT.md` at root + `docs/adr/`. See `docs/agents/domain.md`.
 
+### Development & release flow
+
+See the "Development & release flow" section in `CONTEXT.md`. It covers versioning, daily development, cutting a release, and the CI pipeline.
+
 ### Testing
 
 See `docs/TESTING.md`.
