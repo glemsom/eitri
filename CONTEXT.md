@@ -63,8 +63,10 @@ eitri/
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
 ├── go.mod
+├── go.sum
 ├── VERSION                    # Canonical version string (semver)
 ├── CHANGELOG.md               # Keep a Changelog-formatted release notes
+├── README.md                  # Human-facing project overview
 ├── initial.md                 # Original product vision
 ```
 
@@ -100,6 +102,8 @@ flowchart LR
 ```
 
 There is **no required branch strategy** — you can push directly to `main` or use PRs. CI runs on both.
+
+**Changelog discipline:** Every change that adds, removes, or modifies behaviour (features, bug fixes, breaking changes, deprecations) must add an entry under `## [Unreleased]` in `CHANGELOG.md`. Keep entries brief and user-facing. This is how release notes are authored incrementally — the release script just re-arranges the headings.
 
 Optional developer tools:
 

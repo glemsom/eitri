@@ -23,13 +23,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Run release gates
+      - name: Run tests (including browser E2E)
         run: make release-check
 
-      - name: Build binary (with version)
+      - name: Build binary (with embedded version)
         run: make build
 
-      - name: Verify version flag
+      - name: Verify --version matches VERSION file
         run: |
           VERSION=$(cat VERSION)
           BINARY_VER=$(./eitri --version)

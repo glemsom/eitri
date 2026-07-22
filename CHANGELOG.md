@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial release infrastructure: VERSION file, `--version` flag, GitHub Actions CI + release workflows, versioned builds, multi-platform release targets, changelog, and release orchestration scripts. (#N/A)
+- README.md with human-facing overview, installation instructions, configuration docs, and security notes.
+- Changelog discipline policy documented in development flow — every behavioural change must have an Unreleased entry.
 
 ## [0.1.0] — 2025-07-18
 
