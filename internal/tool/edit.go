@@ -93,9 +93,40 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return textBlocks(fmt.Sprintf("Error: failed to write file: %v", err)), nil, true
 	}
 
+	// Count lines changed
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+	lineChanges := countLineDiffs(oldLines, newLines)
+
+	// Build summary with correct pluralization
+	lineWord := "lines"
+	if lineChanges == 1 {
+		lineWord = "line"
+	}
 	return []litellm.Block{
-		litellm.TextBlock{Text: fmt.Sprintf("FULL_OLD_CONTENT:%s", oldContent)},
-		litellm.TextBlock{Text: fmt.Sprintf("FULL_NEW_CONTENT:%s", newContent)},
-		litellm.TextBlock{Text: fmt.Sprintf("Edited file: %s", parsed.Path)},
+		litellm.TextBlock{Text: fmt.Sprintf("Edited file: %s (%d %s changed)", parsed.Path, lineChanges, lineWord)},
 	}, nil, false
+}
+
+
+// countLineDiffs returns the number of lines that differ between two line slices.
+func countLineDiffs(oldLines, newLines []string) int {
+	maxLen := len(oldLines)
+	if len(newLines) > maxLen {
+		maxLen = len(newLines)
+	}
+	diffs := 0
+	for i := 0; i < maxLen; i++ {
+		var o, n string
+		if i < len(oldLines) {
+			o = oldLines[i]
+		}
+		if i < len(newLines) {
+			n = newLines[i]
+		}
+		if o != n {
+			diffs++
+		}
+	}
+	return diffs
 }
