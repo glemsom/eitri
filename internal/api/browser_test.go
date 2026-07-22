@@ -1089,6 +1089,9 @@ func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 		t.Fatal("composer did not become ready for second message")
 	}
 
+	const secondMessage = "second renames tab"
+	const secondExpectedTitle = "second renames tab"
+
 	err = chromedp.Run(ctx,
 		chromedp.WaitVisible("#chat-input", chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(`(function() {
@@ -1098,21 +1101,27 @@ func TestBrowser_SessionTitleFollowsFirstUserMessage(t *testing.T) {
 			input.dispatchEvent(new Event('input', { bubbles: true }));
 			return true;
 		})()`, nil),
-		chromedp.SendKeys("#chat-input", "second message should not rename tab", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", secondMessage, chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("send second message failed: %v", err)
 	}
 
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`Array.from(document.querySelectorAll('#session-tabs .session-title')).map(el => el.textContent.trim())`, &titles),
-	)
-	if err != nil {
-		t.Fatalf("read session titles after second send failed: %v", err)
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`Array.from(document.querySelectorAll('#session-tabs .session-title')).map(el => el.textContent.trim())`, &titles),
+		)
+		if err != nil {
+			t.Fatalf("read session titles after second send failed: %v", err)
+		}
+		if len(titles) == 2 && titles[0] == secondExpectedTitle && titles[1] == "Session 2" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	if len(titles) != 2 || titles[0] != expectedTitle || titles[1] != "Session 2" {
-		t.Fatalf("session titles after second send = %v, want unchanged [%s Session 2]", titles, expectedTitle)
+	if len(titles) != 2 || titles[0] != secondExpectedTitle || titles[1] != "Session 2" {
+		t.Fatalf("session titles after second send = %v, want [%s Session 2]", titles, secondExpectedTitle)
 	}
 }
 
