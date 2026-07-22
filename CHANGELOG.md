@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
 ### Fixed
 
+- Session stream reconnect on page navigation: `autoConnectOnPageLoad` now
+  always attempts connection instead of skipping when the rendered status is
+  "idle". A time-based guard prevents reconnect storms after `no_active_run`.
+  Also changes `handleChat` active-run 409 Conflict to 200 OK with
+  `HX-Retarget` so the error toast is visible (HTMX drops non-2xx bodies).
+  (#N/A)
 - edit tool no longer dumps full file content as text blocks; returns concise summary with line change count. FileEditCard component uses snippet from args. (#538)
+
+### Added
 
 - Initial release infrastructure: VERSION file, `--version` flag, GitHub Actions CI + release workflows, versioned builds, multi-platform release targets, changelog, and release orchestration scripts. (#N/A)
 - README.md with human-facing overview, installation instructions, configuration docs, and security notes.
