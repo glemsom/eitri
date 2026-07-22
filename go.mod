@@ -7,7 +7,7 @@ require (
 	github.com/a-h/templ v0.3.1020
 	github.com/chromedp/cdproto v0.0.0-20260719223732-95f6af754cfe
 	github.com/chromedp/chromedp v0.16.0
-	github.com/dop251/goja v0.0.0-20260719185829-0fc1d42c1dc9
+	github.com/dop251/goja v0.0.0-20260721123636-c65cf2f023c8
 	github.com/voocel/litellm v1.8.8
 	github.com/yuin/goldmark v1.8.4
 	golang.org/x/net v0.57.0
