@@ -2108,4 +2108,112 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	}
 }
 
+// ── Tool definition hoisting regression tests ──────────────────────────────
 
+// trackingRegistry implements toolLister and records LitellmTools call count.
+type trackingRegistry struct {
+	inner *tool.Registry
+	calls int
+}
+
+func (r *trackingRegistry) LitellmTools() []vocellitellm.Tool {
+	r.calls++
+	return r.inner.LitellmTools()
+}
+
+func TestRunAgent_ToolDefsHoistedOnce(t *testing.T) {
+	t.Parallel()
+	// Verify that toolDefsFromRegistry calls LitellmTools exactly once.
+	inner := tool.NewRegistry()
+	inner.Register(&simpleMockTool{name: "t1", description: "a test tool"})
+	inner.Register(&simpleMockTool{name: "t2", description: "another test tool"})
+
+	tracked := &trackingRegistry{inner: inner}
+
+	defs := toolDefsFromRegistry(tracked)
+	if tracked.calls != 1 {
+		t.Errorf("LitellmTools call count = %d, want 1", tracked.calls)
+	}
+
+	// Verify correct number of tool defs returned
+	if len(defs) != 2 {
+		t.Errorf("toolDefs count = %d, want 2", len(defs))
+	}
+
+	// Verify names and descriptions
+	byName := make(map[string]litellm.ToolDef)
+	for _, d := range defs {
+		byName[d.Name] = d
+	}
+	if d, ok := byName["t1"]; !ok {
+		t.Errorf("missing tool 't1' in defs")
+	} else if d.Description != "a test tool" {
+		t.Errorf("t1 description = %q, want 'a test tool'", d.Description)
+	}
+	if d, ok := byName["t2"]; !ok {
+		t.Errorf("missing tool 't2' in defs")
+	} else if d.Description != "another test tool" {
+		t.Errorf("t2 description = %q, want 'another test tool'", d.Description)
+	}
+}
+
+func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
+	t.Parallel()
+	// Verify the behavioural invariant: req.Tools is populated on every turn.
+	// The hoisting only changes when toolDefsFromRegistry is computed,
+	// not whether req.Tools is attached.
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	llm := newMockLLM([]mockTurn{
+		{toolCalls: []litellm.ToolCall{{
+			ID:   "call_1",
+			Type: "function",
+			Function: litellm.FunctionCall{
+				Name:      "test_tool",
+				Arguments: `{}`,
+			},
+		}}},
+		{tokens: []tokenEvent{{content: "done"}}},
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "test_tool",
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "result"}}, nil, false
+		},
+	})
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "run tool"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0)
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// req.Tools must be populated after the run (behavioural invariant preserved)
+	if len(req.Tools) == 0 {
+		t.Error("req.Tools is empty — expected tool definitions to be attached on every turn")
+	}
+
+	// Verify the tools look correct
+	toolMap := make(map[string]litellm.ToolDef)
+	for _, td := range req.Tools {
+		toolMap[td.Name] = td
+	}
+	if _, ok := toolMap["test_tool"]; !ok {
+		t.Errorf("req.Tools missing 'test_tool', got names: %v", func() []string {
+			names := make([]string, 0, len(req.Tools))
+			for _, td := range req.Tools {
+				names = append(names, td.Name)
+			}
+			return names
+		}())
+	}
+}

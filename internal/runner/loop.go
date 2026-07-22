@@ -88,6 +88,13 @@ func RunAgent(
 
 	req.Stream = true
 
+	// Compute tool definitions once before the loop, then reuse on every turn.
+	// This avoids re-iterating the registry and allocating new slices per turn.
+	var toolDefs []litellm.ToolDef
+	if tools != nil {
+		toolDefs = toolDefsFromRegistry(tools)
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -96,9 +103,9 @@ func RunAgent(
 		// Load conversation history via adapter
 		req.Messages = historyMgr.History(sessionID)
 
-		// Attach tool definitions from registry
-		if tools != nil {
-			req.Tools = toolDefsFromRegistry(tools)
+		// Attach tool definitions (computed once before the loop)
+		if toolDefs != nil {
+			req.Tools = toolDefs
 		}
 
 		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(req.Tools)), slog.Int("messages", len(req.Messages)))
