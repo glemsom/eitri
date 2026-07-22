@@ -17,7 +17,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 
 - **Single binary** — no runtime dependencies, no Docker, no Kubernetes. Just `eitri` on your `$PATH`.
 - **Agent loop with built-in tools** — `bash`, `glob`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, and more.
-- **Multi-provider LLM support** — works with OpenCode Go, GitHub Copilot, and OpenRouter. Configurable per session.
+- **Multi-provider LLM support** — works with OpenCode Go, GitHub Copilot, and Custom OpenAI providers. Configurable per session.
 - **Agent Skills** — modular skill packs that extend the agent's capabilities per-project (like Agent Skills for GitHub Copilot).
 - **Sub-agents** — the agent can delegate sub-tasks to subordinate agents via `delegate`/`collect` tools for parallel exploration.
 - **Chat UI** — HTMX-based browser UI with SSE streaming, Mermaid diagram rendering, file diffs, and a live context panel.
@@ -55,18 +55,16 @@ Create `~/.eitri/config.json` with your LLM provider settings:
 
 ```json
 {
-  "provider": "opencode",
+  "provider": "opencode_go",
   "model": "claude-sonnet-4-20250514",
   "api_key": "sk-..."
 }
 ```
 
 Supported providers:
-- **`opencode`** — OpenCode Go (Anthropic-compatible and OpenAI-compatible models)
+- **`opencode_go`** — OpenCode Go (Anthropic-compatible and OpenAI-compatible models)
 - **`github_copilot`** — GitHub Copilot (uses device-flow OAuth, no API key needed)
-- **`openrouter`** — OpenRouter
-
-See `docs/providers/` for detailed setup guides.
+- **`custom_openai`** — Custom OpenAI provider (generic OpenAI-compatible endpoint)
 
 ### 3. Run
 
@@ -75,7 +73,7 @@ cd /your/project
 eitri
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in Chrome on Linux and start a conversation.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) in a browser on Linux and start a conversation.
 
 > Eitri works from the workspace you launch it in. It can read, write, and execute commands in that directory via the agent loop.
 
@@ -95,13 +93,12 @@ Eitri is configured via `~/.eitri/config.json`. Key settings:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `provider` | LLM provider: `opencode`, `github_copilot`, or `openrouter` | `opencode` |
-| `model` | Model name (provider-specific) | `claude-sonnet-4-20250514` |
+| `provider` | LLM provider: `opencode_go`, `github_copilot`, or `custom_openai` | `opencode_go` |
+| `model` | Model name (provider-specific, discoverable via settings) | `claude-sonnet-4-20250514` (example) |
 | `api_key` | API key (not needed for GitHub Copilot) | `""` |
 | `command_timeout` | Max execution time per `bash` tool call (seconds) | `120` |
 | `max_history` | Max chat turns kept in context | `100` |
 | `disabled_skills` | List of skill names to disable | `[]` |
-| `openrouter_base` | Custom OpenRouter base URL | `https://openrouter.ai/api/v1` |
 
 ### Environment variables
 
