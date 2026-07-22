@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: 'v*'
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Verify tag matches VERSION file
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"  # strip leading "v"
+          FILE_VERSION=$(cat VERSION)
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match VERSION file ($FILE_VERSION)"
+            exit 1
+          fi
+          echo "Version verified: v$FILE_VERSION"
+
+      - name: Build release tarballs
+        run: make release-all
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Generate release notes
+        run: |
+          cat > /tmp/release-notes.md <<'EOF'
+          # Eitri ${{ github.ref_name }}
+
+          See the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release-notes.md
+          files: dist/*
+          fail_on_unmatched_files: true

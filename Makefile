@@ -2,16 +2,16 @@ BINARY        := eitri
 GO            := go
 TEMPL         := templ
 BUILD_DIR     := dist
-DIST_BINARY   := $(BUILD_DIR)/$(BINARY)
-DIST_TARBALL  := $(BUILD_DIR)/eitri-linux-amd64.tar.gz
-DIST_CHECKSUM := $(BUILD_DIR)/checksums.txt
-GOFLAGS       := -ldflags="-s -w"
 
-.PHONY: all build clean test help run templ-generate release release-check
+VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
+GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
+
+.PHONY: all build clean test help run templ-generate release release-check \
+        release-all release-linux-amd64 release-linux-arm64 release-darwin-amd64 release-darwin-arm64
 
 all: build
 
-## build — compile binary (generate templ, then go build)
+## build — compile binary (generate templ, then go build, embed version)
 build: templ-generate
 	$(GO) build $(GOFLAGS) -o $(BINARY) ./cmd/eitri
 
@@ -24,12 +24,45 @@ clean:
 test:
 	$(GO) test ./...
 
-## release — build linux/amd64 release tarball + checksums.txt
-release: templ-generate
+## release — build linux/amd64 release tarball + checksums (default platform)
+release: _clean-checksums release-linux-amd64
+
+## release-all — build release tarballs for all supported platforms
+release-all: _clean-checksums release-linux-amd64 release-linux-arm64 release-darwin-amd64 release-darwin-arm64
+
+# Internal: start fresh checksums file for a clean release build.
+_clean-checksums:
+	rm -f $(BUILD_DIR)/checksums.txt
+
+## release-linux-amd64 — build linux/amd64 tarball + checksums
+release-linux-amd64: RELEASE_OS   = linux
+release-linux-amd64: RELEASE_ARCH = amd64
+release-linux-amd64: release-tarball
+
+## release-linux-arm64 — build linux/arm64 tarball + checksums
+release-linux-arm64: RELEASE_OS   = linux
+release-linux-arm64: RELEASE_ARCH = arm64
+release-linux-arm64: release-tarball
+
+## release-darwin-amd64 — build darwin/amd64 tarball + checksums
+release-darwin-amd64: RELEASE_OS   = darwin
+release-darwin-amd64: RELEASE_ARCH = amd64
+release-darwin-amd64: release-tarball
+
+## release-darwin-arm64 — build darwin/arm64 tarball + checksums
+release-darwin-arm64: RELEASE_OS   = darwin
+release-darwin-arm64: RELEASE_ARCH = arm64
+release-darwin-arm64: release-tarball
+
+# Internal: parameterised tarball builder. RELEASE_OS and RELEASE_ARCH must be set.
+release-tarball: templ-generate
+	$(eval RELEASE_NAME := eitri-$(RELEASE_OS)-$(RELEASE_ARCH))
+	$(eval TARBALL       := $(BUILD_DIR)/$(RELEASE_NAME).tar.gz)
 	mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath $(GOFLAGS) -o $(DIST_BINARY) ./cmd/eitri
-	tar -C $(BUILD_DIR) -czf $(DIST_TARBALL) $(BINARY)
-	cd $(BUILD_DIR) && sha256sum $(notdir $(DIST_TARBALL)) > $(notdir $(DIST_CHECKSUM))
+	CGO_ENABLED=0 GOOS=$(RELEASE_OS) GOARCH=$(RELEASE_ARCH) $(GO) build -trimpath $(GOFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/eitri
+	tar -C $(BUILD_DIR) -czf $(TARBALL) $(BINARY)
+	cd $(BUILD_DIR) && sha256sum $(notdir $(TARBALL)) >> checksums.txt
+	rm -f $(BUILD_DIR)/$(BINARY)
 
 ## release-check — release readiness test gates
 release-check:
@@ -51,13 +84,14 @@ templ-generate:
 ## help — print this help
 help:
 	@echo "Usage:"
-	@echo "  make build          Compile the eitri binary"
-	@echo "  make clean          Remove build artifacts (binary + dist/)"
-	@echo "  make test           Run all tests"
-	@echo "  make release        Build linux/amd64 tarball + checksums"
-	@echo "  make release-check  Run release readiness tests"
-	@echo "  make run            Build and run the server"
-	@echo "  make help           Show this help"
+	@echo "  make build              Compile the eitri binary (with embedded version)"
+	@echo "  make clean              Remove build artifacts (binary + dist/)"
+	@echo "  make test               Run all tests"
+	@echo "  make release            Build linux/amd64 tarball + checksums"
+	@echo "  make release-all        Build tarballs for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64"
+	@echo "  make release-check      Run release readiness tests"
+	@echo "  make run                Build and run the server"
+	@echo "  make help               Show this help"
 	@echo ""
 	@echo "Env vars:"
 	@echo "  EITRI_ADDR          Listen address (default 127.0.0.1:8080)"

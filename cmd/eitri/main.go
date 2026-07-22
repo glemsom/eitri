@@ -45,11 +45,21 @@ func cleanupRuntime(server *api.Server, runSvc *runner.RunService) {
 	}
 }
 
+// Version is set at build time via -ldflags -X main.Version=<version>.
+// Default "dev" indicates an unversioned development build.
+var Version = "dev"
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
+	versionFlag := flag.Bool("version", false, "Print version and exit")
 	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(Version)
+		return
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
