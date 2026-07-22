@@ -143,13 +143,13 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Stream: true,
 	}
 
-	if cfg.ThinkingLevel != "" {
-
 	// Set session-scoped prompt cache key if the provider supports it
 	providerDesc, _ := provider.Describe(providerID)
 	if providerDesc.SupportsPromptCache {
 		req.SessionID = sessionID
 	}
+
+	if cfg.ThinkingLevel != "" {
 		req.ReasoningEffort = cfg.ThinkingLevel
 	}
 
