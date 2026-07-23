@@ -35,6 +35,8 @@ type DumpOptions struct {
 	InFlightTraces []*HTTPTrace `json:"in_flight_traces,omitempty"`
 	// Conversation context: last user message, last assistant message, turn number.
 	ConversationContext *ConversationContext `json:"conversation_context,omitempty"`
+	// Failing HTTP trace: most recent non-2xx response (never evicted by ring buffer).
+	FailingHTTPTrace *HTTPTrace `json:"failing_http_trace,omitempty"`
 	// Buffered structured log entries leading up to the crash.
 	Logs []LogEntry `json:"logs,omitempty"`
 }
@@ -109,7 +111,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		return "", fmt.Errorf("cannot create crash dir %s: %w", crashDir, err)
 	}
 
-	// 1. crash.json — error chain, version, sanitized config, runtime summary, conversation context
+	// 1. crash.json — error chain, version, sanitized config, runtime summary, conversation context, failing http trace
 	crashInfo := struct {
 		Error               string                 `json:"error"`
 		ErrorChain          string                 `json:"error_chain,omitempty"`
@@ -119,6 +121,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		ConfigSummary       map[string]interface{} `json:"config_summary,omitempty"`
 		RuntimeSummary      *RuntimeSummary        `json:"runtime_summary,omitempty"`
 		ConversationContext *ConversationContext   `json:"conversation_context,omitempty"`
+		FailingHTTPTrace    *HTTPTrace             `json:"failing_http_trace,omitempty"`
 	}{
 		Error:               opts.Error,
 		ErrorChain:          opts.ErrorChain,
@@ -128,6 +131,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		ConfigSummary:       opts.ConfigSummary,
 		RuntimeSummary:      opts.RuntimeSummary,
 		ConversationContext: opts.ConversationContext,
+		FailingHTTPTrace:    opts.FailingHTTPTrace,
 	}
 
 	if err := writeJSONFile(filepath.Join(crashDir, "crash.json"), crashInfo); err != nil {

@@ -535,3 +535,86 @@ func TestWriteCrashDump_ConversationContextNil(t *testing.T) {
 		t.Fatalf("crash.json should not have 'conversation_context' when nil")
 	}
 }
+
+func TestWriteCrashDump_FailingHTTPTrace(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	failingTrace := &HTTPTrace{
+		ID:              "trace_fail_1",
+		Timestamp:       time.Now(),
+		SessionID:       "batch-1",
+		Method:          "POST",
+		URL:             "/v1/chat",
+		Status:          400,
+		DurationMs:      500,
+		RequestBytes:    50,
+		RequestBody:     `{"prompt":"test"}`,
+		ResponseBytes:   30,
+		ResponseBody:    `{"error":"bad request"}`,
+		ResponseHeaders: map[string][]string{"X-Request-Id": {"req-abc"}},
+	}
+
+	opts := DumpOptions{
+		Error:            "provider returned 400",
+		Version:          "dev",
+		FailingHTTPTrace: failingTrace,
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	content := string(data)
+
+	// Verify failing_http_trace is present
+	if !strings.Contains(content, `"failing_http_trace":`) {
+		t.Fatalf("crash.json missing 'failing_http_trace' key")
+	}
+
+	// Verify fields within failing_http_trace
+	if !strings.Contains(content, `"trace_fail_1"`) {
+		t.Fatalf("crash.json missing trace ID")
+	}
+	if !strings.Contains(content, `"status": 400`) {
+		t.Fatalf("crash.json missing status 400")
+	}
+	if !strings.Contains(content, `"response_headers":`) {
+		t.Fatalf("crash.json missing response_headers")
+	}
+	if !strings.Contains(content, `"req-abc"`) {
+		t.Fatalf("crash.json missing X-Request-Id value")
+	}
+}
+
+func TestWriteCrashDump_FailingHTTPTraceNil(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	opts := DumpOptions{
+		Error:            "error without failing trace",
+		Version:          "dev",
+		FailingHTTPTrace: nil,
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// failing_http_trace should be omitted when nil
+	if strings.Contains(string(data), `"failing_http_trace":`) {
+		t.Fatalf("crash.json should not have 'failing_http_trace' when nil")
+	}
+}

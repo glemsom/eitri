@@ -15,19 +15,20 @@ type TraceID string
 
 // HTTPTrace records a single LLM provider HTTP request/response.
 type HTTPTrace struct {
-	ID            TraceID   `json:"id"`
-	Timestamp     time.Time `json:"timestamp"`
-	SessionID     string    `json:"session_id"`
-	ProviderID    string    `json:"provider_id"`
-	Method        string    `json:"method"`
-	URL           string    `json:"url"` // path only
-	Status        int       `json:"status"`
-	DurationMs    int64     `json:"duration_ms"`
-	RequestBytes  int       `json:"request_bytes"`
-	RequestBody   string    `json:"request_body"`
-	ResponseBytes int       `json:"response_bytes"`
-	ResponseBody  string    `json:"response_body"`
-	Error         string    `json:"error,omitempty"`
+	ID              TraceID              `json:"id"`
+	Timestamp       time.Time            `json:"timestamp"`
+	SessionID       string               `json:"session_id"`
+	ProviderID      string               `json:"provider_id"`
+	Method          string               `json:"method"`
+	URL             string               `json:"url"` // path only
+	Status          int                  `json:"status"`
+	DurationMs      int64                `json:"duration_ms"`
+	RequestBytes    int                  `json:"request_bytes"`
+	RequestBody     string               `json:"request_body"`
+	ResponseBytes   int                  `json:"response_bytes"`
+	ResponseBody    string               `json:"response_body"`
+	ResponseHeaders map[string][]string  `json:"response_headers,omitempty"`
+	Error           string               `json:"error,omitempty"`
 }
 
 const (
@@ -39,12 +40,14 @@ const (
 
 // Recorder is a thread-safe, bounded recorder for HTTP traces.
 // It stores completed traces in a ring buffer and tracks in-flight traces separately.
+// The last non-2xx response is preserved in a dedicated slot that is never evicted.
 type Recorder struct {
-	mu       sync.Mutex
-	traces   []*HTTPTrace // ordered oldest-first
-	capacity int
-	inFlight map[TraceID]*HTTPTrace
-	nextID   uint64
+	mu               sync.Mutex
+	traces           []*HTTPTrace // ordered oldest-first
+	capacity         int
+	inFlight         map[TraceID]*HTTPTrace
+	nextID           uint64
+	lastFailingTrace *HTTPTrace // most recent non-2xx trace, never evicted
 }
 
 // NewRecorder creates a Recorder with the given capacity.
@@ -89,7 +92,7 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 }
 
 // completeTrace moves an in-flight trace to completed storage.
-func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string) {
+func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -101,6 +104,7 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 	trace.Status = status
 	trace.DurationMs = duration.Milliseconds()
 	trace.Error = errMsg
+	trace.ResponseHeaders = respHeaders
 
 	truncated := truncateBody(respBody)
 	trace.ResponseBytes = len(respBody)
@@ -113,6 +117,17 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 		r.traces = r.traces[1:]
 	}
 	r.traces = append(r.traces, trace)
+
+	// Preserve non-2xx traces in a dedicated slot that is never evicted.
+	if !isSuccess(status) || errMsg != "" {
+		cp := *trace
+		r.lastFailingTrace = &cp
+	}
+}
+
+// isSuccess returns true for HTTP 2xx status codes.
+func isSuccess(status int) bool {
+	return status >= 200 && status < 300
 }
 
 // truncateBody truncates body to MaxBodyBytes and appends a truncation indicator.
@@ -129,7 +144,7 @@ func truncateBody(body []byte) []byte {
 }
 
 // Record records a complete (non-streaming) HTTP trace.
-func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, respBody []byte, status int, duration time.Duration, errMsg string) {
+func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -139,25 +154,32 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 	respTruncated := truncateBody(respBody)
 
 	trace := &HTTPTrace{
-		ID:            id,
-		Timestamp:     time.Now(),
-		SessionID:     sessionID,
-		ProviderID:    providerID,
-		Method:        method,
-		URL:           url,
-		Status:        status,
-		DurationMs:    duration.Milliseconds(),
-		RequestBytes:  len(reqBody),
-		RequestBody:   string(reqTruncated),
-		ResponseBytes: len(respBody),
-		ResponseBody:  string(respTruncated),
-		Error:         errMsg,
+		ID:              id,
+		Timestamp:       time.Now(),
+		SessionID:       sessionID,
+		ProviderID:      providerID,
+		Method:          method,
+		URL:             url,
+		Status:          status,
+		DurationMs:      duration.Milliseconds(),
+		RequestBytes:    len(reqBody),
+		RequestBody:     string(reqTruncated),
+		ResponseBytes:   len(respBody),
+		ResponseBody:    string(respTruncated),
+		ResponseHeaders: respHeaders,
+		Error:           errMsg,
 	}
 
 	if len(r.traces) >= r.capacity {
 		r.traces = r.traces[1:]
 	}
 	r.traces = append(r.traces, trace)
+
+	// Preserve non-2xx traces in a dedicated slot that is never evicted.
+	if !isSuccess(status) || errMsg != "" {
+		cp := *trace
+		r.lastFailingTrace = &cp
+	}
 }
 
 // List returns completed traces, optionally filtered.
@@ -235,6 +257,19 @@ func (r *Recorder) Count() int {
 	return len(r.traces)
 }
 
+// LastFailingTrace returns the most recent non-2xx HTTP trace (or errored request),
+// or nil if there were no failing traces. This trace is never evicted by the ring buffer.
+func (r *Recorder) LastFailingTrace() *HTTPTrace {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.lastFailingTrace == nil {
+		return nil
+	}
+	cp := *r.lastFailingTrace
+	return &cp
+}
+
 // ————— RoundTripper —————
 
 // RecordingRoundTripper wraps an http.RoundTripper and records all
@@ -276,17 +311,18 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 	if err != nil {
 		duration := time.Since(start)
-		rt.recorder.completeTrace(traceID, nil, 0, duration, err.Error())
+		rt.recorder.completeTrace(traceID, nil, 0, duration, err.Error(), nil)
 		return nil, err
 	}
 
 	// Wrap response body to capture content and complete trace when fully read
 	resp.Body = &traceBody{
-		ReadCloser: resp.Body,
-		recorder:   rt.recorder,
-		traceID:    traceID,
-		startTime:  start,
-		status:     resp.StatusCode,
+		ReadCloser:   resp.Body,
+		recorder:     rt.recorder,
+		traceID:      traceID,
+		startTime:    start,
+		status:       resp.StatusCode,
+		respHeaders:  resp.Header,
 	}
 
 	return resp, nil
@@ -296,10 +332,11 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 // and completes the trace when Close() is called.
 type traceBody struct {
 	io.ReadCloser
-	recorder  *Recorder
-	traceID   TraceID
-	startTime time.Time
-	status    int
+	recorder       *Recorder
+	traceID        TraceID
+	startTime      time.Time
+	status         int
+	respHeaders    map[string][]string
 
 	mu    sync.Mutex
 	buf   bytes.Buffer
@@ -344,7 +381,7 @@ func (tb *traceBody) Close() error {
 		tb.mu.Unlock()
 	}
 
-	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr)
+	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr, tb.respHeaders)
 	return err
 }
 
