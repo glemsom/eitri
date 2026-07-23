@@ -21,6 +21,13 @@ func enhanceRenderedHTML(fragment string) string {
 
 	var out strings.Builder
 	for child := root.FirstChild; child != nil; child = child.NextSibling {
+		// Skip whitespace-only text nodes — these are artifacts from goldmark's
+		// output formatting (newlines between block elements) and with
+		// white-space: pre-wrap on user messages they'd create visible double
+		// newlines on top of paragraph margins.
+		if child.Type == htmlnode.TextNode && strings.TrimSpace(child.Data) == "" {
+			continue
+		}
 		if err := htmlnode.Render(&out, child); err != nil {
 			return fragment
 		}
