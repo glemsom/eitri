@@ -10,33 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Debug API `run` object now includes `busy`, `turns`, `pending_approval` fields; SSE diagnostic counters preserved as sibling fields (#585)
-
 - Lock ordering in debug session handlers: snapshot SSE counters atomically under RunService.mu to avoid potential data race with concurrent run cancellation (#589)
-
-- Response card duplication when run completes: EventSource no longer reconnects
-
-- Response card duplication when run completes: EventSource no longer reconnects
-  after receiving the "done" event (RENDERING state now treated as terminal in
+- Response card duplication when run completes: EventSource no longer reconnects after receiving the "done" event (RENDERING state now treated as terminal in onerror handler). Also sets a no-active-run timestamp after cleanup to prevent autoConnectOnPageLoad from reconnecting stale sessions. (#N/A)
 
 ### Added
 
 - Debug API: expose SSE event history in session debug endpoint (#565)
-  onerror handler). Also sets a no-active-run timestamp after cleanup to prevent
-  autoConnectOnPageLoad from reconnecting stale sessions. (#N/A)
-- Debug API: add `GET /api/debug/sessions/{id}/http` route as path-based alias
-  for session-scoped HTTP trace lookup (#586)
-
-### Added
-
-- Perf: tool definitions computed once per run instead of every turn (hoist tool defs out of agent loop) (#551)
+- Debug API: add `GET /api/debug/sessions/{id}/http` route as path-based alias for session-scoped HTTP trace lookup (#586)
 - Debug API: session, runtime, and config endpoints (#556)
+- Debug API: SSE subscriber/replay counters (#566)
+- Perf: tool definitions computed once per run instead of every turn (hoist tool defs out of agent loop) (#551)
 - RunService.ActiveRunCount() method for debug introspection
-
 - Crash dumps: batch mode failure writes structured crash dump (#559)
 - Crash dumps: WriteCrashDump() + RunService CrashDumpFunc wiring (#559)
-
 - Crash dumps: UI mode triggers crash dump on fatal agent errors (#560)
 - Crash dumps: agent loop panic recovery writes crash dump then re-panics (#560)
+- doc.go files for the provider, litellm, skills, and tool packages
 
 ## [0.1.1] — 2026-07-22
 
@@ -73,5 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture Decision Records (docs/adr/).
 - Install script for Linux (scripts/install.sh).
 
-[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/glemsom/eitri/releases/tag/v0.1.1
 [0.1.0]: https://github.com/glemsom/eitri/releases/tag/v0.1.0
