@@ -15,8 +15,10 @@ import (
 // DumpOptions contains all data needed to write a crash dump.
 // Callers assemble this from their available services — no hidden imports.
 type DumpOptions struct {
-	// Error chain description.
+	// Error string (backward-compatible single line).
 	Error string `json:"error"`
+	// ErrorChain is the full wrapped error chain via fmt.Sprintf("%+v", err).
+	ErrorChain string `json:"error_chain,omitempty"`
 	// Stack trace at crash moment.
 	Stack string `json:"stack,omitempty"`
 	// Application version.
@@ -97,6 +99,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 	// 1. crash.json — error chain, version, sanitized config, runtime summary
 	crashInfo := struct {
 		Error          string                 `json:"error"`
+		ErrorChain     string                 `json:"error_chain,omitempty"`
 		Stack          string                 `json:"stack,omitempty"`
 		Version        string                 `json:"version"`
 		Timestamp      time.Time              `json:"timestamp"`
@@ -104,6 +107,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		RuntimeSummary *RuntimeSummary        `json:"runtime_summary,omitempty"`
 	}{
 		Error:          opts.Error,
+		ErrorChain:     opts.ErrorChain,
 		Stack:          opts.Stack,
 		Version:        opts.Version,
 		Timestamp:      ts,
