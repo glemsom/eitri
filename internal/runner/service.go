@@ -51,12 +51,12 @@ func (rs *RunState) finish() {
 // PersistAuthFunc is the callback type for persisting refreshed auth state.
 type PersistAuthFunc = provider.PersistAuthFunc
 
-// RunServiceDeps holds the dependencies for RunService.
 type RunServiceDeps struct {
 	UISessionMgr      *uisession.Manager
 	HistorySessionMgr *history.SessionManager
 	SkillsService     *skills.Service
 	DebugRecorder     *debug.Recorder // optional HTTP trace recorder
+	CrashDumpFunc     func(err error, stack []byte) // optional; called on fatal agent error
 }
 // RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
@@ -70,6 +70,7 @@ type RunService struct {
 	historySessionMgr *history.SessionManager
 	debugRecorder       *debug.Recorder
 	persistAuth         PersistAuthFunc
+	crashDumpFunc       func(err error, stack []byte)
 
 	// Sub-agent tracking
 	subMu        sync.Mutex
@@ -97,6 +98,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		skillsSvc:     deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
 		debugRecorder:     deps.DebugRecorder,
+		crashDumpFunc:     deps.CrashDumpFunc,
 		subAgents:     make(map[string]*subAgentRecord),
 		parentCfgs:    make(map[string]RunConfig),
 		browserSubs:   make(map[string]map[uint64]chan BrowserEvent),
@@ -116,6 +118,11 @@ func (s *RunService) SetUISessionManager(mgr *uisession.Manager) {
 // SetPersistAuth sets the auth persistence callback.
 func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
+}
+
+	// SetCrashDumpFunc sets the crash dump callback.
+func (s *RunService) SetCrashDumpFunc(fn func(err error, stack []byte)) {
+	s.crashDumpFunc = fn
 }
 
 // SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.

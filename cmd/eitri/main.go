@@ -92,11 +92,35 @@ func main() {
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
 		runCfg := runner.FromConfig(cfg, workspace, cmdTimeout)
 
-		runSvc := runner.NewRunService(runner.RunServiceDeps{})
+		// Create debug recorder for HTTP trace capture even in batch mode
+		debugRecorder := debug.NewRecorder(0) // default capacity 20
+
+		runSvc := runner.NewRunService(runner.RunServiceDeps{
+			DebugRecorder: debugRecorder,
+		})
 		runSvc.SetPersistAuth(nil)
 		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
+
+				dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
+					Error:   err.Error(),
+					Version: Version,
+					ConfigSummary: debug.SanitizeConfig(cfg),
+					RuntimeSummary: &debug.RuntimeSummary{
+						ActiveRunCount:      0,
+						SessionCount:        0,
+						RecordedHTTPTraces:  debugRecorder.Count(),
+					},
+					Traces:         debugRecorder.List(0, "", ""),
+					InFlightTraces: debugRecorder.InFlight(),
+				})
+				if dumpErr != nil {
+					fmt.Fprintf(os.Stderr, "Failed to write crash dump: %v\n", dumpErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "Crash dump written to %s\n", dumpDir)
+				}
+
 				os.Exit(1)
 			}
 		}
@@ -122,6 +146,38 @@ func main() {
 		skillsSvc.SetDisabledList(cfg.DisabledSkills, nil)
 	}
 	runSvc.SetSkillsService(skillsSvc)
+
+	runSvc.SetCrashDumpFunc(func(err error, stack []byte) {
+		crashCfg, cfgErr := config.Load(configPath)
+		if cfgErr != nil {
+			crashCfg = nil
+		}
+		allSessions := sessionMgr.All()
+		var cfgSummary map[string]interface{}
+		if crashCfg != nil {
+			cfgSummary = debug.SanitizeConfig(crashCfg)
+		}
+		dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
+			Error:   err.Error(),
+			Stack:   string(stack),
+			Version: Version,
+			ConfigSummary: cfgSummary,
+			RuntimeSummary: &debug.RuntimeSummary{
+				UpSince:            time.Now(),
+				ActiveRunCount:     runSvc.ActiveRunCount(),
+				SessionCount:       len(allSessions),
+				RecordedHTTPTraces: debugRecorder.Count(),
+			},
+			Sessions:       allSessions,
+			Traces:         debugRecorder.List(0, "", ""),
+			InFlightTraces: debugRecorder.InFlight(),
+		})
+		if dumpErr != nil {
+			slog.Error("Failed to write crash dump", slog.String("error", dumpErr.Error()))
+		} else {
+			slog.Info("Crash dump written", slog.String("path", dumpDir))
+		}
+	})
 	server := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
