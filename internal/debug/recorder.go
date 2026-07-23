@@ -115,10 +115,15 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 	r.traces = append(r.traces, trace)
 }
 
-// truncateBody truncates body to MaxBodyBytes.
+// truncateBody truncates body to MaxBodyBytes and appends a truncation indicator.
 func truncateBody(body []byte) []byte {
 	if len(body) > MaxBodyBytes {
-		return body[:MaxBodyBytes]
+		n := len(body)
+		suffix := fmt.Sprintf("... [truncated %d bytes]", n-MaxBodyBytes)
+		result := make([]byte, MaxBodyBytes+len(suffix))
+		copy(result, body[:MaxBodyBytes])
+		copy(result[MaxBodyBytes:], suffix)
+		return result
 	}
 	return body
 }
