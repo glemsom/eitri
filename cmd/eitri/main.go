@@ -51,6 +51,10 @@ func cleanupRuntime(server *api.Server, runSvc *runner.RunService) {
 // Default "dev" indicates an unversioned development build.
 var Version = "dev"
 
+// processStartTime records when the process started, used for computing real uptime
+// in crash dumps.
+var processStartTime = time.Now()
+
 // logBuffer is the global ring buffer handler that captures log entries for crash dumps.
 var logBuffer *debug.RingBufferHandler
 
@@ -109,6 +113,9 @@ func main() {
 			if !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
 
+				// Capture conversation context from the runner before writing the dump
+				convCtx := runSvc.LastBatchConversationContext()
+
 				dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
 					Error:       err.Error(),
 					ErrorChain:  fmt.Sprintf("%+v", err),
@@ -116,10 +123,12 @@ func main() {
 					Version:     Version,
 					ConfigSummary: debug.SanitizeConfig(cfg),
 					RuntimeSummary: &debug.RuntimeSummary{
-						ActiveRunCount:      0,
-						SessionCount:        0,
-						RecordedHTTPTraces:  debugRecorder.Count(),
+						UpSince:            processStartTime,
+						ActiveRunCount:     1, // the batch run itself
+						SessionCount:       0, // batch mode has no UI sessions
+						RecordedHTTPTraces: debugRecorder.Count(),
 					},
+					ConversationContext: convCtx,
 					Traces:         debugRecorder.List(0, "", ""),
 					InFlightTraces: debugRecorder.InFlight(),
 					Logs:           logBuffer.Entries(),
@@ -173,7 +182,7 @@ func main() {
 			Version:     Version,
 			ConfigSummary: cfgSummary,
 			RuntimeSummary: &debug.RuntimeSummary{
-				UpSince:            time.Now(),
+				UpSince:            processStartTime,
 				ActiveRunCount:     runSvc.ActiveRunCount(),
 				SessionCount:       len(allSessions),
 				RecordedHTTPTraces: debugRecorder.Count(),

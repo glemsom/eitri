@@ -447,3 +447,91 @@ func TestWriteCrashDump_ErrorChainEmpty(t *testing.T) {
 		t.Fatalf("crash.json should not have 'error_chain' field when empty")
 	}
 }
+
+func TestWriteCrashDump_ConversationContext(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	opts := DumpOptions{
+		Error:   "batch error with context",
+		Version: "dev",
+		RuntimeSummary: &RuntimeSummary{
+			UpSince:       time.Now().Add(-30 * time.Minute),
+			ActiveRunCount: 1,
+		},
+		ConversationContext: &ConversationContext{
+			LastUserMessage:      "implement feature X",
+			LastAssistantMessage: "I'll start by reading the codebase...",
+			TurnNumber:           3,
+			TotalTokensUsed:      1500,
+		},
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	content := string(data)
+
+	// Verify conversation_context is present
+	if !strings.Contains(content, `"conversation_context":`) {
+		t.Fatalf("crash.json missing 'conversation_context' key")
+	}
+
+	// Verify fields within conversation_context
+	if !strings.Contains(content, `"last_user_message":`) {
+		t.Fatalf("crash.json missing 'last_user_message'")
+	}
+	if !strings.Contains(content, `"implement feature X"`) {
+		t.Fatalf("crash.json missing last_user_message content")
+	}
+	if !strings.Contains(content, `"last_assistant_message":`) {
+		t.Fatalf("crash.json missing 'last_assistant_message'")
+	}
+	if !strings.Contains(content, `"I'll start by reading the codebase..."`) {
+		t.Fatalf("crash.json missing last_assistant_message content")
+	}
+	if !strings.Contains(content, `"turn_number": 3`) {
+		t.Fatalf("crash.json missing or incorrect turn_number")
+	}
+	if !strings.Contains(content, `"total_tokens_used": 1500`) {
+		t.Fatalf("crash.json missing or incorrect total_tokens_used")
+	}
+
+	// Verify runtime_summary shows active run count
+	if !strings.Contains(content, `"active_run_count": 1`) {
+		t.Fatalf("crash.json missing active_run_count: 1")
+	}
+}
+
+func TestWriteCrashDump_ConversationContextNil(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	opts := DumpOptions{
+		Error:               "error without context",
+		Version:             "dev",
+		ConversationContext: nil,
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// conversation_context should be omitted when nil
+	if strings.Contains(string(data), `"conversation_context":`) {
+		t.Fatalf("crash.json should not have 'conversation_context' when nil")
+	}
+}

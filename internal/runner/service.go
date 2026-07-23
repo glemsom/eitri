@@ -86,6 +86,10 @@ type RunService struct {
 	browserMu        sync.Mutex
 	browserSubs      map[string]map[uint64]chan BrowserEvent
 	nextBrowserSubID uint64
+
+	// Batch conversation context tracking (set by BatchRun, consumed by crash dump)
+	batchCtxMu      sync.Mutex
+	batchLastCtx    *debug.ConversationContext
 }
 
 const completedRunRetention = 5 * time.Second
@@ -299,6 +303,22 @@ func (s *RunService) ActiveRunCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.active)
+}
+
+// LastBatchConversationContext returns the conversation context from the last
+// batch run, if any. Returns nil if no batch run has completed or if no
+// conversation context was captured.
+func (s *RunService) LastBatchConversationContext() *debug.ConversationContext {
+	s.batchCtxMu.Lock()
+	defer s.batchCtxMu.Unlock()
+	return s.batchLastCtx
+}
+
+// setBatchConversationContext stores the conversation context for the last batch run.
+func (s *RunService) setBatchConversationContext(ctx *debug.ConversationContext) {
+	s.batchCtxMu.Lock()
+	defer s.batchCtxMu.Unlock()
+	s.batchLastCtx = ctx
 }
 
 // ActiveRunSSECounters returns subscriber and replay counts for all active runs.
