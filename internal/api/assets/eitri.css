@@ -754,7 +754,7 @@ noscript {
 .message-content {
   word-wrap: break-word;
   overflow-wrap: break-word;
-  max-width: 80ch;
+  max-width: min(120ch, 90%);
 }
 
 .message-user .message-content {
