@@ -33,6 +33,8 @@ func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
+		Version:        "dev",
+		StartTime:      time.Now(),
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -3767,5 +3769,437 @@ func TestPutConfigCustomOpenAIPreservesAPIKey(t *testing.T) {
 	}
 	if savedCfg.APIKey != "sk-custom-key" {
 		t.Fatalf("saved api_key = %q, want %q", savedCfg.APIKey, "sk-custom-key")
+	}
+}
+
+// --- Debug API tests (issue #556) ---
+
+func TestDebugHealth(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["status"] != "ok" {
+		t.Errorf("status = %q, want ok", body["status"])
+	}
+}
+
+func TestDebugRuntime(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check top-level keys exist
+	for _, k := range []string{"version", "up_since", "active_run_count", "session_count", "recorded_http_traces", "config_summary"} {
+		if _, ok := body[k]; !ok {
+			t.Errorf("response missing key %q", k)
+		}
+	}
+
+	// version defaults to "dev" in tests
+	if body["version"] != "dev" {
+		t.Errorf("version = %v, want dev", body["version"])
+	}
+
+	// session_count should be 0 in empty test server
+	if n, ok := body["session_count"].(float64); ok && n != 0 {
+		t.Errorf("session_count = %v, want 0", n)
+	}
+
+	// recorded_http_traces should be 0
+	if n, ok := body["recorded_http_traces"].(float64); ok && n != 0 {
+		t.Errorf("recorded_http_traces = %v, want 0", n)
+	}
+
+	// config_summary should have expected fields
+	cfgSummary, ok := body["config_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("config_summary missing or not an object")
+	}
+	for _, k := range []string{"provider_id", "model", "base_url", "context_window_tokens", "max_turns", "command_timeout", "has_api_key"} {
+		if _, ok := cfgSummary[k]; !ok {
+			t.Errorf("config_summary missing key %q", k)
+		}
+	}
+
+	// has_api_key should be false since no config saved
+	if v, ok := cfgSummary["has_api_key"].(bool); ok && v {
+		t.Errorf("has_api_key = true, want false (no config saved)")
+	}
+}
+
+func TestDebugConfig(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, k := range []string{"provider_id", "model", "base_url", "context_window_tokens", "max_turns", "command_timeout", "has_api_key"} {
+		if _, ok := body[k]; !ok {
+			t.Errorf("/api/debug/config missing key %q", k)
+		}
+	}
+
+	// Ensure no secret field keys leaked at top level
+	secretKeys := []string{"api_key", "provider_auth"}
+	for _, secret := range secretKeys {
+		if _, ok := body[secret]; ok {
+			t.Errorf("/api/debug/config leaks secret field %q at top level", secret)
+		}
+	}
+
+	// has_api_key should be false (no config saved)
+	if v, ok := body["has_api_key"].(bool); ok && v {
+		t.Errorf("has_api_key = true, want false")
+	}
+}
+
+func TestDebugSessionsEmpty(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var sessions []interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("sessions = %#v, want empty list", sessions)
+	}
+}
+
+func TestDebugSessionsWithSession(t *testing.T) {
+	// Create server with a session manager that has one session
+	sessionMgr := session.NewManager(10)
+	_, err := sessionMgr.Create("test-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := newTestServerWithSessionManager(t, t.TempDir(), sessionMgr)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	s := sessions[0]
+	if s["status"] != "idle" {
+		t.Errorf("status = %v, want idle", s["status"])
+	}
+	if _, ok := s["id"]; !ok {
+		t.Errorf("session missing id")
+	}
+	if _, ok := s["title"]; !ok {
+		t.Errorf("session missing title")
+	}
+	if _, ok := s["message_count"]; !ok {
+		t.Errorf("session missing message_count")
+	}
+	if _, ok := s["active_skills"]; !ok {
+		t.Errorf("session missing active_skills")
+	}
+	if _, ok := s["last_message_timestamp"]; !ok {
+		t.Errorf("session missing last_message_timestamp")
+	}
+	// Idle sessions should not have a "run" field
+	if _, ok := s["run"]; ok {
+		t.Errorf("idle session should not have run field")
+	}
+}
+
+func TestDebugSessionByIDNotFound(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+
+	var errBody map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody["error"] == "" {
+		t.Errorf("expected error message, got empty")
+	}
+}
+
+func TestDebugSessionByID(t *testing.T) {
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("test-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a message to the session
+	sessionMgr.AppendMessage(sess.ID, session.Message{
+		Role:      "user",
+		Content:   "Hello",
+		CreatedAt: time.Now(),
+	})
+
+	server := newTestServerWithSessionManager(t, t.TempDir(), sessionMgr)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/" + sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var detail map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check session summary
+	sessionData, ok := detail["session"].(map[string]interface{})
+	if !ok {
+		t.Fatal("session field missing or not an object")
+	}
+	if sessionData["status"] != "idle" {
+		t.Errorf("session.status = %v, want idle", sessionData["status"])
+	}
+
+	// Check messages array
+	messages, ok := detail["messages"].([]interface{})
+	if !ok {
+		t.Fatal("messages field missing or not an array")
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(messages))
+	}
+	msg := messages[0].(map[string]interface{})
+	if msg["role"] != "user" {
+		t.Errorf("message.role = %v, want user", msg["role"])
+	}
+	if msg["content"] != "Hello" {
+		t.Errorf("message.content = %v, want Hello", msg["content"])
+	}
+	if _, ok := msg["created_at"]; !ok {
+		t.Errorf("message missing created_at")
+	}
+
+	// Check active_skills
+	if _, ok := detail["active_skills"]; !ok {
+		t.Errorf("detail missing active_skills")
+	}
+}
+
+func TestDebugSessionByIDLimitMessages(t *testing.T) {
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("test-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add multiple messages
+	for i := 0; i < 5; i++ {
+		sessionMgr.AppendMessage(sess.ID, session.Message{
+			Role:      "user",
+			Content:   fmt.Sprintf("Message %d", i),
+			CreatedAt: time.Now(),
+		})
+	}
+
+	server := newTestServerWithSessionManager(t, t.TempDir(), sessionMgr)
+	defer server.Close()
+
+	// Request limit_messages=2
+	resp, err := http.Get(server.URL + "/api/debug/sessions/" + sess.ID + "?limit_messages=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var detail map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+
+	messages, ok := detail["messages"].([]interface{})
+	if !ok {
+		t.Fatal("messages field missing or not an array")
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages with limit_messages=2, got %d", len(messages))
+	}
+}
+
+func TestDebugConfigWithSavedConfig(t *testing.T) {
+	configPath := t.TempDir() + "/config.json"
+	initialCfg := &config.Config{
+		Provider:            "opencode_go",
+		APIKey:              "sk-my-secret",
+		BaseURL:             "https://api.example.com/v1",
+		Model:               "gpt-4",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+	}
+	if err := config.Save(configPath, initialCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionMgr := session.NewManager(10)
+	skillsSvc := skills.NewService()
+	srv := api.NewServer(api.ServerConfig{
+		ConfigPath:     configPath,
+		Workspace:      t.TempDir(),
+		SessionManager: sessionMgr,
+		SkillsService:  skillsSvc,
+		Version:        "test-version",
+		StartTime:      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+	server := httptest.NewServer(srv.Handler())
+	defer server.Close()
+
+	// Test /api/debug/config - must not leak api_key
+	resp, err := http.Get(server.URL + "/api/debug/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var cfgResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&cfgResp); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check fields match
+	if cfgResp["provider_id"] != "opencode_go" {
+		t.Errorf("provider_id = %v, want opencode_go", cfgResp["provider_id"])
+	}
+	if cfgResp["model"] != "gpt-4" {
+		t.Errorf("model = %v, want gpt-4", cfgResp["model"])
+	}
+	if cfgResp["has_api_key"] != true {
+		t.Errorf("has_api_key = %v, want true", cfgResp["has_api_key"])
+	}
+
+	// Ensure api_key is NOT in the response body
+	bodyBytes, err := json.Marshal(cfgResp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bodyBytes), "sk-my-secret") {
+		t.Errorf("response leaks API key secret")
+	}
+
+	// Test /api/debug/runtime - check version, up_since
+	resp2, err := http.Get(server.URL + "/api/debug/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("runtime status = %d, want %d", resp2.StatusCode, http.StatusOK)
+	}
+
+	var runtimeResp map[string]interface{}
+	if err := json.NewDecoder(resp2.Body).Decode(&runtimeResp); err != nil {
+		t.Fatal(err)
+	}
+
+	if runtimeResp["version"] != "test-version" {
+		t.Errorf("version = %v, want test-version", runtimeResp["version"])
+	}
+
+	// up_since should be present
+	if _, ok := runtimeResp["up_since"]; !ok {
+		t.Errorf("runtime response missing up_since")
+	}
+
+	// session_count should be 0
+	if n, ok := runtimeResp["session_count"].(float64); ok && n != 0 {
+		t.Errorf("session_count = %v, want 0", n)
 	}
 }

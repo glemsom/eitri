@@ -126,6 +126,8 @@ func main() {
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
 		Logger:         slog.Default(),
+		Version:        Version,
+		StartTime:      time.Now(),
 	})
 
 	err = serve(ctx, serveOptions{

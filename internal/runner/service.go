@@ -283,6 +283,13 @@ func (s *RunService) CancelAll() {
 		state.finish()
 	}
 }
+// ActiveRunCount returns the number of active runs.
+func (s *RunService) ActiveRunCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.active)
+}
+
 
 // CloseSession cancels the active run and closes the session.
 func (s *RunService) CloseSession(sessionID string) error {
