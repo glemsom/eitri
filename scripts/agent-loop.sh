@@ -55,8 +55,32 @@ while true; do
 		continue
 	fi
 
+	# Build structured prompt for eitri
+	PROMPT=$(cat <<EOF
+---
+Description: Implement issue #${NUMBER} — ${TITLE}
+---
+
+Pick an unblocked \`ready-for-agent\` GitHub Issue WITHOUT an \`issue-type:parent\` tag to implement
+
+Step 1:
+- [ ] Create a branch for the implementation
+- [ ] Implement the work described in the GitHub issue using the \`tdd\` skill if possible
+- [ ] Ensure to update any relevant documentation
+- [ ] Commit and push changes to git
+- [ ] Create a GitHub pull request, ensure to link it to the GitHub issue we worked on
+
+Step 2:
+- [ ] Merge the pull request
+- [ ] Switch to \`main\` branch, and pull in all changes
+- [ ] Remove any old branches, both locally and remote
+
+No user confirmation required for \`ready-for-agent\` issues
+EOF
+)
+
 	# Run eitri in batch mode
-	if ! eitri -b "implement the feature in issue #${NUMBER} — ${TITLE}"; then
+	if ! eitri -b "$PROMPT"; then
 		echo "Error: batch run for issue #$NUMBER failed" >&2
 		exit 1
 	fi
