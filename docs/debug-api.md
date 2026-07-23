@@ -131,6 +131,9 @@ Response fields:
   - `status`: current session status.
   - `sse_subscriber_count`: total distinct SSE connections created.
   - `sse_replay_count`: total times history was replayed.
+  - `sse_history`: recent SSE events broadcast during active run (max 50,
+    omitted when idle or no active run). Each event has `type`, `kind`,
+    `timestamp`, and event-specific fields.
 
 This endpoint can produce a large response for long chats. For large payloads,
 prefer the filtered `/api/debug/http?session_id=...` and/or limit the session

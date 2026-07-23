@@ -9,6 +9,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/runstate"
 )
 
 // debugSessionSummary is the shape returned by GET /api/debug/sessions.
@@ -34,6 +35,7 @@ type debugSessionDetail struct {
 	Messages     []session.Message   `json:"messages"`
 	ActiveSkills []string            `json:"active_skills"`
 	Run          *runInfo            `json:"run,omitempty"`
+	SSEHistory []runstate.SSEEvent `json:"sse_history,omitempty"`
 }
 
 // debugRuntimeResponse is the shape returned by GET /api/debug/runtime.
@@ -136,8 +138,14 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 			if active := s.config.RunService.ActiveRun(id); active != nil {
 				detail.Run.SSESubscriberCount = active.SSE.SubscriberCount()
 				detail.Run.SSEReplayCount = active.SSE.ReplayCount()
+				// SSE history truncated to last 50 events
+				history := active.SSE.History()
+				if len(history) > 50 {
+					history = history[len(history)-50:]
+				}
+				detail.SSEHistory = history
 			}
-		}
+	}
 	}
 
 	writeJSON(w, http.StatusOK, detail)

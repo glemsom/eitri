@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Response card duplication when run completes: EventSource no longer reconnects
   after receiving the "done" event (RENDERING state now treated as terminal in
+
+### Added
+
+- Debug API: expose SSE event history in session debug endpoint (#565)
   onerror handler). Also sets a no-active-run timestamp after cleanup to prevent
   autoConnectOnPageLoad from reconnecting stale sessions. (#N/A)
 

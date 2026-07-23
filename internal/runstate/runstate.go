@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/glemsom/eitri/internal/litellm"
 )
@@ -35,6 +36,7 @@ type SSEEvent struct {
 	Message   string      `json:"message,omitempty"`
 	MessageID string      `json:"message_id,omitempty"`
 	Usage     *TokenUsage `json:"usage,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
 }
 
 // TokenUsage holds token count information for a completed run.
@@ -146,6 +148,7 @@ func (s *State) Broadcast(evt SSEEvent) {
 		return
 	}
 	s.history = append(s.history, evt)
+	evt.Timestamp = time.Now()
 	s.mu.Unlock()
 
 	for _, ch := range subscribers {
@@ -219,6 +222,7 @@ func (s *State) closeStreams(evt *SSEEvent) {
 	}
 	if evt != nil {
 		s.history = append(s.history, *evt)
+		evt.Timestamp = time.Now()
 	}
 	s.streamsClosed = true
 	subscribers := make([]chan SSEEvent, 0, len(s.subscribers))
