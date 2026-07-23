@@ -1,12 +1,12 @@
 package templates
 
 // UserBubble renders a user chat message bubble.
-// Content is plain text — converted to HTML with nl2br so newlines render as <br>.
-templ UserBubble(content string) {
+// htmlContent is pre-rendered Markdown HTML, safe to inject.
+templ UserBubble(htmlContent string) {
 	<div class="message message-user">
 		<div class="message-avatar">U</div>
 		<div class="message-body">
-			<div class="message-content">@templ.Raw(nl2br(content))</div>
+			<div class="message-content">@templ.Raw(htmlContent)</div>
 		</div>
 	</div>
 }

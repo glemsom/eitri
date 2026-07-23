@@ -84,6 +84,8 @@ func renderSessionForPage(sess *session.UISession) *session.UISession {
 				contentHTML += "\n" + componentsHTML
 			}
 			rendered.Messages[i].Content = contentHTML
+		} else {
+			rendered.Messages[i].Content = renderMarkdownToHTML(msg.Content)
 		}
 	}
 	return &rendered
