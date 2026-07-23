@@ -260,6 +260,7 @@
   document.addEventListener('htmx:beforeSwap', function (evt) {
     const targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'app' || targetId === 'chat-view' || targetId === 'streaming') {
+      console.log('[eitri] disconnectAll triggered by target:', targetId);
       disconnectAll();
     }
   });
