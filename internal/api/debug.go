@@ -1,0 +1,200 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/session"
+)
+
+// debugSessionSummary is the shape returned by GET /api/debug/sessions.
+type debugSessionSummary struct {
+	ID                string    `json:"id"`
+	Title             string    `json:"title"`
+	Status            string    `json:"status"`
+	MessageCount      int       `json:"message_count"`
+	ActiveSkills      []string  `json:"active_skills"`
+	Run               *runInfo  `json:"run,omitempty"`
+	LastMessageTimestamp time.Time `json:"last_message_timestamp"`
+}
+
+type runInfo struct {
+	Status string `json:"status"`
+}
+
+// debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
+type debugSessionDetail struct {
+	Session      debugSessionSummary `json:"session"`
+	Messages     []session.Message   `json:"messages"`
+	ActiveSkills []string            `json:"active_skills"`
+	Run          *runInfo            `json:"run,omitempty"`
+}
+
+// debugRuntimeResponse is the shape returned by GET /api/debug/runtime.
+type debugRuntimeResponse struct {
+	Version           string           `json:"version"`
+	UpSince           time.Time        `json:"up_since"`
+	ActiveRunCount    int              `json:"active_run_count"`
+	SessionCount      int              `json:"session_count"`
+	RecordedHTTPTraces int             `json:"recorded_http_traces"`
+	ConfigSummary     *sanitizedConfig `json:"config_summary"`
+}
+
+// sanitizedConfig exposes safe config fields (no secrets).
+type sanitizedConfig struct {
+	ProviderID          string `json:"provider_id"`
+	Model               string `json:"model"`
+	BaseURL             string `json:"base_url"`
+	ContextWindowTokens int    `json:"context_window_tokens"`
+	MaxTurns            int    `json:"max_turns"`
+	CommandTimeout      int64  `json:"command_timeout"`
+	HasAPIKey           bool   `json:"has_api_key"`
+}
+
+// writeJSON is a helper to write a JSON response with the given status code.
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+// writeError writes a JSON error response.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
+	allSessions := s.config.SessionManager.All()
+	summaries := make([]debugSessionSummary, 0, len(allSessions))
+	for _, sess := range allSessions {
+		summary := sessionToSummary(sess)
+		summaries = append(summaries, summary)
+	}
+	if summaries == nil {
+		summaries = []debugSessionSummary{}
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing session id")
+		return
+	}
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+
+	// Support ?limit_messages=N
+	msgCount := len(sess.Messages)
+	if limitStr := r.URL.Query().Get("limit_messages"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n >= 0 && n < msgCount {
+			msgCount = n
+		}
+	}
+
+	messages := sess.Messages
+	if msgCount < len(messages) {
+		messages = messages[len(messages)-msgCount:]
+	}
+	if messages == nil {
+		messages = []session.Message{}
+	}
+
+	detail := debugSessionDetail{
+		Session:      sessionToSummary(sess),
+		Messages:     messages,
+		ActiveSkills: sess.ActiveSkills,
+	}
+	if sess.Status != session.StatusIdle {
+		detail.Run = &runInfo{Status: string(sess.Status)}
+	}
+
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
+	cfg := s.loadConfig()
+	cfgSummary := sanitizeConfig(cfg)
+
+	activeRunCount := 0
+	if s.config.RunService != nil {
+		activeRunCount = s.config.RunService.ActiveRunCount()
+	}
+
+	resp := debugRuntimeResponse{
+		Version:            s.config.Version,
+		UpSince:            s.config.StartTime,
+		ActiveRunCount:     activeRunCount,
+		SessionCount:       s.config.SessionManager.Count(),
+		RecordedHTTPTraces: 0, // always 0 until issue #555
+		ConfigSummary:      cfgSummary,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleDebugConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.loadConfig()
+	cfgSummary := sanitizeConfig(cfg)
+	writeJSON(w, http.StatusOK, cfgSummary)
+}
+
+func (s *Server) handleDebugHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// loadConfig reads config from disk. Returns defaults on error.
+func (s *Server) loadConfig() *config.Config {
+	if s.config.ConfigPath == "" {
+		cfg := config.Defaults()
+		return &cfg
+	}
+	cfg, err := config.Load(s.config.ConfigPath)
+	if err != nil {
+		cfg := config.Defaults()
+		return &cfg
+	}
+	return cfg
+}
+
+// sanitizeConfig returns a sanitized config (no secrets exposed).
+func sanitizeConfig(cfg *config.Config) *sanitizedConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &sanitizedConfig{
+		ProviderID:          cfg.Provider,
+		Model:               cfg.Model,
+		BaseURL:             cfg.BaseURL,
+		ContextWindowTokens: cfg.ContextWindowTokens,
+		MaxTurns:            cfg.MaxTurns,
+		CommandTimeout:      cfg.CommandTimeout,
+		HasAPIKey:           cfg.APIKey != "" || len(cfg.ProviderAuth) > 0,
+	}
+}
+
+func sessionToSummary(sess *session.UISession) debugSessionSummary {
+	lastMsgTime := sess.UpdatedAt
+	if len(sess.Messages) > 0 {
+		lastMsgTime = sess.Messages[len(sess.Messages)-1].CreatedAt
+	}
+	summary := debugSessionSummary{
+		ID:                   sess.ID,
+		Title:                sess.Title,
+		Status:               string(sess.Status),
+		MessageCount:         len(sess.Messages),
+		ActiveSkills:         sess.ActiveSkills,
+		LastMessageTimestamp: lastMsgTime,
+	}
+	if sess.Status != session.StatusIdle {
+		summary.Run = &runInfo{Status: string(sess.Status)}
+	}
+	return summary
+}

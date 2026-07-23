@@ -26,6 +26,8 @@ type ServerConfig struct {
 	SkillsService  *skills.Service
 	Logger         *slog.Logger
 	CopilotOAuth   GitHubCopilotOAuthConfig
+	Version        string // injected at build time
+	StartTime      time.Time // server start timestamp
 }
 
 // Server wraps the HTTP handler and injected dependencies.
@@ -229,6 +231,13 @@ func (s *Server) registerRoutes() {
 
 	// Session tabs fragment for OOB swap updates
 	s.mux.HandleFunc("GET /api/session-tabs", s.handleSessionTabs)
+
+	// Debug API routes (issue #556)
+	s.mux.HandleFunc("GET /api/debug/sessions", s.handleDebugSessions)
+	s.mux.HandleFunc("GET /api/debug/sessions/{id}", s.handleDebugSessionByID)
+	s.mux.HandleFunc("GET /api/debug/runtime", s.handleDebugRuntime)
+	s.mux.HandleFunc("GET /api/debug/config", s.handleDebugConfig)
+	s.mux.HandleFunc("GET /api/debug/health", s.handleDebugHealth)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

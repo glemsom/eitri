@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Perf: tool definitions computed once per run instead of every turn (hoist tool defs out of agent loop) (#551)
-- (new entries here)
+- Debug API: session, runtime, and config endpoints (#556)
+- RunService.ActiveRunCount() method for debug introspection
 
 ## [0.1.1] — 2026-07-22
 
