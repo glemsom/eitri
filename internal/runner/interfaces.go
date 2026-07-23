@@ -3,20 +3,20 @@ package runner
 import (
 	"context"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // HistoryManager abstracts conversation history storage for the agent loop.
 // Two adapters exist: sessionHistoryManager (browser UI path via
 // *history.SessionManager) and requestHistoryManager (headless/direct-messages
-// path via *litellm.Request).
+// path via *llm.Request).
 type HistoryManager interface {
 	// History returns the full conversation history with system prompt prepended.
-	History(sessionID string) []litellm.Message
+	History(sessionID string) []llm.Message
 
 	// AppendAssistant appends an assistant message with text content and
 	// optional tool calls.
-	AppendAssistant(sessionID, content string, toolCalls []litellm.ToolCall)
+	AppendAssistant(sessionID, content string, toolCalls []llm.ToolCall)
 
 	// AppendTool appends a tool result message.
 	AppendTool(sessionID, toolCallID, content string, isError bool)

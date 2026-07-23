@@ -8,7 +8,7 @@ import (
 	runtimeDebug "runtime/debug"
 	"time"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/debug"
 
 	"github.com/glemsom/eitri/internal/history"
@@ -110,7 +110,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 	_ = authUpdate
 
-	adapterCfg := litellm.AdapterConfig{
+	adapterCfg := llm.AdapterConfig{
 		ProviderID: providerID,
 		Model:      modelName,
 		BaseURL:    baseURL,
@@ -122,7 +122,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		adapterCfg.RoundTripper = debug.NewRecordingRoundTripper(nil, s.debugRecorder, sessionID, providerID)
 	}
 
-	llm, err := litellm.NewLLMService(adapterCfg)
+	llmSvc, err := llm.NewLLMService(adapterCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
@@ -147,7 +147,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		maxTurnsVal = 10
 	}
 
-	req := &litellm.Request{
+	req := &llm.Request{
 		Model:  modelName,
 		Stream: true,
 	}
@@ -208,7 +208,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 		confirmer := newFuncConfirmer(s.confirmPath)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens, s.crashDumpFunc, &state.Turns)
+		err := RunAgent(runCtx, llmSvc, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens, s.crashDumpFunc, &state.Turns)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()

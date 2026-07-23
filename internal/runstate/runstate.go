@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // RenderKind maps SSE events to the render kind the browser island should POST.
@@ -341,7 +341,7 @@ type ContextUpdate struct {
 //   - Prompt tokens: system + history (skill tokens are part of system)
 //   - Completion tokens: 0 (set by caller when known)
 //   - Total tokens: prompt + completion
-func ComputeContext(messages []litellm.Message, contextWindow int) *ContextUpdate {
+func ComputeContext(messages []llm.Message, contextWindow int) *ContextUpdate {
 	const charsPerToken = 4
 
 	var historyLen int

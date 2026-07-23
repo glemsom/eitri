@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // ── sessionHistoryManager tests ────────────────────────────────────────────
@@ -80,8 +80,8 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "run tool")
 
 	adapter := newSessionHistoryManager(sessionMgr, nil, sessionID)
-	toolCalls := []litellm.ToolCall{
-		{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
+	toolCalls := []llm.ToolCall{
+		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
 	adapter.AppendAssistant(sessionID, "", toolCalls)
 
@@ -138,8 +138,8 @@ func TestSessionHistoryManager_Interface(t *testing.T) {
 
 func TestRequestHistoryManager_History(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "hello"},
 		},
@@ -160,8 +160,8 @@ func TestRequestHistoryManager_History(t *testing.T) {
 
 func TestRequestHistoryManager_HistoryReturnsSameSlice(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
@@ -178,8 +178,8 @@ func TestRequestHistoryManager_HistoryReturnsSameSlice(t *testing.T) {
 
 func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hello"},
 		},
 	}
@@ -199,10 +199,10 @@ func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 
 func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{}
+	req := &llm.Request{}
 	adapter := newRequestHistoryManager(req)
-	toolCalls := []litellm.ToolCall{
-		{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
+	toolCalls := []llm.ToolCall{
+		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
 	adapter.AppendAssistant("", "", toolCalls)
 
@@ -219,8 +219,8 @@ func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 
 func TestRequestHistoryManager_AppendTool(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run tool"},
 		},
 	}
@@ -243,9 +243,9 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 
 func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	t.Parallel()
-	req := &litellm.Request{}
+	req := &llm.Request{}
 	adapter := newRequestHistoryManager(req)
-	// isError is not stored in litellm.Message, but the content carries the error info.
+	// isError is not stored in llm.Message, but the content carries the error info.
 	adapter.AppendTool("", "call_err", "error message", true)
 
 	if len(req.Messages) != 1 {
@@ -253,7 +253,7 @@ func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	}
 	_ = req.Messages[0].Content // Content should be "error message"
 	// The isError flag is intentionally discarded by requestHistoryManager
-	// because the litellm.Message type does not carry it; the error content
+	// because the llm.Message type does not carry it; the error content
 	// is passed in the Content field for the LLM to interpret.
 }
 

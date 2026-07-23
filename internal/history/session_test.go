@@ -3,7 +3,7 @@ package history
 import (
 	"testing"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 func TestSessionManager_CreateAndGet(t *testing.T) {
@@ -48,8 +48,8 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	toolCalls := []litellm.ToolCall{
-		{ID: "call-1", Type: "function", Function: litellm.FunctionCall{Name: "file_viewer", Arguments: `{"path":"test.txt"}`}},
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "file_viewer", Arguments: `{"path":"test.txt"}`}},
 	}
 
 	m.AppendAssistant("sess-1", "Hi there!", toolCalls)
@@ -57,7 +57,7 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 
 	history := m.History("sess-1")
 	// Find the assistant message
-	var assistantMsg *litellm.Message
+	var assistantMsg *llm.Message
 	for i := range history {
 		if history[i].Role == "assistant" {
 			assistantMsg = &history[i]
@@ -87,7 +87,7 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	m.AppendUser("sess-1", "hello") // push a user to trigger history read
 
 	history := m.History("sess-1")
-	var toolMsg *litellm.Message
+	var toolMsg *llm.Message
 	for i := range history {
 		if history[i].Role == "tool" {
 			toolMsg = &history[i]
@@ -220,7 +220,7 @@ func TestSessionManager_HistoryDeepCopy(t *testing.T) {
 
 	// Modify history1 — should not affect history2
 	if len(history1) > 0 {
-		history1[0] = litellm.Message{} // zero out
+		history1[0] = llm.Message{} // zero out
 	}
 	if len(history2) > 0 && history2[0].Role == "" {
 		t.Error("History() returned shared reference, not a copy")
@@ -295,16 +295,16 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 
 	// Exchange 1: user -> assistant (with tool call) -> tool result -> assistant (final)
 	m.AppendUser("sess-1", "first")
-	m.AppendAssistant("sess-1", "", []litellm.ToolCall{
-		{ID: "call-1", Type: "function", Function: litellm.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
+	m.AppendAssistant("sess-1", "", []llm.ToolCall{
+		{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
 	})
 	m.AppendTool("sess-1", "call-1", "content", false)
 	m.AppendAssistant("sess-1", "resp1", nil)
 
 	// Exchange 2: user -> assistant (with tool call) -> tool result
 	m.AppendUser("sess-1", "second")
-	m.AppendAssistant("sess-1", "", []litellm.ToolCall{
-		{ID: "call-2", Type: "function", Function: litellm.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
+	m.AppendAssistant("sess-1", "", []llm.ToolCall{
+		{ID: "call-2", Type: "function", Function: llm.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
 	})
 	m.AppendTool("sess-1", "call-2", "output", false)
 
@@ -334,7 +334,7 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 	m.AppendUser("sess-1", "multi\nline\nmessage")
 
 	history := m.History("sess-1")
-	var userMsg *litellm.Message
+	var userMsg *llm.Message
 	for i := range history {
 		if history[i].Role == "user" {
 			userMsg = &history[i]
@@ -351,7 +351,7 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 
 // helpers
 
-func countUserMessages(history []litellm.Message) int {
+func countUserMessages(history []llm.Message) int {
 	count := 0
 	for _, m := range history {
 		if m.Role == "user" {
