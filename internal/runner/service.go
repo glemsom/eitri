@@ -300,6 +300,11 @@ func (s *RunService) ActiveRunCount() int {
 	return len(s.active)
 }
 
+// CompletedRunRetentionMs returns the completed run retention duration in milliseconds.
+func (s *RunService) CompletedRunRetentionMs() int64 {
+	return completedRunRetention.Milliseconds()
+}
+
 
 // CloseSession cancels the active run and closes the session.
 func (s *RunService) CloseSession(sessionID string) error {
