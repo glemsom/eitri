@@ -23,7 +23,9 @@ type debugSessionSummary struct {
 }
 
 type runInfo struct {
-	Status string `json:"status"`
+	Status       string `json:"status"`
+	SSESubscriberCount uint64 `json:"sse_subscriber_count"`
+	SSEReplayCount     uint64 `json:"sse_replay_count"`
 }
 
 // debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
@@ -36,12 +38,19 @@ type debugSessionDetail struct {
 
 // debugRuntimeResponse is the shape returned by GET /api/debug/runtime.
 type debugRuntimeResponse struct {
-	Version           string           `json:"version"`
-	UpSince           time.Time        `json:"up_since"`
-	ActiveRunCount    int              `json:"active_run_count"`
-	SessionCount      int              `json:"session_count"`
-	RecordedHTTPTraces int             `json:"recorded_http_traces"`
-	ConfigSummary     *sanitizedConfig `json:"config_summary"`
+	Version            string                  `json:"version"`
+	UpSince            time.Time               `json:"up_since"`
+	ActiveRunCount     int                     `json:"active_run_count"`
+	SessionCount       int                     `json:"session_count"`
+	RecordedHTTPTraces int                     `json:"recorded_http_traces"`
+	ConfigSummary      *sanitizedConfig        `json:"config_summary"`
+	ActiveSessions     []activeSessionSSEInfo  `json:"active_sessions,omitempty"`
+}
+
+type activeSessionSSEInfo struct {
+	SessionID          string `json:"session_id"`
+	SSESubscriberCount uint64 `json:"sse_subscriber_count"`
+	SSEReplayCount     uint64 `json:"sse_replay_count"`
 }
 
 // sanitizedConfig exposes safe config fields (no secrets).
@@ -72,6 +81,13 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
 		summary := sessionToSummary(sess)
+		// Enrich with SSE counters if run active
+		if summary.Run != nil && s.config.RunService != nil {
+			if active := s.config.RunService.ActiveRun(sess.ID); active != nil {
+				summary.Run.SSESubscriberCount = active.SSE.SubscriberCount()
+				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
+			}
+		}
 		summaries = append(summaries, summary)
 	}
 	if summaries == nil {
@@ -116,6 +132,12 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 	}
 	if sess.Status != session.StatusIdle {
 		detail.Run = &runInfo{Status: string(sess.Status)}
+		if s.config.RunService != nil {
+			if active := s.config.RunService.ActiveRun(id); active != nil {
+				detail.Run.SSESubscriberCount = active.SSE.SubscriberCount()
+				detail.Run.SSEReplayCount = active.SSE.ReplayCount()
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, detail)
@@ -126,8 +148,20 @@ func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
 	cfgSummary := sanitizeConfig(cfg)
 
 	activeRunCount := 0
+	var activeSessions []activeSessionSSEInfo
 	if s.config.RunService != nil {
 		activeRunCount = s.config.RunService.ActiveRunCount()
+		counters := s.config.RunService.ActiveRunSSECounters()
+		if len(counters) > 0 {
+			activeSessions = make([]activeSessionSSEInfo, 0, len(counters))
+			for sessionID, c := range counters {
+				activeSessions = append(activeSessions, activeSessionSSEInfo{
+					SessionID:          sessionID,
+					SSESubscriberCount: c.SubscriberCount,
+					SSEReplayCount:     c.ReplayCount,
+				})
+			}
+		}
 	}
 
 	recordedTraces := 0
@@ -142,6 +176,7 @@ func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
 		SessionCount:       s.config.SessionManager.Count(),
 		RecordedHTTPTraces: recordedTraces,
 		ConfigSummary:      cfgSummary,
+		ActiveSessions:     activeSessions,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -292,7 +327,14 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 	allSessions := s.config.SessionManager.All()
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
-		summaries = append(summaries, sessionToSummary(sess))
+		summary := sessionToSummary(sess)
+		if summary.Run != nil && s.config.RunService != nil {
+			if active := s.config.RunService.ActiveRun(sess.ID); active != nil {
+				summary.Run.SSESubscriberCount = active.SSE.SubscriberCount()
+				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
+			}
+		}
+		summaries = append(summaries, summary)
 	}
 	if summaries == nil {
 		summaries = []debugSessionSummary{}
@@ -303,8 +345,20 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 	cfgSummary := sanitizeConfig(cfg)
 
 	activeRunCount := 0
+	var activeSessions []activeSessionSSEInfo
 	if s.config.RunService != nil {
 		activeRunCount = s.config.RunService.ActiveRunCount()
+		counters := s.config.RunService.ActiveRunSSECounters()
+		if len(counters) > 0 {
+			activeSessions = make([]activeSessionSSEInfo, 0, len(counters))
+			for sessionID, c := range counters {
+				activeSessions = append(activeSessions, activeSessionSSEInfo{
+					SessionID:          sessionID,
+					SSESubscriberCount: c.SubscriberCount,
+					SSEReplayCount:     c.ReplayCount,
+				})
+			}
+		}
 	}
 
 	recordedTraces := 0
@@ -319,6 +373,7 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 		SessionCount:       s.config.SessionManager.Count(),
 		RecordedHTTPTraces: recordedTraces,
 		ConfigSummary:      cfgSummary,
+		ActiveSessions:     activeSessions,
 	}
 
 	// Assemble HTTP traces

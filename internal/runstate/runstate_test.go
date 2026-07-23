@@ -160,3 +160,137 @@ func TestReasoningBuffer_DoesNotAffectTextBuffer(t *testing.T) {
 		t.Errorf("ReasoningBufferString = %q, want %q", got, "(thinking)")
 	}
 }
+
+func TestState_SubscriberCount_StartsZero(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	if got := state.SubscriberCount(); got != 0 {
+		t.Errorf("SubscriberCount() = %d, want 0", got)
+	}
+}
+
+func TestState_ReplayCount_StartsZero(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	if got := state.ReplayCount(); got != 0 {
+		t.Errorf("ReplayCount() = %d, want 0", got)
+	}
+}
+
+func TestState_Subscribe_IncrementsSubscriberCount(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+
+	id1, _, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("first Subscribe returned ok=false")
+	}
+	if id1 != 0 {
+		t.Errorf("first subscriber id = %d, want 0", id1)
+	}
+	if got := state.SubscriberCount(); got != 1 {
+		t.Errorf("SubscriberCount after first Subscribe = %d, want 1", got)
+	}
+
+	id2, _, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("second Subscribe returned ok=false")
+	}
+	if id2 != 1 {
+		t.Errorf("second subscriber id = %d, want 1", id2)
+	}
+	if got := state.SubscriberCount(); got != 2 {
+		t.Errorf("SubscriberCount after second Subscribe = %d, want 2", got)
+	}
+}
+
+func TestState_Subscribe_DoesNotIncrementSubscriberCountWhenStreamsClosed(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	state.BroadcastDone("mid-1", nil)
+
+	// BroadcastDone appends a done event to history, so Subscribe returns ok=true
+	// (history available) but does NOT create a new subscriber.
+	_, _, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe after BroadcastDone should return ok=true (history available)")
+	}
+	if got := state.SubscriberCount(); got != 0 {
+		t.Errorf("SubscriberCount after Subscribe to closed stream = %d, want 0", got)
+	}
+}
+
+func TestState_ReplayCount_IncrementsOnHistoryReplay(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	// Broadcast some events to build history
+	w.Token("hello")
+
+	// First subscribe — should replay history
+	_, _, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("first Subscribe returned ok=false")
+	}
+	if got := state.ReplayCount(); got != 1 {
+		t.Errorf("ReplayCount after first Subscribe with history = %d, want 1", got)
+	}
+
+	// Second subscribe — should replay history again
+	_, _, ok = state.Subscribe()
+	if !ok {
+		t.Fatal("second Subscribe returned ok=false")
+	}
+	if got := state.ReplayCount(); got != 2 {
+		t.Errorf("ReplayCount after second Subscribe with history = %d, want 2", got)
+	}
+}
+
+func TestState_ReplayCount_DoesNotIncrementWhenHistoryEmpty(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+
+	_, _, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+	if got := state.ReplayCount(); got != 0 {
+		t.Errorf("ReplayCount with empty history = %d, want 0", got)
+	}
+}
+
+func TestState_Counters_ResetOnNewRun(t *testing.T) {
+	t.Parallel()
+
+	// Simulate: run completes, new run starts with fresh State
+	state1 := New()
+	state1.Subscribe()
+	state1.Subscribe()
+	w := NewWriter(state1)
+	w.Token("test")
+	state1.Subscribe()
+
+	// Three Subscribe calls: two before history, one after (all create subscribers)
+	if got := state1.SubscriberCount(); got != 3 {
+		t.Errorf("state1 SubscriberCount = %d, want 3", got)
+	}
+	if got := state1.ReplayCount(); got != 1 {
+		t.Errorf("state1 ReplayCount = %d, want 1", got)
+	}
+
+	// New state = fresh run
+	state2 := New()
+	if got := state2.SubscriberCount(); got != 0 {
+		t.Errorf("state2 SubscriberCount = %d, want 0", got)
+	}
+	if got := state2.ReplayCount(); got != 0 {
+		t.Errorf("state2 ReplayCount = %d, want 0", got)
+	}
+}
