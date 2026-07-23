@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - (new entries here)
 
+### Fixed
+
+- Chat bubbles now fill screen better on wide monitors: messages container capped at 960px and centered, bubble width constraint removed, content readable-width limit increased to 80ch (#N/A)
+
 ## [0.1.3] — 2026-07-23
 
 ### Fixed

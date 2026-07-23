@@ -604,6 +604,9 @@ main {
 
 #messages {
   grid-area: messages;
+  max-width: min(100%, 960px);
+  width: 100%;
+  justify-self: center;
 }
 
 eitri-composer {
@@ -708,7 +711,6 @@ noscript {
   gap: 0.75rem;
   padding: 0.75rem;
   border-radius: 8px;
-  max-width: 85%;
   box-shadow: var(--shadow-md);
 }
 
@@ -754,7 +756,7 @@ noscript {
 .message-content {
   word-wrap: break-word;
   overflow-wrap: break-word;
-  max-width: 70ch;
+  max-width: 80ch;
 }
 
 .message-user .message-content {
