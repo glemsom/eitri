@@ -208,7 +208,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 		confirmer := newFuncConfirmer(s.confirmPath)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens, s.crashDumpFunc)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens, s.crashDumpFunc, &state.Turns)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()

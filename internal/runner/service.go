@@ -39,7 +39,8 @@ type RunState struct {
 	Done      chan struct{}
 	doneOnce  sync.Once
 
-	SSE *runstate.State
+	SSE   *runstate.State
+	Turns int // turns consumed so far, updated by agent loop
 }
 
 func (rs *RunState) finish() {
@@ -331,21 +332,25 @@ type RunSSESnapshot struct {
 	SubscriberCount uint64
 	ReplayCount     uint64
 	History         []runstate.SSEEvent
+	Busy            bool
+	Turns           int
+	PendingApproval bool
 }
 
-// ActiveRunSSESnapshot returns a snapshot of SSE counters and history for a session,
-// collected atomically under RunService.mu. Returns nil if no active run.
-// The handler must not access RunState.SSE fields outside this method.
+// ActiveRunSSESnapshot returns a snapshot of SSE counters, history, busy state,
+// turn count, and pending confirmation for a session, collected atomically
+// under RunService.mu. Returns nil if no active run.
 func (s *RunService) ActiveRunSSESnapshot(sessionID string) *RunSSESnapshot {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	state, exists := s.active[sessionID]
 	if !exists {
+		s.mu.Unlock()
 		return nil
 	}
 	select {
 	case <-state.Done:
+		s.mu.Unlock()
 		return nil
 	default:
 	}
@@ -355,12 +360,31 @@ func (s *RunService) ActiveRunSSESnapshot(sessionID string) *RunSSESnapshot {
 		history = history[len(history)-50:]
 	}
 
+	turns := state.Turns
+	busy := true
+	s.mu.Unlock()
+
+	pendingApproval := s.HasPendingConfirmation(sessionID)
+
 	return &RunSSESnapshot{
 		SubscriberCount: state.SSE.SubscriberCount(),
 		ReplayCount:     state.SSE.ReplayCount(),
 		History:         history,
+		Busy:            busy,
+		Turns:           turns,
+		PendingApproval: pendingApproval,
 	}
 }
+
+// HasPendingConfirmation returns true if there is a pending confirmation
+// for the given session.
+func (s *RunService) HasPendingConfirmation(sessionID string) bool {
+	s.confirmMu.Lock()
+	defer s.confirmMu.Unlock()
+	_, ok := s.confirmations[sessionID]
+	return ok
+}
+
 
 
 // CloseSession cancels the active run and closes the session.

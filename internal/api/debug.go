@@ -26,10 +26,12 @@ type debugSessionSummary struct {
 
 type runInfo struct {
 	Status             string `json:"status"`
+	Busy               bool   `json:"busy"`
+	Turns              int    `json:"turns"`
+	PendingApproval    bool   `json:"pending_approval"`
 	SSESubscriberCount uint64 `json:"sse_subscriber_count"`
 	SSEReplayCount     uint64 `json:"sse_replay_count"`
 }
-
 // debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
 type debugSessionDetail struct {
 	Session      debugSessionSummary `json:"session"`
@@ -84,9 +86,12 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
 		summary := sessionToSummary(sess)
-		// Enrich with SSE counters if run active — snapshot under RunService.mu
+		// Enrich with run info if run active — snapshot under RunService.mu
 		if summary.Run != nil && s.config.RunService != nil {
 			if snap := s.config.RunService.ActiveRunSSESnapshot(sess.ID); snap != nil {
+				summary.Run.Busy = snap.Busy
+				summary.Run.Turns = snap.Turns
+				summary.Run.PendingApproval = snap.PendingApproval
 				summary.Run.SSESubscriberCount = snap.SubscriberCount
 				summary.Run.SSEReplayCount = snap.ReplayCount
 			}
@@ -145,6 +150,9 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 		detail.Run = &runInfo{Status: string(sess.Status)}
 		if s.config.RunService != nil {
 			if snap := s.config.RunService.ActiveRunSSESnapshot(id); snap != nil {
+				detail.Run.Busy = snap.Busy
+				detail.Run.Turns = snap.Turns
+				detail.Run.PendingApproval = snap.PendingApproval
 				detail.Run.SSESubscriberCount = snap.SubscriberCount
 				detail.Run.SSEReplayCount = snap.ReplayCount
 				detail.SSEHistory = snap.History

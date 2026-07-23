@@ -66,6 +66,7 @@ func RunAgent(
 	sessionID string,
 	contextWindow int,
 	crashDumpFunc func(err error, stack []byte), // optional; called on panic
+	turns *int, // updated each turn with the current turn count
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
@@ -336,6 +337,11 @@ func RunAgent(
 
 		// Broadcast context_update after tool results appended to history
 		broadcastContextUpdate()
+
+		// Update turn count for external consumers
+		if turns != nil {
+			*turns = turn + 1
+		}
 	}
 
 	// Max turns exceeded
