@@ -3,18 +3,19 @@
 //
 // It owns three subsystems:
 //  1. Recorder — bounded, thread-safe capture of LLM provider HTTP traces
-//     for troubleshooting in the debug API
+//     for troubleshooting in the debug API; preserves the last non-2xx trace
+//     in a dedicated slot that is never evicted by the ring buffer
 //  2. RingBufferHandler — slog.Handler wrapper that retains the last N
 //     structured log entries for inclusion in crash dumps
 //  3. Crash dumps — timestamped directories under ~/.eitri/crash-dump/ with
 //     diagnostic files (error chain, goroutine stacks, session state, traces, logs)
 //
 // Key types:
-//   - Recorder — trace recorder (NewRecorder, Record, List, InFlight, Count)
-//   - HTTPTrace — one recorded LLM provider request/response
+//   - Recorder — trace recorder (NewRecorder, Record, List, InFlight, Count, LastFailingTrace)
+//   - HTTPTrace — one recorded LLM provider request/response (includes ResponseHeaders)
 //   - RingBufferHandler — log ring buffer (NewRingBufferHandler, Entries, Count)
 //   - LogEntry — one captured structured log entry
-//   - DumpOptions — input struct for WriteCrashDump (Error, ErrorChain, Stack, ...)
+//   - DumpOptions — input struct for WriteCrashDump (Error, ErrorChain, Stack, ..., FailingHTTPTrace)
 //   - RuntimeSummary — lightweight runtime counters included in crash dumps
 //
 // Key functions:

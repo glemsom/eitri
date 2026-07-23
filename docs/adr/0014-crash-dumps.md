@@ -19,7 +19,7 @@ Each crash creates a directory named `crash-<ISO8601-timestamp>/` (colon replace
 
 | File | Contents |
 |------|----------|
-| `crash.json` | Error chain (`%+v`), version, sanitized config summary, runtime summary (up since, active run count, session count, trace count), conversation context (last user message, last assistant message, turn number, total tokens used) |
+| `crash.json` | Error chain (`%+v`), version, sanitized config summary, runtime summary (up since, active run count, session count, trace count), conversation context (last user message, last assistant message, turn number, total tokens used), failing HTTP trace (most recent non-2xx response with headers, never evicted by ring buffer) |
 | `sessions.json` | All UI sessions with full message history (same shape as `GET /api/debug/sessions`) |
 | `traces.json` | All completed + in-flight HTTP traces from the debug recorder (same shape as `GET /api/debug/http`) |
 | `goroutines.txt` | Pprof goroutine dump (`/debug/pprof/goroutine?debug=2`) — captures all goroutine stacks at crash moment |
@@ -28,7 +28,7 @@ Each crash creates a directory named `crash-<ISO8601-timestamp>/` (colon replace
 
 Three paths write a crash dump:
 
-1. **Batch mode failure** — `main.go` after `BatchRun()` returns an error (non-cancelled). Before `os.Exit(1)`. Populates real runtime summary values (process start time as `up_since`, `active_run_count` = 1) and captures conversation context (last user message, last assistant message, turn number) from the runner.
+1. **Batch mode failure** — `main.go` after `BatchRun()` returns an error (non-cancelled). Before `os.Exit(1)`. Populates real runtime summary values (process start time as `up_since`, `active_run_count` = 1) and captures conversation context (last user message, last assistant message, turn number) from the runner, plus the last failing HTTP trace from the debug recorder.
 2. **UI run goroutine error** — `run.go`'s goroutine when it encounters a non-cancelled, non-max-turns error in the agent loop.
 3. **Panic recovery** — a deferred `recover()` in `RunAgent` (the agent loop) catches panics, writes a dump, then re-panics.
 

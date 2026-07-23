@@ -3987,10 +3987,10 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 	}
 
 	// Record 3 traces for this session
-	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "")
-	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
-	rec.Record("other-session", "p1", "POST", "/v1/chat", []byte("other"), []byte("resp"), 200, time.Second, "")
-	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "")
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "", nil)
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "", nil)
+	rec.Record("other-session", "p1", "POST", "/v1/chat", []byte("other"), []byte("resp"), 200, time.Second, "", nil)
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder:  rec,
@@ -4348,7 +4348,7 @@ func TestDebugHTTP_NoRecorder(t *testing.T) {
 
 func TestDebugHTTP_List(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4413,8 +4413,8 @@ func TestDebugHTTP_ListEmpty(t *testing.T) {
 
 func TestDebugHTTP_SessionFilter(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("session-a", "p1", "GET", "/path", nil, nil, 200, 0, "")
-	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "")
+	rec.Record("session-a", "p1", "GET", "/path", nil, nil, 200, 0, "", nil)
+	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4446,8 +4446,8 @@ func TestDebugHTTP_SessionFilter(t *testing.T) {
 
 func TestDebugHTTP_ProviderFilter(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("s1", "p1", "GET", "/path", nil, nil, 200, 0, "")
-	rec.Record("s2", "p2", "GET", "/path", nil, nil, 200, 0, "")
+	rec.Record("s1", "p1", "GET", "/path", nil, nil, 200, 0, "", nil)
+	rec.Record("s2", "p2", "GET", "/path", nil, nil, 200, 0, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4497,7 +4497,7 @@ func TestDebugHTTP_ByID_NotFound(t *testing.T) {
 
 func TestDebugHTTP_ByID_Success(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4561,7 +4561,7 @@ func TestDebugUmbrella(t *testing.T) {
 	t.Parallel()
 
 	rec := debug.NewRecorder(10)
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "", nil)
 
 	sessionMgr := session.NewManager(10)
 	sess, err := sessionMgr.Create("test-session")
@@ -4721,9 +4721,9 @@ func TestDebugSessionHTTP_NoRecorder(t *testing.T) {
 
 func TestDebugSessionHTTP_List(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
-	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "")
-	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
+	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "", nil)
+	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "", nil)
+	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4755,9 +4755,9 @@ func TestDebugSessionHTTP_List(t *testing.T) {
 
 func TestDebugSessionHTTP_Limit(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "")
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
-	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "", nil)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "", nil)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,
@@ -4789,7 +4789,7 @@ func TestDebugSessionHTTP_Limit(t *testing.T) {
 
 func TestDebugSessionHTTP_Empty(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	rec.Record("other", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+	rec.Record("other", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "", nil)
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		debugRecorder: rec,

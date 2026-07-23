@@ -16,7 +16,7 @@ func TestRecorder_CapacityOverflow(t *testing.T) {
 	r := NewRecorder(3)
 
 	for i := 0; i < 5; i++ {
-		r.Record("s1", "p1", "GET", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+		r.Record("s1", "p1", "GET", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "", nil)
 	}
 
 	traces := r.List(0, "", "")
@@ -40,7 +40,7 @@ func TestRecorder_BodyTruncation(t *testing.T) {
 		largeBody[i] = 'A'
 	}
 
-	r.Record("s1", "p1", "POST", "/v1/chat", largeBody, largeBody, 200, time.Second, "")
+	r.Record("s1", "p1", "POST", "/v1/chat", largeBody, largeBody, 200, time.Second, "", nil)
 
 	traces := r.List(0, "", "")
 	if len(traces) != 1 {
@@ -79,9 +79,9 @@ func TestRecorder_BodyTruncation(t *testing.T) {
 func TestRecorder_SessionScoping(t *testing.T) {
 	r := NewRecorder(10)
 
-	r.Record("session-a", "p1", "GET", "/path", nil, nil, 200, 0, "")
-	r.Record("session-b", "p1", "GET", "/path", nil, nil, 200, 0, "")
-	r.Record("session-a", "p2", "GET", "/path", nil, nil, 200, 0, "")
+	r.Record("session-a", "p1", "GET", "/path", nil, nil, 200, 0, "", nil)
+	r.Record("session-b", "p1", "GET", "/path", nil, nil, 200, 0, "", nil)
+	r.Record("session-a", "p2", "GET", "/path", nil, nil, 200, 0, "", nil)
 
 	// Filter by session-a
 	traces := r.List(0, "session-a", "")
@@ -120,7 +120,7 @@ func TestRecorder_ConcurrentWrites(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			r.Record("s1", "p1", "GET", "/path", []byte("req"), []byte("resp"), 200, time.Millisecond, "")
+			r.Record("s1", "p1", "GET", "/path", []byte("req"), []byte("resp"), 200, time.Millisecond, "", nil)
 		}(i)
 	}
 	wg.Wait()
@@ -275,7 +275,7 @@ func TestRecorder_Count(t *testing.T) {
 		t.Fatalf("Count = %d, want 0", c)
 	}
 
-	r.Record("s1", "p1", "GET", "/", nil, nil, 200, 0, "")
+	r.Record("s1", "p1", "GET", "/", nil, nil, 200, 0, "", nil)
 	if c := r.Count(); c != 1 {
 		t.Fatalf("Count = %d, want 1", c)
 	}
@@ -284,7 +284,7 @@ func TestRecorder_Count(t *testing.T) {
 func TestRecorder_ListLimit(t *testing.T) {
 	r := NewRecorder(20)
 	for i := 0; i < 20; i++ {
-		r.Record("s1", "p1", "GET", "/", nil, nil, 200, 0, "")
+		r.Record("s1", "p1", "GET", "/", nil, nil, 200, 0, "", nil)
 	}
 
 	// List with limit
@@ -306,11 +306,11 @@ func TestRecorder_LastN(t *testing.T) {
 	r := NewRecorder(10)
 
 	// Record 5 traces: 3 for session-a, 2 for session-b
-	r.Record("session-a", "p1", "GET", "/1", nil, nil, 200, 0, "")
-	r.Record("session-a", "p1", "GET", "/2", nil, nil, 200, 0, "")
-	r.Record("session-b", "p1", "GET", "/3", nil, nil, 200, 0, "")
-	r.Record("session-a", "p1", "GET", "/4", nil, nil, 200, 0, "")
-	r.Record("session-b", "p1", "GET", "/5", nil, nil, 200, 0, "")
+	r.Record("session-a", "p1", "GET", "/1", nil, nil, 200, 0, "", nil)
+	r.Record("session-a", "p1", "GET", "/2", nil, nil, 200, 0, "", nil)
+	r.Record("session-b", "p1", "GET", "/3", nil, nil, 200, 0, "", nil)
+	r.Record("session-a", "p1", "GET", "/4", nil, nil, 200, 0, "", nil)
+	r.Record("session-b", "p1", "GET", "/5", nil, nil, 200, 0, "", nil)
 
 	// LastN for session-a should return the 2 most recent (chronological)
 	traces := r.LastN("session-a", 2)
@@ -386,5 +386,146 @@ func TestRecorder_RoundTripperBodyPreservation(t *testing.T) {
 	}
 	if traces[0].RequestBody != `{"model":"test"}` {
 		t.Fatalf("recorded request body = %q, want %q", traces[0].RequestBody, `{"model":"test"}`)
+	}
+}
+
+func TestRecorder_LastFailingTrace_Non2xx(t *testing.T) {
+	r := NewRecorder(3)
+
+	// Record a 200 (success) — should NOT set last failing trace
+	r.Record("s1", "p1", "GET", "/ok", nil, nil, 200, time.Second, "", nil)
+	if ft := r.LastFailingTrace(); ft != nil {
+		t.Fatalf("expected nil lastFailingTrace after 200, got trace id=%s", ft.ID)
+	}
+
+	// Record a 400 (failing) — should set last failing trace
+	r.Record("s1", "p1", "POST", "/bad-request", nil, []byte(`{"error":"bad"}`), 400, time.Second, "", nil)
+
+	ft := r.LastFailingTrace()
+	if ft == nil {
+		t.Fatal("expected non-nil lastFailingTrace after 400")
+	}
+	if ft.Status != 400 {
+		t.Fatalf("lastFailingTrace.Status = %d, want 400", ft.Status)
+	}
+	if ft.URL != "/bad-request" {
+		t.Fatalf("lastFailingTrace.URL = %q, want /bad-request", ft.URL)
+	}
+	if ft.ResponseBody != `{"error":"bad"}` {
+		t.Fatalf("lastFailingTrace.ResponseBody = %q, want `{\"error\":\"bad\"}`", ft.ResponseBody)
+	}
+
+	// Record a 500 (another failure) — should overwrite to most recent
+	r.Record("s1", "p1", "POST", "/server-error", nil, nil, 500, time.Second, "internal error", nil)
+	ft = r.LastFailingTrace()
+	if ft == nil {
+		t.Fatal("expected non-nil lastFailingTrace after 500")
+	}
+	if ft.Status != 500 {
+		t.Fatalf("lastFailingTrace.Status = %d, want 500", ft.Status)
+	}
+	if ft.Error != "internal error" {
+		t.Fatalf("lastFailingTrace.Error = %q, want 'internal error'", ft.Error)
+	}
+}
+
+func TestRecorder_LastFailingTrace_CapacityPressure(t *testing.T) {
+	r := NewRecorder(20)
+
+	// Write 30 traces: 29 successes (200) and 1 failure (400) at position 15
+	for i := 0; i < 30; i++ {
+		if i == 15 {
+			r.Record("s1", "p1", "POST", "/fail", nil, []byte(`{"error":"bad"}`), 400, time.Second, "", nil)
+		} else {
+			r.Record("s1", "p1", "GET", "/ok", nil, nil, 200, 0, "", nil)
+		}
+	}
+
+	// Ring buffer should only have 20 traces
+	traces := r.List(0, "", "")
+	if len(traces) != 20 {
+		t.Fatalf("ring buffer has %d traces, want 20", len(traces))
+	}
+
+	// But the failing trace should still be accessible via LastFailingTrace
+	ft := r.LastFailingTrace()
+	if ft == nil {
+		t.Fatal("expected non-nil lastFailingTrace after capacity pressure")
+	}
+	if ft.Status != 400 {
+		t.Fatalf("lastFailingTrace.Status = %d, want 400", ft.Status)
+	}
+	if ft.ResponseBody != `{"error":"bad"}` {
+		t.Fatalf("lastFailingTrace.ResponseBody = %q, want `{\"error\":\"bad\"}`", ft.ResponseBody)
+	}
+}
+
+func TestRecorder_LastFailingTrace_ErroredRequest(t *testing.T) {
+	r := NewRecorder(5)
+
+	// Record a trace with an error message (simulating RoundTrip error)
+	r.Record("s1", "p1", "POST", "/fail", []byte("req"), nil, 0, time.Second, "connection refused", nil)
+
+	ft := r.LastFailingTrace()
+	if ft == nil {
+		t.Fatal("expected non-nil lastFailingTrace for errored request")
+	}
+	if ft.Status != 0 {
+		t.Fatalf("lastFailingTrace.Status = %d, want 0", ft.Status)
+	}
+	if ft.Error != "connection refused" {
+		t.Fatalf("lastFailingTrace.Error = %q, want 'connection refused'", ft.Error)
+	}
+}
+
+func TestRecorder_ResponseHeaders(t *testing.T) {
+	r := NewRecorder(5)
+
+	// Create a test server that returns specific headers
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-Id", "req-abc-123")
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":"rate limited"}`))
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	rt := NewRecordingRoundTripper(nil, r, "s1", "p1")
+	client := &http.Client{Transport: rt, Timeout: 5 * time.Second}
+
+	resp, err := client.Get(srv.URL + "/v1/chat")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	// Check the failing trace has response headers
+	ft := r.LastFailingTrace()
+	if ft == nil {
+		t.Fatal("expected non-nil lastFailingTrace for 429 response")
+	}
+	if ft.Status != http.StatusTooManyRequests {
+		t.Fatalf("Status = %d, want 429", ft.Status)
+	}
+	if ft.ResponseHeaders == nil {
+		t.Fatal("expected non-nil ResponseHeaders")
+	}
+	if ft.ResponseHeaders["X-Request-Id"][0] != "req-abc-123" {
+		t.Fatalf("X-Request-Id = %q, want 'req-abc-123'", ft.ResponseHeaders["X-Request-Id"])
+	}
+	if ft.ResponseHeaders["Retry-After"][0] != "30" {
+		t.Fatalf("Retry-After = %q, want '30'", ft.ResponseHeaders["Retry-After"])
+	}
+
+	// Also check via regular List
+	traces := r.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	tr := traces[0]
+	if tr.ResponseHeaders["X-Request-Id"][0] != "req-abc-123" {
+		t.Fatalf("List: X-Request-Id = %q, want 'req-abc-123'", tr.ResponseHeaders["X-Request-Id"])
 	}
 }
