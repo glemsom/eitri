@@ -96,7 +96,7 @@ The body of each session debug entry includes:
 
 - `id`, `title`, `status` (`idle`/`running`/`error`).
 - `message_count`, `active_skills`.
-- `run`: active run summary if one is in progress: `busy`, `turns`, `pending_approval`.
+- `run`: active run summary if one is in progress: `busy`, `turns`, `pending_approval`, `sse_subscriber_count`, `sse_replay_count`.
 - `latest_http`: last 3 HTTP traces for this session.
 - `last_message_timestamp`.
 
@@ -129,6 +129,9 @@ Response fields:
 - `active_skills`: skill names activated in this session.
 - `run`: active run summary if running, includes:
   - `status`: current session status.
+  - `busy`: whether the agent loop is actively executing a turn.
+  - `turns`: turns consumed so far for the current run.
+  - `pending_approval`: whether a tool is waiting for user confirmation.
   - `sse_subscriber_count`: total distinct SSE connections created.
   - `sse_replay_count`: total times history was replayed.
   - `sse_history`: recent SSE events broadcast during active run (max 50,

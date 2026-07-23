@@ -119,7 +119,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		maxTurns = 10
 	}
 
-	runErr := RunAgent(runCtx, llm, req, maxTurns, cfg.MaxHistory, w, toolReg, historyMgr, nil, nil, "", cfg.ContextWindowTokens, nil)
+	runErr := RunAgent(runCtx, llm, req, maxTurns, cfg.MaxHistory, w, toolReg, historyMgr, nil, nil, "", cfg.ContextWindowTokens, nil, nil)
 
 	// If streams are still open (e.g., RunAgent returned early due to context
 	// cancellation before it could broadcast a done/error event), close them
