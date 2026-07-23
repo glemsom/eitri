@@ -147,8 +147,8 @@ func (s *State) Broadcast(evt SSEEvent) {
 	if subscribers == nil {
 		return
 	}
-	s.history = append(s.history, evt)
 	evt.Timestamp = time.Now()
+	s.history = append(s.history, evt)
 	s.mu.Unlock()
 
 	for _, ch := range subscribers {
@@ -221,8 +221,8 @@ func (s *State) closeStreams(evt *SSEEvent) {
 		return
 	}
 	if evt != nil {
-		s.history = append(s.history, *evt)
 		evt.Timestamp = time.Now()
+		s.history = append(s.history, *evt)
 	}
 	s.streamsClosed = true
 	subscribers := make([]chan SSEEvent, 0, len(s.subscribers))
