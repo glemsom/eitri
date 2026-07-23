@@ -5726,3 +5726,74 @@ func TestBrowser_StreamingMarkdownAutoScrollRegression(t *testing.T) {
 		return true
 	})
 }
+
+// TestBrowser_AssistantBubbleMaxWidth verifies that assistant message bubbles
+// are capped at 90% of the messages container width, instead of stretching
+// to the full container width when content (e.g. long unbreakable text or
+// 100%-width tables) would otherwise force the inner .message-body
+// (flex: 1 1 auto) to fill the cross-axis. Regression test for the
+// "assistant bubble too wide" bug.
+func TestBrowser_AssistantBubbleMaxWidth(t *testing.T) {
+	server := newTestServerWithRuns(t)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation failed: %v", err)
+	}
+
+	// Inject an assistant message with content that would previously force
+	// the bubble to full width: a very long unbreakable string (no spaces,
+	// no <wbr>), which has infinite intrinsic min-content width and would
+	// blow past the .message-content max-width cap, pushing .message-body
+	// to fill the cross-axis.
+	var result struct {
+		ContainerW float64 `json:"containerW"`
+		MsgW       float64 `json:"msgW"`
+		BodyW      float64 `json:"bodyW"`
+		ContentW   float64 `json:"contentW"`
+		MsgRatio   float64 `json:"msgRatio"`
+	}
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var msgs = document.getElementById('messages');
+			if (!msgs) return {containerW: 0, msgW: 0, bodyW: 0, contentW: 0, msgRatio: 0};
+			var containerW = msgs.getBoundingClientRect().width;
+			var div = document.createElement('div');
+			div.className = 'message message-assistant';
+			div.innerHTML = '<img class="message-avatar" src="/static/face.webp" width="32" height="32">'
+				+ '<div class="message-body">'
+				+ '<div class="message-content">'
+				+ '<p>' + 'VeryLongUnbreakableWordThatShouldNotForceTheBubbleToStretchToFullWidth'.repeat(20) + '</p>'
+				+ '</div></div>';
+			msgs.appendChild(div);
+			return {
+				containerW: containerW,
+				msgW: div.getBoundingClientRect().width,
+				bodyW: div.querySelector('.message-body').getBoundingClientRect().width,
+				contentW: div.querySelector('.message-content').getBoundingClientRect().width,
+				msgRatio: div.getBoundingClientRect().width / containerW,
+			};
+		})()`, &result),
+	)
+	if err != nil {
+		t.Fatalf("layout measurement failed: %v", err)
+	}
+
+	if result.ContainerW <= 0 {
+		t.Fatalf("invalid container width: %v", result.ContainerW)
+	}
+	// The bubble must not exceed 90% of the messages container.
+	// Allow a tiny rounding tolerance.
+	if result.MsgRatio > 0.901 {
+		t.Errorf("assistant bubble too wide: msg=%.1fpx, container=%.1fpx, ratio=%.4f (want <= 0.90)",
+			result.MsgW, result.ContainerW, result.MsgRatio)
+	}
+	t.Logf("assistant bubble: msg=%.1fpx body=%.1fpx content=%.1fpx container=%.1fpx ratio=%.4f",
+		result.MsgW, result.BodyW, result.ContentW, result.ContainerW, result.MsgRatio)
+}

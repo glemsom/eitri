@@ -710,6 +710,7 @@ noscript {
   padding: 0.75rem;
   border-radius: 8px;
   box-shadow: var(--shadow-md);
+  max-width: 90%;
 }
 
 .message-user {

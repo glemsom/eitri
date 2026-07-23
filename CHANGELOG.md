@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Chat bubbles now fill screen better on wide monitors: messages container capped at 960px and centered, bubble width constraint removed, content readable-width limit made responsive with `min(120ch, 90%)` instead of a fixed 80ch (#599)
+- Assistant chat bubbles no longer stretch to the full messages container width. `.message` is now capped at `max-width: 90%` so wide content (long unbreakable lines, full-width tables) cannot push the bubble background and border past the readable area. Regression test `TestBrowser_AssistantBubbleMaxWidth` covers this.
 
 ## [0.1.3] — 2026-07-23
 
