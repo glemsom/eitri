@@ -20,18 +20,18 @@ func NewLLMService(cfg AdapterConfig) (LLMService, error) {
 	switch cfg.ProviderID {
 	case "opencode_go":
 		if isAnthropicModel(cfg.Model) {
-			return NewAnthropic(cfg.Model, baseURL, cfg.APIKey), nil
+			return NewAnthropic(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper), nil
 		}
-		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey), nil
+		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper), nil
 
 	case "custom_openai":
-		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey), nil
+		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper), nil
 
 	case "openrouter":
-		return NewOpenRouter(cfg.Model, baseURL, cfg.APIKey, cfg.OpenRouterRef, cfg.OpenRouterTitle), nil
+		return NewOpenRouter(cfg.Model, baseURL, cfg.APIKey, cfg.OpenRouterRef, cfg.OpenRouterTitle, cfg.RoundTripper), nil
 
 	case "github_copilot":
-		return NewGitHubCopilot(cfg.Model, baseURL, cfg.APIKey), nil
+		return NewGitHubCopilot(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", cfg.ProviderID)

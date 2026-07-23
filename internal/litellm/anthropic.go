@@ -19,15 +19,14 @@ type Anthropic struct {
 }
 
 // NewAnthropic creates an Anthropic-compatible adapter.
-func NewAnthropic(model, baseURL, apiKey string) *Anthropic {
+func NewAnthropic(model, baseURL, apiKey string, rt http.RoundTripper) *Anthropic {
 	return &Anthropic{
 		model:   model,
 		baseURL: strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
 		apiKey:  apiKey,
-		client:  defaultHTTPClient,
+		client:  makeHTTPClient(rt),
 	}
 }
-
 const anthropicDefaultMaxTokens = 4096
 
 func (s *Anthropic) anthropicHeaders(req *http.Request) {

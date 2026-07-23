@@ -7,7 +7,7 @@ import (
 
 // NewOpenRouter creates an OpenRouter adapter with tracking headers.
 // It wraps the base openAICompatible with OpenRouter-specific headers and URL.
-func NewOpenRouter(model, baseURL, apiKey, ref, title string) LLMService {
+func NewOpenRouter(model, baseURL, apiKey, ref, title string, rt http.RoundTripper) LLMService {
 	return &openAICompatible{
 		model:    model,
 		baseURL:  strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
@@ -18,6 +18,6 @@ func NewOpenRouter(model, baseURL, apiKey, ref, title string) LLMService {
 			r.Header.Set("HTTP-Referer", ref)
 			r.Header.Set("X-Title", title)
 		},
-		client: defaultHTTPClient,
+		client: makeHTTPClient(rt),
 	}
 }

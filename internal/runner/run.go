@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/debug"
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
@@ -108,12 +109,19 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 	_ = authUpdate
 
-	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
+	adapterCfg := litellm.AdapterConfig{
 		ProviderID: providerID,
 		Model:      modelName,
 		BaseURL:    baseURL,
 		APIKey:     apiKey,
-	})
+	}
+
+	// If debug recorder is enabled, wrap the default transport for HTTP trace recording
+	if s.debugRecorder != nil {
+		adapterCfg.RoundTripper = debug.NewRecordingRoundTripper(nil, s.debugRecorder, sessionID, providerID)
+	}
+
+	llm, err := litellm.NewLLMService(adapterCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
