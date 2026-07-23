@@ -52,6 +52,11 @@ type UISession struct {
 	ActiveSkills []string  `json:"active_skills"` // names of activated skills
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Ring buffer of last N rendered message IDs for dedup on reconnect.
+	// Capacity 10; oldest are evicted.
+	RenderedMessageIDs   []string `json:"rendered_message_ids,omitempty"`
+	renderedMessageIDIdx int      // next write index in the ring buffer
 }
 
 // Manager manages in-memory UI sessions with browser ownership.
@@ -489,4 +494,44 @@ func (m *Manager) ActiveSkills(id string) []string {
 	result := make([]string, len(s.ActiveSkills))
 	copy(result, s.ActiveSkills)
 	return result
+}
+
+// ringBufferCap is the max number of rendered message IDs tracked per session.
+const ringBufferCap = 10
+
+// AddRenderedMessageID adds a message ID to the session's dedup ring buffer.
+// No-op if session not found.
+func (m *Manager) AddRenderedMessageID(id, messageID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return
+	}
+	if messageID == "" {
+		return
+	}
+	// Initialize ring buffer on first use
+	if s.RenderedMessageIDs == nil {
+		s.RenderedMessageIDs = make([]string, ringBufferCap)
+		s.renderedMessageIDIdx = 0
+	}
+	s.RenderedMessageIDs[s.renderedMessageIDIdx] = messageID
+	s.renderedMessageIDIdx = (s.renderedMessageIDIdx + 1) % ringBufferCap
+}
+
+// HasRenderedMessageID returns true if the message ID is in the session's dedup ring buffer.
+func (m *Manager) HasRenderedMessageID(id, messageID string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[id]
+	if s == nil || s.RenderedMessageIDs == nil || messageID == "" {
+		return false
+	}
+	for _, mid := range s.RenderedMessageIDs {
+		if mid == messageID {
+			return true
+		}
+	}
+	return false
 }
