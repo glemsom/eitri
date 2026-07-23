@@ -33,8 +33,18 @@ type DumpOptions struct {
 	Traces []*HTTPTrace `json:"traces,omitempty"`
 	// In-flight HTTP traces.
 	InFlightTraces []*HTTPTrace `json:"in_flight_traces,omitempty"`
+	// Conversation context: last user message, last assistant message, turn number.
+	ConversationContext *ConversationContext `json:"conversation_context,omitempty"`
 	// Buffered structured log entries leading up to the crash.
 	Logs []LogEntry `json:"logs,omitempty"`
+}
+
+// ConversationContext captures the conversation leading up to a crash.
+type ConversationContext struct {
+	LastUserMessage      string `json:"last_user_message,omitempty"`
+	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
+	TurnNumber           int    `json:"turn_number,omitempty"`
+	TotalTokensUsed      int    `json:"total_tokens_used,omitempty"`
 }
 
 // RuntimeSummary captures lightweight runtime state for the crash dump.
@@ -99,23 +109,25 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		return "", fmt.Errorf("cannot create crash dir %s: %w", crashDir, err)
 	}
 
-	// 1. crash.json — error chain, version, sanitized config, runtime summary
+	// 1. crash.json — error chain, version, sanitized config, runtime summary, conversation context
 	crashInfo := struct {
-		Error          string                 `json:"error"`
-		ErrorChain     string                 `json:"error_chain,omitempty"`
-		Stack          string                 `json:"stack,omitempty"`
-		Version        string                 `json:"version"`
-		Timestamp      time.Time              `json:"timestamp"`
-		ConfigSummary  map[string]interface{} `json:"config_summary,omitempty"`
-		RuntimeSummary *RuntimeSummary        `json:"runtime_summary,omitempty"`
+		Error               string                 `json:"error"`
+		ErrorChain          string                 `json:"error_chain,omitempty"`
+		Stack               string                 `json:"stack,omitempty"`
+		Version             string                 `json:"version"`
+		Timestamp           time.Time              `json:"timestamp"`
+		ConfigSummary       map[string]interface{} `json:"config_summary,omitempty"`
+		RuntimeSummary      *RuntimeSummary        `json:"runtime_summary,omitempty"`
+		ConversationContext *ConversationContext   `json:"conversation_context,omitempty"`
 	}{
-		Error:          opts.Error,
-		ErrorChain:     opts.ErrorChain,
-		Stack:          opts.Stack,
-		Version:        opts.Version,
-		Timestamp:      ts,
-		ConfigSummary:  opts.ConfigSummary,
-		RuntimeSummary: opts.RuntimeSummary,
+		Error:               opts.Error,
+		ErrorChain:          opts.ErrorChain,
+		Stack:               opts.Stack,
+		Version:             opts.Version,
+		Timestamp:           ts,
+		ConfigSummary:       opts.ConfigSummary,
+		RuntimeSummary:      opts.RuntimeSummary,
+		ConversationContext: opts.ConversationContext,
 	}
 
 	if err := writeJSONFile(filepath.Join(crashDir, "crash.json"), crashInfo); err != nil {

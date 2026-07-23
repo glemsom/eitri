@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
@@ -130,7 +131,9 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		maxTurns = 10
 	}
 
-	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyAdapter, nil, nil, batchID, cfg.ContextWindowTokens, nil, nil)
+	// Track turns for conversation context
+	var turns int
+	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyAdapter, nil, nil, batchID, cfg.ContextWindowTokens, nil, &turns)
 
 	// If streams are still open (e.g., RunAgent returned early due to context
 	// cancellation before it could broadcast a done/error event), close them
@@ -144,6 +147,14 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	content := sseState.BufferString()
 
+	// Capture conversation context before session is closed
+	lastUserMsg, lastAssistantMsg := extractLastMessages(sessionMgr, batchID)
+	s.setBatchConversationContext(&debug.ConversationContext{
+		LastUserMessage:      lastUserMsg,
+		LastAssistantMessage: lastAssistantMsg,
+		TurnNumber:           turns,
+	})
+
 	if runErr != nil {
 		slog.Warn("batch run finished with error",
 			slog.String("error", runErr.Error()),
@@ -156,4 +167,33 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	}
 
 	return content, runErr
+}
+
+// extractLastMessages extracts the last user and assistant messages from the
+// session manager's history for the given session ID. Returns empty strings
+// if no messages of that role are found.
+func extractLastMessages(sessionMgr *history.SessionManager, sessionID string) (lastUser, lastAssistant string) {
+	history := sessionMgr.History(sessionID)
+	if history == nil {
+		return "", ""
+	}
+	// Walk backwards through history to find the last user and assistant messages.
+	// The system prompt is the first message; skip it.
+	for i := len(history) - 1; i >= 0; i-- {
+		msg := history[i]
+		switch msg.Role {
+		case "user":
+			if lastUser == "" {
+				lastUser = msg.Content
+			}
+		case "assistant":
+			if lastAssistant == "" {
+				lastAssistant = msg.Content
+			}
+		}
+		if lastUser != "" && lastAssistant != "" {
+			break
+		}
+	}
+	return lastUser, lastAssistant
 }
