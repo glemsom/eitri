@@ -77,6 +77,20 @@ func TestWriteCrashDump_Basic(t *testing.T) {
 				DurationMs: 500,
 			},
 		},
+		Logs: []LogEntry{
+			{
+				Timestamp: time.Now(),
+				Level:     "INFO",
+				Message:   "server started",
+				Attrs:     map[string]any{"port": 8080},
+			},
+			{
+				Timestamp: time.Now(),
+				Level:     "WARN",
+				Message:   "rate limit approaching",
+				Attrs:     map[string]any{"retry_after": 30},
+			},
+		},
 	}
 
 	crashDir, err := WriteCrashDump(opts)
@@ -89,8 +103,8 @@ func TestWriteCrashDump_Basic(t *testing.T) {
 		t.Fatalf("crash dir %s does not exist", crashDir)
 	}
 
-	// Verify all 4 files exist
-	expectedFiles := []string{"crash.json", "sessions.json", "traces.json", "goroutines.txt"}
+	// Verify all 5 expected files exist
+	expectedFiles := []string{"crash.json", "sessions.json", "traces.json", "goroutines.txt", "logs.json"}
 	for _, f := range expectedFiles {
 		path := filepath.Join(crashDir, f)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -150,6 +164,49 @@ func TestWriteCrashDump_NoSessions(t *testing.T) {
 	}
 	if len(data) == 0 {
 		t.Fatalf("goroutines.txt is empty")
+	}
+
+	// logs.json should not exist (Logs was nil)
+	logsPath := filepath.Join(crashDir, "logs.json")
+	if _, err := os.Stat(logsPath); !os.IsNotExist(err) {
+		t.Fatalf("logs.json should not exist when Logs is nil")
+	}
+}
+
+func TestWriteCrashDump_LogsContent(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	opts := DumpOptions{
+		Error:   "log test",
+		Version: "dev",
+		Logs: []LogEntry{
+			{Timestamp: time.Now(), Level: "INFO", Message: "test log", Attrs: map[string]any{"key": "val"}},
+		},
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	logsPath := filepath.Join(crashDir, "logs.json")
+	if _, err := os.Stat(logsPath); os.IsNotExist(err) {
+		t.Fatalf("logs.json should exist when Logs is non-empty")
+	}
+
+	data, err := os.ReadFile(logsPath)
+	if err != nil {
+		t.Fatalf("read logs.json: %v", err)
+	}
+	if !strings.Contains(string(data), "test log") {
+		t.Fatalf("logs.json missing log message")
+	}
+	if !strings.Contains(string(data), "INFO") {
+		t.Fatalf("logs.json missing level")
+	}
+	if !strings.Contains(string(data), "val") {
+		t.Fatalf("logs.json missing attr value")
 	}
 }
 
