@@ -33,6 +33,8 @@ type DumpOptions struct {
 	Traces []*HTTPTrace `json:"traces,omitempty"`
 	// In-flight HTTP traces.
 	InFlightTraces []*HTTPTrace `json:"in_flight_traces,omitempty"`
+	// Buffered structured log entries leading up to the crash.
+	Logs []LogEntry `json:"logs,omitempty"`
 }
 
 // RuntimeSummary captures lightweight runtime state for the crash dump.
@@ -77,7 +79,8 @@ func SanitizeConfig(cfg *config.Config) map[string]interface{} {
 }
 
 // WriteCrashDump writes a structured crash dump to ~/.eitri/crash-dump/crash-<timestamp>/.
-// Creates the directory and all 4 files: crash.json, sessions.json, traces.json, goroutines.txt.
+// Creates the directory and writes crash.json, sessions.json, traces.json, goroutines.txt,
+// and logs.json (if any log entries were captured).
 // Returns the path to the crash dump directory, or an error.
 func WriteCrashDump(opts DumpOptions) (string, error) {
 	home, err := os.UserHomeDir()
@@ -148,6 +151,13 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 
 	if err := pprof.Lookup("goroutine").WriteTo(f, 2); err != nil {
 		return "", fmt.Errorf("write goroutine dump: %w", err)
+	}
+
+	// 5. logs.json — buffered structured log entries
+	if len(opts.Logs) > 0 {
+		if err := writeJSONFile(filepath.Join(crashDir, "logs.json"), opts.Logs); err != nil {
+			return "", fmt.Errorf("write logs.json: %w", err)
+		}
 	}
 
 	return crashDir, nil

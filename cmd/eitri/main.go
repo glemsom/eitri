@@ -51,8 +51,13 @@ func cleanupRuntime(server *api.Server, runSvc *runner.RunService) {
 // Default "dev" indicates an unversioned development build.
 var Version = "dev"
 
+// logBuffer is the global ring buffer handler that captures log entries for crash dumps.
+var logBuffer *debug.RingBufferHandler
+
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	inner := slog.NewJSONHandler(os.Stdout, nil)
+	logBuffer = debug.NewRingBufferHandler(inner, 0) // default capacity 100
+	slog.SetDefault(slog.New(logBuffer))
 
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout")
@@ -117,6 +122,7 @@ func main() {
 					},
 					Traces:         debugRecorder.List(0, "", ""),
 					InFlightTraces: debugRecorder.InFlight(),
+					Logs:           logBuffer.Entries(),
 				})
 				if dumpErr != nil {
 					fmt.Fprintf(os.Stderr, "Failed to write crash dump: %v\n", dumpErr)
@@ -175,6 +181,7 @@ func main() {
 			Sessions:       allSessions,
 			Traces:         debugRecorder.List(0, "", ""),
 			InFlightTraces: debugRecorder.InFlight(),
+			Logs:           logBuffer.Entries(),
 		})
 		if dumpErr != nil {
 			slog.Error("Failed to write crash dump", slog.String("error", dumpErr.Error()))
