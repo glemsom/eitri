@@ -220,6 +220,9 @@ Response fields:
 - `max_turns`: turn limit per run.
 - `command_timeout`: per-command timeout in seconds.
 - `has_api_key`: boolean — whether an API key is set (value never exposed).
+- `completed_run_retention_ms`: how long (ms) a completed run stays in the
+  active map, allowing SSE subscribers to replay historical events. Omitted
+  when no RunService is configured.
 
 ## Data Flow
 

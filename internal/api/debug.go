@@ -149,7 +149,20 @@ func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDebugConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.loadConfig()
 	cfgSummary := sanitizeConfig(cfg)
-	writeJSON(w, http.StatusOK, cfgSummary)
+
+	resp := struct {
+		*sanitizedConfig
+		CompletedRunRetentionMs int64 `json:"completed_run_retention_ms,omitempty"`
+	}{
+		sanitizedConfig:         cfgSummary,
+		CompletedRunRetentionMs: 0,
+	}
+
+	if s.config.RunService != nil {
+		resp.CompletedRunRetentionMs = s.config.RunService.CompletedRunRetentionMs()
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDebugHealth(w http.ResponseWriter, r *http.Request) {
