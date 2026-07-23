@@ -854,7 +854,8 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 
 	// inner mock will be called if retry happens (which would be the bug)
 	llm := &transientErrorLLM{
-		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
+		// Genuine bad request — model not found, not an upstream failure
+		transientErr: fmt.Errorf("Provider returned HTTP 400: model \"unknown-model\" not found for provider"),
 		inner: newMockLLM([]mockTurn{
 			{tokens: []tokenEvent{{content: "should not be reached"}}},
 		}),
@@ -885,6 +886,39 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 	}
 	if len(types) == 1 && types[0] != "error" {
 		t.Fatalf("expected error event type, got: %s", types[0])
+	}
+}
+
+func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	inner := newMockLLM([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
+	})
+	llm := &transientErrorLLM{
+		// Upstream request failure proxied as 400 — should be retried
+		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
+		inner:        inner,
+	}
+
+	req := litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	if err != nil {
+		t.Fatalf("RunAgent error after retry of upstream failure 400: %v", err)
+	}
+
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	if len(types) < 2 || types[len(types)-1] != "done" {
+		t.Fatalf("expected run to succeed after retry, events: %v", types)
 	}
 }
 

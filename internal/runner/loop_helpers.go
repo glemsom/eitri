@@ -317,7 +317,13 @@ func isRetryableLLMError(err error) bool {
 	}
 	// Don't retry bad request (400) — indicates a problem with the request itself
 	// that won't resolve by re-sending (e.g. unknown model, invalid parameters).
-	if strings.Contains(msg, "400") || strings.Contains(msg, "Bad Request") {
+	// Exception: some providers (e.g. OpenCode Go) return 400 for upstream
+	// failures (e.g. "Upstream request failed"), which are transient and
+	// should be retried.
+	if strings.Contains(msg, "Bad Request") {
+		return false
+	}
+	if strings.Contains(msg, "400") && !strings.Contains(msg, "Upstream") {
 		return false
 	}
 	// Everything else (5xx, upstream failures, connection errors) is potentially transient
