@@ -224,7 +224,13 @@ func RunAgent(
 			}
 
 			// Broadcast tool call event
-			sseWriter.ToolCall(tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+			// Sanitize args: json.RawMessage with empty content breaks marshaling.
+			// LLMs sometimes produce empty arguments (e.g. for hallucinated tools).
+			argsForDisplay := args
+			if len(argsForDisplay) == 0 {
+				argsForDisplay = json.RawMessage("{}")
+			}
+			sseWriter.ToolCall(tc.Function.Name, argsForDisplay)
 
 			// Dispatch tool via registry
 			blocks, err := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
