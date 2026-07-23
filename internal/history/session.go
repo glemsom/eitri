@@ -22,6 +22,7 @@ const (
 - Prefer small, focused edits over large rewrites. Preserve existing style.
 - Remove imports or code left unused by your changes.
 - Before reading a file, first use grep to locate relevant code by regex. Then use read with start_line and end_line (populated from grep's output line numbers) to read only the needed section. Avoid reading entire files unless grep confirms the full content is relevant.
+- The chat UI renders Markdown (headings, tables, lists, code blocks, blockquotes, math $...$). Use it to structure responses clearly.
 
 ## Tool usage
 - When you need to ask the user a multi-choice question (e.g. which option to proceed with, which fix to apply), use render_quick_replies with the options array instead of asking in plain text — it renders clickable buttons the user can tap.`
