@@ -20,6 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/debug"
 
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -107,11 +108,13 @@ func main() {
 		addr = "127.0.0.1:8080"
 	}
 
+	debugRecorder := debug.NewRecorder(0) // default capacity 20
 	sessionMgr := session.NewManager(10)
 	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historyMgr,
+		DebugRecorder:     debugRecorder,
 	})
 
 	skillsSvc := skills.NewService()
@@ -127,6 +130,7 @@ func main() {
 		SkillsService:  skillsSvc,
 		Logger:         slog.Default(),
 		Version:        Version,
+		DebugRecorder:  debugRecorder,
 		StartTime:      time.Now(),
 	})
 

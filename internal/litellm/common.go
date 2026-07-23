@@ -244,3 +244,18 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 
 	return resp, nil
 }
+
+// makeHTTPClient returns an http.Client using the given RoundTripper,
+// or defaultHTTPClient if rt is nil.
+func makeHTTPClient(rt http.RoundTripper) *http.Client {
+	if rt == nil {
+		return defaultHTTPClient
+	}
+	if rt == http.DefaultTransport {
+		return defaultHTTPClient
+	}
+	return &http.Client{
+		Transport: rt,
+		Timeout:   5 * time.Minute,
+	}
+}

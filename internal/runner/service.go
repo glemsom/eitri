@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -55,8 +56,8 @@ type RunServiceDeps struct {
 	UISessionMgr      *uisession.Manager
 	HistorySessionMgr *history.SessionManager
 	SkillsService     *skills.Service
+	DebugRecorder     *debug.Recorder // optional HTTP trace recorder
 }
-
 // RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
@@ -67,6 +68,7 @@ type RunService struct {
 	uiSessionMgr    *uisession.Manager
 	skillsSvc       *skills.Service
 	historySessionMgr *history.SessionManager
+	debugRecorder       *debug.Recorder
 	persistAuth         PersistAuthFunc
 
 	// Sub-agent tracking
@@ -94,6 +96,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		uiSessionMgr:  deps.UISessionMgr,
 		skillsSvc:     deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
+		debugRecorder:     deps.DebugRecorder,
 		subAgents:     make(map[string]*subAgentRecord),
 		parentCfgs:    make(map[string]RunConfig),
 		browserSubs:   make(map[string]map[uint64]chan BrowserEvent),

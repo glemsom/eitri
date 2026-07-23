@@ -2,6 +2,7 @@
 // and adapter factory for multi-provider chat completions.
 package litellm
 
+import "net/http"
 // Request is a chat completion request.
 type Request struct {
 	Model           string
@@ -84,4 +85,5 @@ type AdapterConfig struct {
 	OpenRouterRef       string // HTTP-Referer for OpenRouter tracking
 	OpenRouterTitle     string // X-Title for OpenRouter tracking
 	SupportsPromptCache bool   // provider supports prompt_cache_key field
+	RoundTripper        http.RoundTripper // optional; if set, adapters use this instead of default transport
 }

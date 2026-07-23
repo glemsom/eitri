@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -129,12 +130,17 @@ func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
 		activeRunCount = s.config.RunService.ActiveRunCount()
 	}
 
+	recordedTraces := 0
+	if s.config.DebugRecorder != nil {
+		recordedTraces = s.config.DebugRecorder.Count()
+	}
+
 	resp := debugRuntimeResponse{
 		Version:            s.config.Version,
 		UpSince:            s.config.StartTime,
 		ActiveRunCount:     activeRunCount,
 		SessionCount:       s.config.SessionManager.Count(),
-		RecordedHTTPTraces: 0, // always 0 until issue #555
+		RecordedHTTPTraces: recordedTraces,
 		ConfigSummary:      cfgSummary,
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -197,4 +203,57 @@ func sessionToSummary(sess *session.UISession) debugSessionSummary {
 		summary.Run = &runInfo{Status: string(sess.Status)}
 	}
 	return summary
+}
+
+func (s *Server) handleDebugHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.config.DebugRecorder == nil {
+		writeError(w, http.StatusNotFound, "debug recorder not enabled")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 0
+	if limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			limit = n
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+	sessionID := r.URL.Query().Get("session_id")
+	providerID := r.URL.Query().Get("provider_id")
+
+	traces := s.config.DebugRecorder.List(limit, sessionID, providerID)
+	inFlight := s.config.DebugRecorder.InFlight()
+
+	result := struct {
+		Traces   []*debug.HTTPTrace `json:"traces"`
+		InFlight []*debug.HTTPTrace `json:"in_flight"`
+	}{
+		Traces:   traces,
+		InFlight: inFlight,
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleDebugHTTPByID(w http.ResponseWriter, r *http.Request) {
+	if s.config.DebugRecorder == nil {
+		writeError(w, http.StatusNotFound, "debug recorder not enabled")
+		return
+	}
+
+	id := r.PathValue("trace_id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing trace id")
+		return
+	}
+
+	trace := s.config.DebugRecorder.Get(debug.TraceID(id))
+	if trace == nil {
+		writeError(w, http.StatusNotFound, "trace not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, trace)
 }

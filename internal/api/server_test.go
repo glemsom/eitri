@@ -22,6 +22,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/debug"
 )
 
 func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
@@ -57,6 +58,7 @@ type testServerOptions struct {
 	copilotOAuth   api.GitHubCopilotOAuthConfig
 	sessionManager *session.Manager
 	skillsService  *skills.Service
+	debugRecorder  *debug.Recorder
 }
 
 func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOptions) *httptest.Server {
@@ -79,6 +81,7 @@ func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOpt
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		CopilotOAuth:   opts.copilotOAuth,
+		DebugRecorder:  opts.debugRecorder,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -4201,5 +4204,231 @@ func TestDebugConfigWithSavedConfig(t *testing.T) {
 	// session_count should be 0
 	if n, ok := runtimeResp["session_count"].(float64); ok && n != 0 {
 		t.Errorf("session_count = %v, want 0", n)
+	}
+}
+
+func TestDebugHTTP_NoRecorder(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestDebugHTTP_List(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 1 {
+		t.Fatalf("traces = %d, want 1", len(body.Traces))
+	}
+	if len(body.InFlight) != 0 {
+		t.Fatalf("in_flight = %d, want 0", len(body.InFlight))
+	}
+}
+
+func TestDebugHTTP_ListEmpty(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 0 {
+		t.Fatalf("traces = %d, want 0", len(body.Traces))
+	}
+}
+
+func TestDebugHTTP_SessionFilter(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("session-a", "p1", "GET", "/path", nil, nil, 200, 0, "")
+	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http?session_id=session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 1 {
+		t.Fatalf("traces = %d, want 1", len(body.Traces))
+	}
+}
+
+func TestDebugHTTP_ProviderFilter(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("s1", "p1", "GET", "/path", nil, nil, 200, 0, "")
+	rec.Record("s2", "p2", "GET", "/path", nil, nil, 200, 0, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http?provider_id=p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 1 {
+		t.Fatalf("traces = %d, want 1", len(body.Traces))
+	}
+}
+
+func TestDebugHTTP_ByID_NotFound(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/http/nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestDebugHTTP_ByID_Success(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	// Get the trace ID from list
+	resp, err := http.Get(server.URL + "/api/debug/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var listBody struct {
+		Traces []struct {
+			ID string `json:"id"`
+		} `json:"traces"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listBody); err != nil {
+		resp.Body.Close()
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if len(listBody.Traces) != 1 {
+		t.Fatalf("traces = %d, want 1", len(listBody.Traces))
+	}
+
+	traceID := listBody.Traces[0].ID
+
+	// Get by ID
+	resp2, err := http.Get(server.URL + "/api/debug/http/" + traceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp2.StatusCode, http.StatusOK)
+	}
+
+	var trace map[string]interface{}
+	if err := json.NewDecoder(resp2.Body).Decode(&trace); err != nil {
+		t.Fatal(err)
+	}
+
+	if trace["id"] != traceID {
+		t.Fatalf("id = %v, want %s", trace["id"], traceID)
+	}
+	if trace["session_id"] != "s1" {
+		t.Fatalf("session_id = %v, want s1", trace["session_id"])
+	}
+	if trace["provider_id"] != "p1" {
+		t.Fatalf("provider_id = %v, want p1", trace["provider_id"])
+	}
+	if trace["status"] != float64(200) {
+		t.Fatalf("status = %v, want 200", trace["status"])
 	}
 }

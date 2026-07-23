@@ -49,7 +49,7 @@ func (s *openAICompatible) ChatStream(ctx context.Context, req Request) (<-chan 
 }
 
 // NewOpenAI creates an OpenAI-compatible adapter (OpenCode Go route).
-func NewOpenAI(model, baseURL, apiKey string) LLMService {
+func NewOpenAI(model, baseURL, apiKey string, rt http.RoundTripper) LLMService {
 	return &openAICompatible{
 		model:    model,
 		baseURL:  strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
@@ -58,7 +58,7 @@ func NewOpenAI(model, baseURL, apiKey string) LLMService {
 		setHeaders: func(r *http.Request) {
 			r.Header.Set("Authorization", "Bearer "+apiKey)
 		},
-		client: defaultHTTPClient,
+		client: makeHTTPClient(rt),
 	}
 }
 
