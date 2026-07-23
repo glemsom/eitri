@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	runtimeDebug "runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -104,8 +105,10 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
 
 				dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
-					Error:   err.Error(),
-					Version: Version,
+					Error:       err.Error(),
+					ErrorChain:  fmt.Sprintf("%+v", err),
+					Stack:       string(runtimeDebug.Stack()),
+					Version:     Version,
 					ConfigSummary: debug.SanitizeConfig(cfg),
 					RuntimeSummary: &debug.RuntimeSummary{
 						ActiveRunCount:      0,
@@ -158,9 +161,10 @@ func main() {
 			cfgSummary = debug.SanitizeConfig(crashCfg)
 		}
 		dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
-			Error:   err.Error(),
-			Stack:   string(stack),
-			Version: Version,
+			Error:       err.Error(),
+			ErrorChain:  fmt.Sprintf("%+v", err),
+			Stack:       string(stack),
+			Version:     Version,
 			ConfigSummary: cfgSummary,
 			RuntimeSummary: &debug.RuntimeSummary{
 				UpSince:            time.Now(),

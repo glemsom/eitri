@@ -1,6 +1,7 @@
 package debug
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -299,5 +300,93 @@ func TestWriteCrashDump_TracesJSONStructure(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"in_flight":`) {
 		t.Fatalf("traces.json missing 'in_flight' key")
+	}
+}
+
+func TestWriteCrashDump_ErrorChain(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Simulate a wrapped error chain (like fmt.Errorf with %w produces).
+	baseErr := fmt.Errorf("network error: connection refused")
+	wrappedErr := fmt.Errorf("provider call failed: %w", baseErr)
+	finalErr := fmt.Errorf("batch run error: %w", wrappedErr)
+
+	opts := DumpOptions{
+		Error:       finalErr.Error(),
+		ErrorChain:  fmt.Sprintf("%+v", finalErr),
+		Stack:       "goroutine 1 [running]:\nmain.doStuff()\n\t/path/to/main.go:99",
+		Version:     "0.2.0",
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// Verify backward-compatible "error" field exists
+	if !strings.Contains(string(data), `"error":`) {
+		t.Fatalf("crash.json missing 'error' field")
+	}
+	if !strings.Contains(string(data), `"batch run error: provider call failed: network error: connection refused"`) {
+		t.Fatalf("crash.json missing full error chain in 'error' field")
+	}
+
+	// Verify "error_chain" field exists
+	if !strings.Contains(string(data), `"error_chain":`) {
+		t.Fatalf("crash.json missing 'error_chain' field")
+	}
+
+	// Verify the error chain contains all levels of wrapping
+	chainContent := string(data)
+	if !strings.Contains(chainContent, "network error: connection refused") {
+		t.Fatalf("error_chain missing innermost error")
+	}
+	if !strings.Contains(chainContent, "provider call failed") {
+		t.Fatalf("error_chain missing middle wrapping error")
+	}
+	if !strings.Contains(chainContent, "batch run error") {
+		t.Fatalf("error_chain missing outermost error")
+	}
+
+	// Verify "stack" field is preserved
+	if !strings.Contains(string(data), `/path/to/main.go:99`) {
+		t.Fatalf("crash.json missing stack frame info")
+	}
+}
+
+func TestWriteCrashDump_ErrorChainEmpty(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// When ErrorChain is empty, the field should be omitted from JSON.
+	opts := DumpOptions{
+		Error:   "simple error",
+		Version: "dev",
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// "error" field must be present
+	if !strings.Contains(string(data), `"error":`) {
+		t.Fatalf("crash.json missing 'error' field")
+	}
+
+	// "error_chain" should not appear when empty (omitempty)
+	if strings.Contains(string(data), `"error_chain":`) {
+		t.Fatalf("crash.json should not have 'error_chain' field when empty")
 	}
 }
