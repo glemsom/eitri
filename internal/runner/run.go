@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	runtimeDebug "runtime/debug"
 	"time"
 
 	"github.com/glemsom/eitri/internal/litellm"
@@ -207,7 +208,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 		confirmer := newFuncConfirmer(s.confirmPath)
 
-		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens)
+		err := RunAgent(runCtx, llm, req, maxTurnsVal, maxHistory, w, toolReg, historyMgr, confirmer, s.uiSessionMgr, sessionID, contextWindowTokens, s.crashDumpFunc)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()
@@ -235,6 +236,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				return
 			}
 
+			// Fatal error not covered above — trigger crash dump
+			if s.crashDumpFunc != nil {
+				s.crashDumpFunc(err, runtimeDebug.Stack())
+			}
 			return
 		}
 

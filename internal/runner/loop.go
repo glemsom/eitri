@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	runtimeDebug "runtime/debug"
 	"time"
 
 	"github.com/glemsom/eitri/internal/litellm"
@@ -64,9 +65,27 @@ func RunAgent(
 	uisessionMgr *uisession.Manager,
 	sessionID string,
 	contextWindow int,
+	crashDumpFunc func(err error, stack []byte), // optional; called on panic
 ) error {
 	if maxTurns <= 0 {
 		maxTurns = 10
+	}
+
+	// Panic recovery: write crash dump then re-panic
+	if crashDumpFunc != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				var err error
+				switch x := r.(type) {
+				case error:
+					err = x
+				default:
+					err = fmt.Errorf("panic: %v", x)
+				}
+				crashDumpFunc(err, runtimeDebug.Stack())
+				panic(r)
+			}
+		}()
 	}
 
 	// Helper to broadcast context_update if enabled and historyMgr is available.

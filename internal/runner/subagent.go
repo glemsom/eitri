@@ -236,7 +236,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		w := runstate.NewWriter(sseState)
 		historyMgr := newRequestHistoryManager(req)
 
-		runErr := RunAgent(subCtx, llm, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0)
+		runErr := RunAgent(subCtx, llm, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0, nil)
 
 		// Persist sub-agent response to child UI session
 		if record.ChildSessionID != "" {
