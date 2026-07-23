@@ -294,3 +294,56 @@ func TestState_Counters_ResetOnNewRun(t *testing.T) {
 		t.Errorf("state2 ReplayCount = %d, want 0", got)
 	}
 }
+
+func TestState_Broadcast_SetsTimestampBeforeHistory(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	w.Token("hello")
+
+	history := state.History()
+	if len(history) == 0 {
+		t.Fatal("expected at least 1 history entry after Broadcast")
+	}
+	for i, evt := range history {
+		if evt.Timestamp.IsZero() {
+			t.Errorf("history[%d] has zero Timestamp (set after append)", i)
+		}
+	}
+}
+
+func TestState_BroadcastDone_SetsTimestampBeforeHistory(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	state.BroadcastDone("mid-1", nil)
+
+	history := state.History()
+	if len(history) == 0 {
+		t.Fatal("expected at least 1 history entry after BroadcastDone")
+	}
+	for i, evt := range history {
+		if evt.Timestamp.IsZero() {
+			t.Errorf("history[%d] has zero Timestamp in BroadcastDone", i)
+		}
+	}
+}
+
+func TestState_BroadcastError_SetsTimestampBeforeHistory(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	state.BroadcastError("test error")
+
+	history := state.History()
+	if len(history) == 0 {
+		t.Fatal("expected at least 1 history entry after BroadcastError")
+	}
+	for i, evt := range history {
+		if evt.Timestamp.IsZero() {
+			t.Errorf("history[%d] has zero Timestamp in BroadcastError", i)
+		}
+	}
+}
