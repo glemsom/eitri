@@ -325,6 +325,43 @@ func (s *RunService) CompletedRunRetentionMs() int64 {
 	return completedRunRetention.Milliseconds()
 }
 
+// RunSSESnapshot holds SSE diagnostic counters and history for one active run,
+// collected atomically under RunService.mu.
+type RunSSESnapshot struct {
+	SubscriberCount uint64
+	ReplayCount     uint64
+	History         []runstate.SSEEvent
+}
+
+// ActiveRunSSESnapshot returns a snapshot of SSE counters and history for a session,
+// collected atomically under RunService.mu. Returns nil if no active run.
+// The handler must not access RunState.SSE fields outside this method.
+func (s *RunService) ActiveRunSSESnapshot(sessionID string) *RunSSESnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, exists := s.active[sessionID]
+	if !exists {
+		return nil
+	}
+	select {
+	case <-state.Done:
+		return nil
+	default:
+	}
+
+	history := state.SSE.History()
+	if len(history) > 50 {
+		history = history[len(history)-50:]
+	}
+
+	return &RunSSESnapshot{
+		SubscriberCount: state.SSE.SubscriberCount(),
+		ReplayCount:     state.SSE.ReplayCount(),
+		History:         history,
+	}
+}
+
 
 // CloseSession cancels the active run and closes the session.
 func (s *RunService) CloseSession(sessionID string) error {
