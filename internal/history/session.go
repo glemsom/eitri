@@ -5,7 +5,7 @@ package history
 import (
 	"sync"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 const (
@@ -37,7 +37,7 @@ type SessionManager struct {
 }
 
 type llmSession struct {
-	messages     []litellm.Message
+	messages     []llm.Message
 	systemPrompt string
 }
 
@@ -62,7 +62,7 @@ func (m *SessionManager) Create(id string) {
 		return
 	}
 	m.sessions[id] = &llmSession{
-		messages:     make([]litellm.Message, 0, 16),
+		messages:     make([]llm.Message, 0, 16),
 		systemPrompt: DefaultSystemPrompt,
 	}
 }
@@ -96,7 +96,7 @@ func (m *SessionManager) AppendUser(id, text string) {
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, litellm.Message{
+	s.messages = append(s.messages, llm.Message{
 		Role:    "user",
 		Content: text,
 	})
@@ -105,14 +105,14 @@ func (m *SessionManager) AppendUser(id, text string) {
 
 // AppendAssistant appends an assistant message with text content and optional
 // tool calls. No-op if session does not exist.
-func (m *SessionManager) AppendAssistant(id, content string, toolCalls []litellm.ToolCall) {
+func (m *SessionManager) AppendAssistant(id, content string, toolCalls []llm.ToolCall) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, litellm.Message{
+	s.messages = append(s.messages, llm.Message{
 		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
@@ -128,7 +128,7 @@ func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool)
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, litellm.Message{
+	s.messages = append(s.messages, llm.Message{
 		Role:       "tool",
 		ToolCallID: toolUseID,
 		Content:    content,
@@ -138,7 +138,7 @@ func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool)
 
 // History returns a copy of the conversation history with the system prompt
 // prepended. Returns nil if session does not exist.
-func (m *SessionManager) History(id string) []litellm.Message {
+func (m *SessionManager) History(id string) []llm.Message {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	s := m.sessions[id]
@@ -151,13 +151,13 @@ func (m *SessionManager) History(id string) []litellm.Message {
 	if sysPrompt == "" {
 		sysPrompt = DefaultSystemPrompt
 	}
-	sysMsg := litellm.Message{
+	sysMsg := llm.Message{
 		Role:    "system",
 		Content: sysPrompt,
 	}
 
 	// Deep copy messages
-	messages := make([]litellm.Message, 0, 1+len(s.messages))
+	messages := make([]llm.Message, 0, 1+len(s.messages))
 	messages = append(messages, sysMsg)
 	messages = append(messages, s.messages...)
 
@@ -173,7 +173,7 @@ func (m *SessionManager) Close(id string) {
 
 // trimExchangesLocked removes oldest exchanges when the user message count
 // exceeds maxExchanges. Must be called with m.mu held.
-func (m *SessionManager) trimExchangesLocked(messages []litellm.Message) []litellm.Message {
+func (m *SessionManager) trimExchangesLocked(messages []llm.Message) []llm.Message {
 	if m.maxExchanges <= 0 {
 		return messages
 	}

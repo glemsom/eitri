@@ -9,7 +9,7 @@ import (
 	runtimeDebug "runtime/debug"
 	"time"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
@@ -54,8 +54,8 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // confirmation-dependent operations return errors to the LLM.
 func RunAgent(
 	ctx context.Context,
-	llm litellm.LLMService,
-	req *litellm.Request,
+	svc llm.LLMService,
+	req *llm.Request,
 	maxTurns int,
 	maxHistory int,
 	sseWriter *runstate.Writer,
@@ -110,7 +110,7 @@ func RunAgent(
 
 	// Compute tool definitions once before the loop, then reuse on every turn.
 	// This avoids re-iterating the registry and allocating new slices per turn.
-	var toolDefs []litellm.ToolDef
+	var toolDefs []llm.ToolDef
 	if tools != nil {
 		toolDefs = toolDefsFromRegistry(tools)
 	}
@@ -133,11 +133,11 @@ func RunAgent(
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
 		var (
-			stream <-chan litellm.StreamEvent
+			stream <-chan llm.StreamEvent
 			err    error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			stream, err = llm.ChatStream(ctx, *req)
+			stream, err = svc.ChatStream(ctx, *req)
 			if err == nil {
 				break
 			}
@@ -354,7 +354,7 @@ func RunAgent(
 
 // isRequestBasedHistory returns true when the history manager is the
 // request-based variant, meaning history is stored directly on the
-// *litellm.Request and must be trimmed by RunAgent when caps are set.
+// *llm.Request and must be trimmed by RunAgent when caps are set.
 func isRequestBasedHistory(mgr HistoryManager) bool {
 	_, ok := mgr.(*requestHistoryManager)
 	return ok

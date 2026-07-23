@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 )
@@ -63,7 +63,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	}
 
 	// Build LLM service
-	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
+	llmSvc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: cfg.ProviderID,
 		Model:      cfg.ModelName,
 		BaseURL:    cfg.BaseURL,
@@ -77,14 +77,14 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 
 	// Create request with system prompt and user message
-	req := &litellm.Request{
+	req := &llm.Request{
 		Model:  cfg.ModelName,
 		Stream: true,
 	}
 	if cfg.ThinkingLevel != "" {
 		req.ReasoningEffort = cfg.ThinkingLevel
 	}
-	req.Messages = []litellm.Message{
+	req.Messages = []llm.Message{
 		{Role: "system", Content: fullSystemPrompt},
 		{Role: "user", Content: prompt},
 	}
@@ -119,7 +119,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		maxTurns = 10
 	}
 
-	runErr := RunAgent(runCtx, llm, req, maxTurns, cfg.MaxHistory, w, toolReg, historyMgr, nil, nil, "", cfg.ContextWindowTokens, nil, nil)
+	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyMgr, nil, nil, "", cfg.ContextWindowTokens, nil, nil)
 
 	// If streams are still open (e.g., RunAgent returned early due to context
 	// cancellation before it could broadcast a done/error event), close them

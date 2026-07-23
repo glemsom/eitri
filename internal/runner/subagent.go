@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -103,7 +103,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	}
 
 	// Build LLM service (same provider/model as parent)
-	llm, err := litellm.NewLLMService(litellm.AdapterConfig{
+	llmSvc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: parentCfg.ProviderID,
 		Model:      parentCfg.ModelName,
 		BaseURL:    parentCfg.BaseURL,
@@ -117,7 +117,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	toolReg := buildBaseToolRegistry(parentCfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 
 	// Create request and set up messages
-	req := &litellm.Request{
+	req := &llm.Request{
 		Model:  parentCfg.ModelName,
 		Stream: true,
 	}
@@ -130,7 +130,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	if parentCfg.ThinkingLevel != "" {
 		req.ReasoningEffort = parentCfg.ThinkingLevel
 	}
-	req.Messages = []litellm.Message{
+	req.Messages = []llm.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: task},
 	}
@@ -236,7 +236,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		w := runstate.NewWriter(sseState)
 		historyMgr := newRequestHistoryManager(req)
 
-		runErr := RunAgent(subCtx, llm, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0, nil, nil)
+		runErr := RunAgent(subCtx, llmSvc, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0, nil, nil)
 
 		// Persist sub-agent response to child UI session
 		if record.ChildSessionID != "" {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -32,7 +32,7 @@ func newSessionHistoryManager(sessionMgr *history.SessionManager, uisessionMgr *
 
 // History returns the conversation history from the session manager.
 // The ignored parameter is only present to satisfy the interface signature.
-func (m *sessionHistoryManager) History(_ string) []litellm.Message {
+func (m *sessionHistoryManager) History(_ string) []llm.Message {
 	if m.sessionMgr == nil {
 		return nil
 	}
@@ -40,7 +40,7 @@ func (m *sessionHistoryManager) History(_ string) []litellm.Message {
 }
 
 // AppendAssistant appends an assistant message to the session manager.
-func (m *sessionHistoryManager) AppendAssistant(_ string, content string, toolCalls []litellm.ToolCall) {
+func (m *sessionHistoryManager) AppendAssistant(_ string, content string, toolCalls []llm.ToolCall) {
 	if m.sessionMgr == nil {
 		return
 	}
@@ -58,27 +58,27 @@ func (m *sessionHistoryManager) AppendTool(_ string, toolCallID, content string,
 // ── requestHistoryManager ──────────────────────────────────────────────────
 
 // requestHistoryManager implements HistoryManager for the headless/direct-
-// messages path. It wraps *litellm.Request and appends messages directly
+// messages path. It wraps *llm.Request and appends messages directly
 // to req.Messages. The caller must ensure the request already has its
 // initial messages set (system + user). History() simply returns the current
 // req.Messages.
 type requestHistoryManager struct {
-	req *litellm.Request
+	req *llm.Request
 }
 
 // newRequestHistoryManager creates a requestHistoryManager.
-func newRequestHistoryManager(req *litellm.Request) *requestHistoryManager {
+func newRequestHistoryManager(req *llm.Request) *requestHistoryManager {
 	return &requestHistoryManager{req: req}
 }
 
 // History returns req.Messages as-is.
-func (m *requestHistoryManager) History(_ string) []litellm.Message {
+func (m *requestHistoryManager) History(_ string) []llm.Message {
 	return m.req.Messages
 }
 
 // AppendAssistant appends an assistant message to req.Messages.
-func (m *requestHistoryManager) AppendAssistant(_ string, content string, toolCalls []litellm.ToolCall) {
-	m.req.Messages = append(m.req.Messages, litellm.Message{
+func (m *requestHistoryManager) AppendAssistant(_ string, content string, toolCalls []llm.ToolCall) {
+	m.req.Messages = append(m.req.Messages, llm.Message{
 		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
@@ -87,8 +87,8 @@ func (m *requestHistoryManager) AppendAssistant(_ string, content string, toolCa
 
 // AppendTool appends a tool result message to req.Messages.
 func (m *requestHistoryManager) AppendTool(_ string, toolCallID, content string, isError bool) {
-	_ = isError // The error flag is not stored in litellm.Message; content conveys it.
-	m.req.Messages = append(m.req.Messages, litellm.Message{
+	_ = isError // The error flag is not stored in llm.Message; content conveys it.
+	m.req.Messages = append(m.req.Messages, llm.Message{
 		Role:       "tool",
 		ToolCallID: toolCallID,
 		Content:    content,

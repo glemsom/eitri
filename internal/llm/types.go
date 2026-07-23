@@ -1,6 +1,6 @@
 // Package litellm defines the LLM transport layer — a lightweight interface
 // and adapter factory for multi-provider chat completions.
-package litellm
+package llm
 
 import "net/http"
 // Request is a chat completion request.

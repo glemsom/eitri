@@ -1,4 +1,4 @@
-package litellm
+package llm
 
 import (
 	"net/http"

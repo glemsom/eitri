@@ -3,13 +3,13 @@ package runstate
 import (
 	"testing"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 func TestComputeContext_EmptyInput(t *testing.T) {
 	t.Parallel()
 
-	result := ComputeContext([]litellm.Message{}, 128000)
+	result := ComputeContext([]llm.Message{}, 128000)
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -40,7 +40,7 @@ func TestComputeContext_EmptyInput(t *testing.T) {
 func TestComputeContext_SystemPromptOnly(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 	}
 
@@ -66,7 +66,7 @@ func TestComputeContext_SystemPromptOnly(t *testing.T) {
 func TestComputeContext_SystemWithSingleExchange(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "Hello!"},
 		{Role: "assistant", Content: "Hi there! How can I help?"},
@@ -96,7 +96,7 @@ func TestComputeContext_SystemWithSingleExchange(t *testing.T) {
 func TestComputeContext_SystemWithHistoryAndSkills(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{
 			Role:    "system",
 			Content: "You are a coder.\n\nActivated skill: bash\n\nYou can run bash commands.",
@@ -133,7 +133,7 @@ func TestComputeContext_SkillTokensExtractedCorrectly(t *testing.T) {
 
 	// System prompt with skill content AFTER "Activated skill"
 	skillContent := "## bash\nYou can run bash commands with full shell access."
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{
 			Role:    "system",
 			Content: "You are a coder.\n\nActivated skill:" + skillContent,
@@ -164,7 +164,7 @@ func TestComputeContext_LargeContent(t *testing.T) {
 		largeContent[i] = 'a'
 	}
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: string(largeContent)},
 	}
@@ -186,7 +186,7 @@ func TestComputeContext_LargeContent(t *testing.T) {
 func TestComputeContext_MultipleSystemMessages(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "First system message."},
 		{Role: "system", Content: "Second system message."},
 		{Role: "user", Content: "Hello!"},
@@ -212,7 +212,7 @@ func TestComputeContext_MultipleSystemMessages(t *testing.T) {
 func TestComputeContext_NoSkillNoActivatedSkill(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "Hi"},
 	}
@@ -230,7 +230,7 @@ func TestComputeContext_NoSkillNoActivatedSkill(t *testing.T) {
 func TestComputeContext_CustomContextWindow(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are helpful."},
 	}
 
@@ -247,10 +247,10 @@ func TestComputeContext_CustomContextWindow(t *testing.T) {
 func TestComputeContext_ToolRoleIsHistory(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "run command"},
-		{Role: "assistant", Content: "", ToolCalls: []litellm.ToolCall{{ID: "call_1", Function: litellm.FunctionCall{Name: "bash", Arguments: "{}"}}}},
+		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: "{}"}}}},
 		{Role: "tool", Content: "output", ToolCallID: "call_1"},
 	}
 
@@ -271,7 +271,7 @@ func TestComputeContext_ToolRoleIsHistory(t *testing.T) {
 func TestComputeContext_CompletionTokensZero(t *testing.T) {
 	t.Parallel()
 
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "You are helpful."},
 	}
 

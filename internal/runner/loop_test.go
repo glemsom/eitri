@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
-	vocellitellm "github.com/voocel/litellm"
+	"github.com/voocel/litellm"
 )
 
 // ── Mock LLM service ────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ type mockLLMService struct {
 
 type mockTurn struct {
 	tokens    []tokenEvent
-	toolCalls []litellm.ToolCall
+	toolCalls []llm.ToolCall
 	err       error
 }
 
@@ -38,17 +38,17 @@ type tokenEvent struct {
 	isReasoning bool
 }
 
-func (m *mockLLMService) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+func (m *mockLLMService) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	return nil, fmt.Errorf("Chat not implemented for mock, use ChatStream")
 }
 
-func (m *mockLLMService) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+func (m *mockLLMService) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.current >= len(m.turns) {
-		ch := make(chan litellm.StreamEvent, 1)
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeDone}
+		ch := make(chan llm.StreamEvent, 1)
+		ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone}
 		close(ch)
 		return ch, nil
 	}
@@ -56,26 +56,26 @@ func (m *mockLLMService) ChatStream(ctx context.Context, req litellm.Request) (<
 	turn := m.turns[m.current]
 	m.current++
 
-	ch := make(chan litellm.StreamEvent, 10)
+	ch := make(chan llm.StreamEvent, 10)
 
 	if turn.err != nil {
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeError, Error: turn.err}
+		ch <- llm.StreamEvent{Type: llm.StreamEventTypeError, Error: turn.err}
 		close(ch)
 		return ch, nil
 	}
 
 	// Send text content as token events
 	for _, tok := range turn.tokens {
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
+		ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
 	}
 
 	// Send tool calls
 	if len(turn.toolCalls) > 0 {
-		ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToolCall, ToolCalls: turn.toolCalls}
+		ch <- llm.StreamEvent{Type: llm.StreamEventTypeToolCall, ToolCalls: turn.toolCalls}
 	}
 
 	// Send done
-	ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeDone}
+	ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone}
 	close(ch)
 
 	return ch, nil
@@ -90,19 +90,19 @@ func newMockLLM(turns []mockTurn) *mockLLMService {
 type simpleMockTool struct {
 	name        string
 	description string
-	callFunc    func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool)
+	callFunc    func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool)
 }
 
 func (m *simpleMockTool) Name() string        { return m.name }
 func (m *simpleMockTool) Description() string { return m.description }
-func (m *simpleMockTool) JSONSchema() vocellitellm.Schema {
-	return vocellitellm.Schema(`{"type":"object","properties":{}}`)
+func (m *simpleMockTool) JSONSchema() litellm.Schema {
+	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (m *simpleMockTool) Call(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+func (m *simpleMockTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 	if m.callFunc != nil {
 		return m.callFunc(ctx, args)
 	}
-	return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+	return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -134,18 +134,18 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello! How can I help?"}}},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 128000, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 128000, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -179,13 +179,13 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 
 	// Turn 1: LLM returns tool call
 	// Turn 2: LLM returns final response
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "Let me check that..."}},
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "test_tool",
 					Arguments: `{"input":"test"}`,
 				},
@@ -200,19 +200,19 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	toolReg.Register(&simpleMockTool{
 		name:        "test_tool",
 		description: "A test tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "42"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "42"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "what is the answer?"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -269,11 +269,11 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	var execOrder []string
 	execMu := sync.Mutex{}
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{
-				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "tool_a", Arguments: `{}`}},
-				{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "tool_b", Arguments: `{}`}},
+			toolCalls: []llm.ToolCall{
+				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "tool_a", Arguments: `{}`}},
+				{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "tool_b", Arguments: `{}`}},
 			},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
@@ -282,31 +282,31 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "tool_a",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 			execMu.Lock()
 			execOrder = append(execOrder, "a")
 			execMu.Unlock()
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "a_result"}}, nil, false
+			return []litellm.Block{litellm.TextBlock{Text: "a_result"}}, nil, false
 		},
 	})
 	toolReg.Register(&simpleMockTool{
 		name: "tool_b",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 			execMu.Lock()
 			execOrder = append(execOrder, "b")
 			execMu.Unlock()
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "b_result"}}, nil, false
+			return []litellm.Block{litellm.TextBlock{Text: "b_result"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run both tools"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -326,10 +326,10 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{
-				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "failing_tool", Arguments: `{}`}},
+			toolCalls: []llm.ToolCall{
+				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "failing_tool", Arguments: `{}`}},
 			},
 		},
 		{tokens: []tokenEvent{{content: "I see the error, let me handle it."}}},
@@ -338,19 +338,19 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "failing_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "command not found"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "command not found"}}, nil, true
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run failing tool"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -378,12 +378,12 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "edit",
 					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
 				},
@@ -395,21 +395,21 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{
-				vocellitellm.TextBlock{Text: "Edited file: test.txt\nOLD:\nfoo\nNEW:\nbar"},
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{
+				litellm.TextBlock{Text: "Edited file: test.txt\nOLD:\nfoo\nNEW:\nbar"},
 			}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "edit the file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -434,12 +434,12 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "edit",
 					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
 				},
@@ -452,21 +452,21 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	// Simulate real edit tool behavior: returns concise summary, not full content.
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{
-				vocellitellm.TextBlock{Text: "Edited file: test.txt (1 line changed)"},
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{
+				litellm.TextBlock{Text: "Edited file: test.txt (1 line changed)"},
 			}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "edit the file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -505,12 +505,12 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "edit",
 					Arguments: `{"path":"test.txt","old_text":"foo","new_text":"bar"}`,
 				},
@@ -522,19 +522,19 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "file not found"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "file not found"}}, nil, true
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "edit the file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -553,12 +553,12 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "write",
 					Arguments: `{"path":"test.txt","content":"hello"}`,
 				},
@@ -570,19 +570,19 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "write",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Written file: test.txt"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "Written file: test.txt"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "write the file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -602,27 +602,27 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// LLM keeps making tool calls — will exceed maxTurns
-	llm := newMockLLM([]mockTurn{
-		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
-		{toolCalls: []litellm.ToolCall{{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	svc := newMockLLM([]mockTurn{
+		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []llm.ToolCall{{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
 	})
 
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "loop"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 1, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -641,21 +641,21 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "thinking..."}}},
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
 
-	err := RunAgent(ctx, llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(ctx, svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -670,13 +670,13 @@ type blockingMockLLM struct {
 	started chan struct{} // closed after first token is sent
 }
 
-func (m *blockingMockLLM) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+func (m *blockingMockLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	return nil, fmt.Errorf("Chat not implemented, use ChatStream")
 }
 
-func (m *blockingMockLLM) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
-	ch := make(chan litellm.StreamEvent, 1)
-	ch <- litellm.StreamEvent{Type: litellm.StreamEventTypeToken, Content: m.content}
+func (m *blockingMockLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 1)
+	ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: m.content}
 	close(m.started)
 	return ch, nil
 }
@@ -687,16 +687,16 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	started := make(chan struct{})
-	llm := &blockingMockLLM{
+	svc := &blockingMockLLM{
 		content: "Partial response text...",
 		started: started,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
@@ -704,7 +704,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+		errCh <- RunAgent(ctx, svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	}()
 
 	// Wait for streaming to start (first token sent)
@@ -735,18 +735,18 @@ func TestRunAgent_StreamError(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{err: fmt.Errorf("rate limit exceeded")},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -760,18 +760,18 @@ func TestRunAgent_NoTools(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "I am a helpful assistant."}}},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hello"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -797,14 +797,14 @@ type transientErrorLLM struct {
 	mu           sync.Mutex
 	calls        int
 	transientErr error
-	inner        litellm.LLMService
+	inner        llm.LLMService
 }
 
-func (m *transientErrorLLM) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+func (m *transientErrorLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	return m.inner.Chat(ctx, req)
 }
 
-func (m *transientErrorLLM) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+func (m *transientErrorLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
 	m.mu.Lock()
 	n := m.calls
 	m.calls++
@@ -823,19 +823,19 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 	inner := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
 	})
-	llm := &transientErrorLLM{
+	svc := &transientErrorLLM{
 		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
 		inner:        inner,
 	}
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error after retry: %v", err)
 	}
@@ -853,7 +853,7 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// inner mock will be called if retry happens (which would be the bug)
-	llm := &transientErrorLLM{
+	svc := &transientErrorLLM{
 		// Genuine bad request — model not found, not an upstream failure
 		transientErr: fmt.Errorf("Provider returned HTTP 400: model \"unknown-model\" not found for provider"),
 		inner: newMockLLM([]mockTurn{
@@ -861,14 +861,14 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		}),
 	}
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for HTTP 400, got nil")
 	}
@@ -897,20 +897,20 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 	inner := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
 	})
-	llm := &transientErrorLLM{
+	svc := &transientErrorLLM{
 		// Upstream request failure proxied as 400 — should be retried
 		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
 		inner:        inner,
 	}
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "test"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error after retry of upstream failure 400: %v", err)
 	}
@@ -928,21 +928,21 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// Tool calls with zero length — treated as no tool calls
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "answer"}},
-			toolCalls: []litellm.ToolCall{}, // empty, not nil
+			toolCalls: []llm.ToolCall{}, // empty, not nil
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -956,29 +956,29 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	// LLM keeps returning tool calls. With maxTurns=0, defaults to 10.
 	// We only provide 3 turns → should succeed (no max turns hit).
 	mockTurns := []mockTurn{
-		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
-		{toolCalls: []litellm.ToolCall{{ID: "call_2", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []llm.ToolCall{{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
 		{tokens: []tokenEvent{{content: "done"}}},
 	}
 
-	llm := newMockLLM(mockTurns)
+	svc := newMockLLM(mockTurns)
 
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 0, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 0, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -989,10 +989,10 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{
-				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "empty_tool", Arguments: `{}`}},
+			toolCalls: []llm.ToolCall{
+				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "empty_tool", Arguments: `{}`}},
 			},
 		},
 		{tokens: []tokenEvent{{content: "Tool returned nothing"}}},
@@ -1001,19 +1001,19 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "empty_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run empty tool"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1038,10 +1038,10 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	// LLM calls a hallucinated tool "replace" (doesn't exist in registry).
 	// The loop should NOT terminate — it should feed the error back to the
 	// LLM as a tool result, letting the LLM self-correct on the next turn.
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{
-				{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "replace", Arguments: `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`}},
+			toolCalls: []llm.ToolCall{
+				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "replace", Arguments: `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`}},
 			},
 		},
 		{tokens: []tokenEvent{{content: "corrected: using edit tool instead"}}},
@@ -1051,19 +1051,19 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	// Only register "edit", not "replace"
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "edit the file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
 	}
@@ -1162,18 +1162,18 @@ func TestRunAgent_Thinking(t *testing.T) {
 			sseState := runstate.New()
 			w := runstate.NewWriter(sseState)
 
-			llm := newMockLLM([]mockTurn{
+			svc := newMockLLM([]mockTurn{
 				{tokens: tt.tokens},
 			})
 
-			req := litellm.Request{
+			req := llm.Request{
 				Model: "test-model",
-				Messages: []litellm.Message{
+				Messages: []llm.Message{
 					{Role: "user", Content: tt.query},
 				},
 			}
 
-			err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+			err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 			if err != nil {
 				t.Fatalf("RunAgent error: %v", err)
 			}
@@ -1226,8 +1226,8 @@ func TestRunAgent_Thinking(t *testing.T) {
 // ── Sliding window cap tests ────────────────────────────────────────────────
 
 func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "system", Content: "You are a helpful assistant."},
 			{Role: "user", Content: "msg1"},
 			{Role: "assistant", Content: "resp1"},
@@ -1261,12 +1261,12 @@ func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
 }
 
 func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "u1"},
 		{Role: "assistant", Content: "a1"},
 	}
-	req := &litellm.Request{Messages: msgs}
+	req := &llm.Request{Messages: msgs}
 
 	trimMessages(req, 5)
 
@@ -1276,7 +1276,7 @@ func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
 }
 
 func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
-	msgs := []litellm.Message{
+	msgs := []llm.Message{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "u1"},
 		{Role: "assistant", Content: "a1"},
@@ -1285,14 +1285,14 @@ func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
 	}
 
 	// maxHistory = 0 (no limit)
-	req0 := &litellm.Request{Messages: append([]litellm.Message{}, msgs...)}
+	req0 := &llm.Request{Messages: append([]llm.Message{}, msgs...)}
 	trimMessages(req0, 0)
 	if len(req0.Messages) != 5 {
 		t.Errorf("maxHistory=0: len = %d, want 5", len(req0.Messages))
 	}
 
 	// maxHistory = -1 (no limit)
-	reqNeg := &litellm.Request{Messages: append([]litellm.Message{}, msgs...)}
+	reqNeg := &llm.Request{Messages: append([]llm.Message{}, msgs...)}
 	trimMessages(reqNeg, -1)
 	if len(reqNeg.Messages) != 5 {
 		t.Errorf("maxHistory=-1: len = %d, want 5", len(reqNeg.Messages))
@@ -1300,8 +1300,8 @@ func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
 }
 
 func TestTrimMessages_NoSystemPromptIsFine(t *testing.T) {
-	req := &litellm.Request{
-		Messages: []litellm.Message{
+	req := &llm.Request{
+		Messages: []llm.Message{
 			{Role: "user", Content: "u1"},
 			{Role: "assistant", Content: "a1"},
 			{Role: "user", Content: "u2"},
@@ -1330,13 +1330,13 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// 3 turns: tool call → tool result → final answer
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "thinking..."}},
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "test_tool",
 					Arguments: `{}`,
 				},
@@ -1348,15 +1348,15 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "tool result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "tool result"}}, nil, false
 		},
 	})
 
 	// Start with 5 existing messages + system prompt, cap at 3
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "old1"},
 			{Role: "assistant", Content: "old1r"},
@@ -1368,7 +1368,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 3, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 3, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1404,19 +1404,19 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "hi"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1433,12 +1433,12 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "render_mermaid_diagram",
 					Arguments: `{"code":"graph TD; A-->B;"}`,
 				},
@@ -1450,19 +1450,19 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_mermaid_diagram",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered MermaidDiagram"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "Rendered MermaidDiagram"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "render a diagram"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1485,12 +1485,12 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "render_quick_replies",
 					Arguments: `{"options":["yes","no"]}`,
 				},
@@ -1502,19 +1502,19 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_quick_replies",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "Rendered QuickReplies"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "Rendered QuickReplies"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "show quick replies"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1533,12 +1533,12 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "render_mermaid_diagram",
 					Arguments: `{"code":"graph TD; A-->B;"}`,
 				},
@@ -1550,19 +1550,19 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_mermaid_diagram",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "something went wrong"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "something went wrong"}}, nil, true
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "render a diagram"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1581,12 +1581,12 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "some_other_tool",
 					Arguments: `{}`,
 				},
@@ -1598,19 +1598,19 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "some_other_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run tool"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1631,7 +1631,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -1641,11 +1641,11 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1686,13 +1686,13 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "let me check"}},
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "test_tool",
 					Arguments: `{}`,
 				},
@@ -1704,8 +1704,8 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "result"}}, nil, false
 		},
 	})
 
@@ -1715,11 +1715,11 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1745,7 +1745,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -1755,11 +1755,11 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1778,15 +1778,15 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
-		{toolCalls: []litellm.ToolCall{{ID: "call_1", Type: "function", Function: litellm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	svc := newMockLLM([]mockTurn{
+		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
 	})
 
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
 		},
 	})
 
@@ -1796,11 +1796,11 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 1, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 1, 0, w, toolReg, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -1830,19 +1830,19 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
 
 	// No sessionMgr passed
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1861,7 +1861,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{tokens: []tokenEvent{{content: "answer"}}},
 	})
 
@@ -1871,11 +1871,11 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
 	sessionMgr.AppendUser(sessionID, "hello")
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 128000, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1920,7 +1920,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	// user messages which some providers reject as malformed (HTTP 400).
 
 	started := make(chan struct{})
-	llm := &blockingMockLLM{
+	svc := &blockingMockLLM{
 		content: "thinking...",
 		started: started,
 	}
@@ -1936,11 +1936,11 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	req := litellm.Request{Model: "test-model"}
+	req := llm.Request{Model: "test-model"}
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, llm, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0, nil, nil)
+		errCh <- RunAgent(ctx, svc, &req, 5, 0, w, nil, newSessionHistoryManager(sessionMgr, nil, sessionID), nil, nil, sessionID, 0, nil, nil)
 	}()
 
 	<-started // Wait for first token to be sent
@@ -1990,10 +1990,10 @@ type needsConfirmTool struct {
 
 func (t *needsConfirmTool) Name() string        { return t.name }
 func (t *needsConfirmTool) Description() string { return "A tool that needs confirmation" }
-func (t *needsConfirmTool) JSONSchema() vocellitellm.Schema {
-	return vocellitellm.Schema(`{"type":"object","properties":{}}`)
+func (t *needsConfirmTool) JSONSchema() litellm.Schema {
+	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 	t.mu.Lock()
 	n := t.callNum
 	t.callNum++
@@ -2003,7 +2003,7 @@ func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) ([]vo
 		return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/test.txt", Message: "Allow reading /tmp/test.txt?"}, false
 	}
 	// Subsequent call — succeeds
-	return []vocellitellm.Block{vocellitellm.TextBlock{Text: t.result}}, nil, false
+	return []litellm.Block{litellm.TextBlock{Text: t.result}}, nil, false
 }
 
 func (t *needsConfirmTool) AppendAllowedPaths(path string) {}
@@ -2014,12 +2014,12 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// LLM: first turn calls needs_confirm_tool, second turn finishes
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "needs_confirm_tool",
 					Arguments: `{}`,
 				},
@@ -2035,14 +2035,14 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	// Stub approves
 	confirmer := newTestConfirmerStub(&ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "read file"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2081,17 +2081,17 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	// alwaysNeedsConfirmTool always returns ErrNeedsConfirmation
 	alwaysNeedsTool := &simpleMockTool{
 		name: "needs_confirm_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
 			return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/secret.txt", Message: "Allow?"}, false
 		},
 	}
 
-	llm := newMockLLM([]mockTurn{
+	svc := newMockLLM([]mockTurn{
 		{
-			toolCalls: []litellm.ToolCall{{
+			toolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
-				Function: litellm.FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      "needs_confirm_tool",
 					Arguments: `{}`,
 				},
@@ -2106,14 +2106,14 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	// Stub denies
 	confirmer := newTestConfirmerStub(&ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "read secret"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), confirmer, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2152,7 +2152,7 @@ type trackingRegistry struct {
 	calls int
 }
 
-func (r *trackingRegistry) LitellmTools() []vocellitellm.Tool {
+func (r *trackingRegistry) LitellmTools() []litellm.Tool {
 	r.calls++
 	return r.inner.LitellmTools()
 }
@@ -2177,7 +2177,7 @@ func TestRunAgent_ToolDefsHoistedOnce(t *testing.T) {
 	}
 
 	// Verify names and descriptions
-	byName := make(map[string]litellm.ToolDef)
+	byName := make(map[string]llm.ToolDef)
 	for _, d := range defs {
 		byName[d.Name] = d
 	}
@@ -2201,11 +2201,11 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	llm := newMockLLM([]mockTurn{
-		{toolCalls: []litellm.ToolCall{{
+	svc := newMockLLM([]mockTurn{
+		{toolCalls: []llm.ToolCall{{
 			ID:   "call_1",
 			Type: "function",
-			Function: litellm.FunctionCall{
+			Function: llm.FunctionCall{
 				Name:      "test_tool",
 				Arguments: `{}`,
 			},
@@ -2216,19 +2216,19 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]vocellitellm.Block, error, bool) {
-			return []vocellitellm.Block{vocellitellm.TextBlock{Text: "result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+			return []litellm.Block{litellm.TextBlock{Text: "result"}}, nil, false
 		},
 	})
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "run tool"},
 		},
 	}
 
-	err := RunAgent(context.Background(), llm, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
+	err := RunAgent(context.Background(), svc, &req, 5, 0, w, toolReg, newRequestHistoryManager(&req), nil, nil, "", 0, nil, nil)
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2239,7 +2239,7 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	}
 
 	// Verify the tools look correct
-	toolMap := make(map[string]litellm.ToolDef)
+	toolMap := make(map[string]llm.ToolDef)
 	for _, td := range req.Tools {
 		toolMap[td.Name] = td
 	}
@@ -2275,9 +2275,9 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
@@ -2311,9 +2311,9 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	req := litellm.Request{
+	req := llm.Request{
 		Model: "test-model",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 		},
 	}
@@ -2326,11 +2326,11 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 // panicLLM panics on every ChatStream call.
 type panicLLM struct{}
 
-func (m *panicLLM) Chat(ctx context.Context, req litellm.Request) (*litellm.Response, error) {
+func (m *panicLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
 	return nil, fmt.Errorf("Chat not implemented")
 }
 
-func (m *panicLLM) ChatStream(ctx context.Context, req litellm.Request) (<-chan litellm.StreamEvent, error) {
+func (m *panicLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
 	panic("boom: something went wrong")
 }
 

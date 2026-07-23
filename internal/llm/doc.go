@@ -63,4 +63,4 @@
 //  3. Extend the domain types:
 //     Add fields to Request, Response, or Message. Wire-type conversion
 //     helpers may need corresponding updates.
-package litellm
+package llm

@@ -1,4 +1,4 @@
-package litellm_test
+package llm_test
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // ————— helper —————
 
-func collectStreamEvents(ctx context.Context, stream <-chan litellm.StreamEvent) ([]litellm.StreamEvent, error) {
-	var events []litellm.StreamEvent
+func collectStreamEvents(ctx context.Context, stream <-chan llm.StreamEvent) ([]llm.StreamEvent, error) {
+	var events []llm.StreamEvent
 	for {
 		select {
 		case evt, ok := <-stream:
@@ -36,7 +36,7 @@ func collectStreamEvents(ctx context.Context, stream <-chan litellm.StreamEvent)
 
 func TestNewLLMService_OpenCodeGoOpenAIRoute(t *testing.T) {
 	t.Parallel()
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    "https://opencode.ai/zen/go/v1",
@@ -63,7 +63,7 @@ func TestNewLLMService_OpenCodeGoOpenAIRoute(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err = litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err = llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -73,9 +73,9 @@ func TestNewLLMService_OpenCodeGoOpenAIRoute(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	resp, err := svc.Chat(context.Background(), litellm.Request{
+	resp, err := svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hello"}},
+		Messages: []llm.Message{{Role: "user", Content: "hello"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -102,7 +102,7 @@ func TestNewOpenAI_BaseURLWithV1Suffix(t *testing.T) {
 	defer chatSrv.Close()
 
 	// BaseURL that already has /v1 — must not double it
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL + "/v1",
@@ -112,9 +112,9 @@ func TestNewOpenAI_BaseURLWithV1Suffix(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -129,7 +129,7 @@ func TestNewOpenAI_BaseURLWithV1Suffix(t *testing.T) {
 
 func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 	t.Parallel()
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "qwen2.5-72b",
 		BaseURL:    "https://opencode.ai/zen/go/v1",
@@ -159,7 +159,7 @@ func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err = litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err = llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "qwen2.5-72b",
 		BaseURL:    chatSrv.URL,
@@ -169,9 +169,9 @@ func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	resp, err := svc.Chat(context.Background(), litellm.Request{
+	resp, err := svc.Chat(context.Background(), llm.Request{
 		Model:    "qwen2.5-72b",
-		Messages: []litellm.Message{{Role: "user", Content: "hello"}},
+		Messages: []llm.Message{{Role: "user", Content: "hello"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -193,7 +193,7 @@ func TestNewAnthropic_BaseURLWithV1Suffix(t *testing.T) {
 	defer chatSrv.Close()
 
 	// BaseURL with /v1 suffix — must not double it (Anthropic adapter also strips)
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "qwen2.5-72b",
 		BaseURL:    chatSrv.URL + "/v1",
@@ -203,9 +203,9 @@ func TestNewAnthropic_BaseURLWithV1Suffix(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "qwen2.5-72b",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -230,7 +230,7 @@ func TestNewLLMService_OpenRouterRoute(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID:    "openrouter",
 		Model:         "anthropic/claude-3",
 		BaseURL:       chatSrv.URL,
@@ -242,9 +242,9 @@ func TestNewLLMService_OpenRouterRoute(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "anthropic/claude-3",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -270,7 +270,7 @@ func TestNewLLMService_GitHubCopilotRoute(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "github_copilot",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -280,9 +280,9 @@ func TestNewLLMService_GitHubCopilotRoute(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -310,7 +310,7 @@ func TestNewLLMService_CustomOpenAI(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "custom_openai",
 		Model:      "my-model",
 		BaseURL:    chatSrv.URL,
@@ -320,9 +320,9 @@ func TestNewLLMService_CustomOpenAI(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	resp, err := svc.Chat(context.Background(), litellm.Request{
+	resp, err := svc.Chat(context.Background(), llm.Request{
 		Model:    "my-model",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -343,7 +343,7 @@ func TestChat_SimpleTextResponse(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -353,9 +353,9 @@ func TestChat_SimpleTextResponse(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	resp, err := svc.Chat(context.Background(), litellm.Request{
+	resp, err := svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -380,7 +380,7 @@ func TestChat_ToolCallResponse(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -390,9 +390,9 @@ func TestChat_ToolCallResponse(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	resp, err := svc.Chat(context.Background(), litellm.Request{
+	resp, err := svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "weather in Paris?"}},
+		Messages: []llm.Message{{Role: "user", Content: "weather in Paris?"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -428,7 +428,7 @@ func TestChatStream_TextDeltas(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -438,9 +438,9 @@ func TestChatStream_TextDeltas(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -453,7 +453,7 @@ func TestChatStream_TextDeltas(t *testing.T) {
 
 	var gotText strings.Builder
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToken {
+		if evt.Type == llm.StreamEventTypeToken {
 			gotText.WriteString(evt.Content)
 		}
 	}
@@ -481,7 +481,7 @@ func TestChatStream_ToolCallDeltas_NonSequentialIndices(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -491,9 +491,9 @@ func TestChatStream_ToolCallDeltas_NonSequentialIndices(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "weather and time?"}},
+		Messages: []llm.Message{{Role: "user", Content: "weather and time?"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -507,7 +507,7 @@ func TestChatStream_ToolCallDeltas_NonSequentialIndices(t *testing.T) {
 	// Collect names from the final tool call event
 	var names []string
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToolCall && len(evt.ToolCalls) > 0 {
+		if evt.Type == llm.StreamEventTypeToolCall && len(evt.ToolCalls) > 0 {
 			names = nil // reset — only care about last emission
 			for _, tc := range evt.ToolCalls {
 				names = append(names, tc.Function.Name)
@@ -549,7 +549,7 @@ func TestChatStream_ToolCallDeltas(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -559,9 +559,9 @@ func TestChatStream_ToolCallDeltas(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "weather?"}},
+		Messages: []llm.Message{{Role: "user", Content: "weather?"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -573,9 +573,9 @@ func TestChatStream_ToolCallDeltas(t *testing.T) {
 	}
 
 	// Check the final (last) tool call event has accumulated arguments
-	var finalToolCall *litellm.ToolCall
+	var finalToolCall *llm.ToolCall
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToolCall && len(evt.ToolCalls) > 0 {
+		if evt.Type == llm.StreamEventTypeToolCall && len(evt.ToolCalls) > 0 {
 			tc := evt.ToolCalls[0]
 			finalToolCall = &tc
 		}
@@ -602,7 +602,7 @@ func TestChat_Error401(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -612,9 +612,9 @@ func TestChat_Error401(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -633,7 +633,7 @@ func TestChat_Error429(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -643,9 +643,9 @@ func TestChat_Error429(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -664,7 +664,7 @@ func TestChat_Error400ContextLength(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -674,9 +674,9 @@ func TestChat_Error400ContextLength(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -694,7 +694,7 @@ func TestChat_Error5xx(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -704,9 +704,9 @@ func TestChat_Error5xx(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -738,7 +738,7 @@ func TestChatStream_AnthropicTextDeltas(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "qwen2.5-72b",
 		BaseURL:    chatSrv.URL,
@@ -748,9 +748,9 @@ func TestChatStream_AnthropicTextDeltas(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "qwen2.5-72b",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -763,7 +763,7 @@ func TestChatStream_AnthropicTextDeltas(t *testing.T) {
 
 	var gotText strings.Builder
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToken {
+		if evt.Type == llm.StreamEventTypeToken {
 			gotText.WriteString(evt.Content)
 		}
 	}
@@ -790,7 +790,7 @@ func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -800,9 +800,9 @@ func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -819,7 +819,7 @@ func TestChatStream_ReasoningContent_IsReasoningFlag(t *testing.T) {
 	}
 	var tokens []token
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToken {
+		if evt.Type == llm.StreamEventTypeToken {
 			tokens = append(tokens, token{content: evt.Content, isReasoning: evt.IsReasoning})
 		}
 	}
@@ -861,7 +861,7 @@ func TestChatStream_ReasoningContentBufferedAndFlushed(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -871,9 +871,9 @@ func TestChatStream_ReasoningContentBufferedAndFlushed(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -886,7 +886,7 @@ func TestChatStream_ReasoningContentBufferedAndFlushed(t *testing.T) {
 
 	var gotText strings.Builder
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToken {
+		if evt.Type == llm.StreamEventTypeToken {
 			gotText.WriteString(evt.Content)
 		}
 	}
@@ -912,7 +912,7 @@ func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -922,9 +922,9 @@ func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -937,7 +937,7 @@ func TestChatStream_ReasoningContentOnly_FlushedAtEnd(t *testing.T) {
 
 	var gotText strings.Builder
 	for _, evt := range events {
-		if evt.Type == litellm.StreamEventTypeToken {
+		if evt.Type == llm.StreamEventTypeToken {
 			gotText.WriteString(evt.Content)
 		}
 	}
@@ -968,7 +968,7 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -978,9 +978,9 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "draw a mermaid diagram"}},
+		Messages: []llm.Message{{Role: "user", Content: "draw a mermaid diagram"}},
 	})
 	if err != nil {
 		t.Fatalf("ChatStream error: %v", err)
@@ -995,11 +995,11 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 	var order []string
 	for _, evt := range events {
 		switch evt.Type {
-		case litellm.StreamEventTypeToken:
+		case llm.StreamEventTypeToken:
 			order = append(order, "token:"+evt.Content)
-		case litellm.StreamEventTypeToolCall:
+		case llm.StreamEventTypeToolCall:
 			order = append(order, "tool_call")
-		case litellm.StreamEventTypeDone:
+		case llm.StreamEventTypeDone:
 			order = append(order, "done")
 		}
 	}
@@ -1033,7 +1033,7 @@ func TestChatStream_ReasoningBeforeToolCalls_FlushedBeforeTools(t *testing.T) {
 
 func TestNewLLMService_UnsupportedProvider(t *testing.T) {
 	t.Parallel()
-	_, err := litellm.NewLLMService(litellm.AdapterConfig{
+	_, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "nonexistent",
 		Model:      "gpt-4.1",
 		BaseURL:    "http://localhost",
@@ -1048,10 +1048,10 @@ func TestNewLLMService_UnsupportedProvider(t *testing.T) {
 
 func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 	t.Parallel()
-	var gotMessages []litellm.Message
+	var gotMessages []llm.Message
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Messages []litellm.Message `json:"messages"`
+			Messages []llm.Message `json:"messages"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode body: %v", err)
@@ -1063,7 +1063,7 @@ func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1073,9 +1073,9 @@ func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{
+		Messages: []llm.Message{
 			{Role: "system", Content: "You are helpful"},
 			{Role: "user", Content: "hi"},
 		},
@@ -1109,7 +1109,7 @@ func TestChat_PromptCacheKey_SentWhenSet(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1119,9 +1119,9 @@ func TestChat_PromptCacheKey_SentWhenSet(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:     "gpt-4.1",
-		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages:  []llm.Message{{Role: "user", Content: "hi"}},
 		SessionID: "session-123",
 	})
 	if err != nil {
@@ -1150,7 +1150,7 @@ func TestChat_PromptCacheKey_OmittedWhenEmpty(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1161,9 +1161,9 @@ func TestChat_PromptCacheKey_OmittedWhenEmpty(t *testing.T) {
 	}
 
 	// SessionID is empty string by default
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -1187,7 +1187,7 @@ func TestChat_PromptCacheKey_TruncatedTo64Chars(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1203,9 +1203,9 @@ func TestChat_PromptCacheKey_TruncatedTo64Chars(t *testing.T) {
 		t.Fatalf("test session ID is only %d chars, need > 64", len(longID))
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:     "gpt-4.1",
-		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages:  []llm.Message{{Role: "user", Content: "hi"}},
 		SessionID: longID,
 	})
 	if err != nil {
@@ -1243,7 +1243,7 @@ func TestChat_PromptCacheKey_SentInStreamRequest(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1253,9 +1253,9 @@ func TestChat_PromptCacheKey_SentInStreamRequest(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	stream, err := svc.ChatStream(context.Background(), litellm.Request{
+	stream, err := svc.ChatStream(context.Background(), llm.Request{
 		Model:     "gpt-4.1",
-		Messages:  []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages:  []llm.Message{{Role: "user", Content: "hi"}},
 		SessionID: "stream-session",
 	})
 	if err != nil {
@@ -1291,7 +1291,7 @@ func TestChat_NetworkError(t *testing.T) {
 	}))
 	chatSrv.Close() // Close so connection fails
 
-	svc, err := litellm.NewLLMService(litellm.AdapterConfig{
+	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "gpt-4.1",
 		BaseURL:    chatSrv.URL,
@@ -1301,9 +1301,9 @@ func TestChat_NetworkError(t *testing.T) {
 		t.Fatalf("NewLLMService error: %v", err)
 	}
 
-	_, err = svc.Chat(context.Background(), litellm.Request{
+	_, err = svc.Chat(context.Background(), llm.Request{
 		Model:    "gpt-4.1",
-		Messages: []litellm.Message{{Role: "user", Content: "hi"}},
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error for closed server, got nil")

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	vocellitellm "github.com/voocel/litellm"
+	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/litellm"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
 )
@@ -21,7 +21,7 @@ import (
 // trimMessages removes the oldest message pairs when total non-system messages
 // exceed maxHistory. System prompt is always preserved.
 // maxHistory of 0 means no limit.
-func trimMessages(req *litellm.Request, maxHistory int) {
+func trimMessages(req *llm.Request, maxHistory int) {
 	if maxHistory <= 0 {
 		return
 	}
@@ -41,7 +41,7 @@ func trimMessages(req *litellm.Request, maxHistory int) {
 	toRemove := nonSysCount - maxHistory
 
 	// Build new slice preserving system prompt(s) and the most recent messages
-	var kept []litellm.Message
+	var kept []llm.Message
 	var removed int
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
@@ -61,11 +61,11 @@ func trimMessages(req *litellm.Request, maxHistory int) {
 // and tool calls. Token events are forwarded to the SSE writer.
 func drainStream(
 	ctx context.Context,
-	stream <-chan litellm.StreamEvent,
+	stream <-chan llm.StreamEvent,
 	sseWriter *runstate.Writer,
-) (*strings.Builder, []litellm.ToolCall, error) {
+) (*strings.Builder, []llm.ToolCall, error) {
 	var content strings.Builder
-	var toolCalls []litellm.ToolCall
+	var toolCalls []llm.ToolCall
 
 	for {
 		select {
@@ -75,7 +75,7 @@ func drainStream(
 			}
 
 			switch evt.Type {
-			case litellm.StreamEventTypeToken:
+			case llm.StreamEventTypeToken:
 				if evt.IsReasoning {
 					// Reasoning content from adapters is clean text — the IsReasoning
 					// flag is the sole discriminator (no delimiter tags expected).
@@ -85,15 +85,15 @@ func drainStream(
 					sseWriter.Token(evt.Content)
 				}
 
-			case litellm.StreamEventTypeToolCall:
+			case llm.StreamEventTypeToolCall:
 				if len(evt.ToolCalls) > 0 {
 					toolCalls = evt.ToolCalls
 				}
 
-			case litellm.StreamEventTypeDone:
+			case llm.StreamEventTypeDone:
 				return &content, toolCalls, nil
 
-			case litellm.StreamEventTypeError:
+			case llm.StreamEventTypeError:
 				if evt.Error != nil {
 					return &content, toolCalls, evt.Error
 				}
@@ -109,15 +109,15 @@ func drainStream(
 // toolLister is the interface for listing tool definitions, used by toolDefsFromRegistry.
 // *tool.Registry satisfies this interface.
 type toolLister interface {
-	LitellmTools() []vocellitellm.Tool
+	LitellmTools() []litellm.Tool
 }
 
 // toolDefsFromRegistry converts tool definitions from a tool lister to internal ToolDefs.
-func toolDefsFromRegistry(reg toolLister) []litellm.ToolDef {
+func toolDefsFromRegistry(reg toolLister) []llm.ToolDef {
 	vooTools := reg.LitellmTools()
-	defs := make([]litellm.ToolDef, len(vooTools))
+	defs := make([]llm.ToolDef, len(vooTools))
 	for i, t := range vooTools {
-		defs[i] = litellm.ToolDef{
+		defs[i] = llm.ToolDef{
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  json.RawMessage(t.Parameters),
@@ -127,13 +127,13 @@ func toolDefsFromRegistry(reg toolLister) []litellm.ToolDef {
 }
 
 // blocksToText extracts text content from a slice of voocel/litellm blocks.
-func blocksToText(blocks []vocellitellm.Block) string {
+func blocksToText(blocks []litellm.Block) string {
 	var b strings.Builder
 	for _, block := range blocks {
 		switch v := block.(type) {
-		case vocellitellm.TextBlock:
+		case litellm.TextBlock:
 			b.WriteString(v.Text)
-		case vocellitellm.ToolResultBlock:
+		case litellm.ToolResultBlock:
 			b.WriteString(blocksToText(v.Content))
 		default:
 			b.WriteString(fmt.Sprintf("%v", block))
@@ -143,11 +143,11 @@ func blocksToText(blocks []vocellitellm.Block) string {
 }
 
 // toolResultHasError checks if the first block is a ToolResultBlock with IsError=true.
-func toolResultHasError(blocks []vocellitellm.Block) bool {
+func toolResultHasError(blocks []litellm.Block) bool {
 	if len(blocks) == 0 {
 		return false
 	}
-	if tr, ok := blocks[0].(vocellitellm.ToolResultBlock); ok {
+	if tr, ok := blocks[0].(litellm.ToolResultBlock); ok {
 		return tr.IsError
 	}
 	return false
@@ -165,7 +165,7 @@ var componentToolMap = map[string]string{
 // The edit tool emits a FileEditCard using old_text/new_text/path from args.
 // QuickReplies does NOT emit a component SSE event (chips are stored inline on the message).
 // Returns (componentName, data, ok) for the caller to also persist the component.
-func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []vocellitellm.Block) (string, map[string]interface{}, bool) {
+func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []litellm.Block) (string, map[string]interface{}, bool) {
 	componentName, ok := componentToolMap[toolName]
 	if !ok {
 		return "", nil, false
@@ -256,7 +256,7 @@ func addReadToolAllowedPath(tools *tool.Registry, path string) {
 
 // dumpRequestOnError writes the full chat request as JSON to the debug directory
 // when EITRI_DEBUG_LLM_DIR is set and an LLM request fails.
-func dumpRequestOnError(req *litellm.Request, err error, attempt int) {
+func dumpRequestOnError(req *llm.Request, err error, attempt int) {
 	dir := os.Getenv("EITRI_DEBUG_LLM_DIR")
 	if dir == "" {
 		return
@@ -271,7 +271,7 @@ func dumpRequestOnError(req *litellm.Request, err error, attempt int) {
 	path := filepath.Join(dir, filename)
 
 	type debugEntry struct {
-		Request litellm.Request `json:"request"`
+		Request llm.Request `json:"request"`
 		Error   string          `json:"error"`
 		Attempt int             `json:"attempt"`
 	}
