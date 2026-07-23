@@ -4700,3 +4700,121 @@ func TestDebugUmbrella_EmptyTrace(t *testing.T) {
 		t.Errorf("http_traces.traces length = %d, want 0", len(traces))
 	}
 }
+
+// --- Debug session HTTP route tests (issue #586) ---
+
+func TestDebugSessionHTTP_NoRecorder(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/foo/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestDebugSessionHTTP_List(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+	rec.Record("session-b", "p2", "GET", "/path", nil, nil, 200, 0, "")
+	rec.Record("session-a", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/session-a/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 2 {
+		t.Fatalf("traces = %d, want 2", len(body.Traces))
+	}
+}
+
+func TestDebugSessionHTTP_Limit(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/s1/http?limit=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 2 {
+		t.Fatalf("traces = %d, want 2", len(body.Traces))
+	}
+}
+
+func TestDebugSessionHTTP_Empty(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	rec.Record("other", "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions/unknown/http")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body struct {
+		Traces   []interface{} `json:"traces"`
+		InFlight []interface{} `json:"in_flight"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Traces) != 0 {
+		t.Fatalf("traces = %d, want 0", len(body.Traces))
+	}
+}

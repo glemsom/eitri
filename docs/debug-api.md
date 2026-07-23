@@ -139,6 +139,24 @@ This endpoint can produce a large response for long chats. For large payloads,
 prefer the filtered `/api/debug/http?session_id=...` and/or limit the session
 view with `?limit_messages=N`.
 
+### `GET /api/debug/sessions/{session_id}/http`
+
+Return recorded LLM provider HTTP traces for a specific session. This is an
+alias for `/api/debug/http?session_id=...` using a path parameter instead of
+a query parameter.
+
+```sh
+curl -sS "$BASE/api/debug/sessions/abc123/http" | jq '.traces[:3]'
+curl -sS "$BASE/api/debug/sessions/abc123/http?limit=5" | jq '.traces | length'
+```
+
+Query parameters:
+
+- `limit`: max traces to return (default 20, max 100).
+
+Response shape is identical to `GET /api/debug/http` with `traces` and
+`in_flight` arrays.
+
 ### `GET /api/debug/http`
 
 Return recorded LLM provider HTTP traces. Supports session and provider

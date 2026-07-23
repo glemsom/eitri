@@ -236,6 +236,7 @@ func (s *Server) registerRoutes() {
 	// Debug API routes (issue #556)
 	s.mux.HandleFunc("GET /api/debug/sessions", s.handleDebugSessions)
 	s.mux.HandleFunc("GET /api/debug/sessions/{id}", s.handleDebugSessionByID)
+	s.mux.HandleFunc("GET /api/debug/sessions/{id}/http", s.handleDebugSessionHTTP)
 	s.mux.HandleFunc("GET /api/debug/runtime", s.handleDebugRuntime)
 	s.mux.HandleFunc("GET /api/debug/config", s.handleDebugConfig)
 	s.mux.HandleFunc("GET /api/debug/health", s.handleDebugHealth)
