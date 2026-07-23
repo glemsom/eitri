@@ -436,13 +436,17 @@
         clearDeadAirTimer(state);
         state.status = STATES.RENDERING;
         updateRunStatus(STATES.RENDERING, defaultStatusDetail(STATES.RENDERING, state), state);
+        // Prevent reconnect cycle: set guard BEFORE finalizeMessage sends
+        // the HTMX render POST. Otherwise htmx:beforeSwap (#streaming) →
+        // disconnectAll → htmx:afterSwap → autoConnectOnPageLoad reconnects
+        // to the SSE stream (still in the 5s retention window), replays
+        // history including 'done', and renders a duplicate card.
+        noActiveRunTimestamps[sessionId] = Date.now();
         showStreamingBubble();
         finalizeMessage(sessionId, packet.message_id, packet.usage, function () {
           state.status = STATES.DONE;
           updateRunStatus(STATES.DONE, defaultStatusDetail(STATES.DONE, state), state);
           disconnectStream(sessionId);
-          // Prevent autoConnectOnPageLoad from reconnecting to a stale session.
-          noActiveRunTimestamps[sessionId] = Date.now();
           reenableComposer();
         });
         break;
