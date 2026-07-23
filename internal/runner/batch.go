@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
@@ -13,9 +14,9 @@ import (
 )
 
 // BatchRun runs a single prompt in headless batch mode.
-// It uses requestHistoryManager (no UI sessions, no browser SSE),
-// streams text tokens to the supplied io.Writer as they arrive,
-// and blocks until the agent loop finishes or context is cancelled.
+// It uses sessionHistoryManager (wrapping history.SessionManager) to store
+// conversation history, streams text tokens to the supplied io.Writer as they
+// arrive, and blocks until the agent loop finishes or context is cancelled.
 // Confirmation requests are denied (nil confirmer → error returned to LLM).
 //
 // Returns the final accumulated response text alongside any error.
@@ -76,7 +77,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// Build tool registry (base tools only — no delegate/collect/quick_replies/skill)
 	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 
-	// Create request with system prompt and user message
+	// Create request (streaming only — history is managed by sessionHistoryManager)
 	req := &llm.Request{
 		Model:  cfg.ModelName,
 		Stream: true,
@@ -84,10 +85,22 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	if cfg.ThinkingLevel != "" {
 		req.ReasoningEffort = cfg.ThinkingLevel
 	}
-	req.Messages = []llm.Message{
-		{Role: "system", Content: fullSystemPrompt},
-		{Role: "user", Content: prompt},
+
+	// Generate a unique session ID for this batch run
+	batchID := fmt.Sprintf("batch-%d", time.Now().UnixNano())
+
+	// Use the service's HistorySessionMgr or create a local one if nil
+	sessionMgr := s.historySessionMgr
+	if sessionMgr == nil {
+		sessionMgr = history.NewSessionManager(cfg.MaxHistory)
 	}
+	sessionMgr.Create(batchID)
+	sessionMgr.SetSystemPrompt(batchID, fullSystemPrompt)
+	sessionMgr.AppendUser(batchID, prompt)
+	defer sessionMgr.Close(batchID)
+
+	// Wrap in a sessionHistoryManager (same adapter the UI path uses)
+	historyAdapter := newSessionHistoryManager(sessionMgr, nil, batchID)
 
 	// Create SSE state and writer (for use by RunAgent)
 	sseState := runstate.New()
@@ -112,14 +125,12 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	historyMgr := newRequestHistoryManager(req)
-
 	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 10
 	}
 
-	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyMgr, nil, nil, "", cfg.ContextWindowTokens, nil, nil)
+	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyAdapter, nil, nil, batchID, cfg.ContextWindowTokens, nil, nil)
 
 	// If streams are still open (e.g., RunAgent returned early due to context
 	// cancellation before it could broadcast a done/error event), close them
