@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -634,4 +635,36 @@ func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 	if rec.ChildSessionID != "" {
 		t.Error("expected no child session ID when uiSessionMgr is nil")
 	}
+}
+
+func TestRunService_ActiveRunSSESnapshot_NoDataRaceWithCancel(t *testing.T) {
+	t.Parallel()
+
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc.Cancel("session-1")
+		}()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snap := svc.ActiveRunSSESnapshot("session-1")
+			if snap != nil {
+				_ = snap.SubscriberCount
+				_ = snap.ReplayCount
+				_ = snap.History
+			}
+		}()
+	}
+	wg.Wait()
 }

@@ -84,11 +84,11 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
 		summary := sessionToSummary(sess)
-		// Enrich with SSE counters if run active
+		// Enrich with SSE counters if run active — snapshot under RunService.mu
 		if summary.Run != nil && s.config.RunService != nil {
-			if active := s.config.RunService.ActiveRun(sess.ID); active != nil {
-				summary.Run.SSESubscriberCount = active.SSE.SubscriberCount()
-				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
+			if snap := s.config.RunService.ActiveRunSSESnapshot(sess.ID); snap != nil {
+				summary.Run.SSESubscriberCount = snap.SubscriberCount
+				summary.Run.SSEReplayCount = snap.ReplayCount
 			}
 		}
 		// Enrich with latest HTTP traces
@@ -144,15 +144,10 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 	if sess.Status != session.StatusIdle {
 		detail.Run = &runInfo{Status: string(sess.Status)}
 		if s.config.RunService != nil {
-			if active := s.config.RunService.ActiveRun(id); active != nil {
-				detail.Run.SSESubscriberCount = active.SSE.SubscriberCount()
-				detail.Run.SSEReplayCount = active.SSE.ReplayCount()
-				// SSE history truncated to last 50 events
-				history := active.SSE.History()
-				if len(history) > 50 {
-					history = history[len(history)-50:]
-				}
-				detail.SSEHistory = history
+			if snap := s.config.RunService.ActiveRunSSESnapshot(id); snap != nil {
+				detail.Run.SSESubscriberCount = snap.SubscriberCount
+				detail.Run.SSEReplayCount = snap.ReplayCount
+				detail.SSEHistory = snap.History
 			}
 		}
 	}
@@ -382,9 +377,9 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 	for _, sess := range allSessions {
 		summary := sessionToSummary(sess)
 		if summary.Run != nil && s.config.RunService != nil {
-			if active := s.config.RunService.ActiveRun(sess.ID); active != nil {
-				summary.Run.SSESubscriberCount = active.SSE.SubscriberCount()
-				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
+			if snap := s.config.RunService.ActiveRunSSESnapshot(sess.ID); snap != nil {
+				summary.Run.SSESubscriberCount = snap.SubscriberCount
+				summary.Run.SSEReplayCount = snap.ReplayCount
 			}
 		}
 		// Enrich with latest HTTP traces
