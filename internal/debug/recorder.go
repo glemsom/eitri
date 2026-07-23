@@ -342,3 +342,24 @@ func (tb *traceBody) Close() error {
 	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr)
 	return err
 }
+
+// LastN returns the most recent N completed traces for a session, in chronological order.
+func (r *Recorder) LastN(sessionID string, n int) []*HTTPTrace {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var result []*HTTPTrace
+	for i := len(r.traces) - 1; i >= 0 && len(result) < n; i-- {
+		if r.traces[i].SessionID == sessionID {
+			result = append(result, r.traces[i])
+		}
+	}
+	// Reverse to chronological order
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	if result == nil {
+		return []*HTTPTrace{}
+	}
+	return result
+}
