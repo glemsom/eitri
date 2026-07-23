@@ -4432,3 +4432,147 @@ func TestDebugHTTP_ByID_Success(t *testing.T) {
 		t.Fatalf("status = %v, want 200", trace["status"])
 	}
 }
+
+func TestDebugUmbrella(t *testing.T) {
+	t.Parallel()
+
+	rec := debug.NewRecorder(10)
+	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "")
+
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("test-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = sess
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder:  rec,
+		sessionManager: sessionMgr,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check all expected top-level keys
+	expectedKeys := []string{"version", "up_since", "runtime", "sessions", "http_traces", "config_summary"}
+	for _, k := range expectedKeys {
+		if _, ok := body[k]; !ok {
+			t.Errorf("/api/debug missing key %q", k)
+		}
+	}
+
+	// Check runtime sub-fields
+	runtime, ok := body["runtime"].(map[string]interface{})
+	if !ok {
+		t.Fatal("runtime is not an object")
+	}
+	if runtime["active_run_count"] != float64(0) {
+		t.Errorf("active_run_count = %v, want 0", runtime["active_run_count"])
+	}
+	if runtime["session_count"] != float64(1) {
+		t.Errorf("session_count = %v, want 1", runtime["session_count"])
+	}
+	if runtime["recorded_http_traces"] != float64(1) {
+		t.Errorf("recorded_http_traces = %v, want 1", runtime["recorded_http_traces"])
+	}
+
+	// Check sessions is array with 1 entry
+	sessions, ok := body["sessions"].([]interface{})
+	if !ok {
+		t.Fatal("sessions is not an array")
+	}
+	if len(sessions) != 1 {
+		t.Errorf("sessions length = %d, want 1", len(sessions))
+	}
+
+	// Check http_traces has 1 trace
+	httpTraces, ok := body["http_traces"].(map[string]interface{})
+	if !ok {
+		t.Fatal("http_traces is not an object")
+	}
+	traces, ok := httpTraces["traces"].([]interface{})
+	if !ok {
+		t.Fatal("http_traces.traces is not an array")
+	}
+	if len(traces) != 1 {
+		t.Errorf("http_traces.traces length = %d, want 1", len(traces))
+	}
+
+	// Check config_summary has expected keys
+	cfgSummary, ok := body["config_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("config_summary is not an object")
+	}
+	for _, k := range []string{"provider_id", "model", "base_url", "context_window_tokens", "max_turns", "command_timeout", "has_api_key"} {
+		if _, ok := cfgSummary[k]; !ok {
+			t.Errorf("config_summary missing key %q", k)
+		}
+	}
+
+	// Ensure no secret leakage
+	for _, secret := range []string{"api_key", "provider_auth"} {
+		if _, ok := cfgSummary[secret]; ok {
+			t.Errorf("config_summary leaks secret field %q", secret)
+		}
+	}
+}
+
+func TestDebugUmbrella_EmptyTrace(t *testing.T) {
+	t.Parallel()
+
+	rec := debug.NewRecorder(10)
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder: rec,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime, ok := body["runtime"].(map[string]interface{})
+	if !ok {
+		t.Fatal("runtime is not an object")
+	}
+	if runtime["recorded_http_traces"] != float64(0) {
+		t.Errorf("recorded_http_traces = %v, want 0", runtime["recorded_http_traces"])
+	}
+
+	httpTraces, ok := body["http_traces"].(map[string]interface{})
+	if !ok {
+		t.Fatal("http_traces is not an object")
+	}
+	traces, ok := httpTraces["traces"].([]interface{})
+	if !ok {
+		t.Fatal("http_traces.traces is not an array")
+	}
+	if len(traces) != 0 {
+		t.Errorf("http_traces.traces length = %d, want 0", len(traces))
+	}
+}

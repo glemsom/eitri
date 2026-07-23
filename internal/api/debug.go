@@ -257,3 +257,78 @@ func (s *Server) handleDebugHTTPByID(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, trace)
 }
+
+// debugUmbrellaResponse is the shape returned by GET /api/debug.
+type debugUmbrellaResponse struct {
+	Version       string                `json:"version"`
+	UpSince       time.Time             `json:"up_since"`
+	Runtime       debugRuntimeResponse  `json:"runtime"`
+	Sessions      []debugSessionSummary `json:"sessions"`
+	HTTPTraces    httpTracesGroup       `json:"http_traces"`
+	ConfigSummary *sanitizedConfig      `json:"config_summary"`
+}
+
+// httpTracesGroup groups trace lists for the umbrella response.
+type httpTracesGroup struct {
+	Traces   []*debug.HTTPTrace `json:"traces"`
+	InFlight []*debug.HTTPTrace `json:"in_flight"`
+}
+
+func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
+	// Assemble sessions
+	allSessions := s.config.SessionManager.All()
+	summaries := make([]debugSessionSummary, 0, len(allSessions))
+	for _, sess := range allSessions {
+		summaries = append(summaries, sessionToSummary(sess))
+	}
+	if summaries == nil {
+		summaries = []debugSessionSummary{}
+	}
+
+	// Assemble runtime
+	cfg := s.loadConfig()
+	cfgSummary := sanitizeConfig(cfg)
+
+	activeRunCount := 0
+	if s.config.RunService != nil {
+		activeRunCount = s.config.RunService.ActiveRunCount()
+	}
+
+	recordedTraces := 0
+	if s.config.DebugRecorder != nil {
+		recordedTraces = s.config.DebugRecorder.Count()
+	}
+
+	runtimeResp := debugRuntimeResponse{
+		Version:            s.config.Version,
+		UpSince:            s.config.StartTime,
+		ActiveRunCount:     activeRunCount,
+		SessionCount:       s.config.SessionManager.Count(),
+		RecordedHTTPTraces: recordedTraces,
+		ConfigSummary:      cfgSummary,
+	}
+
+	// Assemble HTTP traces
+	httpTraces := httpTracesGroup{}
+	if s.config.DebugRecorder != nil {
+		httpTraces.Traces = s.config.DebugRecorder.List(0, "", "")
+		httpTraces.InFlight = s.config.DebugRecorder.InFlight()
+	}
+	if httpTraces.Traces == nil {
+		httpTraces.Traces = []*debug.HTTPTrace{}
+	}
+	if httpTraces.InFlight == nil {
+		httpTraces.InFlight = []*debug.HTTPTrace{}
+	}
+
+	resp := debugUmbrellaResponse{
+		Version:       s.config.Version,
+		UpSince:       s.config.StartTime,
+		Runtime:       runtimeResp,
+		Sessions:      summaries,
+		HTTPTraces:    httpTraces,
+		ConfigSummary: cfgSummary,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}

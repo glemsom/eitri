@@ -239,6 +239,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/debug/runtime", s.handleDebugRuntime)
 	s.mux.HandleFunc("GET /api/debug/config", s.handleDebugConfig)
 	s.mux.HandleFunc("GET /api/debug/health", s.handleDebugHealth)
+	s.mux.HandleFunc("GET /api/debug", s.handleDebugUmbrella)
 	s.mux.HandleFunc("GET /api/debug/http", s.handleDebugHTTP)
 	s.mux.HandleFunc("GET /api/debug/http/{trace_id}", s.handleDebugHTTPByID)
 }
