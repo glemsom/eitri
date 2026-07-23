@@ -710,7 +710,7 @@ noscript {
   padding: 0.75rem;
   border-radius: 8px;
   box-shadow: var(--shadow-md);
-  max-width: 90%;
+  max-width: min(120ch, 90%);
 }
 
 .message-user {
@@ -755,7 +755,6 @@ noscript {
 .message-content {
   word-wrap: break-word;
   overflow-wrap: break-word;
-  max-width: min(120ch, 90%);
 }
 
 .message-user .message-content {
