@@ -25,7 +25,7 @@ type debugSessionSummary struct {
 }
 
 type runInfo struct {
-	Status       string `json:"status"`
+	Status             string `json:"status"`
 	SSESubscriberCount uint64 `json:"sse_subscriber_count"`
 	SSEReplayCount     uint64 `json:"sse_replay_count"`
 }
@@ -36,7 +36,7 @@ type debugSessionDetail struct {
 	Messages     []session.Message   `json:"messages"`
 	ActiveSkills []string            `json:"active_skills"`
 	Run          *runInfo            `json:"run,omitempty"`
-	SSEHistory []runstate.SSEEvent `json:"sse_history,omitempty"`
+	SSEHistory   []runstate.SSEEvent `json:"sse_history,omitempty"`
 }
 
 // debugRuntimeResponse is the shape returned by GET /api/debug/runtime.
@@ -154,10 +154,46 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 				}
 				detail.SSEHistory = history
 			}
-	}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, detail)
+}
+
+// handleDebugSessionHTTP handles GET /api/debug/sessions/{id}/http
+// Returns HTTP traces filtered to the given session.
+func (s *Server) handleDebugSessionHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.config.DebugRecorder == nil {
+		writeError(w, http.StatusNotFound, "debug recorder not enabled")
+		return
+	}
+
+	sessionID := r.PathValue("id")
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "missing session id")
+		return
+	}
+
+	limit := 0
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			limit = n
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+
+	traces := s.config.DebugRecorder.List(limit, sessionID, "")
+	inFlight := s.config.DebugRecorder.InFlight()
+
+	writeJSON(w, http.StatusOK, struct {
+		Traces   []*debug.HTTPTrace `json:"traces"`
+		InFlight []*debug.HTTPTrace `json:"in_flight"`
+	}{
+		Traces:   traces,
+		InFlight: inFlight,
+	})
 }
 
 func (s *Server) handleDebugRuntime(w http.ResponseWriter, r *http.Request) {
