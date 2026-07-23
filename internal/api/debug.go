@@ -14,13 +14,14 @@ import (
 
 // debugSessionSummary is the shape returned by GET /api/debug/sessions.
 type debugSessionSummary struct {
-	ID                string    `json:"id"`
-	Title             string    `json:"title"`
-	Status            string    `json:"status"`
-	MessageCount      int       `json:"message_count"`
-	ActiveSkills      []string  `json:"active_skills"`
-	Run               *runInfo  `json:"run,omitempty"`
-	LastMessageTimestamp time.Time `json:"last_message_timestamp"`
+	ID                   string              `json:"id"`
+	Title                string              `json:"title"`
+	Status               string              `json:"status"`
+	MessageCount         int                 `json:"message_count"`
+	ActiveSkills         []string            `json:"active_skills"`
+	Run                  *runInfo            `json:"run,omitempty"`
+	LatestHTTP           []*debug.HTTPTrace  `json:"latest_http"`
+	LastMessageTimestamp time.Time           `json:"last_message_timestamp"`
 }
 
 type runInfo struct {
@@ -90,6 +91,10 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
 			}
 		}
+		// Enrich with latest HTTP traces
+		if s.config.DebugRecorder != nil {
+			summary.LatestHTTP = s.config.DebugRecorder.LastN(sess.ID, 3)
+		}
 		summaries = append(summaries, summary)
 	}
 	if summaries == nil {
@@ -131,6 +136,10 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 		Session:      sessionToSummary(sess),
 		Messages:     messages,
 		ActiveSkills: sess.ActiveSkills,
+	}
+	// Enrich with latest HTTP traces
+	if s.config.DebugRecorder != nil {
+		detail.Session.LatestHTTP = s.config.DebugRecorder.LastN(id, 3)
 	}
 	if sess.Status != session.StatusIdle {
 		detail.Run = &runInfo{Status: string(sess.Status)}
@@ -341,6 +350,10 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 				summary.Run.SSESubscriberCount = active.SSE.SubscriberCount()
 				summary.Run.SSEReplayCount = active.SSE.ReplayCount()
 			}
+		}
+		// Enrich with latest HTTP traces
+		if s.config.DebugRecorder != nil {
+			summary.LatestHTTP = s.config.DebugRecorder.LastN(sess.ID, 3)
 		}
 		summaries = append(summaries, summary)
 	}

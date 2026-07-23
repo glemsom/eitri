@@ -3978,6 +3978,130 @@ func TestDebugSessionsWithSession(t *testing.T) {
 	}
 }
 
+func TestDebugSessionsWithHTTPTraces(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	sessionMgr := session.NewManager(10)
+	sess, err := sessionMgr.Create("test-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Record 3 traces for this session
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req1"), []byte("resp1"), 200, time.Second, "")
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req2"), []byte("resp2"), 200, time.Second, "")
+	rec.Record("other-session", "p1", "POST", "/v1/chat", []byte("other"), []byte("resp"), 200, time.Second, "")
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req3"), []byte("resp3"), 200, time.Second, "")
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder:  rec,
+		sessionManager: sessionMgr,
+	})
+	defer server.Close()
+
+	// Test sessions endpoint
+	resp, err := http.Get(server.URL + "/api/debug/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	s := sessions[0]
+	// Check latest_http is present with 3 traces (capped at 3)
+	latestHTTP, ok := s["latest_http"].([]interface{})
+	if !ok {
+		t.Fatal("session missing latest_http array")
+	}
+	if len(latestHTTP) != 3 {
+		t.Fatalf("latest_http length = %d, want 3", len(latestHTTP))
+	}
+	// Verify they are this session's traces (not "other-session")
+	for _, tr := range latestHTTP {
+		trMap := tr.(map[string]interface{})
+		if trMap["session_id"] != sess.ID {
+			t.Errorf("trace session_id = %v, want %v", trMap["session_id"], sess.ID)
+		}
+	}
+
+	// Test umbrella endpoint
+	resp2, err := http.Get(server.URL + "/api/debug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("umbrella status = %d, want %d", resp2.StatusCode, http.StatusOK)
+	}
+
+	var umbrella map[string]interface{}
+	if err := json.NewDecoder(resp2.Body).Decode(&umbrella); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionsList, ok := umbrella["sessions"].([]interface{})
+	if !ok || len(sessionsList) != 1 {
+		t.Fatal("umbrella sessions missing or wrong length")
+	}
+	umbrellaSess := sessionsList[0].(map[string]interface{})
+	umbrellaHTTP, ok := umbrellaSess["latest_http"].([]interface{})
+	if !ok {
+		t.Fatal("umbrella session missing latest_http")
+	}
+	if len(umbrellaHTTP) != 3 {
+		t.Fatalf("umbrella latest_http length = %d, want 3", len(umbrellaHTTP))
+	}
+}
+
+func TestDebugSessionsNoTraces(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	sessionMgr := session.NewManager(10)
+	_, err := sessionMgr.Create("test-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder:  rec,
+		sessionManager: sessionMgr,
+	})
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/debug/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	// latest_http should be present and empty
+	latestHTTP, ok := sessions[0]["latest_http"].([]interface{})
+	if !ok {
+		t.Fatal("session missing latest_http array")
+	}
+	if len(latestHTTP) != 0 {
+		t.Errorf("latest_http length = %d, want 0", len(latestHTTP))
+	}
+}
+
 func TestDebugSessionByIDNotFound(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()

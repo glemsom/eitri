@@ -283,6 +283,54 @@ func TestRecorder_EmptyList(t *testing.T) {
 	}
 }
 
+func TestRecorder_LastN(t *testing.T) {
+	r := NewRecorder(10)
+
+	// Record 5 traces: 3 for session-a, 2 for session-b
+	r.Record("session-a", "p1", "GET", "/1", nil, nil, 200, 0, "")
+	r.Record("session-a", "p1", "GET", "/2", nil, nil, 200, 0, "")
+	r.Record("session-b", "p1", "GET", "/3", nil, nil, 200, 0, "")
+	r.Record("session-a", "p1", "GET", "/4", nil, nil, 200, 0, "")
+	r.Record("session-b", "p1", "GET", "/5", nil, nil, 200, 0, "")
+
+	// LastN for session-a should return the 2 most recent (chronological)
+	traces := r.LastN("session-a", 2)
+	if len(traces) != 2 {
+		t.Fatalf("session-a LastN(2): got %d traces, want 2", len(traces))
+	}
+	// Should be traces 2 and 4 (0-indexed: 1 and 3), in chronological order by URL
+	if traces[0].URL != "/2" {
+		t.Errorf("session-a[0].URL = %q, want /2", traces[0].URL)
+	}
+	if traces[1].URL != "/4" {
+		t.Errorf("session-a[1].URL = %q, want /4", traces[1].URL)
+	}
+
+	// LastN for session-b should return the 2 most recent
+	traces = r.LastN("session-b", 2)
+	if len(traces) != 2 {
+		t.Fatalf("session-b LastN(2): got %d traces, want 2", len(traces))
+	}
+	if traces[0].URL != "/3" {
+		t.Errorf("session-b[0].URL = %q, want /3", traces[0].URL)
+	}
+	if traces[1].URL != "/5" {
+		t.Errorf("session-b[1].URL = %q, want /5", traces[1].URL)
+	}
+
+	// LastN for unknown session returns empty
+	traces = r.LastN("nonexistent", 3)
+	if len(traces) != 0 {
+		t.Errorf("unknown session: got %d traces, want 0", len(traces))
+	}
+
+	// LastN with n larger than available returns all
+	traces = r.LastN("session-a", 100)
+	if len(traces) != 3 {
+		t.Errorf("session-a LastN(100): got %d traces, want 3", len(traces))
+	}
+}
+
 func TestRecorder_RoundTripperBodyPreservation(t *testing.T) {
 	r := NewRecorder(5)
 
