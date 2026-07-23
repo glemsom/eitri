@@ -128,6 +128,7 @@ func main() {
 						SessionCount:       0, // batch mode has no UI sessions
 						RecordedHTTPTraces: debugRecorder.Count(),
 					},
+					SystemDiagnostics:   debug.CollectSystemDiagnostics(processStartTime),
 					ConversationContext: convCtx,
 					FailingHTTPTrace:    debugRecorder.LastFailingTrace(),
 					Traces:         debugRecorder.List(0, "", ""),
@@ -188,6 +189,7 @@ func main() {
 				SessionCount:       len(allSessions),
 				RecordedHTTPTraces: debugRecorder.Count(),
 			},
+			SystemDiagnostics:   debug.CollectSystemDiagnostics(processStartTime),
 			Sessions:       allSessions,
 			FailingHTTPTrace:    debugRecorder.LastFailingTrace(),
 			Traces:         debugRecorder.List(0, "", ""),

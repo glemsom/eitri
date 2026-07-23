@@ -17,10 +17,12 @@
 //   - LogEntry — one captured structured log entry
 //   - DumpOptions — input struct for WriteCrashDump (Error, ErrorChain, Stack, ..., FailingHTTPTrace)
 //   - RuntimeSummary — lightweight runtime counters included in crash dumps
+//   - SystemDiagnostics — system-level context (go version, OS/arch, CPU, memory, disk, env keys)
 //
 // Key functions:
 //   - WriteCrashDump — assemble and write a crash dump directory
 //   - SanitizeConfig — redact secrets from config for dump safety
+//   - CollectSystemDiagnostics — gather system diagnostics for crash dumps
 //
 // Dependencies:
 //   - internal/config — config sanitization
