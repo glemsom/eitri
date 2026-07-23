@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Debug API: expose SSE event history in session debug endpoint (#565)
   onerror handler). Also sets a no-active-run timestamp after cleanup to prevent
   autoConnectOnPageLoad from reconnecting stale sessions. (#N/A)
+- Debug API: add `GET /api/debug/sessions/{id}/http` route as path-based alias
+  for session-scoped HTTP trace lookup (#586)
 
 ### Added
 
