@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Debug API: session, runtime, and config endpoints (#556)
 - RunService.ActiveRunCount() method for debug introspection
 
+- Crash dumps: batch mode failure writes structured crash dump (#559)
+- Crash dumps: WriteCrashDump() + RunService CrashDumpFunc wiring (#559)
+
 ## [0.1.1] — 2026-07-22
 
 ### Fixed

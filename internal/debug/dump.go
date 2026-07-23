@@ -1,0 +1,161 @@
+package debug
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime/pprof"
+	"time"
+
+	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/session"
+)
+
+// DumpOptions contains all data needed to write a crash dump.
+// Callers assemble this from their available services — no hidden imports.
+type DumpOptions struct {
+	// Error chain description.
+	Error string `json:"error"`
+	// Stack trace at crash moment.
+	Stack string `json:"stack,omitempty"`
+	// Application version.
+	Version string `json:"version"`
+	// Runtime summary: uptime, active run count, session count, trace count.
+	RuntimeSummary *RuntimeSummary `json:"runtime_summary,omitempty"`
+	// Sanitized config summary (secrets redacted).
+	ConfigSummary map[string]interface{} `json:"config_summary,omitempty"`
+	// All UI sessions (full message history).
+	Sessions []*session.UISession `json:"sessions,omitempty"`
+	// All completed + in-flight HTTP traces.
+	Traces []*HTTPTrace `json:"traces,omitempty"`
+	// In-flight HTTP traces.
+	InFlightTraces []*HTTPTrace `json:"in_flight_traces,omitempty"`
+}
+
+// RuntimeSummary captures lightweight runtime state for the crash dump.
+type RuntimeSummary struct {
+	UpSince           time.Time `json:"up_since"`
+	ActiveRunCount    int       `json:"active_run_count"`
+	SessionCount      int       `json:"session_count"`
+	RecordedHTTPTraces int      `json:"recorded_http_traces"`
+}
+
+// crashDirName returns the crash directory name for the given timestamp.
+// ISO8601 colons replaced with dashes for cross-platform filesystem compat.
+func crashDirName(ts time.Time) string {
+	name := ts.Format("crash-2006-01-02T15-04-05")
+	return name
+}
+
+// SanitizeConfig returns a map of config fields with secrets replaced by "***".
+// Uses the same pattern as the debug API's sanitizeConfig.
+func SanitizeConfig(cfg *config.Config) map[string]interface{} {
+	if cfg == nil {
+		return nil
+	}
+	m := make(map[string]interface{})
+	m["provider"] = cfg.Provider
+	m["base_url"] = cfg.BaseURL
+	m["model"] = cfg.Model
+	m["thinking_level"] = cfg.ThinkingLevel
+	m["context_window_tokens"] = cfg.ContextWindowTokens
+	m["max_turns"] = cfg.MaxTurns
+	m["max_history"] = cfg.MaxHistory
+	m["command_timeout_ns"] = cfg.CommandTimeout
+	m["session_timeout_ns"] = cfg.SessionTimeout
+
+	if cfg.APIKey != "" {
+		m["api_key"] = "***"
+	}
+	if len(cfg.ProviderAuth) > 0 {
+		m["provider_auth"] = "***"
+	}
+	return m
+}
+
+// WriteCrashDump writes a structured crash dump to ~/.eitri/crash-dump/crash-<timestamp>/.
+// Creates the directory and all 4 files: crash.json, sessions.json, traces.json, goroutines.txt.
+// Returns the path to the crash dump directory, or an error.
+func WriteCrashDump(opts DumpOptions) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+
+	baseDir := filepath.Join(home, ".eitri", "crash-dump")
+	if err := os.MkdirAll(baseDir, 0700); err != nil {
+		return "", fmt.Errorf("cannot create crash dump dir %s: %w", baseDir, err)
+	}
+
+	ts := time.Now()
+	crashDir := filepath.Join(baseDir, crashDirName(ts))
+	if err := os.MkdirAll(crashDir, 0700); err != nil {
+		return "", fmt.Errorf("cannot create crash dir %s: %w", crashDir, err)
+	}
+
+	// 1. crash.json — error chain, version, sanitized config, runtime summary
+	crashInfo := struct {
+		Error          string                 `json:"error"`
+		Stack          string                 `json:"stack,omitempty"`
+		Version        string                 `json:"version"`
+		Timestamp      time.Time              `json:"timestamp"`
+		ConfigSummary  map[string]interface{} `json:"config_summary,omitempty"`
+		RuntimeSummary *RuntimeSummary        `json:"runtime_summary,omitempty"`
+	}{
+		Error:          opts.Error,
+		Stack:          opts.Stack,
+		Version:        opts.Version,
+		Timestamp:      ts,
+		ConfigSummary:  opts.ConfigSummary,
+		RuntimeSummary: opts.RuntimeSummary,
+	}
+
+	if err := writeJSONFile(filepath.Join(crashDir, "crash.json"), crashInfo); err != nil {
+		return "", fmt.Errorf("write crash.json: %w", err)
+	}
+
+	// 2. sessions.json — all UI sessions with full message history
+	if opts.Sessions != nil {
+		if err := writeJSONFile(filepath.Join(crashDir, "sessions.json"), opts.Sessions); err != nil {
+			return "", fmt.Errorf("write sessions.json: %w", err)
+		}
+	}
+
+	// 3. traces.json — all completed + in-flight HTTP traces
+	tracesPayload := struct {
+		Traces   []*HTTPTrace `json:"traces"`
+		InFlight []*HTTPTrace `json:"in_flight"`
+	}{
+		Traces:   opts.Traces,
+		InFlight: opts.InFlightTraces,
+	}
+	if err := writeJSONFile(filepath.Join(crashDir, "traces.json"), tracesPayload); err != nil {
+		return "", fmt.Errorf("write traces.json: %w", err)
+	}
+
+	// 4. goroutines.txt — pprof goroutine dump
+	goroPath := filepath.Join(crashDir, "goroutines.txt")
+	f, err := os.Create(goroPath)
+	if err != nil {
+		return "", fmt.Errorf("create goroutines.txt: %w", err)
+	}
+	defer f.Close()
+
+	if err := pprof.Lookup("goroutine").WriteTo(f, 2); err != nil {
+		return "", fmt.Errorf("write goroutine dump: %w", err)
+	}
+
+	return crashDir, nil
+}
+
+// writeJSONFile marshals v as indented JSON and writes it to path.
+// Creates file with 0600 permissions.
+func writeJSONFile(path string, v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0600)
+}
