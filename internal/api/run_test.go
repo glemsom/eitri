@@ -1466,6 +1466,166 @@ func TestRenderError(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdown_DedupByMessageID(t *testing.T) {
+	ts := newManagedTestServerWithRuns(t)
+	server := ts.server
+	client := noRedirectClient()
+
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	sessionID := loc[1:]
+	ts.sessionMgr.AppendMessage(sessionID, session.Message{
+		Role:    "assistant",
+		Content: "Hello world",
+	})
+
+	renderPath := "/api" + loc + "/render"
+	sendRender := func(msgID string) (int, string) {
+		body := fmt.Sprintf(`{"kind":"markdown","message_id":%q}`, msgID)
+		req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if browserCookie != nil {
+			req.AddCookie(browserCookie)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("render request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(respBody)
+	}
+
+	status, body := sendRender("msg_unique")
+	if status != http.StatusOK {
+		t.Errorf("first render status = %d, want 200", status)
+	}
+	if body == "" {
+		t.Error("first render should return content")
+	}
+
+	status, body = sendRender("msg_unique")
+	if status != http.StatusOK {
+		t.Errorf("duplicate render status = %d, want 200", status)
+	}
+	if body != "" {
+		t.Errorf("duplicate render should return empty body, got: %q", body)
+	}
+
+	status, body = sendRender("msg_different")
+	if status != http.StatusOK {
+		t.Errorf("different message_id render status = %d, want 200", status)
+	}
+	if body == "" {
+		t.Error("different message_id should return content")
+	}
+}
+
+func TestRenderMarkdown_DedupSkipsNoMessageID(t *testing.T) {
+	ts := newManagedTestServerWithRuns(t)
+	server := ts.server
+	client := noRedirectClient()
+
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	sessionID := loc[1:]
+	ts.sessionMgr.AppendMessage(sessionID, session.Message{
+		Role:    "assistant",
+		Content: "Hello world",
+	})
+
+	renderPath := "/api" + loc + "/render"
+	sendRender := func() (int, string) {
+		body := `{"kind":"markdown"}`
+		req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if browserCookie != nil {
+			req.AddCookie(browserCookie)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("render request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		respBody, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(respBody)
+	}
+
+	status1, body1 := sendRender()
+	status2, body2 := sendRender()
+	if status1 != http.StatusOK || status2 != http.StatusOK {
+		t.Errorf("expected 200 for both, got %d and %d", status1, status2)
+	}
+	if body1 == "" || body2 == "" {
+		t.Error("both renders should return content when no message_id")
+	}
+}
+
+func TestRenderComponent_NotAffectedByDedup(t *testing.T) {
+	server := newTestServerWithRuns(t)
+	client := noRedirectClient()
+
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+
+	renderPath := "/api" + loc + "/render"
+	// Component requests with same data should still render (not affected by markdown dedup)
+	data := `{"kind":"component","name":"MermaidDiagram","data":{"code":"graph TD; A-->B;"}}`
+	for i := 0; i < 3; i++ {
+		req, _ := http.NewRequest("POST", server.URL+renderPath, strings.NewReader(data))
+		req.Header.Set("Content-Type", "application/json")
+		if browserCookie != nil {
+			req.AddCookie(browserCookie)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("render request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("component render %d status = %d, want 200", i, resp.StatusCode)
+		}
+	}
+}
+
 func TestCancelEndpoint(t *testing.T) {
 	server := newTestServerWithRuns(t)
 	client := noRedirectClient()

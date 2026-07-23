@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -792,5 +793,72 @@ func TestDelete_OnlyChildDeleted(t *testing.T) {
 	mgr.Delete(parent1.ID)
 	if mgr.Get(child.ID) != nil {
 		t.Error("child should be cascade-deleted with parent")
+	}
+		}
+
+	func TestAddRenderedMessageID_TracksAndDeduplicates(t *testing.T) {
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	if mgr.HasRenderedMessageID(sess.ID, "msg_1") {
+		t.Error("HasRenderedMessageID should be false before adding")
+	}
+
+	mgr.AddRenderedMessageID(sess.ID, "msg_1")
+	if !mgr.HasRenderedMessageID(sess.ID, "msg_1") {
+		t.Error("HasRenderedMessageID should be true after adding")
+	}
+
+	mgr.AddRenderedMessageID(sess.ID, "msg_2")
+	if !mgr.HasRenderedMessageID(sess.ID, "msg_2") {
+		t.Error("HasRenderedMessageID should be true for msg_2")
+	}
+	if !mgr.HasRenderedMessageID(sess.ID, "msg_1") {
+		t.Error("msg_1 should still be tracked")
+	}
+	}
+
+			func TestAddRenderedMessageID_RingBufferEviction(t *testing.T) {
+	mgr := session.NewManager(10)
+	sess, _ := mgr.Create("browser-1")
+
+	for i := range 14 {
+		mgr.AddRenderedMessageID(sess.ID, fmt.Sprintf("msg_%d", i+1))
+	}
+
+	if mgr.HasRenderedMessageID(sess.ID, "msg_1") {
+		t.Error("msg_1 should be evicted from ring buffer")
+	}
+	if mgr.HasRenderedMessageID(sess.ID, "msg_4") {
+		t.Error("msg_4 should be evicted from ring buffer")
+	}
+
+	for i := 5; i <= 14; i++ {
+		if !mgr.HasRenderedMessageID(sess.ID, fmt.Sprintf("msg_%d", i)) {
+			t.Errorf("msg_%d should still be tracked", i)
+		}
+	}
+	}
+
+	func TestHasRenderedMessageID_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10)
+	if mgr.HasRenderedMessageID("nonexistent", "msg_1") {
+		t.Error("HasRenderedMessageID should be false for nonexistent session")
+	}
+	mgr.AddRenderedMessageID("nonexistent", "msg_1")
+	}
+
+	func TestAddRenderedMessageID_DifferentSessionsIndependent(t *testing.T) {
+	mgr := session.NewManager(10)
+	s1, _ := mgr.Create("browser-1")
+	s2, _ := mgr.Create("browser-1")
+
+	mgr.AddRenderedMessageID(s1.ID, "msg_shared")
+
+	if !mgr.HasRenderedMessageID(s1.ID, "msg_shared") {
+		t.Error("s1 should have msg_shared")
+	}
+	if mgr.HasRenderedMessageID(s2.ID, "msg_shared") {
+		t.Error("s2 should NOT have msg_shared")
 	}
 }

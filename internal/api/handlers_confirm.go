@@ -146,6 +146,15 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Deduplicate markdown rendering by message_id
+	if req.Kind == "markdown" && req.MessageID != "" {
+		if s.config.SessionManager.HasRenderedMessageID(id, req.MessageID) {
+			// Already rendered this message_id — return empty no-op response
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
 	switch req.Kind {
 	case "error":
 		component := templates.ErrorToast(req.Message)
@@ -178,6 +187,11 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		}
 		component := templates.AssistantBubble(id, contentHTML, quickReplies)
 		component.Render(r.Context(), w)
+
+		// Track rendered message_id for dedup
+		if req.MessageID != "" {
+			s.config.SessionManager.AddRenderedMessageID(id, req.MessageID)
+		}
 
 	case "component":
 		switch req.Name {
