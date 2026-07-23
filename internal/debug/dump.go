@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/pprof"
+	"syscall"
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -25,6 +27,8 @@ type DumpOptions struct {
 	Version string `json:"version"`
 	// Runtime summary: uptime, active run count, session count, trace count.
 	RuntimeSummary *RuntimeSummary `json:"runtime_summary,omitempty"`
+	// System diagnostics: go version, OS/arch, CPU, memory, disk, uptime, env keys.
+	SystemDiagnostics *SystemDiagnostics `json:"system,omitempty"`
 	// Sanitized config summary (secrets redacted).
 	ConfigSummary map[string]interface{} `json:"config_summary,omitempty"`
 	// All UI sessions (full message history).
@@ -55,6 +59,19 @@ type RuntimeSummary struct {
 	ActiveRunCount    int       `json:"active_run_count"`
 	SessionCount      int       `json:"session_count"`
 	RecordedHTTPTraces int      `json:"recorded_http_traces"`
+}
+
+// SystemDiagnostics captures system-level context for the crash dump.
+type SystemDiagnostics struct {
+	GoVersion           string            `json:"go_version"`
+	OS                  string            `json:"os"`
+	Arch                string            `json:"arch"`
+	NumCPU              int               `json:"num_cpu"`
+	MemoryMB            map[string]uint64 `json:"memory_mb"`
+	DiskFreeMB          uint64            `json:"disk_free_mb"`
+	ProcessStartedAt    time.Time         `json:"process_started_at"`
+	ProcessUptimeSeconds int64            `json:"process_uptime_seconds"`
+	EnvKeys             []string          `json:"env_keys"`
 }
 
 // crashDirName returns the crash directory name for the given timestamp.
@@ -90,6 +107,54 @@ func SanitizeConfig(cfg *config.Config) map[string]interface{} {
 	return m
 }
 
+// CollectSystemDiagnostics gathers system-level diagnostics for crash dumps.
+// processStartedAt should be the process start time (time.Now() captured at startup).
+func CollectSystemDiagnostics(processStartedAt time.Time) *SystemDiagnostics {
+	// Memory stats
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	// Disk free space on home directory
+	var diskFree uint64
+	home, err := os.UserHomeDir()
+	if err == nil {
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(home, &stat); err == nil {
+			diskFree = stat.Bavail * uint64(stat.Bsize) / (1024 * 1024) // MiB
+		}
+	}
+
+	// Env var names only (no values)
+	envKeys := os.Environ()
+	keyNames := make([]string, 0, len(envKeys))
+	for _, e := range envKeys {
+		for i := range e {
+			if e[i] == '=' {
+				keyNames = append(keyNames, e[:i])
+				break
+			}
+		}
+	}
+
+	now := time.Now()
+	uptime := int64(now.Sub(processStartedAt).Seconds())
+
+	return &SystemDiagnostics{
+		GoVersion:            runtime.Version(),
+		OS:                   runtime.GOOS,
+		Arch:                 runtime.GOARCH,
+		NumCPU:               runtime.NumCPU(),
+		MemoryMB: map[string]uint64{
+			"total": m.TotalAlloc / (1024 * 1024),
+			"used":  m.Alloc / (1024 * 1024),
+		},
+		DiskFreeMB:          diskFree,
+		ProcessStartedAt:    processStartedAt,
+		ProcessUptimeSeconds: uptime,
+		EnvKeys:             keyNames,
+	}
+}
+
 // WriteCrashDump writes a structured crash dump to ~/.eitri/crash-dump/crash-<timestamp>/.
 // Creates the directory and writes crash.json, sessions.json, traces.json, goroutines.txt,
 // and logs.json (if any log entries were captured).
@@ -111,7 +176,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		return "", fmt.Errorf("cannot create crash dir %s: %w", crashDir, err)
 	}
 
-	// 1. crash.json — error chain, version, sanitized config, runtime summary, conversation context, failing http trace
+	// 1. crash.json — error chain, version, sanitized config, runtime summary, system diagnostics, conversation context, failing http trace
 	crashInfo := struct {
 		Error               string                 `json:"error"`
 		ErrorChain          string                 `json:"error_chain,omitempty"`
@@ -120,6 +185,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		Timestamp           time.Time              `json:"timestamp"`
 		ConfigSummary       map[string]interface{} `json:"config_summary,omitempty"`
 		RuntimeSummary      *RuntimeSummary        `json:"runtime_summary,omitempty"`
+		SystemDiagnostics   *SystemDiagnostics     `json:"system,omitempty"`
 		ConversationContext *ConversationContext   `json:"conversation_context,omitempty"`
 		FailingHTTPTrace    *HTTPTrace             `json:"failing_http_trace,omitempty"`
 	}{
@@ -130,6 +196,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 		Timestamp:           ts,
 		ConfigSummary:       opts.ConfigSummary,
 		RuntimeSummary:      opts.RuntimeSummary,
+		SystemDiagnostics:   opts.SystemDiagnostics,
 		ConversationContext: opts.ConversationContext,
 		FailingHTTPTrace:    opts.FailingHTTPTrace,
 	}

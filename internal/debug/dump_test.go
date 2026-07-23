@@ -618,3 +618,117 @@ func TestWriteCrashDump_FailingHTTPTraceNil(t *testing.T) {
 		t.Fatalf("crash.json should not have 'failing_http_trace' when nil")
 	}
 }
+
+func TestCollectSystemDiagnostics_Basic(t *testing.T) {
+	startTime := time.Now()
+	diag := CollectSystemDiagnostics(startTime)
+
+	if diag == nil {
+		t.Fatal("CollectSystemDiagnostics returned nil")
+	}
+
+	if diag.GoVersion == "" {
+		t.Error("go_version should not be empty")
+	}
+	if diag.OS == "" {
+		t.Error("os should not be empty")
+	}
+	if diag.Arch == "" {
+		t.Error("arch should not be empty")
+	}
+	if diag.NumCPU <= 0 {
+		t.Errorf("num_cpu should be > 0, got %d", diag.NumCPU)
+	}
+	if diag.MemoryMB == nil {
+		t.Error("memory_mb should not be nil")
+	} else {
+		if _, ok := diag.MemoryMB["total"]; !ok {
+			t.Error("memory_mb should have 'total' key")
+		}
+		if _, ok := diag.MemoryMB["used"]; !ok {
+			t.Error("memory_mb should have 'used' key")
+		}
+	}
+	if diag.ProcessUptimeSeconds < 0 {
+		t.Errorf("process_uptime_seconds should be >= 0, got %d", diag.ProcessUptimeSeconds)
+	}
+	if diag.ProcessStartedAt.IsZero() {
+		t.Error("process_started_at should not be zero")
+	}
+	if len(diag.EnvKeys) == 0 {
+		t.Error("env_keys should not be empty (at least PATH and similar)")
+	}
+	// Verify no env values leaked
+	for _, key := range diag.EnvKeys {
+		if key == "" {
+			t.Error("env_keys should not contain empty strings")
+		}
+		if strings.Contains(key, "=") {
+			t.Errorf("env_keys should not contain '=' in key names, got %q", key)
+		}
+	}
+}
+
+func TestWriteCrashDump_WithSystemDiagnostics(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	startTime := time.Now()
+	diag := CollectSystemDiagnostics(startTime)
+
+	opts := DumpOptions{
+		Error:             "test with system diagnostics",
+		Version:           "dev",
+		SystemDiagnostics: diag,
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// Verify system key exists with content
+	if !strings.Contains(string(data), `"system":`) {
+		t.Fatal("crash.json should contain 'system' key")
+	}
+	if !strings.Contains(string(data), diag.GoVersion) {
+		t.Fatal("crash.json should contain go_version")
+	}
+	if !strings.Contains(string(data), diag.OS) {
+		t.Fatal("crash.json should contain os")
+	}
+	if !strings.Contains(string(data), diag.Arch) {
+		t.Fatal("crash.json should contain arch")
+	}
+}
+
+func TestWriteCrashDump_SystemDiagnosticsNil(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	opts := DumpOptions{
+		Error:             "no system diagnostics",
+		Version:           "dev",
+		SystemDiagnostics: nil,
+	}
+
+	crashDir, err := WriteCrashDump(opts)
+	if err != nil {
+		t.Fatalf("WriteCrashDump failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(crashDir, "crash.json"))
+	if err != nil {
+		t.Fatalf("read crash.json: %v", err)
+	}
+
+	// system key should be omitted when nil
+	if strings.Contains(string(data), `"system":`) {
+		t.Fatal("crash.json should not have 'system' key when SystemDiagnostics is nil")
+	}
+}
