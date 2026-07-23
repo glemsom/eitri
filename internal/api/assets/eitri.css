@@ -604,9 +604,7 @@ main {
 
 #messages {
   grid-area: messages;
-  max-width: min(100%, 960px);
   width: 100%;
-  justify-self: center;
 }
 
 eitri-composer {
