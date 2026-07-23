@@ -49,10 +49,12 @@ type TokenUsage struct {
 type State struct {
 	mu sync.Mutex
 
-	subscribers    map[uint64]chan SSEEvent
-	nextSubscriber uint64
-	streamsClosed  bool
-	history        []SSEEvent
+	subscribers      map[uint64]chan SSEEvent
+	nextSubscriber   uint64
+	streamsClosed    bool
+	history          []SSEEvent
+	subscriberCount  uint64
+	replayCount      uint64
 
 	bufferMu sync.Mutex
 	buffer   strings.Builder
@@ -116,6 +118,10 @@ func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 	id := s.nextSubscriber
 	s.nextSubscriber++
 	s.subscribers[id] = ch
+	s.subscriberCount++
+	if len(history) > 0 {
+		s.replayCount++
+	}
 	return id, ch, true
 }
 
@@ -174,6 +180,20 @@ func (s *State) History() []SSEEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]SSEEvent(nil), s.history...)
+}
+
+// SubscriberCount returns the number of distinct subscribers that have connected.
+func (s *State) SubscriberCount() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.subscriberCount
+}
+
+// ReplayCount returns the number of times history has been replayed to a subscriber.
+func (s *State) ReplayCount() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.replayCount
 }
 
 // broadcastPrepare locks the mutex and returns the subscriber list.

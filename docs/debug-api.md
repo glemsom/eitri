@@ -127,7 +127,10 @@ Response fields:
   `reasoning_content` (if any), `created_at`, `components`, `quick_replies`.
 - `http_traces`: most recent HTTP traces for this session (max 20).
 - `active_skills`: skill names activated in this session.
-- `run`: active run summary if running.
+- `run`: active run summary if running, includes:
+  - `status`: current session status.
+  - `sse_subscriber_count`: total distinct SSE connections created.
+  - `sse_replay_count`: total times history was replayed.
 
 This endpoint can produce a large response for long chats. For large payloads,
 prefer the filtered `/api/debug/http?session_id=...` and/or limit the session
@@ -195,6 +198,10 @@ Response fields:
 - `active_run_count`: number of sessions with active runs.
 - `session_count`: total UI sessions across all browsers.
 - `recorded_http_traces`: total stored HTTP traces.
+- `active_sessions`: per-session SSE diagnostic counters (omitted when idle):
+  - `session_id`: session identifier.
+  - `sse_subscriber_count`: total distinct SSE connections created for this session.
+  - `sse_replay_count`: total times historical events were replayed.
 - `config`: sanitized config (provider ID, model name, context window tokens,
   max turns). Never includes API keys or secrets.
 

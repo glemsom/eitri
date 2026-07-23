@@ -300,6 +300,26 @@ func (s *RunService) ActiveRunCount() int {
 	return len(s.active)
 }
 
+// ActiveRunSSECounters returns subscriber and replay counts for all active runs.
+// Returns map of sessionID → {subscriberCount, replayCount}.
+func (s *RunService) ActiveRunSSECounters() map[string]struct{ SubscriberCount, ReplayCount uint64 } {
+	s.mu.Lock()
+	result := make(map[string]struct{ SubscriberCount, ReplayCount uint64 }, len(s.active))
+	for sessionID, state := range s.active {
+		select {
+		case <-state.Done:
+			// Skip finished-but-not-yet-cleaned-up runs
+		default:
+			result[sessionID] = struct{ SubscriberCount, ReplayCount uint64 }{
+				SubscriberCount: state.SSE.SubscriberCount(),
+				ReplayCount:     state.SSE.ReplayCount(),
+			}
+		}
+	}
+	s.mu.Unlock()
+	return result
+}
+
 // CompletedRunRetentionMs returns the completed run retention duration in milliseconds.
 func (s *RunService) CompletedRunRetentionMs() int64 {
 	return completedRunRetention.Milliseconds()
