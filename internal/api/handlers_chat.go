@@ -145,7 +145,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Trigger", `{"eitri:connectRunStream":"`+id+`","eitri:runStarted":"`+id+`"}`)
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
-	_ = templates.UserBubble(message).Render(r.Context(), w)
+	_ = templates.UserBubble(renderMarkdownToHTML(message)).Render(r.Context(), w)
 	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
 
 	// Render OOB-active-skill-chips swap for newly activated skills
