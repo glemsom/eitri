@@ -2,9 +2,11 @@ package debug
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -46,12 +48,29 @@ func TestRecorder_BodyTruncation(t *testing.T) {
 	}
 
 	tr := traces[0]
-	if len(tr.RequestBody) > MaxBodyBytes {
-		t.Fatalf("request body length %d exceeds max %d", len(tr.RequestBody), MaxBodyBytes)
+
+	expectedSuffix := fmt.Sprintf("... [truncated %d bytes]", 10000)
+	expectedLen := MaxBodyBytes + len(expectedSuffix)
+
+	if len(tr.RequestBody) != expectedLen {
+		t.Fatalf("request body length = %d, want %d (MaxBodyBytes + suffix)", len(tr.RequestBody), expectedLen)
 	}
-	if len(tr.ResponseBody) > MaxBodyBytes {
-		t.Fatalf("response body length %d exceeds max %d", len(tr.ResponseBody), MaxBodyBytes)
+	if !strings.HasSuffix(tr.RequestBody, expectedSuffix) {
+		t.Fatalf("request body missing truncation suffix")
 	}
+
+	if len(tr.ResponseBody) != expectedLen {
+		t.Fatalf("response body length = %d, want %d (MaxBodyBytes + suffix)", len(tr.ResponseBody), expectedLen)
+	}
+	if !strings.HasSuffix(tr.ResponseBody, expectedSuffix) {
+		t.Fatalf("response body missing truncation suffix")
+	}
+
+	// First bytes should be the original content
+	if tr.RequestBody[:10] != "AAAAAAAAAA" {
+		t.Fatalf("request body prefix should be original data")
+	}
+
 	if tr.RequestBytes != len(largeBody) {
 		t.Fatalf("RequestBytes = %d, want %d", tr.RequestBytes, len(largeBody))
 	}
