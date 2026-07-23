@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash dumps: batch mode failure writes structured crash dump (#559)
 - Crash dumps: WriteCrashDump() + RunService CrashDumpFunc wiring (#559)
 
+- Crash dumps: UI mode triggers crash dump on fatal agent errors (#560)
+- Crash dumps: agent loop panic recovery writes crash dump then re-panics (#560)
+
 ## [0.1.1] — 2026-07-22
 
 ### Fixed
