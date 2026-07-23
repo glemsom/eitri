@@ -9,7 +9,7 @@
 // Key types:
 //   - Recorder — trace recorder (NewRecorder, Record, List, InFlight, Count)
 //   - HTTPTrace — one recorded LLM provider request/response
-//   - DumpOptions — input struct for WriteCrashDump
+//   - DumpOptions — input struct for WriteCrashDump (Error, ErrorChain, Stack, ...)
 //   - RuntimeSummary — lightweight runtime counters included in crash dumps
 //
 // Key functions:
@@ -24,4 +24,5 @@
 //   - Add new diagnostic files to WriteCrashDump
 //   - Adjust Recorder capacity via DefaultCapacity constant
 //   - Add new fields to RuntimeSummary for richer crash context
+//   - Add new fields to DumpOptions or crashInfo to extend crash.json
 package debug
