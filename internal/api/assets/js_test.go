@@ -446,6 +446,36 @@ extractBody:
 			input:    "hello world",
 			wantHTML: "<p>hello world</p>",
 		},
+		{
+			name:     "unordered list",
+			input:    "- item1\n- item2",
+			wantHTML: "<li>item1</li>",
+		},
+		{
+			name:     "task list unchecked",
+			input:    "- [ ] todo",
+			wantHTML: `<li><input type="checkbox" disabled="" /> todo</li>`,
+		},
+		{
+			name:     "task list checked",
+			input:    "- [x] done",
+			wantHTML: `<li><input type="checkbox" checked="" disabled="" /> done</li>`,
+		},
+		{
+			name:     "task list with preceding paragraph",
+			input:    "What tools do you have?\n\n- [ ] Check tool description\n- [ ] Check if there are any guidelines to using the tools",
+			wantHTML: `<ul class="task-list">`,
+		},
+		{
+			name:     "mixed list types",
+			input:    "- item1\n- item2\n- item3",
+			wantHTML: "<li>item1</li><li>item2</li><li>item3</li>",
+		},
+		{
+			name:     "ordered list",
+			input:    "1. first\n2. second",
+			wantHTML: "<li>first</li><li>second</li>",
+		},
 	}
 
 	for _, tc := range tests {

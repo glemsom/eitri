@@ -72,11 +72,80 @@
       return match;
     });
 
-    // 6. Paragraph breaks: \n\n → </p><p>
-    safe = safe.replace(/\n\n/g, '</p><p>');
+    // 6. Lists: split into paragraphs by \n\n, detect list blocks
+    var paragraphs = safe.split('\n\n');
+    var result = [];
 
-    // 7. Wrap in <p>
-    safe = '<p>' + safe + '</p>';
+    for (var p = 0; p < paragraphs.length; p++) {
+      var para = paragraphs[p].trim();
+      if (para === '') continue;
+
+      // Check if all non-empty lines are list items
+      var lines = para.split('\n');
+      var isList = true;
+      var hasTask = false;
+      var hasOrdered = false;
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.trim() === '') continue;
+        if (/^- \[[ x]\] /.test(line)) {
+          hasTask = true;
+        } else if (/^[-*+] /.test(line)) {
+          // unordered list item
+        } else if (/^\d+\. /.test(line)) {
+          hasOrdered = true;
+        } else {
+          isList = false;
+          break;
+        }
+      }
+
+      if (isList && lines.some(function(l) { return l.trim() !== ''; })) {
+        // Render as a list
+        if (hasTask) {
+          result.push('<ul class="task-list">');
+        } else if (hasOrdered) {
+          result.push('<ol>');
+        } else {
+          result.push('<ul>');
+        }
+
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          if (line.trim() === '') continue;
+
+          var content = line;
+          var checkbox = '';
+
+          // Task list: - [ ] or - [x]
+          var taskMatch = line.match(/^- \[([ x])\] (.+)$/);
+          if (taskMatch) {
+            checkbox = '<input type="checkbox"' + (taskMatch[1] === 'x' ? ' checked=""' : '') + ' disabled="" /> ';
+            content = checkbox + taskMatch[2];
+          } else if (line.match(/^[-*+] (.+)$/)) {
+            content = line.match(/^[-*+] (.+)$/)[1];
+          } else if (line.match(/^\d+\. (.+)$/)) {
+            content = line.match(/^\d+\. (.+)$/)[1];
+          }
+
+          result.push('<li>' + content + '</li>');
+        }
+
+        if (hasTask) {
+          result.push('</ul>');
+        } else if (hasOrdered) {
+          result.push('</ol>');
+        } else {
+          result.push('</ul>');
+        }
+      } else {
+        // Render as paragraph — collapse internal newlines to spaces
+        result.push('<p>' + para.replace(/\n/g, ' ') + '</p>');
+      }
+    }
+
+    safe = result.join('');
 
     return safe;
   }
