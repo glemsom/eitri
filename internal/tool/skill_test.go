@@ -131,7 +131,7 @@ func TestSkill_WithSessionContext(t *testing.T) {
 	tool := NewSkill(svc, uiMgr)
 
 	// Call with session ID in context
-	sessCtx := context.WithValue(context.Background(), sessionIDKey, sess.ID)
+	sessCtx := context.WithValue(context.Background(), SessionIDKey, sess.ID)
 	result, err := tool.Call(sessCtx, json.RawMessage(`{"name":"test-skill-2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

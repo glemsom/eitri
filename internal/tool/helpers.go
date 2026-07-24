@@ -29,6 +29,5 @@ type contextKey string
 // SessionIDKey is the context key used to pass the session ID to tool handlers.
 const SessionIDKey contextKey = "tool_session_id"
 
-// sessionIDKey is an alias for backward compatibility.
-const sessionIDKey = SessionIDKey
+
 

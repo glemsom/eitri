@@ -68,7 +68,7 @@ func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) (ToolResult,
 
 	// Record activation in session for persistence across runs
 	if t.uiSessionMgr != nil {
-		sessionID, _ := ctx.Value(sessionIDKey).(string)
+		sessionID, _ := ctx.Value(SessionIDKey).(string)
 		if sessionID != "" {
 			t.uiSessionMgr.ActivateSkill(sessionID, parsed.Name)
 		}
