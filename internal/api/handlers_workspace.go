@@ -54,7 +54,8 @@ func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Re
 
 // handleUpdateWorkspace updates the workspace directory for a session.
 // POST /api/sessions/{id}/workspace
-// Body: {"path": "/absolute/path/to/workspace"}
+// Body (HTMX hx-vals, URL-encoded): path=/absolute/path/to/workspace
+// Also accepts JSON body for API clients.
 func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
@@ -65,21 +66,27 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Path string `json:"path"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+	// Accept both URL-encoded form data (from HTMX hx-vals) and JSON body.
+	path := r.FormValue("path")
+	if path == "" {
+		// Fall back to JSON body for API clients
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		path = req.Path
 	}
 
-	if req.Path == "" {
+	if path == "" {
 		http.Error(w, "path is required", http.StatusBadRequest)
 		return
 	}
 
 	// Validate the path
-	cleanedPath, err := fileutil.ValidateBrowsePath(req.Path)
+	cleanedPath, err := fileutil.ValidateBrowsePath(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
