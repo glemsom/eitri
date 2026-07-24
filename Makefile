@@ -6,7 +6,7 @@ BUILD_DIR     := dist
 VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
-.PHONY: all build clean test help run templ-generate release release-check \
+.PHONY: all build clean test test-race help run templ-generate release release-check \
         release-all release-linux-amd64 release-linux-arm64 release-darwin-amd64 release-darwin-arm64
 
 all: build
@@ -20,9 +20,13 @@ clean:
 	rm -f $(BINARY)
 	rm -rf $(BUILD_DIR)
 
-## test — run all tests
+## test — run all tests (fast, no race detector)
 test:
 	$(GO) test ./...
+
+## test-race — run all tests with race detector
+test-race:
+	$(GO) test -race ./...
 
 ## release — build linux/amd64 release tarball + checksums (default platform)
 release: _clean-checksums release-linux-amd64
@@ -64,10 +68,10 @@ release-tarball: templ-generate
 	cd $(BUILD_DIR) && sha256sum $(notdir $(TARBALL)) >> checksums.txt
 	rm -f $(BUILD_DIR)/$(BINARY)
 
-## release-check — release readiness test gates
+## release-check — release readiness test gates (includes race detector)
 release-check:
-	$(GO) test ./...
-	$(GO) test -tags=browser ./internal/api/
+	$(GO) test -race ./...
+	$(GO) test -race -tags=browser ./internal/api/
 
 ## run — build and start server
 run: build
@@ -86,10 +90,11 @@ help:
 	@echo "Usage:"
 	@echo "  make build              Compile the eitri binary (with embedded version)"
 	@echo "  make clean              Remove build artifacts (binary + dist/)"
-	@echo "  make test               Run all tests"
+	@echo "  make test               Run all tests (fast, no race detector)"
+	@echo "  make test-race          Run all tests with race detector"
 	@echo "  make release            Build linux/amd64 tarball + checksums"
 	@echo "  make release-all        Build tarballs for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64"
-	@echo "  make release-check      Run release readiness tests"
+	@echo "  make release-check      Run release readiness tests (includes race detector)"
 	@echo "  make run                Build and run the server"
 	@echo "  make help               Show this help"
 	@echo ""
