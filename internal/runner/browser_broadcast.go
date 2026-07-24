@@ -57,19 +57,14 @@ func (bb *browserBroadcaster) Unsubscribe(browserID string, id uint64) {
 // Broadcast sends an event to all browser-level SSE subscribers for the given browserID.
 func (bb *browserBroadcaster) Broadcast(browserID string, evt BrowserEvent) {
 	bb.mu.Lock()
+	defer bb.mu.Unlock()
+
 	subs := bb.subs[browserID]
 	if subs == nil {
-		bb.mu.Unlock()
 		return
 	}
-	// Collect channels under lock, send outside
-	channels := make([]chan BrowserEvent, 0, len(subs))
-	for _, ch := range subs {
-		channels = append(channels, ch)
-	}
-	bb.mu.Unlock()
 
-	for _, ch := range channels {
+	for _, ch := range subs {
 		select {
 		case ch <- evt:
 		default:
