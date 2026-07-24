@@ -1849,6 +1849,21 @@ eitri-composer {
   min-height: 0;
 }
 
+/* Sandbox status badges in settings */
+.sandbox-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.sandbox-badge--ok {
+  color: #2e7d32;
+}
+
+.sandbox-badge--warn {
+  color: #e65100;
+}
+
 /* Skill cards */
 .skill-card {
   background: var(--surface-raised);

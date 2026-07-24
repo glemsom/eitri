@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/sandbox"
 )
 
 type GitHubCopilotOAuthConfig = provider.GitHubCopilotOAuthConfig
@@ -135,7 +136,7 @@ func writeSettingsFormWithState(w http.ResponseWriter, r *http.Request, status i
 func writeSettingsFormWithStateAndSuccess(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView, successMessage string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage).Render(r.Context(), w)
+	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage, sandbox.BwrapAvailable()).Render(r.Context(), w)
 }
 
 func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*provider.GitHubDeviceCodeResponse, error) {
