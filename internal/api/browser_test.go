@@ -20,6 +20,36 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
+// sharedAllocCtx is a shared Chrome allocator reused across all browser tests
+// to avoid launching a separate Chrome process for each test, which causes
+// memory/resource contention on constrained CI runners.
+var sharedAllocCtx context.Context
+
+// TestMain initialises the shared Chrome allocator once for all browser tests.
+func TestMain(m *testing.M) {
+	chromePath := findChrome()
+	if chromePath == "" {
+		// No Chrome available — all browser tests will skip.
+		os.Exit(m.Run())
+	}
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(
+		context.Background(),
+		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.ExecPath(chromePath),
+			chromedp.Flag("headless", true),
+			chromedp.Flag("disable-gpu", true),
+			chromedp.Flag("no-sandbox", true),
+		)...)
+
+	sharedAllocCtx = allocCtx
+
+	code := m.Run()
+	allocCancel()
+	os.Exit(code)
+}
+
+
 // streamFlushWindow is the delay before sending the stop signal in streaming
 // markdown tests, giving the browser's flush timer time to fire.
 const streamFlushWindow = 150 * time.Millisecond
@@ -43,40 +73,24 @@ func findChrome() string {
 	return ""
 }
 
-// newBrowserCtx starts a headless Chrome instance via chromedp and returns
-// a context suitable for browser tests. If Chrome is not found, the test is
-// skipped with a clear message.
+// newBrowserCtx creates a new chromedp context from the shared Chrome allocator.
+// This avoids launching a separate Chrome process for each test, reducing
+// memory and CPU contention on CI runners.
 func newBrowserCtx(t *testing.T, srvURL string) (context.Context, context.CancelFunc) {
 	t.Helper()
 
-	chromePath := findChrome()
-	if chromePath == "" {
+	if sharedAllocCtx == nil {
 		t.Skip("Chrome/Chromium not found — skipping browser test")
 	}
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(
-		context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.ExecPath(chromePath),
-			chromedp.Flag("headless", true),
-			chromedp.Flag("disable-gpu", true),
-			chromedp.Flag("no-sandbox", true),
-		)...,
-	)
-
-	ctx, ctxCancel := chromedp.NewContext(allocCtx)
-	t.Cleanup(ctxCancel)
-	t.Cleanup(allocCancel)
+	ctx, ctxCancel := chromedp.NewContext(sharedAllocCtx)
 
 	// Wait for the browser to be ready
 	if err := chromedp.Run(ctx); err != nil {
 		t.Fatalf("failed to start browser: %v", err)
 	}
 
-	return ctx, func() {
-		ctxCancel()
-		allocCancel()
-	}
+	return ctx, ctxCancel
 }
 
 func waitForComposerReady(t *testing.T, ctx context.Context) {
@@ -98,6 +112,20 @@ func waitForComposerReady(t *testing.T, ctx context.Context) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("composer did not initialize")
+}
+
+// pollForCondition repeatedly evaluates check until it returns true
+// or the deadline expires. Useful as a deterministic replacement for time.Sleep
+// when waiting for browser-side state changes (IntersectionObserver, streaming).
+func pollForCondition(t testing.TB, timeout, interval time.Duration, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if check() {
+			return
+		}
+		time.Sleep(interval)
+	}
 }
 
 // newTestServer is already defined in server_test.go — shared via package api_test.
@@ -903,8 +931,17 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait for streaming to start and accumulate enough content
-	time.Sleep(2 * time.Second)
+	// Wait for streaming to start and accumulate enough content — poll for content
+	pollForCondition(t, 5*time.Second, 200*time.Millisecond, func() bool {
+		var msgExists bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('.message-assistant') !== null`,
+				&msgExists,
+			),
+		)
+		return msgExists
+	})
 
 	// Force messages container to a small fixed height to create overflow
 	// (default viewport is too large for 500 chars to overflow)
@@ -929,8 +966,21 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 		t.Fatalf("scroll up failed: %v", err)
 	}
 
-	// Wait for IntersectionObserver to fire
-	time.Sleep(500 * time.Millisecond)
+	// Wait for IntersectionObserver to fire — poll for button visible
+	pollForCondition(t, 3*time.Second, 100*time.Millisecond, func() bool {
+		var btnState string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`(() => {
+					const btn = document.getElementById('scroll-to-bottom-btn');
+					if (!btn) return 'missing';
+					return btn.classList.contains('visible') ? 'visible' : 'hidden';
+				})()`,
+				&btnState,
+			),
+		)
+		return btnState == "visible"
+	})
 
 	// Check button is now visible
 	var btnVisibleAfterScroll string

@@ -82,13 +82,24 @@ func NewManager(maxSessions int) *Manager {
 	}
 }
 
+// copySession returns a shallow copy of a UISession with a fresh Messages slice
+// so the caller can read fields without holding the manager lock.
+func copySession(s *UISession) *UISession {
+	cp := *s
+	cp.Messages = make([]Message, len(s.Messages))
+	copy(cp.Messages, s.Messages)
+	cp.RenderedMessageIDs = make([]string, len(s.RenderedMessageIDs))
+	copy(cp.RenderedMessageIDs, s.RenderedMessageIDs)
+	return &cp
+}
+
 // All returns a copy of all sessions. Used for bulk operations.
 func (m *Manager) All() []*UISession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	result := make([]*UISession, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		result = append(result, s)
+		result = append(result, copySession(s))
 	}
 	return result
 }
@@ -259,7 +270,7 @@ func (m *Manager) ListByBrowser(browserID string) []*UISession {
 	result := make([]*UISession, 0, len(ids))
 	for _, id := range ids {
 		if s := m.sessions[id]; s != nil {
-			result = append(result, s)
+			result = append(result, copySession(s))
 		}
 	}
 	return result
