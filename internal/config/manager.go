@@ -30,24 +30,30 @@ type Config struct {
 	MaxTurns            int             `json:"max_turns"`
 	ContextWindowTokens int             `json:"context_window_tokens"`
 	MaxHistory          int             `json:"max_history"`
-	DebugPrompt         bool            `json:"debug_prompt,omitempty"`    // was EITRI_DEBUG_PROMPT=1
-	DebugRequest        bool            `json:"debug_request,omitempty"`   // was EITRI_DEBUG_REQUEST=1
-	DebugLLMDir         string          `json:"debug_llm_dir,omitempty"`   // was EITRI_DEBUG_LLM_DIR
-	Sandbox             sandbox.Config  `json:"sandbox,omitempty"`
+	DebugPrompt              bool            `json:"debug_prompt,omitempty"`                // was EITRI_DEBUG_PROMPT=1
+	DebugRequest             bool            `json:"debug_request,omitempty"`               // was EITRI_DEBUG_REQUEST=1
+	DebugLLMDir              string          `json:"debug_llm_dir,omitempty"`               // was EITRI_DEBUG_LLM_DIR
+	CompactionEnabled        bool            `json:"compaction_enabled"`
+	CompactionThresholdPercent int           `json:"compaction_threshold_percent,omitempty"`
+	CompactionLowWaterPercent  int           `json:"compaction_low_water_percent,omitempty"`
+	Sandbox                  sandbox.Config  `json:"sandbox,omitempty"`
 }
 
 // Defaults returns a Config with default values.
 func Defaults() Config {
 	prof := provider.MustDescribe("opencode_go")
 	return Config{
-		Provider:            prof.ID,
-		BaseURL:             prof.DefaultBaseURL,
-		SessionTimeout:      30 * 60_000_000_000, // 30 minutes in ns
-		CommandTimeout:      60 * 1_000_000_000,  // 60 seconds in ns
-		MaxTurns:            75,
-		ContextWindowTokens: 256000,
-		MaxHistory:          50,
-		Sandbox:             sandbox.DefaultConfig(),
+		Provider:                 prof.ID,
+		BaseURL:                  prof.DefaultBaseURL,
+		SessionTimeout:           30 * 60_000_000_000, // 30 minutes in ns
+		CommandTimeout:           60 * 1_000_000_000,  // 60 seconds in ns
+		MaxTurns:                 75,
+		ContextWindowTokens:      256000,
+		MaxHistory:               50,
+		CompactionEnabled:        true,
+		CompactionThresholdPercent: 90,
+		CompactionLowWaterPercent:  30,
+		Sandbox:                  sandbox.DefaultConfig(),
 	}
 }
 
@@ -57,9 +63,16 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := Defaults()
-			promoteDebugEnvVars(&cfg)
+			promoteEnvVars(&cfg)
 			return &cfg, nil
 		}
+		return nil, err
+	}
+
+	// Check which top-level keys exist in the JSON so we can preserve
+	// defaults for compaction fields that were not present in older config files.
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
@@ -67,14 +80,24 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	promoteDebugEnvVars(&cfg)
+	// If the file did not contain compaction fields, keep the defaults.
+	if _, ok := raw["compaction_enabled"]; !ok {
+		cfg.CompactionEnabled = Defaults().CompactionEnabled
+	}
+	if _, ok := raw["compaction_threshold_percent"]; !ok {
+		cfg.CompactionThresholdPercent = Defaults().CompactionThresholdPercent
+	}
+	if _, ok := raw["compaction_low_water_percent"]; !ok {
+		cfg.CompactionLowWaterPercent = Defaults().CompactionLowWaterPercent
+	}
+	promoteEnvVars(&cfg)
 	return &cfg, nil
 }
 
-// promoteDebugEnvVars promotes EITRI_DEBUG_* environment variables into
-// config fields when the config field is its zero value, preserving backward
-// compatibility for existing invocations that rely on env vars.
-func promoteDebugEnvVars(cfg *Config) {
+// promoteEnvVars promotes EITRI_DEBUG_* and EITRI_COMPACTION_* environment
+// variables into config fields when the config field is its zero value,
+// preserving backward compatibility for existing invocations that rely on env vars.
+func promoteEnvVars(cfg *Config) {
 	if !cfg.DebugPrompt {
 		if os.Getenv("EITRI_DEBUG_PROMPT") == "1" {
 			cfg.DebugPrompt = true
@@ -88,6 +111,20 @@ func promoteDebugEnvVars(cfg *Config) {
 	if cfg.DebugLLMDir == "" {
 		if v := os.Getenv("EITRI_DEBUG_LLM_DIR"); v != "" {
 			cfg.DebugLLMDir = v
+		}
+	}
+	// Compaction env var overrides (always override, not just when zero)
+	if v := os.Getenv("EITRI_COMPACTION_ENABLED"); v != "" {
+		cfg.CompactionEnabled = v == "1" || v == "true"
+	}
+	if v := os.Getenv("EITRI_COMPACTION_THRESHOLD_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 50 && n <= 100 {
+			cfg.CompactionThresholdPercent = n
+		}
+	}
+	if v := os.Getenv("EITRI_COMPACTION_LOW_WATER_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 10 && n <= 60 {
+			cfg.CompactionLowWaterPercent = n
 		}
 	}
 }
@@ -154,6 +191,23 @@ func Validate(cfg *Config) error {
 		if !filepath.IsAbs(cfg.DebugLLMDir) {
 			return fmt.Errorf("debug_llm_dir must be an absolute directory path, got %q", cfg.DebugLLMDir)
 		}
+	}
+
+	// Apply defaults for compaction fields when they are zero (e.g. old configs without these fields).
+	if cfg.CompactionThresholdPercent == 0 {
+		cfg.CompactionThresholdPercent = 90
+	}
+	if cfg.CompactionLowWaterPercent == 0 {
+		cfg.CompactionLowWaterPercent = 30
+	}
+	if cfg.CompactionThresholdPercent < 50 || cfg.CompactionThresholdPercent > 100 {
+		return fmt.Errorf("compaction_threshold_percent must be between 50 and 100, got %d", cfg.CompactionThresholdPercent)
+	}
+	if cfg.CompactionLowWaterPercent < 10 || cfg.CompactionLowWaterPercent > 60 {
+		return fmt.Errorf("compaction_low_water_percent must be between 10 and 60, got %d", cfg.CompactionLowWaterPercent)
+	}
+	if cfg.CompactionLowWaterPercent >= cfg.CompactionThresholdPercent {
+		return fmt.Errorf("compaction_low_water_percent (%d) must be less than compaction_threshold_percent (%d)", cfg.CompactionLowWaterPercent, cfg.CompactionThresholdPercent)
 	}
 
 	return nil
@@ -304,6 +358,23 @@ func Merge(base *Config, patch map[string]any) *Config {
 			result.Sandbox.Profile = sandbox.ProfileDefault
 		} else {
 			result.Sandbox.Profile = sandbox.ProfileNone
+		}
+	}
+	if v, ok := patch["compaction_enabled"]; ok {
+		if parseBool(v) {
+			result.CompactionEnabled = true
+		} else {
+			result.CompactionEnabled = false
+		}
+	}
+	if v, ok := patch["compaction_threshold_percent"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.CompactionThresholdPercent = int(f)
+		}
+	}
+	if v, ok := patch["compaction_low_water_percent"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.CompactionLowWaterPercent = int(f)
 		}
 	}
 

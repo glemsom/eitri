@@ -820,3 +820,303 @@ func TestMerge_DebugRequestFromFormString(t *testing.T) {
 	}
 }
 
+func TestDefaults_CompactionFields(t *testing.T) {
+	def := config.Defaults()
+	if !def.CompactionEnabled {
+		t.Error("CompactionEnabled = false, want true by default")
+	}
+	if def.CompactionThresholdPercent != 90 {
+		t.Errorf("CompactionThresholdPercent = %d, want 90", def.CompactionThresholdPercent)
+	}
+	if def.CompactionLowWaterPercent != 30 {
+		t.Errorf("CompactionLowWaterPercent = %d, want 30", def.CompactionLowWaterPercent)
+	}
+}
+
+func TestValidate_CompactionDefaultsAppliedWhenZero(t *testing.T) {
+	// Config without compaction fields set should still validate (defaults applied)
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             "https://api.example.com",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+		CompactionEnabled:   true,
+		// ThresholdPercent and LowWaterPercent left at 0
+	}
+	if err := config.Validate(cfg); err != nil {
+		t.Fatalf("Validate() = %v, want nil (defaults should be applied)", err)
+	}
+	// Validate mutates the struct to apply defaults
+	if cfg.CompactionThresholdPercent != 90 {
+		t.Errorf("CompactionThresholdPercent = %d after validate, want 90", cfg.CompactionThresholdPercent)
+	}
+	if cfg.CompactionLowWaterPercent != 30 {
+		t.Errorf("CompactionLowWaterPercent = %d after validate, want 30", cfg.CompactionLowWaterPercent)
+	}
+}
+
+func TestValidate_CompactionThresholdOutOfRange(t *testing.T) {
+	cfg := &config.Config{
+		Provider:                 "custom_openai",
+		APIKey:                   "sk-test",
+		BaseURL:                  "https://api.example.com",
+		SessionTimeout:           30 * 60_000_000_000,
+		CommandTimeout:           60_000_000_000,
+		MaxTurns:                 25,
+		ContextWindowTokens:      128000,
+		CompactionThresholdPercent: 110,
+		CompactionLowWaterPercent:  30,
+	}
+	err := config.Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "compaction_threshold_percent") {
+		t.Errorf("Validate() = %v, want error about compaction_threshold_percent out of range", err)
+	}
+}
+
+func TestValidate_CompactionLowWaterOutOfRange(t *testing.T) {
+	cfg := &config.Config{
+		Provider:                 "custom_openai",
+		APIKey:                   "sk-test",
+		BaseURL:                  "https://api.example.com",
+		SessionTimeout:           30 * 60_000_000_000,
+		CommandTimeout:           60_000_000_000,
+		MaxTurns:                 25,
+		ContextWindowTokens:      128000,
+		CompactionThresholdPercent: 90,
+		CompactionLowWaterPercent:  5,
+	}
+	err := config.Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "compaction_low_water_percent") {
+		t.Errorf("Validate() = %v, want error about compaction_low_water_percent out of range", err)
+	}
+}
+
+func TestValidate_CompactionLowWaterMustBeLessThanHigh(t *testing.T) {
+	cfg := &config.Config{
+		Provider:                 "custom_openai",
+		APIKey:                   "sk-test",
+		BaseURL:                  "https://api.example.com",
+		SessionTimeout:           30 * 60_000_000_000,
+		CommandTimeout:           60_000_000_000,
+		MaxTurns:                 25,
+		ContextWindowTokens:      128000,
+		CompactionThresholdPercent: 50,
+		CompactionLowWaterPercent:  55,
+	}
+	err := config.Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "must be less than") {
+		t.Errorf("Validate() = %v, want error about low < high", err)
+	}
+}
+
+func TestValidate_CompactionLowWaterEqualToHigh(t *testing.T) {
+	cfg := &config.Config{
+		Provider:                 "custom_openai",
+		APIKey:                   "sk-test",
+		BaseURL:                  "https://api.example.com",
+		SessionTimeout:           30 * 60_000_000_000,
+		CommandTimeout:           60_000_000_000,
+		MaxTurns:                 25,
+		ContextWindowTokens:      128000,
+		CompactionThresholdPercent: 60,
+		CompactionLowWaterPercent:  60,
+	}
+	err := config.Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "must be less than") {
+		t.Errorf("Validate() = %v, want error about low < high", err)
+	}
+}
+
+func TestMerge_CompactionEnabled(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	// Enable compaction (it's already true by default)
+	result := config.Merge(&cfg, map[string]any{"compaction_enabled": "true"})
+	if !result.CompactionEnabled {
+		t.Error("CompactionEnabled = false, want true")
+	}
+
+	// Disable compaction
+	result2 := config.Merge(&cfg, map[string]any{"compaction_enabled": "false"})
+	if result2.CompactionEnabled {
+		t.Error("CompactionEnabled = true after merge with false, want false")
+	}
+}
+
+func TestMerge_CompactionThresholdPercent(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"compaction_threshold_percent": "85"})
+	if result.CompactionThresholdPercent != 85 {
+		t.Errorf("CompactionThresholdPercent = %d, want 85", result.CompactionThresholdPercent)
+	}
+}
+
+func TestMerge_CompactionLowWaterPercent(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"compaction_low_water_percent": "25"})
+	if result.CompactionLowWaterPercent != 25 {
+		t.Errorf("CompactionLowWaterPercent = %d, want 25", result.CompactionLowWaterPercent)
+	}
+}
+
+func TestLoad_SetsCompactionDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Save JSON without compaction fields (simulating old config from before compaction feature)
+	oldConfig := `{
+		"provider": "custom_openai",
+		"api_key": "sk-test",
+		"base_url": "https://api.example.com",
+		"session_timeout": 1800000000000,
+		"command_timeout": 60000000000,
+		"max_turns": 25,
+		"context_window_tokens": 128000
+	}`
+	if err := os.WriteFile(cfgPath, []byte(oldConfig), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+
+	if !cfg.CompactionEnabled {
+		t.Error("CompactionEnabled = false, want true (default)")
+	}
+	if cfg.CompactionThresholdPercent != 90 {
+		t.Errorf("CompactionThresholdPercent = %d, want 90 (default)", cfg.CompactionThresholdPercent)
+	}
+	if cfg.CompactionLowWaterPercent != 30 {
+		t.Errorf("CompactionLowWaterPercent = %d, want 30 (default)", cfg.CompactionLowWaterPercent)
+	}
+}
+
+func TestLoad_RoundTripsCompactionFields(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Save with all compaction fields explicitly set
+	if err := config.Save(cfgPath, &config.Config{
+		Provider:                  "custom_openai",
+		APIKey:                    "sk-test",
+		BaseURL:                   "https://api.example.com",
+		SessionTimeout:            30 * 60_000_000_000,
+		CommandTimeout:            60_000_000_000,
+		MaxTurns:                  25,
+		ContextWindowTokens:       128000,
+		CompactionEnabled:         false,
+		CompactionThresholdPercent: 75,
+		CompactionLowWaterPercent:  20,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+
+	if cfg.CompactionEnabled {
+		t.Error("CompactionEnabled = true, want false (saved explicitly)")
+	}
+	if cfg.CompactionThresholdPercent != 75 {
+		t.Errorf("CompactionThresholdPercent = %d, want 75", cfg.CompactionThresholdPercent)
+	}
+	if cfg.CompactionLowWaterPercent != 20 {
+		t.Errorf("CompactionLowWaterPercent = %d, want 20", cfg.CompactionLowWaterPercent)
+	}
+}
+
+func TestLoad_PromotesCompactionEnabledEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Save config with compaction disabled
+	if err := config.Save(cfgPath, &config.Config{
+		Provider:                  "custom_openai",
+		APIKey:                    "sk-test",
+		BaseURL:                   "https://api.example.com",
+		SessionTimeout:            30 * 60_000_000_000,
+		CommandTimeout:            60_000_000_000,
+		MaxTurns:                  25,
+		ContextWindowTokens:       128000,
+		CompactionEnabled:         false,
+		CompactionThresholdPercent: 90,
+		CompactionLowWaterPercent:  30,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	t.Setenv("EITRI_COMPACTION_ENABLED", "true")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if !cfg.CompactionEnabled {
+		t.Error("CompactionEnabled = false after env var override, want true")
+	}
+}
+
+func TestLoad_PromotesCompactionThresholdEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	if err := config.Save(cfgPath, &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             "https://api.example.com",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	t.Setenv("EITRI_COMPACTION_THRESHOLD_PERCENT", "75")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if cfg.CompactionThresholdPercent != 75 {
+		t.Errorf("CompactionThresholdPercent = %d, want 75", cfg.CompactionThresholdPercent)
+	}
+}
+
+func TestLoad_PromotesCompactionLowWaterEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	if err := config.Save(cfgPath, &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             "https://api.example.com",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	t.Setenv("EITRI_COMPACTION_LOW_WATER_PERCENT", "20")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if cfg.CompactionLowWaterPercent != 20 {
+		t.Errorf("CompactionLowWaterPercent = %d, want 20", cfg.CompactionLowWaterPercent)
+	}
+}
+
+

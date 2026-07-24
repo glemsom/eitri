@@ -2179,6 +2179,53 @@ eitri-composer {
   cursor: pointer;
 }
 
+/* Range slider wrapper (settings compaction) */
+.range-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.range-input {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.range-input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+}
+
+.range-value {
+  min-width: 3rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: right;
+  font-size: 0.95rem;
+}
+
 /* ============================================
    Base element resets (form controls)
    ============================================ */
