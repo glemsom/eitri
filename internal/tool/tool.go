@@ -28,6 +28,24 @@ type ToolHandler interface {
 	Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool)
 }
 
+// JSONSchema is a strongly-typed JSON Schema object builder.
+type JSONSchema struct {
+	Type                 string                `json:"type"`
+	Properties           map[string]SchemaProp `json:"properties,omitempty"`
+	Required             []string              `json:"required,omitempty"`
+	AdditionalProperties *bool                 `json:"additionalProperties,omitempty"`
+	Items                *SchemaProp           `json:"items,omitempty"`
+	Description          string                `json:"description,omitempty"`
+}
+
+// SchemaProp represents a single JSON Schema property.
+type SchemaProp struct {
+	Type                 string      `json:"type"`
+	Description          string      `json:"description,omitempty"`
+	Items                *SchemaProp `json:"items,omitempty"`
+	AdditionalProperties *bool       `json:"additionalProperties,omitempty"`
+}
+
 // SchemaOf generates a litellm.Schema (JSON Schema object) from a Go struct
 // type T by reflecting its fields and reading json: and jsonschema: struct tags.
 //
@@ -52,12 +70,7 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 		return nil, fmt.Errorf("expected struct, got %s", t.Kind())
 	}
 
-	schema := map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
-	}
-
-	props := schema["properties"].(map[string]any)
+	props := make(map[string]SchemaProp)
 	var required []string
 
 	numField := t.NumField()
@@ -98,59 +111,55 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 		}
 	}
 
-	if len(required) > 0 {
-		schema["required"] = required
-	}
+	js := objectSchema(props, required)
 
-	raw, err := json.Marshal(schema)
+	raw, err := json.Marshal(js)
 	if err != nil {
 		return nil, fmt.Errorf("marshal schema: %w", err)
 	}
 	return litellm.Schema(raw), nil
 }
 
-// fieldSchema returns the JSON Schema representation of a field type.
-func fieldSchema(t reflect.Type, description string) map[string]any {
-	schema := map[string]any{}
-
+// fieldSchema returns the SchemaProp for a field type.
+func fieldSchema(t reflect.Type, description string) SchemaProp {
 	// Dereference pointer
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
+	var sp SchemaProp
+
 	switch t.Kind() {
 	case reflect.String:
-		schema["type"] = "string"
+		sp.Type = "string"
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		schema["type"] = "integer"
+		sp.Type = "integer"
 	case reflect.Float32, reflect.Float64:
-		schema["type"] = "number"
+		sp.Type = "number"
 	case reflect.Bool:
-		schema["type"] = "boolean"
+		sp.Type = "boolean"
 	case reflect.Slice:
-		schema["type"] = "array"
+		sp.Type = "array"
 		elem := t.Elem()
 		if elem.Kind() == reflect.Ptr {
 			elem = elem.Elem()
 		}
-		schema["items"] = map[string]any{
-			"type": goTypeToJSONType(elem.Kind()),
-		}
+		sp.Items = &SchemaProp{Type: goTypeToJSONType(elem.Kind())}
 	case reflect.Map:
-		schema["type"] = "object"
-		schema["additionalProperties"] = true
+		sp.Type = "object"
+		sp.AdditionalProperties = boolPtr(true)
 	case reflect.Struct:
-		schema["type"] = "object"
+		sp.Type = "object"
 	default:
-		schema["type"] = "string"
+		sp.Type = "string"
 	}
 
 	if description != "" {
-		schema["description"] = description
+		sp.Description = description
 	}
 
-	return schema
+	return sp
 }
 
 func goTypeToJSONType(t reflect.Kind) string {
@@ -171,4 +180,18 @@ func goTypeToJSONType(t reflect.Kind) string {
 	default:
 		return "string"
 	}
+}
+
+// objectSchema creates a typed JSON Schema for an object type.
+func objectSchema(props map[string]SchemaProp, required []string) JSONSchema {
+	return JSONSchema{
+		Type:       "object",
+		Properties: props,
+		Required:   required,
+	}
+}
+
+// boolPtr returns a pointer to a bool.
+func boolPtr(b bool) *bool {
+	return &b
 }
