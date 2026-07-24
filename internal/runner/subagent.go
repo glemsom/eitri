@@ -196,7 +196,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			MaxHistory: 0,
 			SSEWriter:  w,
 			Tools:      toolReg,
-		}, AgentConfig{
+		}, RunOpts{
 			HistoryMgr:    historyMgr,
 			Confirmer:     nil,
 			UISessionMgr:  s.uiSessionMgr,
