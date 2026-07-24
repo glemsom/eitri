@@ -230,6 +230,10 @@ func (s *Server) registerRoutes() {
 	// Directory browser endpoint (issue #627)
 	s.mux.HandleFunc("GET /api/browse-directory", s.handleBrowseDirectory)
 
+	// Directory browser overlay + workspace update (issue #628)
+	s.mux.HandleFunc("GET /api/sessions/{id}/directory-browser", s.handleSessionDirectoryBrowser)
+	s.mux.HandleFunc("POST /api/sessions/{id}/workspace", s.handleUpdateWorkspace)
+
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
 

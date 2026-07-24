@@ -333,6 +333,17 @@ func (m *Manager) UpdateStatus(id string, status Status) {
 	}
 }
 
+// SetWorkspace updates the workspace root directory for a session.
+// No-op if session not found. Takes effect on the next agent run.
+func (m *Manager) SetWorkspace(id, workspace string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.sessions[id]; s != nil {
+		s.Workspace = workspace
+		s.UpdatedAt = time.Now()
+	}
+}
+
 // AppendMessage appends a message to a session. No-op if session not found.
 // Title is updated to the latest user message's preview.
 func (m *Manager) AppendMessage(id string, msg Message) {
