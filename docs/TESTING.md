@@ -41,6 +41,9 @@ model service.
 | `internal/history/session_test.go` | Session lifecycle, history, sliding window |
 | `internal/fileutil/path_test.go` | Path validation |
 | `internal/fileutil/filetools_test.go` | File operations |
+| `internal/api/render_helpers_test.go` | Render helpers (hasMermaidComponent, stripMermaidCodeBlocks, renderSessionForPage, renderComponentsToHTML) |
+| `internal/api/templates/helpers_test.go` | Template helpers (pathBase, scopeLabel, scopeIcon, statusDot, countLines) |
+| `internal/api/templates/diff_test.go` | Diff text helpers (diffText, splitLines, escapeDiff, countLines) |
 | `internal/config/config_test.go` | Config load/save/merge, provider validation |
 | `internal/runner/manager_test.go` | Runner manager, cache keys |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
