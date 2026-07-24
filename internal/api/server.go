@@ -12,6 +12,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/assets"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -30,6 +31,7 @@ type ServerConfig struct {
 	Version        string          // injected at build time
 	StartTime      time.Time       // server start timestamp
 	DebugRecorder  *debug.Recorder // optional HTTP trace recorder
+	Persister      *persist.Persister // optional; deletes session data from disk on session delete
 }
 
 // Server wraps the HTTP handler and injected dependencies.
