@@ -36,6 +36,7 @@ func TestMain(m *testing.M) {
 			chromedp.Flag("headless", true),
 			chromedp.Flag("disable-gpu", true),
 			chromedp.Flag("no-sandbox", true),
+			chromedp.WSURLReadTimeout(60*time.Second), // CI runners can be slow to start Chrome
 		)...)
 
 	sharedAllocCtx = allocCtx
@@ -78,14 +79,28 @@ func newBrowserCtx(t *testing.T, srvURL string) (context.Context, context.Cancel
 		t.Skip("Chrome/Chromium not found — skipping browser test")
 	}
 
-	ctx, ctxCancel := chromedp.NewContext(sharedAllocCtx)
-
-	// Wait for the browser to be ready
-	if err := chromedp.Run(ctx); err != nil {
-		t.Fatalf("failed to start browser: %v", err)
+	// Retry browser startup on flaky CI runners — websocket URL timeout
+	// is the most common failure mode on resource-constrained GitHub runners.
+	const maxRetries = 3
+	var (
+		ctx                       context.Context
+		ctxCancel                 context.CancelFunc
+		err                       error
+	)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		ctx, ctxCancel = chromedp.NewContext(sharedAllocCtx)
+		err = chromedp.Run(ctx)
+		if err == nil {
+			return ctx, ctxCancel
+		}
+		ctxCancel()
+		if attempt < maxRetries {
+			t.Logf("browser startup attempt %d/%d failed: %v — retrying", attempt, maxRetries, err)
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
 	}
-
-	return ctx, ctxCancel
+	t.Fatalf("failed to start browser after %d attempts: %v", maxRetries, err)
+	return nil, nil // unreachable
 }
 
 // waitForComposerReady waits until the composer input and completion menu are

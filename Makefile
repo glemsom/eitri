@@ -71,7 +71,6 @@ release-tarball: templ-generate
 ## release-check — release readiness test gates (includes race detector)
 release-check:
 	$(GO) test -race ./...
-	$(GO) test -race -tags=browser ./internal/api/
 
 ## run — build and start server
 run: build
