@@ -172,8 +172,7 @@ Negative / limitations at time of writing:
   `go install`, `pip install --user`, `gh auth login`, or anything that
   writes to `~/.config`, `~/.cache`, or `~/.local` will fail unless the
   user adds those paths via extra writable paths.
-- **File tools are NOT sandboxed** — `read`, `write`, `edit`, `grep`,
-  and `glob` still operate on the host directly with path validation but
+- **File tools are NOT sandboxed** — `read`, `write`, `edit`, and `grep` still operate on the host directly with path validation but
   without sandbox isolation.
 - **Environment variables leak** into the sandbox (no `--clearenv`).
   If `$TMPDIR` points to a read-only path, tools that rely on temporary
