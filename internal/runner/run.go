@@ -58,12 +58,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 	skillCtx := s.resolveSessionSkillContext(sessionID)
 
-	fullSystemPrompt, err := buildSystemPrompt(cfg, skillCtx, s.skillsSvc)
-	if err != nil {
-		return nil, err
-	}
-
-	llmSvc, toolReg, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
+	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, skillCtx)
 	if err != nil {
 		return nil, err
 	}
