@@ -33,7 +33,7 @@ Add two new built-in tools: `delegate` and `collect`.
 - Parent cancellation cascades: cancelling the parent run cancels all child sub-agents
 - `collect` returns partial results when context is cancelled (finished tasks return completed, unfinished return cancelled)
 
-### UI visibility (optional, initial scope)
+### UI visibility (optional)
 
 Sub-agents can optionally create child sessions in the `SessionManager`. A `ParentID` field on `UISession` enables a sidebar tree view where child sessions appear nested under the parent. Each child session gets its own SSE stream for real-time tool card rendering. Child sessions are navigable by clicking — switching to a child shows its ongoing run.
 
@@ -65,7 +65,7 @@ Pattern:
 Parallel delegates can be fired in the same parent turn. `collect` blocks
 until all are done.
 
-### Non-goals for the initial scope
+### Non-goals
 
 - Recursive sub-agents (sub-agents cannot spawn further sub-agents)
 - Configurable model override per sub-agent
@@ -79,6 +79,6 @@ until all are done.
 | **Sync vs async** | Non-blocking delegate + blocking collect | Fully blocking (can only spawn one per turn), fully async with result polling (more complex) |
 | **Toolset** | Full minus delegate/collect/quick_replies/skill | Read-only (too restrictive for real work), full with recursion (risk of infinite loops) |
 | **Sub-agent prompt** | Default + task description | Inherit full parent prompt (bloated, distracts sub-agent), generic default only (no task context) |
-| **Recursion depth** | No nesting (initial scope) | Unlimited (risk of resource explosion), depth-capped (more complex, deferrable) |
+| **Recursion depth** | No nesting | Unlimited (risk of resource explosion), depth-capped (more complex) |
 | **Cancellation** | Cascade from parent context | No cancel (sub-agents run to completion or max turns), explicit per-task `cancel` tool |
 | **UI model** | Sidebar tree with parent/child session nesting | Inline within parent conversation (cluttered), no UI (invisible sub-agents) |

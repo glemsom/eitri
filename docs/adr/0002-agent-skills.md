@@ -46,7 +46,6 @@ Skills can be disabled via the `Service.SetDisabled()` API, which moves them fro
 
 The disabled set is persisted in config as `disabled_skills` and round-trips through save/load.
 
-Custom paths remain deferred.
 
 ### Parsing and validation
 
@@ -125,11 +124,11 @@ Users can activate skills explicitly in chat input:
 - Runner prompt construction now depends on skills registry state.
 - File read validation must account for skill directories in addition to workspace paths.
 
-### Future work
+### Non-goals
 
 - Workspace trust gate for project-level skills.
 - Per-skill enable/disable.
 - Custom skill roots.
 - Deactivate active skills.
 - Skill install/import UI.
-- Enforcement of `allowed-tools` after a real permission model exists.
+- Enforcement of `allowed-tools`.
