@@ -112,8 +112,8 @@ templ NavLink(path string, label string, currentPath string) {
 }
 
 // ChatPage renders the full chat page layout with session sidebar and chat view.
-templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string) {
+templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string, userEmail string) {
 	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace, contextWindow, reasoningContent) {
-		@ChatView(sess, configValid)
+		@ChatView(sess, configValid, userEmail)
 	}
 }

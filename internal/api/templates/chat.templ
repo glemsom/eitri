@@ -4,7 +4,7 @@ import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
 // Workspace and stream indicators are in header (see Base template).
-templ ChatView(sess *session.UISession, configValid bool) {
+templ ChatView(sess *session.UISession, configValid bool, userEmail string) {
 	<div id="chat-view">
 		<div id="error-toasts"></div>
 		@ActiveSkillChips(sess.ActiveSkills, false)
@@ -21,7 +21,7 @@ templ ChatView(sess *session.UISession, configValid bool) {
 				if msg.Role == "assistant" {
 					@AssistantBubble(sess.ID, msg.Content, msg.QuickReplies)
 				} else {
-					@UserBubble(msg.Content)
+					@UserBubble(msg.Content, userEmail)
 				}
 			}
 			<div id="streaming" class="streaming"></div>
