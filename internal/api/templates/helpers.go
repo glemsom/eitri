@@ -66,3 +66,15 @@ func statusDot(status string) string {
 func joinSandboxPaths(paths []string) string {
 	return strings.Join(paths, "\n")
 }
+
+// sandboxBadge returns a short HTML string describing the current sandbox state.
+func sandboxBadge(profile string, bwrapAvailable bool) string {
+	switch {
+	case profile == "none":
+		return `<span class="sandbox-badge--warn">⚠ Sandbox disabled</span>`
+	case !bwrapAvailable:
+		return `<span class="sandbox-badge--warn">⚠ bwrap not found — commands run without isolation</span>`
+	default:
+		return `<span class="sandbox-badge--ok">✅ Sandbox active</span>`
+	}
+}

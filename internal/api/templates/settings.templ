@@ -2,13 +2,13 @@ package templates
 
 import "github.com/glemsom/eitri/internal/config"
 
-templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string, contextWindow int) {
+templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string, contextWindow int, bwrapAvailable bool) {
 	@Base("Eitri — Settings", chatPath, nil, "", currentPath, workspace, contextWindow, "", false, 75) {
-		@SettingsForm(cfg, models, "", "", nil, "")
+		@SettingsForm(cfg, models, "", "", nil, "", bwrapAvailable)
 	}
 }
 
-templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string) {
+templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string, bwrapAvailable bool) {
 	<div id="settings-form" class="settings-view">
 		if errorMessage != "" {
 			@ErrorToast(errorMessage)
@@ -176,7 +176,10 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			</details>
 
 			<details class="settings-details">
-				<summary><span>Sandbox</span></summary>
+				<summary>
+					<span>Sandbox</span>
+					<span class="sandbox-badge">{ sandboxBadge(string(cfg.Sandbox.Profile), bwrapAvailable) }</span>
+				</summary>
 
 				<div class="form-group">
 					<label class="checkbox-label">

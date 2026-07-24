@@ -10,6 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/sandbox"
 )
 
 type configState struct {
@@ -79,7 +80,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if contextWindow == 0 {
 		contextWindow = 256000
 	}
-	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow)
+	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow, sandbox.BwrapAvailable())
 	component.Render(r.Context(), w)
 }
 
@@ -100,7 +101,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if isHTMXRequest(r) {
-		component := templates.SettingsForm(maskedCfg, models, "", "", nil, "")
+		component := templates.SettingsForm(maskedCfg, models, "", "", nil, "", sandbox.BwrapAvailable())
 		component.Render(r.Context(), w)
 		return
 	}
@@ -168,7 +169,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render form with success indicator
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil, "✓ Saved")
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil, "✓ Saved", sandbox.BwrapAvailable())
 	component.Render(r.Context(), w)
 }
 
