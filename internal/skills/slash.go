@@ -6,7 +6,7 @@ import (
 
 // reservedCommands are built-in slash commands that shadow skill names.
 var reservedCommands = map[string]bool{
-	"/help": true, "/settings": true, "/skills": true, "/clear": true, "/new": true,
+	"/help": true, "/settings": true, "/skills": true, "/clear": true, "/new": true, "/compact": true,
 }
 
 // SlashParseResult holds the parsed result of a slash command input.

@@ -236,6 +236,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/directory-browser", s.handleSessionDirectoryBrowser)
 	s.mux.HandleFunc("POST /api/sessions/{id}/workspace", s.handleUpdateWorkspace)
 
+	// Manual compaction trigger (issue #723)
+	s.mux.HandleFunc("POST /api/sessions/{id}/compact", s.handleCompact)
+
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
 
