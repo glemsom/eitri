@@ -40,7 +40,7 @@
 //	batch.go           — BatchRun: headless batch mode (no UI sessions,
 //	                     sessionHistoryManager, io.Writer output)
 //	system_prompt.go   — buildSystemPrompt and buildLLMService: shared helpers
-//	                     used by both run.go and batch.go
+//	                     used by run.go, batch.go, and subagent.go
 //	subagent.go        — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
 //	                     sub-agent record tracking, restricted tool registry
 //	skill_context.go   — sessionSkillContext resolution, stale skill detection,
