@@ -82,28 +82,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	// Build system prompt: default + task description
 	systemPrompt := history.DefaultSystemPrompt + "\n\nYou are performing the following task: " + task
 
-	// Resolve auth (same as parent)
-	reqAuth := provider.ResolveAuthRequest{
-		ProviderID:   parentCfg.ProviderID,
-		APIKey:       parentCfg.APIKey,
-		ProviderAuth: parentCfg.ProviderAuth,
-	}
-	resolvedKey, _, authErr := provider.ResolveAuth(ctx, reqAuth, s.persistAuth)
-	if authErr != nil {
-		return "", fmt.Errorf("sub-agent auth: %w", authErr)
-	}
-	apiKey := parentCfg.APIKey
-	if resolvedKey != "" {
-		apiKey = resolvedKey
-	}
-
 	// Build LLM service (same provider/model as parent)
-	llmSvc, err := llm.NewLLMService(llm.AdapterConfig{
-		ProviderID: parentCfg.ProviderID,
-		Model:      parentCfg.ModelName,
-		BaseURL:    parentCfg.BaseURL,
-		APIKey:     apiKey,
-	})
+	llmSvc, err := buildLLMService(ctx, parentCfg, taskID, nil, s.persistAuth)
 	if err != nil {
 		return "", fmt.Errorf("sub-agent LLM service: %w", err)
 	}
