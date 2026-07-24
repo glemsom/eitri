@@ -100,7 +100,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		MaxHistory: cfg.MaxHistory,
 		SSEWriter:  w,
 		Tools:      toolReg,
-	}, AgentConfig{
+	}, RunOpts{
 		HistoryMgr:    historyAdapter,
 		Confirmer:     nil,
 		UISessionMgr:  nil,

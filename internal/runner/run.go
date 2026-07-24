@@ -141,7 +141,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			MaxHistory: maxHistory,
 			SSEWriter:  w,
 			Tools:      toolReg,
-		}, AgentConfig{
+		}, RunOpts{
 			HistoryMgr:    historyMgr,
 			Confirmer:     confirmer,
 			UISessionMgr:  s.uiSessionMgr,
