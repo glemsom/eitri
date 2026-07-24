@@ -2271,6 +2271,176 @@ func TestGetAPIAndConfigModelsEndpoint(t *testing.T) {
 	}
 }
 
+// TestGetModelsEndpointHTMX verifies that GET /api/models with HX-Request
+// returns an HTML fragment (TestConnectionResult) rather than JSON.
+func TestGetModelsEndpointHTMX(t *testing.T) {
+	server := newTestServer(t)
+
+	req, err := http.NewRequest("GET", server.URL+"/api/models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("HX-Request", "true")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /api/models with HX-Request status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+	if !strings.Contains(content, "Connection failed") {
+		t.Errorf("response missing 'Connection failed' message: %s", content)
+	}
+}
+
+// TestGetModelsEndpointJSON verifies that GET /api/models without HX-Request
+// returns a JSON error response.
+func TestGetModelsEndpointJSON(t *testing.T) {
+	server := newTestServer(t)
+
+	resp, err := http.Get(server.URL + "/api/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("GET /api/models status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error"] == "" {
+		t.Errorf("expected error message in JSON response, got %v", body)
+	}
+}
+
+// TestPutConfigErrorJSONFormat verifies that PUT /api/config with JSON
+// Content-Type returns a JSON error on validation/discovery failure.
+func TestPutConfigErrorJSONFormat(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
+	server := newTestServer(t)
+
+	body := fmt.Sprintf(`{"provider":"custom_openai","base_url":%q,"api_key":"sk-bad"}`, provider.URL)
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var errBody map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody["error"] == "" {
+		t.Errorf("expected error message in JSON response, got %v", errBody)
+	}
+}
+
+// TestPutConfigErrorFormFormat verifies that PUT /api/config with
+// URL-encoded form data (no HX-Request) returns JSON error.
+func TestPutConfigErrorFormFormat(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
+	server := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("provider", "custom_openai")
+	form.Set("base_url", provider.URL)
+	form.Set("api_key", "sk-bad")
+
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Form without HX-Request and non-JSON Content-Type: renders HTML toast via writeConfigError
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+// TestGetSettingsWithInvalidProviderConfig verifies the settings page
+// still renders when the saved config has an invalid provider.
+func TestGetSettingsWithInvalidProviderConfig(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := workspace + "/config.json"
+	server := newTestServerWithConfigPath(t, workspace, configPath)
+
+	// Save config with non-existent provider
+	if err := config.Save(configPath, &config.Config{
+		Provider: "non_existent_provider",
+	}); err != nil {
+		t.Fatalf("Save config: %v", err)
+	}
+
+	// Should still render settings page (but show error)
+	resp, err := http.Get(server.URL + "/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /settings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+	// Should contain the settings form elements even with invalid provider
+	if !strings.Contains(content, "provider") {
+		t.Errorf("settings page missing provider field")
+	}
+}
+
 func TestCreateSessionEndpoint(t *testing.T) {
 	server := newTestServer(t)
 	client := noRedirectClient()
