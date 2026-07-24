@@ -102,7 +102,21 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Track turns for conversation context
 	var turns int
-	runErr := RunAgent(runCtx, llmSvc, req, maxTurns, cfg.MaxHistory, w, toolReg, historyAdapter, nil, nil, batchID, cfg.ContextWindowTokens, nil, &turns)
+	runErr := RunAgent(runCtx, AgentConfig{
+		Service:       llmSvc,
+		Request:       req,
+		MaxTurns:      maxTurns,
+		MaxHistory:    cfg.MaxHistory,
+		SSEWriter:     w,
+		Tools:         toolReg,
+		HistoryMgr:    historyAdapter,
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     batchID,
+		ContextWindow: cfg.ContextWindowTokens,
+		CrashDumpFunc: nil,
+		Turns:         &turns,
+	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context
 	// cancellation before it could broadcast a done/error event), close them

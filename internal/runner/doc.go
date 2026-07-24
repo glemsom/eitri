@@ -10,6 +10,7 @@
 //
 //   - RunService — run lifecycle manager (start, cancel, subscribe, confirm)
 //   - RunConfig — per-run configuration (provider, model, system prompt, turns)
+//   - AgentConfig — bundles RunAgent parameters into a single struct for a stable signature
 //   - RunState — one active run's SSE state, cancel func, and completion signal
 //   - ConfirmationResult — user decision (approved/denied) for a path confirmation
 //   - ConfirmationFunc — callback signature for confirmation prompts

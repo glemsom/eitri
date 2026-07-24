@@ -213,7 +213,21 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		w := runstate.NewWriter(sseState)
 		historyMgr := newRequestHistoryManager(req)
 
-		runErr := RunAgent(subCtx, llmSvc, req, maxTurns, 0, w, toolReg, historyMgr, nil, nil, "", 0, nil, nil)
+		runErr := RunAgent(subCtx, AgentConfig{
+			Service:       llmSvc,
+			Request:       req,
+			MaxTurns:      maxTurns,
+			MaxHistory:    0,
+			SSEWriter:     w,
+			Tools:         toolReg,
+			HistoryMgr:    historyMgr,
+			Confirmer:     nil,
+			UISessionMgr:  s.uiSessionMgr,
+			SessionID:     "",
+			ContextWindow: 0,
+			CrashDumpFunc: nil,
+			Turns:         nil,
+		})
 
 		// Persist sub-agent response to child UI session
 		if record.ChildSessionID != "" {
