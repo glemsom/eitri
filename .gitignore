@@ -1,5 +1,5 @@
 eitri
 dist/
 *.test
-
+.scratch
 architecture-review.html
