@@ -137,3 +137,45 @@ func TestGravatarURL_IncludesSize32(t *testing.T) {
 		t.Errorf("gravatarURL('someone@example.com') = %q, does not contain s=32", got)
 	}
 }
+
+// ─── sandboxBadge ─────────────────────────────────────────────────────
+
+func TestSandboxBadge_Active(t *testing.T) {
+	got := sandboxBadge("default", true)
+	if !strings.Contains(got, "sandbox-badge--ok") {
+		t.Errorf("active badge missing --ok class: %q", got)
+	}
+	if !strings.Contains(got, "Sandbox active") {
+		t.Errorf("active badge missing text: %q", got)
+	}
+}
+
+func TestSandboxBadge_DisabledByProfile(t *testing.T) {
+	got := sandboxBadge("none", true)
+	if !strings.Contains(got, "sandbox-badge--warn") {
+		t.Errorf("disabled badge missing --warn class: %q", got)
+	}
+	if !strings.Contains(got, "Sandbox disabled") {
+		t.Errorf("disabled badge missing text: %q", got)
+	}
+}
+
+func TestSandboxBadge_BwrapNotFound(t *testing.T) {
+	got := sandboxBadge("default", false)
+	if !strings.Contains(got, "sandbox-badge--warn") {
+		t.Errorf("unavailable badge missing --warn class: %q", got)
+	}
+	if !strings.Contains(got, "bwrap not found") {
+		t.Errorf("unavailable badge missing text: %q", got)
+	}
+}
+
+func TestSandboxBadge_DisabledProfileNoBwrap(t *testing.T) {
+	got := sandboxBadge("none", false)
+	if !strings.Contains(got, "sandbox-badge--warn") {
+		t.Errorf("disabled badge missing --warn class: %q", got)
+	}
+	if !strings.Contains(got, "Sandbox disabled") {
+		t.Errorf("disabled badge text expected first: %q", got)
+	}
+}
