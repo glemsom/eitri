@@ -17,9 +17,7 @@ import (
 // defaultHTTPClient is reused across all adapters.
 var defaultHTTPClient = &http.Client{Timeout: 5 * time.Minute}
 
-// debugLogPayload dumps full LLM request JSON to slog.Info when set.
-// Enable via EITRI_DEBUG_PROMPT=1 or EITRI_DEBUG_REQUEST=1 env var.
-var debugLogPayload = os.Getenv("EITRI_DEBUG_PROMPT") == "1" || os.Getenv("EITRI_DEBUG_REQUEST") == "1"
+
 
 // doRequest sends the HTTP request and returns the response.
 func doRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
@@ -111,20 +109,19 @@ func classifyHTTPError(statusCode int, body []byte) error {
 }
 
 // writeLLMDebugFile writes the full request and response to a JSON debug file
-// when EITRI_DEBUG_LLM_DIR is set and an LLM request fails.
-func writeLLMDebugFile(url string, reqBody, respBody []byte, statusCode int, prefix string) {
-	dir := os.Getenv("EITRI_DEBUG_LLM_DIR")
-	if dir == "" {
+// in the given directory when an LLM request fails. When dir is empty, it's a no-op.
+func writeLLMDebugFile(url string, reqBody, respBody []byte, statusCode int, prefix string, debugLLMDir string) {
+	if debugLLMDir == "" {
 		return
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		slog.Warn("cannot create LLM debug dir", slog.String("dir", dir), slog.Any("error", err))
+	if err := os.MkdirAll(debugLLMDir, 0o755); err != nil {
+		slog.Warn("cannot create LLM debug dir", slog.String("dir", debugLLMDir), slog.Any("error", err))
 		return
 	}
 
 	timestamp := time.Now().UnixNano()
 	filename := fmt.Sprintf("%s-llm-debug-%d.json", prefix, timestamp)
-	path := filepath.Join(dir, filename)
+	path := filepath.Join(debugLLMDir, filename)
 
 	type debugEntry struct {
 		URL            string          `json:"url"`
@@ -162,7 +159,10 @@ func writeLLMDebugFile(url string, reqBody, respBody []byte, statusCode int, pre
 //
 // setHeaders is called after Content-Type and Accept are set so the adapter
 // can add auth, tracking, or other headers.
-func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*Resp, error) {
+//
+// debugPrompt and debugRequest control whether request/response payloads are
+// logged at Info level.
+func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request), debugPrompt, debugRequest bool, debugLLMDir string) (*Resp, error) {
 	reqBody, err := marshalJSONNoEscape(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -176,7 +176,7 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 	httpReq.Header.Set("Accept", "application/json")
 	setHeaders(httpReq)
 
-	if debugLogPayload {
+	if debugPrompt || debugRequest {
 		slog.Info("llm request",
 			slog.String("endpoint", url),
 			slog.String("body", string(reqBody)),
@@ -193,8 +193,15 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "chat")
+		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "chat", debugLLMDir)
 		return nil, classifyHTTPError(resp.StatusCode, respBody)
+	}
+
+	if debugRequest {
+		slog.Info("llm response",
+			slog.String("endpoint", url),
+			slog.String("body", string(respBody)),
+		)
 	}
 
 	var wireResp Resp
@@ -211,7 +218,10 @@ func doChatRequest[Req, Resp any](ctx context.Context, client *http.Client, url 
 // The caller must start a goroutine to read the stream from resp.Body.
 //
 // setHeaders is called after Content-Type and Accept are set.
-func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request)) (*http.Response, error) {
+//
+// debugPrompt and debugRequest control whether request/response payloads are
+// logged at Info level.
+func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url string, req Req, setHeaders func(*http.Request), debugPrompt, debugRequest bool, debugLLMDir string) (*http.Response, error) {
 	reqBody, err := marshalJSONNoEscape(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -225,7 +235,7 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 	httpReq.Header.Set("Accept", "text/event-stream")
 	setHeaders(httpReq)
 
-	if debugLogPayload {
+	if debugPrompt || debugRequest {
 		slog.Info("llm request",
 			slog.String("endpoint", url),
 			slog.String("body", string(reqBody)),
@@ -238,7 +248,7 @@ func doChatStreamRequest[Req any](ctx context.Context, client *http.Client, url 
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := readAll(resp)
-		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "stream")
+		writeLLMDebugFile(url, reqBody, respBody, resp.StatusCode, "stream", debugLLMDir)
 		return nil, classifyHTTPError(resp.StatusCode, respBody)
 	}
 

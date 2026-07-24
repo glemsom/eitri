@@ -87,4 +87,12 @@ type AdapterConfig struct {
 	OpenRouterTitle     string            // X-Title for OpenRouter tracking
 	SupportsPromptCache bool              // provider supports prompt_cache_key field
 	RoundTripper        http.RoundTripper // optional; if set, adapters use this instead of default transport
+
+	// DebugPrompt logs full LLM request payloads at Info level when true.
+	DebugPrompt bool
+	// DebugRequest logs full LLM request/response payloads at Info level when true.
+	DebugRequest bool
+	// DebugLLMDir is the directory for writing LLM debug files on error.
+	// When empty, no debug files are written.
+	DebugLLMDir string
 }

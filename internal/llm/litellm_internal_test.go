@@ -207,21 +207,20 @@ func TestClassifyHTTPError_NonStandardBody(t *testing.T) {
 
 // ————— writeLLMDebugFile —————
 
-func TestWriteLLMDebugFile_NoDirEnv(t *testing.T) {
+func TestWriteLLMDebugFile_NoDir(t *testing.T) {
 	t.Parallel()
-	// When EITRI_DEBUG_LLM_DIR is not set, should be a no-op
-	writeLLMDebugFile("http://example.com", []byte(`{"key":"val"}`), []byte(`ok`), 200, "test")
+	// When debugLLMDir is empty, should be a no-op
+	writeLLMDebugFile("http://example.com", []byte(`{"key":"val"}`), []byte(`ok`), 200, "test", "")
 	// No assertion needed — just shouldn't panic or create files
 }
 
 func TestWriteLLMDebugFile_WritesFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("EITRI_DEBUG_LLM_DIR", tmpDir)
 
 	reqBody := []byte(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`)
 	respBody := []byte(`{"error":"internal error"}`)
 
-	writeLLMDebugFile("http://api.example.com/chat", reqBody, respBody, 500, "chat")
+	writeLLMDebugFile("http://api.example.com/chat", reqBody, respBody, 500, "chat", tmpDir)
 
 	// Check that a file was created in the temp directory
 	entries, err := os.ReadDir(tmpDir)
@@ -261,9 +260,8 @@ func TestWriteLLMDebugFile_WritesFile(t *testing.T) {
 
 func TestWriteLLMDebugFile_PrefixInFilename(t *testing.T) {
 	tmpDir := t.TempDir()
-	t.Setenv("EITRI_DEBUG_LLM_DIR", tmpDir)
 
-	writeLLMDebugFile("http://example.com", []byte(`{}`), []byte(`{}`), 400, "stream")
+	writeLLMDebugFile("http://example.com", []byte(`{}`), []byte(`{}`), 400, "stream", tmpDir)
 
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
@@ -1252,12 +1250,9 @@ func TestFromOpenAIResponse_NoUsage(t *testing.T) {
 // ————— Test writeLLMDebugFile handles MkdirAll error gracefully —————
 
 func TestWriteLLMDebugFile_InvalidDir(t *testing.T) {
-	// Set debug dir to something that can't be created (root path without permissions)
+	// Pass a path that can't be created (root path without permissions)
 	// On Linux, /proc/self is a directory that can't have subdirectories created
-	t.Setenv("EITRI_DEBUG_LLM_DIR", "/proc/self/llm-debug")
-
-	// This should log a warning but not panic
-	writeLLMDebugFile("http://example.com", []byte(`{}`), []byte(`{}`), 500, "test")
+	writeLLMDebugFile("http://example.com", []byte(`{}`), []byte(`{}`), 500, "test", "/proc/self/llm-debug")
 	// No assertion — just shouldn't crash
 }
 

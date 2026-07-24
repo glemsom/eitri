@@ -14,19 +14,22 @@ import (
 // It implements LLMService by calling doChatRequest/doChatStreamRequest with
 // a pluggable chatPath and setHeaders function.
 type openAICompatible struct {
-	model      string
-	baseURL    string
-	apiKey     string
-	chatPath   string
-	setHeaders func(*http.Request)
-	client     *http.Client
+	model        string
+	baseURL      string
+	apiKey       string
+	chatPath     string
+	setHeaders   func(*http.Request)
+	client       *http.Client
+	debugPrompt  bool
+	debugRequest bool
+	debugLLMDir  string
 }
 
 func (s *openAICompatible) Chat(ctx context.Context, req Request) (*Response, error) {
 	wireReq := toOpenAIRequest(req)
 	wireReq.Stream = false
 
-	resp, err := doChatRequest[openAIReq, openAIResp](ctx, s.client, s.baseURL+s.chatPath, wireReq, s.setHeaders)
+	resp, err := doChatRequest[openAIReq, openAIResp](ctx, s.client, s.baseURL+s.chatPath, wireReq, s.setHeaders, s.debugPrompt, s.debugRequest, s.debugLLMDir)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +41,7 @@ func (s *openAICompatible) ChatStream(ctx context.Context, req Request) (<-chan 
 	wireReq := toOpenAIRequest(req)
 	wireReq.Stream = true
 
-	resp, err := doChatStreamRequest(ctx, s.client, s.baseURL+s.chatPath, wireReq, s.setHeaders)
+	resp, err := doChatStreamRequest(ctx, s.client, s.baseURL+s.chatPath, wireReq, s.setHeaders, s.debugPrompt, s.debugRequest, s.debugLLMDir)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +52,7 @@ func (s *openAICompatible) ChatStream(ctx context.Context, req Request) (<-chan 
 }
 
 // NewOpenAI creates an OpenAI-compatible adapter (OpenCode Go route).
-func NewOpenAI(model, baseURL, apiKey string, rt http.RoundTripper) LLMService {
+func NewOpenAI(model, baseURL, apiKey string, rt http.RoundTripper, debugPrompt, debugRequest bool, debugLLMDir string) LLMService {
 	return &openAICompatible{
 		model:    model,
 		baseURL:  strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
@@ -58,7 +61,10 @@ func NewOpenAI(model, baseURL, apiKey string, rt http.RoundTripper) LLMService {
 		setHeaders: func(r *http.Request) {
 			r.Header.Set("Authorization", "Bearer "+apiKey)
 		},
-		client: makeHTTPClient(rt),
+		client:       makeHTTPClient(rt),
+		debugPrompt:  debugPrompt,
+		debugRequest: debugRequest,
+		debugLLMDir:  debugLLMDir,
 	}
 }
 

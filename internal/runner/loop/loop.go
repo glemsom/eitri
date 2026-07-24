@@ -73,6 +73,10 @@ type RunOpts struct {
 
 	// Turns is updated each turn with the current turn count. Optional.
 	Turns *int
+
+	// DebugLLMDir is the directory for writing LLM debug files on error.
+	// When empty, no debug files are written.
+	DebugLLMDir string
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
@@ -177,11 +181,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
-				dumpRequestOnError(spec.Request, err, attempt+1)
+				dumpRequestOnError(spec.Request, err, attempt+1, opts.DebugLLMDir)
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			dumpRequestOnError(spec.Request, err, maxRetries+1)
+			dumpRequestOnError(spec.Request, err, maxRetries+1, opts.DebugLLMDir)
 			msg := fmt.Sprintf("LLM error: %v", err)
 			spec.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)

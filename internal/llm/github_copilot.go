@@ -6,7 +6,7 @@ import (
 
 // NewGitHubCopilot creates a GitHub Copilot adapter.
 // It wraps the base openAICompatible with Copilot-specific headers and URL.
-func NewGitHubCopilot(model, baseURL, apiKey string, rt http.RoundTripper) LLMService {
+func NewGitHubCopilot(model, baseURL, apiKey string, rt http.RoundTripper, debugPrompt, debugRequest bool, debugLLMDir string) LLMService {
 	return &openAICompatible{
 		model:    model,
 		baseURL:  baseURL,
@@ -17,6 +17,9 @@ func NewGitHubCopilot(model, baseURL, apiKey string, rt http.RoundTripper) LLMSe
 			r.Header.Set("Editor-Version", "vscode/1.80.0")
 			r.Header.Set("User-Agent", "GithubCopilot/1.100.0")
 		},
-		client: makeHTTPClient(rt),
+		client:       makeHTTPClient(rt),
+		debugPrompt:  debugPrompt,
+		debugRequest: debugRequest,
+		debugLLMDir:  debugLLMDir,
 	}
 }

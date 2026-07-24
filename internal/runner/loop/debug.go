@@ -15,20 +15,19 @@ import (
 )
 
 // dumpRequestOnError writes the full chat request as JSON to the debug directory
-// when EITRI_DEBUG_LLM_DIR is set and an LLM request fails.
-func dumpRequestOnError(req *llm.Request, err error, attempt int) {
-	dir := os.Getenv("EITRI_DEBUG_LLM_DIR")
-	if dir == "" {
+// when debugLLMDir is non-empty and an LLM request fails.
+func dumpRequestOnError(req *llm.Request, err error, attempt int, debugLLMDir string) {
+	if debugLLMDir == "" {
 		return
 	}
-	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
-		slog.Warn("cannot create LLM debug dir", slog.String("dir", dir), slog.Any("error", err))
+	if mkErr := os.MkdirAll(debugLLMDir, 0o755); mkErr != nil {
+		slog.Warn("cannot create LLM debug dir", slog.String("dir", debugLLMDir), slog.Any("error", err))
 		return
 	}
 
 	timestamp := time.Now().UnixNano()
 	filename := fmt.Sprintf("runner-llm-request-%d-attempt-%d.json", timestamp, attempt)
-	path := filepath.Join(dir, filename)
+	path := filepath.Join(debugLLMDir, filename)
 
 	type debugEntry struct {
 		Request llm.Request `json:"request"`

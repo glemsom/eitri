@@ -111,6 +111,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg runconfig.
 		ContextWindow: cfg.ContextWindowTokens,
 		CrashDumpFunc: nil,
 		Turns:         &turns,
+		DebugLLMDir:   cfg.DebugLLMDir,
 	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context

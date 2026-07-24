@@ -12,19 +12,25 @@ import (
 
 // Anthropic implements LLMService for Anthropic Messages API.
 type Anthropic struct {
-	model   string
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	model        string
+	baseURL      string
+	apiKey       string
+	client       *http.Client
+	debugPrompt  bool
+	debugRequest bool
+	debugLLMDir  string
 }
 
 // NewAnthropic creates an Anthropic-compatible adapter.
-func NewAnthropic(model, baseURL, apiKey string, rt http.RoundTripper) *Anthropic {
+func NewAnthropic(model, baseURL, apiKey string, rt http.RoundTripper, debugPrompt, debugRequest bool, debugLLMDir string) *Anthropic {
 	return &Anthropic{
-		model:   model,
-		baseURL: strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
-		apiKey:  apiKey,
-		client:  makeHTTPClient(rt),
+		model:        model,
+		baseURL:      strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
+		apiKey:       apiKey,
+		client:       makeHTTPClient(rt),
+		debugPrompt:  debugPrompt,
+		debugRequest: debugRequest,
+		debugLLMDir:  debugLLMDir,
 	}
 }
 
