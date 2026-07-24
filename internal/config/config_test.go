@@ -439,6 +439,50 @@ func TestLoad_AllowedReadPathsNilWhenMissing(t *testing.T) {
 	}
 }
 
+func TestSave_RoundTripsUserEmail(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-email-test"
+	cfg.UserEmail = "user@example.com"
+
+	if err := config.Save(cfgPath, &cfg); err != nil {
+		t.Fatalf("Save() = %v, want nil", err)
+	}
+
+	loaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() after save = %v", err)
+	}
+
+	if loaded.UserEmail != "user@example.com" {
+		t.Errorf("UserEmail = %q, want %q", loaded.UserEmail, "user@example.com")
+	}
+}
+
+func TestLoad_UserEmailEmptyWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{
+		"provider": "opencode_go",
+		"api_key": "sk-test"
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+
+	if cfg.UserEmail != "" {
+		t.Errorf("UserEmail = %q, want empty when field omitted", cfg.UserEmail)
+	}
+}
+
 func TestMerge_AllowedReadPaths(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-test"
@@ -531,5 +575,26 @@ func TestMerge_OverridesSystemPrompt(t *testing.T) {
 
 	if result.SystemPrompt != "new prompt" {
 		t.Errorf("SystemPrompt = %q, want %q", result.SystemPrompt, "new prompt")
+	}
+}
+
+func TestMerge_OverridesUserEmail(t *testing.T) {
+	cfg := config.Defaults()
+
+	result := config.Merge(&cfg, map[string]any{"user_email": "user@example.com"})
+
+	if result.UserEmail != "user@example.com" {
+		t.Errorf("UserEmail = %q, want %q", result.UserEmail, "user@example.com")
+	}
+}
+
+func TestMerge_ClearsUserEmail(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.UserEmail = "user@example.com"
+
+	result := config.Merge(&cfg, map[string]any{"user_email": ""})
+
+	if result.UserEmail != "" {
+		t.Errorf("UserEmail = %q, want empty", result.UserEmail)
 	}
 }
