@@ -172,6 +172,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				if content != "" {
 					s.appendToSession(sessionID, content, reasoningContent)
 				}
+				s.snapshotSession(sessionID)
 				return
 			}
 
@@ -189,6 +190,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				reasoningContent := sseState.ReasoningBufferString()
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content))
 				s.appendToSession(sessionID, content, reasoningContent)
+				s.snapshotSession(sessionID)
 				return
 			}
 
@@ -204,6 +206,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		if content != "" {
 			s.appendToSession(sessionID, content, reasoningContent)
 		}
+		s.snapshotSession(sessionID)
 	}()
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
@@ -235,6 +238,27 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 		ReasoningContent: reasoningContent,
 		CreatedAt:        time.Now(),
 	})
+}
+
+// snapshotSession persists the current UI session and history to disk.
+func (s *RunService) snapshotSession(sessionID string) {
+	if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
+		return
+	}
+	sess := s.uiSessionMgr.Get(sessionID)
+	if sess == nil {
+		return
+	}
+	historyMsgs := s.historySessionMgr.History(sessionID)
+	if historyMsgs == nil {
+		return
+	}
+	if err := s.persister.SnapshotSession(sessionID, sess, historyMsgs); err != nil {
+		slog.Warn("failed to snapshot session",
+			slog.String("session_id", sessionID),
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uisession.Status) {
