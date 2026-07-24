@@ -54,12 +54,15 @@ func TestCompact_NoCompactionNeeded(t *testing.T) {
 	llmSvc := &mockLLMService{summary: "listed files"}
 	thresholds := Thresholds{HighWater: 999_999, LowWater: 100} // far above total
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil (no compaction needed)")
+	}
+	if count != 0 || freed != 0 {
+		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 }
 
@@ -67,25 +70,32 @@ func TestCompact_CompactsToolMessages(t *testing.T) {
 	c := New()
 	msgs := []llm.Message{
 		{Role: "user", Content: "run build"},
-		{Role: "tool", Content: "Build succeeded.\nAll 42 tests passed.\nOutput: ./bin/app"},
+		{Role: "tool", Content: "Build succeeded.\nAll 42 tests passed.\nOutput: ./bin/app\n" + strings.Repeat("log line\n", 50)},
 		{Role: "user", Content: "run tests"},
-		{Role: "tool", Content: "Test results: 142 passed, 0 failed, coverage 87.5%"},
+		{Role: "tool", Content: "Test results: 142 passed, 0 failed, coverage 87.5%\n" + strings.Repeat("detail\n", 50)},
 	}
 	llmSvc := &mockLLMService{summary: "build completed successfully with 42 tests passing."}
 
 	// Low threshold to trigger compaction.
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result (compaction should have occurred)")
 	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
+	}
 
 	// Original slice must not be modified.
-	if msgs[1].Content != "Build succeeded.\nAll 42 tests passed.\nOutput: ./bin/app" {
+	expectedOrig := "Build succeeded.\nAll 42 tests passed.\nOutput: ./bin/app\n" + strings.Repeat("log line\n", 50)
+	if msgs[1].Content != expectedOrig {
 		t.Error("original slice was mutated")
 	}
 
@@ -130,12 +140,18 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 		LowWater:  totalEst - 1000,    // stop after freeing ~1000 tokens (one message)
 	}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 
 	// Count compacted messages.
@@ -164,12 +180,15 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 	llmSvc := &mockLLMService{summary: "fallback", failOnCall: true}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil result when all LLM calls fail and no compaction occurs")
+	}
+	if count != 0 || freed != 0 {
+		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 
 	// Ensure that when at least one succeeds and others fail, partial compaction occurs.
@@ -181,18 +200,24 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 
 	msgs2 := []llm.Message{
 		{Role: "user", Content: "first"},
-		{Role: "tool", Content: "first large result with lots of data to summarize"},
+		{Role: "tool", Content: "first large result with lots of data " + strings.Repeat("x", 200)},
 		{Role: "user", Content: "second"},
-		{Role: "tool", Content: "second large result with lots of data to summarize"},
+		{Role: "tool", Content: "second large result with lots of data " + strings.Repeat("y", 200)},
 	}
 	thresholds2 := Thresholds{HighWater: 1, LowWater: 0}
 
-	result2, err := c.Compact(context.Background(), msgs2, llmSvc3, thresholds2)
+	result2, count2, freed2, err := c.Compact(context.Background(), msgs2, llmSvc3, thresholds2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result2 == nil {
 		t.Fatal("expected partial compaction despite one failure")
+	}
+	if count2 == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed2 <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed2)
 	}
 	_ = callCount
 
@@ -232,17 +257,23 @@ func TestCompact_AlreadyCompactedSkipped(t *testing.T) {
 		{Role: "user", Content: "first"},
 		{Role: "tool", Content: "[TOOL RESULT COMPACTED - originally 100 tokens] some summary here"},
 		{Role: "user", Content: "second"},
-		{Role: "tool", Content: "fresh tool result to compact"},
+		{Role: "tool", Content: "fresh tool result to compact with lots of data " + strings.Repeat("z", 200)},
 	}
 	llmSvc := &mockLLMService{summary: "new summary"}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 
 	// First tool (already compacted) should remain unchanged.
@@ -257,20 +288,26 @@ func TestCompact_AlreadyCompactedSkipped(t *testing.T) {
 
 func TestCompact_ReturnsNilOnEmptyMessages(t *testing.T) {
 	c := New()
-	result, err := c.Compact(context.Background(), nil, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
+	result, count, freed, err := c.Compact(context.Background(), nil, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil for empty messages")
+	}
+	if count != 0 || freed != 0 {
+		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 
-	result, err = c.Compact(context.Background(), []llm.Message{}, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
+	result, count, freed, err = c.Compact(context.Background(), []llm.Message{}, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil for empty messages")
+	}
+	if count != 0 || freed != 0 {
+		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 }
 
@@ -282,18 +319,24 @@ func TestCompact_NonToolMessagesPreserved(t *testing.T) {
 		{Role: "assistant", Content: "hi", ToolCalls: []llm.ToolCall{
 			{ID: "call1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
-		{Role: "tool", Content: "file1.txt\nfile2.txt", ToolCallID: "call1"},
+		{Role: "tool", Content: "file1.txt\nfile2.txt\n" + strings.Repeat("data\n", 200), ToolCallID: "call1"},
 		{Role: "user", Content: "good"},
 	}
 	llmSvc := &mockLLMService{summary: "listed files"}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 
 	// System message preserved.
@@ -319,17 +362,23 @@ func TestCompact_EmptyToolContentSkipped(t *testing.T) {
 	msgs := []llm.Message{
 		{Role: "user", Content: "do it"},
 		{Role: "tool", Content: ""},
-		{Role: "tool", Content: "real content here"},
+		{Role: "tool", Content: "real content here with lots of data " + strings.Repeat("w", 200)},
 	}
 	llmSvc := &mockLLMService{summary: "summary"}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 
 	// Empty tool content should be skipped (not compacted).
@@ -388,12 +437,18 @@ func TestCompact_NegativeOrZeroThresholds(t *testing.T) {
 
 	// Zero thresholds should trigger compaction with sensible defaults.
 	llmSvc := &mockLLMService{summary: "summary result."}
-	result, err := c.Compact(context.Background(), msgs, llmSvc, Thresholds{HighWater: 0, LowWater: 0})
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, Thresholds{HighWater: 0, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result == nil {
 		t.Fatal("expected compaction with zero thresholds (defaults applied)")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 }
 
@@ -406,11 +461,14 @@ func TestCompact_EmptySummarySkipped(t *testing.T) {
 	llmSvc := &mockLLMService{summary: ""} // empty summary
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
-	result, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil result when LLM returns empty summary (no compaction)")
+	}
+	if count != 0 || freed != 0 {
+		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 }

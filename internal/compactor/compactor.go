@@ -49,6 +49,12 @@ func messagesTokenEstimate(msgs []llm.Message) int {
 	return total
 }
 
+// MessagesTokenEstimate is the public equivalent of messagesTokenEstimate.
+// It estimates the total token count for a slice of messages using the same 4-char-per-token heuristic.
+func MessagesTokenEstimate(msgs []llm.Message) int {
+	return messagesTokenEstimate(msgs)
+}
+
 // Compactor compresses tool-result messages in conversation history
 // by replacing them with LLM-generated summaries.
 type Compactor struct{}
@@ -85,7 +91,9 @@ Summary:`, truncated)
 //
 // Returns the modified message list (a copy) if any compaction occurred,
 // or nil if no compaction was needed. The original slice is never modified.
-func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) ([]llm.Message, error) {
+// compactedCount and freedTokens report the number of messages compacted
+// and the approximate token count saved.
+func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, err error) {
 	if thresholds.HighWater <= 0 {
 		thresholds.HighWater = 90 // sensible default
 	}
@@ -98,15 +106,15 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 
 	totalEst := messagesTokenEstimate(messages)
 	if totalEst <= thresholds.HighWater {
-		return nil, nil
+		return nil, 0, 0, nil
 	}
 
 	// Work on a copy so the original is never mutated.
 	result := make([]llm.Message, len(messages))
 	copy(result, messages)
 
-	var compactedCount int
-	var freedTokens int
+	compactedCount = 0
+	freedTokens = 0
 
 	// Greedy oldest-first scan: iterate from oldest to newest.
 	for i := 0; i < len(result); i++ {
@@ -154,8 +162,8 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 	}
 
 	if compactedCount == 0 {
-		return nil, nil
+		return nil, 0, 0, nil
 	}
 
-	return result, nil
+	return result, compactedCount, freedTokens, nil
 }
