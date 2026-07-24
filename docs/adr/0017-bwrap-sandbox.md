@@ -36,6 +36,8 @@ The **default** profile is enabled at initial startup
 (`sandbox.DefaultConfig()`). It falls back to direct execution when:
 
 - bwrap is not installed (`exec.LookPath("bwrap")` fails)
+- bwrap is installed but not usable (`BwrapIsUsable()` returns false, e.g. on
+  GitHub Actions where user namespaces are unavailable)
 - The OS is not Linux (`runtime.GOOS != "linux"`)
 - The profile is explicitly set to `none`
 
