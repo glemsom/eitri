@@ -5,16 +5,20 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -105,6 +109,11 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 // SetCrashDumpFunc sets the crash dump callback.
 func (s *RunService) SetCrashDumpFunc(fn func(err error, stack []byte)) {
 	s.crashDumpFunc = fn
+}
+
+// HistorySessionManager returns the history session manager used by the run service.
+func (s *RunService) HistorySessionManager() *history.SessionManager {
+	return s.historySessionMgr
 }
 
 // SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.
@@ -323,4 +332,102 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 	default:
 		return false
 	}
+}
+
+// CompactSession compacts tool-result messages in a session's conversation history
+// manually. Unlike auto-compaction (which runs after each agent turn), this method
+// is invoked on demand via the /compact slash command or the "Compact now" button.
+//
+// It builds a minimal LLM service (no tools, no system prompt construction) for
+// summarization, runs the compactor, replaces the history, snapshots the result,
+// and returns the number of messages compacted and the approximate number of tokens freed.
+func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg runconfig.RunConfig) (compactedCount int, freedTokens int, _ error) {
+	if s.historySessionMgr == nil {
+		return 0, 0, fmt.Errorf("history session manager not available")
+	}
+
+	// Build a minimal LLM service for summarization (no tools needed).
+	llmSvc, err := newCompactLLMService(ctx, cfg, s.persistAuth)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to create LLM service for compaction: %w", err)
+	}
+
+	historyMsgs := s.historySessionMgr.History(sessionID)
+	if historyMsgs == nil {
+		return 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
+	}
+
+	contextWindow := cfg.ContextWindowTokens
+	if contextWindow <= 0 {
+		contextWindow = 256000
+	}
+	highWater := contextWindow * cfg.CompactionThresholdPercent / 100
+	lowWater := contextWindow * cfg.CompactionLowWaterPercent / 100
+
+	if highWater <= 0 {
+		highWater = contextWindow * 90 / 100
+	}
+	if lowWater <= 0 {
+		lowWater = contextWindow * 30 / 100
+	}
+
+	compactedMsgs, count, freed, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
+		HighWater: highWater,
+		LowWater:  lowWater,
+	})
+	if compErr != nil {
+		return 0, 0, fmt.Errorf("compaction failed: %w", compErr)
+	}
+	if compactedMsgs == nil || count == 0 {
+		return 0, 0, nil
+	}
+
+	// Replace in-memory history with compacted version.
+	s.historySessionMgr.RestoreHistory(sessionID, compactedMsgs)
+
+	// Snapshot the compacted history if persister is available.
+	if s.persister != nil {
+		sessAfter := s.uiSessionMgr.Get(sessionID)
+		historyAfter := s.historySessionMgr.History(sessionID)
+		if sessAfter != nil && historyAfter != nil {
+			if err := s.persister.SnapshotSession(sessionID, sessAfter, historyAfter); err != nil {
+				slog.Warn("failed to snapshot compacted session",
+					slog.String("session_id", sessionID),
+					slog.Any("error", err),
+				)
+			}
+		}
+	}
+
+	return count, freed, nil
+}
+
+// newCompactLLMService creates a bare LLM service for summarization without
+// tool registries, system prompts, or skill context.
+func newCompactLLMService(ctx context.Context, cfg runconfig.RunConfig, persistAuth PersistAuthFunc) (llm.LLMService, error) {
+	reqAuth := provider.ResolveAuthRequest{
+		ProviderID:   cfg.ProviderID,
+		APIKey:       cfg.APIKey,
+		ProviderAuth: cfg.ProviderAuth,
+	}
+	resolvedKey, _, err := provider.ResolveAuth(ctx, reqAuth, persistAuth)
+	if err != nil {
+		return nil, fmt.Errorf("auth resolution: %w", err)
+	}
+	apiKey := cfg.APIKey
+	if resolvedKey != "" {
+		apiKey = resolvedKey
+	}
+
+	adapterCfg := llm.AdapterConfig{
+		ProviderID:   cfg.ProviderID,
+		Model:        cfg.ModelName,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       apiKey,
+		DebugPrompt:  cfg.DebugPrompt,
+		DebugRequest: cfg.DebugRequest,
+		DebugLLMDir:  cfg.DebugLLMDir,
+	}
+
+	return llm.NewLLMService(adapterCfg)
 }

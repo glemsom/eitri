@@ -41,6 +41,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Intercept /compact slash command — handle inline without starting an LLM run
+	// and without consuming an agent turn.
+	if strings.TrimSpace(message) == "/compact" {
+		s.handleCompact(w, r)
+		return
+	}
+
 	_ = s.refreshSkillsRegistry()
 
 	// Check for slash commands

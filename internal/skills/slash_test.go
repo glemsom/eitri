@@ -128,6 +128,12 @@ func TestParseSlashInput_ReservedCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for reserved command")
 	}
+
+	// /compact is also reserved
+	_, err = ParseSlashInput("/compact", lookup)
+	if err == nil {
+		t.Fatal("expected error for reserved /compact command")
+	}
 }
 
 func TestParseSlashInput_SlashThenPlain(t *testing.T) {

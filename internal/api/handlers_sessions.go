@@ -160,7 +160,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	component := templates.ChatPage(sessions, id, renderedSession, sess.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail)
+	component := templates.ChatPage(sessions, id, renderedSession, sess.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail, state.cfg.CompactionEnabled)
 	component.Render(r.Context(), w)
 }
 

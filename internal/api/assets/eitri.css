@@ -2476,6 +2476,26 @@ eitri-context {
   background-color: var(--error);
 }
 
+/* Compact now button in context panel (Issue #723) */
+.compact-btn {
+  display: block;
+  width: calc(100% - 1rem);
+  margin: 0.4rem 0.5rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, color 0.15s;
+}
+.compact-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
 /* ============================================
    Directory browser overlay: Issue #628
    Modal overlay for browsing directory tree
