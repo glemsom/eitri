@@ -235,7 +235,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
 1. Validates config, snapshots runtime limits (`max_turns`, `context_window_tokens`)
 2. Resolves skill context from session's active skills
-3. Calls `buildLLMService()` → resolves auth, creates `llm.LLMService`, builds base tool registry (`bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`)
+3. Calls `buildLLMService()` → resolves auth, creates `llm.LLMService`, builds base tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`)
 4. Registers parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
 5. Creates `runstate.State` for SSE broadcast
 6. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
@@ -247,7 +247,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `tool.go` | `ToolHandler` interface, `SchemaOf[T]()` helper for JSON Schema generation |
 | `dispatch.go` | `NewRegistry()` — registry of tool handlers registered by name |
 | `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 128 KiB output cap |
-| `glob.go` | `GlobTool` — workspace-scoped glob pattern matching |
+| ~~`glob.go`~~ | ~~`GlobTool` — workspace-scoped glob pattern matching~~ (removed) |
 | `grep.go` | `GrepTool` — workspace-scoped grep with context lines |
 | `read.go` | `ReadTool` — read file with line info and hashes |
 | `write.go` | `WriteTool` — write file with workspace validation |
@@ -273,7 +273,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 - No cross-turn shell state — agent must use `&&` chains or explicit env vars
 
 **Tool registration** happens in two places:
-- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `glob`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`
+- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`
 - `startRunWithConfig()` in `internal/runner/run.go` adds parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
 
 Sub-agents only receive the base registry (no delegate/collect/render_quick_replies/skill).
@@ -443,7 +443,7 @@ eitri/
 │   ├── runstate/              # SSE broadcast infrastructure + context tracking
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
-│   └── tool/                  # Built-in tools (bash, read, write, edit, glob, grep, web_fetch, render, skill, delegate, collect)
+│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, skill, delegate, collect)
 ├── scripts/
 ├── docs/
 │   ├── ARCHITECTURE.md
