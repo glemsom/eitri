@@ -149,6 +149,27 @@ func (m *Manager) Create(browserID string) (*UISession, error) {
 	return sess, nil
 }
 
+// Add inserts a pre-existing session directly into the manager.
+// Used for restoring sessions from disk on startup.
+// If a session with the same ID already exists, it is overwritten.
+func (m *Manager) Add(sess *UISession) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.sessions[sess.ID] = sess
+	// Ensure it appears in browser sessions list
+	found := false
+	for _, id := range m.browserSessions[sess.BrowserID] {
+		if id == sess.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.browserSessions[sess.BrowserID] = append(m.browserSessions[sess.BrowserID], sess.ID)
+	}
+}
+
 // Get returns a session by ID. Returns nil if not found.
 func (m *Manager) Get(id string) *UISession {
 	m.mu.RLock()

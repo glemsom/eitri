@@ -197,6 +197,27 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 	}
 }
 
+// LoadAll bulk-inserts completed traces into the recorder.
+// Used for restoring persisted traces on startup. Each trace is appended
+// directly without calling OnComplete. Traces beyond capacity evict oldest.
+func (r *Recorder) LoadAll(traces []*HTTPTrace) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, trace := range traces {
+		if len(r.traces) >= r.capacity {
+			// Evict oldest
+			r.traces = r.traces[1:]
+		}
+		r.traces = append(r.traces, trace)
+
+		// Track last failing trace
+		if trace.Status >= 300 && trace.Status != 0 {
+			r.lastFailingTrace = trace
+		}
+	}
+}
+
 // List returns completed traces, optionally filtered.
 // limit: max results (0 = use capacity). sessionID/providerID: empty = no filter.
 func (r *Recorder) List(limit int, sessionID, providerID string) []*HTTPTrace {
