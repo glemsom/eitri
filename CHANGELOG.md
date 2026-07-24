@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **glob tool**: removed (covered by `bash` + `find`). (#733, #737)
+
 ### Added
 
 - **bwrap sandboxing for bash commands**: shell commands now run inside a
