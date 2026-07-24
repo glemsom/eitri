@@ -29,6 +29,9 @@ type Config struct {
 	MaxTurns            int             `json:"max_turns"`
 	ContextWindowTokens int             `json:"context_window_tokens"`
 	MaxHistory          int             `json:"max_history"`
+	DebugPrompt         bool            `json:"debug_prompt,omitempty"`   // was EITRI_DEBUG_PROMPT=1
+	DebugRequest        bool            `json:"debug_request,omitempty"`  // was EITRI_DEBUG_REQUEST=1
+	DebugLLMDir         string          `json:"debug_llm_dir,omitempty"`  // was EITRI_DEBUG_LLM_DIR
 }
 
 // Defaults returns a Config with default values.
@@ -51,6 +54,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := Defaults()
+			promoteDebugEnvVars(&cfg)
 			return &cfg, nil
 		}
 		return nil, err
@@ -60,7 +64,29 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	promoteDebugEnvVars(&cfg)
 	return &cfg, nil
+}
+
+// promoteDebugEnvVars promotes EITRI_DEBUG_* environment variables into
+// config fields when the config field is its zero value, preserving backward
+// compatibility for existing invocations that rely on env vars.
+func promoteDebugEnvVars(cfg *Config) {
+	if !cfg.DebugPrompt {
+		if os.Getenv("EITRI_DEBUG_PROMPT") == "1" {
+			cfg.DebugPrompt = true
+		}
+	}
+	if !cfg.DebugRequest {
+		if os.Getenv("EITRI_DEBUG_REQUEST") == "1" {
+			cfg.DebugRequest = true
+		}
+	}
+	if cfg.DebugLLMDir == "" {
+		if v := os.Getenv("EITRI_DEBUG_LLM_DIR"); v != "" {
+			cfg.DebugLLMDir = v
+		}
+	}
 }
 
 // Save writes config to path, creating parent directories with secure permissions.
@@ -119,6 +145,12 @@ func Validate(cfg *Config) error {
 
 	if cfg.MaxHistory < 0 {
 		return fmt.Errorf("max_history must be non-negative, got %d", cfg.MaxHistory)
+	}
+
+	if cfg.DebugLLMDir != "" {
+		if !filepath.IsAbs(cfg.DebugLLMDir) {
+			return fmt.Errorf("debug_llm_dir must be an absolute directory path, got %q", cfg.DebugLLMDir)
+		}
 	}
 
 	return nil
@@ -234,6 +266,21 @@ func Merge(base *Config, patch map[string]any) *Config {
 			result.UserEmail = s
 		}
 	}
+	if v, ok := patch["debug_prompt"]; ok {
+		if parseBool(v) {
+			result.DebugPrompt = true
+		}
+	}
+	if v, ok := patch["debug_request"]; ok {
+		if parseBool(v) {
+			result.DebugRequest = true
+		}
+	}
+	if v, ok := patch["debug_llm_dir"]; ok {
+		if s, ok := v.(string); ok {
+			result.DebugLLMDir = s
+		}
+	}
 
 	if providerChanged {
 		if _, ok := patch["model"]; !ok {
@@ -254,6 +301,15 @@ func clearAPIKeyRequested(v any) bool {
 	s, ok := v.(string)
 	if ok {
 		return s == "true"
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
+func parseBool(v any) bool {
+	s, ok := v.(string)
+	if ok {
+		return s == "true" || s == "1"
 	}
 	b, ok := v.(bool)
 	return ok && b

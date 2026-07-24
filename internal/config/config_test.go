@@ -598,3 +598,225 @@ func TestMerge_ClearsUserEmail(t *testing.T) {
 		t.Errorf("UserEmail = %q, want empty", result.UserEmail)
 	}
 }
+
+// --- Debug field tests ---
+
+func TestLoad_PromotesDebugPromptEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Config file without debug_prompt
+	content := `{"provider": "opencode_go", "api_key": "sk-test"}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("EITRI_DEBUG_PROMPT", "1")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if !cfg.DebugPrompt {
+		t.Error("DebugPrompt = false, want true (promoted from EITRI_DEBUG_PROMPT)")
+	}
+}
+
+func TestLoad_PromotesDebugRequestEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{"provider": "opencode_go", "api_key": "sk-test"}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("EITRI_DEBUG_REQUEST", "1")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if !cfg.DebugRequest {
+		t.Error("DebugRequest = false, want true (promoted from EITRI_DEBUG_REQUEST)")
+	}
+}
+
+func TestLoad_PromotesDebugLLMDirEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{"provider": "opencode_go", "api_key": "sk-test"}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("EITRI_DEBUG_LLM_DIR", "/tmp/llm-debug")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if cfg.DebugLLMDir != "/tmp/llm-debug" {
+		t.Errorf("DebugLLMDir = %q, want %q", cfg.DebugLLMDir, "/tmp/llm-debug")
+	}
+}
+
+func TestLoad_DoesNotOverrideSetDebugFields(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Config has debug_prompt explicitly set to true and debug_llm_dir set
+	content := `{"provider": "opencode_go", "api_key": "sk-test", "debug_prompt": true, "debug_llm_dir": "/custom/path"}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("EITRI_DEBUG_PROMPT", "1")
+	t.Setenv("EITRI_DEBUG_LLM_DIR", "/env/path")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if !cfg.DebugPrompt {
+		t.Error("DebugPrompt = false, want true from config file")
+	}
+	if cfg.DebugLLMDir != "/custom/path" {
+		t.Errorf("DebugLLMDir = %q, want %q (config file value should take precedence)", cfg.DebugLLMDir, "/custom/path")
+	}
+}
+
+func TestLoad_EnvVarOverridesExplicitFalseDebugPrompt(t *testing.T) {
+	// When debug_prompt is explicitly false in config but env var is set,
+	// the env var wins because false is the zero value for bool.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{"provider": "opencode_go", "api_key": "sk-test", "debug_prompt": false}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("EITRI_DEBUG_PROMPT", "1")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if !cfg.DebugPrompt {
+		t.Error("DebugPrompt = false, want true (env var overrides zero-value false)")
+	}
+}
+
+func TestLoad_PromotesEnvVarsWhenFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	t.Setenv("EITRI_DEBUG_PROMPT", "1")
+	t.Setenv("EITRI_DEBUG_LLM_DIR", "/tmp/llm-debug")
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+	if !cfg.DebugPrompt {
+		t.Error("DebugPrompt = false, want true (promoted from env when file missing)")
+	}
+	if cfg.DebugLLMDir != "/tmp/llm-debug" {
+		t.Errorf("DebugLLMDir = %q, want %q", cfg.DebugLLMDir, "/tmp/llm-debug")
+	}
+}
+
+func TestValidate_RejectsRelativeDebugLLMDir(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test-key"
+	cfg.DebugLLMDir = "relative/path"
+
+	err := config.Validate(&cfg)
+	if err == nil {
+		t.Fatal("Validate(relative debug_llm_dir) = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "absolute directory path") {
+		t.Errorf("error = %q, want message about absolute directory path", err.Error())
+	}
+}
+
+func TestValidate_AcceptsAbsoluteDebugLLMDir(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+	cfg.DebugLLMDir = "/tmp/llm-debug"
+
+	if err := config.Validate(&cfg); err != nil {
+		t.Errorf("Validate(absolute debug_llm_dir) = %v, want nil", err)
+	}
+}
+
+func TestValidate_AcceptsEmptyDebugLLMDir(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+	cfg.DebugLLMDir = ""
+
+	if err := config.Validate(&cfg); err != nil {
+		t.Errorf("Validate(empty debug_llm_dir) = %v, want nil", err)
+	}
+}
+
+func TestMerge_DebugPrompt(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"debug_prompt": true})
+	if !result.DebugPrompt {
+		t.Error("DebugPrompt = false, want true after merge")
+	}
+
+	// Unset should not change (field not present)
+	result2 := config.Merge(&cfg, map[string]any{})
+	if result2.DebugPrompt {
+		t.Error("DebugPrompt = true, want false when not in patch")
+	}
+}
+
+func TestMerge_DebugRequest(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"debug_request": true})
+	if !result.DebugRequest {
+		t.Error("DebugRequest = false, want true after merge")
+	}
+}
+
+func TestMerge_DebugLLMDir(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"debug_llm_dir": "/tmp/llm-debug"})
+	if result.DebugLLMDir != "/tmp/llm-debug" {
+		t.Errorf("DebugLLMDir = %q, want %q", result.DebugLLMDir, "/tmp/llm-debug")
+	}
+
+	// Clear it
+	result2 := config.Merge(&cfg, map[string]any{"debug_llm_dir": ""})
+	if result2.DebugLLMDir != "" {
+		t.Errorf("DebugLLMDir = %q, want empty after clearing", result2.DebugLLMDir)
+	}
+}
+
+func TestMerge_DebugPromptFromFormString(t *testing.T) {
+	// Form data sends checkbox values as strings
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"debug_prompt": "true"})
+	if !result.DebugPrompt {
+		t.Error("DebugPrompt = false, want true (promoted from form string 'true')")
+	}
+}
+
+func TestMerge_DebugRequestFromFormString(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"debug_request": "true"})
+	if !result.DebugRequest {
+		t.Error("DebugRequest = false, want true (promoted from form string 'true')")
+	}
+}
+
