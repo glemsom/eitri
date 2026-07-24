@@ -1926,7 +1926,7 @@ func TestComponentReplay_RendersMermaidDiagramAfterPageReload(t *testing.T) {
 	}
 }
 
-func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
+func TestComponentReplay_QuickReplies(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)
 
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1966,8 +1966,6 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"render_mermaid_diagram","arguments":"{\"code\":\"graph TD; A-->B;\"}"}}]},"index":0}]}`, "\n\n")
 				flusher.Flush()
 				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"render_quick_replies","arguments":"{\"options\":[\"yes\",\"no\"]}"}}]},"index":0}]}`, "\n\n")
-				flusher.Flush()
-				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":2,"id":"call_3","type":"function","function":{"name":"edit","arguments":"{\"path\":\"test.txt\",\"old_text\":\"foo\",\"new_text\":\"bar\"}"}}]},"index":0}]}`, "\n\n")
 				flusher.Flush()
 
 				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
@@ -2013,11 +2011,6 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	}
 	if browserCookie == nil {
 		t.Fatal("missing browser cookie")
-	}
-
-	// Create test file for edit tool to work (edit tool uses runSvc workspace)
-	if err := os.WriteFile(filepath.Join(h.workspace, "test.txt"), []byte("foo"), 0644); err != nil {
-		t.Fatal(err)
 	}
 
 	chatPath := "/api/sessions/" + sessionID + "/chat"
@@ -2066,9 +2059,6 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	if !foundComponents["MermaidDiagram"] {
 		t.Errorf("components missing MermaidDiagram, got: %v", assistantMsg.Components)
 	}
-	if !foundComponents["FileEditCard"] {
-		t.Errorf("components missing FileEditCard, got: %v", assistantMsg.Components)
-	}
 
 	sessionURL := h.server.URL + "/sessions/" + sessionID
 	getReq, err := http.NewRequest("GET", sessionURL, nil)
@@ -2098,9 +2088,6 @@ func TestComponentReplay_QuickRepliesAndFileEditCard(t *testing.T) {
 	}
 	if !strings.Contains(body, `yes`) || !strings.Contains(body, `no`) {
 		t.Error("rendered page is missing QuickReplies options")
-	}
-	if !strings.Contains(body, `foo`) || !strings.Contains(body, `bar`) || !strings.Contains(body, `test.txt`) {
-		t.Error("rendered page is missing FileEditCard content")
 	}
 }
 

@@ -3180,61 +3180,6 @@ func TestRenderComponent_QuickReplies(t *testing.T) {
 	}
 }
 
-func TestRenderComponent_DiffCard(t *testing.T) {
-	server := newTestServer(t)
-	client := noRedirectClient()
-
-	rootResp, _ := client.Get(server.URL + "/")
-	rootResp.Body.Close()
-	var browserCookie *http.Cookie
-	for _, c := range rootResp.Cookies() {
-		if c.Name == "browser_id" {
-			browserCookie = c
-			break
-		}
-	}
-	loc := rootResp.Header.Get("Location")
-	sessionID := strings.TrimPrefix(loc, "/sessions/")
-
-	payload := `{"kind":"component","name":"DiffCard","data":{"old":"old code","new":"new code","lang":"go"}}`
-	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", strings.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(browserCookie)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("render DiffCard status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-
-	body := make([]byte, 2048)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-
-	if !strings.Contains(content, "diff-card") {
-		t.Errorf("DiffCard response missing 'diff-card' class, got: %s", content[:100])
-	}
-	if !strings.Contains(content, "diff-pane-unified") {
-		t.Errorf("DiffCard response missing unified pane, got: %s", content[:200])
-	}
-	if !strings.Contains(content, "diff-pane-side-by-side") {
-		t.Errorf("DiffCard response missing side-by-side pane, got: %s", content[:200])
-	}
-	if !strings.Contains(content, "diff-toggle-btn") {
-		t.Errorf("DiffCard response missing view toggle buttons, got: %s", content[:200])
-	}
-	if !strings.Contains(content, "old code") {
-		t.Errorf("DiffCard response missing old code, got: %s", content[:100])
-	}
-	if !strings.Contains(content, "new code") {
-		t.Errorf("DiffCard response missing new code, got: %s", content[:100])
-	}
-}
-
 func TestRenderComponent_OwnershipMismatch(t *testing.T) {
 	server := newTestServer(t)
 	client := noRedirectClient()
@@ -3388,54 +3333,6 @@ func TestUnifiedRender_ComponentQuickReplies(t *testing.T) {
 	content := string(respBody)
 	if !strings.Contains(content, "Summarize") {
 		t.Errorf("unified render QuickReplies missing 'Summarize', got: %s", content[:200])
-	}
-}
-
-func TestUnifiedRender_ComponentDiffCard(t *testing.T) {
-	server := newTestServer(t)
-	client := noRedirectClient()
-
-	rootResp, _ := client.Get(server.URL + "/")
-	rootResp.Body.Close()
-	var browserCookie *http.Cookie
-	for _, c := range rootResp.Cookies() {
-		if c.Name == "browser_id" {
-			browserCookie = c
-			break
-		}
-	}
-	loc := rootResp.Header.Get("Location")
-	sessionID := strings.TrimPrefix(loc, "/sessions/")
-
-	body := map[string]any{
-		"kind": "component",
-		"name": "DiffCard",
-		"data": map[string]any{
-			"old":  "old code",
-			"new":  "new code",
-			"lang": "go",
-		},
-	}
-	bodyJSON, _ := json.Marshal(body)
-
-	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/render", bytes.NewReader(bodyJSON))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(browserCookie)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("unified render DiffCard status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	content := string(respBody)
-	if !strings.Contains(content, "diff-card") {
-		t.Errorf("unified render DiffCard missing 'diff-card' class, got: %s", content[:200])
 	}
 }
 

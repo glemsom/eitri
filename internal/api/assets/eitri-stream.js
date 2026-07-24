@@ -757,7 +757,7 @@
   function renderComponent(sessionId, packet, toolCallKey) {
     console.log('[eitri] renderComponent called', JSON.stringify(packet));
     // The SSE 'component' event nests name/data inside packet.data:
-    //   {"type":"component","data":{"name":"FileEditCard","data":{...}}}
+    //   {"type":"component","data":{"name":"MermaidDiagram","data":{...}}}
     var nested = packet.data || {};
     const compName = nested.name || '';
     const compData = nested.data || {};
@@ -766,43 +766,6 @@
       return;
     }
     console.log('[eitri] renderComponent: name=' + compName + ' data keys=' + Object.keys(compData).join(','));
-
-    if (compName === 'FileEditCard') {
-      // Use data-tool-key lookup instead of allWrappers[last]
-      if (!toolCallKey) {
-        console.warn('[eitri] renderComponent: no toolCallKey for FileEditCard');
-        return;
-      }
-      var wrapper = document.querySelector('#tool-activity details[data-tool-key="' + toolCallKey + '"]');
-      if (!wrapper) {
-        console.warn('[eitri] renderComponent: wrapper not found for toolCallKey=' + toolCallKey);
-        return;
-      }
-      // Find or create a container for component content inside the wrapper.
-      // Never swap innerHTML on the whole details element — that would
-      // overwrite the <summary> (and any done/error status renderToolCard set).
-      var contentContainer = wrapper.querySelector('.tool-component-content');
-      if (!contentContainer) {
-        contentContainer = document.createElement('div');
-        contentContainer.className = 'tool-component-content';
-        wrapper.appendChild(contentContainer);
-        if (!contentContainer.id) {
-          contentContainer.id = 'comp-' + toolCallKey;
-        }
-      }
-      htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
-        source: document.body,
-        target: '#' + CSS.escape(contentContainer.id),
-        swap: 'innerHTML',
-        contentType: 'application/json',
-        values: {
-          kind: 'component',
-          name: compName,
-          data: compData,
-        },
-      });
-      return;
-    }
 
     if (compName === 'MermaidDiagram') {
       return;

@@ -23,7 +23,7 @@ func TestHasMermaidComponent_True(t *testing.T) {
 func TestHasMermaidComponent_False(t *testing.T) {
 	components := []session.ComponentData{
 		{Name: "QuickReplies", Data: map[string]any{}},
-		{Name: "DiffCard", Data: map[string]any{}},
+		{Name: "SomeOtherComponent", Data: map[string]any{}},
 	}
 	if hasMermaidComponent(components) {
 		t.Error("expected hasMermaidComponent to return false")
@@ -245,50 +245,9 @@ func TestRenderComponentsToHTML_MermaidDiagram(t *testing.T) {
 	}
 }
 
-func TestRenderComponentsToHTML_DiffCard(t *testing.T) {
-	components := []session.ComponentData{
-		{Name: "DiffCard", Data: map[string]any{
-			"old":  "hello\n",
-			"new":  "world\n",
-			"lang": "text",
-		}},
-	}
-	got := renderComponentsToHTML(context.Background(), "sess-1", components)
-	if got == "" {
-		t.Fatal("expected non-empty HTML for diff card component")
-	}
-	if !strings.Contains(got, "diff") {
-		t.Errorf("expected diff-related content, got: %s", got)
-	}
-}
-
-func TestRenderComponentsToHTML_FileEditCard(t *testing.T) {
-	components := []session.ComponentData{
-		{Name: "FileEditCard", Data: map[string]any{
-			"path":          "/tmp/test.txt",
-			"mode":          "edit",
-			"old":           "old content\n",
-			"new":           "new content\n",
-			"bytes_written": 12,
-		}},
-	}
-	got := renderComponentsToHTML(context.Background(), "sess-1", components)
-	if got == "" {
-		t.Fatal("expected non-empty HTML for file edit card component")
-	}
-	if !strings.Contains(got, "test.txt") && !strings.Contains(got, "/tmp/test.txt") {
-		t.Errorf("expected file path in output, got: %s", got)
-	}
-}
-
 func TestRenderComponentsToHTML_MultipleComponents(t *testing.T) {
 	components := []session.ComponentData{
 		{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A;"}},
-		{Name: "DiffCard", Data: map[string]any{
-			"old":  "a\n",
-			"new":  "b\n",
-			"lang": "text",
-		}},
 	}
 	got := renderComponentsToHTML(context.Background(), "sess-1", components)
 	if got == "" {
@@ -296,8 +255,5 @@ func TestRenderComponentsToHTML_MultipleComponents(t *testing.T) {
 	}
 	if !strings.Contains(got, "class=\"mermaid\"") {
 		t.Errorf("expected mermaid class in output, got: %s", got)
-	}
-	if !strings.Contains(got, "diff") {
-		t.Errorf("expected diff content in output, got: %s", got)
 	}
 }
