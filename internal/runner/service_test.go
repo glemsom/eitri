@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 
 	"github.com/glemsom/eitri/internal/runstate"
@@ -650,3 +651,515 @@ func TestRunService_ActiveRunSSESnapshot_NoDataRaceWithCancel(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// ── Unsubscribe with no active run ───────────────────────────────────────────
+
+func TestRunService_Unsubscribe_NoActiveRunIsNoop(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Should not panic when unsubscribing from a non-existent session
+	svc.Unsubscribe("nonexistent", 42)
+}
+
+// ── ActiveRunCount ───────────────────────────────────────────────────────────
+
+func TestRunService_ActiveRunCount_InitialZero(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	if got := svc.ActiveRunCount(); got != 0 {
+		t.Fatalf("ActiveRunCount = %d, want 0", got)
+	}
+}
+
+func TestRunService_ActiveRunCount_IncrementsAfterStartRun(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	defer svc.Cancel("session-1")
+
+	if got := svc.ActiveRunCount(); got != 1 {
+		t.Fatalf("ActiveRunCount = %d, want 1", got)
+	}
+}
+
+func TestRunService_ActiveRunCount_DecrementsAfterCancel(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	svc.Cancel("session-1")
+
+	if got := svc.ActiveRunCount(); got != 0 {
+		t.Fatalf("ActiveRunCount after Cancel = %d, want 0", got)
+	}
+}
+
+// ── CloseSession ─────────────────────────────────────────────────────────────
+
+func TestRunService_CloseSession_CancelsRunAndClosesHistory(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	// Create a history session
+	svc.historySessionMgr.Create("session-1")
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Verify run is active
+	if svc.ActiveRun("session-1") == nil {
+		t.Fatal("expected active run before CloseSession")
+	}
+
+	err = svc.CloseSession("session-1")
+	if err != nil {
+		t.Fatalf("CloseSession: %v", err)
+	}
+
+	// Verify run is cancelled
+	if svc.ActiveRun("session-1") != nil {
+		t.Fatal("run still active after CloseSession")
+	}
+
+	// Verify history session is closed
+	if svc.historySessionMgr.History("session-1") != nil {
+		t.Fatal("expected history session to be closed")
+	}
+}
+
+func TestRunService_CloseSession_NoActiveRun(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Create a history session but no active run
+	svc.historySessionMgr.Create("session-1")
+
+	err := svc.CloseSession("session-1")
+	if err != nil {
+		t.Fatalf("CloseSession with no active run: %v", err)
+	}
+
+	// History should still be closed
+	if svc.historySessionMgr.History("session-1") != nil {
+		t.Fatal("expected history session to be closed")
+	}
+}
+
+func TestRunService_CloseSession_NilHistoryManager(t *testing.T) {
+	// Use a service with nil history manager
+	svc := NewRunService(RunServiceDeps{
+		HistorySessionMgr: nil,
+	})
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	err = svc.CloseSession("session-1")
+	if err != nil {
+		t.Fatalf("CloseSession with nil history manager: %v", err)
+	}
+
+	if svc.ActiveRun("session-1") != nil {
+		t.Fatal("run still active after CloseSession with nil history manager")
+	}
+}
+
+// ── ResolveConfirmation / HasPendingConfirmation ─────────────────────────────
+
+func TestRunService_HasPendingConfirmation_ReturnsFalseForNoPending(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	if svc.HasPendingConfirmation("session-1") {
+		t.Fatal("HasPendingConfirmation should be false for session with no pending confirmation")
+	}
+}
+
+func TestRunService_ResolveConfirmation_ReturnsFalseForNoPending(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	if svc.ResolveConfirmation("session-1", "/tmp/test", true) {
+		t.Fatal("ResolveConfirmation should return false for session with no pending confirmation")
+	}
+}
+
+func TestRunService_ResolveConfirmation_ResolvesPending(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Set up a pending confirmation by calling confirmPath in a goroutine
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result *ConfirmationResult
+	var confirmErr error
+	done := make(chan struct{})
+
+	go func() {
+		result, confirmErr = svc.confirmPath(ctx, "session-1", "/tmp/test", "Allow access?")
+		close(done)
+	}()
+
+	// Give the goroutine time to register the confirmation
+	time.Sleep(50 * time.Millisecond)
+
+	if !svc.HasPendingConfirmation("session-1") {
+		t.Fatal("HasPendingConfirmation should be true after confirmPath called")
+	}
+
+	resolved := svc.ResolveConfirmation("session-1", "/tmp/test", true)
+	if !resolved {
+		t.Fatal("ResolveConfirmation should return true for pending confirmation")
+	}
+
+	<-done
+
+	if confirmErr != nil {
+		t.Fatalf("confirmPath error: %v", confirmErr)
+	}
+	if result == nil {
+		t.Fatal("confirmPath result is nil")
+	}
+	if result.Path != "/tmp/test" {
+		t.Errorf("result.Path = %q, want %q", result.Path, "/tmp/test")
+	}
+	if !result.Approved {
+		t.Errorf("result.Approved = false, want true")
+	}
+}
+
+func TestRunService_ResolveConfirmation_Denied(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result *ConfirmationResult
+	var confirmErr error
+	done := make(chan struct{})
+
+	go func() {
+		result, confirmErr = svc.confirmPath(ctx, "session-2", "/tmp/denied", "Allow?")
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	resolved := svc.ResolveConfirmation("session-2", "/tmp/denied", false)
+	if !resolved {
+		t.Fatal("ResolveConfirmation should return true")
+	}
+
+	<-done
+
+	if confirmErr != nil {
+		t.Fatalf("confirmPath error: %v", confirmErr)
+	}
+	if result == nil {
+		t.Fatal("confirmPath result is nil")
+	}
+	if result.Path != "/tmp/denied" {
+		t.Errorf("result.Path = %q, want %q", result.Path, "/tmp/denied")
+	}
+	if result.Approved {
+		t.Errorf("result.Approved = true, want false")
+	}
+}
+
+// ── BroadcastToBrowser / BrowserSubscribersCount ─────────────────────────────
+
+func TestRunService_BroadcastToBrowser_DeliversToSubscribers(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	id, ch := svc.SubscribeBrowser("browser-1")
+	defer svc.UnsubscribeBrowser("browser-1", id)
+
+	evt := BrowserEvent{Type: "test-event", Data: "hello"}
+	svc.BroadcastToBrowser("browser-1", evt)
+
+	select {
+	case received := <-ch:
+		if received.Type != "test-event" {
+			t.Errorf("event type = %q, want %q", received.Type, "test-event")
+		}
+		data, ok := received.Data.(string)
+		if !ok || data != "hello" {
+			t.Errorf("event data = %v, want %q", received.Data, "hello")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for browser event")
+	}
+}
+
+func TestRunService_BrowserSubscribersCount_InitialZero(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	if got := svc.BrowserSubscribersCount("browser-1"); got != 0 {
+		t.Fatalf("BrowserSubscribersCount = %d, want 0", got)
+	}
+}
+
+func TestRunService_BrowserSubscribersCount_AfterSubscribe(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	id, _ := svc.SubscribeBrowser("browser-1")
+	defer svc.UnsubscribeBrowser("browser-1", id)
+
+	if got := svc.BrowserSubscribersCount("browser-1"); got != 1 {
+		t.Fatalf("BrowserSubscribersCount = %d, want 1", got)
+	}
+}
+
+func TestRunService_BrowserSubscribersCount_AfterUnsubscribe(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	id, _ := svc.SubscribeBrowser("browser-1")
+	svc.UnsubscribeBrowser("browser-1", id)
+
+	if got := svc.BrowserSubscribersCount("browser-1"); got != 0 {
+		t.Fatalf("BrowserSubscribersCount after unsubscribe = %d, want 0", got)
+	}
+}
+
+// ── LastBatchConversationContext / setBatchConversationContext ────────────────
+
+func TestRunService_LastBatchConversationContext_NilInitially(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	if ctx := svc.LastBatchConversationContext(); ctx != nil {
+		t.Fatal("LastBatchConversationContext should be nil initially")
+	}
+}
+
+func TestRunService_SetAndGetBatchConversationContext(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	svc.setBatchConversationContext(&debug.ConversationContext{
+		LastUserMessage:      "user msg",
+		LastAssistantMessage: "assistant msg",
+		TurnNumber:           5,
+	})
+
+	ctx := svc.LastBatchConversationContext()
+	if ctx == nil {
+		t.Fatal("LastBatchConversationContext should not be nil after set")
+	}
+	if ctx.LastUserMessage != "user msg" {
+		t.Errorf("LastUserMessage = %q, want %q", ctx.LastUserMessage, "user msg")
+	}
+	if ctx.LastAssistantMessage != "assistant msg" {
+		t.Errorf("LastAssistantMessage = %q, want %q", ctx.LastAssistantMessage, "assistant msg")
+	}
+	if ctx.TurnNumber != 5 {
+		t.Errorf("TurnNumber = %d, want %d", ctx.TurnNumber, 5)
+	}
+}
+
+func TestRunService_LastBatchConversationContext_Overwrite(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	svc.setBatchConversationContext(&debug.ConversationContext{
+		LastUserMessage: "first",
+		TurnNumber:      1,
+	})
+	svc.setBatchConversationContext(&debug.ConversationContext{
+		LastUserMessage: "second",
+		TurnNumber:      2,
+	})
+
+	ctx := svc.LastBatchConversationContext()
+	if ctx.LastUserMessage != "second" {
+		t.Errorf("LastUserMessage = %q, want %q", ctx.LastUserMessage, "second")
+	}
+	if ctx.TurnNumber != 2 {
+		t.Errorf("TurnNumber = %d, want %d", ctx.TurnNumber, 2)
+	}
+}
+
+// ── CompletedRunRetentionMs ──────────────────────────────────────────────────
+
+func TestRunService_CompletedRunRetentionMs_ReturnsPositive(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	retention := svc.CompletedRunRetentionMs()
+	if retention <= 0 {
+		t.Fatalf("CompletedRunRetentionMs = %d, want positive", retention)
+	}
+	// The constant is 5 seconds = 5000ms
+	if retention != 5000 {
+		t.Errorf("CompletedRunRetentionMs = %d, want 5000", retention)
+	}
+}
+
+// ── ActiveRunSSESnapshot nil for no active run ────────────────────────────────
+
+func TestRunService_ActiveRunSSESnapshot_ReturnsNilForNoActiveRun(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	snap := svc.ActiveRunSSESnapshot("nonexistent")
+	if snap != nil {
+		t.Fatal("ActiveRunSSESnapshot should be nil for session with no active run")
+	}
+}
+
+func TestRunService_ActiveRunSSESnapshot_ReturnsSnapshotForActiveRun(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+	defer svc.Cancel("session-1")
+
+	snap := svc.ActiveRunSSESnapshot("session-1")
+	if snap == nil {
+		t.Fatal("ActiveRunSSESnapshot should not be nil for active run")
+	}
+	if snap.Turns != 0 {
+		t.Errorf("snap.Turns = %d, want 0", snap.Turns)
+	}
+}
+
+func TestRunService_ActiveRunSSESnapshot_ReturnsNilAfterCancel(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
+	if err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	svc.Cancel("session-1")
+
+	snap := svc.ActiveRunSSESnapshot("session-1")
+	if snap != nil {
+		t.Fatal("ActiveRunSSESnapshot should be nil after cancel")
+	}
+}
+
+// ── NotifyAllStreamsClosed ───────────────────────────────────────────────────
+
+func TestRunService_NotifyAllStreamsClosed_BroadcastsToAllActive(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+
+	for _, id := range []string{"session-a", "session-b"} {
+		_, err := svc.StartRun(context.Background(), id, "hello", cfg)
+		if err != nil {
+			t.Fatalf("StartRun(%s): %v", id, err)
+		}
+		defer svc.Cancel(id)
+	}
+
+	// Subscribe to both sessions
+	_, chA, okA := svc.Subscribe("session-a")
+	if !okA {
+		t.Fatal("Subscribe session-a returned ok=false")
+	}
+	_, chB, okB := svc.Subscribe("session-b")
+	if !okB {
+		t.Fatal("Subscribe session-b returned ok=false")
+	}
+
+	svc.NotifyAllStreamsClosed("shutting down")
+
+	checkClosed := func(t *testing.T, ch <-chan runstate.SSEEvent, name string) {
+		t.Helper()
+		deadline := time.After(2 * time.Second)
+		for {
+			select {
+			case evt, ok := <-ch:
+				if !ok {
+					return
+				}
+				if evt.Type == "closed" {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("timed out waiting for closed event on %s", name)
+			}
+		}
+	}
+
+	checkClosed(t, chA, "session-a")
+	checkClosed(t, chB, "session-b")
+}
+
+func TestRunService_NotifyAllStreamsClosed_NoActiveRunsIsNoop(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Should not panic when there are no active runs
+	svc.NotifyAllStreamsClosed("shutting down")
+}
+
+// ── Setter methods ───────────────────────────────────────────────────────────
+
+func TestRunService_SetSkillsService(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Setting to a new service should work
+	svc.SetSkillsService(nil)
+	if svc.skillsSvc != nil {
+		t.Fatal("skillsSvc should be nil after SetSkillsService(nil)")
+	}
+}
+
+func TestRunService_SetUISessionManager(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	newMgr := uisession.NewManager(5, t.TempDir())
+	svc.SetUISessionManager(newMgr)
+
+	if svc.uiSessionMgr != newMgr {
+		t.Fatal("uiSessionMgr not updated after SetUISessionManager")
+	}
+}
+
+func TestRunService_SetUISessionManager_Nil(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	svc.SetUISessionManager(nil)
+	if svc.uiSessionMgr != nil {
+		t.Fatal("uiSessionMgr should be nil after SetUISessionManager(nil)")
+	}
+}
+
+func TestRunService_SetCrashDumpFunc(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	called := false
+	svc.SetCrashDumpFunc(func(err error, stack []byte) {
+		called = true
+	})
+
+	if svc.crashDumpFunc == nil {
+		t.Fatal("crashDumpFunc should not be nil after SetCrashDumpFunc")
+	}
+
+	// Call the function to verify it works
+	svc.crashDumpFunc(nil, nil)
+	if !called {
+		t.Fatal("crashDumpFunc was not called")
+	}
+}
+
+func TestRunService_SetCrashDumpFunc_Nil(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	svc.SetCrashDumpFunc(nil)
+	if svc.crashDumpFunc != nil {
+		t.Fatal("crashDumpFunc should be nil after SetCrashDumpFunc(nil)")
+	}
+}
+
