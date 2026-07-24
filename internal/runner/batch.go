@@ -11,7 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
-	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 )
 
@@ -33,47 +32,16 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	// Build system prompt
-	systemPrompt := cfg.SystemPrompt
-	if systemPrompt == "" {
-		systemPrompt = history.DefaultSystemPrompt
-	}
-
-	fullSystemPrompt := systemPrompt
-
-	// Add repository instructions if available
-	repoInstructions, err := readRepositoryInstructions(cfg.Workspace)
+	// Build system prompt (no skill activations in batch mode)
+	fullSystemPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
 	if err != nil {
-		return "", fmt.Errorf("read repository instructions: %w", err)
-	}
-	if repoInstructions != "" {
-		fullSystemPrompt += "\n\n" + repoInstructions
+		return "", err
 	}
 
-	// Resolve auth
-	reqAuth := provider.ResolveAuthRequest{
-		ProviderID:   cfg.ProviderID,
-		APIKey:       cfg.APIKey,
-		ProviderAuth: cfg.ProviderAuth,
-	}
-	resolvedKey, _, authErr := provider.ResolveAuth(ctx, reqAuth, s.persistAuth)
-	if authErr != nil {
-		return "", fmt.Errorf("auth resolution: %w", authErr)
-	}
-	apiKey := cfg.APIKey
-	if resolvedKey != "" {
-		apiKey = resolvedKey
-	}
-
-	// Build LLM service
-	llmSvc, err := llm.NewLLMService(llm.AdapterConfig{
-		ProviderID: cfg.ProviderID,
-		Model:      cfg.ModelName,
-		BaseURL:    cfg.BaseURL,
-		APIKey:     apiKey,
-	})
+	// Build LLM service (no debug recording in batch mode)
+	llmSvc, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth)
 	if err != nil {
-		return "", fmt.Errorf("failed to create LLM service: %w", err)
+		return "", err
 	}
 
 	// Build tool registry (base tools only — no delegate/collect/quick_replies/skill)

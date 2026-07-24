@@ -30,15 +30,16 @@
 //
 //	service.go         — RunService type, constructor, subscribe/unsubscribe,
 //	                     cancel, confirm path, browser SSE broadcast
-//	run.go             — StartRun (agent loop entry point), auth resolution,
-//	                     LLM service construction, tool registry assembly,
+//	run.go             — StartRun (agent loop entry point), tool registry assembly,
 //	                     session persistence after run
 //	loop.go            — RunAgent: synchronous turn loop, LLM call, tool dispatch,
 //	                     SSE broadcast, context window estimation, streaming
 //	loop_helpers.go    — message trimming, content truncation, XML tag parsing,
 //	                     SSE event helpers, context window computation
 //	batch.go           — BatchRun: headless batch mode (no UI sessions,
-//	                     requestHistoryManager, io.Writer output)
+//	                     sessionHistoryManager, io.Writer output)
+//	system_prompt.go   — buildSystemPrompt and buildLLMService: shared helpers
+//	                     used by both run.go and batch.go
 //	subagent.go        — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
 //	                     sub-agent record tracking, restricted tool registry
 //	skill_context.go   — sessionSkillContext resolution, stale skill detection,

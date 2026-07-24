@@ -8,10 +8,8 @@ import (
 	runtimeDebug "runtime/debug"
 	"time"
 
-	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/llm"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -42,15 +40,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		return nil, fmt.Errorf("session %s already has an active run", sessionID)
 	}
 
-	providerID := cfg.ProviderID
 	baseURL := cfg.BaseURL
-	apiKey := cfg.APIKey
 	modelName := cfg.ModelName
-	systemPrompt := cfg.SystemPrompt
 	maxTurns := cfg.MaxTurns
 	maxHistory := cfg.MaxHistory
-	providerAuth := cfg.ProviderAuth
-	workspace := cfg.Workspace
 	contextWindowTokens := cfg.ContextWindowTokens
 	// Store parent config for sub-agent setup
 	s.subagents.StoreParentCfg(sessionID, cfg)
@@ -59,66 +52,20 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		return nil, errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	if providerID == "" {
-		providerID = "opencode_go"
-	}
-
-	runSystemPrompt := systemPrompt
-	if runSystemPrompt == "" {
-		runSystemPrompt = history.DefaultSystemPrompt
+	if cfg.ProviderID == "" {
+		cfg.ProviderID = "opencode_go"
 	}
 
 	skillCtx := s.resolveSessionSkillContext(sessionID)
 
-	fullSystemPrompt := runSystemPrompt
-
-	repoInstructions, err := readRepositoryInstructions(workspace)
+	fullSystemPrompt, err := buildSystemPrompt(cfg, skillCtx, s.skillsSvc)
 	if err != nil {
-		return nil, fmt.Errorf("read repository instructions: %w", err)
-	}
-	if repoInstructions != "" {
-		fullSystemPrompt += "\n\n" + repoInstructions
-	}
-	if s.skillsSvc != nil {
-		catalog := s.skillsSvc.SkillsCatalogXML()
-		if catalog != "" {
-			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
-		}
-	}
-	for _, activation := range skillCtx.Activations {
-		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
+		return nil, err
 	}
 
-	reqAuth := provider.ResolveAuthRequest{
-		ProviderID:   providerID,
-		APIKey:       apiKey,
-		ProviderAuth: providerAuth,
-	}
-	authPersist := s.persistAuth
-	resolvedKey, authUpdate, authErr := provider.ResolveAuth(ctx, reqAuth, authPersist)
-	if authErr != nil {
-		return nil, fmt.Errorf("auth resolution: %w", authErr)
-	}
-	if resolvedKey != "" {
-		apiKey = resolvedKey
-	}
-	_ = authUpdate
-
-	adapterCfg := llm.AdapterConfig{
-		ProviderID: providerID,
-		Model:      modelName,
-		BaseURL:    baseURL,
-		APIKey:     apiKey,
-	}
-
-	// If debug recorder is enabled, wrap the default transport for HTTP trace recording
-	if s.debugRecorder != nil {
-		adapterCfg.RoundTripper = debug.NewRecordingRoundTripper(nil, s.debugRecorder, sessionID, providerID)
-	}
-
-	llmSvc, err := llm.NewLLMService(adapterCfg)
+	llmSvc, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create LLM service: %w", err)
+		return nil, err
 	}
 
 	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
@@ -147,7 +94,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 
 	// Set session-scoped prompt cache key if the provider supports it
-	providerDesc, _ := provider.Describe(providerID)
+	providerDesc, _ := provider.Describe(cfg.ProviderID)
 	if providerDesc.SupportsPromptCache {
 		req.SessionID = sessionID
 	}
@@ -235,7 +182,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 	}()
 
-	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", providerID), slog.String("model", modelName))
+	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
 
 	return skillCtx.Warnings, nil
 }
