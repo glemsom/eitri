@@ -284,3 +284,53 @@ func TestGlob_PathPrefixedPattern(t *testing.T) {
 		t.Errorf("got %q, want %q", block.Text, expected)
 	}
 }
+
+// ── unique tests ───────────────────────────────────────────────────────────
+
+func TestUnique_EmptySlice(t *testing.T) {
+	if got := unique(nil); got != nil {
+		t.Errorf("unique(nil) = %v, want nil", got)
+	}
+	if got := unique([]string{}); len(got) != 0 {
+		t.Errorf("unique([]string{}) = %v, want empty", got)
+	}
+}
+
+func TestUnique_NoDuplicates(t *testing.T) {
+	input := []string{"a", "b", "c"}
+	got := unique(input)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	for i, v := range input {
+		if got[i] != v {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], v)
+		}
+	}
+}
+
+func TestUnique_WithDuplicates(t *testing.T) {
+	input := []string{"a", "a", "b", "c", "c", "c"}
+	got := unique(input)
+	want := []string{"a", "b", "c"}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i, v := range want {
+		if got[i] != v {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], v)
+		}
+	}
+}
+
+func TestUnique_AllSame(t *testing.T) {
+	input := []string{"x", "x", "x", "x"}
+	got := unique(input)
+	want := []string{"x"}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	if got[0] != want[0] {
+		t.Errorf("got[0] = %q, want %q", got[0], want[0])
+	}
+}

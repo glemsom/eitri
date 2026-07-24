@@ -388,3 +388,29 @@ func TestRead_DefaultLineRange(t *testing.T) {
 		t.Errorf("expected no metadata prefix for full file read, got %q", block.Text[:40])
 	}
 }
+
+// ── AppendAllowedPaths tests ───────────────────────────────────────────────
+
+func TestRead_AppendAllowedPaths(t *testing.T) {
+	tool := NewReadTool("/tmp/workspace", nil)
+	if len(tool.allowedPaths) != 0 {
+		t.Fatalf("initial allowedPaths = %v, want empty", tool.allowedPaths)
+	}
+
+	tool.AppendAllowedPaths("/path/one", "/path/two")
+	if len(tool.allowedPaths) != 2 {
+		t.Fatalf("allowedPaths = %v, want 2 items", tool.allowedPaths)
+	}
+	if tool.allowedPaths[0] != "/path/one" {
+		t.Errorf("allowedPaths[0] = %q, want %q", tool.allowedPaths[0], "/path/one")
+	}
+	if tool.allowedPaths[1] != "/path/two" {
+		t.Errorf("allowedPaths[1] = %q, want %q", tool.allowedPaths[1], "/path/two")
+	}
+
+	// Appending again should add to the list
+	tool.AppendAllowedPaths("/path/three")
+	if len(tool.allowedPaths) != 3 {
+		t.Fatalf("allowedPaths after second append = %v, want 3 items", tool.allowedPaths)
+	}
+}

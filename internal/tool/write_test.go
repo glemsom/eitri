@@ -309,3 +309,28 @@ func TestWrite_PartialDirectoriesCreated(t *testing.T) {
 		t.Errorf("expected '2 dirs created' in output, got %q", block.Text)
 	}
 }
+
+// ── countNewDirs tests ─────────────────────────────────────────────────────
+
+func TestCountNewDirs_ExistingPath(t *testing.T) {
+	dir := t.TempDir()
+	if got := countNewDirs(dir); got != 0 {
+		t.Errorf("countNewDirs(%q) = %d, want 0", dir, got)
+	}
+}
+
+func TestCountNewDirs_OneNewDir(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "newdir")
+	if got := countNewDirs(newPath); got != 1 {
+		t.Errorf("countNewDirs(%q) = %d, want 1", newPath, got)
+	}
+}
+
+func TestCountNewDirs_MultipleNewDirs(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "a", "b", "c")
+	if got := countNewDirs(newPath); got != 3 {
+		t.Errorf("countNewDirs(%q) = %d, want 3", newPath, got)
+	}
+}

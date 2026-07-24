@@ -107,11 +107,34 @@ func TestDelegateTool_Call_DefaultMaxTurns(t *testing.T) {
 	}
 }
 
+func TestDelegateTool_Description(t *testing.T) {
+	d := NewDelegate(&fakeSubAgentManager{})
+	if d.Description() == "" {
+		t.Error("Description should not be empty")
+	}
+	if !strings.Contains(d.Description(), "sub-agent") {
+		t.Error("Description should mention sub-agent")
+	}
+}
+
 func TestDelegateTool_Schema(t *testing.T) {
 	d := NewDelegate(&fakeSubAgentManager{})
 	schema := d.JSONSchema()
 	if schema == nil {
 		t.Fatal("JSONSchema() returned nil")
+	}
+	if !json.Valid(schema) {
+		t.Error("JSONSchema is not valid JSON")
+	}
+}
+
+func TestCollectTool_Description(t *testing.T) {
+	c := NewCollect(&fakeSubAgentManager{})
+	if c.Description() == "" {
+		t.Error("Description should not be empty")
+	}
+	if !strings.Contains(c.Description(), "task_ids") {
+		t.Error("Description should mention task_ids")
 	}
 }
 
@@ -219,6 +242,9 @@ func TestCollectTool_Schema(t *testing.T) {
 	schema := c.JSONSchema()
 	if schema == nil {
 		t.Fatal("JSONSchema() returned nil")
+	}
+	if !json.Valid(schema) {
+		t.Error("JSONSchema is not valid JSON")
 	}
 }
 

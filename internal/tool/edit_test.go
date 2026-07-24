@@ -238,3 +238,46 @@ func TestEdit_PathOutsideWorkspace(t *testing.T) {
 		}
 	}
 }
+
+// ── countLineDiffs tests ───────────────────────────────────────────────────
+
+func TestCountLineDiffs_Identical(t *testing.T) {
+	oldLines := []string{"a", "b", "c"}
+	newLines := []string{"a", "b", "c"}
+	if got := countLineDiffs(oldLines, newLines); got != 0 {
+		t.Errorf("countLineDiffs = %d, want 0", got)
+	}
+}
+
+func TestCountLineDiffs_AllDifferent(t *testing.T) {
+	oldLines := []string{"a", "b", "c"}
+	newLines := []string{"d", "e", "f"}
+	if got := countLineDiffs(oldLines, newLines); got != 3 {
+		t.Errorf("countLineDiffs = %d, want 3", got)
+	}
+}
+
+func TestCountLineDiffs_NewLinesLonger(t *testing.T) {
+	oldLines := []string{"a", "b"}
+	newLines := []string{"a", "b", "c"}
+	if got := countLineDiffs(oldLines, newLines); got != 1 {
+		t.Errorf("countLineDiffs = %d, want 1", got)
+	}
+}
+
+func TestCountLineDiffs_OldLinesLonger(t *testing.T) {
+	oldLines := []string{"a", "b", "c"}
+	newLines := []string{"a", "b"}
+	if got := countLineDiffs(oldLines, newLines); got != 1 {
+		t.Errorf("countLineDiffs = %d, want 1", got)
+	}
+}
+
+func TestCountLineDiffs_EmptySlices(t *testing.T) {
+	if got := countLineDiffs(nil, nil); got != 0 {
+		t.Errorf("countLineDiffs = %d, want 0", got)
+	}
+	if got := countLineDiffs([]string{}, []string{}); got != 0 {
+		t.Errorf("countLineDiffs = %d, want 0", got)
+	}
+}
