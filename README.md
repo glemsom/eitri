@@ -27,6 +27,27 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 
 ---
 
+## Prerequisites
+
+### Optional: bubblewrap (bwrap)
+
+For sandboxed shell command execution, install [bubblewrap](https://github.com/containers/bubblewrap):
+
+```sh
+# Debian/Ubuntu
+sudo apt install bubblewrap
+
+# Fedora
+sudo dnf install bubblewrap
+
+# Arch
+sudo pacman -S bubblewrap
+```
+
+If bwrap is not installed, Eitri falls back to direct shell execution.
+
+---
+
 ## Quick start
 
 ### 1. Install
@@ -92,6 +113,27 @@ Most settings are configured through the UI at [http://127.0.0.1:8080/settings](
 
 Eitri stores configuration in `~/.eitri/config.json` under the hood, but you should use the
 settings page rather than hand-editing the file.
+
+### Sandbox configuration
+
+Shell commands run inside a [bubblewrap](https://github.com/containers/bubblewrap) sandbox
+by default. The sandbox can be configured via the settings UI or directly in `~/.eitri/config.json`:
+
+```json
+{
+  "sandbox": {
+    "profile": "default",
+    "network": true,
+    "extra_writable_paths": ["/opt/toolchain"]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `profile` | `"default"` (sandboxed) or `"none"` (direct execution) |
+| `network` | Enable / disable network access inside the sandbox |
+| `extra_writable_paths` | Additional directories writable inside the sandbox |
 
 ### Environment variables
 

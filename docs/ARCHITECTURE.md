@@ -21,6 +21,7 @@ flowchart LR
         FileUtil["fileutil/ (file operations)"]
         Skills["skills/ (Agent Skills registry)"]
         Tools["tool/ (built-in tools)"]
+        Sandbox["sandbox/ (bwrap wrapper)"]
         Config["config/ (JSON file)"]
         Provider["provider/ (profiles + auth)"]
         Debug["debug/ (crash dumps, HTTP traces)"]
@@ -39,6 +40,7 @@ flowchart LR
     RunSvc --> UISess
     RunSvc --> Provider
     RunSvc --> Tools
+    Tools --> Sandbox
 ```
 
 ## Module map
@@ -107,6 +109,15 @@ Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path 
 | `auth.go` | Auth helpers: config-auth validation/normalization, GitHub Copilot device-flow start/poll status mapping, token-to-auth-state conversion, refresh. |
 
 **Role**: thin package — profile metadata, auth, discovery only. LLM transport lives in `internal/llm/`. Callers use `llm.NewLLMService()`, not raw provider internals.
+
+### `internal/sandbox/` — bwrap sandbox wrapper
+
+| File | Responsibility |
+|------|---------------|
+| `sandbox.go` | `WrapCommand()` — wraps a shell command inside a bubblewrap sandbox; falls back to direct execution if bwrap is unavailable, OS is not Linux, or profile is `"none"` |
+| `sandbox_test.go` | Unit and integration tests for `WrapCommand` (skip if bwrap not on PATH) |
+
+Provides `WrapCommand(workspace, command, Config)` which returns the executable and arguments for running a command inside a bubblewrap sandbox. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale.
 
 ### `internal/runstate/` — SSE broadcast + context tracking
 
@@ -252,7 +263,9 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 
 **BashTool** replaces the old `TmuxExecutor`:
 - Creates `exec.Command` per call — no persistent shell session
-- Receives `workspace` and `timeout` as constructor params
+- Commands run inside a bubblewrap sandbox (read-only root, writable workspace and /tmp, separate PID namespace) by default
+- Falls back to direct `bash -c` execution when bwrap is unavailable or sandbox profile is `"none"`
+- Receives `workspace`, `timeout`, and `sandbox.Config` as constructor params
 - Captures stdout and stderr separately via pipes
 - Exit code from `cmd.ProcessState.ExitCode()`
 - Per-command timeout via `context.WithTimeout` (default 60s from `command_timeout` config)

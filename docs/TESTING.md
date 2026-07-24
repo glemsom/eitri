@@ -45,6 +45,7 @@ model service.
 | `internal/api/templates/helpers_test.go` | Template helpers (pathBase, scopeLabel, scopeIcon, statusDot, countLines) |
 | `internal/api/templates/diff_test.go` | Diff text helpers (diffText, splitLines, escapeDiff, countLines) |
 | `internal/config/config_test.go` | Config load/save/merge, provider validation |
+| `internal/sandbox/sandbox_test.go` | Sandbox `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not on PATH) |
 | `internal/runner/manager_test.go` | Runner manager, cache keys |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior |
