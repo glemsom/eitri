@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 )
 
 func TestNewSubagentStore(t *testing.T) {
@@ -177,7 +179,7 @@ func TestSubagentStore_ParentCfg(t *testing.T) {
 		t.Fatal("GetParentCfg should return false for unknown session")
 	}
 
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "test-provider",
 		ModelName:  "test-model",
 	}
@@ -268,7 +270,7 @@ func TestSubagentStore_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			ss.StoreParentCfg("sess-concurrent", RunConfig{ModelName: "test"})
+			ss.StoreParentCfg("sess-concurrent", runconfig.RunConfig{ModelName: "test"})
 			ss.GetParentCfg("sess-concurrent")
 			ss.DeleteParentCfg("sess-concurrent")
 		}
@@ -278,7 +280,7 @@ func TestSubagentStore_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			ss.StoreParentCfg("sess-concurrent", RunConfig{ModelName: "test2"})
+			ss.StoreParentCfg("sess-concurrent", runconfig.RunConfig{ModelName: "test2"})
 			ss.GetParentCfg("sess-concurrent")
 		}
 	}()

@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 )
 
 func TestBatchRun_ReturnsErrorForMissingBaseURL(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		ModelName:  "test-model",
 	}
@@ -28,7 +29,7 @@ func TestBatchRun_ReturnsErrorForMissingBaseURL(t *testing.T) {
 
 func TestBatchRun_ReturnsErrorForMissingModel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 	}
@@ -44,7 +45,7 @@ func TestBatchRun_ReturnsErrorForMissingModel(t *testing.T) {
 
 func TestBatchRun_ReturnsErrorOnCancelledContext(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 		APIKey:     "test-key",
@@ -63,7 +64,7 @@ func TestBatchRun_ReturnsErrorOnCancelledContext(t *testing.T) {
 
 func TestBatchRun_FailsGracefullyOnConnectionFailure(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1",
 		APIKey:     "test-key",
@@ -133,7 +134,7 @@ func TestExtractLastMessages(t *testing.T) {
 
 func TestBatchRun_ConversationContextCapturedOnError(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1", // connection refused -> error
 		APIKey:     "test-key",

@@ -11,27 +11,20 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/broadcast"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
 )
 
-// MaxTurnsExceededError reports that a run hit its configured turn cap.
-type MaxTurnsExceededError struct {
-	Limit int
-}
-
-func (e *MaxTurnsExceededError) Error() string {
-	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
-}
-
 // StartRun starts a new agent run for a session with an explicit RunConfig.
 // Returns warnings about stale skills, and error if run fails.
-func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
+func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg runconfig.RunConfig) ([]string, error) {
 	return s.startRunWithConfig(ctx, sessionID, userMessage, cfg)
 }
 
-func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
+func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg runconfig.RunConfig) ([]string, error) {
 	if s.tracker.exchangeIfDone(sessionID) {
 		// Previous run was done; clean slate
 	}
@@ -160,7 +153,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				return
 			}
 
-			var maxTurnsErr *MaxTurnsExceededError
+			var maxTurnsErr *runconfig.MaxTurnsExceededError
 			if errors.As(err, &maxTurnsErr) {
 				content := sseState.BufferString()
 				limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
@@ -235,7 +228,7 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	if sess.BrowserID == "" {
 		return
 	}
-	s.broadcast.Broadcast(sess.BrowserID, BrowserEvent{
+	s.broadcast.Broadcast(sess.BrowserID, broadcast.BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,

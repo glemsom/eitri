@@ -1,4 +1,4 @@
-package runner
+package broadcast
 
 import (
 	"sync"
@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-func TestNewBrowserBroadcaster(t *testing.T) {
-	bb := newBrowserBroadcaster()
+func TestNew(t *testing.T) {
+	bb := New()
 	if bb == nil {
-		t.Fatal("newBrowserBroadcaster() returned nil")
+		t.Fatal("New() returned nil")
 	}
 	if bb.Count("browser-1") != 0 {
 		t.Fatalf("expected 0 subscribers, got %d", bb.Count("browser-1"))
@@ -17,7 +17,7 @@ func TestNewBrowserBroadcaster(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_SubscribeAndUnsubscribe(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 
 	// Subscribe returns a unique ID and a channel
 	id1, ch1 := bb.Subscribe("browser-1")
@@ -52,13 +52,13 @@ func TestBrowserBroadcaster_SubscribeAndUnsubscribe(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Unsubscribe_UnknownBrowserID(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 	// Should not panic
 	bb.Unsubscribe("nonexistent", 42)
 }
 
 func TestBrowserBroadcaster_Unsubscribe_UnknownSubscriberID(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 	id, _ := bb.Subscribe("browser-1")
 	// Unsubscribe with wrong ID should not affect the real subscriber
 	bb.Unsubscribe("browser-1", 999)
@@ -71,13 +71,13 @@ func TestBrowserBroadcaster_Unsubscribe_UnknownSubscriberID(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Broadcast_NoSubscribers(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 	// Should not panic or block
 	bb.Broadcast("browser-1", BrowserEvent{Type: "test", Data: "data"})
 }
 
 func TestBrowserBroadcaster_Broadcast_SingleSubscriber(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 	id, ch := bb.Subscribe("browser-1")
 	defer bb.Unsubscribe("browser-1", id)
 
@@ -97,7 +97,7 @@ func TestBrowserBroadcaster_Broadcast_SingleSubscriber(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Broadcast_MultipleSubscribers(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 
 	id1, ch1 := bb.Subscribe("browser-1")
 	defer bb.Unsubscribe("browser-1", id1)
@@ -121,7 +121,7 @@ func TestBrowserBroadcaster_Broadcast_MultipleSubscribers(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Broadcast_DifferentBrowserIDs(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 
 	id1, ch1 := bb.Subscribe("browser-a")
 	defer bb.Unsubscribe("browser-a", id1)
@@ -151,7 +151,7 @@ func TestBrowserBroadcaster_Broadcast_DifferentBrowserIDs(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Count(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 
 	if bb.Count("browser-1") != 0 {
 		t.Fatalf("expected 0, got %d", bb.Count("browser-1"))
@@ -179,7 +179,7 @@ func TestBrowserBroadcaster_Count(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_Broadcast_SlowSubscriberDrops(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 
 	id, ch := bb.Subscribe("browser-1")
 	defer bb.Unsubscribe("browser-1", id)
@@ -208,7 +208,7 @@ func TestBrowserBroadcaster_Broadcast_SlowSubscriberDrops(t *testing.T) {
 }
 
 func TestBrowserBroadcaster_ConcurrentAccess(t *testing.T) {
-	bb := newBrowserBroadcaster()
+	bb := New()
 	var wg sync.WaitGroup
 
 	for i := 0; i < 10; i++ {

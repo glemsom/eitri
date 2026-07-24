@@ -8,6 +8,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tool"
@@ -15,7 +16,7 @@ import (
 
 // buildSystemPrompt assembles the full system prompt from the configured
 // base prompt, repository instructions, skills catalog, and skill activations.
-func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
+func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
 	if systemPrompt == "" {
 		systemPrompt = history.DefaultSystemPrompt
@@ -49,7 +50,7 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 // builds the base tool registry, and assembles the system prompt.
 // If debugRecorder is non-nil and sessionID is non-empty, the service's HTTP
 // transport is wrapped for request/response recording.
-func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
+func buildLLMService(ctx context.Context, cfg runconfig.RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,

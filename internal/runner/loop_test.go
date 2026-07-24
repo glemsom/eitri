@@ -13,6 +13,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
@@ -762,9 +763,9 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
 
-	var maxTurnsErr *MaxTurnsExceededError
+	var maxTurnsErr *runconfig.MaxTurnsExceededError
 	if !errors.As(err, &maxTurnsErr) {
-		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
+		t.Fatalf("error type = %T, want *runconfig.MaxTurnsExceededError", err)
 	}
 	if maxTurnsErr.Limit != 1 {
 		t.Errorf("Limit = %d, want 1", maxTurnsErr.Limit)
@@ -2265,9 +2266,9 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
-	var maxTurnsErr *MaxTurnsExceededError
+	var maxTurnsErr *runconfig.MaxTurnsExceededError
 	if !errors.As(err, &maxTurnsErr) {
-		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
+		t.Fatalf("error type = %T, want *runconfig.MaxTurnsExceededError", err)
 	}
 
 	events := collectSSE(sseState)
@@ -2945,7 +2946,7 @@ func TestRunService_CrashDumpOnFatalError(t *testing.T) {
 	})
 
 	// Start a run with a garbage URL that will fail
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1", // unlikely to have an LLM server
 		APIKey:     "test-key",
@@ -2987,7 +2988,7 @@ func TestRunService_CrashDumpNotCalledOnCancel(t *testing.T) {
 		},
 	})
 
-	cfg := RunConfig{
+	cfg := runconfig.RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 		APIKey:     "test-key",
