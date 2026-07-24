@@ -12,6 +12,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -55,7 +56,7 @@ type RunService struct {
 	subagents *subagentStore
 
 	confirmMu     sync.Mutex
-	confirmations map[string]chan ConfirmationResult // sessionID → confirmation channel
+	confirmations map[string]chan adapters.ConfirmationResult // sessionID → confirmation channel
 
 	uiSessionMgr      *uisession.Manager
 	skillsSvc         *skills.Service
@@ -73,7 +74,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		tracker:           newRunTracker(),
 		broadcast:         broadcast.New(),
 		subagents:         newSubagentStore(),
-		confirmations:     make(map[string]chan ConfirmationResult),
+		confirmations:     make(map[string]chan adapters.ConfirmationResult),
 		uiSessionMgr:      deps.UISessionMgr,
 		skillsSvc:         deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
@@ -278,13 +279,13 @@ func (s *RunService) NotifyAllStreamsClosed(message string) {
 // confirmPath implements ConfirmationFunc for RunAgent.
 // It creates a channel for the session, sends a needs_confirmation SSE event,
 // and blocks waiting for the user's response via the API endpoint.
-func (s *RunService) confirmPath(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error) {
+func (s *RunService) confirmPath(ctx context.Context, sessionID, path, message string) (*adapters.ConfirmationResult, error) {
 	s.confirmMu.Lock()
 	// Check if channel already exists (should not happen in normal flow)
 	if existing, ok := s.confirmations[sessionID]; ok {
 		close(existing)
 	}
-	ch := make(chan ConfirmationResult, 1)
+	ch := make(chan adapters.ConfirmationResult, 1)
 	s.confirmations[sessionID] = ch
 	s.confirmMu.Unlock()
 
@@ -313,7 +314,7 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 		return false
 	}
 	select {
-	case ch <- ConfirmationResult{Path: path, Approved: approved}:
+	case ch <- adapters.ConfirmationResult{Path: path, Approved: approved}:
 		return true
 	default:
 		return false

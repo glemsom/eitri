@@ -1,4 +1,9 @@
-package runner
+// Package adapters provides HistoryManager and Confirmer interfaces and their
+// implementations — the seam between the agent loop and its runtime context
+// (browser UI sessions vs headless/direct-messages mode).
+//
+// Extracted from the runner monolith (ticket #691).
+package adapters
 
 import (
 	"context"
@@ -8,6 +13,48 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
+
+// ── Value types ─────────────────────────────────────────────────────────────
+
+// ConfirmationResult carries the user's decision for a confirmation prompt.
+type ConfirmationResult struct {
+	Path     string
+	Approved bool
+}
+
+// ConfirmationFunc is called when a tool needs user confirmation before
+// proceeding. It sends the confirmation request and blocks until the user
+// responds or the context is cancelled.
+type ConfirmationFunc func(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
+
+// ── HistoryManager ──────────────────────────────────────────────────────────
+
+// HistoryManager abstracts conversation history storage for the agent loop.
+// Two adapters exist: sessionHistoryManager (browser UI path via
+// *history.SessionManager) and requestHistoryManager (headless/direct-messages
+// path via *llm.Request).
+type HistoryManager interface {
+	// History returns the full conversation history with system prompt prepended.
+	History(sessionID string) []llm.Message
+
+	// AppendAssistant appends an assistant message with text content and
+	// optional tool calls.
+	AppendAssistant(sessionID, content string, toolCalls []llm.ToolCall)
+
+	// AppendTool appends a tool result message.
+	AppendTool(sessionID, toolCallID, content string, isError bool)
+}
+
+// ── Confirmer ───────────────────────────────────────────────────────────────
+
+// Confirmer abstracts the user-confirmation flow for the agent loop.
+// The production implementation uses a channel-based mechanism via
+// RunService.confirmPath; testConfirmerStub provides a canned result.
+type Confirmer interface {
+	// Confirm blocks until the user approves or denies the path, or the
+	// context is cancelled. Returns the confirmation result or an error.
+	Confirm(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
+}
 
 // ── sessionHistoryManager ──────────────────────────────────────────────────
 
@@ -20,9 +67,9 @@ type sessionHistoryManager struct {
 	sessionID    string
 }
 
-// newSessionHistoryManager creates a sessionHistoryManager.
+// NewSessionHistoryManager creates a sessionHistoryManager.
 // The sessionID is baked in because it is known at construction time.
-func newSessionHistoryManager(sessionMgr *history.SessionManager, uisessionMgr *uisession.Manager, sessionID string) *sessionHistoryManager {
+func NewSessionHistoryManager(sessionMgr *history.SessionManager, uisessionMgr *uisession.Manager, sessionID string) *sessionHistoryManager {
 	return &sessionHistoryManager{
 		sessionMgr:   sessionMgr,
 		uisessionMgr: uisessionMgr,
@@ -66,9 +113,18 @@ type requestHistoryManager struct {
 	req *llm.Request
 }
 
-// newRequestHistoryManager creates a requestHistoryManager.
-func newRequestHistoryManager(req *llm.Request) *requestHistoryManager {
+// NewRequestHistoryManager creates a requestHistoryManager.
+func NewRequestHistoryManager(req *llm.Request) *requestHistoryManager {
 	return &requestHistoryManager{req: req}
+}
+
+// IsRequestBasedHistory returns true when the HistoryManager is the
+// request-based variant (wrapping *llm.Request), meaning history is
+// stored directly on the request and must be trimmed by the caller
+// when caps are set.
+func IsRequestBasedHistory(mgr HistoryManager) bool {
+	_, ok := mgr.(*requestHistoryManager)
+	return ok
 }
 
 // History returns req.Messages as-is.
@@ -104,9 +160,9 @@ type testConfirmerStub struct {
 	err    error
 }
 
-// newTestConfirmerStub creates a testConfirmerStub that always returns
+// NewTestConfirmerStub creates a testConfirmerStub that always returns
 // the given result and error.
-func newTestConfirmerStub(result *ConfirmationResult, err error) *testConfirmerStub {
+func NewTestConfirmerStub(result *ConfirmationResult, err error) *testConfirmerStub {
 	return &testConfirmerStub{result: result, err: err}
 }
 
@@ -119,7 +175,6 @@ func (s *testConfirmerStub) Confirm(_ context.Context, sessionID, path, message 
 		return nil, fmt.Errorf("testConfirmerStub: %w", s.err)
 	}
 	return s.result, nil
-
 }
 
 // ── funcConfirmer ────────────────────────────────────────────────────────
@@ -131,8 +186,8 @@ type funcConfirmer struct {
 	fn ConfirmationFunc
 }
 
-// newFuncConfirmer creates a funcConfirmer from a ConfirmationFunc.
-func newFuncConfirmer(fn ConfirmationFunc) Confirmer {
+// NewFuncConfirmer creates a funcConfirmer from a ConfirmationFunc.
+func NewFuncConfirmer(fn ConfirmationFunc) Confirmer {
 	return &funcConfirmer{fn: fn}
 }
 

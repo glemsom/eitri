@@ -1,4 +1,4 @@
-package runner
+package loop
 
 import (
 	"github.com/glemsom/eitri/internal/llm"
@@ -43,8 +43,8 @@ func trimMessages(req *llm.Request, maxHistory int) {
 	req.Messages = kept
 }
 
-// truncateText truncates s to at most n runes, appending "..." when truncated.
-func truncateText(s string, n int) string {
+// TruncateText truncates s to at most n runes, appending "..." when truncated.
+func TruncateText(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {
 		return s

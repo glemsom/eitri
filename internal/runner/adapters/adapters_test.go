@@ -1,4 +1,4 @@
-package runner
+package adapters
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "hello")
 
-	adapter := newSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
 	msgs := adapter.History(sessionID)
 
 	if len(msgs) == 0 {
@@ -38,7 +38,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 
 func TestSessionHistoryManager_History_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := newSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, nil, "test-session")
 	msgs := adapter.History("test-session")
 	if msgs != nil {
 		t.Errorf("History() = %v, want nil when sessionMgr is nil", msgs)
@@ -52,7 +52,7 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	adapter := newSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
 	adapter.AppendAssistant(sessionID, "Hello!", nil)
 
 	msgs := adapter.History(sessionID)
@@ -67,7 +67,7 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 
 func TestSessionHistoryManager_AppendAssistant_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := newSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, nil, "test-session")
 	// Should not panic
 	adapter.AppendAssistant("test-session", "Hello!", nil)
 }
@@ -79,7 +79,7 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	adapter := newSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
@@ -105,7 +105,7 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	adapter := newSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
 	adapter.AppendTool(sessionID, "call_1", "result content", false)
 
 	msgs := adapter.History(sessionID)
@@ -123,7 +123,7 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 
 func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := newSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, nil, "test-session")
 	// Should not panic
 	adapter.AppendTool("test-session", "call_1", "result", false)
 }
@@ -144,7 +144,7 @@ func TestRequestHistoryManager_History(t *testing.T) {
 			{Role: "user", Content: "hello"},
 		},
 	}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	msgs := adapter.History("")
 
 	if len(msgs) != 2 {
@@ -165,7 +165,7 @@ func TestRequestHistoryManager_HistoryReturnsSameSlice(t *testing.T) {
 			{Role: "user", Content: "hi"},
 		},
 	}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	msgs := adapter.History("")
 	// Modify the returned slice — should affect req.Messages since no copy is made
 	if len(msgs) > 0 {
@@ -183,7 +183,7 @@ func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 			{Role: "user", Content: "hello"},
 		},
 	}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	adapter.AppendAssistant("", "world", nil)
 
 	if len(req.Messages) != 2 {
@@ -200,7 +200,7 @@ func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	t.Parallel()
 	req := &llm.Request{}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
@@ -224,7 +224,7 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 			{Role: "user", Content: "run tool"},
 		},
 	}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	adapter.AppendTool("", "call_1", "tool result", false)
 
 	if len(req.Messages) != 2 {
@@ -244,7 +244,7 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	t.Parallel()
 	req := &llm.Request{}
-	adapter := newRequestHistoryManager(req)
+	adapter := NewRequestHistoryManager(req)
 	// isError is not stored in llm.Message, but the content carries the error info.
 	adapter.AppendTool("", "call_err", "error message", true)
 
@@ -268,7 +268,7 @@ func TestRequestHistoryManager_Interface(t *testing.T) {
 func TestTestConfirmerStub_ConfirmApproved(t *testing.T) {
 	t.Parallel()
 	expected := &ConfirmationResult{Path: "/tmp/test", Approved: true}
-	stub := newTestConfirmerStub(expected, nil)
+	stub := NewTestConfirmerStub(expected, nil)
 
 	result, err := stub.Confirm(context.Background(), "session-1", "/tmp/test", "Allow?")
 	if err != nil {
@@ -285,7 +285,7 @@ func TestTestConfirmerStub_ConfirmApproved(t *testing.T) {
 func TestTestConfirmerStub_ConfirmDenied(t *testing.T) {
 	t.Parallel()
 	expected := &ConfirmationResult{Path: "/tmp/test", Approved: false}
-	stub := newTestConfirmerStub(expected, nil)
+	stub := NewTestConfirmerStub(expected, nil)
 
 	result, err := stub.Confirm(context.Background(), "session-1", "/tmp/test", "Allow?")
 	if err != nil {
@@ -298,7 +298,7 @@ func TestTestConfirmerStub_ConfirmDenied(t *testing.T) {
 
 func TestTestConfirmerStub_ConfirmError(t *testing.T) {
 	t.Parallel()
-	stub := newTestConfirmerStub(nil, errors.New("stub error"))
+	stub := NewTestConfirmerStub(nil, errors.New("stub error"))
 
 	result, err := stub.Confirm(context.Background(), "session-1", "/path", "msg")
 	if err == nil {
