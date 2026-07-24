@@ -145,21 +145,22 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 128000,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 128000,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -226,21 +227,22 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -334,21 +336,22 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -392,21 +395,22 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -465,21 +469,22 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -536,21 +541,22 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -618,21 +624,22 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -680,21 +687,22 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -734,21 +742,22 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 1,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -781,13 +790,14 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(ctx, AgentConfig{
-		Service:       svc,
-		Request:       &req,
-		MaxTurns:      5,
-		MaxHistory:    0,
-		SSEWriter:     w,
-		Tools:         nil,
+	err := RunAgent(ctx, RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
 		HistoryMgr:    newRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
@@ -841,13 +851,14 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, AgentConfig{
-			Service:       svc,
-			Request:       &req,
-			MaxTurns:      5,
-			MaxHistory:    0,
-			SSEWriter:     w,
-			Tools:         nil,
+		errCh <- RunAgent(ctx, RunSpec{
+			Service:    svc,
+			Request:    &req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, AgentConfig{
 			HistoryMgr:    newRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
@@ -897,21 +908,22 @@ func TestRunAgent_StreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -936,21 +948,22 @@ func TestRunAgent_NoTools(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1014,21 +1027,22 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error after retry: %v", err)
 	}
@@ -1061,21 +1075,22 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err == nil {
 		t.Fatal("expected error for HTTP 400, got nil")
 	}
@@ -1117,21 +1132,22 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error after retry of upstream failure 400: %v", err)
 	}
@@ -1163,21 +1179,22 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1213,21 +1230,22 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 0,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   0,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1262,21 +1280,22 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1326,21 +1345,22 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent should not return error for unknown tool, got: %v", err)
 	}
@@ -1450,21 +1470,22 @@ func TestRunAgent_Thinking(t *testing.T) {
 				},
 			}
 
-			err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+			err := RunAgent(context.Background(), RunSpec{
+				Service:    svc,
+				Request:    &req,
+				MaxTurns:   5,
+				MaxHistory: 0,
+				SSEWriter:  w,
+				Tools:      nil,
+			}, AgentConfig{
+				HistoryMgr:    newRequestHistoryManager(&req),
+				Confirmer:     nil,
+				UISessionMgr:  nil,
+				SessionID:     "",
+				ContextWindow: 0,
+				CrashDumpFunc: nil,
+				Turns:         nil,
+			})
 			if err != nil {
 				t.Fatalf("RunAgent error: %v", err)
 			}
@@ -1659,21 +1680,22 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 3,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 3,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1721,21 +1743,22 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1780,21 +1803,22 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1846,21 +1870,22 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1908,21 +1933,22 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -1970,21 +1996,22 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2019,21 +2046,22 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newSessionHistoryManager(sessionMgr, nil, sessionID),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: sessionID,
-			ContextWindow: 128000,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     sessionID,
+		ContextWindow: 128000,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2107,21 +2135,22 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newSessionHistoryManager(sessionMgr, nil, sessionID),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: sessionID,
-			ContextWindow: 128000,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     sessionID,
+		ContextWindow: 128000,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2161,21 +2190,22 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newSessionHistoryManager(sessionMgr, nil, sessionID),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: sessionID,
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     sessionID,
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2216,21 +2246,22 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 1,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newSessionHistoryManager(sessionMgr, nil, sessionID),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: sessionID,
-			ContextWindow: 128000,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     sessionID,
+		ContextWindow: 128000,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
@@ -2272,21 +2303,22 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 	}
 
 	// No sessionMgr passed
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2319,21 +2351,22 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		Model: "test-model",
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: nil,
-			HistoryMgr: newSessionHistoryManager(sessionMgr, nil, sessionID),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: sessionID,
-			ContextWindow: 128000,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, AgentConfig{
+		HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     sessionID,
+		ContextWindow: 128000,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2397,13 +2430,14 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunAgent(ctx, AgentConfig{
-			Service:       svc,
-			Request:       &req,
-			MaxTurns:      5,
-			MaxHistory:    0,
-			SSEWriter:     w,
-			Tools:         nil,
+		errCh <- RunAgent(ctx, RunSpec{
+			Service:    svc,
+			Request:    &req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, AgentConfig{
 			HistoryMgr:    newSessionHistoryManager(sessionMgr, nil, sessionID),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
@@ -2513,13 +2547,14 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-		Service:       svc,
-		Request:       &req,
-		MaxTurns:      5,
-		MaxHistory:    0,
-		SSEWriter:     w,
-		Tools:         toolReg,
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
 		HistoryMgr:    newRequestHistoryManager(&req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
@@ -2598,13 +2633,14 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-		Service:       svc,
-		Request:       &req,
-		MaxTurns:      5,
-		MaxHistory:    0,
-		SSEWriter:     w,
-		Tools:         toolReg,
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
 		HistoryMgr:    newRequestHistoryManager(&req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
@@ -2727,21 +2763,22 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), AgentConfig{
-			Service: svc,
-			Request: &req,
-			MaxTurns: 5,
-			MaxHistory: 0,
-			SSEWriter: w,
-			Tools: toolReg,
-			HistoryMgr: newRequestHistoryManager(&req),
-			Confirmer: nil,
-			UISessionMgr: nil,
-			SessionID: "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns: nil,
-		})
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
+		HistoryMgr:    newRequestHistoryManager(&req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
 	if err != nil {
 		t.Fatalf("RunAgent error: %v", err)
 	}
@@ -2796,13 +2833,14 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 	}
 
 	requirePanic(t, func() {
-		_ = RunAgent(context.Background(), AgentConfig{
-			Service:       panickingLLM,
-			Request:       &req,
-			MaxTurns:      5,
-			MaxHistory:    0,
-			SSEWriter:     w,
-			Tools:         nil,
+		_ = RunAgent(context.Background(), RunSpec{
+			Service:    panickingLLM,
+			Request:    &req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, AgentConfig{
 			HistoryMgr:    newRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
@@ -2846,13 +2884,14 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	}
 
 	requirePanic(t, func() {
-		_ = RunAgent(context.Background(), AgentConfig{
-			Service:       panickingLLM,
-			Request:       &req,
-			MaxTurns:      5,
-			MaxHistory:    0,
-			SSEWriter:     w,
-			Tools:         nil,
+		_ = RunAgent(context.Background(), RunSpec{
+			Service:    panickingLLM,
+			Request:    &req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, AgentConfig{
 			HistoryMgr:    newRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,

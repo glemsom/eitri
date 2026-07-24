@@ -64,6 +64,34 @@ Two adapters:
 - **`RunService`** — the existing `confirmPath` method implements this interface (channel-based blocking, rendezvous with the API endpoint).
 - **`testConfirmerStub`** — returns a canned result for unit tests.
 
+### RunSpec + AgentConfig split
+
+Later, the flat `AgentConfig` struct was split into two structs to separate transport/config from runtime/UI concerns:
+
+- **`RunSpec`** — LLM service, request, tools, SSE writer, turn/history caps
+- **`AgentConfig`** — history manager, confirmer, UI session manager, session ID, context window, crash dump func, turn pointer
+
+```go
+type RunSpec struct {
+    Service    llm.LLMService
+    Request    *llm.Request
+    MaxTurns   int
+    MaxHistory int
+    SSEWriter  *runstate.Writer
+    Tools      *tool.Registry
+}
+
+type AgentConfig struct {
+    HistoryMgr    HistoryManager
+    Confirmer     Confirmer
+    UISessionMgr  *uisession.Manager
+    SessionID     string
+    ContextWindow int
+    CrashDumpFunc func(err error, stack []byte)
+    Turns         *int
+}
+```
+
 ### RunAgent signature
 
 Before (12 params):
@@ -78,21 +106,19 @@ func RunAgent(
 ) error
 ```
 
-After (12 params — 2 replaced, 2 kept):
+After (single AgentConfig struct):
 
 ```go
-func RunAgent(
-    ctx context.Context, llm litellm.LLMService, req *litellm.Request,
-    maxTurns int, maxHistory int, sseWriter *runstate.Writer,
-    tools *tool.Registry, historyMgr HistoryManager,
-    confirmer Confirmer, uisessionMgr *uisession.Manager,
-    sessionID string, contextWindow int,
-) error
+func RunAgent(ctx context.Context, cfg AgentConfig) error
 ```
 
-(Kept `uisessionMgr` and `sessionID` — the former is needed for
-quick-reply and component event emission, the latter is forwarded to
-`confirmer.Confirm` and used as a key for some history operations.)
+After (RunSpec + AgentConfig split):
+
+```go
+func RunAgent(ctx context.Context, spec RunSpec, cfg AgentConfig) error
+```
+
+`RunSpec` collects the LLM-transport and tool-registry fields; `AgentConfig` retains the runtime/UI/history fields.
 
 ### Migration strategy (inside-out)
 

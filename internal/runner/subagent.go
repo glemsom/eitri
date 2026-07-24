@@ -189,13 +189,14 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		w := runstate.NewWriter(sseState)
 		historyMgr := newRequestHistoryManager(req)
 
-		runErr := RunAgent(subCtx, AgentConfig{
-			Service:       llmSvc,
-			Request:       req,
-			MaxTurns:      maxTurns,
-			MaxHistory:    0,
-			SSEWriter:     w,
-			Tools:         toolReg,
+		runErr := RunAgent(subCtx, RunSpec{
+			Service:    llmSvc,
+			Request:    req,
+			MaxTurns:   maxTurns,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      toolReg,
+		}, AgentConfig{
 			HistoryMgr:    historyMgr,
 			Confirmer:     nil,
 			UISessionMgr:  s.uiSessionMgr,

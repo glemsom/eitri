@@ -26,9 +26,9 @@ type ConfirmationResult struct {
 // responds or the context is cancelled.
 type ConfirmationFunc func(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
 
-// AgentConfig bundles all configuration for RunAgent.
-// Using a single struct makes the function signature stable and self-documenting.
-type AgentConfig struct {
+// RunSpec holds the transport/config fields extracted from AgentConfig.
+// These are the LLM service, request, tools, SSE writer, and turn/history caps.
+type RunSpec struct {
 	// Service is the LLM service used to generate responses.
 	Service llm.LLMService
 
@@ -46,7 +46,11 @@ type AgentConfig struct {
 
 	// Tools is the registry of tools available to the agent.
 	Tools *tool.Registry
+}
 
+// AgentConfig bundles the remaining runtime/UI configuration for RunAgent.
+// Using a single struct makes the function signature stable and self-documenting.
+type AgentConfig struct {
 	// HistoryMgr handles reading and appending conversation history.
 	// Two concrete types exist: sessionHistoryManager (browser UI path)
 	// and requestHistoryManager (headless/direct-messages path).
@@ -91,8 +95,8 @@ type AgentConfig struct {
 // confirmer to pause for user input. On approval, the tool is re-executed
 // with the path temporarily allowed. On denial, an error is returned to the
 // LLM.
-func RunAgent(ctx context.Context, cfg AgentConfig) error {
-	maxTurns := cfg.MaxTurns
+func RunAgent(ctx context.Context, spec RunSpec, cfg AgentConfig) error {
+	maxTurns := spec.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 10
 	}
@@ -128,16 +132,16 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 			return
 		}
 		update := runstate.ComputeContext(history, cfg.ContextWindow)
-		cfg.SSEWriter.ContextUpdate(update)
+		spec.SSEWriter.ContextUpdate(update)
 	}
 
-	cfg.Request.Stream = true
+	spec.Request.Stream = true
 
 	// Compute tool definitions once before the loop, then reuse on every turn.
 	// This avoids re-iterating the registry and allocating new slices per turn.
 	var toolDefs []llm.ToolDef
-	if cfg.Tools != nil {
-		toolDefs = toolDefsFromRegistry(cfg.Tools)
+	if spec.Tools != nil {
+		toolDefs = toolDefsFromRegistry(spec.Tools)
 	}
 
 	for turn := 0; turn < maxTurns; turn++ {
@@ -146,14 +150,14 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 		}
 
 		// Load conversation history via adapter
-		cfg.Request.Messages = cfg.HistoryMgr.History(cfg.SessionID)
+		spec.Request.Messages = cfg.HistoryMgr.History(cfg.SessionID)
 
 		// Attach tool definitions (computed once before the loop)
 		if toolDefs != nil {
-			cfg.Request.Tools = toolDefs
+			spec.Request.Tools = toolDefs
 		}
 
-		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(cfg.Request.Tools)), slog.Int("messages", len(cfg.Request.Messages)))
+		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(spec.Request.Tools)), slog.Int("messages", len(spec.Request.Messages)))
 
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
@@ -162,7 +166,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 			err    error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			stream, err = cfg.Service.ChatStream(ctx, *cfg.Request)
+			stream, err = spec.Service.ChatStream(ctx, *spec.Request)
 			if err == nil {
 				break
 			}
@@ -172,18 +176,18 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
-				dumpRequestOnError(cfg.Request, err, attempt+1)
+				dumpRequestOnError(spec.Request, err, attempt+1)
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			dumpRequestOnError(cfg.Request, err, maxRetries+1)
+			dumpRequestOnError(spec.Request, err, maxRetries+1)
 			msg := fmt.Sprintf("LLM error: %v", err)
-			cfg.SSEWriter.Error(msg)
+			spec.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
 		}
 
 		// Process stream events
-		content, toolCalls, streamErr := drainStream(ctx, stream, cfg.SSEWriter)
+		content, toolCalls, streamErr := drainStream(ctx, stream, spec.SSEWriter)
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
@@ -193,11 +197,11 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 				// consecutive user messages which some providers reject as malformed.
 				cfg.HistoryMgr.AppendAssistant(cfg.SessionID, content.String(), toolCalls)
 				if isRequestBasedHistory(cfg.HistoryMgr) {
-					trimMessages(cfg.Request, cfg.MaxHistory)
+					trimMessages(spec.Request, spec.MaxHistory)
 				}
 				return streamErr
 			}
-			cfg.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+			spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
 			return streamErr
 		}
 		if len(toolCalls) > 0 {
@@ -215,21 +219,21 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 			broadcastContextUpdate()
 
 			usage := runstate.EstimateUsage(contentStr)
-			cfg.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
+			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
-			if contentStr != "" || len(cfg.Request.Messages) > 0 {
+			if contentStr != "" || len(spec.Request.Messages) > 0 {
 				cfg.HistoryMgr.AppendAssistant(cfg.SessionID, contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
 			if isRequestBasedHistory(cfg.HistoryMgr) {
-				trimMessages(cfg.Request, cfg.MaxHistory)
+				trimMessages(spec.Request, spec.MaxHistory)
 			}
 			return nil
 		}
 
 		// Trim conversation history if cap is set (only when not using session manager)
 		if isRequestBasedHistory(cfg.HistoryMgr) {
-			trimMessages(cfg.Request, cfg.MaxHistory)
+			trimMessages(spec.Request, spec.MaxHistory)
 		}
 
 		// Has tool calls — add assistant message to history
@@ -255,10 +259,10 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 			if len(argsForDisplay) == 0 {
 				argsForDisplay = json.RawMessage("{}")
 			}
-			cfg.SSEWriter.ToolCall(tc.Function.Name, argsForDisplay)
+			spec.SSEWriter.ToolCall(tc.Function.Name, argsForDisplay)
 
 			// Dispatch tool via registry
-			dispResult, dispErr := cfg.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+			dispResult, dispErr := spec.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 			if dispErr != nil {
 				// Feed unknown tool / dispatch errors back to the LLM as tool
 				// result instead of terminating the loop. LLMs commonly hallucinate
@@ -267,7 +271,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
 				// Broadcast tool result so the error shows in the tool card
 				// (not as a separate error toast that closes the stream).
-				cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+				spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 				// Record the error as a tool result so the LLM can see it
 				cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
@@ -281,7 +285,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 				slog.Debug("tool needs confirmation", slog.String("path", confPath), slog.String("message", confMsg))
 
 				// Send needs_confirmation SSE event
-				cfg.SSEWriter.State().Broadcast(runstate.SSEEvent{
+				spec.SSEWriter.State().Broadcast(runstate.SSEEvent{
 					Type:    "needs_confirmation",
 					Content: confMsg,
 					Data:    map[string]any{"path": confPath, "message": confMsg},
@@ -294,7 +298,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 						return confirmErr
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
-					cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 					cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 					continue
 				}
@@ -302,11 +306,11 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 				if confirmResult.Approved {
 					// Temporarily add the path to ReadTool's allowedPaths
 					// and re-dispatch
-					addReadToolAllowedPath(cfg.Tools, confPath)
-					dispResult, dispErr = cfg.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+					addReadToolAllowedPath(spec.Tools, confPath)
+					dispResult, dispErr = spec.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
-						cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+						spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 						cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 						continue
 					}
@@ -314,7 +318,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 				} else {
 					// Denial — return error to LLM
 					errMsg := "Access denied to path: " + confPath
-					cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 					cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 					continue
 				}
@@ -327,7 +331,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", truncateText(resultText, 200)), slog.Bool("error", isError))
 
 			// Broadcast tool result event
-			cfg.SSEWriter.ToolResult(tc.Function.Name, resultText)
+			spec.SSEWriter.ToolResult(tc.Function.Name, resultText)
 
 			// Broadcast skill_activated if this was a successful skill load
 			if tc.Function.Name == "skill" && !isError {
@@ -336,13 +340,13 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 					Name string `json:"name"`
 				}
 				if err := json.Unmarshal(args, &skillArgs); err == nil && skillArgs.Name != "" {
-					cfg.SSEWriter.SkillActivated(skillArgs.Name)
+					spec.SSEWriter.SkillActivated(skillArgs.Name)
 				}
 			}
 
 			// Emit component event for compatible tools (except QuickReplies which stores inline)
 			if !isError || tc.Function.Name == "render_quick_replies" {
-				compName, compData, ok := emitComponentForTool(cfg.SSEWriter, tc.Function.Name, args, blocks)
+				compName, compData, ok := emitComponentForTool(spec.SSEWriter, tc.Function.Name, args, blocks)
 				if ok && cfg.UISessionMgr != nil {
 					if tc.Function.Name == "render_quick_replies" {
 						// QuickReplies stores inline on the assistant message, not as a component event
@@ -381,7 +385,7 @@ func RunAgent(ctx context.Context, cfg AgentConfig) error {
 	// Broadcast final context_update before error
 	broadcastContextUpdate()
 	msg := runstate.MaxTurnsMessage(maxTurns)
-	cfg.SSEWriter.Error(msg)
+	spec.SSEWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
 }
 

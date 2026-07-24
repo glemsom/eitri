@@ -93,13 +93,14 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Track turns for conversation context
 	var turns int
-	runErr := RunAgent(runCtx, AgentConfig{
-		Service:       llmSvc,
-		Request:       req,
-		MaxTurns:      maxTurns,
-		MaxHistory:    cfg.MaxHistory,
-		SSEWriter:     w,
-		Tools:         toolReg,
+	runErr := RunAgent(runCtx, RunSpec{
+		Service:    llmSvc,
+		Request:    req,
+		MaxTurns:   maxTurns,
+		MaxHistory: cfg.MaxHistory,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, AgentConfig{
 		HistoryMgr:    historyAdapter,
 		Confirmer:     nil,
 		UISessionMgr:  nil,
