@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -79,14 +78,14 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		slog.Int("max_turns", maxTurns),
 	)
 
-	// Build system prompt: default + task description
-	systemPrompt := history.DefaultSystemPrompt + "\n\nYou are performing the following task: " + task
-
-	// Build LLM service + tool registry (same provider/model as parent, restricted tools)
-	llmSvc, toolReg, err := buildLLMService(ctx, parentCfg, taskID, nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
+	// Build LLM service, tool registry, and system prompt (same provider/model as parent, restricted tools)
+	llmSvc, toolReg, basePrompt, err := buildLLMService(ctx, parentCfg, taskID, nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
 	if err != nil {
 		return "", fmt.Errorf("sub-agent LLM service: %w", err)
 	}
+
+	// Append task-specific suffix to the base system prompt
+	systemPrompt := basePrompt + "\n\nYou are performing the following task: " + task
 
 	// Create request and set up messages
 	req := &llm.Request{

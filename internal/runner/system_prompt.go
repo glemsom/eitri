@@ -46,9 +46,10 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 }
 
 // buildLLMService resolves provider authentication, constructs an LLM service,
-// and builds the base tool registry. If debugRecorder is non-nil and sessionID
-// is non-empty, the service's HTTP transport is wrapped for request/response recording.
-func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) (llm.LLMService, *tool.Registry, error) {
+// builds the base tool registry, and assembles the system prompt.
+// If debugRecorder is non-nil and sessionID is non-empty, the service's HTTP
+// transport is wrapped for request/response recording.
+func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,
@@ -56,7 +57,7 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 	}
 	resolvedKey, _, err := provider.ResolveAuth(ctx, reqAuth, persistAuth)
 	if err != nil {
-		return nil, nil, fmt.Errorf("auth resolution: %w", err)
+		return nil, nil, "", fmt.Errorf("auth resolution: %w", err)
 	}
 	apiKey := cfg.APIKey
 	if resolvedKey != "" {
@@ -76,9 +77,15 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 
 	llmSvc, err := llm.NewLLMService(adapterCfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create LLM service: %w", err)
+		return nil, nil, "", fmt.Errorf("failed to create LLM service: %w", err)
 	}
 
 	toolReg := buildBaseToolRegistry(cfg, skillDirs, skillsSvc, uiSessionMgr)
-	return llmSvc, toolReg, nil
+
+	fullSystemPrompt, err := buildSystemPrompt(cfg, skillCtx, skillsSvc)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("build system prompt: %w", err)
+	}
+
+	return llmSvc, toolReg, fullSystemPrompt, nil
 }

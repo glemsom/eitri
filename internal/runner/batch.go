@@ -32,14 +32,8 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	// Build system prompt (no skill activations in batch mode)
-	fullSystemPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
-	if err != nil {
-		return "", err
-	}
-
-	// Build LLM service + tool registry (no debug recording in batch mode)
-	llmSvc, toolReg, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
+	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode)
+	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
 	if err != nil {
 		return "", err
 	}
