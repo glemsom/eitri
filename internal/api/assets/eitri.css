@@ -2496,6 +2496,33 @@ eitri-context {
   color: var(--text);
 }
 
+/* Context warning banner (Issue #724) */
+.context-warning {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(233, 69, 96, 0.1);
+  border-top: 1px solid rgba(233, 69, 96, 0.3);
+  font-size: 0.78rem;
+  color: var(--text);
+  min-height: 32px;
+}
+.context-warning-text {
+  flex: 1;
+  color: var(--error);
+  font-weight: 500;
+}
+.context-warning .compact-btn {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 0.2rem 0.6rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ============================================
    Directory browser overlay: Issue #628
    Modal overlay for browsing directory tree

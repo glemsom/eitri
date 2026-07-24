@@ -2,7 +2,7 @@ package templates
 
 import "github.com/glemsom/eitri/internal/session"
 
-templ Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string, workspace string, contextWindow int, reasoningContent string, compactionEnabled bool) {
+templ Base(title string, chatPath string, sessions []*session.UISession, activeID string, currentPath string, workspace string, contextWindow int, reasoningContent string, compactionEnabled bool, contextWarningThreshold int) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -76,19 +76,17 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 						<div class="sidebar-header">
 							<span class="sidebar-title">Context</span>
 						</div>
-						<eitri-context data-context-window="{ contextWindow }">
+						<eitri-context data-context-window="{ contextWindow }" data-warning-threshold="{ contextWarningThreshold }">
 						</eitri-context>
-						if compactionEnabled {
-							<button
-								id="compact-btn"
-								class="compact-btn"
-								hx-post={ templ.URL("/api/sessions/" + activeID + "/compact") }
-								hx-target="#error-toasts"
-								hx-swap="beforeend"
-							>
-								Compact now
-							</button>
-						}
+						<button
+							id="compact-btn"
+							class="compact-btn"
+							hx-post={ templ.URL("/api/sessions/" + activeID + "/compact") }
+							hx-target="#error-toasts"
+							hx-swap="beforeend"
+						>
+							Compact now
+						</button>
 					</div>
 					<div class="sidebar-divider"></div>
 					<div class="sidebar-panel" id="thinking-panel">
@@ -97,7 +95,7 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 					</div>
 				</div>
 				} else {
-					<div id="sidebar"><div id="session-tabs"></div><div id="tool-activity"><div class="sidebar-header"><span class="sidebar-title">Tools</span></div><div class="tool-activity-list"></div></div><div class="sidebar-divider"></div><div id="context-panel"><div class="sidebar-header"><span class="sidebar-title">Context</span></div><eitri-context data-context-window="{ contextWindow }"></eitri-context></div><div class="sidebar-divider"></div><div id="thinking-panel"><div class="sidebar-header"><span class="sidebar-title">Thinking</span></div><pre class="thinking-content">{ reasoningContent }</pre></div></div>
+					<div id="sidebar"><div id="session-tabs"></div><div id="tool-activity"><div class="sidebar-header"><span class="sidebar-title">Tools</span></div><div class="tool-activity-list"></div></div><div class="sidebar-divider"></div><div id="context-panel"><div class="sidebar-header"><span class="sidebar-title">Context</span></div><eitri-context data-context-window="{ contextWindow }" data-warning-threshold="{ contextWarningThreshold }"></eitri-context></div><div class="sidebar-divider"></div><div id="thinking-panel"><div class="sidebar-header"><span class="sidebar-title">Thinking</span></div><pre class="thinking-content">{ reasoningContent }</pre></div></div>
 				}
 				<main>
 					<noscript>
@@ -123,8 +121,8 @@ templ NavLink(path string, label string, currentPath string) {
 }
 
 // ChatPage renders the full chat page layout with session sidebar and chat view.
-templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string, userEmail string) {
-	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace, contextWindow, reasoningContent) {
+templ ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string, userEmail string, compactionEnabled bool, contextWarningThreshold int) {
+	@Base("Eitri — Chat", "/sessions/"+activeID, sessions, activeID, currentPath, workspace, contextWindow, reasoningContent, compactionEnabled, contextWarningThreshold) {
 		@ChatView(sess, configValid, userEmail)
 	}
 }

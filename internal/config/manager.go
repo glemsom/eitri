@@ -33,10 +33,11 @@ type Config struct {
 	DebugPrompt              bool            `json:"debug_prompt,omitempty"`                // was EITRI_DEBUG_PROMPT=1
 	DebugRequest             bool            `json:"debug_request,omitempty"`               // was EITRI_DEBUG_REQUEST=1
 	DebugLLMDir              string          `json:"debug_llm_dir,omitempty"`               // was EITRI_DEBUG_LLM_DIR
-	CompactionEnabled        bool            `json:"compaction_enabled"`
-	CompactionThresholdPercent int           `json:"compaction_threshold_percent,omitempty"`
-	CompactionLowWaterPercent  int           `json:"compaction_low_water_percent,omitempty"`
-	Sandbox                  sandbox.Config  `json:"sandbox,omitempty"`
+	CompactionEnabled           bool            `json:"compaction_enabled"`
+	CompactionThresholdPercent  int             `json:"compaction_threshold_percent,omitempty"`
+	CompactionLowWaterPercent   int             `json:"compaction_low_water_percent,omitempty"`
+	ContextWarningThresholdPercent int          `json:"context_warning_threshold_percent,omitempty"`
+	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
 }
 
 // Defaults returns a Config with default values.
@@ -53,6 +54,7 @@ func Defaults() Config {
 		CompactionEnabled:        true,
 		CompactionThresholdPercent: 90,
 		CompactionLowWaterPercent:  30,
+		ContextWarningThresholdPercent: 75,
 		Sandbox:                  sandbox.DefaultConfig(),
 	}
 }
@@ -90,6 +92,9 @@ func Load(path string) (*Config, error) {
 	if _, ok := raw["compaction_low_water_percent"]; !ok {
 		cfg.CompactionLowWaterPercent = Defaults().CompactionLowWaterPercent
 	}
+	if _, ok := raw["context_warning_threshold_percent"]; !ok {
+		cfg.ContextWarningThresholdPercent = Defaults().ContextWarningThresholdPercent
+	}
 	promoteEnvVars(&cfg)
 	return &cfg, nil
 }
@@ -125,6 +130,11 @@ func promoteEnvVars(cfg *Config) {
 	if v := os.Getenv("EITRI_COMPACTION_LOW_WATER_PERCENT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 10 && n <= 60 {
 			cfg.CompactionLowWaterPercent = n
+		}
+	}
+	if v := os.Getenv("EITRI_CONTEXT_WARNING_THRESHOLD_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 10 && n <= 95 {
+			cfg.ContextWarningThresholdPercent = n
 		}
 	}
 }
@@ -208,6 +218,13 @@ func Validate(cfg *Config) error {
 	}
 	if cfg.CompactionLowWaterPercent >= cfg.CompactionThresholdPercent {
 		return fmt.Errorf("compaction_low_water_percent (%d) must be less than compaction_threshold_percent (%d)", cfg.CompactionLowWaterPercent, cfg.CompactionThresholdPercent)
+	}
+
+	if cfg.ContextWarningThresholdPercent == 0 {
+		cfg.ContextWarningThresholdPercent = 75
+	}
+	if cfg.ContextWarningThresholdPercent < 10 || cfg.ContextWarningThresholdPercent > 95 {
+		return fmt.Errorf("context_warning_threshold_percent must be between 10 and 95, got %d", cfg.ContextWarningThresholdPercent)
 	}
 
 	return nil
@@ -375,6 +392,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["compaction_low_water_percent"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.CompactionLowWaterPercent = int(f)
+		}
+	}
+	if v, ok := patch["context_warning_threshold_percent"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.ContextWarningThresholdPercent = int(f)
 		}
 	}
 
