@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,7 +30,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Validate config
 	if cfg.BaseURL == "" || cfg.ModelName == "" {
-		return "", fmt.Errorf("provider not configured: set base_url and model in settings")
+		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
 	// Build system prompt

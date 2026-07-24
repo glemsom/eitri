@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"regexp"
 	"sort"
 	"strings"
@@ -86,7 +87,8 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	var fileCache []fileLines
 
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
-		data, err := os.ReadFile(path)
+		var data []byte
+		data, err = os.ReadFile(path)
 		if err != nil {
 			return nil
 		}
@@ -107,7 +109,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 				if contextN > 0 {
 					prefix = ">"
 				}
-				lineSize := len(prefix) + len(relPath) + 1 + len(fmt.Sprintf("%d", lineNum)) + 1 + len(line) + 1
+				lineSize := len(prefix) + len(relPath) + 1 + len(strconv.Itoa(lineNum)) + 1 + len(line) + 1
 				if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
 					truncated = true
 					return &fileutil.WalkStop{}

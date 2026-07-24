@@ -47,5 +47,5 @@ func (t *RenderQuickRepliesTool) Call(ctx context.Context, args json.RawMessage)
 		return textBlocks("Error: 'options' must be a non-empty array of strings"), nil, true
 	}
 
-	return textBlocks(fmt.Sprintf("Rendered QuickReplies with options: %s", strings.Join(parsed.Options, ", "))), nil, false
+	return textBlocks("Rendered QuickReplies with options: " + strings.Join(parsed.Options, ", ")), nil, false
 }

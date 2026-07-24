@@ -25,12 +25,6 @@ type BrowserEvent struct {
 	Data any    `json:"data,omitempty"`
 }
 
-// browserSubscriber represents one browser-level SSE subscriber.
-type browserSubscriber struct {
-	id uint64
-	ch chan BrowserEvent
-}
-
 // RunState holds SSE broadcast state and cancel for one run.
 type RunState struct {
 	SessionID string

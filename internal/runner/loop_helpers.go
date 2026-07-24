@@ -296,7 +296,7 @@ func dumpRequestOnError(req *llm.Request, err error, attempt int) {
 	if dir == "" {
 		return
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
 		slog.Warn("cannot create LLM debug dir", slog.String("dir", dir), slog.Any("error", err))
 		return
 	}
