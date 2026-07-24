@@ -30,6 +30,9 @@ type RunConfig struct {
 	CmdTimeout          time.Duration
 	ContextWindowTokens int
 	ThinkingLevel       string
+	DebugPrompt         bool
+	DebugRequest        bool
+	DebugLLMDir         string
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -54,6 +57,9 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		Workspace:           workspace,
 		CmdTimeout:          cmdTimeout,
 		ContextWindowTokens: cfg.ContextWindowTokens,
+		DebugPrompt:         cfg.DebugPrompt,
+		DebugRequest:        cfg.DebugRequest,
+		DebugLLMDir:         cfg.DebugLLMDir,
 	}
 }
 

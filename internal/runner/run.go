@@ -144,6 +144,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			ContextWindow: contextWindowTokens,
 			CrashDumpFunc: s.crashDumpFunc,
 			Turns:         &state.Turns,
+			DebugLLMDir:   cfg.DebugLLMDir,
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

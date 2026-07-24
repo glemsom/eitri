@@ -66,10 +66,13 @@ func buildLLMService(ctx context.Context, cfg runconfig.RunConfig, sessionID str
 	}
 
 	adapterCfg := llm.AdapterConfig{
-		ProviderID: cfg.ProviderID,
-		Model:      cfg.ModelName,
-		BaseURL:    cfg.BaseURL,
-		APIKey:     apiKey,
+		ProviderID:   cfg.ProviderID,
+		Model:        cfg.ModelName,
+		BaseURL:      cfg.BaseURL,
+		APIKey:       apiKey,
+		DebugPrompt:  cfg.DebugPrompt,
+		DebugRequest: cfg.DebugRequest,
+		DebugLLMDir:  cfg.DebugLLMDir,
 	}
 
 	if debugRecorder != nil && sessionID != "" {
