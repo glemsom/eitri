@@ -1,5 +1,5 @@
 // Package fileutil provides workspace-scoped file operations for the agent's
-// built-in file tools (read, write, edit, grep, glob) and directory listing.
+// built-in file tools (read, write, edit, grep) and directory listing.
 //
 // It owns file path validation (preventing directory traversal outside the
 // workspace), file reading with line-hash anchors, text editing (insert/replace),
