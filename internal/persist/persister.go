@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
@@ -41,8 +43,10 @@ type RestoredState struct {
 // Persister manages disk I/O for session snapshots, conversation history,
 // and HTTP traces under a root data directory.
 type Persister struct {
-	rootDir   string
-	retention int64 // max total bytes before pruning; default 1 GiB
+	rootDir         string
+	retention       int64 // max total bytes before pruning; default 1 GiB
+	mu              sync.Mutex
+	persistedTraces map[debug.TraceID]bool // set of trace IDs already saved to disk
 }
 
 // New creates a Persister rooted at the given directory. If rootDir is empty,
@@ -58,8 +62,9 @@ func New(rootDir string) (*Persister, error) {
 	}
 
 	p := &Persister{
-		rootDir:   rootDir,
-		retention: defaultRetention,
+		rootDir:         rootDir,
+		retention:       defaultRetention,
+		persistedTraces: make(map[debug.TraceID]bool),
 	}
 
 	// Create directory tree
@@ -146,7 +151,71 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 		return fmt.Errorf("cannot write trace file: %w", err)
 	}
 
+	// Mark this trace as persisted so Flush can skip it.
+	p.mu.Lock()
+	p.persistedTraces[trace.ID] = true
+	p.mu.Unlock()
+
 	return nil
+}
+
+// Flush writes any pending session snapshots, conversation histories, and
+// unpersisted HTTP traces to disk. It is intended for use during graceful
+// shutdown to ensure no data is lost.
+//
+// For each session, a final snapshot is always written (the write is cheap
+// and guarantees consistency).
+// For each trace, SaveTrace is called only if the trace has not already been
+// persisted (e.g. via the OnComplete callback). In-flight traces are always
+// persisted.
+//
+// If flush fails for any individual item, the error is logged but Flush
+// continues with remaining items (best-effort). A combined error is returned
+// if any failures occurred.
+func (p *Persister) Flush(sessions []*session.UISession, histories map[string][]llm.Message, traces []*debug.HTTPTrace) error {
+	if p == nil {
+		return nil
+	}
+
+	var flushErr error
+
+	// Snapshot each session and its history.
+	for _, s := range sessions {
+		// Look up history for this session; may be nil/empty.
+		hist := histories[s.ID]
+		if hist == nil {
+			hist = []llm.Message{}
+		}
+		if err := p.SnapshotSession(s.ID, s, hist); err != nil {
+			slog.Warn("flush: failed to snapshot session",
+				slog.String("session_id", s.ID),
+				slog.Any("error", err))
+			if flushErr == nil {
+				flushErr = err
+			}
+		}
+	}
+
+	// Persist any traces not yet saved to disk.
+	for _, trace := range traces {
+		p.mu.Lock()
+		alreadyPersisted := p.persistedTraces[trace.ID]
+		p.mu.Unlock()
+
+		if alreadyPersisted {
+			continue
+		}
+		if err := p.SaveTrace(trace.SessionID, trace); err != nil {
+			slog.Warn("flush: failed to save trace",
+				slog.String("trace_id", string(trace.ID)),
+				slog.Any("error", err))
+			if flushErr == nil {
+				flushErr = err
+			}
+		}
+	}
+
+	return flushErr
 }
 
 // DeleteSession removes all persisted data for a session from disk:
