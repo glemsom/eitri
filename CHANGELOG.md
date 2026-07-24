@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **bwrap sandboxing for bash commands**: shell commands now run inside a
+  bubblewrap sandbox by default (requires `bwrap` on PATH; falls back
+  gracefully). Read-only root filesystem, writable workspace and `/tmp`,
+  separate PID namespace. Network enabled by default. Disable via Settings
+  or `"sandbox": {"profile": "none"}` in config. See ADR-0017.
+
+### Documentation
+
+- **README.md**: add Prerequisites section with bwrap install instructions
+  and sandbox configuration reference.
+- **ARCHITECTURE.md**: add `internal/sandbox/` module to the module map
+  and update BashTool description to reflect sandboxing.
+
 ## [0.1.4] — 2026-07-24
 
 ### Added
