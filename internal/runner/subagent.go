@@ -64,18 +64,13 @@ const subAgentReapTTL = 30 * time.Second
 // Cancelling the parent run cascades to cancel all in-flight sub-agents.
 func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int) (taskID string, err error) {
 	// Retrieve parent config for this session
-	s.parentCfgMu.Lock()
-	parentCfg, ok := s.parentCfgs[sessionID]
-	s.parentCfgMu.Unlock()
+	parentCfg, ok := s.subagents.GetParentCfg(sessionID)
 	if !ok {
 		return "", fmt.Errorf("no parent run config found for session %s", sessionID)
 	}
 
 	// Generate task ID
-	s.subMu.Lock()
-	s.nextTaskID++
-	taskID = fmt.Sprintf("task_%d", s.nextTaskID)
-	s.subMu.Unlock()
+	taskID = s.subagents.nextID()
 
 	slog.Info("spawning sub-agent",
 		slog.String("task_id", taskID),
@@ -147,9 +142,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		StartedAt: time.Now(),
 	}
 
-	s.subMu.Lock()
-	s.subAgents[taskID] = record
-	s.subMu.Unlock()
+	s.subagents.storeRecord(taskID, record)
 
 	var childRunState *RunState
 
@@ -193,20 +186,13 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			SSE:       sseState,
 		}
 
-		s.mu.Lock()
-		if existing, exists := s.active[record.ChildSessionID]; exists {
-			select {
-			case <-existing.Done:
-				delete(s.active, record.ChildSessionID)
-			default:
-				slog.Warn("child session already has active run", slog.String("child_session_id", record.ChildSessionID))
-				s.mu.Unlock()
-				cancel()
-				return "", fmt.Errorf("child session %s already has an active run", record.ChildSessionID)
-			}
+		s.tracker.exchangeIfDone(record.ChildSessionID)
+		if s.tracker.get(record.ChildSessionID) != nil {
+			slog.Warn("child session already has active run", slog.String("child_session_id", record.ChildSessionID))
+			cancel()
+			return "", fmt.Errorf("child session %s already has an active run", record.ChildSessionID)
 		}
-		s.active[record.ChildSessionID] = childRunState
-		s.mu.Unlock()
+		s.tracker.store(record.ChildSessionID, childRunState)
 	}
 
 	go func() {
@@ -214,22 +200,13 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			record.finish()
 			// Clean up child session's RunState from active runs
 			if record.ChildSessionID != "" {
-				s.mu.Lock()
-				existing, exists := s.active[record.ChildSessionID]
-				if exists && existing == childRunState {
-					delete(s.active, record.ChildSessionID)
-				}
-				s.mu.Unlock()
+				s.tracker.remove(record.ChildSessionID, childRunState)
 				// Update child session status to idle
 				s.broadcastSessionStatusUpdate(record.ChildSessionID, uisession.StatusIdle)
 			}
 			// Reap after TTL
 			time.AfterFunc(subAgentReapTTL, func() {
-				s.subMu.Lock()
-				if existing, exists := s.subAgents[taskID]; exists && existing == record {
-					delete(s.subAgents, taskID)
-				}
-				s.subMu.Unlock()
+				s.subagents.reapAfterTTL(taskID)
 			})
 		}()
 
@@ -246,9 +223,6 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 				s.appendToSession(record.ChildSessionID, content, reasoningContent)
 			}
 		}
-
-		s.subMu.Lock()
-		defer s.subMu.Unlock()
 
 		// Extract result from last assistant message
 		msgs := req.Messages
@@ -310,18 +284,14 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 		done   chan struct{}
 		record *subAgentRecord
 	}
+	recordsMap, err := s.subagents.getRecords(taskIDs)
+	if err != nil {
+		return nil, err
+	}
 	records := make([]recordInfo, 0, len(taskIDs))
-
-	s.subMu.Lock()
-	for _, tid := range taskIDs {
-		rec, exists := s.subAgents[tid]
-		if !exists {
-			s.subMu.Unlock()
-			return nil, fmt.Errorf("unknown task_id: %s", tid)
-		}
+	for _, rec := range recordsMap {
 		records = append(records, recordInfo{done: rec.Done, record: rec})
 	}
-	s.subMu.Unlock()
 
 	// Wait for each task to complete
 	for _, ri := range records {
@@ -332,10 +302,9 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 			// Context cancelled — return partial results
 			slog.Info("collect cancelled, returning partial results")
 			results := make(map[string]SubAgentResult, len(taskIDs))
-			s.subMu.Lock()
 			for _, tid := range taskIDs {
-				rec, exists := s.subAgents[tid]
-				if !exists {
+				rec := s.subagents.getRecord(tid)
+				if rec == nil {
 					results[tid] = SubAgentResult{
 						Status: "cancelled",
 					}
@@ -343,23 +312,20 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 				}
 				results[tid] = subAgentRecordToResult(rec)
 			}
-			s.subMu.Unlock()
 			return results, nil
 		}
 	}
 
 	// Collect results
 	results := make(map[string]SubAgentResult, len(taskIDs))
-	s.subMu.Lock()
 	for _, tid := range taskIDs {
-		rec, exists := s.subAgents[tid]
-		if !exists {
+		rec := s.subagents.getRecord(tid)
+		if rec == nil {
 			results[tid] = SubAgentResult{Status: "cancelled"}
 			continue
 		}
 		results[tid] = subAgentRecordToResult(rec)
 	}
-	s.subMu.Unlock()
 
 	return results, nil
 }
@@ -380,19 +346,7 @@ func subAgentRecordToResult(rec *subAgentRecord) SubAgentResult {
 
 // CancelSubAgents cancels all in-flight sub-agents for a given parent session.
 func (s *RunService) CancelSubAgents(sessionID string) {
-	s.subMu.Lock()
-	var toCancel []*subAgentRecord
-	for _, rec := range s.subAgents {
-		if rec.SessionID == sessionID {
-			toCancel = append(toCancel, rec)
-		}
-	}
-	s.subMu.Unlock()
-
-	for _, rec := range toCancel {
-		slog.Info("cancelling sub-agent", slog.String("task_id", rec.TaskID))
-		rec.Cancel()
-	}
+	s.subagents.CancelForSession(sessionID)
 }
 
 // buildBaseToolRegistry creates a tool registry with all standard tools
