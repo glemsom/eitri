@@ -20,8 +20,8 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/history"
 
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -117,10 +117,10 @@ func main() {
 				convCtx := runSvc.LastBatchConversationContext()
 
 				dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
-					Error:       err.Error(),
-					ErrorChain:  fmt.Sprintf("%+v", err),
-					Stack:       string(runtimeDebug.Stack()),
-					Version:     Version,
+					Error:         err.Error(),
+					ErrorChain:    fmt.Sprintf("%+v", err),
+					Stack:         string(runtimeDebug.Stack()),
+					Version:       Version,
 					ConfigSummary: debug.SanitizeConfig(cfg),
 					RuntimeSummary: &debug.RuntimeSummary{
 						UpSince:            processStartTime,
@@ -131,9 +131,9 @@ func main() {
 					SystemDiagnostics:   debug.CollectSystemDiagnostics(processStartTime),
 					ConversationContext: convCtx,
 					FailingHTTPTrace:    debugRecorder.LastFailingTrace(),
-					Traces:         debugRecorder.List(0, "", ""),
-					InFlightTraces: debugRecorder.InFlight(),
-					Logs:           logBuffer.Entries(),
+					Traces:              debugRecorder.List(0, "", ""),
+					InFlightTraces:      debugRecorder.InFlight(),
+					Logs:                logBuffer.Entries(),
 				})
 				if dumpErr != nil {
 					fmt.Fprintf(os.Stderr, "Failed to write crash dump: %v\n", dumpErr)
@@ -173,15 +173,15 @@ func main() {
 			crashCfg = nil
 		}
 		allSessions := sessionMgr.All()
-		var cfgSummary map[string]interface{}
+		var cfgSummary map[string]any
 		if crashCfg != nil {
 			cfgSummary = debug.SanitizeConfig(crashCfg)
 		}
 		dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
-			Error:       err.Error(),
-			ErrorChain:  fmt.Sprintf("%+v", err),
-			Stack:       string(stack),
-			Version:     Version,
+			Error:         err.Error(),
+			ErrorChain:    fmt.Sprintf("%+v", err),
+			Stack:         string(stack),
+			Version:       Version,
 			ConfigSummary: cfgSummary,
 			RuntimeSummary: &debug.RuntimeSummary{
 				UpSince:            processStartTime,
@@ -189,12 +189,12 @@ func main() {
 				SessionCount:       len(allSessions),
 				RecordedHTTPTraces: debugRecorder.Count(),
 			},
-			SystemDiagnostics:   debug.CollectSystemDiagnostics(processStartTime),
-			Sessions:       allSessions,
-			FailingHTTPTrace:    debugRecorder.LastFailingTrace(),
-			Traces:         debugRecorder.List(0, "", ""),
-			InFlightTraces: debugRecorder.InFlight(),
-			Logs:           logBuffer.Entries(),
+			SystemDiagnostics: debug.CollectSystemDiagnostics(processStartTime),
+			Sessions:          allSessions,
+			FailingHTTPTrace:  debugRecorder.LastFailingTrace(),
+			Traces:            debugRecorder.List(0, "", ""),
+			InFlightTraces:    debugRecorder.InFlight(),
+			Logs:              logBuffer.Entries(),
 		})
 		if dumpErr != nil {
 			slog.Error("Failed to write crash dump", slog.String("error", dumpErr.Error()))

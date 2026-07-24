@@ -300,7 +300,7 @@ func TestMaskAPIKey(t *testing.T) {
 
 func TestMerge_OverridesProvider(t *testing.T) {
 	cfg := config.Defaults()
-	patch := map[string]interface{}{
+	patch := map[string]any{
 		"provider": "custom_openai",
 		"base_url": "https://other.example.com",
 	}
@@ -320,7 +320,7 @@ func TestMerge_OverridesProvider(t *testing.T) {
 
 func TestMerge_IgnoresUnknownFields(t *testing.T) {
 	cfg := config.Defaults()
-	patch := map[string]interface{}{
+	patch := map[string]any{
 		"nonexistent": "value",
 	}
 	result := config.Merge(&cfg, patch)
@@ -330,11 +330,11 @@ func TestMerge_IgnoresUnknownFields(t *testing.T) {
 }
 
 func TestMerge_ClearAPIKey(t *testing.T) {
-	for _, clearValue := range []interface{}{"true", true} {
+	for _, clearValue := range []any{"true", true} {
 		t.Run(fmt.Sprintf("%T", clearValue), func(t *testing.T) {
 			cfg := config.Defaults()
 			cfg.APIKey = "sk-secret-key-to-clear"
-			patch := map[string]interface{}{
+			patch := map[string]any{
 				"clear_api_key": clearValue,
 			}
 			result := config.Merge(&cfg, patch)
@@ -353,7 +353,7 @@ func TestMerge_PreservesAPIKeyWhenEmptyWithoutClear(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-existing"
 
-	result := config.Merge(&cfg, map[string]interface{}{"api_key": ""})
+	result := config.Merge(&cfg, map[string]any{"api_key": ""})
 
 	if result.APIKey != "sk-existing" {
 		t.Errorf("APIKey = %q, want existing key preserved", result.APIKey)
@@ -443,8 +443,8 @@ func TestMerge_AllowedReadPaths(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-test"
 
-	patch := map[string]interface{}{
-		"allowed_read_paths": []interface{}{"/home/user/projects", "/tmp/shared"},
+	patch := map[string]any{
+		"allowed_read_paths": []any{"/home/user/projects", "/tmp/shared"},
 	}
 	result := config.Merge(&cfg, patch)
 
@@ -466,7 +466,7 @@ func TestMerge_AllowedReadPathsIgnoresNonArray(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-test"
 
-	patch := map[string]interface{}{
+	patch := map[string]any{
 		"allowed_read_paths": "not-an-array",
 	}
 	result := config.Merge(&cfg, patch)
@@ -480,7 +480,7 @@ func TestMerge_ProviderSwitchClearsModelAndResetsDefaultBaseURL(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Model = "opencode-model"
 
-	result := config.Merge(&cfg, map[string]interface{}{"provider": "github_copilot"})
+	result := config.Merge(&cfg, map[string]any{"provider": "github_copilot"})
 
 	if result.Model != "" {
 		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
@@ -494,7 +494,7 @@ func TestMerge_ProviderSwitchPreservesExplicitSubmittedModelAndResetsStaleDefaul
 	cfg := config.Defaults()
 	cfg.Model = "opencode-model"
 
-	result := config.Merge(&cfg, map[string]interface{}{
+	result := config.Merge(&cfg, map[string]any{
 		"provider": "github_copilot",
 		"base_url": cfg.BaseURL,
 		"model":    "gpt-4.1",
@@ -513,7 +513,7 @@ func TestMerge_ProviderSwitchPreservesCustomBaseURL(t *testing.T) {
 	cfg.BaseURL = "https://custom-gateway.example.com/v1"
 	cfg.Model = "opencode-model"
 
-	result := config.Merge(&cfg, map[string]interface{}{"provider": "github_copilot"})
+	result := config.Merge(&cfg, map[string]any{"provider": "github_copilot"})
 
 	if result.Model != "" {
 		t.Errorf("Model = %q, want cleared on provider switch", result.Model)
@@ -527,7 +527,7 @@ func TestMerge_OverridesSystemPrompt(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.SystemPrompt = "old prompt"
 
-	result := config.Merge(&cfg, map[string]interface{}{"system_prompt": "new prompt"})
+	result := config.Merge(&cfg, map[string]any{"system_prompt": "new prompt"})
 
 	if result.SystemPrompt != "new prompt" {
 		t.Errorf("SystemPrompt = %q, want %q", result.SystemPrompt, "new prompt")

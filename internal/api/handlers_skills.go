@@ -71,7 +71,7 @@ func (s *Server) handleAPISkills(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"skills":      result,
 		"diagnostics": registry.Diagnostics(),
 	})
@@ -87,7 +87,7 @@ func (s *Server) handleSkillsRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"skills": registry.Summary(),
 	})
 }
@@ -129,7 +129,7 @@ func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
+	json.NewEncoder(w).Encode(map[string]any{"items": items})
 }
 
 func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +147,7 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	// Reject path-traversal and absolute paths for safety
 	if strings.HasPrefix(q, "..") || strings.Contains(q, "/..") || strings.HasPrefix(q, "/") {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		return
 	}
 
@@ -178,14 +178,14 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	absSearch, err := filepath.Abs(searchDir)
 	if err != nil || !strings.HasPrefix(absSearch, workspace) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		return
 	}
 
 	entries, err := os.ReadDir(absSearch)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
 		return
 	}
 
@@ -237,7 +237,7 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
+	json.NewEncoder(w).Encode(map[string]any{"items": items})
 }
 
 func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Request) {

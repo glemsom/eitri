@@ -146,15 +146,15 @@ func renderInlineComponentsToHTML(ctx context.Context, sessionID string, compone
 			lang, _ := comp.Data["lang"].(string)
 			compTempl := templates.DiffCard(oldCode, newCode, lang)
 			_ = compTempl.Render(ctx, &html)
-		// FileEditCard is excluded — rendered as a tool card.
-		// QuickReplies is excluded — rendered by AssistantBubble.
+			// FileEditCard is excluded — rendered as a tool card.
+			// QuickReplies is excluded — rendered by AssistantBubble.
 		}
 	}
 	return html.String()
 }
 
 // mustJSON marshals v to JSON bytes, logging and returning nil on error.
-func mustJSON(v interface{}) []byte {
+func mustJSON(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
 		slog.Warn("json marshal error", slog.Any("error", err))

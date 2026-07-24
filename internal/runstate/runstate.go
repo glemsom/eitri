@@ -30,13 +30,13 @@ type SSEEvent struct {
 	Content   string      `json:"content,omitempty"`
 	Name      string      `json:"name,omitempty"`
 	Tool      string      `json:"tool,omitempty"`
-	Args      interface{} `json:"args,omitempty"`
-	Output    interface{} `json:"output,omitempty"`
-	Data      interface{} `json:"data,omitempty"`
+	Args      any         `json:"args,omitempty"`
+	Output    any         `json:"output,omitempty"`
+	Data      any         `json:"data,omitempty"`
 	Message   string      `json:"message,omitempty"`
 	MessageID string      `json:"message_id,omitempty"`
 	Usage     *TokenUsage `json:"usage,omitempty"`
-	Timestamp time.Time `json:"timestamp,omitempty"`
+	Timestamp time.Time   `json:"timestamp,omitempty"`
 }
 
 // TokenUsage holds token count information for a completed run.
@@ -51,12 +51,12 @@ type TokenUsage struct {
 type State struct {
 	mu sync.Mutex
 
-	subscribers      map[uint64]*subscriber
-	nextSubscriber   uint64
-	streamsClosed    bool
-	history          []SSEEvent
-	subscriberCount  uint64
-	replayCount      uint64
+	subscribers     map[uint64]*subscriber
+	nextSubscriber  uint64
+	streamsClosed   bool
+	history         []SSEEvent
+	subscriberCount uint64
+	replayCount     uint64
 
 	bufferMu sync.Mutex
 	buffer   strings.Builder
@@ -317,12 +317,12 @@ func (w *Writer) Token(content string) {
 }
 
 // ToolCall sends a tool call event with kind "tool_card".
-func (w *Writer) ToolCall(name string, args interface{}) {
+func (w *Writer) ToolCall(name string, args any) {
 	w.state.Broadcast(SSEEvent{Type: "tool_call", Kind: RenderKindToolCard, Tool: name, Args: args})
 }
 
 // ToolResult sends a tool result event with kind "tool_card".
-func (w *Writer) ToolResult(name string, output interface{}) {
+func (w *Writer) ToolResult(name string, output any) {
 	outputStr := ""
 	if s, ok := output.(string); ok {
 		outputStr = s
@@ -340,7 +340,7 @@ func (w *Writer) Done(messageID string, usage *TokenUsage) {
 }
 
 // Component sends a generative UI component event with kind "component".
-func (w *Writer) Component(data interface{}) {
+func (w *Writer) Component(data any) {
 	w.state.Broadcast(SSEEvent{Type: "component", Kind: RenderKindComponent, Data: data})
 }
 

@@ -231,11 +231,11 @@ func TestNewLLMService_OpenRouterRoute(t *testing.T) {
 	defer chatSrv.Close()
 
 	svc, err := llm.NewLLMService(llm.AdapterConfig{
-		ProviderID:    "openrouter",
-		Model:         "anthropic/claude-3",
-		BaseURL:       chatSrv.URL,
-		APIKey:        "sk-or-test",
-		OpenRouterRef: "https://eitri.ai",
+		ProviderID:      "openrouter",
+		Model:           "anthropic/claude-3",
+		BaseURL:         chatSrv.URL,
+		APIKey:          "sk-or-test",
+		OpenRouterRef:   "https://eitri.ai",
 		OpenRouterTitle: "Eitri",
 	})
 	if err != nil {
@@ -1074,7 +1074,7 @@ func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 	}
 
 	_, err = svc.Chat(context.Background(), llm.Request{
-		Model:    "gpt-4.1",
+		Model: "gpt-4.1",
 		Messages: []llm.Message{
 			{Role: "system", Content: "You are helpful"},
 			{Role: "user", Content: "hi"},
@@ -1098,7 +1098,7 @@ func TestChat_MessagesIncludeSystemPrompt(t *testing.T) {
 
 func TestChat_PromptCacheKey_SentWhenSet(t *testing.T) {
 	t.Parallel()
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
@@ -1139,7 +1139,7 @@ func TestChat_PromptCacheKey_SentWhenSet(t *testing.T) {
 
 func TestChat_PromptCacheKey_OmittedWhenEmpty(t *testing.T) {
 	t.Parallel()
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
@@ -1176,7 +1176,7 @@ func TestChat_PromptCacheKey_OmittedWhenEmpty(t *testing.T) {
 
 func TestChat_PromptCacheKey_TruncatedTo64Chars(t *testing.T) {
 	t.Parallel()
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)
@@ -1230,7 +1230,7 @@ func TestChat_PromptCacheKey_TruncatedTo64Chars(t *testing.T) {
 
 func TestChat_PromptCacheKey_SentInStreamRequest(t *testing.T) {
 	t.Parallel()
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 			t.Fatalf("decode body: %v", err)

@@ -19,10 +19,10 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
-	"github.com/glemsom/eitri/internal/debug"
 )
 
 func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
@@ -1643,7 +1643,7 @@ func TestGetConfigJSON(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -1774,7 +1774,7 @@ func TestPutConfigWithoutModelPopulatesDiscoveredModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cfgResp.Body.Close()
-	var cfgData map[string]interface{}
+	var cfgData map[string]any
 	if err := json.NewDecoder(cfgResp.Body).Decode(&cfgData); err != nil {
 		t.Fatal(err)
 	}
@@ -1894,7 +1894,7 @@ func TestPutConfig_ClearAPIKey(t *testing.T) {
 	}
 	defer getResp.Body.Close()
 
-	var cfgData map[string]interface{}
+	var cfgData map[string]any
 	json.NewDecoder(getResp.Body).Decode(&cfgData)
 	if key, ok := cfgData["api_key"].(string); ok && key != "" {
 		t.Errorf("api_key = %q after clear, want empty", key)
@@ -2213,7 +2213,7 @@ func putJSONConfig(t *testing.T, server *httptest.Server, body string) {
 	}
 }
 
-func getConfigJSON(t *testing.T, server *httptest.Server) map[string]interface{} {
+func getConfigJSON(t *testing.T, server *httptest.Server) map[string]any {
 	t.Helper()
 	getResp, err := http.Get(server.URL + "/api/config")
 	if err != nil {
@@ -2221,7 +2221,7 @@ func getConfigJSON(t *testing.T, server *httptest.Server) map[string]interface{}
 	}
 	defer getResp.Body.Close()
 
-	var cfgData map[string]interface{}
+	var cfgData map[string]any
 	if err := json.NewDecoder(getResp.Body).Decode(&cfgData); err != nil {
 		t.Fatal(err)
 	}
@@ -2241,7 +2241,7 @@ func TestGetConfigHTMLFragmentWithModels(t *testing.T) {
 	}
 	defer modelsResp.Body.Close()
 
-	var modelsData map[string]interface{}
+	var modelsData map[string]any
 	if err := json.NewDecoder(modelsResp.Body).Decode(&modelsData); err != nil {
 		t.Fatal(err)
 	}
@@ -2249,7 +2249,7 @@ func TestGetConfigHTMLFragmentWithModels(t *testing.T) {
 	if !ok {
 		t.Errorf("/api/models response missing 'data' field")
 	}
-	modelsArr, ok := data.([]interface{})
+	modelsArr, ok := data.([]any)
 	if !ok || len(modelsArr) == 0 {
 		t.Errorf("/api/models data is empty or not an array: %v", data)
 	}
@@ -2553,7 +2553,7 @@ func TestAPISkillsEndpoint(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -3101,7 +3101,7 @@ func TestUnifiedRender_Error(t *testing.T) {
 	loc := rootResp.Header.Get("Location")
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"kind":    "error",
 		"message": "Something went wrong",
 	}
@@ -3144,10 +3144,10 @@ func TestUnifiedRender_Component(t *testing.T) {
 	loc := rootResp.Header.Get("Location")
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"kind": "component",
 		"name": "MermaidDiagram",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"code": "graph TD; A-->B;",
 		},
 	}
@@ -3190,10 +3190,10 @@ func TestUnifiedRender_ComponentQuickReplies(t *testing.T) {
 	loc := rootResp.Header.Get("Location")
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"kind": "component",
 		"name": "QuickReplies",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"options": []string{"Summarize", "Make shorter"},
 		},
 	}
@@ -3236,10 +3236,10 @@ func TestUnifiedRender_ComponentDiffCard(t *testing.T) {
 	loc := rootResp.Header.Get("Location")
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"kind": "component",
 		"name": "DiffCard",
-		"data": map[string]interface{}{
+		"data": map[string]any{
 			"old":  "old code",
 			"new":  "new code",
 			"lang": "go",
@@ -3284,7 +3284,7 @@ func TestUnifiedRender_UnknownKind(t *testing.T) {
 	loc := rootResp.Header.Get("Location")
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"kind": "unknown_kind",
 	}
 	bodyJSON, _ := json.Marshal(body)
@@ -3308,8 +3308,8 @@ func TestUnifiedRender_OwnershipMismatch(t *testing.T) {
 	server := newTestServer(t)
 
 	// Error rendering works without auth
-	body := map[string]interface{}{
-		"kind": "error",
+	body := map[string]any{
+		"kind":    "error",
 		"message": "test",
 	}
 	bodyJSON, _ := json.Marshal(body)
@@ -3324,8 +3324,8 @@ func TestUnifiedRender_OwnershipMismatch(t *testing.T) {
 	}
 
 	// Non-error kinds without auth -> 404
-	body2 := map[string]interface{}{
-		"kind": "markdown",
+	body2 := map[string]any{
+		"kind":       "markdown",
 		"message_id": "test",
 	}
 	bodyJSON2, _ := json.Marshal(body2)
@@ -3487,12 +3487,12 @@ func TestAPISkillsEndpoint_OmitDisabled(t *testing.T) {
 		t.Fatalf("GET /api/skills status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
 
-	skillsJSON, ok := body["skills"].([]interface{})
+	skillsJSON, ok := body["skills"].([]any)
 	if !ok {
 		t.Fatalf("response 'skills' field is not an array: %#v", body["skills"])
 	}
@@ -3500,7 +3500,7 @@ func TestAPISkillsEndpoint_OmitDisabled(t *testing.T) {
 	if len(skillsJSON) != 1 {
 		t.Fatalf("skills count = %d, want 1 (only skill-b)", len(skillsJSON))
 	}
-	first := skillsJSON[0].(map[string]interface{})
+	first := skillsJSON[0].(map[string]any)
 	if first["name"] != "skill-b" {
 		t.Errorf("skill name = %q, want 'skill-b'", first["name"])
 	}
@@ -3818,7 +3818,7 @@ func TestDebugRuntime(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -3846,7 +3846,7 @@ func TestDebugRuntime(t *testing.T) {
 	}
 
 	// config_summary should have expected fields
-	cfgSummary, ok := body["config_summary"].(map[string]interface{})
+	cfgSummary, ok := body["config_summary"].(map[string]any)
 	if !ok {
 		t.Fatal("config_summary missing or not an object")
 	}
@@ -3876,7 +3876,7 @@ func TestDebugConfig(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -3915,7 +3915,7 @@ func TestDebugSessionsEmpty(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var sessions []interface{}
+	var sessions []any
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		t.Fatal(err)
 	}
@@ -3945,7 +3945,7 @@ func TestDebugSessionsWithSession(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var sessions []map[string]interface{}
+	var sessions []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		t.Fatal(err)
 	}
@@ -4009,7 +4009,7 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var sessions []map[string]interface{}
+	var sessions []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		t.Fatal(err)
 	}
@@ -4019,7 +4019,7 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 
 	s := sessions[0]
 	// Check latest_http is present with 3 traces (capped at 3)
-	latestHTTP, ok := s["latest_http"].([]interface{})
+	latestHTTP, ok := s["latest_http"].([]any)
 	if !ok {
 		t.Fatal("session missing latest_http array")
 	}
@@ -4028,7 +4028,7 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 	}
 	// Verify they are this session's traces (not "other-session")
 	for _, tr := range latestHTTP {
-		trMap := tr.(map[string]interface{})
+		trMap := tr.(map[string]any)
 		if trMap["session_id"] != sess.ID {
 			t.Errorf("trace session_id = %v, want %v", trMap["session_id"], sess.ID)
 		}
@@ -4045,17 +4045,17 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 		t.Fatalf("umbrella status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
 
-	var umbrella map[string]interface{}
+	var umbrella map[string]any
 	if err := json.NewDecoder(resp2.Body).Decode(&umbrella); err != nil {
 		t.Fatal(err)
 	}
 
-	sessionsList, ok := umbrella["sessions"].([]interface{})
+	sessionsList, ok := umbrella["sessions"].([]any)
 	if !ok || len(sessionsList) != 1 {
 		t.Fatal("umbrella sessions missing or wrong length")
 	}
-	umbrellaSess := sessionsList[0].(map[string]interface{})
-	umbrellaHTTP, ok := umbrellaSess["latest_http"].([]interface{})
+	umbrellaSess := sessionsList[0].(map[string]any)
+	umbrellaHTTP, ok := umbrellaSess["latest_http"].([]any)
 	if !ok {
 		t.Fatal("umbrella session missing latest_http")
 	}
@@ -4084,7 +4084,7 @@ func TestDebugSessionsNoTraces(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	var sessions []map[string]interface{}
+	var sessions []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
 		t.Fatal(err)
 	}
@@ -4093,7 +4093,7 @@ func TestDebugSessionsNoTraces(t *testing.T) {
 	}
 
 	// latest_http should be present and empty
-	latestHTTP, ok := sessions[0]["latest_http"].([]interface{})
+	latestHTTP, ok := sessions[0]["latest_http"].([]any)
 	if !ok {
 		t.Fatal("session missing latest_http array")
 	}
@@ -4152,13 +4152,13 @@ func TestDebugSessionByID(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var detail map[string]interface{}
+	var detail map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
 		t.Fatal(err)
 	}
 
 	// Check session summary
-	sessionData, ok := detail["session"].(map[string]interface{})
+	sessionData, ok := detail["session"].(map[string]any)
 	if !ok {
 		t.Fatal("session field missing or not an object")
 	}
@@ -4167,14 +4167,14 @@ func TestDebugSessionByID(t *testing.T) {
 	}
 
 	// Check messages array
-	messages, ok := detail["messages"].([]interface{})
+	messages, ok := detail["messages"].([]any)
 	if !ok {
 		t.Fatal("messages field missing or not an array")
 	}
 	if len(messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(messages))
 	}
-	msg := messages[0].(map[string]interface{})
+	msg := messages[0].(map[string]any)
 	if msg["role"] != "user" {
 		t.Errorf("message.role = %v, want user", msg["role"])
 	}
@@ -4221,12 +4221,12 @@ func TestDebugSessionByIDLimitMessages(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var detail map[string]interface{}
+	var detail map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
 		t.Fatal(err)
 	}
 
-	messages, ok := detail["messages"].([]interface{})
+	messages, ok := detail["messages"].([]any)
 	if !ok {
 		t.Fatal("messages field missing or not an array")
 	}
@@ -4275,7 +4275,7 @@ func TestDebugConfigWithSavedConfig(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var cfgResp map[string]interface{}
+	var cfgResp map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&cfgResp); err != nil {
 		t.Fatal(err)
 	}
@@ -4311,7 +4311,7 @@ func TestDebugConfigWithSavedConfig(t *testing.T) {
 		t.Fatalf("runtime status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
 
-	var runtimeResp map[string]interface{}
+	var runtimeResp map[string]any
 	if err := json.NewDecoder(resp2.Body).Decode(&runtimeResp); err != nil {
 		t.Fatal(err)
 	}
@@ -4366,8 +4366,8 @@ func TestDebugHTTP_List(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4399,8 +4399,8 @@ func TestDebugHTTP_ListEmpty(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4432,8 +4432,8 @@ func TestDebugHTTP_SessionFilter(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4465,8 +4465,8 @@ func TestDebugHTTP_ProviderFilter(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4538,7 +4538,7 @@ func TestDebugHTTP_ByID_Success(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
 
-	var trace map[string]interface{}
+	var trace map[string]any
 	if err := json.NewDecoder(resp2.Body).Decode(&trace); err != nil {
 		t.Fatal(err)
 	}
@@ -4586,7 +4586,7 @@ func TestDebugUmbrella(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -4600,7 +4600,7 @@ func TestDebugUmbrella(t *testing.T) {
 	}
 
 	// Check runtime sub-fields
-	runtime, ok := body["runtime"].(map[string]interface{})
+	runtime, ok := body["runtime"].(map[string]any)
 	if !ok {
 		t.Fatal("runtime is not an object")
 	}
@@ -4615,7 +4615,7 @@ func TestDebugUmbrella(t *testing.T) {
 	}
 
 	// Check sessions is array with 1 entry
-	sessions, ok := body["sessions"].([]interface{})
+	sessions, ok := body["sessions"].([]any)
 	if !ok {
 		t.Fatal("sessions is not an array")
 	}
@@ -4624,11 +4624,11 @@ func TestDebugUmbrella(t *testing.T) {
 	}
 
 	// Check http_traces has 1 trace
-	httpTraces, ok := body["http_traces"].(map[string]interface{})
+	httpTraces, ok := body["http_traces"].(map[string]any)
 	if !ok {
 		t.Fatal("http_traces is not an object")
 	}
-	traces, ok := httpTraces["traces"].([]interface{})
+	traces, ok := httpTraces["traces"].([]any)
 	if !ok {
 		t.Fatal("http_traces.traces is not an array")
 	}
@@ -4637,7 +4637,7 @@ func TestDebugUmbrella(t *testing.T) {
 	}
 
 	// Check config_summary has expected keys
-	cfgSummary, ok := body["config_summary"].(map[string]interface{})
+	cfgSummary, ok := body["config_summary"].(map[string]any)
 	if !ok {
 		t.Fatal("config_summary is not an object")
 	}
@@ -4675,12 +4675,12 @@ func TestDebugUmbrella_EmptyTrace(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
 
-	runtime, ok := body["runtime"].(map[string]interface{})
+	runtime, ok := body["runtime"].(map[string]any)
 	if !ok {
 		t.Fatal("runtime is not an object")
 	}
@@ -4688,11 +4688,11 @@ func TestDebugUmbrella_EmptyTrace(t *testing.T) {
 		t.Errorf("recorded_http_traces = %v, want 0", runtime["recorded_http_traces"])
 	}
 
-	httpTraces, ok := body["http_traces"].(map[string]interface{})
+	httpTraces, ok := body["http_traces"].(map[string]any)
 	if !ok {
 		t.Fatal("http_traces is not an object")
 	}
-	traces, ok := httpTraces["traces"].([]interface{})
+	traces, ok := httpTraces["traces"].([]any)
 	if !ok {
 		t.Fatal("http_traces.traces is not an array")
 	}
@@ -4741,8 +4741,8 @@ func TestDebugSessionHTTP_List(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4775,8 +4775,8 @@ func TestDebugSessionHTTP_Limit(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -4807,8 +4807,8 @@ func TestDebugSessionHTTP_Empty(t *testing.T) {
 	}
 
 	var body struct {
-		Traces   []interface{} `json:"traces"`
-		InFlight []interface{} `json:"in_flight"`
+		Traces   []any `json:"traces"`
+		InFlight []any `json:"in_flight"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

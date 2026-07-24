@@ -3,6 +3,7 @@
 package llm
 
 import "net/http"
+
 // Request is a chat completion request.
 type Request struct {
 	Model           string
@@ -60,21 +61,21 @@ type Usage struct {
 type StreamEventType int
 
 const (
-	StreamEventTypeToken     StreamEventType = iota // text delta
-	StreamEventTypeToolCall                         // tool call fragment
-	StreamEventTypeDone                             // stream complete
-	StreamEventTypeError                            // stream error
+	StreamEventTypeToken    StreamEventType = iota // text delta
+	StreamEventTypeToolCall                        // tool call fragment
+	StreamEventTypeDone                            // stream complete
+	StreamEventTypeError                           // stream error
 )
 
 // StreamEvent is one event from a streaming response.
 type StreamEvent struct {
 	Type         StreamEventType
-	Content      string      // text delta for Token events
-	ToolCalls    []ToolCall  // tool calls for ToolCall events
-	FinishReason string      // set on Done events
-	Usage        *Usage      // set on Done events (if provider sends it)
-	Error        error       // set on Error events
-	IsReasoning  bool        // true when Content carries reasoning/thinking text (not final output)
+	Content      string     // text delta for Token events
+	ToolCalls    []ToolCall // tool calls for ToolCall events
+	FinishReason string     // set on Done events
+	Usage        *Usage     // set on Done events (if provider sends it)
+	Error        error      // set on Error events
+	IsReasoning  bool       // true when Content carries reasoning/thinking text (not final output)
 }
 
 type AdapterConfig struct {
@@ -82,8 +83,8 @@ type AdapterConfig struct {
 	Model               string
 	BaseURL             string
 	APIKey              string
-	OpenRouterRef       string // HTTP-Referer for OpenRouter tracking
-	OpenRouterTitle     string // X-Title for OpenRouter tracking
-	SupportsPromptCache bool   // provider supports prompt_cache_key field
+	OpenRouterRef       string            // HTTP-Referer for OpenRouter tracking
+	OpenRouterTitle     string            // X-Title for OpenRouter tracking
+	SupportsPromptCache bool              // provider supports prompt_cache_key field
 	RoundTripper        http.RoundTripper // optional; if set, adapters use this instead of default transport
 }

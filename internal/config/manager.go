@@ -148,7 +148,7 @@ func MaskAPIKey(key string) string {
 // Merge applies a partial patch (from JSON unmarshalling) onto a base Config.
 // Only recognized fields are overridden; unknown fields are ignored.
 // clear_api_key=true explicitly empties the API key.
-func Merge(base *Config, patch map[string]interface{}) *Config {
+func Merge(base *Config, patch map[string]any) *Config {
 	result := *base // shallow copy
 	result.ProviderAuth = cloneRawMessage(base.ProviderAuth)
 	providerChanged := false
@@ -183,7 +183,7 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 		}
 	}
 	if v, ok := patch["allowed_read_paths"]; ok {
-		if arr, ok := v.([]interface{}); ok {
+		if arr, ok := v.([]any); ok {
 			paths := make([]string, 0, len(arr))
 			for _, item := range arr {
 				if s, ok := item.(string); ok {
@@ -244,7 +244,7 @@ func Merge(base *Config, patch map[string]interface{}) *Config {
 	return &result
 }
 
-func clearAPIKeyRequested(v interface{}) bool {
+func clearAPIKeyRequested(v any) bool {
 	s, ok := v.(string)
 	if ok {
 		return s == "true"
@@ -272,7 +272,7 @@ func cloneRawMessage(raw json.RawMessage) json.RawMessage {
 
 // parseNumeric attempts to parse a numeric value from an interface{}.
 // It handles both float64 (from JSON unmarshalling) and string (from form-encoded data).
-func parseNumeric(v interface{}) (float64, bool) {
+func parseNumeric(v any) (float64, bool) {
 	switch val := v.(type) {
 	case float64:
 		return val, true

@@ -191,8 +191,8 @@ func toolResultHasError(blocks []litellm.Block) bool {
 // componentToolMap maps tool names to component names for component emission.
 var componentToolMap = map[string]string{
 	"render_mermaid_diagram": "MermaidDiagram",
-	"render_quick_replies":  "QuickReplies",
-	"edit":                  "FileEditCard",
+	"render_quick_replies":   "QuickReplies",
+	"edit":                   "FileEditCard",
 }
 
 // emitComponentForTool emits a component event based on the tool name and args.
@@ -200,13 +200,13 @@ var componentToolMap = map[string]string{
 // The edit tool emits a FileEditCard using old_text/new_text/path from args.
 // QuickReplies does NOT emit a component SSE event (chips are stored inline on the message).
 // Returns (componentName, data, ok) for the caller to also persist the component.
-func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []litellm.Block) (string, map[string]interface{}, bool) {
+func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []litellm.Block) (string, map[string]any, bool) {
 	componentName, ok := componentToolMap[toolName]
 	if !ok {
 		return "", nil, false
 	}
 
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 
 	switch componentName {
 	case "MermaidDiagram":
@@ -257,7 +257,7 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		return "", nil, false
 	}
 
-	w.Component(map[string]interface{}{
+	w.Component(map[string]any{
 		"kind": "component",
 		"name": componentName,
 		"data": data,
@@ -307,8 +307,8 @@ func dumpRequestOnError(req *llm.Request, err error, attempt int) {
 
 	type debugEntry struct {
 		Request llm.Request `json:"request"`
-		Error   string          `json:"error"`
-		Attempt int             `json:"attempt"`
+		Error   string      `json:"error"`
+		Attempt int         `json:"attempt"`
 	}
 
 	entry := debugEntry{

@@ -132,7 +132,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		if sess != nil && sess.BrowserID != "" {
 			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"session_id": id,
 					"status":     string(session.StatusRunning),
 				},
@@ -255,7 +255,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		if sess.BrowserID != "" {
 			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"session_id": id,
 					"status":     string(session.StatusIdle),
 				},
@@ -267,7 +267,6 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	// Return empty 200 so HTMX does not swap out the composer.
 	w.WriteHeader(http.StatusOK)
 }
-
 
 func (s *Server) handleBrowserEvents(w http.ResponseWriter, r *http.Request) {
 	browserID := s.browserIDFromRequest(r)

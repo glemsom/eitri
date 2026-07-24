@@ -15,20 +15,20 @@ type TraceID string
 
 // HTTPTrace records a single LLM provider HTTP request/response.
 type HTTPTrace struct {
-	ID              TraceID              `json:"id"`
-	Timestamp       time.Time            `json:"timestamp"`
-	SessionID       string               `json:"session_id"`
-	ProviderID      string               `json:"provider_id"`
-	Method          string               `json:"method"`
-	URL             string               `json:"url"` // path only
-	Status          int                  `json:"status"`
-	DurationMs      int64                `json:"duration_ms"`
-	RequestBytes    int                  `json:"request_bytes"`
-	RequestBody     string               `json:"request_body"`
-	ResponseBytes   int                  `json:"response_bytes"`
-	ResponseBody    string               `json:"response_body"`
-	ResponseHeaders map[string][]string  `json:"response_headers,omitempty"`
-	Error           string               `json:"error,omitempty"`
+	ID              TraceID             `json:"id"`
+	Timestamp       time.Time           `json:"timestamp"`
+	SessionID       string              `json:"session_id"`
+	ProviderID      string              `json:"provider_id"`
+	Method          string              `json:"method"`
+	URL             string              `json:"url"` // path only
+	Status          int                 `json:"status"`
+	DurationMs      int64               `json:"duration_ms"`
+	RequestBytes    int                 `json:"request_bytes"`
+	RequestBody     string              `json:"request_body"`
+	ResponseBytes   int                 `json:"response_bytes"`
+	ResponseBody    string              `json:"response_body"`
+	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
+	Error           string              `json:"error,omitempty"`
 }
 
 const (
@@ -317,12 +317,12 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 	// Wrap response body to capture content and complete trace when fully read
 	resp.Body = &traceBody{
-		ReadCloser:   resp.Body,
-		recorder:     rt.recorder,
-		traceID:      traceID,
-		startTime:    start,
-		status:       resp.StatusCode,
-		respHeaders:  resp.Header,
+		ReadCloser:  resp.Body,
+		recorder:    rt.recorder,
+		traceID:     traceID,
+		startTime:   start,
+		status:      resp.StatusCode,
+		respHeaders: resp.Header,
 	}
 
 	return resp, nil
@@ -332,15 +332,15 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 // and completes the trace when Close() is called.
 type traceBody struct {
 	io.ReadCloser
-	recorder       *Recorder
-	traceID        TraceID
-	startTime      time.Time
-	status         int
-	respHeaders    map[string][]string
+	recorder    *Recorder
+	traceID     TraceID
+	startTime   time.Time
+	status      int
+	respHeaders map[string][]string
 
-	mu    sync.Mutex
-	buf   bytes.Buffer
-	done  bool
+	mu       sync.Mutex
+	buf      bytes.Buffer
+	done     bool
 	closeErr error
 }
 

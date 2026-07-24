@@ -8,8 +8,8 @@ import (
 	runtimeDebug "runtime/debug"
 	"time"
 
-	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/llm"
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
@@ -281,7 +281,6 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 	})
 }
 
-
 // broadcastSessionStatusUpdate updates the session status and broadcasts the change
 // to all browser-level SSE subscribers for this session's browser.
 func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uisession.Status) {
@@ -299,7 +298,7 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	}
 	s.BroadcastToBrowser(sess.BrowserID, BrowserEvent{
 		Type: "session_status",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"session_id": sessionID,
 			"status":     string(sess.Status),
 		},

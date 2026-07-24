@@ -69,7 +69,6 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-stream.js missing reenableComposer function")
 	}
 
-
 	// Verify stream JS has insertOptimisticBubble
 	if !strings.Contains(content2, "insertOptimisticBubble") {
 		t.Error("eitri-stream.js missing insertOptimisticBubble function")

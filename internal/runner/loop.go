@@ -167,9 +167,9 @@ func RunAgent(
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
 				historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-			if isRequestBasedHistory(historyMgr) {
-				trimMessages(req, maxHistory)
-			}
+				if isRequestBasedHistory(historyMgr) {
+					trimMessages(req, maxHistory)
+				}
 				return streamErr
 			}
 			sseWriter.Error(runstate.FormatErrorMessage(streamErr))
@@ -210,8 +210,8 @@ func RunAgent(
 		// Has tool calls — add assistant message to history
 		historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
 
-// Execute each tool call sequentially
-		
+		// Execute each tool call sequentially
+
 		for _, tc := range toolCalls {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -244,7 +244,7 @@ func RunAgent(
 					sseWriter.State().Broadcast(runstate.SSEEvent{
 						Type:    "needs_confirmation",
 						Content: needsConf.Message,
-						Data:    map[string]interface{}{"path": needsConf.Path, "message": needsConf.Message},
+						Data:    map[string]any{"path": needsConf.Path, "message": needsConf.Message},
 					})
 
 					// Wait for user response
