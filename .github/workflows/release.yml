@@ -42,11 +42,16 @@ jobs:
 
       - name: Generate release notes
         run: |
-          cat > /tmp/release-notes.md <<'EOF'
-          # Eitri ${{ github.ref_name }}
-
-          See the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-          EOF
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="[${VERSION}]" '
+            index($0, "## " ver) == 1 { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "Warning: no changelog entry found for $VERSION — falling back to link"
+            echo "See the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details." > /tmp/release-notes.md
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

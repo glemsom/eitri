@@ -159,9 +159,6 @@ Pushing a `v*` tag triggers `.github/workflows/release.yml`:
 | Target platform | Tarball |
 |----------------|---------|
 | Linux amd64 | `dist/eitri-linux-amd64.tar.gz` |
-| Linux arm64 | `dist/eitri-linux-arm64.tar.gz` |
-| macOS amd64 (Intel) | `dist/eitri-darwin-amd64.tar.gz` |
-| macOS arm64 (Apple Silicon) | `dist/eitri-darwin-arm64.tar.gz` |
 
 ### User installation
 

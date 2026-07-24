@@ -7,7 +7,7 @@ VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
 .PHONY: all build clean test test-race help run templ-generate release release-check \
-        release-all release-linux-amd64 release-linux-arm64 release-darwin-amd64 release-darwin-arm64
+        release-all release-linux-amd64
 
 all: build
 
@@ -31,8 +31,8 @@ test-race:
 ## release — build linux/amd64 release tarball + checksums (default platform)
 release: _clean-checksums release-linux-amd64
 
-## release-all — build release tarballs for all supported platforms
-release-all: _clean-checksums release-linux-amd64 release-linux-arm64 release-darwin-amd64 release-darwin-arm64
+## release-all — build release tarball for linux/amd64
+release-all: _clean-checksums release-linux-amd64
 
 # Internal: start fresh checksums file for a clean release build.
 _clean-checksums:
@@ -43,20 +43,7 @@ release-linux-amd64: RELEASE_OS   = linux
 release-linux-amd64: RELEASE_ARCH = amd64
 release-linux-amd64: release-tarball
 
-## release-linux-arm64 — build linux/arm64 tarball + checksums
-release-linux-arm64: RELEASE_OS   = linux
-release-linux-arm64: RELEASE_ARCH = arm64
-release-linux-arm64: release-tarball
 
-## release-darwin-amd64 — build darwin/amd64 tarball + checksums
-release-darwin-amd64: RELEASE_OS   = darwin
-release-darwin-amd64: RELEASE_ARCH = amd64
-release-darwin-amd64: release-tarball
-
-## release-darwin-arm64 — build darwin/arm64 tarball + checksums
-release-darwin-arm64: RELEASE_OS   = darwin
-release-darwin-arm64: RELEASE_ARCH = arm64
-release-darwin-arm64: release-tarball
 
 # Internal: parameterised tarball builder. RELEASE_OS and RELEASE_ARCH must be set.
 release-tarball: templ-generate
@@ -92,7 +79,7 @@ help:
 	@echo "  make test               Run all tests (fast, no race detector)"
 	@echo "  make test-race          Run all tests with race detector"
 	@echo "  make release            Build linux/amd64 tarball + checksums"
-	@echo "  make release-all        Build tarballs for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64"
+	@echo "  make release-all        Build tarball for linux/amd64"
 	@echo "  make release-check      Run release readiness tests (includes race detector)"
 	@echo "  make run                Build and run the server"
 	@echo "  make help               Show this help"
