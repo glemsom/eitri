@@ -1,6 +1,6 @@
 # ADR-0017: bwrap sandbox for bash tool
 
-**Status**: Accepted
+**Status**: Accepted (amended ADR-0017a — startup detection and caching added)
 
 ## Context
 
@@ -184,6 +184,23 @@ Negative / limitations at time of writing:
   workflows.
 - **Per-invocation overhead** — a new bwrap process is created for every
   bash tool call. No session reuse.
+
+### Startup detection
+
+`BwrapAvailable()` (added in ADR-0017a) caches the bwrap usability check in
+a `sync.OnceValue` so the `exec.Command` probe runs at most once per process
+lifetime. The result is logged at startup and surfaced in the Settings UI
+as a badge. This gives the user immediate feedback about whether sandboxing
+is active, and makes the fallback path discoverable.
+
+When the user explicitly sets `"profile": "none"` in config, a startup
+warning explains that commands will run without isolation.
+
+### Caching
+
+`WrapCommand` uses the cached `BwrapAvailable()` instead of calling
+`BwrapIsUsable()` on every invocation. This avoids repeated `exec.Command`
+calls for a check whose result cannot change during the process lifetime.
 
 ## Future possibilities
 

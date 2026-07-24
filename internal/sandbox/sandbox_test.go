@@ -45,6 +45,21 @@ func TestWrapCommand_ProfileNone(t *testing.T) {
 	}
 }
 
+func TestBwrapAvailable(t *testing.T) {
+	// BwrapAvailable should return the same result as BwrapIsUsable.
+	got := BwrapAvailable()
+	expected := BwrapIsUsable()
+	if got != expected {
+		t.Errorf("BwrapAvailable() = %v, want %v (same as BwrapIsUsable())", got, expected)
+	}
+
+	// Calling again should return the same cached value.
+	got2 := BwrapAvailable()
+	if got2 != got {
+		t.Errorf("BwrapAvailable() second call = %v, want %v (cached)", got2, got)
+	}
+}
+
 func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
 	// bwrap might or might not be installed/usable; either is fine.
 	// We verify the fallback path works.

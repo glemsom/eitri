@@ -1,7 +1,8 @@
 // Package sandbox wraps shell commands inside a bubblewrap sandbox.
 //
 // It provides BwrapIsUsable to check whether bwrap is both installed and
-// functional (can create user namespaces), and WrapCommand which takes a
+// functional (can create user namespaces), BwrapAvailable which caches
+// that result for the process lifetime, and WrapCommand which takes a
 // command line and a config profile, and returns the executable and
 // arguments to pass to exec.Command. If bwrap is not installed, not
 // usable, or the profile is "none", the command is returned unchanged
@@ -19,6 +20,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Profile identifies a sandboxing profile.
@@ -68,6 +70,18 @@ func BwrapIsUsable() bool {
 	return cmd.Run() == nil
 }
 
+var bwrapAvailableCached = sync.OnceValue(bwrapIsUsableUncached)
+
+func bwrapIsUsableUncached() bool {
+	return BwrapIsUsable()
+}
+
+// BwrapAvailable returns whether bwrap is usable, caching the result so
+// the probe runs at most once per process lifetime.
+func BwrapAvailable() bool {
+	return bwrapAvailableCached()
+}
+
 // WrapCommand returns the executable path and argument list that the
 // caller should pass to exec.Command. When sandboxing is active the
 // returned executable is bwrap and the arguments include the full
@@ -103,7 +117,7 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 		return "bash", []string{"-c", command}, nil
 	}
 
-	if !BwrapIsUsable() {
+	if !BwrapAvailable() {
 		slog.Debug("bwrap found on PATH but not usable (likely no user namespace support), running command without sandbox",
 			slog.String("workspace", workspace),
 		)
