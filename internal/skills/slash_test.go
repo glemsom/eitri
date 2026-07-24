@@ -188,3 +188,17 @@ func TestIsSlashCommand(t *testing.T) {
 		t.Error("expected empty string to not be a slash command")
 	}
 }
+
+func TestUnknownCommandError_Error(t *testing.T) {
+	err := &UnknownCommandError{Command: "/unknown-skill"}
+	want := "unknown skill or command: /unknown-skill"
+	if err.Error() != want {
+		t.Errorf("Error() = %q, want %q", err.Error(), want)
+	}
+
+	err2 := &UnknownCommandError{Command: "/help"}
+	want2 := "unknown skill or command: /help"
+	if err2.Error() != want2 {
+		t.Errorf("Error() = %q, want %q", err2.Error(), want2)
+	}
+}

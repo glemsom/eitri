@@ -862,3 +862,174 @@ func TestAddRenderedMessageID_DifferentSessionsIndependent(t *testing.T) {
 		t.Error("s2 should NOT have msg_shared")
 	}
 }
+
+func TestAll_Empty(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	all := mgr.All()
+	if len(all) != 0 {
+		t.Errorf("All() = %d sessions, want 0", len(all))
+	}
+}
+
+func TestAll_OneSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	s1, _ := mgr.Create("browser-1")
+	all := mgr.All()
+	if len(all) != 1 {
+		t.Fatalf("All() = %d sessions, want 1", len(all))
+	}
+	if all[0].ID != s1.ID {
+		t.Errorf("session ID = %q, want %q", all[0].ID, s1.ID)
+	}
+}
+
+func TestAll_MultipleSessions(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	s1, _ := mgr.Create("browser-1")
+	s2, _ := mgr.Create("browser-1")
+	s3, _ := mgr.Create("browser-2")
+
+	all := mgr.All()
+	if len(all) != 3 {
+		t.Fatalf("All() = %d sessions, want 3", len(all))
+	}
+
+	ids := make(map[string]bool)
+	for _, s := range all {
+		ids[s.ID] = true
+	}
+	if !ids[s1.ID] {
+		t.Error("s1 missing from All()")
+	}
+	if !ids[s2.ID] {
+		t.Error("s2 missing from All()")
+	}
+	if !ids[s3.ID] {
+		t.Error("s3 missing from All()")
+	}
+}
+
+func TestAll_ReturnsCopy(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	s1, _ := mgr.Create("browser-1")
+	all := mgr.All()
+
+	// Modify the returned copy — should not affect manager
+	if len(all) != 1 {
+		t.Fatalf("All() = %d sessions, want 1", len(all))
+	}
+	all[0].Title = "hacked"
+
+	got := mgr.Get(s1.ID)
+	if got.Title == "hacked" {
+		t.Error("modifying All() result should not affect original session")
+	}
+}
+
+func TestSetWorkspace_SetsPath(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.SetWorkspace(sess.ID, "/custom/workspace")
+
+	got := mgr.Get(sess.ID)
+	if got.Workspace != "/custom/workspace" {
+		t.Errorf("Workspace = %q, want %q", got.Workspace, "/custom/workspace")
+	}
+}
+
+func TestSetWorkspace_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	// Should be a no-op, not panic
+	mgr.SetWorkspace("nonexistent", "/some/path")
+}
+
+func TestSetWorkspace_UpdatesUpdatedAt(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	originalUpdatedAt := sess.UpdatedAt
+
+	mgr.SetWorkspace(sess.ID, "/new/workspace")
+
+	got := mgr.Get(sess.ID)
+	if got.UpdatedAt.Equal(originalUpdatedAt) {
+		t.Error("UpdatedAt should be updated after SetWorkspace")
+	}
+}
+
+func TestUpdateLastAssistantContent_UpdatesContent(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "original"})
+
+	mgr.UpdateLastAssistantContent(sess.ID, "updated")
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	}
+	if got.Messages[0].Content != "updated" {
+		t.Errorf("Content = %q, want %q", got.Messages[0].Content, "updated")
+	}
+}
+
+func TestUpdateLastAssistantContent_NoAssistantMessage(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+
+	// Should be a no-op since last message is not assistant
+	mgr.UpdateLastAssistantContent(sess.ID, "updated")
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 1 {
+		t.Fatalf("Messages count = %d, want 1", len(got.Messages))
+	}
+	if got.Messages[0].Content != "hello" {
+		t.Errorf("Content changed to %q, want %q", got.Messages[0].Content, "hello")
+	}
+}
+
+func TestUpdateLastAssistantContent_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	// Should be a no-op, not panic
+	mgr.UpdateLastAssistantContent("nonexistent", "updated")
+}
+
+func TestUpdateLastAssistantContent_EmptyMessages(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+
+	// Should be a no-op since there are no messages
+	mgr.UpdateLastAssistantContent(sess.ID, "updated")
+
+	got := mgr.Get(sess.ID)
+	if len(got.Messages) != 0 {
+		t.Errorf("Messages count = %d, want 0", len(got.Messages))
+	}
+}
+
+func TestUpdateLastAssistantContent_UpdatesUpdatedAt(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "original"})
+	originalUpdatedAt := mgr.Get(sess.ID).UpdatedAt
+
+	mgr.UpdateLastAssistantContent(sess.ID, "updated")
+
+	got := mgr.Get(sess.ID)
+	if got.UpdatedAt.Equal(originalUpdatedAt) {
+		t.Error("UpdatedAt should be updated after UpdateLastAssistantContent")
+	}
+}
