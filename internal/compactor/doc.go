@@ -8,9 +8,11 @@
 // # Usage
 //
 //	c := &compactor.Compactor{}
-//	compacted, err := c.Compact(ctx, messages, llmSvc, thresholds)
+//	compacted, count, freed, err := c.Compact(ctx, messages, llmSvc, thresholds)
 //	if compacted != nil {
 //	    // use compacted messages
+//	    // count = number of messages compacted
+//	    // freed = approximate tokens freed
 //	}
 //
 // # Thresholds

@@ -35,6 +35,12 @@ type RunConfig struct {
 	DebugRequest        bool
 	DebugLLMDir         string
 	Sandbox             sandbox.Config
+
+	// Compaction controls automatic compression of old tool results
+	// to stay within the context window.
+	CompactionEnabled          bool
+	CompactionThresholdPercent int // 0-100; high-water mark as % of context window
+	CompactionLowWaterPercent  int // 0-100; stop compaction when below this % of context window
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -63,6 +69,9 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		DebugRequest:        cfg.DebugRequest,
 		DebugLLMDir:         cfg.DebugLLMDir,
 		Sandbox:             cfg.Sandbox,
+		CompactionEnabled:        cfg.CompactionEnabled,
+		CompactionThresholdPercent: cfg.CompactionThresholdPercent,
+		CompactionLowWaterPercent:  cfg.CompactionLowWaterPercent,
 	}
 }
 

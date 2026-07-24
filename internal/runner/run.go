@@ -10,6 +10,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/llm"
 
+	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
@@ -162,6 +163,71 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 						slog.String("session_id", sid),
 						slog.Any("error", err),
 					)
+				}
+
+				// Auto-compaction: if enabled and token usage exceeds high-water mark,
+				// compact tool results to free up context window space.
+				if !cfg.CompactionEnabled || contextWindowTokens <= 0 {
+					return
+				}
+				highWater := contextWindowTokens * cfg.CompactionThresholdPercent / 100
+				lowWater := contextWindowTokens * cfg.CompactionLowWaterPercent / 100
+				totalEst := compactor.MessagesTokenEstimate(historyMsgs)
+				if totalEst <= highWater {
+					return
+				}
+
+				compactedMsgs, compactedCount, freedTokens, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
+					HighWater: highWater,
+					LowWater:  lowWater,
+				})
+				if compErr != nil {
+					slog.Warn("compaction failed, will retry on next turn",
+						slog.String("session_id", sid),
+						slog.Any("error", compErr),
+					)
+					// Broadcast warning toast
+					if runState := s.tracker.get(sid); runState != nil {
+						runState.SSE.Broadcast(runstate.SSEEvent{
+							Type: "toast",
+							Data: map[string]any{
+								"level":   "warning",
+								"message": "Compaction failed: " + compErr.Error(),
+							},
+						})
+					}
+					return
+				}
+				if compactedMsgs == nil || compactedCount == 0 {
+					return
+				}
+
+				// Replace in-memory history with compacted version
+				s.historySessionMgr.RestoreHistory(sid, compactedMsgs)
+
+				// Snapshot the compacted history
+				sessAfter := s.uiSessionMgr.Get(sid)
+				historyAfter := s.historySessionMgr.History(sid)
+				if sessAfter != nil && historyAfter != nil {
+					if err := s.persister.SnapshotSession(sid, sessAfter, historyAfter); err != nil {
+						slog.Warn("failed to snapshot compacted session",
+							slog.String("session_id", sid),
+							slog.Any("error", err),
+						)
+					}
+				}
+
+				// Broadcast compaction_complete event for UI toast
+				freedK := freedTokens / 1000
+				if runState := s.tracker.get(sid); runState != nil {
+					runState.SSE.Broadcast(runstate.SSEEvent{
+						Type: "compaction_complete",
+						Data: map[string]any{
+							"compacted_count": compactedCount,
+							"freed_tokens":    freedTokens,
+							"message":         fmt.Sprintf("Compacted %d tool results — freed ~%dk tokens", compactedCount, freedK),
+						},
+					})
 				}
 			},
 		})
