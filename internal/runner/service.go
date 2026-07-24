@@ -357,23 +357,12 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg r
 		return 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
 	}
 
-	contextWindow := cfg.ContextWindowTokens
-	if contextWindow <= 0 {
-		contextWindow = 256000
-	}
-	highWater := contextWindow * cfg.CompactionThresholdPercent / 100
-	lowWater := contextWindow * cfg.CompactionLowWaterPercent / 100
-
-	if highWater <= 0 {
-		highWater = contextWindow * 90 / 100
-	}
-	if lowWater <= 0 {
-		lowWater = contextWindow * 30 / 100
-	}
-
+	// Manual compaction always runs — no high-water gate.
+	// LowWater=0 means the compactor will compact until no more
+	// tool results remain (or the default low-water logic activates).
 	compactedMsgs, count, freed, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
-		HighWater: highWater,
-		LowWater:  lowWater,
+		HighWater: 0,
+		LowWater:  0,
 	})
 	if compErr != nil {
 		return 0, 0, fmt.Errorf("compaction failed: %w", compErr)

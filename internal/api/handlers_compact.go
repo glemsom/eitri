@@ -68,10 +68,10 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if count == 0 {
-		// No compaction needed
+		// No tool results found to compact
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		_ = templates.ErrorToast("No tool results needed compaction").Render(r.Context(), w)
+		_ = templates.ErrorToast("No tool results found to compact").Render(r.Context(), w)
 		return
 	}
 
