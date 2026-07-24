@@ -27,7 +27,7 @@ import (
 
 func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, workspace)
 	skillsSvc := skills.NewService()
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
@@ -65,7 +65,7 @@ func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOpt
 	t.Helper()
 	sessionMgr := opts.sessionManager
 	if sessionMgr == nil {
-		sessionMgr = session.NewManager(10)
+		sessionMgr = session.NewManager(10, workspace)
 	}
 	skillsSvc := opts.skillsService
 	if skillsSvc == nil {
@@ -100,11 +100,12 @@ func extractCopilotFlowID(t *testing.T, body string) string {
 
 func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
 	skillsSvc := skills.NewService()
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
-		Workspace:      t.TempDir(),
+		Workspace:      workspace,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		Logger:         logger,
@@ -132,7 +133,7 @@ func newTestServerWithSessionManager(t *testing.T, workspace string, sessionMgr 
 
 func newTestServerWithSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *httptest.Server {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, workspace)
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
@@ -1566,7 +1567,7 @@ func TestSettingsPage(t *testing.T) {
 
 func TestSessionPageRendersAssistantMarkdownAndRichAssets(t *testing.T) {
 	workspace := t.TempDir()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -2445,7 +2446,7 @@ func TestStaleSessionRedirect(t *testing.T) {
 
 func TestSessionCapReached(t *testing.T) {
 	// Use a manager with cap of 1
-	sessionMgr := session.NewManager(1)
+	sessionMgr := session.NewManager(1, t.TempDir())
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      t.TempDir(),
@@ -3510,7 +3511,7 @@ func TestSkillsEndpoint_AutoDeactivate(t *testing.T) {
 	workspace := t.TempDir()
 	rootDir := t.TempDir()
 	configPath := t.TempDir() + "/config.json"
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: rootDir, Scope: skills.ScopeProjectEitri}})
 	server := newTestServerWithOptions(t, workspace, testServerOptions{configPath: configPath, sessionManager: sessionMgr, skillsService: skillsSvc})
 	client := noRedirectClient()
@@ -3926,7 +3927,7 @@ func TestDebugSessionsEmpty(t *testing.T) {
 
 func TestDebugSessionsWithSession(t *testing.T) {
 	// Create server with a session manager that has one session
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	_, err := sessionMgr.Create("test-browser")
 	if err != nil {
 		t.Fatal(err)
@@ -3980,7 +3981,7 @@ func TestDebugSessionsWithSession(t *testing.T) {
 
 func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("test-browser")
 	if err != nil {
 		t.Fatal(err)
@@ -4066,7 +4067,7 @@ func TestDebugSessionsWithHTTPTraces(t *testing.T) {
 
 func TestDebugSessionsNoTraces(t *testing.T) {
 	rec := debug.NewRecorder(10)
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	_, err := sessionMgr.Create("test-browser")
 	if err != nil {
 		t.Fatal(err)
@@ -4126,7 +4127,7 @@ func TestDebugSessionByIDNotFound(t *testing.T) {
 }
 
 func TestDebugSessionByID(t *testing.T) {
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("test-browser")
 	if err != nil {
 		t.Fatal(err)
@@ -4192,7 +4193,7 @@ func TestDebugSessionByID(t *testing.T) {
 }
 
 func TestDebugSessionByIDLimitMessages(t *testing.T) {
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("test-browser")
 	if err != nil {
 		t.Fatal(err)
@@ -4251,7 +4252,7 @@ func TestDebugConfigWithSavedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	skillsSvc := skills.NewService()
 	srv := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
@@ -4563,7 +4564,7 @@ func TestDebugUmbrella(t *testing.T) {
 	rec := debug.NewRecorder(10)
 	rec.Record("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"test"}`), []byte(`{"response":"ok"}`), 200, time.Second, "", nil)
 
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("test-session")
 	if err != nil {
 		t.Fatal(err)

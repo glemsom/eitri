@@ -86,7 +86,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdTimeout := time.Duration(cfgState.cfg.CommandTimeout)
-	runCfg := runner.FromConfig(cfgState.cfg, s.config.Workspace, cmdTimeout)
+	runCfg := runner.FromConfig(cfgState.cfg, sess.Workspace, cmdTimeout)
 
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestCreateAndGet(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, err := mgr.Create("browser-1")
 	if err != nil {
@@ -40,7 +40,7 @@ func TestCreateAndGet(t *testing.T) {
 }
 
 func TestGetValidated(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, err := mgr.Create("browser-1")
 	if err != nil {
@@ -70,7 +70,7 @@ func TestGetValidated(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	deleted := mgr.Delete(sess.ID)
@@ -93,7 +93,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestListByBrowser(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	s1, _ := mgr.Create("browser-1")
 	s2, _ := mgr.Create("browser-1")
@@ -113,7 +113,7 @@ func TestListByBrowser(t *testing.T) {
 }
 
 func TestLastActive(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	// No sessions
 	if last := mgr.LastActive("browser-1"); last != nil {
@@ -134,7 +134,7 @@ func TestLastActive(t *testing.T) {
 }
 
 func TestSessionCap(t *testing.T) {
-	mgr := session.NewManager(2)
+	mgr := session.NewManager(2, t.TempDir())
 
 	s1, err := mgr.Create("browser-1")
 	if err != nil {
@@ -160,7 +160,7 @@ func TestSessionCap(t *testing.T) {
 }
 
 func TestSessionCapAcrossBrowsers(t *testing.T) {
-	mgr := session.NewManager(2)
+	mgr := session.NewManager(2, t.TempDir())
 
 	mgr.Create("browser-1")
 	mgr.Create("browser-2")
@@ -173,7 +173,7 @@ func TestSessionCapAcrossBrowsers(t *testing.T) {
 }
 
 func TestBrowserCount(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	mgr.Create("browser-1")
 	mgr.Create("browser-1")
@@ -191,7 +191,7 @@ func TestBrowserCount(t *testing.T) {
 }
 
 func TestDeleteFreesCapSlot(t *testing.T) {
-	mgr := session.NewManager(2)
+	mgr := session.NewManager(2, t.TempDir())
 
 	s1, _ := mgr.Create("browser-1")
 	mgr.Create("browser-1")
@@ -215,7 +215,7 @@ func TestDeleteFreesCapSlot(t *testing.T) {
 }
 
 func TestUpdateTitle(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.UpdateTitle(sess.ID, "New Title")
@@ -227,7 +227,7 @@ func TestUpdateTitle(t *testing.T) {
 }
 
 func TestUpdateStatus(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.UpdateStatus(sess.ID, session.StatusRunning)
@@ -239,7 +239,7 @@ func TestUpdateStatus(t *testing.T) {
 }
 
 func TestAppendMessage(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	msg := session.Message{Role: "user", Content: "hello"}
@@ -258,7 +258,7 @@ func TestAppendMessage(t *testing.T) {
 }
 
 func TestAppendMessage_FirstUserMessageSetsTruncatedTitle(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   Fix   flaky session tab title behavior across browser tabs and runs   "})
@@ -270,7 +270,7 @@ func TestAppendMessage_FirstUserMessageSetsTruncatedTitle(t *testing.T) {
 }
 
 func TestAppendMessage_EveryUserMessageUpdatesTitle(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "first question"})
@@ -284,7 +284,7 @@ func TestAppendMessage_EveryUserMessageUpdatesTitle(t *testing.T) {
 }
 
 func TestAppendMessage_BlankFirstUserMessageKeepsPlaceholderTitle(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
@@ -296,7 +296,7 @@ func TestAppendMessage_BlankFirstUserMessageKeepsPlaceholderTitle(t *testing.T) 
 }
 
 func TestAppendMessage_BlankFirstUserMessageDoesNotBlockLaterRename(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
@@ -309,7 +309,7 @@ func TestAppendMessage_BlankFirstUserMessageDoesNotBlockLaterRename(t *testing.T
 }
 
 func TestDefaultMaxSessions(t *testing.T) {
-	mgr := session.NewManager(0) // should use default
+	mgr := session.NewManager(0, t.TempDir()) // should use default
 	if mgr.Count() != 0 {
 		t.Error("new manager should have 0 sessions")
 	}
@@ -329,7 +329,7 @@ func TestDefaultMaxSessions(t *testing.T) {
 }
 
 func TestActivateSkill(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 
@@ -368,7 +368,7 @@ func TestActivateSkill(t *testing.T) {
 }
 
 func TestDeactivateSkill(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.ActivateSkill(sess.ID, "code-review")
@@ -389,7 +389,7 @@ func TestDeactivateSkill(t *testing.T) {
 }
 
 func TestActiveSkills(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 
@@ -413,7 +413,7 @@ func TestActiveSkills(t *testing.T) {
 }
 
 func TestAppendComponent(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 
@@ -465,7 +465,7 @@ func TestAppendComponent(t *testing.T) {
 }
 
 func TestAppendComponent_NoAssistantMessage(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 
@@ -496,7 +496,7 @@ func TestAppendComponent_NoAssistantMessage(t *testing.T) {
 }
 
 func TestAppendComponent_NonexistentSession(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	err := mgr.AppendComponent("nonexistent", session.ComponentData{Name: "test", Data: nil})
 	if err != nil {
@@ -505,7 +505,7 @@ func TestAppendComponent_NonexistentSession(t *testing.T) {
 }
 
 func TestAppendComponent_ConcurrentSafety(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
 	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
@@ -528,7 +528,7 @@ func TestAppendComponent_ConcurrentSafety(t *testing.T) {
 }
 
 func TestSetQuickReplies(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet
@@ -569,7 +569,7 @@ func TestSetQuickReplies(t *testing.T) {
 	}
 
 	// Set on existing assistant message preserves quick replies on that message
-	mgr2 := session.NewManager(10)
+	mgr2 := session.NewManager(10, t.TempDir())
 	sess2, _ := mgr2.Create("browser-2")
 	mgr2.AppendMessage(sess2.ID, session.Message{Role: "user", Content: "hello"})
 	mgr2.AppendMessage(sess2.ID, session.Message{Role: "assistant", Content: "world"})
@@ -592,7 +592,7 @@ func TestSetQuickReplies(t *testing.T) {
 func TestSetLastReasoningContent(t *testing.T) {
 	t.Parallel()
 
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet → no-op
@@ -642,7 +642,7 @@ func TestSetLastReasoningContent(t *testing.T) {
 func TestAppendLastReasoningContent(t *testing.T) {
 	t.Parallel()
 
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet → no-op
@@ -676,7 +676,7 @@ func TestAppendLastReasoningContent(t *testing.T) {
 func TestReasoningContentInAppendMessage(t *testing.T) {
 	t.Parallel()
 
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	// Create message with reasoning content directly
@@ -696,7 +696,7 @@ func TestReasoningContentInAppendMessage(t *testing.T) {
 }
 
 func TestCreateChildSession(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	parent, err := mgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("Create parent: %v", err)
@@ -734,7 +734,7 @@ func TestCreateChildSession(t *testing.T) {
 }
 
 func TestCreateChild_InvalidParent(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	_, err := mgr.CreateChild("nonexistent", "browser-1", "task")
 	if err == nil {
 		t.Fatal("expected error for nonexistent parent")
@@ -742,7 +742,7 @@ func TestCreateChild_InvalidParent(t *testing.T) {
 }
 
 func TestDelete_CascadesToChildren(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	parent, _ := mgr.Create("browser-1")
 	child1, _ := mgr.CreateChild(parent.ID, "browser-1", "task 1")
 	child2, _ := mgr.CreateChild(parent.ID, "browser-1", "task 2")
@@ -763,7 +763,7 @@ func TestDelete_CascadesToChildren(t *testing.T) {
 }
 
 func TestChildrenOf(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	parent, _ := mgr.Create("browser-1")
 	mgr.CreateChild(parent.ID, "browser-1", "task 1")
 	mgr.CreateChild(parent.ID, "browser-1", "task 2")
@@ -778,7 +778,7 @@ func TestChildrenOf(t *testing.T) {
 }
 
 func TestDelete_OnlyChildDeleted(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	parent1, _ := mgr.Create("browser-1")
 	parent2, _ := mgr.Create("browser-1")
 	child, _ := mgr.CreateChild(parent1.ID, "browser-1", "task")
@@ -797,7 +797,7 @@ func TestDelete_OnlyChildDeleted(t *testing.T) {
 }
 
 func TestAddRenderedMessageID_TracksAndDeduplicates(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	if mgr.HasRenderedMessageID(sess.ID, "msg_1") {
@@ -819,7 +819,7 @@ func TestAddRenderedMessageID_TracksAndDeduplicates(t *testing.T) {
 }
 
 func TestAddRenderedMessageID_RingBufferEviction(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	sess, _ := mgr.Create("browser-1")
 
 	for i := range 14 {
@@ -841,7 +841,7 @@ func TestAddRenderedMessageID_RingBufferEviction(t *testing.T) {
 }
 
 func TestHasRenderedMessageID_NonexistentSession(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	if mgr.HasRenderedMessageID("nonexistent", "msg_1") {
 		t.Error("HasRenderedMessageID should be false for nonexistent session")
 	}
@@ -849,7 +849,7 @@ func TestHasRenderedMessageID_NonexistentSession(t *testing.T) {
 }
 
 func TestAddRenderedMessageID_DifferentSessionsIndependent(t *testing.T) {
-	mgr := session.NewManager(10)
+	mgr := session.NewManager(10, t.TempDir())
 	s1, _ := mgr.Create("browser-1")
 	s2, _ := mgr.Create("browser-1")
 

@@ -88,7 +88,7 @@ func TestSkill_ValidSkill(t *testing.T) {
 	})
 	svc.Refresh()
 
-	uiMgr := session.NewManager(10)
+	uiMgr := session.NewManager(10, t.TempDir())
 
 	tool := NewSkill(svc, uiMgr)
 
@@ -122,7 +122,7 @@ func TestSkill_WithSessionContext(t *testing.T) {
 	})
 	svc.Refresh()
 
-	uiMgr := session.NewManager(10)
+	uiMgr := session.NewManager(10, t.TempDir())
 	sess, err := uiMgr.Create("browser1")
 	if err != nil {
 		t.Fatal(err)

@@ -37,8 +37,8 @@ type testServerWithRuns struct {
 // and returns test handles for session/run/executor assertions.
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
 	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
@@ -75,7 +75,7 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 
 func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {
 	t.Helper()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, workspace)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: history.NewSessionManager(50),
@@ -810,7 +810,7 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 }
 
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:  sessionMgr,
@@ -1063,7 +1063,7 @@ func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.
 
 func TestRunService_New(t *testing.T) {
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr: session.NewManager(10),
+		UISessionMgr: session.NewManager(10, t.TempDir()),
 	})
 	if runSvc == nil {
 		t.Fatal("RunService is nil")

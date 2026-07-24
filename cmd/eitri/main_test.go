@@ -88,7 +88,7 @@ func fakeSlowProvider(t *testing.T, delay time.Duration) *httptest.Server {
 func TestCleanupRuntimeCancelsRuns(t *testing.T) {
 	provider := fakeSlowProvider(t, 2*time.Second)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr: session.NewManager(10),
+		UISessionMgr: session.NewManager(10, t.TempDir()),
 	})
 
 	runCfg := runner.RunConfig{
