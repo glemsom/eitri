@@ -15,7 +15,7 @@
 // Key interfaces: none (concrete type, no interface contract)
 //
 // Key constants:
-//   - DefaultMaxExchanges — default sliding window cap (50)
+//   - DefaultMaxExchanges — default sliding window cap (150)
 //   - DefaultSystemPrompt — fallback system prompt
 //
 // Dependencies:

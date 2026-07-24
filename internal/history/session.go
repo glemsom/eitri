@@ -12,7 +12,7 @@ const (
 	// DefaultMaxExchanges is the default sliding window cap in exchanges.
 	// An exchange begins with a user message and includes all following
 	// assistant and tool messages until the next user message.
-	DefaultMaxExchanges = 50
+	DefaultMaxExchanges = 150
 
 	// DefaultSystemPrompt is the fallback system prompt when none is configured.
 	DefaultSystemPrompt = `You are Eitri, an expert AI coding agent. You can help the user by reading/writing/editing files, executing commands - and giving recommendations to the user.
@@ -43,7 +43,7 @@ type llmSession struct {
 }
 
 // NewSessionManager creates a session manager with the given exchange cap.
-// If maxExchanges <= 0, DefaultMaxExchanges (50) is used.
+// If maxExchanges <= 0, DefaultMaxExchanges (150) is used.
 func NewSessionManager(maxExchanges int) *SessionManager {
 	if maxExchanges <= 0 {
 		maxExchanges = DefaultMaxExchanges
