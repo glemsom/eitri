@@ -52,12 +52,12 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 		return nil, fmt.Errorf("expected struct, got %s", t.Kind())
 	}
 
-	schema := map[string]interface{}{
+	schema := map[string]any{
 		"type":       "object",
-		"properties": map[string]interface{}{},
+		"properties": map[string]any{},
 	}
 
-	props := schema["properties"].(map[string]interface{})
+	props := schema["properties"].(map[string]any)
 	var required []string
 
 	numField := t.NumField()
@@ -110,8 +110,8 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 }
 
 // fieldSchema returns the JSON Schema representation of a field type.
-func fieldSchema(t reflect.Type, description string) map[string]interface{} {
-	schema := map[string]interface{}{}
+func fieldSchema(t reflect.Type, description string) map[string]any {
+	schema := map[string]any{}
 
 	// Dereference pointer
 	if t.Kind() == reflect.Ptr {
@@ -134,7 +134,7 @@ func fieldSchema(t reflect.Type, description string) map[string]interface{} {
 		if elem.Kind() == reflect.Ptr {
 			elem = elem.Elem()
 		}
-		schema["items"] = map[string]interface{}{
+		schema["items"] = map[string]any{
 			"type": goTypeToJSONType(elem.Kind()),
 		}
 	case reflect.Map:

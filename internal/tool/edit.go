@@ -108,7 +108,6 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	}, nil, false
 }
 
-
 // countLineDiffs returns the number of lines that differ between two line slices.
 func countLineDiffs(oldLines, newLines []string) int {
 	maxLen := len(oldLines)

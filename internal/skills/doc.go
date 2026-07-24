@@ -17,9 +17,9 @@
 //   - Root      — a fixed discovery root directory with an associated Scope
 //   - Registry  — resolved skill state: effective, shadowed, invalid, disabled, diagnostics
 //   - Service   — thread-safe facade that manages discovery, registry refresh, skill lookup,
-//                 and disabled-list persistence
+//     and disabled-list persistence
 //   - Scope     — origin scope of a skill root (project-eitri, project-agents, user-eitri,
-//                 user-agents), used for precedence ordering
+//     user-agents), used for precedence ordering
 //   - Status    — loading status of a skill (effective, shadowed, invalid, disabled)
 //   - Diagnostic / Diagnostics — validation and discovery diagnostics
 //   - SkillSummary       — lightweight representation for system-prompt catalogs

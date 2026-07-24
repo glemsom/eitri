@@ -25,8 +25,8 @@ const sessionTitlePreviewMaxRunes = 31
 
 // ComponentData holds a rendered UI component attached to an assistant message.
 type ComponentData struct {
-	Name string                 `json:"name"`
-	Data map[string]interface{} `json:"data"`
+	Name string         `json:"name"`
+	Data map[string]any `json:"data"`
 }
 
 // Message represents a single chat message in a session.
@@ -92,7 +92,6 @@ func (m *Manager) All() []*UISession {
 	}
 	return result
 }
-
 
 // newID generates a random hex identifier using crypto/rand.
 func newID() string {
@@ -382,7 +381,6 @@ func (m *Manager) SetQuickReplies(id string, options []string) error {
 	s.UpdatedAt = time.Now()
 	return nil
 }
-
 
 // UpdateLastAssistantContent updates the content of the last assistant message.
 // Does nothing if session not found or last message is not assistant.

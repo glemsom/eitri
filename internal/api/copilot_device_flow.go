@@ -70,8 +70,8 @@ func (s *copilotDeviceFlowStore) delete(id string) {
 	delete(s.flows, id)
 }
 
-func parseConfigPatch(r *http.Request) (map[string]interface{}, error) {
-	var patch map[string]interface{}
+func parseConfigPatch(r *http.Request) (map[string]any, error) {
+	var patch map[string]any
 	ct := r.Header.Get("Content-Type")
 	if strings.Contains(ct, "application/json") {
 		body, err := io.ReadAll(r.Body)
@@ -88,7 +88,7 @@ func parseConfigPatch(r *http.Request) (map[string]interface{}, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, err
 	}
-	patch = make(map[string]interface{}, len(r.Form))
+	patch = make(map[string]any, len(r.Form))
 	for k, v := range r.Form {
 		patch[k] = v[0]
 	}
@@ -100,7 +100,7 @@ func parseConfigPatch(r *http.Request) (map[string]interface{}, error) {
 	return patch, nil
 }
 
-func normalizePatchedConfig(cfg *config.Config, patch map[string]interface{}) *config.Config {
+func normalizePatchedConfig(cfg *config.Config, patch map[string]any) *config.Config {
 	if v, ok := patch["api_key"]; ok {
 		if s, ok := v.(string); ok && s != "" && s == config.MaskAPIKey(cfg.APIKey) {
 			delete(patch, "api_key")

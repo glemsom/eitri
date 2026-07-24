@@ -18,13 +18,13 @@ type testWithOptional struct {
 }
 
 type testMixed struct {
-	ID        string   `json:"id" jsonschema:"Unique identifier"`
-	Label     string   `json:"label,omitempty"`
-	Score     float64  `json:"score"`
-	Active    bool     `json:"active,omitempty" jsonschema:"Whether active"`
-	Tags      []string `json:"tags,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Count     *int    `json:"count,omitempty"`
+	ID       string         `json:"id" jsonschema:"Unique identifier"`
+	Label    string         `json:"label,omitempty"`
+	Score    float64        `json:"score"`
+	Active   bool           `json:"active,omitempty" jsonschema:"Whether active"`
+	Tags     []string       `json:"tags,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	Count    *int           `json:"count,omitempty"`
 }
 
 func TestSchemaOf_SimpleStruct(t *testing.T) {
@@ -33,7 +33,7 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 		t.Fatal("schema is nil")
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
@@ -43,13 +43,13 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 		t.Errorf("type = %v, want 'object'", parsed["type"])
 	}
 
-	props, ok := parsed["properties"].(map[string]interface{})
+	props, ok := parsed["properties"].(map[string]any)
 	if !ok {
 		t.Fatal("properties not found")
 	}
 
 	// Check name field
-	nameProp, ok := props["name"].(map[string]interface{})
+	nameProp, ok := props["name"].(map[string]any)
 	if !ok {
 		t.Fatal("name property not found")
 	}
@@ -61,7 +61,7 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 	}
 
 	// Check count field
-	countProp, ok := props["count"].(map[string]interface{})
+	countProp, ok := props["count"].(map[string]any)
 	if !ok {
 		t.Fatal("count property not found")
 	}
@@ -73,7 +73,7 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 	}
 
 	// Both fields are required
-	required, ok := parsed["required"].([]interface{})
+	required, ok := parsed["required"].([]any)
 	if !ok {
 		t.Fatal("required not found")
 	}
@@ -84,12 +84,12 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 
 func TestSchemaOf_WithOmitempty(t *testing.T) {
 	schema := SchemaOf[testWithOptional]()
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	required, _ := parsed["required"].([]interface{})
+	required, _ := parsed["required"].([]any)
 	if len(required) != 1 || required[0] != "required" {
 		t.Errorf("required = %v, want ['required']", required)
 	}
@@ -97,27 +97,27 @@ func TestSchemaOf_WithOmitempty(t *testing.T) {
 
 func TestSchemaOf_MixedTypes(t *testing.T) {
 	schema := SchemaOf[testMixed]()
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	props, _ := parsed["properties"].(map[string]interface{})
+	props, _ := parsed["properties"].(map[string]any)
 
 	// ID is required string
-	idProp := props["id"].(map[string]interface{})
+	idProp := props["id"].(map[string]any)
 	if idProp["type"] != "string" {
 		t.Errorf("id.type = %v, want 'string'", idProp["type"])
 	}
 
 	// Score is required number
-	scoreProp := props["score"].(map[string]interface{})
+	scoreProp := props["score"].(map[string]any)
 	if scoreProp["type"] != "number" {
 		t.Errorf("score.type = %v, want 'number'", scoreProp["type"])
 	}
 
 	// Active is optional boolean
-	activeProp := props["active"].(map[string]interface{})
+	activeProp := props["active"].(map[string]any)
 	if activeProp["type"] != "boolean" {
 		t.Errorf("active.type = %v, want 'boolean'", activeProp["type"])
 	}
@@ -126,25 +126,25 @@ func TestSchemaOf_MixedTypes(t *testing.T) {
 	}
 
 	// Tags is optional array of strings
-	tagsProp := props["tags"].(map[string]interface{})
+	tagsProp := props["tags"].(map[string]any)
 	if tagsProp["type"] != "array" {
 		t.Errorf("tags.type = %v, want 'array'", tagsProp["type"])
 	}
 
 	// Metadata is optional object
-	metaProp := props["metadata"].(map[string]interface{})
+	metaProp := props["metadata"].(map[string]any)
 	if metaProp["type"] != "object" {
 		t.Errorf("metadata.type = %v, want 'object'", metaProp["type"])
 	}
 
 	// Count is optional ptr-Int
-	countProp := props["count"].(map[string]interface{})
+	countProp := props["count"].(map[string]any)
 	if countProp["type"] != "integer" {
 		t.Errorf("count.type = %v, want 'integer'", countProp["type"])
 	}
 
 	// Only ID and Score are required
-	required, _ := parsed["required"].([]interface{})
+	required, _ := parsed["required"].([]any)
 	if len(required) != 2 {
 		t.Errorf("len(required) = %d, want 2", len(required))
 	}
@@ -157,11 +157,11 @@ func TestSchemaOf_IgnoresUnexported(t *testing.T) {
 		Exported string `json:"exported"`
 	}
 	schema := SchemaOf[test]()
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	props, _ := parsed["properties"].(map[string]interface{})
+	props, _ := parsed["properties"].(map[string]any)
 	if _, ok := props["hidden"]; ok {
 		t.Error("hidden field should not be in schema")
 	}
@@ -175,16 +175,16 @@ func TestSchemaOf_IgnoresUnexported(t *testing.T) {
 
 func TestSchemaOf_IgnoresNoJSONTag(t *testing.T) {
 	type test struct {
-		Name    string `json:"name"`
-		NoTag   string // no json tag, should be ignored
-		SkipMe  string `json:"-"`
+		Name   string `json:"name"`
+		NoTag  string // no json tag, should be ignored
+		SkipMe string `json:"-"`
 	}
 	schema := SchemaOf[test]()
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	props, _ := parsed["properties"].(map[string]interface{})
+	props, _ := parsed["properties"].(map[string]any)
 	if _, ok := props["NoTag"]; ok {
 		t.Error("NoTag field should not be in schema (no json tag)")
 	}
@@ -209,14 +209,14 @@ func TestSchemaOf_ReturnsValidJSONSchema(t *testing.T) {
 func TestSchemaOf_EmptyStruct(t *testing.T) {
 	type empty struct{}
 	schema := SchemaOf[empty]()
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if parsed["type"] != "object" {
 		t.Errorf("type = %v, want 'object'", parsed["type"])
 	}
-	props, _ := parsed["properties"].(map[string]interface{})
+	props, _ := parsed["properties"].(map[string]any)
 	if len(props) != 0 {
 		t.Errorf("len(props) = %d, want 0", len(props))
 	}

@@ -23,6 +23,7 @@ import (
 // streamFlushWindow is the delay before sending the stop signal in streaming
 // markdown tests, giving the browser's flush timer time to fire.
 const streamFlushWindow = 150 * time.Millisecond
+
 // findChrome searches common locations for a Chrome/Chromium binary.
 // Returns empty string if not found.
 func findChrome() string {
@@ -345,7 +346,6 @@ func putBrowserConfig(t *testing.T, server *httptest.Server, body string) {
 		t.Fatalf("config save failed with status %d", resp.StatusCode)
 	}
 }
-
 
 // streamingMarkdownTestOptions controls single-token vs multi-token streaming mode.
 type streamingMarkdownTestOptions struct {
@@ -799,7 +799,7 @@ func TestBrowser_AutoScroll(t *testing.T) {
 		t.Error("assistant message should have rendered via SSE stream")
 	}
 
-		// Verify the JS source contains scrollToLatest (checked by js_test.go)
+	// Verify the JS source contains scrollToLatest (checked by js_test.go)
 }
 
 // TestBrowser_ScrollToBottomButton verifies the floating scroll-to-bottom button
@@ -1137,7 +1137,7 @@ func TestBrowser_FastRunRendersAssistantAndUsesValidStreamURL(t *testing.T) {
 		mu         sync.Mutex
 		streamURLs []string
 	)
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev any) {
 		req, ok := ev.(*network.EventRequestWillBeSent)
 		if !ok {
 			return
@@ -1356,7 +1356,6 @@ func TestBrowser_DiffCardsToggleAndCollapseAfterHTMXSwap(t *testing.T) {
 			return !!card.querySelector('.diff-pane-side-by-side.is-active') &&
 				!!card.querySelector('.diff-toggle-btn[data-view="side-by-side"].is-active');
 		})()`, &diffSideBySideActive),
-
 	)
 	if err != nil {
 		t.Fatalf("diff card browser test failed: %v", err)
@@ -3399,7 +3398,6 @@ func TestBrowser_SettingsCtrlEnterSaves(t *testing.T) {
 	}
 }
 
-
 // ————— Issue #155: Sticky chat composer — verify streaming and tool card injection —————
 
 // TestBrowser_StreamingTokensAppendInScrollContainer verifies that streaming tokens
@@ -3675,6 +3673,7 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 		t.Error(".stream-status-text should show Done after streaming completes")
 	}
 }
+
 // TestBrowser_AutoScrollDuringStreaming verifies auto-scroll lands at newest
 // content during streaming in the scroll container.
 func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
@@ -5141,7 +5140,7 @@ func TestBrowser_ConfirmationEscapeTriggersDeny(t *testing.T) {
 
 	// Small pause for async fetch to complete
 	err = chromedp.Run(ctx,
-		chromedp.Sleep(100 * time.Millisecond),
+		chromedp.Sleep(100*time.Millisecond),
 	)
 	if err != nil {
 		t.Fatalf("sleep failed: %v", err)
@@ -5157,7 +5156,7 @@ func TestBrowser_ConfirmationEscapeTriggersDeny(t *testing.T) {
 
 	// Small pause for async fetch to complete
 	err = chromedp.Run(ctx,
-		chromedp.Sleep(100 * time.Millisecond),
+		chromedp.Sleep(100*time.Millisecond),
 	)
 	if err != nil {
 		t.Fatalf("sleep failed: %v", err)
@@ -5336,7 +5335,7 @@ func TestBrowser_ConfirmationKeydownRemovedOnClose(t *testing.T) {
 
 	// Small pause for async fetch to complete
 	err = chromedp.Run(ctx,
-		chromedp.Sleep(100 * time.Millisecond),
+		chromedp.Sleep(100*time.Millisecond),
 	)
 	if err != nil {
 		t.Fatalf("sleep failed: %v", err)
@@ -5579,7 +5578,7 @@ func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
 // TestBrowser_StreamingMarkdownIncomplete verifies unclosed **text doesn't produce <strong> (graceful degradation).
 func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
 	var (
-		hasBold    bool
+		hasBold     bool
 		contentText string
 	)
 	streamingMarkdownTestHelper(t, "This has **unclosed bold marker", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {

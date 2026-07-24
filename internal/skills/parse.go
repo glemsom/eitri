@@ -85,12 +85,12 @@ func ParseSKILLMD(skillDir string) (*Skill, Diagnostics) {
 
 // frontmatterData holds the parsed YAML frontmatter fields.
 type frontmatterData struct {
-	Name          string                 `yaml:"name"`
-	Description   string                 `yaml:"description"`
-	License       string                 `yaml:"license,omitempty"`
-	Compatibility string                 `yaml:"compatibility,omitempty"`
-	Metadata      map[string]interface{} `yaml:"metadata,omitempty"`
-	AllowedTools  []string               `yaml:"allowed-tools,omitempty"`
+	Name          string         `yaml:"name"`
+	Description   string         `yaml:"description"`
+	License       string         `yaml:"license,omitempty"`
+	Compatibility string         `yaml:"compatibility,omitempty"`
+	Metadata      map[string]any `yaml:"metadata,omitempty"`
+	AllowedTools  []string       `yaml:"allowed-tools,omitempty"`
 }
 
 // parseFrontmatter parses YAML frontmatter content using yaml.v3.

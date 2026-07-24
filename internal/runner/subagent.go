@@ -173,7 +173,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 				// Broadcast session_status so the child appears in sidebar immediately
 				s.BroadcastToBrowser(parentSess.BrowserID, BrowserEvent{
 					Type: "session_status",
-					Data: map[string]interface{}{
+					Data: map[string]any{
 						"session_id": childSess.ID,
 						"parent_id":  sessionID,
 						"status":     string(childSess.Status),

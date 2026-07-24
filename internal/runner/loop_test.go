@@ -472,13 +472,13 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	}
 
 	events := collectSSE(sseState)
-	var compData map[string]interface{}
+	var compData map[string]any
 	for _, evt := range events {
 		if evt.Type == "component" {
 			// Component SSE event has Data containing {kind, name, data}
-			if d, ok := evt.Data.(map[string]interface{}); ok {
+			if d, ok := evt.Data.(map[string]any); ok {
 				if name, _ := d["name"].(string); name == "FileEditCard" {
-					if inner, ok := d["data"].(map[string]interface{}); ok {
+					if inner, ok := d["data"].(map[string]any); ok {
 						compData = inner
 						break
 					}
@@ -930,7 +930,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	// Tool calls with zero length — treated as no tool calls
 	svc := newMockLLM([]mockTurn{
 		{
-			tokens: []tokenEvent{{content: "answer"}},
+			tokens:    []tokenEvent{{content: "answer"}},
 			toolCalls: []llm.ToolCall{}, // empty, not nil
 		},
 	})
@@ -1427,7 +1427,6 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	}
 }
 
-
 func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()
@@ -1909,7 +1908,6 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		t.Errorf("CompletionTokens = %d, want 0 (set by caller when known)", ctxUpdate.CompletionTokens)
 	}
 }
-
 
 func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	t.Parallel()

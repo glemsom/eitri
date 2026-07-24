@@ -18,10 +18,11 @@ type SlashParseResult struct {
 
 // ParseSlashInput parses chat input for skill slash commands.
 // Format:
-//   /skill-name                          → activate skill, no LLM run
-//   /skill-name prompt text...           → activate skill + send prompt
-//   /skill-a /skill-b prompt text...     → activate multiple + send prompt
-//   /unknown                             → returns error
+//
+//	/skill-name                          → activate skill, no LLM run
+//	/skill-name prompt text...           → activate skill + send prompt
+//	/skill-a /skill-b prompt text...     → activate multiple + send prompt
+//	/unknown                             → returns error
 //
 // Returns the parsed result or an error for unknown commands.
 func ParseSlashInput(input string, lookupFn func(name string) *Skill) (*SlashParseResult, error) {

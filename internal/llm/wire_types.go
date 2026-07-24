@@ -8,7 +8,7 @@ type openAIReq struct {
 	Model           string      `json:"model"`
 	Messages        []openAIMsg `json:"messages"`
 	Stream          bool        `json:"stream"`
-	Tools           interface{} `json:"tools,omitempty"`
+	Tools           any         `json:"tools,omitempty"`
 	ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 	PromptCacheKey  string      `json:"prompt_cache_key,omitempty"`
 }
@@ -33,8 +33,8 @@ type openAIFuncCall struct {
 }
 
 type openAIResp struct {
-	Choices []openAIChoice `json:"choices"`
-	Usage   *Usage         `json:"usage,omitempty"`
+	Choices []openAIChoice  `json:"choices"`
+	Usage   *Usage          `json:"usage,omitempty"`
 	Error   *openAIAPIError `json:"error,omitempty"`
 }
 
@@ -102,11 +102,11 @@ func toOpenAIRequest(req Request) openAIReq {
 	}
 
 	// Convert tool definitions to wire format
-	var tools []map[string]interface{}
+	var tools []map[string]any
 	for _, t := range req.Tools {
-		tools = append(tools, map[string]interface{}{
+		tools = append(tools, map[string]any{
 			"type": "function",
-			"function": map[string]interface{}{
+			"function": map[string]any{
 				"name":        t.Name,
 				"description": t.Description,
 				"parameters":  t.Parameters,

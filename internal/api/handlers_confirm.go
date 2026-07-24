@@ -14,17 +14,17 @@ import (
 
 // unifiedRenderRequest is the JSON body for the unified render route.
 type unifiedRenderRequest struct {
-	Kind        string                 `json:"kind"`
-	Tool        string                 `json:"tool,omitempty"`
-	Args        json.RawMessage        `json:"args,omitempty"`
-	Output      string                 `json:"output,omitempty"`
-	Status      string                 `json:"status,omitempty"`
-	ToolCallKey string                 `json:"tool_call_key,omitempty"`
-	Elapsed     string                 `json:"elapsed,omitempty"`
-	Message     string                 `json:"message,omitempty"`
-	MessageID   string                 `json:"message_id,omitempty"`
-	Name        string                 `json:"name,omitempty"`
-	Data        map[string]interface{} `json:"data,omitempty"`
+	Kind        string          `json:"kind"`
+	Tool        string          `json:"tool,omitempty"`
+	Args        json.RawMessage `json:"args,omitempty"`
+	Output      string          `json:"output,omitempty"`
+	Status      string          `json:"status,omitempty"`
+	ToolCallKey string          `json:"tool_call_key,omitempty"`
+	Elapsed     string          `json:"elapsed,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	MessageID   string          `json:"message_id,omitempty"`
+	Name        string          `json:"name,omitempty"`
+	Data        map[string]any  `json:"data,omitempty"`
 }
 
 func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +89,7 @@ func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "approved": body.Approved})
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "approved": body.Approved})
 }
 
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 				if opts, ok := req.Data["options"]; ok {
 					if optsArr, ok := opts.([]string); ok {
 						options = optsArr
-					} else if optsArr, ok := opts.([]interface{}); ok {
+					} else if optsArr, ok := opts.([]any); ok {
 						for _, o := range optsArr {
 							if s, ok := o.(string); ok {
 								options = append(options, s)

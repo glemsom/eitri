@@ -72,16 +72,16 @@ type Root struct {
 
 // Skill represents a parsed Agent Skill.
 type Skill struct {
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description"`
-	Body          string                 `json:"body"`
-	Path          string                 `json:"path"`
-	Scope         Scope                  `json:"scope"`
-	Status        Status                 `json:"status"`
-	License       string                 `json:"license,omitempty"`
-	Compatibility string                 `json:"compatibility,omitempty"`
-	AllowedTools  []string               `json:"allowed-tools,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	Name          string         `json:"name"`
+	Description   string         `json:"description"`
+	Body          string         `json:"body"`
+	Path          string         `json:"path"`
+	Scope         Scope          `json:"scope"`
+	Status        Status         `json:"status"`
+	License       string         `json:"license,omitempty"`
+	Compatibility string         `json:"compatibility,omitempty"`
+	AllowedTools  []string       `json:"allowed-tools,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // SkillSummary is a lightweight representation for the skills catalog in system prompts.
@@ -209,10 +209,10 @@ func (r *Registry) Diagnostics() Diagnostics {
 	result := make(Diagnostics, len(r.diagnostics))
 	copy(result, r.diagnostics)
 	return result
-	}
+}
 
-	// AppendDiagnostic adds a diagnostic to the registry.
-		func (r *Registry) AppendDiagnostic(d Diagnostic) {
+// AppendDiagnostic adds a diagnostic to the registry.
+func (r *Registry) AppendDiagnostic(d Diagnostic) {
 	if r == nil {
 		return
 	}

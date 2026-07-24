@@ -304,9 +304,9 @@ func createMissingDirs(parentDir string) ([]string, error) {
 
 // EditResult holds the result of a surgical edit operation.
 type EditResult struct {
-	Path  string `json:"path"`
-	Old   string `json:"old"`
-	New   string `json:"new"`
+	Path string `json:"path"`
+	Old  string `json:"old"`
+	New  string `json:"new"`
 }
 
 // parseAnchor parses a "LINE:HASH" anchor string.
@@ -328,6 +328,7 @@ func parseAnchor(anchor string) (int, string, error) {
 // If anchor is non-empty, it must be a "LINE:HASH" anchor. When anchor is provided:
 //   - The anchor line's hash must match the line content hash.
 //   - The old text must be found within the anchored line (for single-line edits).
+//
 // Returns an error if old matches 0 or >1 times.
 func EditFile(absPath, old, new, anchor string) (EditResult, error) {
 	info, err := os.Stat(absPath)

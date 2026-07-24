@@ -14,12 +14,12 @@ import (
 // It implements LLMService by calling doChatRequest/doChatStreamRequest with
 // a pluggable chatPath and setHeaders function.
 type openAICompatible struct {
-	model       string
-	baseURL     string
-	apiKey      string
-	chatPath    string
-	setHeaders  func(*http.Request)
-	client      *http.Client
+	model      string
+	baseURL    string
+	apiKey     string
+	chatPath   string
+	setHeaders func(*http.Request)
+	client     *http.Client
 }
 
 func (s *openAICompatible) Chat(ctx context.Context, req Request) (*Response, error) {

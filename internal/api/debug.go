@@ -6,22 +6,22 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 // debugSessionSummary is the shape returned by GET /api/debug/sessions.
 type debugSessionSummary struct {
-	ID                   string              `json:"id"`
-	Title                string              `json:"title"`
-	Status               string              `json:"status"`
-	MessageCount         int                 `json:"message_count"`
-	ActiveSkills         []string            `json:"active_skills"`
-	Run                  *runInfo            `json:"run,omitempty"`
-	LatestHTTP           []*debug.HTTPTrace  `json:"latest_http"`
-	LastMessageTimestamp time.Time           `json:"last_message_timestamp"`
+	ID                   string             `json:"id"`
+	Title                string             `json:"title"`
+	Status               string             `json:"status"`
+	MessageCount         int                `json:"message_count"`
+	ActiveSkills         []string           `json:"active_skills"`
+	Run                  *runInfo           `json:"run,omitempty"`
+	LatestHTTP           []*debug.HTTPTrace `json:"latest_http"`
+	LastMessageTimestamp time.Time          `json:"last_message_timestamp"`
 }
 
 type runInfo struct {
@@ -32,6 +32,7 @@ type runInfo struct {
 	SSESubscriberCount uint64 `json:"sse_subscriber_count"`
 	SSEReplayCount     uint64 `json:"sse_replay_count"`
 }
+
 // debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
 type debugSessionDetail struct {
 	Session      debugSessionSummary `json:"session"`
@@ -43,13 +44,13 @@ type debugSessionDetail struct {
 
 // debugRuntimeResponse is the shape returned by GET /api/debug/runtime.
 type debugRuntimeResponse struct {
-	Version            string                  `json:"version"`
-	UpSince            time.Time               `json:"up_since"`
-	ActiveRunCount     int                     `json:"active_run_count"`
-	SessionCount       int                     `json:"session_count"`
-	RecordedHTTPTraces int                     `json:"recorded_http_traces"`
-	ConfigSummary      *sanitizedConfig        `json:"config_summary"`
-	ActiveSessions     []activeSessionSSEInfo  `json:"active_sessions,omitempty"`
+	Version            string                 `json:"version"`
+	UpSince            time.Time              `json:"up_since"`
+	ActiveRunCount     int                    `json:"active_run_count"`
+	SessionCount       int                    `json:"session_count"`
+	RecordedHTTPTraces int                    `json:"recorded_http_traces"`
+	ConfigSummary      *sanitizedConfig       `json:"config_summary"`
+	ActiveSessions     []activeSessionSSEInfo `json:"active_sessions,omitempty"`
 }
 
 type activeSessionSSEInfo struct {
@@ -70,7 +71,7 @@ type sanitizedConfig struct {
 }
 
 // writeJSON is a helper to write a JSON response with the given status code.
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)

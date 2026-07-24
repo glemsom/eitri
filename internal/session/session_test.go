@@ -418,7 +418,7 @@ func TestAppendComponent(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet — append should be no-op
-	comp := session.ComponentData{Name: "diff_card", Data: map[string]interface{}{"key": "val"}}
+	comp := session.ComponentData{Name: "diff_card", Data: map[string]any{"key": "val"}}
 	err := mgr.AppendComponent(sess.ID, comp)
 	if err != nil {
 		t.Fatalf("AppendComponent on empty session should not error: %v", err)
@@ -433,7 +433,7 @@ func TestAppendComponent(t *testing.T) {
 	assistantMsg := session.Message{Role: "assistant", Content: "Here is the diff"}
 	mgr.AppendMessage(sess.ID, assistantMsg)
 
-	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: map[string]interface{}{"diff": "+new code"}})
+	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: map[string]any{"diff": "+new code"}})
 	if err != nil {
 		t.Fatalf("AppendComponent failed: %v", err)
 	}
@@ -453,7 +453,7 @@ func TestAppendComponent(t *testing.T) {
 	}
 
 	// Append second component to same message
-	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "mermaid", Data: map[string]interface{}{"chart": "graph"}})
+	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "mermaid", Data: map[string]any{"chart": "graph"}})
 	if err != nil {
 		t.Fatalf("AppendComponent second failed: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestAppendComponent_ConcurrentSafety(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			mgr.AppendComponent(sess.ID, session.ComponentData{Name: "comp", Data: map[string]interface{}{"i": i}})
+			mgr.AppendComponent(sess.ID, session.ComponentData{Name: "comp", Data: map[string]any{"i": i}})
 		}(i)
 	}
 	wg.Wait()
@@ -794,9 +794,9 @@ func TestDelete_OnlyChildDeleted(t *testing.T) {
 	if mgr.Get(child.ID) != nil {
 		t.Error("child should be cascade-deleted with parent")
 	}
-		}
+}
 
-	func TestAddRenderedMessageID_TracksAndDeduplicates(t *testing.T) {
+func TestAddRenderedMessageID_TracksAndDeduplicates(t *testing.T) {
 	mgr := session.NewManager(10)
 	sess, _ := mgr.Create("browser-1")
 
@@ -816,9 +816,9 @@ func TestDelete_OnlyChildDeleted(t *testing.T) {
 	if !mgr.HasRenderedMessageID(sess.ID, "msg_1") {
 		t.Error("msg_1 should still be tracked")
 	}
-	}
+}
 
-			func TestAddRenderedMessageID_RingBufferEviction(t *testing.T) {
+func TestAddRenderedMessageID_RingBufferEviction(t *testing.T) {
 	mgr := session.NewManager(10)
 	sess, _ := mgr.Create("browser-1")
 
@@ -838,17 +838,17 @@ func TestDelete_OnlyChildDeleted(t *testing.T) {
 			t.Errorf("msg_%d should still be tracked", i)
 		}
 	}
-	}
+}
 
-	func TestHasRenderedMessageID_NonexistentSession(t *testing.T) {
+func TestHasRenderedMessageID_NonexistentSession(t *testing.T) {
 	mgr := session.NewManager(10)
 	if mgr.HasRenderedMessageID("nonexistent", "msg_1") {
 		t.Error("HasRenderedMessageID should be false for nonexistent session")
 	}
 	mgr.AddRenderedMessageID("nonexistent", "msg_1")
-	}
+}
 
-	func TestAddRenderedMessageID_DifferentSessionsIndependent(t *testing.T) {
+func TestAddRenderedMessageID_DifferentSessionsIndependent(t *testing.T) {
 	mgr := session.NewManager(10)
 	s1, _ := mgr.Create("browser-1")
 	s2, _ := mgr.Create("browser-1")

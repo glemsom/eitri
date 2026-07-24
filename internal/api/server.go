@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/assets"
-	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -27,19 +27,20 @@ type ServerConfig struct {
 	SkillsService  *skills.Service
 	Logger         *slog.Logger
 	CopilotOAuth   GitHubCopilotOAuthConfig
-	Version        string // injected at build time
-	StartTime      time.Time // server start timestamp
+	Version        string          // injected at build time
+	StartTime      time.Time       // server start timestamp
 	DebugRecorder  *debug.Recorder // optional HTTP trace recorder
 }
+
 // Server wraps the HTTP handler and injected dependencies.
 type Server struct {
-	config          ServerConfig
-	mux             *http.ServeMux
-	httpClient      *http.Client
-	logger          *slog.Logger
-	copilotOAuth    GitHubCopilotOAuthConfig
-	copilotFlows    *copilotDeviceFlowStore
-	persistAuthFn   provider.PersistAuthFunc
+	config        ServerConfig
+	mux           *http.ServeMux
+	httpClient    *http.Client
+	logger        *slog.Logger
+	copilotOAuth  GitHubCopilotOAuthConfig
+	copilotFlows  *copilotDeviceFlowStore
+	persistAuthFn provider.PersistAuthFunc
 }
 
 const maxRequestBodyBytes = 1 << 20
@@ -225,7 +226,6 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/skills/{name}/enable", s.handleEnableSkill)
 	s.mux.HandleFunc("POST /api/skills/disable-all", s.handleDisableAllSkills)
 	s.mux.HandleFunc("POST /api/skills/enable-all", s.handleEnableAllSkills)
-
 
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)

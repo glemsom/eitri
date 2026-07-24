@@ -122,7 +122,6 @@ func (s *testConfirmerStub) Confirm(_ context.Context, sessionID, path, message 
 
 }
 
-
 // ── funcConfirmer ────────────────────────────────────────────────────────
 
 // funcConfirmer implements Confirmer by wrapping a ConfirmationFunc.

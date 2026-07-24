@@ -42,12 +42,12 @@ func SupportedThinkingLevels(providerID, modelName string) []string {
 // and request headers used by Eitri's OpenAI-style transport.
 type profile struct {
 	Descriptor
-	modelListPath       string
-	chatPath            string
-	stripV1Suffix       bool
-	applyHeaders        func(*http.Request, string)
-	parseModelList      func(io.Reader) ([]string, error)
-	authHandler         authHandler
+	modelListPath  string
+	chatPath       string
+	stripV1Suffix  bool
+	applyHeaders   func(*http.Request, string)
+	parseModelList func(io.Reader) ([]string, error)
+	authHandler    authHandler
 }
 
 // ModelListURL returns absolute model discovery URL for baseURL.

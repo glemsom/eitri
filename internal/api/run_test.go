@@ -20,20 +20,19 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
-	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
-
-
 type testServerWithRuns struct {
-	server      *httptest.Server
-	configPath  string
-	workspace   string
-	sessionMgr  *session.Manager
-	runSvc      *runner.RunService
+	server     *httptest.Server
+	configPath string
+	workspace  string
+	sessionMgr *session.Manager
+	runSvc     *runner.RunService
 }
+
 // newManagedTestServerWithRuns creates a test server with RunService enabled
 // and returns test handles for session/run/executor assertions.
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
@@ -42,8 +41,8 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	workspace := t.TempDir()
 	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:       sessionMgr,
-		HistorySessionMgr:  historySessionMgr,
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historySessionMgr,
 	})
 	skillsSvc := skills.NewService()
 	runSvc.SetSkillsService(skillsSvc)
@@ -60,11 +59,11 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return &testServerWithRuns{
-		server:      server,
-		configPath:  configPath,
-		workspace:   workspace,
-		sessionMgr:  sessionMgr,
-		runSvc:      runSvc,
+		server:     server,
+		configPath: configPath,
+		workspace:  workspace,
+		sessionMgr: sessionMgr,
+		runSvc:     runSvc,
 	}
 }
 
@@ -78,8 +77,8 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	t.Helper()
 	sessionMgr := session.NewManager(10)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:       sessionMgr,
-		HistorySessionMgr:  history.NewSessionManager(50),
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: history.NewSessionManager(50),
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
@@ -95,10 +94,10 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return &testServerWithRuns{
-		server:      server,
-		configPath:  configPath,
-		sessionMgr:  sessionMgr,
-		runSvc:      runSvc,
+		server:     server,
+		configPath: configPath,
+		sessionMgr: sessionMgr,
+		runSvc:     runSvc,
 	}
 }
 
@@ -814,8 +813,8 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10)
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:   sessionMgr,
-		SkillsService:  skillsSvc,
+		UISessionMgr:  sessionMgr,
+		SkillsService: skillsSvc,
 	})
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
@@ -1064,7 +1063,7 @@ func (s *sseStream) waitFor(t *testing.T, match func(string) bool, timeout time.
 
 func TestRunService_New(t *testing.T) {
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:   session.NewManager(10),
+		UISessionMgr: session.NewManager(10),
 	})
 	if runSvc == nil {
 		t.Fatal("RunService is nil")
@@ -1098,7 +1097,6 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 	if browserCookie == nil {
 		t.Fatal("missing browser cookie")
 	}
-
 
 	chatPath := "/api" + loc + "/chat"
 	req, _ := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Delete+me"))
@@ -1180,7 +1178,6 @@ func TestDeleteSessionCancelsActiveRunClosesExecutorAndClosesStream(t *testing.T
 	if h.runSvc.ActiveRun(sessionID) != nil {
 		t.Fatal("run still active after delete")
 	}
-
 
 	foundClosed := false
 	deadline = time.Now().Add(2 * time.Second)
@@ -1762,7 +1759,7 @@ func TestSSEEventSerialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var decoded map[string]interface{}
+	var decoded map[string]any
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
@@ -1773,7 +1770,6 @@ func TestSSEEventSerialization(t *testing.T) {
 		t.Errorf("content = %v, want 'Hello, world!'", decoded["content"])
 	}
 }
-
 
 func TestComponentReplay_RendersMermaidDiagramAfterPageReload(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)

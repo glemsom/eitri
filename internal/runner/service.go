@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -21,14 +21,14 @@ import (
 // Used for broadcasting events that affect the entire browser UI
 // (e.g., session status changes across all sessions).
 type BrowserEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data,omitempty"`
+	Type string `json:"type"`
+	Data any    `json:"data,omitempty"`
 }
 
 // browserSubscriber represents one browser-level SSE subscriber.
 type browserSubscriber struct {
-	id   uint64
-	ch   chan BrowserEvent
+	id uint64
+	ch chan BrowserEvent
 }
 
 // RunState holds SSE broadcast state and cancel for one run.
@@ -56,27 +56,28 @@ type RunServiceDeps struct {
 	UISessionMgr      *uisession.Manager
 	HistorySessionMgr *history.SessionManager
 	SkillsService     *skills.Service
-	DebugRecorder     *debug.Recorder // optional HTTP trace recorder
+	DebugRecorder     *debug.Recorder               // optional HTTP trace recorder
 	CrashDumpFunc     func(err error, stack []byte) // optional; called on fatal agent error
 }
+
 // RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
-	mu              sync.Mutex
-	active          map[string]*RunState
-	confirmMu       sync.Mutex
-	confirmations   map[string]chan ConfirmationResult // sessionID → confirmation channel
-	uiSessionMgr    *uisession.Manager
-	skillsSvc       *skills.Service
+	mu                sync.Mutex
+	active            map[string]*RunState
+	confirmMu         sync.Mutex
+	confirmations     map[string]chan ConfirmationResult // sessionID → confirmation channel
+	uiSessionMgr      *uisession.Manager
+	skillsSvc         *skills.Service
 	historySessionMgr *history.SessionManager
-	debugRecorder       *debug.Recorder
-	persistAuth         PersistAuthFunc
-	crashDumpFunc       func(err error, stack []byte)
+	debugRecorder     *debug.Recorder
+	persistAuth       PersistAuthFunc
+	crashDumpFunc     func(err error, stack []byte)
 
 	// Sub-agent tracking
-	subMu        sync.Mutex
-	subAgents    map[string]*subAgentRecord
-	nextTaskID   uint64
+	subMu      sync.Mutex
+	subAgents  map[string]*subAgentRecord
+	nextTaskID uint64
 
 	// Parent run configs per session (for sub-agent setup)
 	parentCfgMu sync.Mutex
@@ -88,8 +89,8 @@ type RunService struct {
 	nextBrowserSubID uint64
 
 	// Batch conversation context tracking (set by BatchRun, consumed by crash dump)
-	batchCtxMu      sync.Mutex
-	batchLastCtx    *debug.ConversationContext
+	batchCtxMu   sync.Mutex
+	batchLastCtx *debug.ConversationContext
 }
 
 const completedRunRetention = 5 * time.Second
@@ -97,16 +98,16 @@ const completedRunRetention = 5 * time.Second
 // NewRunService creates a RunService with the given dependencies.
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
-		active:        make(map[string]*RunState),
-		confirmations: make(map[string]chan ConfirmationResult),
-		uiSessionMgr:  deps.UISessionMgr,
-		skillsSvc:     deps.SkillsService,
+		active:            make(map[string]*RunState),
+		confirmations:     make(map[string]chan ConfirmationResult),
+		uiSessionMgr:      deps.UISessionMgr,
+		skillsSvc:         deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
 		debugRecorder:     deps.DebugRecorder,
 		crashDumpFunc:     deps.CrashDumpFunc,
-		subAgents:     make(map[string]*subAgentRecord),
-		parentCfgs:    make(map[string]RunConfig),
-		browserSubs:   make(map[string]map[uint64]chan BrowserEvent),
+		subAgents:         make(map[string]*subAgentRecord),
+		parentCfgs:        make(map[string]RunConfig),
+		browserSubs:       make(map[string]map[uint64]chan BrowserEvent),
 	}
 }
 
@@ -125,7 +126,7 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 	s.persistAuth = fn
 }
 
-	// SetCrashDumpFunc sets the crash dump callback.
+// SetCrashDumpFunc sets the crash dump callback.
 func (s *RunService) SetCrashDumpFunc(fn func(err error, stack []byte)) {
 	s.crashDumpFunc = fn
 }
@@ -298,6 +299,7 @@ func (s *RunService) CancelAll() {
 		state.finish()
 	}
 }
+
 // ActiveRunCount returns the number of active runs.
 func (s *RunService) ActiveRunCount() int {
 	s.mu.Lock()
@@ -404,8 +406,6 @@ func (s *RunService) HasPendingConfirmation(sessionID string) bool {
 	_, ok := s.confirmations[sessionID]
 	return ok
 }
-
-
 
 // CloseSession cancels the active run and closes the session.
 func (s *RunService) CloseSession(sessionID string) error {

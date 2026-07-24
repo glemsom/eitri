@@ -27,6 +27,7 @@ func NewAnthropic(model, baseURL, apiKey string, rt http.RoundTripper) *Anthropi
 		client:  makeHTTPClient(rt),
 	}
 }
+
 const anthropicDefaultMaxTokens = 4096
 
 func (s *Anthropic) anthropicHeaders(req *http.Request) {
@@ -251,7 +252,7 @@ func readAnthropicStream(ctx context.Context, body io.ReadCloser, ch chan<- Stre
 		case "message_start":
 		case "content_block_start":
 			var block struct {
-				Index       int                  `json:"index"`
+				Index        int                   `json:"index"`
 				ContentBlock anthropicContentBlock `json:"content_block"`
 			}
 			if err := json.Unmarshal([]byte(data), &block); err != nil {

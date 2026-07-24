@@ -33,9 +33,9 @@ func TestWriteCrashDump_Basic(t *testing.T) {
 		Error:   "test error: something went wrong",
 		Stack:   "goroutine 1 [running]:\nmain.test()\n\t/path/to/file.go:42",
 		Version: "0.1.0",
-		ConfigSummary: map[string]interface{}{
-			"provider":  "opencode_go",
-			"model":     "qwen2.5-coder:32b",
+		ConfigSummary: map[string]any{
+			"provider":    "opencode_go",
+			"model":       "qwen2.5-coder:32b",
 			"has_api_key": false,
 		},
 		RuntimeSummary: &RuntimeSummary{
@@ -309,7 +309,7 @@ func TestWriteCrashDump_ConfigSecretsRedacted(t *testing.T) {
 	opts := DumpOptions{
 		Error:   "secret check",
 		Version: "dev",
-		ConfigSummary: map[string]interface{}{
+		ConfigSummary: map[string]any{
 			"api_key":  "***",
 			"provider": "test",
 		},
@@ -370,10 +370,10 @@ func TestWriteCrashDump_ErrorChain(t *testing.T) {
 	finalErr := fmt.Errorf("batch run error: %w", wrappedErr)
 
 	opts := DumpOptions{
-		Error:       finalErr.Error(),
-		ErrorChain:  fmt.Sprintf("%+v", finalErr),
-		Stack:       "goroutine 1 [running]:\nmain.doStuff()\n\t/path/to/main.go:99",
-		Version:     "0.2.0",
+		Error:      finalErr.Error(),
+		ErrorChain: fmt.Sprintf("%+v", finalErr),
+		Stack:      "goroutine 1 [running]:\nmain.doStuff()\n\t/path/to/main.go:99",
+		Version:    "0.2.0",
 	}
 
 	crashDir, err := WriteCrashDump(opts)
@@ -456,7 +456,7 @@ func TestWriteCrashDump_ConversationContext(t *testing.T) {
 		Error:   "batch error with context",
 		Version: "dev",
 		RuntimeSummary: &RuntimeSummary{
-			UpSince:       time.Now().Add(-30 * time.Minute),
+			UpSince:        time.Now().Add(-30 * time.Minute),
 			ActiveRunCount: 1,
 		},
 		ConversationContext: &ConversationContext{

@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"net"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -36,11 +36,11 @@ func TestWebFetch_Schema(t *testing.T) {
 func TestWebFetch_SchemaHasURLParam(t *testing.T) {
 	t.Parallel()
 	schema := NewWebFetchTool().JSONSchema()
-	var schemaObj map[string]interface{}
+	var schemaObj map[string]any
 	if err := json.Unmarshal(schema, &schemaObj); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
-	props, ok := schemaObj["properties"].(map[string]interface{})
+	props, ok := schemaObj["properties"].(map[string]any)
 	if !ok {
 		t.Fatal("schema missing properties")
 	}
@@ -48,14 +48,14 @@ func TestWebFetch_SchemaHasURLParam(t *testing.T) {
 	if !ok {
 		t.Fatal("schema missing 'url' property")
 	}
-	urlMap, ok := urlProp.(map[string]interface{})
+	urlMap, ok := urlProp.(map[string]any)
 	if !ok {
 		t.Fatal("url property is not a map")
 	}
 	if urlMap["type"] != "string" {
 		t.Errorf("url type = %v, want 'string'", urlMap["type"])
 	}
-	required, ok := schemaObj["required"].([]interface{})
+	required, ok := schemaObj["required"].([]any)
 	if !ok {
 		t.Fatal("schema missing required array")
 	}
@@ -346,11 +346,11 @@ func TestWebFetch_FetchLargePage(t *testing.T) {
 func TestWebFetch_SchemaHasTimeoutParam(t *testing.T) {
 	t.Parallel()
 	schema := NewWebFetchTool().JSONSchema()
-	var schemaObj map[string]interface{}
+	var schemaObj map[string]any
 	if err := json.Unmarshal(schema, &schemaObj); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
-	props, ok := schemaObj["properties"].(map[string]interface{})
+	props, ok := schemaObj["properties"].(map[string]any)
 	if !ok {
 		t.Fatal("schema missing properties")
 	}
@@ -358,7 +358,7 @@ func TestWebFetch_SchemaHasTimeoutParam(t *testing.T) {
 	if !ok {
 		t.Fatal("schema missing 'timeout' property")
 	}
-	timeoutMap, ok := timeoutProp.(map[string]interface{})
+	timeoutMap, ok := timeoutProp.(map[string]any)
 	if !ok {
 		t.Fatal("timeout property is not a map")
 	}
@@ -370,7 +370,7 @@ func TestWebFetch_SchemaHasTimeoutParam(t *testing.T) {
 		t.Error("timeout property missing description")
 	}
 	// timeout should not be in required array
-	required, ok := schemaObj["required"].([]interface{})
+	required, ok := schemaObj["required"].([]any)
 	if ok {
 		for _, r := range required {
 			if r == "timeout" {
@@ -488,16 +488,16 @@ func TestWebFetch_Proxy(t *testing.T) {
 	// Test that proxyFromEnv reads HTTP_PROXY env var correctly.
 	// We test with a non-loopback URL (example.com) because the vendored
 	// httpproxy package bypasses proxy for loopback addresses.
-	
+
 	// Set HTTP_PROXY to a known proxy URL
 	t.Setenv("HTTP_PROXY", "http://proxy.example.com:8080")
-	
+
 	// Create a request to a non-loopback URL
 	req, err := http.NewRequest("GET", "http://example.com/page", nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
-	
+
 	proxyURL, err := proxyFromEnv(req)
 	if err != nil {
 		t.Fatalf("proxyFromEnv error: %v", err)
@@ -508,7 +508,7 @@ func TestWebFetch_Proxy(t *testing.T) {
 	if proxyURL.String() != "http://proxy.example.com:8080" {
 		t.Errorf("proxy URL = %q, want %q", proxyURL.String(), "http://proxy.example.com:8080")
 	}
-	
+
 	// Clear HTTP_PROXY and verify proxy is not used
 	t.Setenv("HTTP_PROXY", "")
 	proxyURL, err = proxyFromEnv(req)
@@ -518,7 +518,7 @@ func TestWebFetch_Proxy(t *testing.T) {
 	if proxyURL != nil {
 		t.Errorf("proxyFromEnv = %v, want nil after clearing HTTP_PROXY", proxyURL)
 	}
-	
+
 	// Verify the description mentions proxy support
 	tool := NewWebFetchTool()
 	if !strings.Contains(tool.Description(), "proxy") {

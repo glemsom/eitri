@@ -148,10 +148,10 @@ func TestGrep_NoMatch(t *testing.T) {
 func TestGrep_FilePatternFilter(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
-		"greeting.go":  "package main\nfunc hi() { println(\"hello\") }\n",
-		"greeting.py":  "def hi():\n    print(\"hello\")\n",
-		"data.txt":     "hello world\n",
-		"cmd/main.go":  "package main\nfunc main() { println(\"hello\") }\n",
+		"greeting.go": "package main\nfunc hi() { println(\"hello\") }\n",
+		"greeting.py": "def hi():\n    print(\"hello\")\n",
+		"data.txt":    "hello world\n",
+		"cmd/main.go": "package main\nfunc main() { println(\"hello\") }\n",
 	}
 	for name, content := range files {
 		fp := filepath.Join(dir, name)

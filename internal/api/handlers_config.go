@@ -204,12 +204,12 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 			return nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
 		}
 	} else if s.persistAuth() != nil {
-	// PersistAuth handled persistence; reload only ProviderAuth (refreshed by
-	// auth handler). Do NOT overwrite APIKey — caller may have set a new key.
-	loaded, loadErr := config.Load(s.config.ConfigPath)
-	if loadErr == nil {
-		cfg.ProviderAuth = append(json.RawMessage(nil), loaded.ProviderAuth...)
-	}
+		// PersistAuth handled persistence; reload only ProviderAuth (refreshed by
+		// auth handler). Do NOT overwrite APIKey — caller may have set a new key.
+		loaded, loadErr := config.Load(s.config.ConfigPath)
+		if loadErr == nil {
+			cfg.ProviderAuth = append(json.RawMessage(nil), loaded.ProviderAuth...)
+		}
 	}
 	return result.Models, nil
 }
@@ -264,7 +264,7 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"object": "list",
 		"data":   models,
 	})

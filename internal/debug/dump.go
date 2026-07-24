@@ -30,7 +30,7 @@ type DumpOptions struct {
 	// System diagnostics: go version, OS/arch, CPU, memory, disk, uptime, env keys.
 	SystemDiagnostics *SystemDiagnostics `json:"system,omitempty"`
 	// Sanitized config summary (secrets redacted).
-	ConfigSummary map[string]interface{} `json:"config_summary,omitempty"`
+	ConfigSummary map[string]any `json:"config_summary,omitempty"`
 	// All UI sessions (full message history).
 	Sessions []*session.UISession `json:"sessions,omitempty"`
 	// All completed + in-flight HTTP traces.
@@ -55,23 +55,23 @@ type ConversationContext struct {
 
 // RuntimeSummary captures lightweight runtime state for the crash dump.
 type RuntimeSummary struct {
-	UpSince           time.Time `json:"up_since"`
-	ActiveRunCount    int       `json:"active_run_count"`
-	SessionCount      int       `json:"session_count"`
-	RecordedHTTPTraces int      `json:"recorded_http_traces"`
+	UpSince            time.Time `json:"up_since"`
+	ActiveRunCount     int       `json:"active_run_count"`
+	SessionCount       int       `json:"session_count"`
+	RecordedHTTPTraces int       `json:"recorded_http_traces"`
 }
 
 // SystemDiagnostics captures system-level context for the crash dump.
 type SystemDiagnostics struct {
-	GoVersion           string            `json:"go_version"`
-	OS                  string            `json:"os"`
-	Arch                string            `json:"arch"`
-	NumCPU              int               `json:"num_cpu"`
-	MemoryMB            map[string]uint64 `json:"memory_mb"`
-	DiskFreeMB          uint64            `json:"disk_free_mb"`
-	ProcessStartedAt    time.Time         `json:"process_started_at"`
-	ProcessUptimeSeconds int64            `json:"process_uptime_seconds"`
-	EnvKeys             []string          `json:"env_keys"`
+	GoVersion            string            `json:"go_version"`
+	OS                   string            `json:"os"`
+	Arch                 string            `json:"arch"`
+	NumCPU               int               `json:"num_cpu"`
+	MemoryMB             map[string]uint64 `json:"memory_mb"`
+	DiskFreeMB           uint64            `json:"disk_free_mb"`
+	ProcessStartedAt     time.Time         `json:"process_started_at"`
+	ProcessUptimeSeconds int64             `json:"process_uptime_seconds"`
+	EnvKeys              []string          `json:"env_keys"`
 }
 
 // crashDirName returns the crash directory name for the given timestamp.
@@ -83,11 +83,11 @@ func crashDirName(ts time.Time) string {
 
 // SanitizeConfig returns a map of config fields with secrets replaced by "***".
 // Uses the same pattern as the debug API's sanitizeConfig.
-func SanitizeConfig(cfg *config.Config) map[string]interface{} {
+func SanitizeConfig(cfg *config.Config) map[string]any {
 	if cfg == nil {
 		return nil
 	}
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	m["provider"] = cfg.Provider
 	m["base_url"] = cfg.BaseURL
 	m["model"] = cfg.Model
@@ -140,18 +140,18 @@ func CollectSystemDiagnostics(processStartedAt time.Time) *SystemDiagnostics {
 	uptime := int64(now.Sub(processStartedAt).Seconds())
 
 	return &SystemDiagnostics{
-		GoVersion:            runtime.Version(),
-		OS:                   runtime.GOOS,
-		Arch:                 runtime.GOARCH,
-		NumCPU:               runtime.NumCPU(),
+		GoVersion: runtime.Version(),
+		OS:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+		NumCPU:    runtime.NumCPU(),
 		MemoryMB: map[string]uint64{
 			"total": m.TotalAlloc / (1024 * 1024),
 			"used":  m.Alloc / (1024 * 1024),
 		},
-		DiskFreeMB:          diskFree,
-		ProcessStartedAt:    processStartedAt,
+		DiskFreeMB:           diskFree,
+		ProcessStartedAt:     processStartedAt,
 		ProcessUptimeSeconds: uptime,
-		EnvKeys:             keyNames,
+		EnvKeys:              keyNames,
 	}
 }
 
@@ -178,16 +178,16 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 
 	// 1. crash.json — error chain, version, sanitized config, runtime summary, system diagnostics, conversation context, failing http trace
 	crashInfo := struct {
-		Error               string                 `json:"error"`
-		ErrorChain          string                 `json:"error_chain,omitempty"`
-		Stack               string                 `json:"stack,omitempty"`
-		Version             string                 `json:"version"`
-		Timestamp           time.Time              `json:"timestamp"`
-		ConfigSummary       map[string]interface{} `json:"config_summary,omitempty"`
-		RuntimeSummary      *RuntimeSummary        `json:"runtime_summary,omitempty"`
-		SystemDiagnostics   *SystemDiagnostics     `json:"system,omitempty"`
-		ConversationContext *ConversationContext   `json:"conversation_context,omitempty"`
-		FailingHTTPTrace    *HTTPTrace             `json:"failing_http_trace,omitempty"`
+		Error               string               `json:"error"`
+		ErrorChain          string               `json:"error_chain,omitempty"`
+		Stack               string               `json:"stack,omitempty"`
+		Version             string               `json:"version"`
+		Timestamp           time.Time            `json:"timestamp"`
+		ConfigSummary       map[string]any       `json:"config_summary,omitempty"`
+		RuntimeSummary      *RuntimeSummary      `json:"runtime_summary,omitempty"`
+		SystemDiagnostics   *SystemDiagnostics   `json:"system,omitempty"`
+		ConversationContext *ConversationContext `json:"conversation_context,omitempty"`
+		FailingHTTPTrace    *HTTPTrace           `json:"failing_http_trace,omitempty"`
 	}{
 		Error:               opts.Error,
 		ErrorChain:          opts.ErrorChain,
@@ -248,7 +248,7 @@ func WriteCrashDump(opts DumpOptions) (string, error) {
 
 // writeJSONFile marshals v as indented JSON and writes it to path.
 // Creates file with 0600 permissions.
-func writeJSONFile(path string, v interface{}) error {
+func writeJSONFile(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
