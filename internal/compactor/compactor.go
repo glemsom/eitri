@@ -81,9 +81,12 @@ Summary:`, truncated)
 }
 
 // Compact scans the conversation history and replaces tool-result messages
-// with LLM-generated summaries when the total estimated token count exceeds
-// the HighWater threshold. Compaction stops once the total falls below the
-// LowWater threshold.
+// with LLM-generated summaries. It always attempts compaction regardless of
+// the estimated token count — the caller decides whether to call Compact
+// (e.g. auto-compaction gates in run.go).
+//
+// Compaction stops once the total falls below the LowWater threshold.
+// The LowWater stop condition prevents runaway compaction of the entire history.
 //
 // The scan proceeds greedily from the oldest tool result forward.
 // If a summarization call fails for one tool result, it is skipped and
@@ -105,9 +108,6 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 	}
 
 	totalEst := messagesTokenEstimate(messages)
-	if totalEst <= thresholds.HighWater {
-		return nil, 0, 0, nil
-	}
 
 	// Work on a copy so the original is never mutated.
 	result := make([]llm.Message, len(messages))

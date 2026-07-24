@@ -43,26 +43,31 @@ type testError string
 
 func (e testError) Error() string { return string(e) }
 
-func TestCompact_NoCompactionNeeded(t *testing.T) {
+func TestCompact_AlwaysRunsRegardlessOfThresholds(t *testing.T) {
 	c := New()
 	msgs := []llm.Message{
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "hi there"},
 		{Role: "user", Content: "list files"},
-		{Role: "tool", Content: "file1.txt\nfile2.txt"},
+		{Role: "tool", Content: strings.Repeat("data payload line\n", 20)}, // large enough to save tokens
 	}
 	llmSvc := &mockLLMService{summary: "listed files"}
-	thresholds := Thresholds{HighWater: 999_999, LowWater: 100} // far above total
+	// HighWater far above total — with the old gate this returned nil.
+	// Now Compact always scans for tool results regardless.
+	thresholds := Thresholds{HighWater: 999_999, LowWater: 100}
 
 	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result != nil {
-		t.Fatal("expected nil (no compaction needed)")
+	if result == nil {
+		t.Fatal("expected non-nil result (compaction always runs now)")
 	}
-	if count != 0 || freed != 0 {
-		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 }
 
