@@ -134,13 +134,14 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 		confirmer := newFuncConfirmer(s.confirmPath)
 
-		err := RunAgent(runCtx, AgentConfig{
-			Service:       llmSvc,
-			Request:       req,
-			MaxTurns:      maxTurnsVal,
-			MaxHistory:    maxHistory,
-			SSEWriter:     w,
-			Tools:         toolReg,
+		err := RunAgent(runCtx, RunSpec{
+			Service:    llmSvc,
+			Request:    req,
+			MaxTurns:   maxTurnsVal,
+			MaxHistory: maxHistory,
+			SSEWriter:  w,
+			Tools:      toolReg,
+		}, AgentConfig{
 			HistoryMgr:    historyMgr,
 			Confirmer:     confirmer,
 			UISessionMgr:  s.uiSessionMgr,
