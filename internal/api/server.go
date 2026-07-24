@@ -227,6 +227,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/skills/disable-all", s.handleDisableAllSkills)
 	s.mux.HandleFunc("POST /api/skills/enable-all", s.handleEnableAllSkills)
 
+	// Directory browser endpoint (issue #627)
+	s.mux.HandleFunc("GET /api/browse-directory", s.handleBrowseDirectory)
+
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
 
