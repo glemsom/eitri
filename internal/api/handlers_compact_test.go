@@ -141,9 +141,9 @@ func TestHandleCompact_DisabledInConfig(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Should be unprocessable because compaction is disabled
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("expected status 422 for disabled compaction, got %d", resp.StatusCode)
+	// Should succeed (manual compaction is allowed even when auto-compaction is disabled).
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200 for manual compaction with disabled auto-compaction, got %d", resp.StatusCode)
 	}
 }
 

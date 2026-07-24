@@ -54,12 +54,8 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !cfg.CompactionEnabled {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = templates.ErrorToast("Compaction is disabled in settings").Render(r.Context(), w)
-		return
-	}
+	// Allow manual compaction even when auto-compaction is disabled.
+	// The user can still manually compact via the "Compact now" button.
 
 	runCfg := runconfig.FromConfig(cfg, sess.Workspace, 0)
 

@@ -930,6 +930,59 @@ func TestValidate_CompactionLowWaterEqualToHigh(t *testing.T) {
 	}
 }
 
+func TestDefaults_ContextWarningThreshold(t *testing.T) {
+	def := config.Defaults()
+	if def.ContextWarningThresholdPercent != 75 {
+		t.Errorf("ContextWarningThresholdPercent = %d, want 75", def.ContextWarningThresholdPercent)
+	}
+}
+
+func TestValidate_ContextWarningThresholdDefaultsAppliedWhenZero(t *testing.T) {
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		APIKey:              "sk-test",
+		BaseURL:             "https://api.example.com",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+		// ContextWarningThresholdPercent left at 0
+	}
+	if err := config.Validate(cfg); err != nil {
+		t.Fatalf("Validate() = %v, want nil (defaults should be applied)", err)
+	}
+	if cfg.ContextWarningThresholdPercent != 75 {
+		t.Errorf("ContextWarningThresholdPercent = %d after validate, want 75", cfg.ContextWarningThresholdPercent)
+	}
+}
+
+func TestValidate_ContextWarningThresholdOutOfRange(t *testing.T) {
+	cfg := &config.Config{
+		Provider:                      "custom_openai",
+		APIKey:                        "sk-test",
+		BaseURL:                       "https://api.example.com",
+		SessionTimeout:                30 * 60_000_000_000,
+		CommandTimeout:                60_000_000_000,
+		MaxTurns:                      25,
+		ContextWindowTokens:           128000,
+		ContextWarningThresholdPercent: 200,
+	}
+	err := config.Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "context_warning_threshold_percent") {
+		t.Errorf("Validate() = %v, want error about context_warning_threshold_percent out of range", err)
+	}
+}
+
+func TestMerge_ContextWarningThresholdPercent(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+
+	result := config.Merge(&cfg, map[string]any{"context_warning_threshold_percent": "80"})
+	if result.ContextWarningThresholdPercent != 80 {
+		t.Errorf("ContextWarningThresholdPercent = %d, want 80", result.ContextWarningThresholdPercent)
+	}
+}
+
 func TestMerge_CompactionEnabled(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-test"

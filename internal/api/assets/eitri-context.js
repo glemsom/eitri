@@ -1,6 +1,7 @@
 // eitri-context — Custom element for rendering context usage panel.
 // Receives ContextUpdate data via 'context-update' custom events and
 // renders compact (progress bar + numbers) or expanded (category breakdown) views.
+// Also shows a warning banner when context usage exceeds a configurable threshold.
 
 (function () {
   'use strict';
@@ -20,12 +21,20 @@
         this._expandedEl = null;
         this._barFillEl = null;
         this._statsEl = null;
+        this._warningEl = null;
         this._contextWindow = 256000;
+        this._warningThreshold = 75;
+      }
+
+      getActiveSessionId() {
+        var m = window.location.pathname.match(/\/sessions\/([a-zA-Z0-9_-]+)/);
+        return m ? m[1] : null;
       }
 
       connectedCallback() {
         var self = this;
         self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 256000;
+        self._warningThreshold = parseInt(self.getAttribute('data-warning-threshold'), 10) || 75;
 
         // Build inner DOM (no template fallback — JS owns the full DOM)
         self.innerHTML =
@@ -62,6 +71,10 @@
               '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
               '<span class="context-category-value"></span>' +
             '</div>' +
+          '</div>' +
+          '<div class="context-warning" style="display:none">' +
+            '<span class="context-warning-text"></span>' +
+            '<button class="context-warning-btn compact-btn">Compact now</button>' +
           '</div>';
 
         self._idleEl = self.querySelector('.context-idle');
@@ -69,6 +82,9 @@
         self._expandedEl = self.querySelector('.context-expanded');
         self._barFillEl = self.querySelector('.context-bar-fill');
         self._statsEl = self.querySelector('.context-stats');
+        self._warningEl = self.querySelector('.context-warning');
+        self._warningTextEl = self.querySelector('.context-warning-text');
+        self._warningBtnEl = self.querySelector('.context-warning-btn');
 
         // Listen for context-update custom events
         self.addEventListener('context-update', function (e) {
@@ -98,6 +114,32 @@
           });
         }
 
+        // Wire up the warning banner's "Compact now" button
+        if (self._warningBtnEl) {
+          self._warningBtnEl.addEventListener('click', function () {
+            var sessionId = self.getActiveSessionId();
+            if (!sessionId) return;
+            htmx.ajax('POST', '/api/sessions/' + sessionId + '/compact', {
+              target: '#error-toasts',
+              swap: 'beforeend',
+              handler: function () {
+                // On successful compaction, hide the warning banner immediately
+                self._warningEl.style.display = 'none';
+              }
+            });
+          });
+        }
+
+        // Also listen for HTMX events from the sidebar compact-btn
+        document.body.addEventListener('htmx:afterRequest', function (e) {
+          // If the compact request completed successfully for this session
+          if (e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.indexOf('/compact') !== -1) {
+            if (e.detail.successful) {
+              self._warningEl.style.display = 'none';
+            }
+          }
+        });
+
         // Re-hydrate from persisted data when element is (re-)connected
         rehydrateIfAvailable(self);
       }
@@ -110,6 +152,7 @@
         self._compactEl.style.display = 'none';
         self._expandedEl.classList.remove('open');
         self._expandedEl.style.display = '';
+        self._warningEl.style.display = 'none';
       }
 
       _debouncedRender() {
@@ -140,6 +183,7 @@
 
         this._renderCompact(data);
         this._renderExpanded(data);
+        this._renderWarning(data);
       }
 
       _renderCompact(data) {
@@ -203,6 +247,19 @@
             }
           }
         });
+      }
+
+      _renderWarning(data) {
+        var pct = data.context_window > 0
+          ? Math.min(100, Math.round((data.total_tokens / data.context_window) * 100))
+          : 0;
+
+        if (pct >= this._warningThreshold) {
+          this._warningTextEl.textContent = 'Context at ' + pct + '% — compaction recommended';
+          this._warningEl.style.display = 'flex';
+        } else {
+          this._warningEl.style.display = 'none';
+        }
       }
     }
 
