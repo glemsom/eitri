@@ -510,7 +510,7 @@ func TestRunService_BuildBaseToolRegistry_ExcludesDelegateCollect(t *testing.T) 
 	reg := buildBaseToolRegistry(cfg, nil, nil, nil)
 
 	// Must include basic tools
-	for _, name := range []string{"bash", "glob", "grep", "read", "write", "edit", "render_mermaid_diagram", "web_fetch"} {
+	for _, name := range []string{"bash", "grep", "read", "write", "edit", "render_mermaid_diagram", "web_fetch"} {
 		if reg.Lookup(name) == nil {
 			t.Errorf("base tool registry missing %q", name)
 		}

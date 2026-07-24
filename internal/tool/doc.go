@@ -7,7 +7,7 @@
 //   - ToolHandler — the interface every built-in tool must implement
 //   - Registry    — name-based tool dispatch and lifecycle (register, replace, lookup)
 //   - SchemaOf[T] — compile-time JSON Schema generation from Go struct tags
-//   - Built-in tools — bash, collect, delegate, edit, glob, grep, read, write,
+//   - Built-in tools — bash, collect, delegate, edit, grep, read, write,
 //     web_fetch, skill, render_mermaid_diagram, render_quick_replies
 //   - SubAgentManager — seam interface for sub-agent spawning (implemented by runner)
 //
@@ -28,7 +28,7 @@
 // ## Dependencies
 //
 // Internal:
-//   - internal/fileutil — file system helpers (used by read, write, edit, glob, grep, ...)
+//   - internal/fileutil — file system helpers (used by read, write, edit, grep, ...)
 //   - internal/session  — session types (used by delegate for child sessions)
 //
 // External:
