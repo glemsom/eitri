@@ -295,6 +295,157 @@ func TestResolveAuthForRequest_GitHubCopilotRefreshesExpiredOAuthState(t *testin
 	}
 }
 
+func TestSupportedThinkingLevels_ReturnsLevelsForReasoningModels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		providerID string
+		modelName  string
+	}{
+		{"opencode_go", "deepseek-chat"},
+		{"opencode_go", "deepseek-reasoner"},
+		{"custom_openai", "o1-preview"},
+		{"custom_openai", "o3-mini"},
+		{"custom_openai", "something-reasoning-v1"},
+		{"github_copilot", "qwen-2.5-coder"},
+		{"custom_openai", "minimax-text-01"},
+	}
+
+	for _, tc := range tests {
+		got := SupportedThinkingLevels(tc.providerID, tc.modelName)
+		if len(got) != 3 {
+			t.Errorf("SupportedThinkingLevels(%q, %q) = %#v, want [low medium high]", tc.providerID, tc.modelName, got)
+		}
+	}
+}
+
+func TestSupportedThinkingLevels_ReturnsNilForNonReasoningModels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		providerID string
+		modelName  string
+	}{
+		{"opencode_go", "gpt-4o"},
+		{"custom_openai", "gpt-4.1"},
+		{"github_copilot", "claude-sonnet"},
+		{"opencode_go", "llama-3"},
+		{"custom_openai", ""},
+	}
+
+	for _, tc := range tests {
+		got := SupportedThinkingLevels(tc.providerID, tc.modelName)
+		if got != nil {
+			t.Errorf("SupportedThinkingLevels(%q, %q) = %#v, want nil", tc.providerID, tc.modelName, got)
+		}
+	}
+}
+
+func TestDescribe_ReturnsCredentialName(t *testing.T) {
+	t.Parallel()
+
+	desc, err := Describe("github_copilot")
+	if err != nil {
+		t.Fatalf("Describe(github_copilot) error: %v", err)
+	}
+	if desc.CredentialName != "token" {
+		t.Errorf("github_copilot CredentialName = %q, want %q", desc.CredentialName, "token")
+	}
+
+	// Providers with no explicit credential name have empty CredentialName.
+	for _, id := range []string{"opencode_go", "custom_openai"} {
+		desc, err := Describe(id)
+		if err != nil {
+			t.Fatalf("Describe(%q) error: %v", id, err)
+		}
+		if desc.CredentialName != "" {
+			t.Errorf("%s CredentialName = %q, want empty (defaults to api_key)", id, desc.CredentialName)
+		}
+	}
+}
+
+func TestRequiredCredentialName_Method(t *testing.T) {
+	t.Parallel()
+
+	// github_copilot has explicit CredentialName "token".
+	prof, err := getProfile("github_copilot")
+	if err != nil {
+		t.Fatalf("getProfile(github_copilot) error: %v", err)
+	}
+	if got := prof.RequiredCredentialName(); got != "token" {
+		t.Errorf("github_copilot RequiredCredentialName() = %q, want %q", got, "token")
+	}
+
+	// Providers without explicit credential name default to "api_key".
+	for _, id := range []string{"opencode_go", "custom_openai"} {
+		prof, err := getProfile(id)
+		if err != nil {
+			t.Fatalf("getProfile(%q) error: %v", id, err)
+		}
+		if got := prof.RequiredCredentialName(); got != "api_key" {
+			t.Errorf("%s RequiredCredentialName() = %q, want %q", id, got, "api_key")
+		}
+	}
+}
+
+func TestMustDescribe_ReturnsDescriptorForKnownProvider(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{"opencode_go", "custom_openai", "github_copilot"} {
+		desc := MustDescribe(id)
+		if desc.ID != id {
+			t.Errorf("MustDescribe(%q).ID = %q, want %q", id, desc.ID, id)
+		}
+	}
+}
+
+func TestMustDescribe_PanicsForUnknownProvider(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("MustDescribe(\"unknown\") did not panic")
+		}
+	}()
+	MustDescribe("unknown")
+}
+
+func TestIDs_ReturnsAllProviderIDs(t *testing.T) {
+	t.Parallel()
+
+	ids := IDs()
+	want := []string{"opencode_go", "custom_openai", "github_copilot"}
+	if len(ids) != len(want) {
+		t.Fatalf("IDs() = %#v, want %#v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Errorf("IDs()[%d] = %q, want %q", i, ids[i], want[i])
+		}
+	}
+}
+
+func TestGetProfile_ReturnsErrorForUnknownProvider(t *testing.T) {
+	t.Parallel()
+
+	_, err := getProfile("nonexistent_provider")
+	if err == nil {
+		t.Fatal("getProfile(\"nonexistent_provider\") error = nil, want error")
+	}
+}
+
+func TestGetProfile_ReturnsProfileForKnownProvider(t *testing.T) {
+	t.Parallel()
+
+	prof, err := getProfile("opencode_go")
+	if err != nil {
+		t.Fatalf("getProfile(opencode_go) error: %v", err)
+	}
+	if prof.ID != "opencode_go" {
+		t.Errorf("profile.ID = %q, want %q", prof.ID, "opencode_go")
+	}
+}
+
 func TestPollGitHubCopilotDeviceFlow_ReturnsCallerSafeStatusAndAuthUpdate(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

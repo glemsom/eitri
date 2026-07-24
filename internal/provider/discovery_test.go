@@ -283,3 +283,111 @@ func TestDiscoverModels_NilPersistAuthDoesNotCrashAndReturnsAuthUpdate(t *testin
 		t.Fatalf("Models = %#v, want [gpt-4.1]", result.Models)
 	}
 }
+
+func TestResolveAuth_OpenAICompatibleReturnsAPIKey(t *testing.T) {
+	t.Parallel()
+
+	apiKey, authUpdate, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID: "opencode_go",
+		APIKey:     "sk-test-key",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ResolveAuth error: %v", err)
+	}
+	if apiKey != "sk-test-key" {
+		t.Fatalf("apiKey = %q, want %q", apiKey, "sk-test-key")
+	}
+	if authUpdate != nil {
+		t.Fatalf("authUpdate = %#v, want nil", authUpdate)
+	}
+}
+
+func TestResolveAuth_OpenAICompatibleReturnsEmptyAPIKeyWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	apiKey, authUpdate, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID: "opencode_go",
+		APIKey:     "",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ResolveAuth error: %v", err)
+	}
+	if apiKey != "" {
+		t.Fatalf("apiKey = %q, want empty", apiKey)
+	}
+	if authUpdate != nil {
+		t.Fatalf("authUpdate = %#v, want nil", authUpdate)
+	}
+}
+
+func TestResolveAuth_ReturnsErrorForUnknownProvider(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID: "unknown_provider",
+		APIKey:     "sk-test",
+	}, nil)
+	if err == nil {
+		t.Fatal("ResolveAuth error = nil, want error for unknown provider")
+	}
+	if !strings.Contains(err.Error(), "unsupported provider") {
+		t.Fatalf("error = %q, want unsupported provider message", err.Error())
+	}
+}
+
+func TestResolveAuth_GitHubCopilotReturnsAPIKeyDirectlyWhenNoProviderAuth(t *testing.T) {
+	t.Parallel()
+
+	apiKey, authUpdate, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID: "github_copilot",
+		APIKey:     "gho-manual",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ResolveAuth error: %v", err)
+	}
+	if apiKey != "gho-manual" {
+		t.Fatalf("apiKey = %q, want %q", apiKey, "gho-manual")
+	}
+	if authUpdate != nil {
+		t.Fatalf("authUpdate = %#v, want nil", authUpdate)
+	}
+}
+
+func TestResolveAuth_GitHubCopilotReturnsErrorForInvalidProviderAuth(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID:   "github_copilot",
+		APIKey:       "",
+		ProviderAuth: json.RawMessage(`{"access_token":123}`), // invalid: token is number, not string
+	}, nil)
+	if err == nil {
+		t.Fatal("ResolveAuth error = nil, want JSON decode error")
+	}
+}
+
+func TestResolveAuth_PersistAuthCanPersistRefreshedToken(t *testing.T) {
+	t.Parallel()
+
+	var persistCalled bool
+	apiKey, authUpdate, err := provider.ResolveAuth(context.Background(), provider.ResolveAuthRequest{
+		ProviderID: "opencode_go",
+		APIKey:     "sk-persist-test",
+	}, func(apiKey string, providerAuth json.RawMessage) error {
+		persistCalled = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ResolveAuth error: %v", err)
+	}
+	if apiKey != "sk-persist-test" {
+		t.Fatalf("apiKey = %q, want %q", apiKey, "sk-persist-test")
+	}
+	// For non-Copilot providers, auth update is nil and persist is not called.
+	if persistCalled {
+		t.Fatal("persistCalled = true, want false for non-Copilot provider")
+	}
+	if authUpdate != nil {
+		t.Fatalf("authUpdate = %#v, want nil", authUpdate)
+	}
+}
