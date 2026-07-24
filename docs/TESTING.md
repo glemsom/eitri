@@ -35,6 +35,8 @@ model service.
 | File | Tests |
 |------|-------|
 | `internal/api/server_test.go` | HTTP endpoints, request-body limits, logging |
+| `internal/api/debug_test.go` | Debug API handler tests (sessions, runtime, config, HTTP traces, health) |
+| `internal/api/debug_internal_test.go` | Debug API helper function unit tests (writeJSON, writeError, sanitizeConfig, sessionToSummary, loadConfig) |
 | `internal/api/assets/js_test.go` | Static JS/CSS checks; `lightweightMarkdown` via Goja |
 | `internal/history/session_test.go` | Session lifecycle, history, sliding window |
 | `internal/fileutil/path_test.go` | Path validation |
