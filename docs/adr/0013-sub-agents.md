@@ -52,7 +52,7 @@ parent's context window:
   and collect summaries back. Raw page content stays in the sub-agent's context.
 - **Reading large files** — delegate file analysis to a sub-agent so file contents
   don't accumulate in parent history.
-- **Wide searches** — delegate `grep`/`glob` across large trees to keep results
+- **Wide searches** — delegate `grep` across large trees to keep results
   contained.
 
 Pattern:
