@@ -1,13 +1,28 @@
 package templates
 
 import (
+	"crypto/md5"
+	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // pathBase returns the last component of a file path.
 // Used in templates to show only the basename of the workspace path.
 func pathBase(path string) string {
 	return filepath.Base(path)
+}
+
+// gravatarURL returns a Gravatar avatar URL for the given email.
+// Returns empty string if email is empty.
+func gravatarURL(email string) string {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return ""
+	}
+	email = strings.ToLower(email)
+	hash := md5.Sum([]byte(email))
+	return fmt.Sprintf("https://www.gravatar.com/avatar/%x?s=32&d=mp", hash)
 }
 
 // scopeLabel returns a human-readable label for a skill scope.

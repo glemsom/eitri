@@ -95,6 +95,49 @@ func TestStatusDot(t *testing.T) {
 	}
 }
 
+// ─── gravatarURL ──────────────────────────────────────────────────────
+
+func TestGravatarURL_Empty(t *testing.T) {
+	if got := gravatarURL(""); got != "" {
+		t.Errorf("gravatarURL('') = %q, want empty", got)
+	}
+}
+
+func TestGravatarURL_OnlySpaces(t *testing.T) {
+	if got := gravatarURL("   "); got != "" {
+		t.Errorf("gravatarURL('   ') = %q, want empty", got)
+	}
+}
+
+func TestGravatarURL_KnownHash(t *testing.T) {
+	// MD5 of "test@example.com" (lowercased, trimmed) = 55502f40dc8b7c769880b10874abc9d0
+	want := "https://www.gravatar.com/avatar/55502f40dc8b7c769880b10874abc9d0?s=32&d=mp"
+	if got := gravatarURL("test@example.com"); got != want {
+		t.Errorf("gravatarURL('test@example.com') = %q, want %q", got, want)
+	}
+}
+
+func TestGravatarURL_CaseInsensitive(t *testing.T) {
+	want := "https://www.gravatar.com/avatar/55502f40dc8b7c769880b10874abc9d0?s=32&d=mp"
+	if got := gravatarURL("TEST@EXAMPLE.COM"); got != want {
+		t.Errorf("gravatarURL('TEST@EXAMPLE.COM') = %q, want %q", got, want)
+	}
+}
+
+func TestGravatarURL_UsesDMPFallback(t *testing.T) {
+	got := gravatarURL("someone@example.com")
+	if !strings.HasSuffix(got, "&d=mp") {
+		t.Errorf("gravatarURL('someone@example.com') = %q, does not end with &d=mp", got)
+	}
+}
+
+func TestGravatarURL_IncludesSize32(t *testing.T) {
+	got := gravatarURL("someone@example.com")
+	if !strings.Contains(got, "s=32") {
+		t.Errorf("gravatarURL('someone@example.com') = %q, does not contain s=32", got)
+	}
+}
+
 // ─── countLines (diff.go) ─────────────────────────────────────────────
 
 func TestCountLines_Empty(t *testing.T) {

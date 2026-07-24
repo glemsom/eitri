@@ -126,391 +126,404 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<form hx-put=\"/api/config\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><details class=\"settings-details\" open><summary><span>Provider &amp; Authentication</span></summary><div class=\"form-group\"><label for=\"provider\">Provider</label> <select id=\"provider\" name=\"provider\" required><option value=\"opencode_go\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<form hx-put=\"/api/config\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><details class=\"settings-details\"><summary><span>Profile</span></summary><div class=\"form-group\"><label for=\"user_email\">Email (used for Gravatar avatar lookup only)</label> <input type=\"email\" id=\"user_email\" name=\"user_email\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var6 string
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.UserEmail)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 28, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" placeholder=\"you@example.com\" autocomplete=\"email\"> <small class=\"hint\">Only used to display your Gravatar avatar in chat bubbles. Your email is never shared.</small></div></details> <details class=\"settings-details\" open><summary><span>Provider &amp; Authentication</span></summary><div class=\"form-group\"><label for=\"provider\">Provider</label> <select id=\"provider\" name=\"provider\" required><option value=\"opencode_go\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.Provider == "opencode_go" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, ">OpenCode Go</option> <option value=\"github_copilot\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, ">OpenCode Go</option> <option value=\"github_copilot\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.Provider == "github_copilot" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, ">GitHub Copilot</option> <option value=\"custom_openai\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ">GitHub Copilot</option> <option value=\"custom_openai\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.Provider == "custom_openai" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, ">Custom OpenAI (advanced/best-effort)</option></select></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, ">Custom OpenAI (advanced/best-effort)</option></select></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var6 = []any{"form-group", "base-url-group", templ.KV("base-url-hidden", cfg.Provider != "custom_openai")}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
+		var templ_7745c5c3_Var7 = []any{"form-group", "base-url-group", templ.KV("base-url-hidden", cfg.Provider != "custom_openai")}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var7...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var6).String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 1, Col: 0}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\"><label for=\"base_url\">Base URL <span")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.Provider == "custom_openai" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " class=\"required-marker\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, ">*</span></label> <input type=\"url\" id=\"base_url\" name=\"base_url\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.BaseURL)
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var7).String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 37, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 1, Col: 0}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" placeholder=\"https://opencode.ai/zen/go\" required></div><div class=\"form-group\"><label for=\"api_key\">API key / token</label><div class=\"api-key-row\"><input type=\"password\" id=\"api_key\" name=\"api_key\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\"><label for=\"base_url\">Base URL <span")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if cfg.Provider == "custom_openai" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " class=\"required-marker\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ">*</span></label> <input type=\"url\" id=\"base_url\" name=\"base_url\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.APIKey)
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.BaseURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 43, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 47, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" placeholder=\"API key or bearer token\" autocomplete=\"off\"> <label class=\"checkbox-label\"><input type=\"checkbox\" name=\"clear_api_key\" value=\"true\"> Clear stored credential</label></div><small class=\"hint\">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small></div><div class=\"device-flow-section\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" placeholder=\"https://opencode.ai/zen/go\" required></div><div class=\"form-group\"><label for=\"api_key\">API key / token</label><div class=\"api-key-row\"><input type=\"password\" id=\"api_key\" name=\"api_key\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.APIKey)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 53, Col: 75}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" placeholder=\"API key or bearer token\" autocomplete=\"off\"> <label class=\"checkbox-label\"><input type=\"checkbox\" name=\"clear_api_key\" value=\"true\"> Clear stored credential</label></div><small class=\"hint\">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small></div><div class=\"device-flow-section\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if deviceFlow != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<div class=\"device-flow-panel\"><p>Authenticate with GitHub device flow.</p><p class=\"device-flow-code-wrapper\">Open <a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"device-flow-panel\"><p>Authenticate with GitHub device flow.</p><p class=\"device-flow-code-wrapper\">Open <a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var10 templ.SafeURL
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(deviceFlow.VerificationURI)
+			var templ_7745c5c3_Var11 templ.SafeURL
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(deviceFlow.VerificationURI)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 56, Col: 84}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" target=\"_blank\" rel=\"noreferrer noopener\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(deviceFlow.VerificationURI)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 56, Col: 157}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 66, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</a> and enter code <code class=\"device-flow-code\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" target=\"_blank\" rel=\"noreferrer noopener\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var12 string
-			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(deviceFlow.UserCode)
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(deviceFlow.VerificationURI)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 56, Col: 231}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 66, Col: 157}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</code>.</p><div id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</a> and enter code <code class=\"device-flow-code\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("copilot-device-flow-status-" + deviceFlow.ID)
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(deviceFlow.UserCode)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 57, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 66, Col: 231}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" hx-get=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</code>.</p><div id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var14 string
-			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.PollURL)
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue("copilot-device-flow-status-" + deviceFlow.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 57, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 67, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" hx-trigger=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.PollTrigger)
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.PollURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 57, Col: 130}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 67, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><small class=\"hint\">Waiting for GitHub approval…</small></div><div class=\"form-actions\"><button type=\"button\" hx-delete=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" hx-trigger=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.CancelURL)
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.PollTrigger)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 61, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 67, Col: 130}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\">Cancel GitHub auth</button></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><small class=\"hint\">Waiting for GitHub approval…</small></div><div class=\"form-actions\"><button type=\"button\" hx-delete=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var17 string
+			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(deviceFlow.CancelURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 71, Col: 62}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\">Cancel GitHub auth</button></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"device-flow-panel\"><div class=\"form-actions\"><button type=\"button\" hx-post=\"/api/providers/github_copilot/device-flow/start\" hx-include=\"closest form\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\">Authenticate with GitHub</button></div><small class=\"hint\">For GitHub Copilot. Select provider above, start device flow, then models refresh automatically.</small></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"device-flow-panel\"><div class=\"form-actions\"><button type=\"button\" hx-post=\"/api/providers/github_copilot/device-flow/start\" hx-include=\"closest form\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\">Authenticate with GitHub</button></div><small class=\"hint\">For GitHub Copilot. Select provider above, start device flow, then models refresh automatically.</small></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div></details> <details class=\"settings-details\"><summary><span>Model <span id=\"model-refresh-spinner\" class=\"model-refresh-spinner\" style=\"visibility:hidden;\">&#9696;</span></span></summary><div class=\"form-group\"><select id=\"model\" name=\"model\"><option value=\"\" disabled selected=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div></details> <details class=\"settings-details\"><summary><span>Model <span id=\"model-refresh-spinner\" class=\"model-refresh-spinner\" style=\"visibility:hidden;\">&#9696;</span></span></summary><div class=\"form-group\"><select id=\"model\" name=\"model\"><option value=\"\" disabled selected=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var17 string
-		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Model == "")
+		var templ_7745c5c3_Var18 string
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Model == "")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 80, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 90, Col: 58}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\">Select a model...</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\">Select a model...</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, m := range models {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<option value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(m)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 82, Col: 24}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if cfg.Model == m {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(m)
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(m)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 82, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 92, Col: 24}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</option>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if cfg.Model == m {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var20 string
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(m)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 92, Col: 61}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</option>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</select> <small class=\"hint\">Models are discovered from current provider settings on load and save.</small></div><div class=\"form-group\"><label for=\"thinking_level\">Thinking Level</label> <select id=\"thinking_level\" name=\"thinking_level\"><option value=\"\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</select> <small class=\"hint\">Models are discovered from current provider settings on load and save.</small></div><div class=\"form-group\"><label for=\"thinking_level\">Thinking Level</label> <select id=\"thinking_level\" name=\"thinking_level\"><option value=\"\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.ThinkingLevel == "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, ">Default (off)</option> <option value=\"low\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, ">Default (off)</option> <option value=\"low\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.ThinkingLevel == "low" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, ">Low</option> <option value=\"medium\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, ">Low</option> <option value=\"medium\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.ThinkingLevel == "medium" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, ">Medium</option> <option value=\"high\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, ">Medium</option> <option value=\"high\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.ThinkingLevel == "high" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, ">High</option></select> <small class=\"hint\">Controls reasoning depth. Supported by DeepSeek, O-series, and other reasoning models. Requires provider support.</small></div></details> <details class=\"settings-details\"><summary><span>Prompt — ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var20 string
-		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(len(cfg.SystemPrompt))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 101, Col: 53}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use built-in default prompt.\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, ">High</option></select> <small class=\"hint\">Controls reasoning depth. Supported by DeepSeek, O-series, and other reasoning models. Requires provider support.</small></div></details> <details class=\"settings-details\"><summary><span>Prompt — ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var21 string
-		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.SystemPrompt)
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(len(cfg.SystemPrompt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 105, Col: 167}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 111, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</textarea><div class=\"char-count-wrapper\"><small class=\"char-count\" id=\"prompt-char-count\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use built-in default prompt.\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var22 string
-		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(len(cfg.SystemPrompt))
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.SystemPrompt)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 107, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 115, Col: 167}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, " / 4096 chars</small></div><small class=\"hint\">Applies to later runs only. Clear value to restore built-in default prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</textarea><div class=\"char-count-wrapper\"><small class=\"char-count\" id=\"prompt-char-count\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var23 string
-		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.SessionTimeout / 1_000_000_000)
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(len(cfg.SystemPrompt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 118, Col: 112}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 117, Col: 78}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" min=\"60\" required></div><div class=\"form-group\"><label for=\"command_timeout\">Command Timeout (seconds)</label> <input type=\"number\" id=\"command_timeout\" name=\"command_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " / 4096 chars</small></div><small class=\"hint\">Applies to later runs only. Clear value to restore built-in default prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var24 string
-		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CommandTimeout / 1_000_000_000)
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.SessionTimeout / 1_000_000_000)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 123, Col: 112}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 128, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" min=\"60\" required></div><div class=\"form-group\"><label for=\"command_timeout\">Command Timeout (seconds)</label> <input type=\"number\" id=\"command_timeout\" name=\"command_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CommandTimeout / 1_000_000_000)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 128, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 133, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label> <input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 string
-		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 133, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 138, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" min=\"1024\" required></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\">Save</button><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label> <input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var27 string
+		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 143, Col: 113}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" min=\"1024\" required></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\">Save</button><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -534,44 +547,44 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var27 == nil {
-			templ_7745c5c3_Var27 = templ.NopComponent
+		templ_7745c5c3_Var28 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var28 == nil {
+			templ_7745c5c3_Var28 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if success {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<span class=\"connection-ok\">&#10003; ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var28 string
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(message)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 151, Col: 48}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<span class=\"connection-err\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<span class=\"connection-ok\">&#10003; ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 153, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 161, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<span class=\"connection-err\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var30 string
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 163, Col: 40}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

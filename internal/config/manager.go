@@ -19,6 +19,7 @@ type Config struct {
 	ProviderAuth        json.RawMessage `json:"provider_auth,omitempty"`
 	AllowedReadPaths    []string        `json:"allowed_read_paths,omitempty"`
 	DisabledSkills      []string        `json:"disabled_skills,omitempty"`
+	UserEmail           string          `json:"user_email,omitempty"`
 	BaseURL             string          `json:"base_url"`
 	Model               string          `json:"model"`
 	ThinkingLevel       string          `json:"thinking_level"`
@@ -226,6 +227,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["max_history"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.MaxHistory = int(f)
+		}
+	}
+	if v, ok := patch["user_email"]; ok {
+		if s, ok := v.(string); ok {
+			result.UserEmail = s
 		}
 	}
 
