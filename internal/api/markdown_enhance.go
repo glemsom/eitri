@@ -54,6 +54,10 @@ func transformTree(node *htmlnode.Node) {
 				transformPreBlock(child)
 				child = next
 				continue
+			case "a":
+				sanitizeLink(child)
+				child = next
+				continue
 			}
 		}
 
@@ -65,6 +69,66 @@ func transformTree(node *htmlnode.Node) {
 
 		child = next
 	}
+}
+
+// sanitizeLink removes the <a> element if its href uses a disallowed URL scheme
+// (javascript:, data:, file:, vbscript:), replacing it with its text content.
+// Also handles empty href (goldmark strips dangerous schemes but leaves an empty
+// <a> element). Only http:, https:, and mailto: are allowed. This matches the
+// client-side lightweightMarkdown() behaviour and prevents XSS via injected links.
+func sanitizeLink(node *htmlnode.Node) {
+	if node == nil || node.Type != htmlnode.ElementNode {
+		return
+	}
+
+	var href string
+	for _, attr := range node.Attr {
+		if attr.Key == "href" {
+			href = attr.Val
+			break
+		}
+	}
+
+	// Empty href: goldmark strips dangerous schemes but still creates <a>.
+	// Convert to plain text.
+	if href == "" {
+		replaceLinkWithText(node)
+		return
+	}
+
+	// Scheme is everything before :
+	// Check for dangerous schemes: javascript:, data:, file:, vbscript:
+	schemeEnd := strings.Index(href, ":")
+	if schemeEnd == -1 {
+		return // no scheme, leave as-is (likely a relative path)
+	}
+	scheme := strings.ToLower(href[:schemeEnd])
+	switch scheme {
+	case "http", "https", "mailto":
+		// Allowed — leave the link intact
+		return
+	default:
+		replaceLinkWithText(node)
+	}
+}
+
+// replaceLinkWithText replaces an <a> element with its text content.
+func replaceLinkWithText(node *htmlnode.Node) {
+	parent := node.Parent
+	if parent == nil {
+		return
+	}
+	text := extractText(node)
+	if text == "" {
+		parent.RemoveChild(node)
+		return
+	}
+	textNode := &htmlnode.Node{
+		Type: htmlnode.TextNode,
+		Data: text,
+	}
+	parent.InsertBefore(textNode, node)
+	parent.RemoveChild(node)
 }
 
 func isLiteralContainer(node *htmlnode.Node) bool {
