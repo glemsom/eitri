@@ -81,6 +81,19 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 	if !sendBtnAbsent {
 		t.Error("#send-btn should be absent on settings page")
 	}
+
+	var sandboxBadgeExists bool
+	var sandboxBadgeText string
+	_ = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools("document.querySelector('.sandbox-badge') !== null", &sandboxBadgeExists),
+		chromedp.Text(".sandbox-badge", &sandboxBadgeText, chromedp.ByQuery),
+	)
+	if !sandboxBadgeExists {
+		t.Error(".sandbox-badge element not found in settings")
+	}
+	if sandboxBadgeText == "" {
+		t.Error("sandbox badge text is empty")
+	}
 }
 
 func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
