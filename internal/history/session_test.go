@@ -231,16 +231,16 @@ func TestSessionManager_DefaultExchangeLimit(t *testing.T) {
 	m := NewSessionManager(0) // use default
 	m.Create("sess-1")
 
-	// Add more than the default 50 exchanges
-	for i := 0; i < 60; i++ {
+	// Add more than the default 150 exchanges
+	for i := 0; i < 160; i++ {
 		m.AppendUser("sess-1", "message")
 		m.AppendAssistant("sess-1", "response", nil)
 	}
 
 	history := m.History("sess-1")
 	userCount := countUserMessages(history)
-	if userCount > 50 {
-		t.Errorf("User messages after 60 appends = %d, want <= 50", userCount)
+	if userCount > 150 {
+		t.Errorf("User messages after 160 appends = %d, want <= 150", userCount)
 	}
 }
 
