@@ -1,0 +1,3 @@
+# Per-session workspaces with directory browser
+
+Eitri started with a single global workspace (the process CWD). We added per-session workspace as an explicit user choice: each `UISession` holds its own `Workspace` field defaulting to the server CWD, the user changes it via a server-side directory browser overlay (HTMX-driven, directories only, breadcrumb navigation), and the change takes effect on the next agent run. Two UI entry points exist — the header workspace indicator (now clickable) and a compact workspace label on each session in the sidebar. The tool registry already reads `RunConfig.Workspace` so no tool-level changes were needed. New sessions always start at the server CWD to preserve the invariant that launching Eitri from a directory just works.

@@ -22,6 +22,8 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Stream island** | Browser island managing `EventSource` lifecycle and token display for one assistant run. |
 | **Context panel** | 4th sidebar section showing live context window utilization. Uses a progress bar in compact mode; click expands to per-category breakdown (system prompt, history, skills, completion). Updated after each turn via `context_update` SSE events. |
 | **Context update** | An SSE event (`type: "context_update"`) broadcast after each agent turn carrying estimated token counts. Fields: `total_tokens`, `context_window`, `prompt_tokens`, `completion_tokens`, `system_tokens`, `history_tokens`, `skill_tokens`. |
+| **Session workspace** | The filesystem root directory scoped to a single `UISession`. Defaults to the process CWD at session creation. All file tools (`bash`, `glob`, `grep`, `read`, `write`, `edit`) operate within this directory. Can be changed at any time via the directory browser UI; takes effect on the next agent run. Independent of the server's launch workspace. |
+| **Workspace directory browser** | An HTMX-driven server-side file explorer overlay that lets the user navigate to and select a session workspace. Shows directories only, with breadcrumb navigation and a "Select this folder" action. Triggered from the header workspace indicator or each session's sidebar entry. |
 | **Crash dump** | A timestamped directory under `~/.eitri/crash-dump/` containing diagnostic files written when Eitri encounters an unexpected failure (provider HTTP error, agent loop panic, batch run failure). Contains error chain, goroutine stacks, session state, HTTP traces, and sanitized config. |
 
 ## Architecture decisions
@@ -44,6 +46,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0012](docs/adr/0012-web-fetch-tool.md) | web_fetch tool for fetching URLs | Accepted |
 | [0013](docs/adr/0013-sub-agents.md) | Sub-agent support via delegate/collect tools | Accepted |
 | [0014](docs/adr/0014-crash-dumps.md) | Crash dump directory for unexpected failures | Accepted |
+| [0015](docs/adr/0015-per-session-workspaces.md) | Per-session workspaces with directory browser | Accepted |
 
 ## Project structure
 
