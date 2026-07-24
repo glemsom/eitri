@@ -38,9 +38,10 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // fed back to the LLM as tool result content — the LLM decides how to respond.
 // Only context cancellation and max turns terminate the loop.
 //
-// When a tool returns ErrNeedsConfirmation, the loop calls confirmer to
-// pause for user input. On approval, the tool is re-executed with the path
-// temporarily allowed. On denial, an error is returned to the LLM.
+// When a tool returns ToolResult with NeedsConfirm=true, the loop calls
+// confirmer to pause for user input. On approval, the tool is re-executed
+// with the path temporarily allowed. On denial, an error is returned to the
+// LLM.
 //
 // contextWindow is the configured context window token limit. When > 0,
 // context_update SSE events are broadcast after each turn. When <= 0,
@@ -233,68 +234,70 @@ func RunAgent(
 			sseWriter.ToolCall(tc.Function.Name, argsForDisplay)
 
 			// Dispatch tool via registry
-			blocks, err := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
-			if err != nil {
-				// Check if tool needs user confirmation
-				var needsConf *tool.ErrNeedsConfirmation
-				if errors.As(err, &needsConf) && confirmer != nil {
-					slog.Debug("tool needs confirmation", slog.String("path", needsConf.Path), slog.String("message", needsConf.Message))
+			dispResult, dispErr := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+			if dispErr != nil {
+				// Feed unknown tool / dispatch errors back to the LLM as tool
+				// result instead of terminating the loop. LLMs commonly hallucinate
+				// tool names (e.g. "replace" instead of "edit") — this gives them
+				// a chance to self-correct on the next turn.
+				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
+				// Broadcast tool result so the error shows in the tool card
+				// (not as a separate error toast that closes the stream).
+				sseWriter.ToolResult(tc.Function.Name, errMsg)
+				// Record the error as a tool result so the LLM can see it
+				historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
+				continue
+			}
 
-					// Send needs_confirmation SSE event
-					sseWriter.State().Broadcast(runstate.SSEEvent{
-						Type:    "needs_confirmation",
-						Content: needsConf.Message,
-						Data:    map[string]any{"path": needsConf.Path, "message": needsConf.Message},
-					})
+			// Check if tool needs user confirmation
+			if dispResult.NeedsConfirm && confirmer != nil {
+				confPath := dispResult.ConfirmPath
+				confMsg := dispResult.ConfirmMessage
+				slog.Debug("tool needs confirmation", slog.String("path", confPath), slog.String("message", confMsg))
 
-					// Wait for user response
-					result, confirmErr := confirmer.Confirm(ctx, sessionID, needsConf.Path, needsConf.Message)
-					if confirmErr != nil {
-						if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
-							return confirmErr
-						}
-						errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
-						sseWriter.ToolResult(tc.Function.Name, errMsg)
-						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-						continue
+				// Send needs_confirmation SSE event
+				sseWriter.State().Broadcast(runstate.SSEEvent{
+					Type:    "needs_confirmation",
+					Content: confMsg,
+					Data:    map[string]any{"path": confPath, "message": confMsg},
+				})
+
+				// Wait for user response
+				confirmResult, confirmErr := confirmer.Confirm(ctx, sessionID, confPath, confMsg)
+				if confirmErr != nil {
+					if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
+						return confirmErr
 					}
-
-					if result.Approved {
-						// Temporarily add the path to ReadTool's allowedPaths
-						// and re-dispatch
-						addReadToolAllowedPath(tools, needsConf.Path)
-						blocks, err = tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
-						if err != nil {
-							errMsg := fmt.Sprintf("Tool error after approval: %v", err)
-							sseWriter.ToolResult(tc.Function.Name, errMsg)
-							historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-							continue
-						}
-						// Continue to process blocks below (resultText, Broadcast, etc.)
-					} else {
-						// Denial — return error to LLM
-						errMsg := "Access denied to path: " + needsConf.Path
-						sseWriter.ToolResult(tc.Function.Name, errMsg)
-						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-						continue
-					}
-				} else {
-					// Feed unknown tool / dispatch errors back to the LLM as tool
-					// result instead of terminating the loop. LLMs commonly hallucinate
-					// tool names (e.g. "replace" instead of "edit") — this gives them
-					// a chance to self-correct on the next turn.
-					errMsg := fmt.Sprintf("Tool error: %v", err)
-					// Broadcast tool result so the error shows in the tool card
-					// (not as a separate error toast that closes the stream).
+					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
 					sseWriter.ToolResult(tc.Function.Name, errMsg)
-					// Record the error as a tool result so the LLM can see it
 					historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
-					slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
+					continue
+				}
+
+				if confirmResult.Approved {
+					// Temporarily add the path to ReadTool's allowedPaths
+					// and re-dispatch
+					addReadToolAllowedPath(tools, confPath)
+					dispResult, dispErr = tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+					if dispErr != nil {
+						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
+						sseWriter.ToolResult(tc.Function.Name, errMsg)
+						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+						continue
+					}
+					// Continue to process blocks below (resultText, Broadcast, etc.)
+				} else {
+					// Denial — return error to LLM
+					errMsg := "Access denied to path: " + confPath
+					sseWriter.ToolResult(tc.Function.Name, errMsg)
+					historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 					continue
 				}
 			}
 
 			// Extract result text from blocks
+			blocks := dispResult.Blocks
 			resultText := blocksToText(blocks)
 			isError := toolResultHasError(blocks)
 			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", truncateText(resultText, 200)), slog.Bool("error", isError))

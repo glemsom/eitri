@@ -38,23 +38,23 @@ func (t *CollectTool) Description() string {
 
 func (t *CollectTool) JSONSchema() litellm.Schema { return t.schema }
 
-func (t *CollectTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *CollectTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed collectArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("collect: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("collect: invalid args: %w", err)
 	}
 	if len(parsed.TaskIDs) == 0 {
-		return textBlocks("Error: 'task_ids' must be a non-empty array of task ID strings"), nil, true
+		return ToolError(TextBlocks("Error: 'task_ids' must be a non-empty array of task ID strings")), nil
 	}
 
 	results, err := t.subMgr.CollectSubAgents(ctx, parsed.TaskIDs)
 	if err != nil {
-		return nil, fmt.Errorf("collect: %w", err), false
+		return ToolResult{}, fmt.Errorf("collect: %w", err)
 	}
 
 	resultJSON, err := json.Marshal(results)
 	if err != nil {
-		return nil, fmt.Errorf("collect: marshal results: %w", err), false
+		return ToolResult{}, fmt.Errorf("collect: marshal results: %w", err)
 	}
-	return textBlocks(string(resultJSON)), nil, false
+	return TextResult(string(resultJSON)), nil
 }

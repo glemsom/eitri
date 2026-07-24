@@ -36,15 +36,15 @@ func (t *RenderMermaidDiagramTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *RenderMermaidDiagramTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *RenderMermaidDiagramTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed renderMermaidArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("render_mermaid_diagram: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("render_mermaid_diagram: invalid args: %w", err)
 	}
 
 	if parsed.Code == "" {
-		return textBlocks("Error: 'code' field is required and must be non-empty"), nil, true
+		return ToolError(TextBlocks("Error: 'code' field is required and must be non-empty")), nil
 	}
 
-	return textBlocks("Rendered MermaidDiagram with code:\n" + parsed.Code), nil, false
+	return TextResult("Rendered MermaidDiagram with code:\n" + parsed.Code), nil
 }

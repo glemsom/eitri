@@ -29,7 +29,7 @@ func TestGlob_Schema(t *testing.T) {
 
 func TestGlob_InvalidArgs(t *testing.T) {
 	tool := NewGlobTool("/tmp")
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -37,19 +37,19 @@ func TestGlob_InvalidArgs(t *testing.T) {
 
 func TestGlob_EmptyPattern(t *testing.T) {
 	tool := NewGlobTool("/tmp")
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if len(block.Text) == 0 {
 		t.Error("expected error text")
@@ -70,19 +70,19 @@ func TestGlob_SuccessfulMatch(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// *.go matches all .go files including nested: bar.go, foo.go, sub/qux.go
 	expected := "bar.go\nfoo.go\nsub/qux.go"
@@ -98,18 +98,18 @@ func TestGlob_NoMatch(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
 	// No matches: blocks may be nil or contain empty text
-	if len(blocks) > 0 {
-		block, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		if block.Text != "" {
 			t.Errorf("expected empty output, got %q", block.Text)
@@ -131,22 +131,22 @@ func TestGlob_HiddenDirExclusion(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*.go"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
 	// visible.go matches *.go, secret.go is in .hidden (excluded), so visible.go should appear
 	visiblePath := filepath.Join(".hidden", "secret.go")
 	_ = visiblePath
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// visible.go should match, .hidden/secret.go should be excluded
 	if block.Text != "visible.go" {
@@ -168,19 +168,19 @@ func TestGlob_VendorExclusion(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// Only main.go should be visible, vendor/ excluded
 	expected := "main.go"
@@ -192,14 +192,14 @@ func TestGlob_VendorExclusion(t *testing.T) {
 func TestGlob_WorkspaceValidation(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"/etc/passwd"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"/etc/passwd"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true (outside workspace)")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (outside workspace)")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
 }
@@ -218,19 +218,19 @@ func TestGlob_RecursivePattern(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"*"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// * matches everything: root.go, pkg/sub/deep.go
 	expected := "pkg/sub/deep.go\nroot.go"
@@ -264,19 +264,19 @@ func TestGlob_PathPrefixedPattern(t *testing.T) {
 	}
 
 	tool := NewGlobTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"internal/tool/*.go"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"internal/tool/*.go"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// Should match internal/tool/glob.go, internal/tool/grep.go only
 	expected := "internal/tool/glob.go\ninternal/tool/grep.go"

@@ -44,25 +44,25 @@ func (t *EditTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *EditTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed editArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("edit: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("edit: invalid args: %w", err)
 	}
 
 	if parsed.Path == "" {
-		return textBlocks("Error: path is required"), nil, true
+		return ToolError(TextBlocks("Error: path is required")), nil
 	}
 
 	absPath, err := fileutil.ValidateWorkspacePath(parsed.Path, t.workspace)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}
 
 	// Read file
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: cannot read file: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: cannot read file: %v", err))), nil
 	}
 
 	oldContent := string(data)
@@ -80,17 +80,17 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		if len(lines) > 5 {
 			prefix += "..."
 		}
-		return textBlocks(fmt.Sprintf("Error: text %q not found in file. File starts with:\n%s", parsed.OldText, prefix)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: text %q not found in file. File starts with:\n%s", parsed.OldText, prefix))), nil
 	}
 	if count > 1 {
-		return textBlocks(fmt.Sprintf("Error: text %q matched %d times in file, expected exactly 1 match. Include more surrounding context in 'old_text' to make it unique.", parsed.OldText, count)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: text %q matched %d times in file, expected exactly 1 match. Include more surrounding context in 'old_text' to make it unique.", parsed.OldText, count))), nil
 	}
 
 	// Perform replacement
 	newContent := strings.Replace(oldContent, parsed.OldText, parsed.NewText, 1)
 
 	if err := os.WriteFile(absPath, []byte(newContent), 0644); err != nil {
-		return textBlocks(fmt.Sprintf("Error: failed to write file: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to write file: %v", err))), nil
 	}
 
 	// Count lines changed
@@ -103,9 +103,7 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	if lineChanges == 1 {
 		lineWord = "line"
 	}
-	return []litellm.Block{
-		litellm.TextBlock{Text: fmt.Sprintf("Edited file: %s (%d %s changed)", parsed.Path, lineChanges, lineWord)},
-	}, nil, false
+	return TextResult(fmt.Sprintf("Edited file: %s (%d %s changed)", parsed.Path, lineChanges, lineWord)), nil
 }
 
 // countLineDiffs returns the number of lines that differ between two line slices.

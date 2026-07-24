@@ -29,19 +29,19 @@ func TestRenderQuickReplies_Schema(t *testing.T) {
 func TestRenderQuickReplies_ValidArgs(t *testing.T) {
 	t.Parallel()
 	tool := NewRenderQuickReplies()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"options":["yes","no","maybe"]}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"options":["yes","no","maybe"]}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	tb, ok := blocks[0].(litellm.TextBlock)
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
 	}
 	if tb.Text == "" {
 		t.Error("expected non-empty result text")
@@ -51,7 +51,7 @@ func TestRenderQuickReplies_ValidArgs(t *testing.T) {
 func TestRenderQuickReplies_InvalidArgs(t *testing.T) {
 	t.Parallel()
 	tool := NewRenderQuickReplies()
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -60,15 +60,15 @@ func TestRenderQuickReplies_InvalidArgs(t *testing.T) {
 func TestRenderQuickReplies_EmptyOptions(t *testing.T) {
 	t.Parallel()
 	tool := NewRenderQuickReplies()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"options":[]}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"options":[]}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) > 0 {
-		tb, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		tb, ok := result.Blocks[0].(litellm.TextBlock)
 		if ok && tb.Text == "" {
 			t.Error("expected error text in result")
 		}
@@ -78,12 +78,11 @@ func TestRenderQuickReplies_EmptyOptions(t *testing.T) {
 func TestRenderQuickReplies_MissingOptions(t *testing.T) {
 	t.Parallel()
 	tool := NewRenderQuickReplies()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true (options is required)")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (options is required)")
 	}
-	_ = blocks
 }

@@ -32,7 +32,7 @@ func TestGrep_Schema(t *testing.T) {
 
 func TestGrep_InvalidArgs(t *testing.T) {
 	tool := NewGrepTool("/tmp")
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -40,19 +40,19 @@ func TestGrep_InvalidArgs(t *testing.T) {
 
 func TestGrep_EmptyPattern(t *testing.T) {
 	tool := NewGrepTool("/tmp")
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "pattern is required") {
 		t.Errorf("expected 'pattern is required' error, got %q", block.Text)
@@ -61,12 +61,12 @@ func TestGrep_EmptyPattern(t *testing.T) {
 
 func TestGrep_InvalidRegex(t *testing.T) {
 	tool := NewGrepTool("/tmp")
-	_, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"[invalid"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"[invalid"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
 }
 
@@ -89,19 +89,19 @@ func TestGrep_SuccessfulMatch(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"hello"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"hello"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 
 	// Should find "hello" in: hello.go (line 2), other.txt (line 1), sub/deep.go (line 2, "Hello" case-sensitive)
@@ -126,18 +126,18 @@ func TestGrep_NoMatch(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"zzznonexistent"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"zzznonexistent"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
 	// No matches: blocks may be nil or contain empty text
-	if len(blocks) > 0 {
-		block, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		if block.Text != "" {
 			t.Errorf("expected empty output, got %q", block.Text)
@@ -165,19 +165,19 @@ func TestGrep_FilePatternFilter(t *testing.T) {
 
 	tool := NewGrepTool(dir)
 	// Search for "hello" only in *.go files
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"hello","file_pattern":"*.go"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"hello","file_pattern":"*.go"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 
 	// Should match greeting.go (root) and cmd/main.go (nested)
@@ -209,19 +209,19 @@ func TestGrep_OutputTruncation(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 
 	// Output should end with the truncation marker
@@ -243,19 +243,19 @@ func TestGrep_HiddenDirExclusion(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 
 	// visible.go should match, .hidden/secret.go should be excluded
@@ -281,19 +281,19 @@ func TestGrep_VendorExclusion(t *testing.T) {
 	}
 
 	tool := NewGrepTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"func"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 
 	// Only main.go should be visible, vendor/ excluded
@@ -322,16 +322,16 @@ func TestGrep_ContextLines(t *testing.T) {
 
 	t.Run("context zero produces same output as before", func(t *testing.T) {
 		tool := NewGrepTool(dir)
-		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":0}`))
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":0}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if isError {
-			t.Error("isError = true, want false")
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
 		}
-		block, ok := blocks[0].(litellm.TextBlock)
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		// context 0: only match lines, no > prefix
 		lines := strings.Split(strings.TrimSpace(block.Text), "\n")
@@ -347,16 +347,16 @@ func TestGrep_ContextLines(t *testing.T) {
 
 	t.Run("context two returns surrounding lines", func(t *testing.T) {
 		tool := NewGrepTool(dir)
-		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":2}`))
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":2}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if isError {
-			t.Error("isError = true, want false")
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
 		}
-		block, ok := blocks[0].(litellm.TextBlock)
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		lines := strings.Split(strings.TrimSpace(block.Text), "\n")
 		if len(lines) < 4 {
@@ -399,16 +399,16 @@ func TestGrep_ContextLines(t *testing.T) {
 		}
 
 		tool := NewGrepTool(dir2)
-		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"^line-","context":2}`))
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"^line-","context":2}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if isError {
-			t.Error("isError = true, want false")
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
 		}
-		block, ok := blocks[0].(litellm.TextBlock)
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		if !strings.Contains(block.Text, "truncated at 2 KiB") {
 			t.Errorf("expected truncation marker in output, got length %d", len(block.Text))
@@ -425,16 +425,16 @@ func TestGrep_ContextLines(t *testing.T) {
 		}
 
 		tool := NewGrepTool(dir3)
-		blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":1,"file_pattern":"*.go"}`))
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"match","context":1,"file_pattern":"*.go"}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if isError {
-			t.Error("isError = true, want false")
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
 		}
-		block, ok := blocks[0].(litellm.TextBlock)
+		block, ok := result.Blocks[0].(litellm.TextBlock)
 		if !ok {
-			t.Fatalf("block is %T, want TextBlock", blocks[0])
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 		}
 		if !strings.Contains(block.Text, "a.go") {
 			t.Errorf("expected a.go in output")

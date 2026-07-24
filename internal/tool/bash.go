@@ -47,14 +47,14 @@ func (t *BashTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed bashArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("bash: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("bash: invalid args: %w", err)
 	}
 
 	if parsed.Command == "" {
-		return textBlocks("Error: command is required"), nil, true
+		return ToolError(TextBlocks("Error: command is required")), nil
 	}
 
 	// Apply timeout if configured
@@ -88,7 +88,7 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 			timedOut = true
 		} else {
-			return textBlocks(fmt.Sprintf("Error: command execution failed: %v", err)), nil, true
+			return ToolError(TextBlocks(fmt.Sprintf("Error: command execution failed: %v", err))), nil
 		}
 	}
 
@@ -133,5 +133,9 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		output = output[:truncLen] + truncationMarker
 	}
 
-	return textBlocks(output), nil, exitCode != 0 || timedOut
+	blocks := TextBlocks(output)
+	if exitCode != 0 || timedOut {
+		return ToolError(blocks), nil
+	}
+	return Success(blocks), nil
 }

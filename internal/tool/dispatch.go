@@ -3,7 +3,6 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -52,36 +51,37 @@ func (r *Registry) Lookup(name string) ToolHandler {
 // Dispatch looks up the tool by name and calls it.
 //
 // If the tool is not found, it returns a Go error (which terminates the loop).
-// If the tool executes but returns an error, the result is wrapped as a
-// ToolResultBlock with IsError=true and returned as blocks (so the LLM sees it).
-//
+// If the tool returns a ToolResult with NeedsConfirm=true, the ToolResult is
+// returned directly so the agent loop can check the NeedsConfirm flag.
 // On success, the returned blocks are wrapped in a ToolResultBlock.
-func (r *Registry) Dispatch(ctx context.Context, toolUseID, name string, args json.RawMessage) ([]litellm.Block, error) {
+func (r *Registry) Dispatch(ctx context.Context, toolUseID, name string, args json.RawMessage) (ToolResult, error) {
 	h := r.Lookup(name)
 	if h == nil {
-		return nil, fmt.Errorf("unknown tool: %q", name)
+		return ToolResult{}, fmt.Errorf("unknown tool: %q", name)
 	}
 
-	blocks, err, isError := h.Call(ctx, args)
+	result, err := h.Call(ctx, args)
 	if err != nil {
-		// Propagate ErrNeedsConfirmation directly (not wrapped) so the
-		// agent loop can detect it via errors.As and pause for confirmation.
-		var needsConf *ErrNeedsConfirmation
-		if errors.As(err, &needsConf) {
-			return nil, needsConf
-		}
-		return nil, fmt.Errorf("tool %q: %w", name, err)
+		return ToolResult{}, fmt.Errorf("tool %q: %w", name, err)
+	}
+
+	if result.NeedsConfirm {
+		// Return the ToolResult directly so the agent loop can check
+		// result.NeedsConfirm and access result.ConfirmPath / ConfirmMessage.
+		return result, nil
 	}
 
 	// Always wrap in ToolResultBlock for the agent loop
-	result := []litellm.Block{
-		litellm.ToolResultBlock{
-			ToolUseID: toolUseID,
-			Content:   blocks,
-			IsError:   isError,
+	wrapped := ToolResult{
+		Blocks: []litellm.Block{
+			litellm.ToolResultBlock{
+				ToolUseID: toolUseID,
+				Content:   result.Blocks,
+				IsError:   result.IsError,
+			},
 		},
 	}
-	return result, nil
+	return wrapped, nil
 }
 
 // Names returns all registered tool names, sorted alphabetically.

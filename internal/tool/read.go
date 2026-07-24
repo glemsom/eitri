@@ -58,14 +58,14 @@ func (t *ReadTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed readArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("read: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("read: invalid args: %w", err)
 	}
 
 	if parsed.Path == "" {
-		return textBlocks("Error: path is required"), nil, true
+		return ToolError(TextBlocks("Error: path is required")), nil
 	}
 
 	// Validate path against workspace, skill dirs, and allowed paths
@@ -73,10 +73,8 @@ func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	allowedRoots = append(allowedRoots, t.allowedPaths...)
 	absPath, err := fileutil.ValidatePathWithAllowed(parsed.Path, t.workspace, allowedRoots)
 	if err != nil {
-		return nil, &ErrNeedsConfirmation{
-			Path:    parsed.Path,
-			Message: fmt.Sprintf("path %q is outside workspace and allowed read paths: %v", parsed.Path, err),
-		}, false
+		msg := fmt.Sprintf("path %q is outside workspace and allowed read paths: %v", parsed.Path, err)
+		return NeedsConfirmPath(nil, parsed.Path, msg), nil
 	}
 
 	startLine := parsed.StartLine
@@ -96,7 +94,7 @@ func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 
 	vr, err := fileutil.ReadFile(absPath, startLine, limit)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}
 
 	output := vr.Content
@@ -104,5 +102,5 @@ func (t *ReadTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		output = fmt.Sprintf("[file: %s, lines %d-%d of %d]\n%s", parsed.Path, startLine, startLine+limit-1, vr.TotalLines, vr.Content)
 	}
 
-	return textBlocks(output), nil, false
+	return TextResult(output), nil
 }

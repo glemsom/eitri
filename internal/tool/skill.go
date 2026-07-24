@@ -43,27 +43,27 @@ func (t *SkillTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed skillArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("skill: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("skill: invalid args: %w", err)
 	}
 
 	if parsed.Name == "" {
-		return textBlocks("Error: skill name is required"), nil, true
+		return ToolError(TextBlocks("Error: skill name is required")), nil
 	}
 
 	if t.skillsSvc == nil {
-		return textBlocks("Error: skills service not available"), nil, true
+		return ToolError(TextBlocks("Error: skills service not available")), nil
 	}
 
 	skill := t.skillsSvc.Lookup(parsed.Name)
 	if skill == nil {
 		// Check if disabled
 		if t.skillsSvc.IsDisabled(parsed.Name) {
-			return textBlocks(fmt.Sprintf("Error: skill %q is disabled. Enable it from the Skills page.", parsed.Name)), nil, true
+			return ToolError(TextBlocks(fmt.Sprintf("Error: skill %q is disabled. Enable it from the Skills page.", parsed.Name))), nil
 		}
-		return textBlocks(fmt.Sprintf("Error: skill %q not found in effective skills", parsed.Name)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: skill %q not found in effective skills", parsed.Name))), nil
 	}
 
 	// Record activation in session for persistence across runs
@@ -77,5 +77,5 @@ func (t *SkillTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 	resources := skills.ListResources(skill.Path)
 	content := skills.SkillContent(skill.Body, resources, skill.Path)
 
-	return textBlocks(content), nil, false
+	return TextResult(content), nil
 }

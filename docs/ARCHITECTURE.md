@@ -227,7 +227,8 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
 | `delegate.go` | `DelegateTool` — spawn a sub-agent in the background, returns task_id immediately |
 | `collect.go` | `CollectTool` — block until sub-agent tasks complete, returns structured JSON results |
-| `helpers.go` | Shared types: `SubAgentManager` interface, `SubAgentResult`, `ErrNeedsConfirmation`, `SessionIDKey`, text block helpers |
+| `helpers.go` | Shared types: `SubAgentManager` interface, `SubAgentResult`, `SessionIDKey` |
+| `result.go` | `ToolResult` struct with `Blocks`, `IsError`, `NeedsConfirm` flags; constructor helpers `Success`, `ToolError`, `NeedsConfirmPath`, `TextResult`, `TextBlocks` |
 
 **BashTool** replaces the old `TmuxExecutor`:
 - Creates `exec.Command` per call — no persistent shell session
