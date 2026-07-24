@@ -675,3 +675,314 @@ func TestSnapshotSession_SymlinkPointsToExistingFile(t *testing.T) {
 		t.Fatalf("symlink target %s is a directory, expected file", targetPath)
 	}
 }
+
+func TestRestore_EmptyDir(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore on empty dir returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("Restore returned nil state")
+	}
+	if len(state.Sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(state.Sessions))
+	}
+	if len(state.Histories) != 0 {
+		t.Errorf("expected 0 histories, got %d", len(state.Histories))
+	}
+	if len(state.Traces) != 0 {
+		t.Errorf("expected 0 traces, got %d", len(state.Traces))
+	}
+}
+
+func TestRestore_RestoresSessionAndHistory(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a session
+	sessionID := "restore-test-1"
+	now := time.Now().Truncate(time.Second)
+	s := &session.UISession{
+		ID:        sessionID,
+		BrowserID: "browser-1",
+		Title:     "Restored Session",
+		Status:    session.StatusRunning, // was running before restart
+		Messages: []session.Message{
+			{Role: "user", Content: "hello", CreatedAt: now},
+			{Role: "assistant", Content: "hi there", CreatedAt: now},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	history := []llm.Message{
+		{Role: "system", Content: "You are Eitri."},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi there"},
+	}
+
+	err = p.SnapshotSession(sessionID, s, history)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a trace for this session
+	trace1 := &debug.HTTPTrace{
+		ID:        "trace_1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/v1/chat/completions",
+		Status:    200,
+	}
+	err = p.SaveTrace(sessionID, trace1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a second session
+	sessionID2 := "restore-test-2"
+	s2 := &session.UISession{
+		ID:        sessionID2,
+		BrowserID: "browser-1",
+		Title:     "Second Session",
+		Status:    session.StatusIdle,
+		Messages: []session.Message{
+			{Role: "user", Content: "world", CreatedAt: now},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	history2 := []llm.Message{
+		{Role: "user", Content: "world"},
+	}
+
+	err = p.SnapshotSession(sessionID2, s2, history2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now restore into a fresh persister pointing at the same root
+	p2, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := p2.Restore()
+	if err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("Restore returned nil state")
+	}
+
+	// Verify sessions
+	if len(state.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(state.Sessions))
+	}
+
+	// Check first session
+	restoredS1, ok := state.Sessions[sessionID]
+	if !ok {
+		t.Fatalf("session %q not found in restored state", sessionID)
+	}
+	if restoredS1.Title != "Restored Session" {
+		t.Errorf("expected title %q, got %q", "Restored Session", restoredS1.Title)
+	}
+	if restoredS1.Status != session.StatusIdle {
+		t.Errorf("expected restored session status to be StatusIdle, got %q", restoredS1.Status)
+	}
+	if len(restoredS1.Messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(restoredS1.Messages))
+	}
+	if restoredS1.BrowserID != "browser-1" {
+		t.Errorf("expected browser_id %q, got %q", "browser-1", restoredS1.BrowserID)
+	}
+
+	// Check second session
+	restoredS2, ok := state.Sessions[sessionID2]
+	if !ok {
+		t.Fatalf("session %q not found in restored state", sessionID2)
+	}
+	if restoredS2.Title != "Second Session" {
+		t.Errorf("expected title %q, got %q", "Second Session", restoredS2.Title)
+	}
+	if restoredS2.Status != session.StatusIdle {
+		t.Errorf("expected restored session status to be StatusIdle, got %q", restoredS2.Status)
+	}
+
+	// Verify histories
+	if len(state.Histories) != 2 {
+		t.Fatalf("expected 2 histories, got %d", len(state.Histories))
+	}
+
+	// First history should have system prompt + messages
+	h1, ok := state.Histories[sessionID]
+	if !ok {
+		t.Fatalf("history for session %q not found", sessionID)
+	}
+	if len(h1) != 3 {
+		t.Fatalf("expected 3 messages in history (system+user+assistant), got %d", len(h1))
+	}
+	if h1[0].Role != "system" || h1[0].Content != "You are Eitri." {
+		t.Errorf("expected first message to be system prompt, got role=%q content=%q", h1[0].Role, h1[0].Content)
+	}
+	if h1[1].Role != "user" || h1[1].Content != "hello" {
+		t.Errorf("expected second message to be user/hello, got role=%q content=%q", h1[1].Role, h1[1].Content)
+	}
+
+	// Second history has no system prompt
+	h2, ok := state.Histories[sessionID2]
+	if !ok {
+		t.Fatalf("history for session %q not found", sessionID2)
+	}
+	if len(h2) != 1 {
+		t.Fatalf("expected 1 message in history, got %d", len(h2))
+	}
+	if h2[0].Role != "user" || h2[0].Content != "world" {
+		t.Errorf("expected user/world, got role=%q content=%q", h2[0].Role, h2[0].Content)
+	}
+
+	// Verify traces
+	if len(state.Traces) != 1 {
+		t.Fatalf("expected 1 trace, got %d", len(state.Traces))
+	}
+	if state.Traces[0].ID != "trace_1" {
+		t.Errorf("expected trace ID %q, got %q", "trace_1", state.Traces[0].ID)
+	}
+	if state.Traces[0].SessionID != sessionID {
+		t.Errorf("expected trace session ID %q, got %q", sessionID, state.Traces[0].SessionID)
+	}
+}
+
+func TestRestore_NonExistentDir(t *testing.T) {
+	rootDir := t.TempDir()
+	// Create a persister but don't write anything — the sessions/ and history/
+	// directories exist because New creates them. Remove them to simulate first run.
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove the sessions dir to simulate a truly empty state
+	os.RemoveAll(filepath.Join(rootDir, "sessions"))
+	os.RemoveAll(filepath.Join(rootDir, "history"))
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore on non-existent dir returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("Restore returned nil state")
+	}
+	if len(state.Sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(state.Sessions))
+	}
+}
+
+func TestRestore_ForceStatusIdle(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a session with StatusRunning
+	sessionID := "was-running"
+	s := &session.UISession{
+		ID:        sessionID,
+		Title:     "Was Running",
+		Status:    session.StatusRunning,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = p.SnapshotSession(sessionID, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write another with StatusError
+	sessionID2 := "was-error"
+	s2 := &session.UISession{
+		ID:        sessionID2,
+		Title:     "Was Error",
+		Status:    session.StatusError,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = p.SnapshotSession(sessionID2, s2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+
+	if state.Sessions[sessionID].Status != session.StatusIdle {
+		t.Errorf("expected StatusIdle for session that was StatusRunning, got %q", state.Sessions[sessionID].Status)
+	}
+	if state.Sessions[sessionID2].Status != session.StatusIdle {
+		t.Errorf("expected StatusIdle for session that was StatusError, got %q", state.Sessions[sessionID2].Status)
+	}
+}
+
+func TestRestore_MultipleTraces(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "multi-trace"
+	s := &session.UISession{
+		ID:        sessionID,
+		Title:     "Multi Trace",
+		Status:    session.StatusIdle,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = p.SnapshotSession(sessionID, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write multiple traces
+	traces := []*debug.HTTPTrace{
+		{ID: "trace_a", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
+		{ID: "trace_b", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 500},
+		{ID: "trace_c", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
+	}
+	for _, tr := range traces {
+		if err := p.SaveTrace(sessionID, tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+
+	if len(state.Traces) != 3 {
+		t.Fatalf("expected 3 traces, got %d", len(state.Traces))
+	}
+
+	// Verify all traces are present (order may vary)
+	found := make(map[debug.TraceID]bool)
+	for _, tr := range state.Traces {
+		found[tr.ID] = true
+	}
+	for _, expected := range []debug.TraceID{"trace_a", "trace_b", "trace_c"} {
+		if !found[expected] {
+			t.Errorf("trace %q not found in restored traces", expected)
+		}
+	}
+}

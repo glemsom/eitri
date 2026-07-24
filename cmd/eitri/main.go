@@ -189,6 +189,33 @@ func main() {
 
 	sessionMgr := session.NewManager(10, workspace)
 	historyMgr := history.NewSessionManager(cfg.MaxHistory)
+
+	// Restore persisted data from disk before starting the server
+	if persister != nil {
+		restored, rErr := persister.Restore()
+		if rErr != nil {
+			slog.Warn("failed to restore persisted data", slog.Any("error", rErr))
+		} else {
+			// Hydrate session manager
+			for _, s := range restored.Sessions {
+				sessionMgr.Add(s)
+			}
+			slog.Info("restored sessions from disk", slog.Int("count", len(restored.Sessions)))
+
+			// Hydrate history manager
+			for id, msgs := range restored.Histories {
+				historyMgr.RestoreHistory(id, msgs)
+			}
+			slog.Info("restored histories from disk", slog.Int("count", len(restored.Histories)))
+
+			// Hydrate debug recorder
+			debugRecorder.LoadAll(restored.Traces)
+			if len(restored.Traces) > 0 {
+				slog.Info("restored HTTP traces from disk", slog.Int("count", len(restored.Traces)))
+			}
+		}
+	}
+
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historyMgr,

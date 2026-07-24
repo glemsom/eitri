@@ -68,6 +68,34 @@ func (m *SessionManager) Create(id string) {
 	}
 }
 
+// RestoreHistory replaces the full history for a session with the given messages.
+// The first message with Role "system" is treated as the system prompt and stored
+// separately; all remaining messages form the conversation history.
+// If the session doesn't exist, it is created first.
+func (m *SessionManager) RestoreHistory(id string, messages []llm.Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, exists := m.sessions[id]
+	if !exists {
+		s = &llmSession{
+			messages:     make([]llm.Message, 0, len(messages)),
+			systemPrompt: DefaultSystemPrompt,
+		}
+		m.sessions[id] = s
+	}
+
+	// Extract system prompt if present
+	if len(messages) > 0 && messages[0].Role == "system" {
+		s.systemPrompt = messages[0].Content
+		s.messages = make([]llm.Message, len(messages)-1)
+		copy(s.messages, messages[1:])
+	} else {
+		s.messages = make([]llm.Message, len(messages))
+		copy(s.messages, messages)
+	}
+}
+
 // SetSystemPrompt updates the system prompt for a session.
 // No-op if session does not exist.
 func (m *SessionManager) SetSystemPrompt(id, prompt string) {

@@ -31,6 +31,13 @@ type HistorySchema struct {
 	Messages     []llm.Message `json:"messages"`
 }
 
+// RestoredState holds all data recovered from disk on startup.
+type RestoredState struct {
+	Sessions map[string]*session.UISession
+	Histories map[string][]llm.Message // sessionID → conversation history with system prompt prepended
+	Traces    []*debug.HTTPTrace
+}
+
 // Persister manages disk I/O for session snapshots, conversation history,
 // and HTTP traces under a root data directory.
 type Persister struct {
@@ -266,6 +273,120 @@ func (p *Persister) Prune() error {
 	}
 
 	return nil
+}
+
+// Restore reads all persisted session snapshots, conversation histories, and
+// HTTP traces from disk and returns them as a RestoredState struct.
+// If no persisted data exists (first run), returns an empty RestoredState with no error.
+// All restored sessions have Status set to StatusIdle regardless of what the snapshot says.
+func (p *Persister) Restore() (*RestoredState, error) {
+	state := &RestoredState{
+		Sessions: make(map[string]*session.UISession),
+		Histories: make(map[string][]llm.Message),
+		Traces:    make([]*debug.HTTPTrace, 0),
+	}
+
+	sessionsDir := filepath.Join(p.rootDir, "sessions")
+	historyDir := filepath.Join(p.rootDir, "history")
+
+	// Walk sessions/ directory to find all session IDs
+	sessionEntries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return state, nil // first run, nothing to restore
+		}
+		return nil, fmt.Errorf("cannot list sessions dir %s: %w", sessionsDir, err)
+	}
+
+	for _, entry := range sessionEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		sessionID := entry.Name()
+
+		// --- Restore session snapshot ---
+		sessionLink := filepath.Join(sessionsDir, sessionID, "session.json")
+		linkTarget, err := os.Readlink(sessionLink)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // no snapshot for this session yet
+			}
+			return nil, fmt.Errorf("cannot read symlink %s: %w", sessionLink, err)
+		}
+
+		snapshotPath := filepath.Join(sessionsDir, sessionID, linkTarget)
+		data, err := os.ReadFile(snapshotPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read snapshot %s: %w", snapshotPath, err)
+		}
+
+		var s session.UISession
+		if err := json.Unmarshal(data, &s); err != nil {
+			return nil, fmt.Errorf("cannot unmarshal session snapshot %s: %w", snapshotPath, err)
+		}
+
+		// Force status to idle — no half-running state on recovery
+		s.Status = session.StatusIdle
+
+		state.Sessions[sessionID] = &s
+
+		// --- Restore conversation history ---
+		historyLink := filepath.Join(historyDir, sessionID, "history.json")
+		histLinkTarget, err := os.Readlink(historyLink)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // no history for this session yet
+			}
+			return nil, fmt.Errorf("cannot read history symlink %s: %w", historyLink, err)
+		}
+
+		histPath := filepath.Join(historyDir, sessionID, histLinkTarget)
+		histData, err := os.ReadFile(histPath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read history file %s: %w", histPath, err)
+		}
+
+		var histSchema HistorySchema
+		if err := json.Unmarshal(histData, &histSchema); err != nil {
+			return nil, fmt.Errorf("cannot unmarshal history %s: %w", histPath, err)
+		}
+
+		// Reconstruct the full message list with system prompt prepended
+		var messages []llm.Message
+		if histSchema.SystemPrompt != "" {
+			messages = append(messages, llm.Message{Role: "system", Content: histSchema.SystemPrompt})
+		}
+		messages = append(messages, histSchema.Messages...)
+		state.Histories[sessionID] = messages
+
+		// --- Restore HTTP traces ---
+		tracesDir := filepath.Join(sessionsDir, sessionID, "traces")
+		traceEntries, err := os.ReadDir(tracesDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // no traces for this session
+			}
+			return nil, fmt.Errorf("cannot list traces dir %s: %w", tracesDir, err)
+		}
+
+		for _, traceEntry := range traceEntries {
+			if traceEntry.IsDir() || !strings.HasSuffix(traceEntry.Name(), ".json") {
+				continue
+			}
+			tracePath := filepath.Join(tracesDir, traceEntry.Name())
+			traceData, err := os.ReadFile(tracePath)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read trace file %s: %w", tracePath, err)
+			}
+			var trace debug.HTTPTrace
+			if err := json.Unmarshal(traceData, &trace); err != nil {
+				return nil, fmt.Errorf("cannot unmarshal trace %s: %w", tracePath, err)
+			}
+			state.Traces = append(state.Traces, &trace)
+		}
+	}
+
+	return state, nil
 }
 
 // timestampFilename generates an ISO8601 filename with dashes instead of colons.
