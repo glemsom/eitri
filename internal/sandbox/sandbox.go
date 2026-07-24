@@ -72,6 +72,12 @@ func BwrapIsUsable() bool {
 
 var bwrapAvailableCached = sync.OnceValue(bwrapIsUsableUncached)
 
+// bwrapPathCached caches the result of exec.LookPath("bwrap") so WrapCommand
+// doesn't search PATH on every invocation.
+var bwrapPathCached = sync.OnceValues(func() (string, error) {
+	return exec.LookPath("bwrap")
+})
+
 func bwrapIsUsableUncached() bool {
 	return BwrapIsUsable()
 }
@@ -109,7 +115,7 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 		return "", nil, fmt.Errorf("sandbox: workspace is required for sandboxed execution")
 	}
 
-	bwrap, err := exec.LookPath("bwrap")
+	bwrap, err := bwrapPathCached()
 	if err != nil {
 		slog.Debug("bwrap not found on PATH, running command without sandbox",
 			slog.String("workspace", workspace),
