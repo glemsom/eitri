@@ -74,16 +74,16 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 		return "bash", []string{"-c", command}, nil
 	}
 
+	if workspace == "" {
+		return "", nil, fmt.Errorf("sandbox: workspace is required for sandboxed execution")
+	}
+
 	bwrap, err := exec.LookPath("bwrap")
 	if err != nil {
 		slog.Debug("bwrap not found on PATH, running command without sandbox",
 			slog.String("workspace", workspace),
 		)
 		return "bash", []string{"-c", command}, nil
-	}
-
-	if workspace == "" {
-		return "", nil, fmt.Errorf("sandbox: workspace is required for sandboxed execution")
 	}
 
 	// Build bwrap arguments.
