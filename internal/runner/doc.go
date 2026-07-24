@@ -15,37 +15,42 @@
 //   - BrowserEvent — event sent to browser-level SSE subscribers
 //     (defined in broadcast sub-package)
 //
-// # Sub-packages
+// # Sub-package hierarchy
 //
-//   - runconfig — RunConfig type, FromConfig builder, MaxTurnsExceededError
-//   - broadcast — BrowserBroadcaster, BrowserEvent types
-//   - adapters — HistoryManager and Confirmer interfaces + all implementations
-//     (sessionHistoryManager, requestHistoryManager, testConfirmerStub,
-//     funcConfirmer), ConfirmationResult and ConfirmationFunc value types
-//   - loop — RunAgent, RunSpec, RunOpts, the agent turn loop, streaming,
-//     tool dispatch, message trimming, and LLM error handling
+//	runner/            — RunService wiring, RunState, run tracking,
+//	                     batch mode, sub-agent orchestration,
+//	                     system prompt assembly, skill context
+//	├── runconfig/     — RunConfig type, FromConfig builder,
+//	│                    MaxTurnsExceededError
+//	├── broadcast/     — BrowserBroadcaster, BrowserEvent types
+//	├── adapters/      — HistoryManager and Confirmer interfaces +
+//	│                    implementations (sessionHistoryManager,
+//	│                    requestHistoryManager, testConfirmerStub,
+//	│                    funcConfirmer), ConfirmationResult,
+//	│                    ConfirmationFunc value types
+//	└── loop/          — RunAgent, RunSpec, RunOpts, the agent turn
+//	                     loop, streaming, tool dispatch, message
+//	                     trimming, and LLM error handling
 //
-// # File map
+// # Responsibilities by file
 //
-//	service.go          — RunService type, constructor, subscribe/unsubscribe,
-//	                      cancel, confirm path, browser SSE broadcast
-//	run.go              — StartRun (agent loop entry point), tool registry assembly,
-//	                      session persistence after run
-//	batch.go            — BatchRun: headless batch mode (no UI sessions,
-//	                      sessionHistoryManager, io.Writer output)
-//	system_prompt.go    — buildSystemPrompt and buildLLMService: shared helpers
-//	                      used by run.go, batch.go, and subagent.go.
-//	                      buildLLMService assembles auth, LLM service, tool
-//	                      registry, AND the system prompt in one seam call.
-//	subagent.go         — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
-//	                      sub-agent record tracking, restricted tool registry
-//	skill_context.go    — sessionSkillContext resolution, stale skill detection,
-//	                      skill directory enumeration
+//	service.go       — RunService type, constructor, subscribe/unsubscribe,
+//	                   cancel, confirm path, browser SSE broadcast
+//	run.go           — StartRun (agent loop entry point), tool registry
+//	                   assembly, session persistence after run
+//	batch.go         — BatchRun: headless batch mode (no UI sessions,
+//	                   sessionHistoryManager, io.Writer output)
+//	system_prompt.go — buildSystemPrompt and buildLLMService: shared
+//	                   helpers used by run.go, batch.go, and subagent.go.
+//	                   buildLLMService assembles auth, LLM service, tool
+//	                   registry, and the system prompt in one seam call.
+//	subagent.go      — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
+//	                   sub-agent record tracking, restricted tool registry
+//	skill_context.go — sessionSkillContext resolution, stale skill
+//	                   detection, skill directory enumeration
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)
-//	runconfig/          — RunConfig type, FromConfig builder, MaxTurnsExceededError
-//	broadcast/          — BrowserBroadcaster, BrowserEvent (sub-package)
-//	adapters/           — HistoryManager, Confirmer, ConfirmationResult (sub-package)
-//	loop/               — RunAgent, RunSpec, RunOpts (sub-package)
+//	run_tracker.go   — Concurrency-safe active-run map, cancel, snapshot
+//	subagent_store.go — In-flight sub-agent record store and parent config
 //
 // # Dependencies
 //
