@@ -372,9 +372,8 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
 	}
-	svc.parentCfgMu.Lock()
-	svc.parentCfgs["session-1"] = cfg
-	svc.parentCfgMu.Unlock()
+	svc.subagents.StoreParentCfg("session-1", cfg)
+
 
 	taskID1, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 1", 5)
 	if err != nil {
@@ -391,19 +390,16 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 	if taskID1 == taskID2 {
 		t.Fatal("expected unique task IDs")
 	}
-
 	// Verify records are stored
-	svc.subMu.Lock()
-	_, exists1 := svc.subAgents[taskID1]
-	_, exists2 := svc.subAgents[taskID2]
-	svc.subMu.Unlock()
+	rec1 := svc.subagents.getRecord(taskID1)
+	rec2 := svc.subagents.getRecord(taskID2)
 
-	if !exists1 {
+	if rec1 == nil {
 		t.Fatal("taskID1 not found in subAgents")
 	}
-	if !exists2 {
+	if rec2 == nil {
 		t.Fatal("taskID2 not found in subAgents")
-	}
+}
 }
 
 func TestRunService_CollectSubAgents_Empty(t *testing.T) {
@@ -448,9 +444,8 @@ func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
 	}
-	svc.parentCfgMu.Lock()
-	svc.parentCfgs["session-1"] = cfg
-	svc.parentCfgMu.Unlock()
+	svc.subagents.StoreParentCfg("session-1", cfg)
+
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
 	if err != nil {
@@ -495,20 +490,14 @@ func TestRunService_Cancel_CancelsSubAgents(t *testing.T) {
 	// Cancel the parent run — should cascade to sub-agents
 	svc.Cancel("session-1")
 
-	// Sub-agent should be cancelled
-	svc.subMu.Lock()
-	rec, exists := svc.subAgents[taskID]
-	svc.subMu.Unlock()
-	if !exists {
+	rec := svc.subagents.getRecord(taskID)
+	if rec == nil {
 		t.Fatal("sub-agent record not found after cancel")
 	}
-	// Wait briefly for goroutine to process cancellation
-	time.Sleep(100 * time.Millisecond)
-	svc.subMu.Lock()
-	status := rec.Status
-	svc.subMu.Unlock()
-	if status != subAgentCancelled {
-		t.Fatalf("sub-agent status = %q, want %q", status, subAgentCancelled)
+	// Wait for sub-agent goroutine to finish
+	<-rec.Done
+	if rec.Status != subAgentCancelled {
+		t.Fatalf("sub-agent status = %q, want %q", rec.Status, subAgentCancelled)
 	}
 }
 
@@ -541,9 +530,8 @@ func TestRunService_ParentConfig_StoredOnStartRun(t *testing.T) {
 	}
 	defer svc.Cancel("session-1")
 
-	svc.parentCfgMu.Lock()
-	stored, exists := svc.parentCfgs["session-1"]
-	svc.parentCfgMu.Unlock()
+	stored, exists := svc.subagents.GetParentCfg("session-1")
+
 
 	if !exists {
 		t.Fatal("parent config not stored")
@@ -570,19 +558,16 @@ func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
 	}
-	svc.parentCfgMu.Lock()
-	svc.parentCfgs[parent.ID] = cfg
-	svc.parentCfgMu.Unlock()
+	svc.subagents.StoreParentCfg(parent.ID, cfg)
+
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), parent.ID, "research X", 5)
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
 
-	svc.subMu.Lock()
-	rec, exists := svc.subAgents[taskID]
-	svc.subMu.Unlock()
-	if !exists {
+	rec := svc.subagents.getRecord(taskID)
+	if rec == nil {
 		t.Fatal("sub-agent record not found")
 	}
 	if rec.ChildSessionID == "" {
@@ -617,19 +602,16 @@ func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
 	}
-	svc.parentCfgMu.Lock()
-	svc.parentCfgs["session-1"] = cfg
-	svc.parentCfgMu.Unlock()
+	svc.subagents.StoreParentCfg("session-1", cfg)
+
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
 
-	svc.subMu.Lock()
-	rec, exists := svc.subAgents[taskID]
-	svc.subMu.Unlock()
-	if !exists {
+	rec := svc.subagents.getRecord(taskID)
+	if rec == nil {
 		t.Fatal("sub-agent record not found")
 	}
 	if rec.ChildSessionID != "" {

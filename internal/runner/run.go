@@ -34,16 +34,14 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 }
 
 func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
-	s.mu.Lock()
-	if existing, exists := s.active[sessionID]; exists {
-		select {
-		case <-existing.Done:
-			delete(s.active, sessionID)
-		default:
-			s.mu.Unlock()
-			return nil, fmt.Errorf("session %s already has an active run", sessionID)
-		}
+	if s.tracker.exchangeIfDone(sessionID) {
+		// Previous run was done; clean slate
 	}
+
+	if s.tracker.get(sessionID) != nil {
+		return nil, fmt.Errorf("session %s already has an active run", sessionID)
+	}
+
 	providerID := cfg.ProviderID
 	baseURL := cfg.BaseURL
 	apiKey := cfg.APIKey
@@ -54,12 +52,8 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	providerAuth := cfg.ProviderAuth
 	workspace := cfg.Workspace
 	contextWindowTokens := cfg.ContextWindowTokens
-	s.mu.Unlock()
-
 	// Store parent config for sub-agent setup
-	s.parentCfgMu.Lock()
-	s.parentCfgs[sessionID] = cfg
-	s.parentCfgMu.Unlock()
+	s.subagents.StoreParentCfg(sessionID, cfg)
 
 	if baseURL == "" || modelName == "" {
 		return nil, errors.New("provider not configured: set base_url and model in settings")
@@ -173,25 +167,16 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Done:      make(chan struct{}),
 		SSE:       sseState,
 	}
-
-	s.mu.Lock()
-	s.active[sessionID] = state
-	s.mu.Unlock()
+	s.tracker.store(sessionID, state)
 
 	go func() {
 		defer func() {
 			state.finish()
 			time.Sleep(completedRunRetention)
-			s.mu.Lock()
-			if s.active[sessionID] == state {
-				delete(s.active, sessionID)
-			}
-			s.mu.Unlock()
+			s.tracker.remove(sessionID, state)
 
 			// Clean up parent config for sub-agent setup
-			s.parentCfgMu.Lock()
-			delete(s.parentCfgs, sessionID)
-			s.parentCfgMu.Unlock()
+			s.subagents.DeleteParentCfg(sessionID)
 		}()
 
 		// Ensure session status is reset and browser subscribers notified when the run completes.
@@ -281,8 +266,6 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 	})
 }
 
-// broadcastSessionStatusUpdate updates the session status and broadcasts the change
-// to all browser-level SSE subscribers for this session's browser.
 func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uisession.Status) {
 	if s.uiSessionMgr == nil {
 		return
@@ -296,7 +279,7 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	if sess.BrowserID == "" {
 		return
 	}
-	s.BroadcastToBrowser(sess.BrowserID, BrowserEvent{
+	s.broadcast.Broadcast(sess.BrowserID, BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,
