@@ -50,19 +50,19 @@ func (t *GrepTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed grepArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("grep: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("grep: invalid args: %w", err)
 	}
 
 	if parsed.Pattern == "" {
-		return textBlocks("Error: pattern is required"), nil, true
+		return ToolError(TextBlocks("Error: pattern is required")), nil
 	}
 
 	re, err := regexp.Compile(parsed.Pattern)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: invalid regex %q: %v", parsed.Pattern, err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid regex %q: %v", parsed.Pattern, err))), nil
 	}
 
 	type match struct {
@@ -122,7 +122,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return nil
 	}, parsed.FilePattern)
 	if err != nil && !truncated {
-		return textBlocks(fmt.Sprintf("Error: grep walk failed: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: grep walk failed: %v", err))), nil
 	}
 
 	sort.Slice(matches, func(i, j int) bool {
@@ -203,7 +203,7 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		output += "... (output truncated at 2 KiB)"
 	}
 
-	return textBlocks(output), nil, false
+	return Success(TextBlocks(output)), nil
 }
 
 // Ensure GrepTool implements ToolHandler at compile time.

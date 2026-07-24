@@ -41,13 +41,13 @@ func (t *DelegateTool) Description() string {
 
 func (t *DelegateTool) JSONSchema() litellm.Schema { return t.schema }
 
-func (t *DelegateTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *DelegateTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed delegateArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("delegate: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("delegate: invalid args: %w", err)
 	}
 	if parsed.Task == "" {
-		return textBlocks("Error: 'task' parameter is required"), nil, true
+		return ToolError(TextBlocks("Error: 'task' parameter is required")), nil
 	}
 	if parsed.MaxTurns <= 0 {
 		parsed.MaxTurns = 50
@@ -57,9 +57,9 @@ func (t *DelegateTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 
 	taskID, err := t.subMgr.SpawnSubAgent(ctx, sessionID, parsed.Task, parsed.MaxTurns)
 	if err != nil {
-		return nil, fmt.Errorf("delegate: %w", err), false
+		return ToolResult{}, fmt.Errorf("delegate: %w", err)
 	}
 
 	result := fmt.Sprintf(`{"task_id": %q}`, taskID)
-	return textBlocks(result), nil, false
+	return TextResult(result), nil
 }

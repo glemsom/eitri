@@ -11,7 +11,7 @@ import (
 // ── Mock tool for testing ──────────────────────────────────────────────────
 
 type mockTool struct {
-	callFunc func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool)
+	callFunc func(ctx context.Context, args json.RawMessage) (ToolResult, error)
 }
 
 func (m *mockTool) Name() string        { return "mock_tool" }
@@ -19,11 +19,11 @@ func (m *mockTool) Description() string { return "Mock tool for testing" }
 func (m *mockTool) JSONSchema() litellm.Schema {
 	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (m *mockTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (m *mockTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	if m.callFunc != nil {
 		return m.callFunc(ctx, args)
 	}
-	return []litellm.Block{litellm.TextBlock{Text: "mock ok"}}, nil, false
+	return Success([]litellm.Block{litellm.TextBlock{Text: "mock ok"}}), nil
 }
 
 type errorTool struct{}
@@ -33,8 +33,8 @@ func (e *errorTool) Description() string { return "Tool that errors" }
 func (e *errorTool) JSONSchema() litellm.Schema {
 	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (e *errorTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-	return []litellm.Block{litellm.TextBlock{Text: "tool error"}}, nil, true
+func (e *errorTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+	return ToolError([]litellm.Block{litellm.TextBlock{Text: "tool error"}}), nil
 }
 
 // ── Registry tests ─────────────────────────────────────────────────────────
@@ -120,19 +120,19 @@ func TestDispatch_KnownTool(t *testing.T) {
 	r := NewRegistry()
 	r.Register(&mockTool{})
 
-	blocks, err := r.Dispatch(context.Background(), "call_1", "mock_tool", json.RawMessage(`{}`))
+	result, err := r.Dispatch(context.Background(), "call_1", "mock_tool", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
 	// Should be wrapped in ToolResultBlock
-	result, ok := blocks[0].(litellm.ToolResultBlock)
+	block, ok := result.Blocks[0].(litellm.ToolResultBlock)
 	if !ok {
-		t.Fatalf("block is %T, want ToolResultBlock", blocks[0])
+		t.Fatalf("block is %T, want ToolResultBlock", result.Blocks[0])
 	}
-	if result.IsError {
+	if block.IsError {
 		t.Error("IsError = true, want false")
 	}
 }
@@ -151,18 +151,18 @@ func TestDispatch_ToolErrorIsWrapped(t *testing.T) {
 	r := NewRegistry()
 	r.Register(&errorTool{})
 
-	blocks, err := r.Dispatch(context.Background(), "call_1", "error_tool", json.RawMessage(`{}`))
+	result, err := r.Dispatch(context.Background(), "call_1", "error_tool", json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	result, ok := blocks[0].(litellm.ToolResultBlock)
+	block, ok := result.Blocks[0].(litellm.ToolResultBlock)
 	if !ok {
-		t.Fatalf("block is %T, want ToolResultBlock", blocks[0])
+		t.Fatalf("block is %T, want ToolResultBlock", result.Blocks[0])
 	}
-	if !result.IsError {
+	if !block.IsError {
 		t.Error("IsError = false, want true")
 	}
 }
@@ -170,8 +170,8 @@ func TestDispatch_ToolErrorIsWrapped(t *testing.T) {
 func TestDispatch_ContextCancelled(t *testing.T) {
 	r := NewRegistry()
 	mock := &mockTool{
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return nil, context.Canceled, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			return ToolResult{}, context.Canceled
 		},
 	}
 	r.Register(mock)

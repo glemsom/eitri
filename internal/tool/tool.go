@@ -15,17 +15,15 @@ import (
 // ToolHandler is the interface each built-in tool implements.
 //
 // Call returns:
-//   - []litellm.Block — content blocks for the tool result (e.g. TextBlock).
-//   - error           — a Go-level error that terminates the agent loop
+//   - ToolResult — content blocks plus optional IsError / NeedsConfirm flags
+//   - error      — a Go-level error that terminates the agent loop
 //     (unknown tool, context cancelled, etc.).
-//   - bool            — isError: when true the result is wrapped as a
-//     ToolResultBlock with IsError=true so the LLM sees a tool error and
-//     can decide how to respond.
+//     Non-nil error is returned directly; the ToolResult is ignored.
 type ToolHandler interface {
 	Name() string
 	Description() string
 	JSONSchema() litellm.Schema
-	Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool)
+	Call(ctx context.Context, args json.RawMessage) (ToolResult, error)
 }
 
 // JSONSchema is a strongly-typed JSON Schema object builder.

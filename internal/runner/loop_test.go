@@ -90,7 +90,7 @@ func newMockLLM(turns []mockTurn) *mockLLMService {
 type simpleMockTool struct {
 	name        string
 	description string
-	callFunc    func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool)
+	callFunc    func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error)
 }
 
 func (m *simpleMockTool) Name() string        { return m.name }
@@ -98,11 +98,11 @@ func (m *simpleMockTool) Description() string { return m.description }
 func (m *simpleMockTool) JSONSchema() litellm.Schema {
 	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (m *simpleMockTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (m *simpleMockTool) Call(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
 	if m.callFunc != nil {
 		return m.callFunc(ctx, args)
 	}
-	return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+	return tool.Success([]litellm.Block{litellm.TextBlock{Text: "ok"}}), nil
 }
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	toolReg.Register(&simpleMockTool{
 		name:        "test_tool",
 		description: "A test tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "42"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("42")), nil
 		},
 	})
 
@@ -282,20 +282,20 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "tool_a",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
 			execMu.Lock()
 			execOrder = append(execOrder, "a")
 			execMu.Unlock()
-			return []litellm.Block{litellm.TextBlock{Text: "a_result"}}, nil, false
+			return tool.Success(tool.TextBlocks("a_result")), nil
 		},
 	})
 	toolReg.Register(&simpleMockTool{
 		name: "tool_b",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
 			execMu.Lock()
 			execOrder = append(execOrder, "b")
 			execMu.Unlock()
-			return []litellm.Block{litellm.TextBlock{Text: "b_result"}}, nil, false
+			return tool.Success(tool.TextBlocks("b_result")), nil
 		},
 	})
 
@@ -338,8 +338,8 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "failing_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "command not found"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.ToolError(tool.TextBlocks("command not found")), nil
 		},
 	})
 
@@ -395,10 +395,10 @@ func TestRunAgent_EditToolEmitsFileEditCardComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success([]litellm.Block{
 				litellm.TextBlock{Text: "Edited file: test.txt\nOLD:\nfoo\nNEW:\nbar"},
-			}, nil, false
+			}), nil
 		},
 	})
 
@@ -452,10 +452,10 @@ func TestRunAgent_EditToolEmitsFullFileDiff(t *testing.T) {
 	// Simulate real edit tool behavior: returns concise summary, not full content.
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success([]litellm.Block{
 				litellm.TextBlock{Text: "Edited file: test.txt (1 line changed)"},
-			}, nil, false
+			}), nil
 		},
 	})
 
@@ -522,8 +522,8 @@ func TestRunAgent_EditToolErrorSkipsFileEditCard(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "file not found"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.ToolError(tool.TextBlocks("file not found")), nil
 		},
 	})
 
@@ -570,8 +570,8 @@ func TestRunAgent_NonEditToolSkipsFileEditCard(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "write",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "Written file: test.txt"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("Written file: test.txt")), nil
 		},
 	})
 
@@ -610,8 +610,8 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("ok")), nil
 		},
 	})
 
@@ -966,8 +966,8 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("ok")), nil
 		},
 	})
 
@@ -1001,8 +1001,8 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "empty_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(nil), nil
 		},
 	})
 
@@ -1051,8 +1051,8 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	// Only register "edit", not "replace"
 	toolReg.Register(&simpleMockTool{
 		name: "edit",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("ok")), nil
 		},
 	})
 
@@ -1348,8 +1348,8 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "tool result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("tool result")), nil
 		},
 	})
 
@@ -1449,8 +1449,8 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_mermaid_diagram",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "Rendered MermaidDiagram"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("Rendered MermaidDiagram")), nil
 		},
 	})
 
@@ -1501,8 +1501,8 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_quick_replies",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "Rendered QuickReplies"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("Rendered QuickReplies")), nil
 		},
 	})
 
@@ -1549,8 +1549,8 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "render_mermaid_diagram",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "something went wrong"}}, nil, true
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.ToolError(tool.TextBlocks("something went wrong")), nil
 		},
 	})
 
@@ -1597,8 +1597,8 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "some_other_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("ok")), nil
 		},
 	})
 
@@ -1703,8 +1703,8 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("result")), nil
 		},
 	})
 
@@ -1784,8 +1784,8 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "loop_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "ok"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("ok")), nil
 		},
 	})
 
@@ -1977,7 +1977,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 
 // ── Confirmation flow tests ────────────────────────────────────────────────
 
-// needsConfirmTool returns ErrNeedsConfirmation on the first call, then
+// needsConfirmTool returns NeedsConfirm on the first call, then
 // succeeds on subsequent calls. Used to test the approve path.
 type needsConfirmTool struct {
 	mu      sync.Mutex
@@ -1991,17 +1991,17 @@ func (t *needsConfirmTool) Description() string { return "A tool that needs conf
 func (t *needsConfirmTool) JSONSchema() litellm.Schema {
 	return litellm.Schema(`{"type":"object","properties":{}}`)
 }
-func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *needsConfirmTool) Call(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
 	t.mu.Lock()
 	n := t.callNum
 	t.callNum++
 	t.mu.Unlock()
 	if n == 0 {
 		// First call — needs confirmation
-		return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/test.txt", Message: "Allow reading /tmp/test.txt?"}, false
+		return tool.NeedsConfirmPath(nil, "/tmp/test.txt", "Allow reading /tmp/test.txt?"), nil
 	}
 	// Subsequent call — succeeds
-	return []litellm.Block{litellm.TextBlock{Text: t.result}}, nil, false
+	return tool.Success([]litellm.Block{litellm.TextBlock{Text: t.result}}), nil
 }
 
 func (t *needsConfirmTool) AppendAllowedPaths(path string) {}
@@ -2076,11 +2076,11 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	// alwaysNeedsConfirmTool always returns ErrNeedsConfirmation
+	// alwaysNeedsConfirmTool always returns NeedsConfirm
 	alwaysNeedsTool := &simpleMockTool{
 		name: "needs_confirm_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return nil, &tool.ErrNeedsConfirmation{Path: "/tmp/secret.txt", Message: "Allow?"}, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.NeedsConfirmPath(nil, "/tmp/secret.txt", "Allow?"), nil
 		},
 	}
 
@@ -2214,8 +2214,8 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
 		name: "test_tool",
-		callFunc: func(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
-			return []litellm.Block{litellm.TextBlock{Text: "result"}}, nil, false
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("result")), nil
 		},
 	})
 

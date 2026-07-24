@@ -44,20 +44,20 @@ func (t *GlobTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed globArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("glob: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("glob: invalid args: %w", err)
 	}
 
 	if parsed.Pattern == "" {
-		return textBlocks("Error: pattern is required"), nil, true
+		return ToolError(TextBlocks("Error: pattern is required")), nil
 	}
 
 	// Validate workspace path
 	absPattern, err := fileutil.ValidateWorkspacePath(parsed.Pattern, t.workspace)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}
 
 	// Walk the workspace looking for matches
@@ -94,14 +94,14 @@ func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 		return nil
 	}, "")
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: glob walk failed: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: glob walk failed: %v", err))), nil
 	}
 
 	// Sort and deduplicate
 	sort.Strings(matches)
 	matches = unique(matches)
 
-	return textBlocks(strings.Join(matches, "\n")), nil, false
+	return Success(TextBlocks(strings.Join(matches, "\n"))), nil
 }
 
 // unique returns the input slice with duplicates removed.

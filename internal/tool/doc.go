@@ -15,7 +15,7 @@
 //
 //   - ToolHandler           — interface with Name, Description, JSONSchema, Call
 //   - Registry              — dispatch map of tool handlers by name
-//   - ErrNeedsConfirmation  — error type signalling a tool needs user approval
+//   - ToolResult            — struct with Blocks, IsError, NeedsConfirm flags
 //   - SubAgentManager       — interface for spawning/collecting sub-agents
 //   - SubAgentResult         — outcome of one sub-agent task
 //

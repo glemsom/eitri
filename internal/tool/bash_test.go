@@ -32,7 +32,7 @@ func TestBash_Schema(t *testing.T) {
 
 func TestBash_InvalidArgs(t *testing.T) {
 	tool := NewBashTool("/tmp", 0)
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -40,21 +40,21 @@ func TestBash_InvalidArgs(t *testing.T) {
 
 func TestBash_EmptyCommand(t *testing.T) {
 	tool := NewBashTool("/tmp", 0)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	result, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
-	if len(result.Text) == 0 {
+	if len(block.Text) == 0 {
 		t.Error("expected error text")
 	}
 }
@@ -73,123 +73,123 @@ func TestBash_ArgsUnmarshal(t *testing.T) {
 func TestBash_RunsCommand(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello world"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello world"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	result, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	expected := "<stdout>\nhello world\n</stdout>"
-	if result.Text != expected {
-		t.Errorf("output = %q, want %q", result.Text, expected)
+	if block.Text != expected {
+		t.Errorf("output = %q, want %q", block.Text, expected)
 	}
 }
 
 func TestBash_ExitCode(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"exit 42"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"exit 42"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for non-zero exit")
+	if !result.IsError {
+		t.Error("IsError = false, want true for non-zero exit")
 	}
-	result := blocks[0].(litellm.TextBlock)
+	block := result.Blocks[0].(litellm.TextBlock)
 	expected := "[exit code 42]"
-	if result.Text != expected {
-		t.Errorf("output = %q, want %q", result.Text, expected)
+	if block.Text != expected {
+		t.Errorf("output = %q, want %q", block.Text, expected)
 	}
 }
 
 func TestBash_StderrCapture(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo stderr_output >&2"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo stderr_output >&2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	result := blocks[0].(litellm.TextBlock)
+	block := result.Blocks[0].(litellm.TextBlock)
 	expected := "<stderr>\nstderr_output\n</stderr>"
-	if result.Text != expected {
-		t.Errorf("output = %q, want %q", result.Text, expected)
+	if block.Text != expected {
+		t.Errorf("output = %q, want %q", block.Text, expected)
 	}
 }
 
 func TestBash_StdoutAndStderr(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo out; echo err >&2"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo out; echo err >&2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	result := blocks[0].(litellm.TextBlock)
+	block := result.Blocks[0].(litellm.TextBlock)
 	expected := "<stdout>\nout\n</stdout>\n<stderr>\nerr\n</stderr>"
-	if result.Text != expected {
-		t.Errorf("output = %q, want %q", result.Text, expected)
+	if block.Text != expected {
+		t.Errorf("output = %q, want %q", block.Text, expected)
 	}
 }
 
 func TestBash_ExitCodeWithOutput(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello && exit 3"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello && exit 3"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for non-zero exit")
+	if !result.IsError {
+		t.Error("IsError = false, want true for non-zero exit")
 	}
-	result := blocks[0].(litellm.TextBlock)
+	block := result.Blocks[0].(litellm.TextBlock)
 	expected := "<stdout>\nhello\n</stdout>\n[exit code 3]"
-	if result.Text != expected {
-		t.Errorf("output = %q, want %q", result.Text, expected)
+	if block.Text != expected {
+		t.Errorf("output = %q, want %q", block.Text, expected)
 	}
 }
 
 func TestBash_Timeout(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Millisecond)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"sleep 10"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"sleep 10"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for timeout")
+	if !result.IsError {
+		t.Error("IsError = false, want true for timeout")
 	}
-	result := blocks[0].(litellm.TextBlock)
-	if !strings.Contains(result.Text, "[command timed out]") {
-		t.Errorf("output = %q, want timed out", result.Text)
+	block := result.Blocks[0].(litellm.TextBlock)
+	if !strings.Contains(block.Text, "[command timed out]") {
+		t.Errorf("output = %q, want timed out", block.Text)
 	}
 }
 
 func TestBash_WorkspaceDir(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"pwd"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"pwd"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	result := blocks[0].(litellm.TextBlock)
-	if !strings.Contains(result.Text, dir) {
-		t.Errorf("output = %q, want directory %q", result.Text, dir)
+	block := result.Blocks[0].(litellm.TextBlock)
+	if !strings.Contains(block.Text, dir) {
+		t.Errorf("output = %q, want directory %q", block.Text, dir)
 	}
 }
 
@@ -197,18 +197,18 @@ func TestBash_Truncation(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewBashTool(dir, 10*time.Second)
 	// Generate >4 KiB of output
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 6000)\""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 6000)\""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	result := blocks[0].(litellm.TextBlock)
-	if len(result.Text) > 5*1024 {
-		t.Errorf("truncated output too long: %d bytes, want <= ~4 KiB", len(result.Text))
+	block := result.Blocks[0].(litellm.TextBlock)
+	if len(block.Text) > 5*1024 {
+		t.Errorf("truncated output too long: %d bytes, want <= ~4 KiB", len(block.Text))
 	}
-	if !strings.HasSuffix(result.Text, "... (output truncated at 4 KiB)") {
-		t.Errorf("output should end with truncation marker, got suffix: %q", result.Text[len(result.Text)-50:])
+	if !strings.HasSuffix(block.Text, "... (output truncated at 4 KiB)") {
+		t.Errorf("output should end with truncation marker, got suffix: %q", block.Text[len(block.Text)-50:])
 	}
 }

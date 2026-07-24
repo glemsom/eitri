@@ -32,7 +32,7 @@ func TestSkill_Schema(t *testing.T) {
 
 func TestSkill_InvalidArgs(t *testing.T) {
 	tool := NewSkill(nil, nil)
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -40,26 +40,26 @@ func TestSkill_InvalidArgs(t *testing.T) {
 
 func TestSkill_EmptyName(t *testing.T) {
 	tool := NewSkill(nil, nil)
-	_, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"name":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
 }
 
 func TestSkill_NilSkillsService(t *testing.T) {
 	tool := NewSkill(nil, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"test"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"name":"test"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) > 0 {
-		result, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		result, ok := result.Blocks[0].(litellm.TextBlock)
 		if ok && result.Text == "" {
 			t.Error("expected error text")
 		}
@@ -93,19 +93,19 @@ func TestSkill_ValidSkill(t *testing.T) {
 	tool := NewSkill(svc, uiMgr)
 
 	// Call without session ID in context (no activation recorded)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"test-skill"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"name":"test-skill"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	textBlock, ok := blocks[0].(litellm.TextBlock)
+	textBlock, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if len(textBlock.Text) == 0 {
 		t.Error("expected skill content")
@@ -132,14 +132,14 @@ func TestSkill_WithSessionContext(t *testing.T) {
 
 	// Call with session ID in context
 	sessCtx := context.WithValue(context.Background(), sessionIDKey, sess.ID)
-	blocks, err, isError := tool.Call(sessCtx, json.RawMessage(`{"name":"test-skill-2"}`))
+	result, err := tool.Call(sessCtx, json.RawMessage(`{"name":"test-skill-2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
 
@@ -154,15 +154,15 @@ func TestSkill_UnknownSkill(t *testing.T) {
 	svc := skills.NewService()
 	tool := NewSkill(svc, nil)
 
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"name":"unknown-skill"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"name":"unknown-skill"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) > 0 {
-		result, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		result, ok := result.Blocks[0].(litellm.TextBlock)
 		if ok && result.Text == "" {
 			t.Error("expected error text")
 		}

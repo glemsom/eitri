@@ -43,30 +43,30 @@ func (t *WriteTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed writeArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("write: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("write: invalid args: %w", err)
 	}
 
 	if parsed.Path == "" {
-		return textBlocks("Error: path is required"), nil, true
+		return ToolError(TextBlocks("Error: path is required")), nil
 	}
 
 	if parsed.Content == "" {
-		return textBlocks("Error: content is required"), nil, true
+		return ToolError(TextBlocks("Error: content is required")), nil
 	}
 
 	absPath, err := fileutil.ValidateWorkspacePath(parsed.Path, t.workspace)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}
 
 	// Ensure parent directory exists and track how many were created
 	dir := filepath.Dir(absPath)
 	dirsCreated := countNewDirs(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return textBlocks(fmt.Sprintf("Error: creating directories: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: creating directories: %v", err))), nil
 	}
 
 	// Check if file already exists (for output messaging)
@@ -77,7 +77,7 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 
 	// Write file
 	if err := os.WriteFile(absPath, []byte(parsed.Content), 0o644); err != nil {
-		return textBlocks(fmt.Sprintf("Error: writing file: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: writing file: %v", err))), nil
 	}
 
 	bytesWritten := len(parsed.Content)
@@ -93,7 +93,7 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.B
 		output = fmt.Sprintf("%s, %d dirs created", output, dirsCreated)
 	}
 
-	return textBlocks(output), nil, false
+	return Success(TextBlocks(output)), nil
 }
 
 // countNewDirs returns how many directories must be created for a given path.

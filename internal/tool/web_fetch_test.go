@@ -74,7 +74,7 @@ func TestWebFetch_SchemaHasURLParam(t *testing.T) {
 func TestWebFetch_InvalidArgs(t *testing.T) {
 	t.Parallel()
 	tool := NewWebFetchTool()
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -83,40 +83,37 @@ func TestWebFetch_InvalidArgs(t *testing.T) {
 func TestWebFetch_EmptyURL(t *testing.T) {
 	t.Parallel()
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for empty URL")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for empty URL")
 	}
-	_ = blocks
 }
 
 func TestWebFetch_MissingURL(t *testing.T) {
 	t.Parallel()
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true (url is required)")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (url is required)")
 	}
-	_ = blocks
 }
 
 func TestWebFetch_InvalidURL(t *testing.T) {
 	t.Parallel()
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"not-a-valid-url"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"not-a-valid-url"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for invalid URL")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid URL")
 	}
-	_ = blocks
 }
 
 func TestWebFetch_FetchSuccess(t *testing.T) {
@@ -127,19 +124,19 @@ func TestWebFetch_FetchSuccess(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	tb, ok := blocks[0].(litellm.TextBlock)
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
 	}
 	// Should contain title, source, and markdown
 	if !strings.Contains(tb.Text, "Test Page") {
@@ -169,14 +166,14 @@ func TestWebFetch_StripUnwantedElements(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	tb := blocks[0].(litellm.TextBlock)
+	tb := result.Blocks[0].(litellm.TextBlock)
 	// Unwanted elements should not appear
 	for _, unwanted := range []string{"alert('bad')", ".foo{}", "Nav links", "Footer text", "Header text", "Sidebar"} {
 		if strings.Contains(tb.Text, unwanted) {
@@ -203,8 +200,8 @@ func TestWebFetch_Headings(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
-	tb := blocks[0].(litellm.TextBlock)
+	result, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := result.Blocks[0].(litellm.TextBlock)
 
 	checks := []struct {
 		level int
@@ -237,8 +234,8 @@ func TestWebFetch_CodeBlocks(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
-	tb := blocks[0].(litellm.TextBlock)
+	result, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := result.Blocks[0].(litellm.TextBlock)
 
 	if !strings.Contains(tb.Text, "```") {
 		t.Error("output missing fenced code block markers")
@@ -262,8 +259,8 @@ func TestWebFetch_Links(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
-	tb := blocks[0].(litellm.TextBlock)
+	result, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := result.Blocks[0].(litellm.TextBlock)
 
 	if !strings.Contains(tb.Text, "[Example](https://example.com)") {
 		t.Errorf("output missing converted link: %q", tb.Text)
@@ -280,8 +277,8 @@ func TestWebFetch_Images(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
-	tb := blocks[0].(litellm.TextBlock)
+	result, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := result.Blocks[0].(litellm.TextBlock)
 
 	if !strings.Contains(tb.Text, "![A picture](https://example.com/pic.png)") {
 		t.Errorf("output missing converted image: %q", tb.Text)
@@ -306,8 +303,8 @@ func TestWebFetch_Lists(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, _, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
-	tb := blocks[0].(litellm.TextBlock)
+	result, _ := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	tb := result.Blocks[0].(litellm.TextBlock)
 
 	for _, want := range []string{"- Item one", "- Item two", "- Item three"} {
 		if !strings.Contains(tb.Text, want) {
@@ -331,14 +328,14 @@ func TestWebFetch_FetchLargePage(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks for large page")
 	}
 }
@@ -391,19 +388,19 @@ func TestWebFetch_Timeout(t *testing.T) {
 
 	tool := NewWebFetchTool()
 	// Use timeout of 1 second
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`","timeout":1}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`","timeout":1}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for timeout")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for timeout")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	tb, ok := blocks[0].(litellm.TextBlock)
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(tb.Text, "timed out") && !strings.Contains(tb.Text, "timeout") && !strings.Contains(tb.Text, "Timeout") && !strings.Contains(tb.Text, "context deadline") && !strings.Contains(tb.Text, "canceled") && !strings.Contains(tb.Text, "Canceled") {
 		t.Errorf("output should mention timeout, got: %q", tb.Text)
@@ -427,19 +424,19 @@ func TestWebFetch_ContentCap(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	tb, ok := blocks[0].(litellm.TextBlock)
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
 	}
 	// Check truncation marker present
 	if !strings.Contains(tb.Text, "truncated at 32 KiB") {
@@ -469,14 +466,14 @@ func TestWebFetch_ContentCapNoMidElement(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	tb := blocks[0].(litellm.TextBlock)
+	tb := result.Blocks[0].(litellm.TextBlock)
 	// The truncation should not leave partial content - FINAL_MARKER should not be present
 	// and output should be a valid truncation
 	if strings.Contains(tb.Text, "FINAL_MARKER_SHOULD_NOT_APPEAR") {
@@ -535,14 +532,13 @@ func TestWebFetch_HTTPServerError(t *testing.T) {
 	defer srv.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true for HTTP 500")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for HTTP 500")
 	}
-	_ = blocks
 }
 
 // --- htmlToMarkdown unit tests ---
@@ -657,19 +653,19 @@ func TestWebFetch_FetchRealURL(t *testing.T) {
 	conn.Close()
 
 	tool := NewWebFetchTool()
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"url":"https://example.com","timeout":5}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"https://example.com","timeout":5}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Fatal("isError = true, want false for example.com")
+	if result.IsError {
+		t.Fatal("result.IsError = true, want false for example.com")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	tb, ok := blocks[0].(litellm.TextBlock)
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block type = %T, want TextBlock", blocks[0])
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(tb.Text, "Example Domain") {
 		t.Errorf("output missing title 'Example Domain': %q", tb.Text)

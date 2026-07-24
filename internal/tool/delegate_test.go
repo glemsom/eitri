@@ -52,14 +52,14 @@ func TestDelegateTool_Name(t *testing.T) {
 func TestDelegateTool_Call_EmptyTask(t *testing.T) {
 	d := NewDelegate(&fakeSubAgentManager{})
 	args := json.RawMessage(`{"task": ""}`)
-	blocks, err, isError := d.Call(context.Background(), args)
+	result, err := d.Call(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if !isError {
-		t.Fatal("expected isError=true for empty task")
+	if !result.IsError {
+		t.Fatal("expected result.IsError=true for empty task")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected non-empty blocks")
 	}
 }
@@ -68,25 +68,25 @@ func TestDelegateTool_Call_ValidTask(t *testing.T) {
 	mgr := &fakeSubAgentManager{}
 	d := NewDelegate(mgr)
 	args := json.RawMessage(`{"task": "research X", "max_turns": 10}`)
-	blocks, err, isError := d.Call(context.Background(), args)
+	result, err := d.Call(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if isError {
-		t.Fatal("isError should be false for valid task")
+	if result.IsError {
+		t.Fatal("result.IsError should be false for valid task")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected non-empty blocks")
 	}
 	// Result should contain task_id
-	result := blocksToTextForTest(blocks)
-	if !json.Valid([]byte(result)) {
-		t.Fatalf("result is not valid JSON: %q", result)
+	txt := blocksToTextForTest(result.Blocks)
+	if !json.Valid([]byte(txt)) {
+		t.Fatalf("result is not valid JSON: %q", txt)
 	}
 	var res struct {
 		TaskID string `json:"task_id"`
 	}
-	if err := json.Unmarshal([]byte(result), &res); err != nil {
+	if err := json.Unmarshal([]byte(txt), &res); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 	if res.TaskID == "" {
@@ -98,14 +98,13 @@ func TestDelegateTool_Call_DefaultMaxTurns(t *testing.T) {
 	mgr := &fakeSubAgentManager{}
 	d := NewDelegate(mgr)
 	args := json.RawMessage(`{"task": "do something"}`)
-	blocks, err, isError := d.Call(context.Background(), args)
+	result, err := d.Call(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if isError {
-		t.Fatal("isError should be false")
+	if result.IsError {
+		t.Fatal("result.IsError should be false")
 	}
-	_ = blocks
 }
 
 func TestDelegateTool_Schema(t *testing.T) {
@@ -126,14 +125,14 @@ func TestCollectTool_Name(t *testing.T) {
 func TestCollectTool_Call_EmptyTaskIDs(t *testing.T) {
 	c := NewCollect(&fakeSubAgentManager{})
 	args := json.RawMessage(`{"task_ids": []}`)
-	blocks, err, isError := c.Call(context.Background(), args)
+	result, err := c.Call(context.Background(), args)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if !isError {
-		t.Fatal("expected isError=true for empty task_ids")
+	if !result.IsError {
+		t.Fatal("expected result.IsError=true for empty task_ids")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected non-empty blocks")
 	}
 }
@@ -143,30 +142,33 @@ func TestCollectTool_Call_Valid(t *testing.T) {
 	// Spawn a task first
 	d := NewDelegate(mgr)
 	dArgs := json.RawMessage(`{"task": "research X", "max_turns": 5}`)
-	dBlocks, _, _ := d.Call(context.Background(), dArgs)
-	dResult := blocksToTextForTest(dBlocks)
+	dResult, err := d.Call(context.Background(), dArgs)
+	if err != nil {
+		t.Fatalf("delegate Call returned error: %v", err)
+	}
+	dTxt := blocksToTextForTest(dResult.Blocks)
 	var dRes struct {
 		TaskID string `json:"task_id"`
 	}
-	json.Unmarshal([]byte(dResult), &dRes)
+	json.Unmarshal([]byte(dTxt), &dRes)
 
 	// Collect it
 	c := NewCollect(mgr)
 	cArgs := json.RawMessage(`{"task_ids": ["` + dRes.TaskID + `"]}`)
-	blocks, err, isError := c.Call(context.Background(), cArgs)
+	result, err := c.Call(context.Background(), cArgs)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if isError {
-		t.Fatal("isError should be false")
+	if result.IsError {
+		t.Fatal("result.IsError should be false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected non-empty blocks")
 	}
-	result := blocksToTextForTest(blocks)
+	txt := blocksToTextForTest(result.Blocks)
 	var results map[string]SubAgentResult
-	if err := json.Unmarshal([]byte(result), &results); err != nil {
-		t.Fatalf("unmarshal result: %v, json: %q", err, result)
+	if err := json.Unmarshal([]byte(txt), &results); err != nil {
+		t.Fatalf("unmarshal result: %v, json: %q", err, txt)
 	}
 	r, ok := results[dRes.TaskID]
 	if !ok {
@@ -183,27 +185,28 @@ func TestCollectTool_Call_MultipleTasks(t *testing.T) {
 	d := NewDelegate(mgr)
 	task1Args := json.RawMessage(`{"task": "task A", "max_turns": 3}`)
 	task2Args := json.RawMessage(`{"task": "task B", "max_turns": 5}`)
-	b1, _, _ := d.Call(context.Background(), task1Args)
-	b2, _, _ := d.Call(context.Background(), task2Args)
+
+	r1Result, _ := d.Call(context.Background(), task1Args)
+	r2Result, _ := d.Call(context.Background(), task2Args)
 
 	var r1, r2 struct {
 		TaskID string `json:"task_id"`
 	}
-	json.Unmarshal([]byte(blocksToTextForTest(b1)), &r1)
-	json.Unmarshal([]byte(blocksToTextForTest(b2)), &r2)
+	json.Unmarshal([]byte(blocksToTextForTest(r1Result.Blocks)), &r1)
+	json.Unmarshal([]byte(blocksToTextForTest(r2Result.Blocks)), &r2)
 
 	c := NewCollect(mgr)
 	cArgs := json.RawMessage(`{"task_ids": ["` + r1.TaskID + `", "` + r2.TaskID + `"]}`)
-	blocks, err, isError := c.Call(context.Background(), cArgs)
+	result, err := c.Call(context.Background(), cArgs)
 	if err != nil {
 		t.Fatalf("Call returned error: %v", err)
 	}
-	if isError {
-		t.Fatal("isError should be false")
+	if result.IsError {
+		t.Fatal("result.IsError should be false")
 	}
-	result := blocksToTextForTest(blocks)
+	txt := blocksToTextForTest(result.Blocks)
 	var results map[string]SubAgentResult
-	if err := json.Unmarshal([]byte(result), &results); err != nil {
+	if err := json.Unmarshal([]byte(txt), &results); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(results) != 2 {

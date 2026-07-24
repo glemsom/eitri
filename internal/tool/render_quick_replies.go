@@ -37,15 +37,15 @@ func (t *RenderQuickRepliesTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
-func (t *RenderQuickRepliesTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *RenderQuickRepliesTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed renderQuickRepliesArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("render_quick_replies: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("render_quick_replies: invalid args: %w", err)
 	}
 
 	if len(parsed.Options) == 0 {
-		return textBlocks("Error: 'options' must be a non-empty array of strings"), nil, true
+		return ToolError(TextBlocks("Error: 'options' must be a non-empty array of strings")), nil
 	}
 
-	return textBlocks("Rendered QuickReplies with options: " + strings.Join(parsed.Options, ", ")), nil, false
+	return TextResult("Rendered QuickReplies with options: " + strings.Join(parsed.Options, ", ")), nil
 }

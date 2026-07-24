@@ -55,25 +55,25 @@ const (
 	truncationMsg = "\n\n[Content truncated at 32 KiB — use a more specific URL or section]"
 )
 
-func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Block, error, bool) {
+func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed webFetchArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("web_fetch: invalid args: %w", err), false
+		return ToolResult{}, fmt.Errorf("web_fetch: invalid args: %w", err)
 	}
 
 	if parsed.URL == "" {
-		return textBlocks("Error: 'url' field is required and must be non-empty"), nil, true
+		return ToolError(TextBlocks("Error: 'url' field is required and must be non-empty")), nil
 	}
 
 	parsedURL, err := url.ParseRequestURI(parsed.URL)
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		return textBlocks(fmt.Sprintf("Error: invalid URL %q — must be a valid http or https URL", parsed.URL)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid URL %q — must be a valid http or https URL", parsed.URL))), nil
 	}
 
 	// Build request with context for cancellation
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.URL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("web_fetch: create request: %w", err), false
+		return ToolResult{}, fmt.Errorf("web_fetch: create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Eitri/1.0")
@@ -92,22 +92,22 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: request failed: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: request failed: %v", err))), nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: reading response body: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: reading response body: %v", err))), nil
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return textBlocks(fmt.Sprintf("Error: HTTP %d — %s", resp.StatusCode, strings.TrimSpace(string(body)))), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: HTTP %d — %s", resp.StatusCode, strings.TrimSpace(string(body))))), nil
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
 	if err != nil {
-		return textBlocks(fmt.Sprintf("Error: parsing HTML: %v", err)), nil, true
+		return ToolError(TextBlocks(fmt.Sprintf("Error: parsing HTML: %v", err))), nil
 	}
 
 	// Extract title and source URL
@@ -137,13 +137,13 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) ([]litell
 
 	result := strings.TrimSpace(output.String())
 	if result == "" {
-		return textBlocks("(empty page)"), nil, false
+		return TextResult("(empty page)"), nil
 	}
 
 	// Apply content cap with element-boundary truncation
 	result = truncateContent(result)
 
-	return textBlocks(result), nil, false
+	return TextResult(result), nil
 }
 
 // proxyFromEnv reads proxy configuration from environment variables on every call,

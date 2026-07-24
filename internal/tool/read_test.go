@@ -3,7 +3,6 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +31,7 @@ func TestRead_Schema(t *testing.T) {
 
 func TestRead_InvalidArgs(t *testing.T) {
 	tool := NewReadTool("/tmp", nil)
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -40,19 +39,19 @@ func TestRead_InvalidArgs(t *testing.T) {
 
 func TestRead_EmptyPath(t *testing.T) {
 	tool := NewReadTool("/tmp", nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "required") {
 		t.Errorf("expected error mentioning 'required', got %q", block.Text)
@@ -69,19 +68,19 @@ func TestRead_SuccessfulRead(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// Default range is 1-100, file has 5 lines, so no metadata prefix expected
 	expected := "line1\nline2\nline3\nline4\nline5"
@@ -100,19 +99,19 @@ func TestRead_WithLineRange(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","start_line":2,"end_line":3}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","start_line":2,"end_line":3}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	expected := "[file: test.txt, lines 2-3 of 5]\nline2\nline3"
 	if block.Text != expected {
@@ -134,19 +133,19 @@ func TestRead_TruncatedWithMetadata(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"long.txt","start_line":1,"end_line":100}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"long.txt","start_line":1,"end_line":100}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// Should have metadata prefix (151 total due to trailing \n producing empty last line)
 	if !strings.HasPrefix(block.Text, "[file: long.txt, lines 1-100 of 151]") {
@@ -169,66 +168,58 @@ func TestRead_TruncatedWithMetadata(t *testing.T) {
 func TestRead_PathTraversalRejection(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"../../../etc/passwd"}`))
-	if err == nil {
-		t.Fatal("expected ErrNeedsConfirmation, got nil error")
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"../../../etc/passwd"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var needsConf *ErrNeedsConfirmation
-	if !errors.As(err, &needsConf) {
-		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
+	if !result.NeedsConfirm {
+		t.Fatal("expected NeedsConfirm=true")
 	}
-	if needsConf.Path != "../../../etc/passwd" {
-		t.Errorf("Path = %q, want %q", needsConf.Path, "../../../etc/passwd")
+	if result.ConfirmPath != "../../../etc/passwd" {
+		t.Errorf("ConfirmPath = %q, want %q", result.ConfirmPath, "../../../etc/passwd")
 	}
-	if !strings.Contains(needsConf.Message, "outside") && !strings.Contains(needsConf.Message, "escapes") {
-		t.Errorf("expected error about path rejection, got %q", needsConf.Message)
+	if !strings.Contains(result.ConfirmMessage, "outside") && !strings.Contains(result.ConfirmMessage, "escapes") {
+		t.Errorf("expected confirm message about path rejection, got %q", result.ConfirmMessage)
 	}
-	if blocks != nil {
-		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
-	}
-	if isError {
-		t.Error("isError = true, want false for confirmation")
+	if result.IsError {
+		t.Error("IsError = true, want false for confirmation")
 	}
 }
 
 func TestRead_AbsolutePathOutsideWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd"}`))
-	if err == nil {
-		t.Fatal("expected ErrNeedsConfirmation, got nil error")
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var needsConf *ErrNeedsConfirmation
-	if !errors.As(err, &needsConf) {
-		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
+	if !result.NeedsConfirm {
+		t.Fatal("expected NeedsConfirm=true")
 	}
-	if needsConf.Path != "/etc/passwd" {
-		t.Errorf("Path = %q, want %q", needsConf.Path, "/etc/passwd")
+	if result.ConfirmPath != "/etc/passwd" {
+		t.Errorf("ConfirmPath = %q, want %q", result.ConfirmPath, "/etc/passwd")
 	}
-	if blocks != nil {
-		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
-	}
-	if isError {
-		t.Error("isError = true, want false for confirmation")
+	if result.IsError {
+		t.Error("IsError = true, want false for confirmation")
 	}
 }
 
 func TestRead_FileNotFound(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"nonexistent.txt"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"nonexistent.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "Error") {
 		t.Errorf("expected error message, got %q", block.Text)
@@ -247,19 +238,19 @@ func TestRead_SkillDirsAllowed(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, []string{skillDir})
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"skills/my-skill/SKILL.md"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"skills/my-skill/SKILL.md"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "skill content") {
 		t.Errorf("expected 'skill content', got %q", block.Text)
@@ -293,19 +284,19 @@ func TestRead_AllowedPathsAcceptsExternalPath(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil, []string{extDir})
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "external content") {
 		t.Errorf("expected 'external content', got %q", block.Text)
@@ -323,19 +314,15 @@ func TestRead_AllowedPathsRejectsPathNotInAllowed(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil, []string{extDir1})
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
-	if err == nil {
-		t.Fatal("expected ErrNeedsConfirmation, got nil error")
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"`+extFile+`"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	var needsConf *ErrNeedsConfirmation
-	if !errors.As(err, &needsConf) {
-		t.Fatalf("expected *ErrNeedsConfirmation, got %T: %v", err, err)
+	if !result.NeedsConfirm {
+		t.Fatal("expected NeedsConfirm=true")
 	}
-	if blocks != nil {
-		t.Errorf("expected nil blocks for confirmation, got %v", blocks)
-	}
-	if isError {
-		t.Error("isError = true, want false for confirmation")
+	if result.IsError {
+		t.Error("IsError = true, want false for confirmation")
 	}
 }
 
@@ -348,16 +335,16 @@ func TestRead_NilAllowedPathsBehavesLikeWorkspaceOnly(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(block.Text, "workspace file") {
 		t.Errorf("expected 'workspace file', got %q", block.Text)
@@ -378,19 +365,19 @@ func TestRead_DefaultLineRange(t *testing.T) {
 	}
 
 	tool := NewReadTool(dir, nil)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"hundred.txt"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"hundred.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	block, ok := blocks[0].(litellm.TextBlock)
+	block, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	// File has exactly 100 lines, default end_line=100, so no truncation
 	if !strings.Contains(block.Text, "line100") {

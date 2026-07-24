@@ -30,7 +30,7 @@ func TestEdit_Schema(t *testing.T) {
 
 func TestEdit_InvalidArgs(t *testing.T) {
 	tool := NewEditTool("/tmp/workspace")
-	_, err, _ := tool.Call(context.Background(), json.RawMessage(`invalid`))
+	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
 	}
@@ -38,15 +38,15 @@ func TestEdit_InvalidArgs(t *testing.T) {
 
 func TestEdit_EmptyPath(t *testing.T) {
 	tool := NewEditTool("/tmp/workspace")
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"old_text":"foo","new_text":"bar"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"old_text":"foo","new_text":"bar"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) > 0 {
-		result, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		result, ok := result.Blocks[0].(litellm.TextBlock)
 		if ok && result.Text == "" {
 			t.Error("expected error text")
 		}
@@ -62,14 +62,14 @@ func TestEdit_SuccessfulEdit(t *testing.T) {
 	}
 
 	tool := NewEditTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
 
@@ -93,19 +93,19 @@ func TestEdit_NoMatch_IncludesContext(t *testing.T) {
 	}
 
 	tool := NewEditTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	textBlock, ok := blocks[0].(litellm.TextBlock)
+	textBlock, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(textBlock.Text, "not found") {
 		t.Errorf("error text should contain 'not found', got: %q", textBlock.Text)
@@ -132,19 +132,19 @@ func TestEdit_NoMatch(t *testing.T) {
 	}
 
 	tool := NewEditTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	textBlock, ok := blocks[0].(litellm.TextBlock)
+	textBlock, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(textBlock.Text, "not found") {
 		t.Errorf("error text should mention 'not found', got: %q", textBlock.Text)
@@ -160,19 +160,19 @@ func TestEdit_MultipleMatches(t *testing.T) {
 	}
 
 	tool := NewEditTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"repeat","new_text":"unique"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"repeat","new_text":"unique"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true")
 	}
-	if len(blocks) == 0 {
+	if len(result.Blocks) == 0 {
 		t.Fatal("expected blocks")
 	}
-	textBlock, ok := blocks[0].(litellm.TextBlock)
+	textBlock, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block is %T, want TextBlock", blocks[0])
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.Contains(textBlock.Text, "matched") && !strings.Contains(textBlock.Text, "times") {
 		t.Errorf("error text should mention match count, got: %q", textBlock.Text)
@@ -188,21 +188,21 @@ func TestEdit_SuccessfulEdit_ReturnsSummary(t *testing.T) {
 	}
 
 	tool := NewEditTool(dir)
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if isError {
-		t.Error("isError = true, want false")
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
 	}
-	if len(blocks) != 1 {
-		t.Fatalf("expected 1 block, got %d", len(blocks))
+	if len(result.Blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(result.Blocks))
 	}
 
 	// Block 0: concise summary
-	b0, ok := blocks[0].(litellm.TextBlock)
+	b0, ok := result.Blocks[0].(litellm.TextBlock)
 	if !ok {
-		t.Fatalf("block[0] is %T, want TextBlock", blocks[0])
+		t.Fatalf("block[0] is %T, want TextBlock", result.Blocks[0])
 	}
 	if !strings.HasPrefix(b0.Text, "Edited file: test.txt") {
 		t.Errorf("block[0] should start with 'Edited file: test.txt', got %q", b0.Text)
@@ -224,15 +224,15 @@ func TestEdit_SuccessfulEdit_ReturnsSummary(t *testing.T) {
 
 func TestEdit_PathOutsideWorkspace(t *testing.T) {
 	tool := NewEditTool("/tmp/workspace")
-	blocks, err, isError := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !isError {
-		t.Error("isError = false, want true (path outside workspace)")
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (path outside workspace)")
 	}
-	if len(blocks) > 0 {
-		result, ok := blocks[0].(litellm.TextBlock)
+	if len(result.Blocks) > 0 {
+		result, ok := result.Blocks[0].(litellm.TextBlock)
 		if ok && result.Text == "" {
 			t.Error("expected error text")
 		}
