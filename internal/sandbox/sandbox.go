@@ -1,9 +1,11 @@
 // Package sandbox wraps shell commands inside a bubblewrap sandbox.
 //
-// It provides a single function, WrapCommand, that takes a command line
-// and a config profile, and returns the executable and arguments to pass
-// to exec.Command. If bwrap is not installed or the profile is "none",
-// the command is returned unchanged (direct bash -c).
+// It provides BwrapIsUsable to check whether bwrap is both installed and
+// functional (can create user namespaces), and WrapCommand which takes a
+// command line and a config profile, and returns the executable and
+// arguments to pass to exec.Command. If bwrap is not installed, not
+// usable, or the profile is "none", the command is returned unchanged
+// (direct bash -c).
 //
 // The default profile uses --ro-bind / / to make the entire filesystem
 // read-only, then punches writable holes for the workspace and /tmp.
@@ -52,13 +54,28 @@ func IsZero(cfg Config) bool {
 	return cfg.Profile == "" && !cfg.Network && len(cfg.ExtraWritablePaths) == 0
 }
 
+// BwrapIsUsable checks whether bwrap is installed and can actually create
+// a sandbox. It runs "bwrap --ro-bind / / true" and returns true only if
+// the command succeeds. This is more reliable than LookPath because bwrap
+// may be installed (e.g. via apt on GitHub Actions) but fail at runtime
+// due to missing user namespace support.
+func BwrapIsUsable() bool {
+	bwrap, err := exec.LookPath("bwrap")
+	if err != nil {
+		return false
+	}
+	cmd := exec.Command(bwrap, "--ro-bind", "/", "/", "true")
+	return cmd.Run() == nil
+}
+
 // WrapCommand returns the executable path and argument list that the
 // caller should pass to exec.Command. When sandboxing is active the
 // returned executable is bwrap and the arguments include the full
 // sandbox specification; otherwise the returned executable is "bash"
 // with ["-c", command].
 //
-// If bwrap is not found on PATH the function falls back to direct
+// If bwrap is not found on PATH, or is found but not usable (e.g. due to
+// missing user namespace support), the function falls back to direct
 // execution and logs a warning at debug level.
 func WrapCommand(workspace, command string, cfg Config) (string, []string, error) {
 	// Normalise zero config to defaults.
@@ -81,6 +98,13 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 	bwrap, err := exec.LookPath("bwrap")
 	if err != nil {
 		slog.Debug("bwrap not found on PATH, running command without sandbox",
+			slog.String("workspace", workspace),
+		)
+		return "bash", []string{"-c", command}, nil
+	}
+
+	if !BwrapIsUsable() {
+		slog.Debug("bwrap found on PATH but not usable (likely no user namespace support), running command without sandbox",
 			slog.String("workspace", workspace),
 		)
 		return "bash", []string{"-c", command}, nil

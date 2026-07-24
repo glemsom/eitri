@@ -46,17 +46,14 @@ func TestWrapCommand_ProfileNone(t *testing.T) {
 }
 
 func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
-	// bwrap might or might not be installed; either is fine.
+	// bwrap might or might not be installed/usable; either is fine.
 	// We verify the fallback path works.
 	exe, args, err := WrapCommand("/workspace", "echo hi", DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// If bwrap is not on PATH, we should fall back to bash -c.
-	_, bwrapErr := exec.LookPath("bwrap")
-	_, bwrapExists := bwrapErr.(*exec.Error)
-	if bwrapExists || bwrapErr != nil {
-		// bwrap not found → fallback
+	// If bwrap is not usable, we should fall back to bash -c.
+	if !BwrapIsUsable() {
 		if exe != "bash" {
 			t.Errorf("without bwrap: exe = %q, want %q", exe, "bash")
 		}
@@ -64,9 +61,8 @@ func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
 			t.Errorf("without bwrap: args = %v, want [\"-c\", \"echo hi\"]", args)
 		}
 	}
-	// If bwrap is found, we just verify we get bwrap as executable.
-	if bwrapErr == nil && exe != "bash" {
-		// bwrap is available — should produce bwrap command
+	// If bwrap is usable, we just verify we get bwrap as executable.
+	if BwrapIsUsable() && exe != "bash" {
 		if !strings.HasSuffix(exe, "bwrap") {
 			t.Errorf("exe = %q, want bwrap path", exe)
 		}
@@ -84,11 +80,11 @@ func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
 
 func TestWrapCommand_Default_NoNetwork(t *testing.T) {
 	cfg := Config{Profile: ProfileDefault, Network: false}
-	exe, args, err := WrapCommand("/workspace", "echo hi", cfg)
+	_, args, err := WrapCommand("/workspace", "echo hi", cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasSuffix(exe, "bwrap") && exe == "bash" {
+	if !BwrapIsUsable() {
 		// bwrap not available — fine, just verify fallback
 		return
 	}
@@ -106,9 +102,9 @@ func TestWrapCommand_Default_NoNetwork(t *testing.T) {
 }
 
 func TestWrapCommand_Default_ArgStructure(t *testing.T) {
-	// Only run this if bwrap is available.
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping arg structure test")
+	// Only run this if bwrap is usable.
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping arg structure test")
 	}
 
 	cfg := DefaultConfig()
@@ -169,8 +165,8 @@ func TestWrapCommand_Default_ArgStructure(t *testing.T) {
 }
 
 func TestWrapCommand_ExtraWritablePaths(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping")
 	}
 
 	cfg := Config{
@@ -204,8 +200,8 @@ func TestWrapCommand_ExtraWritablePaths(t *testing.T) {
 }
 
 func TestWrapCommand_EmptyExtraWritablePaths(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping")
 	}
 
 	cfg := Config{
@@ -237,11 +233,11 @@ func TestWrapCommand_EmptyWorkspace(t *testing.T) {
 
 func TestWrapCommand_ZeroConfigDefaultsToDefault(t *testing.T) {
 	// Zero config should behave like DefaultConfig.
-	exe, args, err := WrapCommand("/w", "echo hi", Config{})
+	_, args, err := WrapCommand("/w", "echo hi", Config{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if exe == "bash" {
+	if !BwrapIsUsable() {
 		// bwrap not available — fallback, fine
 		return
 	}
@@ -282,10 +278,10 @@ func BenchmarkWrapCommand(b *testing.B) {
 }
 
 // TestWrapCommand_ActualExecution is an integration test that actually
-// runs a command through the sandbox. It skips if bwrap is not installed.
+// runs a command through the sandbox. It skips if bwrap is not usable.
 func TestWrapCommand_ActualExecution(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping integration test")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
 	dir := t.TempDir()
@@ -310,8 +306,8 @@ func TestWrapCommand_ActualExecution(t *testing.T) {
 // TestWrapCommand_ReadOnlyRoot verifies that /etc/hostname is readable
 // (ro-bind doesn't hide it) but /usr is not writable.
 func TestWrapCommand_ReadOnlyRoot(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping integration test")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
 	dir := t.TempDir()
@@ -349,8 +345,8 @@ func TestWrapCommand_ReadOnlyRoot(t *testing.T) {
 
 // TestWrapCommand_Network tests that network is available by default.
 func TestWrapCommand_Network(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping integration test")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
 	dir := t.TempDir()
@@ -371,8 +367,8 @@ func TestWrapCommand_Network(t *testing.T) {
 
 // TestWrapCommand_WorkspaceReadWrite verifies the workspace is writable.
 func TestWrapCommand_WorkspaceReadWrite(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap not installed, skipping integration test")
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
 	dir := t.TempDir()
