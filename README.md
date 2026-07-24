@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp">
-  <img alt="Eitri" src="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp" width="80" height="80">
+  <img alt="Eitri" src="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp" width="160" height="160">
 </picture>
 
 # Eitri
@@ -49,22 +49,19 @@ tar -xzf eitri-linux-amd64.tar.gz
 sudo install -m 755 eitri /usr/local/bin/eitri
 ```
 
-### 2. Configure
+### 2. Configure (via the UI)
 
-Create `~/.eitri/config.json` with your LLM provider settings:
+Eitri includes a settings page at [http://127.0.0.1:8080/settings](http://127.0.0.1:8080/settings).
+After starting the server (step 3), open the settings page to configure:
 
-```json
-{
-  "provider": "opencode_go",
-  "model": "claude-sonnet-4-20250514",
-  "api_key": "sk-..."
-}
-```
+- **LLM provider** — OpenCode Go, GitHub Copilot (device-flow OAuth), or Custom OpenAI
+- **Model** — discoverable from the provider after configuring credentials
+- **API key / token**
+- **Thinking level** (for reasoning models)
+- **System prompt**
+- **Timeouts & limits** (session timeout, command timeout, max turns, context window)
 
-Supported providers:
-- **`opencode_go`** — OpenCode Go (Anthropic-compatible and OpenAI-compatible models)
-- **`github_copilot`** — GitHub Copilot (uses device-flow OAuth, no API key needed)
-- **`custom_openai`** — Custom OpenAI provider (generic OpenAI-compatible endpoint)
+All changes are saved and applied immediately — no config file editing needed.
 
 ### 3. Run
 
@@ -89,16 +86,11 @@ This runs the agent once and streams text output to stdout — no browser needed
 
 ## Configuration
 
-Eitri is configured via `~/.eitri/config.json`. Key settings:
+Most settings are configured through the UI at [http://127.0.0.1:8080/settings](http://127.0.0.1:8080/settings)
+— provider, model, API key, timeouts, system prompt, and more are all editable there.
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `provider` | LLM provider: `opencode_go`, `github_copilot`, or `custom_openai` | `opencode_go` |
-| `model` | Model name (provider-specific, discoverable via settings) | `claude-sonnet-4-20250514` (example) |
-| `api_key` | API key (not needed for GitHub Copilot) | `""` |
-| `command_timeout` | Max execution time per `bash` tool call (seconds) | `120` |
-| `max_history` | Max chat turns kept in context | `100` |
-| `disabled_skills` | List of skill names to disable | `[]` |
+Eitri stores configuration in `~/.eitri/config.json` under the hood, but you should use the
+settings page rather than hand-editing the file.
 
 ### Environment variables
 
