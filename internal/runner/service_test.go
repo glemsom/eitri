@@ -19,7 +19,7 @@ import (
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 	t.Helper()
 
-	uiSessionMgr := uisession.NewManager(10)
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
 	historyMgr := history.NewSessionManager(50)
 
 	svc := NewRunService(RunServiceDeps{

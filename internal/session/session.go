@@ -50,6 +50,7 @@ type UISession struct {
 	Status       Status    `json:"status"`
 	Messages     []Message `json:"messages"`
 	ActiveSkills []string  `json:"active_skills"` // names of activated skills
+	Workspace    string    `json:"workspace"`     // filesystem root directory for this session
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
@@ -62,23 +63,26 @@ type UISession struct {
 // Manager manages in-memory UI sessions with browser ownership.
 // Thread-safe. Enforces a maximum number of sessions globally.
 type Manager struct {
-	mu              sync.RWMutex
-	sessions        map[string]*UISession // sessionID → session
-	browserSessions map[string][]string   // browserID → ordered session IDs
-	nextSessionNum  map[string]int        // browserID → next session number
-	maxSessions     int
+	mu               sync.RWMutex
+	sessions         map[string]*UISession // sessionID → session
+	browserSessions  map[string][]string   // browserID → ordered session IDs
+	nextSessionNum   map[string]int        // browserID → next session number
+	maxSessions      int
+	defaultWorkspace string // filesystem root for new sessions
 }
 
-// NewManager creates a session manager with the given cap.
-func NewManager(maxSessions int) *Manager {
+// NewManager creates a session manager with the given cap and default workspace.
+// New sessions will use defaultWorkspace as their initial workspace.
+func NewManager(maxSessions int, defaultWorkspace string) *Manager {
 	if maxSessions <= 0 {
 		maxSessions = 10
 	}
 	return &Manager{
-		sessions:        make(map[string]*UISession),
-		browserSessions: make(map[string][]string),
-		nextSessionNum:  make(map[string]int),
-		maxSessions:     maxSessions,
+		sessions:         make(map[string]*UISession),
+		browserSessions:  make(map[string][]string),
+		nextSessionNum:   make(map[string]int),
+		maxSessions:      maxSessions,
+		defaultWorkspace: defaultWorkspace,
 	}
 }
 
@@ -134,6 +138,7 @@ func (m *Manager) Create(browserID string) (*UISession, error) {
 		Title:     fmt.Sprintf("Session %d", m.nextSessionNum[browserID]),
 		Status:    StatusIdle,
 		Messages:  make([]Message, 0),
+		Workspace: m.defaultWorkspace,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -193,6 +198,7 @@ func (m *Manager) CreateChild(parentID, browserID, title string) (*UISession, er
 		Title:     title,
 		Status:    StatusRunning,
 		Messages:  make([]Message, 0),
+		Workspace: parent.Workspace,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}

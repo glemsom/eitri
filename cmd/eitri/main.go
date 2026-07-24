@@ -153,7 +153,7 @@ func main() {
 	}
 
 	debugRecorder := debug.NewRecorder(0) // default capacity 20
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, workspace)
 	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,

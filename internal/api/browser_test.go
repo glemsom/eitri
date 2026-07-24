@@ -1246,7 +1246,7 @@ func TestBrowser_FastRunRendersAssistantAndUsesValidStreamURL(t *testing.T) {
 
 func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 	workspace := t.TempDir()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -4164,7 +4164,7 @@ func TestBrowser_ThinkingRendering(t *testing.T) {
 // correct height after mermaid processes them (regression test for overflow clipping).
 func TestBrowser_MermaidComponentHeight(t *testing.T) {
 	workspace := t.TempDir()
-	sessionMgr := session.NewManager(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
 	sess, err := sessionMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
