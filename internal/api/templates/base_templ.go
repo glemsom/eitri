@@ -292,7 +292,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 }
 
 // ChatPage renders the full chat page layout with session sidebar and chat view.
-func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string) templ.Component {
+func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, configValid bool, currentPath string, contextWindow int, reasoningContent string, userEmail string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -325,7 +325,7 @@ func ChatPage(sessions []*session.UISession, activeID string, sess *session.UISe
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = ChatView(sess, configValid).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = ChatView(sess, configValid, userEmail).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
