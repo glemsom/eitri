@@ -75,7 +75,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	slog.Info("spawning sub-agent",
 		slog.String("task_id", taskID),
 		slog.String("parent_session", sessionID),
-		slog.String("task", truncateString(task, 100)),
+		slog.String("task", truncateText(task, 100)),
 		slog.Int("max_turns", maxTurns),
 	)
 
@@ -150,7 +150,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	if s.uiSessionMgr != nil {
 		parentSess := s.uiSessionMgr.Get(sessionID)
 		if parentSess != nil {
-			title := truncateString(task, 60)
+			title := truncateText(task, 60)
 			childSess, childErr := s.uiSessionMgr.CreateChild(sessionID, parentSess.BrowserID, title)
 			if childErr != nil {
 				slog.Warn("failed to create child session for sub-agent",
@@ -377,13 +377,4 @@ func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.
 	reg.Register(tool.NewRenderMermaidDiagram())
 	reg.Register(tool.NewWebFetchTool())
 	return reg
-}
-
-// truncateString truncates a string to at most n runes for logging.
-func truncateString(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n]) + "..."
 }
