@@ -926,3 +926,677 @@ func TestService_ClearDisabled(t *testing.T) {
 		t.Error("s2 should be effective")
 	}
 }
+
+// --- Service.Invalid() ---
+
+func TestService_Invalid_ReturnsInvalidSkills(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkillMD(t, filepath.Join(rootDir, "no-name"), "---\ndescription: Missing name\n---\nBody")
+	writeSkill(t, filepath.Join(rootDir, "valid-skill"), "valid-skill", "# Valid")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	invalid := svc.Invalid()
+	if len(invalid) != 1 {
+		t.Fatalf("Invalid() = %d skills, want 1", len(invalid))
+	}
+	if invalid[0].Name != "no-name" {
+		t.Errorf("invalid skill name = %q, want %q", invalid[0].Name, "no-name")
+	}
+	if invalid[0].Status != StatusInvalid {
+		t.Errorf("invalid skill status = %q, want %q", invalid[0].Status, StatusInvalid)
+	}
+}
+
+func TestService_Invalid_Empty(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "good"), "good", "# Good")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	invalid := svc.Invalid()
+	if len(invalid) != 0 {
+		t.Errorf("Invalid() = %d skills, want 0", len(invalid))
+	}
+}
+
+// --- Service.IsDisabled() ---
+
+func TestService_IsDisabled_DisabledSkill(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+	writeSkill(t, filepath.Join(rootDir, "s2"), "s2", "# S2")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	svc.SetDisabled("s1", true, nil)
+
+	if !svc.IsDisabled("s1") {
+		t.Error("IsDisabled('s1') should be true after disabling")
+	}
+	if svc.IsDisabled("s2") {
+		t.Error("IsDisabled('s2') should be false for enabled skill")
+	}
+}
+
+func TestService_IsDisabled_NonexistentSkill(t *testing.T) {
+	svc := NewServiceWithRoots(nil)
+
+	if svc.IsDisabled("nonexistent") {
+		t.Error("IsDisabled('nonexistent') should be false")
+	}
+}
+
+func TestService_IsDisabled_AfterEnable(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "s1"), "s1", "# S1")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	svc.SetDisabled("s1", true, nil)
+	if !svc.IsDisabled("s1") {
+		t.Error("IsDisabled('s1') should be true after disable")
+	}
+
+	svc.SetDisabled("s1", false, nil)
+	if svc.IsDisabled("s1") {
+		t.Error("IsDisabled('s1') should be false after enable")
+	}
+}
+
+// --- Service.HomeDir() ---
+
+func TestService_HomeDir_NewService(t *testing.T) {
+	svc := NewService()
+
+	home, _ := os.UserHomeDir()
+	if svc.HomeDir() != home {
+		t.Errorf("HomeDir() = %q, want %q", svc.HomeDir(), home)
+	}
+}
+
+func TestService_HomeDir_NewServiceWithRoots(t *testing.T) {
+	svc := NewServiceWithRoots(nil)
+
+	// NewServiceWithRoots does not set home, so it should be empty
+	if svc.HomeDir() != "" {
+		t.Errorf("HomeDir() = %q, want empty", svc.HomeDir())
+	}
+}
+
+// --- Service.Workspace() ---
+
+func TestService_Workspace_NewService(t *testing.T) {
+	svc := NewService()
+
+	cwd, _ := os.Getwd()
+	if svc.Workspace() != cwd {
+		t.Errorf("Workspace() = %q, want %q", svc.Workspace(), cwd)
+	}
+}
+
+func TestService_Workspace_NewServiceWithRoots(t *testing.T) {
+	svc := NewServiceWithRoots(nil)
+
+	// NewServiceWithRoots does not set workspace, so it should be empty
+	if svc.Workspace() != "" {
+		t.Errorf("Workspace() = %q, want empty", svc.Workspace())
+	}
+}
+
+// --- Service.DiagnosticSummary() ---
+
+func TestService_DiagnosticSummary_WithDiagnostics(t *testing.T) {
+	rootDir := t.TempDir()
+	// Create a file instead of a directory to trigger a diagnostic
+	rootFile := filepath.Join(rootDir, "not-a-dir")
+	if err := os.WriteFile(rootFile, []byte("x"), 0644); err != nil {
+		t.Fatalf("write root file: %v", err)
+	}
+
+	svc := NewServiceWithRoots([]Root{{Path: rootFile, Scope: ScopeProjectEitri}})
+	svc.Refresh()
+
+	summary := svc.DiagnosticSummary()
+	if summary == "" {
+		t.Fatal("DiagnosticSummary() should not be empty")
+	}
+	if !strings.Contains(summary, "is not a directory") {
+		t.Errorf("DiagnosticSummary() = %q, want to contain 'is not a directory'", summary)
+	}
+	if !strings.Contains(summary, "warn:") {
+		t.Errorf("DiagnosticSummary() = %q, want to contain 'warn:'", summary)
+	}
+}
+
+func TestService_DiagnosticSummary_Empty(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "good"), "good", "# Good")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	summary := svc.DiagnosticSummary()
+	if summary != "" {
+		t.Errorf("DiagnosticSummary() = %q, want empty", summary)
+	}
+}
+
+func TestService_DiagnosticSummary_NilRegistry(t *testing.T) {
+	svc := &Service{} // registry is nil
+
+	summary := svc.DiagnosticSummary()
+	if summary != "" {
+		t.Errorf("DiagnosticSummary() = %q, want empty for nil registry", summary)
+	}
+}
+
+// --- SkillContent() ---
+
+func TestSkillContent_Basic(t *testing.T) {
+	result := SkillContent("Do the thing", nil, "/skills/my-skill")
+
+	if !strings.Contains(result, "<skill_content>") {
+		t.Error("expected <skill_content> tag")
+	}
+	if !strings.Contains(result, "<skill_directory>/skills/my-skill</skill_directory>") {
+		t.Error("expected skill_directory tag with path")
+	}
+	if !strings.Contains(result, "Do the thing") {
+		t.Error("expected instructions in output")
+	}
+	if !strings.Contains(result, "</skill_content>") {
+		t.Error("expected closing tag")
+	}
+	if strings.Contains(result, "<skill_resources>") {
+		t.Error("should not include empty resources section")
+	}
+	if !strings.Contains(result, "Relative paths in this skill resolve from skill_directory") {
+		t.Error("expected relative paths note")
+	}
+}
+
+func TestSkillContent_WithResources(t *testing.T) {
+	result := SkillContent("Instructions", []string{"file1.txt", "file2.txt"}, "/skills/test")
+
+	if !strings.Contains(result, "<skill_resources>") {
+		t.Error("expected <skill_resources> tag")
+	}
+	if !strings.Contains(result, "file1.txt") {
+		t.Error("expected file1.txt in resources")
+	}
+	if !strings.Contains(result, "file2.txt") {
+		t.Error("expected file2.txt in resources")
+	}
+	if !strings.Contains(result, "</skill_resources>") {
+		t.Error("expected closing resources tag")
+	}
+}
+
+func TestSkillContent_XMLEscapesDirectory(t *testing.T) {
+	result := SkillContent("Use <b>bold</b>", nil, "/skills/foo & bar's")
+
+	if !strings.Contains(result, "foo &amp; bar&apos;s") {
+		t.Errorf("expected escaped directory, got %q", result)
+	}
+	// Instructions are NOT XML-escaped (they are passed as-is for the LLM to read)
+	if !strings.Contains(result, "Use <b>bold</b>") {
+		t.Errorf("expected raw instructions, got %q", result)
+	}
+}
+
+func TestSkillContent_EmptyDirectory(t *testing.T) {
+	result := SkillContent("Do it", nil, "")
+	if !strings.Contains(result, "<skill_directory></skill_directory>") {
+		t.Error("expected empty skill_directory tag")
+	}
+}
+
+func TestSkillContent_EmptyInstructions(t *testing.T) {
+	result := SkillContent("", nil, "/skills/test")
+	if !strings.Contains(result, "<instructions>") {
+		t.Error("expected instructions tag")
+	}
+	if !strings.Contains(result, "</instructions>") {
+		t.Error("expected closing instructions tag")
+	}
+}
+
+// --- AppendDiagnostic() ---
+
+func TestAppendDiagnostic_AddsToRegistry(t *testing.T) {
+	r := NewRegistry()
+
+	d := Diagnostic{Severity: SeverityWarn, Message: "test warning", Path: "/some/path"}
+	r.AppendDiagnostic(d)
+
+	diags := r.Diagnostics()
+	if len(diags) != 1 {
+		t.Fatalf("Diagnostics() = %d, want 1", len(diags))
+	}
+	if diags[0].Severity != SeverityWarn {
+		t.Errorf("Severity = %q, want %q", diags[0].Severity, SeverityWarn)
+	}
+	if diags[0].Message != "test warning" {
+		t.Errorf("Message = %q, want %q", diags[0].Message, "test warning")
+	}
+	if diags[0].Path != "/some/path" {
+		t.Errorf("Path = %q, want %q", diags[0].Path, "/some/path")
+	}
+}
+
+func TestAppendDiagnostic_Multiple(t *testing.T) {
+	r := NewRegistry()
+
+	r.AppendDiagnostic(Diagnostic{Severity: SeverityWarn, Message: "warning 1"})
+	r.AppendDiagnostic(Diagnostic{Severity: SeverityError, Message: "error 1"})
+	r.AppendDiagnostic(Diagnostic{Severity: SeverityWarn, Message: "warning 2"})
+
+	diags := r.Diagnostics()
+	if len(diags) != 3 {
+		t.Fatalf("Diagnostics() = %d, want 3", len(diags))
+	}
+	if diags[1].Severity != SeverityError {
+		t.Errorf("Second diagnostic severity = %q, want %q", diags[1].Severity, SeverityError)
+	}
+}
+
+func TestAppendDiagnostic_NilRegistry(t *testing.T) {
+	var r *Registry
+
+	// Should not panic
+	r.AppendDiagnostic(Diagnostic{Severity: SeverityWarn, Message: "test"})
+}
+
+// --- FilterByName() ---
+
+func TestFilterByName_EmptyQuery(t *testing.T) {
+	r := NewRegistry()
+	skill := &Skill{Name: "code-review", Description: "Review code"}
+	r.effective["code-review"] = skill
+
+	filtered := r.FilterByName("")
+	if filtered == nil {
+		t.Fatal("FilterByName('') should return a registry")
+	}
+	if filtered.Effective()["code-review"] == nil {
+		t.Error("expected 'code-review' in filtered result")
+	}
+}
+
+func TestFilterByName_Matching(t *testing.T) {
+	r := NewRegistry()
+	r.effective["code-review"] = &Skill{Name: "code-review", Description: "Review code"}
+	r.effective["debug"] = &Skill{Name: "debug", Description: "Debug code"}
+	r.effective["test"] = &Skill{Name: "test", Description: "Test code"}
+
+	filtered := r.FilterByName("code")
+	if filtered == nil {
+		t.Fatal("expected non-nil filtered registry")
+	}
+	eff := filtered.Effective()
+	if len(eff) != 1 {
+		t.Fatalf("Filtered effective count = %d, want 1", len(eff))
+	}
+	if eff["code-review"] == nil {
+		t.Error("expected 'code-review' to match")
+	}
+}
+
+func TestFilterByName_CaseInsensitive(t *testing.T) {
+	r := NewRegistry()
+	r.effective["Code-Review"] = &Skill{Name: "Code-Review", Description: "Review code"}
+
+	filtered := r.FilterByName("code")
+	eff := filtered.Effective()
+	if len(eff) != 1 {
+		t.Fatalf("Filtered effective count = %d, want 1 for case-insensitive match", len(eff))
+	}
+}
+
+func TestFilterByName_NoMatch(t *testing.T) {
+	r := NewRegistry()
+	r.effective["code-review"] = &Skill{Name: "code-review", Description: "Review code"}
+
+	filtered := r.FilterByName("nonexistent")
+	eff := filtered.Effective()
+	if len(eff) != 0 {
+		t.Errorf("Filtered effective count = %d, want 0", len(eff))
+	}
+}
+
+func TestFilterByName_NilRegistry(t *testing.T) {
+	var r *Registry
+	filtered := r.FilterByName("test")
+	if filtered != nil {
+		t.Error("FilterByName on nil registry should return nil")
+	}
+}
+
+func TestFilterByName_FiltersShadowed(t *testing.T) {
+	r := NewRegistry()
+	r.effective["active"] = &Skill{Name: "active", Description: "Active"}
+	r.shadowed = []*Skill{{Name: "shadowed-skill", Description: "Shadowed"}}
+
+	filtered := r.FilterByName("shadowed")
+	if len(filtered.Shadowed()) != 1 {
+		t.Errorf("Shadowed count after filter = %d, want 1", len(filtered.Shadowed()))
+	}
+}
+
+func TestFilterByName_FiltersInvalid(t *testing.T) {
+	r := NewRegistry()
+	r.effective["active"] = &Skill{Name: "active", Description: "Active"}
+	r.invalid = []*Skill{{Name: "broken", Description: "Broken"}}
+
+	filtered := r.FilterByName("broken")
+	if len(filtered.Invalid()) != 1 {
+		t.Errorf("Invalid count after filter = %d, want 1", len(filtered.Invalid()))
+	}
+}
+
+func TestFilterByName_FiltersDisabled(t *testing.T) {
+	r := NewRegistry()
+	r.effective["active"] = &Skill{Name: "active", Description: "Active"}
+	r.disabled = []*Skill{{Name: "inactive", Description: "Disabled"}}
+
+	filtered := r.FilterByName("inactive")
+	if len(filtered.Disabled()) != 1 {
+		t.Errorf("Disabled count after filter = %d, want 1", len(filtered.Disabled()))
+	}
+}
+
+// --- Registry nil receiver tests ---
+
+func TestRegistry_NilEffective(t *testing.T) {
+	var r *Registry
+	eff := r.Effective()
+	if eff != nil {
+		t.Error("Effective() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilShadowed(t *testing.T) {
+	var r *Registry
+	shadowed := r.Shadowed()
+	if shadowed != nil {
+		t.Error("Shadowed() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilInvalid(t *testing.T) {
+	var r *Registry
+	invalid := r.Invalid()
+	if invalid != nil {
+		t.Error("Invalid() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilAll(t *testing.T) {
+	var r *Registry
+	all := r.All()
+	if all != nil {
+		t.Error("All() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilDisabled(t *testing.T) {
+	var r *Registry
+	disabled := r.Disabled()
+	if disabled != nil {
+		t.Error("Disabled() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilSummary(t *testing.T) {
+	var r *Registry
+	summary := r.Summary()
+	if summary != nil {
+		t.Error("Summary() on nil registry should return nil")
+	}
+}
+
+func TestRegistry_NilDiagnostics(t *testing.T) {
+	var r *Registry
+	diags := r.Diagnostics()
+	if diags != nil {
+		t.Error("Diagnostics() on nil registry should return nil")
+	}
+}
+
+// --- Diagnostics.Error() ---
+
+func TestDiagnosticsError_Empty(t *testing.T) {
+	var diags Diagnostics
+	if diags.Error() != "" {
+		t.Errorf("Error() on empty diagnostics = %q, want %q", diags.Error(), "")
+	}
+}
+
+func TestDiagnosticsError_NonEmpty(t *testing.T) {
+	diags := Diagnostics{
+		{Severity: SeverityError, Message: "first error"},
+		{Severity: SeverityWarn, Message: "second warning"},
+	}
+	if diags.Error() != "first error" {
+		t.Errorf("Error() = %q, want %q", diags.Error(), "first error")
+	}
+}
+
+func TestDiagnosticsError_Nil(t *testing.T) {
+	var diags Diagnostics
+	// nil slice should still work (zero-value)
+	if diags.Error() != "" {
+		t.Errorf("Error() on nil diagnostics = %q, want %q", diags.Error(), "")
+	}
+}
+
+// --- discoverRoot edge cases ---
+
+func TestDiscoverRoot_MissingDir(t *testing.T) {
+	nonexistent := filepath.Join(t.TempDir(), "does-not-exist")
+	root := Root{Path: nonexistent, Scope: ScopeProjectEitri}
+
+	skills, diags := discoverRoot(root)
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills for missing dir, got %d", len(skills))
+	}
+	if !diagnosticsContain(diags, "does not exist") {
+		t.Errorf("expected warning about missing dir, got %v", diags)
+	}
+}
+
+func TestDiscoverRoot_NotADirectory(t *testing.T) {
+	rootDir := t.TempDir()
+	filePath := filepath.Join(rootDir, "afile")
+	if err := os.WriteFile(filePath, []byte("content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	root := Root{Path: filePath, Scope: ScopeProjectEitri}
+	skills, diags := discoverRoot(root)
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills for file root, got %d", len(skills))
+	}
+	if !diagnosticsContain(diags, "is not a directory") {
+		t.Errorf("expected warning about file root, got %v", diags)
+	}
+}
+
+func TestDiscoverRoot_EmptyDir(t *testing.T) {
+	emptyDir := t.TempDir()
+	root := Root{Path: emptyDir, Scope: ScopeProjectEitri}
+
+	skills, diags := discoverRoot(root)
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills for empty dir, got %d", len(skills))
+	}
+	if len(diags) != 0 {
+		t.Errorf("expected 0 diagnostics for empty dir, got %v", diags)
+	}
+}
+
+func TestDiscoverRoot_NestedSkills(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "skill-a"), "skill-a", "# Skill A")
+	writeSkill(t, filepath.Join(rootDir, "skill-b"), "skill-b", "# Skill B")
+	// Create a subdirectory that looks like a skill dir but has no SKILL.md
+	os.MkdirAll(filepath.Join(rootDir, "empty-dir"), 0755)
+
+	root := Root{Path: rootDir, Scope: ScopeProjectEitri}
+	skills, diags := discoverRoot(root)
+	if len(skills) != 2 {
+		t.Errorf("expected 2 skills, got %d", len(skills))
+	}
+	// empty-dir should produce a diagnostic (SKILL.md not found)
+	if !diagnosticsContain(diags, "SKILL.md not found") {
+		t.Errorf("expected diagnostic for empty-dir, got %v", diags)
+	}
+}
+
+// --- defaultRoots() ---
+
+func TestDefaultRoots_ReturnsExpectedRoots(t *testing.T) {
+	workspace := "/my/project"
+	homeDir := "/home/user"
+
+	roots := defaultRoots(workspace, homeDir)
+	if len(roots) != 4 {
+		t.Fatalf("expected 4 roots, got %d", len(roots))
+	}
+
+	expected := []struct {
+		path  string
+		scope Scope
+	}{
+		{filepath.Join(workspace, ".eitri", "skills"), ScopeProjectEitri},
+		{filepath.Join(workspace, ".agents", "skills"), ScopeProjectAgents},
+		{filepath.Join(homeDir, ".eitri", "skills"), ScopeUserEitri},
+		{filepath.Join(homeDir, ".agents", "skills"), ScopeUserAgents},
+	}
+	for i, exp := range expected {
+		if roots[i].Path != exp.path {
+			t.Errorf("root[%d].Path = %q, want %q", i, roots[i].Path, exp.path)
+		}
+		if roots[i].Scope != exp.scope {
+			t.Errorf("root[%d].Scope = %q, want %q", i, roots[i].Scope, exp.scope)
+		}
+	}
+}
+
+// --- parseFrontmatter edge cases ---
+
+func TestParseFrontmatter_Empty(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("", skillDir)
+	if fm != nil {
+		t.Error("expected nil frontmatterData for empty frontmatter")
+	}
+	if !diagnosticsContain(diags, "empty YAML frontmatter") {
+		t.Errorf("expected 'empty YAML frontmatter' diagnostic, got %v", diags)
+	}
+}
+
+func TestParseFrontmatter_WhitespaceOnly(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("   \n\t  ", skillDir)
+	if fm != nil {
+		t.Error("expected nil frontmatterData for whitespace-only frontmatter")
+	}
+	if !diagnosticsContain(diags, "empty YAML frontmatter") {
+		t.Errorf("expected 'empty YAML frontmatter' diagnostic, got %v", diags)
+	}
+}
+
+func TestParseFrontmatter_MalformedYAML(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("name: unquoted: colon", skillDir)
+	if fm != nil {
+		t.Error("expected nil frontmatterData for malformed YAML")
+	}
+	if !diagnosticsContain(diags, "cannot parse YAML frontmatter") {
+		t.Errorf("expected 'cannot parse YAML frontmatter' diagnostic, got %v", diags)
+	}
+}
+
+func TestParseFrontmatter_MissingName(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("description: A skill without a name", skillDir)
+	if fm != nil {
+		t.Error("expected nil frontmatterData when name is missing")
+	}
+	if !diagnosticsContain(diags, "name field missing") {
+		t.Errorf("expected 'name field missing' diagnostic, got %v", diags)
+	}
+}
+
+func TestParseFrontmatter_MissingDescription(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("name: my-skill", skillDir)
+	if fm != nil {
+		t.Error("expected nil frontmatterData when description is missing")
+	}
+	if !diagnosticsContain(diags, "description field missing") {
+		t.Errorf("expected 'description field missing' diagnostic, got %v", diags)
+	}
+}
+
+func TestParseFrontmatter_Valid(t *testing.T) {
+	skillDir := t.TempDir()
+	fm, diags := parseFrontmatter("name: my-skill\ndescription: A test skill\nlicense: MIT", skillDir)
+	if fm == nil {
+		t.Fatal("expected non-nil frontmatterData for valid frontmatter")
+	}
+	if len(diags) != 0 {
+		t.Errorf("expected 0 diagnostics, got %v", diags)
+	}
+	if fm.Name != "my-skill" {
+		t.Errorf("Name = %q, want %q", fm.Name, "my-skill")
+	}
+	if fm.Description != "A test skill" {
+		t.Errorf("Description = %q, want %q", fm.Description, "A test skill")
+	}
+	if fm.License != "MIT" {
+		t.Errorf("License = %q, want %q", fm.License, "MIT")
+	}
+}
+
+// --- extractFrontmatter edge cases ---
+
+func TestExtractFrontmatter_NoFrontmatter(t *testing.T) {
+	body, fm, found := extractFrontmatter("Just body text")
+	if body != "Just body text" {
+		t.Errorf("Body = %q, want %q", body, "Just body text")
+	}
+	if fm != "" {
+		t.Errorf("Frontmatter = %q, want empty", fm)
+	}
+	if found {
+		t.Error("found should be false")
+	}
+}
+
+func TestExtractFrontmatter_NoClosing(t *testing.T) {
+	body, fm, found := extractFrontmatter("---\nname: test\nbody text")
+	if body != "---\nname: test\nbody text" {
+		t.Errorf("Body should be unchanged for no closing ---, got %q", body)
+	}
+	if fm != "" {
+		t.Errorf("Frontmatter = %q, want empty", fm)
+	}
+	if found {
+		t.Error("found should be false when no closing ---")
+	}
+}
+
+func TestExtractFrontmatter_Valid(t *testing.T) {
+	body, fm, found := extractFrontmatter("---\nname: test\n---\nBody text here")
+	if !found {
+		t.Fatal("expected found = true")
+	}
+	if fm != "name: test" {
+		t.Errorf("Frontmatter = %q, want %q", fm, "name: test")
+	}
+	if body != "Body text here" {
+		t.Errorf("Body = %q, want %q", body, "Body text here")
+	}
+}
