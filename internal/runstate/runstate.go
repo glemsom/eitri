@@ -105,25 +105,43 @@ func (s *State) AppendReasoningBuffer(text string) {
 // If streams are already closed, the channel carries history (if any) and is closed.
 func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	history := append([]SSEEvent(nil), s.history...)
-	ch := make(chan SSEEvent, 512)
-	for _, evt := range history {
-		ch <- evt
-	}
+
 	if s.streamsClosed {
+		s.mu.Unlock()
+		ch := make(chan SSEEvent, 512)
+		for _, evt := range history {
+			ch <- evt
+		}
 		close(ch)
 		return 0, ch, len(history) > 0
 	}
 
 	id := s.nextSubscriber
 	s.nextSubscriber++
+
+	// Size the channel to fit the full history so that replaying
+	// history below never blocks (history can grow beyond 512).
+	bufSize := 512
+	if len(history) > bufSize {
+		bufSize = len(history)
+	}
+	ch := make(chan SSEEvent, bufSize)
 	s.subscribers[id] = ch
 	s.subscriberCount++
 	if len(history) > 0 {
 		s.replayCount++
 	}
+
+	s.mu.Unlock()
+
+	// Replay history outside the lock so Subscribe cannot deadlock
+	// when history exceeds the default channel buffer.
+	for _, evt := range history {
+		ch <- evt
+	}
+
 	return id, ch, true
 }
 

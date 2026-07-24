@@ -204,7 +204,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			}
 			data := mustJSON(evt)
 			if data == nil {
-				return
+				continue
 			}
 			fmt.Fprintf(w, "data: %s\n\n", string(data))
 			flusher.Flush()
