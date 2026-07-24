@@ -24,6 +24,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/sandbox"
 
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
@@ -98,6 +99,17 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Prime the bwrap availability cache and log sandbox status.
+	sandbox.BwrapAvailable()
+	switch {
+	case cfg.Sandbox.Profile == sandbox.ProfileNone:
+		slog.Warn("sandbox: disabled in config — commands run without isolation")
+	case !sandbox.BwrapAvailable():
+		slog.Warn("bwrap sandbox: NOT available — commands running without isolation. Install bwrap for better security.")
+	default:
+		slog.Info("bwrap sandbox: enabled — commands run inside a sandbox")
 	}
 
 	if *batchPrompt != "" {
