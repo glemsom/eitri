@@ -60,3 +60,9 @@ func statusDot(status string) string {
 		return `<svg width="10" height="10" viewBox="0 0 10 10" fill="var(--text-muted)"><circle cx="5" cy="5" r="5"/></svg>`
 	}
 }
+
+// joinSandboxPaths joins extra writable paths with newlines for display
+// in a textarea in the settings UI.
+func joinSandboxPaths(paths []string) string {
+	return strings.Join(paths, "\n")
+}

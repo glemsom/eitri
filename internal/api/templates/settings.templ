@@ -145,6 +145,25 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			</details>
 
 			<details class="settings-details">
+				<summary><span>Sandbox</span></summary>
+
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" id="sandbox_enabled" name="sandbox_enabled" value="true" if cfg.Sandbox.Profile == "default" { checked }/>
+						Enable sandbox (requires bwrap)
+					</label>
+					<input type="hidden" name="sandbox_enabled" value="false"/>
+					<small class="hint">Wraps shell commands in a bubblewrap sandbox. Disable if you experience compatibility issues.</small>
+				</div>
+
+				<div class="form-group">
+					<label for="sandbox_extra_writable_paths">Extra writable paths</label>
+					<textarea id="sandbox_extra_writable_paths" name="sandbox_extra_writable_paths" class="monospace-textarea" rows="3" placeholder="/opt/toolchain&#10;/var/cache/build">{ joinSandboxPaths(cfg.Sandbox.ExtraWritablePaths) }</textarea>
+					<small class="hint">Additional directories to make read-write inside the sandbox (one per line).</small>
+				</div>
+			</details>
+
+			<details class="settings-details">
 				<summary><span>Debug &amp; Diagnostics</span></summary>
 
 				<div class="form-group">

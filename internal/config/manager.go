@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/sandbox"
 )
 
 // Config represents the Eitri configuration schema.
@@ -29,9 +30,10 @@ type Config struct {
 	MaxTurns            int             `json:"max_turns"`
 	ContextWindowTokens int             `json:"context_window_tokens"`
 	MaxHistory          int             `json:"max_history"`
-	DebugPrompt         bool            `json:"debug_prompt,omitempty"`   // was EITRI_DEBUG_PROMPT=1
-	DebugRequest        bool            `json:"debug_request,omitempty"`  // was EITRI_DEBUG_REQUEST=1
-	DebugLLMDir         string          `json:"debug_llm_dir,omitempty"`  // was EITRI_DEBUG_LLM_DIR
+	DebugPrompt         bool            `json:"debug_prompt,omitempty"`    // was EITRI_DEBUG_PROMPT=1
+	DebugRequest        bool            `json:"debug_request,omitempty"`   // was EITRI_DEBUG_REQUEST=1
+	DebugLLMDir         string          `json:"debug_llm_dir,omitempty"`   // was EITRI_DEBUG_LLM_DIR
+	Sandbox             sandbox.Config  `json:"sandbox,omitempty"`
 }
 
 // Defaults returns a Config with default values.
@@ -45,6 +47,7 @@ func Defaults() Config {
 		MaxTurns:            75,
 		ContextWindowTokens: 256000,
 		MaxHistory:          50,
+		Sandbox:             sandbox.DefaultConfig(),
 	}
 }
 
@@ -279,6 +282,28 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["debug_llm_dir"]; ok {
 		if s, ok := v.(string); ok {
 			result.DebugLLMDir = s
+		}
+	}
+	if v, ok := patch["sandbox_extra_writable_paths"]; ok {
+		if s, ok := v.(string); ok {
+			// Split by newlines, commas, or semicolons, trim spaces, remove empties.
+			var paths []string
+			for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+				return r == '\n' || r == ',' || r == ';'
+			}) {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					paths = append(paths, part)
+				}
+			}
+			result.Sandbox.ExtraWritablePaths = paths
+		}
+	}
+	if v, ok := patch["sandbox_enabled"]; ok {
+		if parseBool(v) {
+			result.Sandbox.Profile = sandbox.ProfileDefault
+		} else {
+			result.Sandbox.Profile = sandbox.ProfileNone
 		}
 	}
 

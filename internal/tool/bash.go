@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/sandbox"
 	"github.com/voocel/litellm"
 )
 
@@ -21,17 +22,20 @@ type bashArgs struct {
 
 // BashTool implements ToolHandler for running shell commands.
 type BashTool struct {
-	workspace string
-	timeout   time.Duration
-	schema    litellm.Schema
+	workspace     string
+	timeout       time.Duration
+	sandboxConfig sandbox.Config
+	schema        litellm.Schema
 }
 
 // NewBashTool creates a new BashTool.
-func NewBashTool(workspace string, timeout time.Duration) *BashTool {
+// Pass zero-value sandbox.Config to use the default profile.
+func NewBashTool(workspace string, timeout time.Duration, sc sandbox.Config) *BashTool {
 	return &BashTool{
-		workspace: workspace,
-		timeout:   timeout,
-		schema:    SchemaOf[bashArgs](),
+		workspace:     workspace,
+		timeout:       timeout,
+		sandboxConfig: sc,
+		schema:        SchemaOf[bashArgs](),
 	}
 }
 
@@ -65,7 +69,13 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(execCtx, "bash", "-c", parsed.Command)
+	// Build command through sandbox wrapper
+	execPath, execArgs, err := sandbox.WrapCommand(t.workspace, parsed.Command, t.sandboxConfig)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: sandbox setup failed: %v", err))), nil
+	}
+
+	cmd := exec.CommandContext(execCtx, execPath, execArgs...)
 	cmd.Dir = t.workspace
 
 	// Capture stdout and stderr via pipes
@@ -73,7 +83,7 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	err := cmd.Run()
+	err = cmd.Run()
 
 	var exitCode int
 	var timedOut bool
