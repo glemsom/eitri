@@ -1,0 +1,133 @@
+package templates
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"net/url"
+)
+
+// DirectoryBrowerData holds the data for rendering the directory browser overlay.
+type DirectoryBrowserData struct {
+	SessionID   string
+	CurrentPath string
+	ParentPath  string
+	Breadcrumbs []BreadcrumbData
+	Directories []DirectoryEntryData
+}
+
+// BreadcrumbData represents a single breadcrumb segment.
+type BreadcrumbData struct {
+	Label string
+	Path  string
+}
+
+// DirectoryEntryData represents a single directory entry.
+type DirectoryEntryData struct {
+	Name string
+	Path string
+}
+
+// DirectoryBrowser renders the full directory browser overlay as an HTMX fragment.
+templ DirectoryBrowser(data DirectoryBrowserData) {
+	<div id="directory-browser-overlay" class="directory-browser-overlay"
+		hx-on:click="if(event.target === this) this.remove()"
+	>
+		<div class="directory-browser-modal" id="directory-browser-modal">
+			<div class="directory-browser-header">
+				<h3>Select Workspace Directory</h3>
+				<button class="directory-browser-close" type="button"
+					hx-on:click="document.getElementById('directory-browser-overlay').remove()"
+					aria-label="Close"
+				>&times;</button>
+			</div>
+
+			<div class="directory-browser-breadcrumbs">
+				@BreadcrumbList(data.Breadcrumbs, data.SessionID)
+			</div>
+
+			<div class="directory-browser-list">
+				if data.ParentPath != "" && data.CurrentPath != string(filepath.Separator) {
+					<div class="directory-browser-item directory-browser-up"
+						hx-get={ "/api/sessions/" + data.SessionID + "/directory-browser?path=" + url.QueryEscape(data.ParentPath) }
+						hx-target="#directory-browser-modal"
+						hx-select="#directory-browser-modal"
+						hx-swap="outerHTML"
+					>
+						<span class="dir-icon">&#x2191;</span>
+						<span class="dir-name">..</span>
+					</div>
+				}
+				for _, dir := range data.Directories {
+					<div class="directory-browser-item"
+						hx-get={ "/api/sessions/" + data.SessionID + "/directory-browser?path=" + url.QueryEscape(dir.Path) }
+						hx-target="#directory-browser-modal"
+						hx-select="#directory-browser-modal"
+						hx-swap="outerHTML"
+					>
+						<span class="dir-icon">&#x1F4C1;</span>
+						<span class="dir-name">{ dir.Name }</span>
+					</div>
+				}
+			</div>
+
+			<div class="directory-browser-footer">
+				<span class="directory-browser-current-path">{ data.CurrentPath }</span>
+				<div class="directory-browser-actions">
+					<button class="btn btn-secondary" type="button"
+						hx-on:click="document.getElementById('directory-browser-overlay').remove()"
+					>Cancel</button>
+					<button class="btn btn-primary" type="button"
+						hx-post={ "/api/sessions/" + data.SessionID + "/workspace" }
+						hx-vals={ jsonPathValue(data.CurrentPath) }
+						hx-target="#app"
+						hx-select="#app"
+						hx-swap="outerHTML"
+						hx-on:click="document.getElementById('directory-browser-overlay').remove()"
+					>Select this folder</button>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+// BreadcrumbList renders the breadcrumb navigation.
+templ BreadcrumbList(crumbs []BreadcrumbData, sessionID string) {
+	for i, crumb := range crumbs {
+		if i > 0 {
+			<span class="breadcrumb-separator">/</span>
+		}
+		if i == len(crumbs)-1 {
+			<span class="breadcrumb-current">{ crumb.Label }</span>
+		} else {
+			<a class="breadcrumb-link"
+				hx-get={ "/api/sessions/" + sessionID + "/directory-browser?path=" + url.QueryEscape(crumb.Path) }
+				hx-target="#directory-browser-modal"
+				hx-select="#directory-browser-modal"
+				hx-swap="outerHTML"
+			>{ crumb.Label }</a>
+		}
+	}
+}
+
+// shortWorkspacePath returns a compact display form of a workspace path.
+// Uses … for very deep paths, showing only the last two components.
+func shortWorkspacePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(path, "/"), string(filepath.Separator))
+	if len(parts) > 3 {
+		return "…/" + strings.Join(parts[len(parts)-2:], "/")
+	}
+	return path
+}
+
+// jsonPathValue returns a JSON string of {"path": "<path>"} suitable for hx-vals.
+func jsonPathValue(path string) string {
+	b, err := json.Marshal(map[string]string{"path": path})
+	if err != nil {
+		return `{"path":""}`
+	}
+	return string(b)
+}
