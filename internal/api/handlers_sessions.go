@@ -193,6 +193,15 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	s.config.SessionManager.Delete(id)
 
+	// Remove persisted data from disk (best-effort; in-memory deletion already happened)
+	if p := s.config.Persister; p != nil {
+		if err := p.DeleteSession(id); err != nil {
+			s.logger.Warn("failed to delete persisted session data",
+				slog.String("session_id", id),
+				slog.Any("error", err))
+		}
+	}
+
 	// Redirect to next available session or root
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	if len(sessions) > 0 {

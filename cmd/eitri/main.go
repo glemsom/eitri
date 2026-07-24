@@ -274,6 +274,7 @@ func main() {
 		Logger:         slog.Default(),
 		Version:        Version,
 		DebugRecorder:  debugRecorder,
+		Persister:      persister,
 		StartTime:      time.Now(),
 	})
 
