@@ -144,3 +144,68 @@ func TestValidatePath_RejectNonWorkspaceSkillDirEscape(t *testing.T) {
 		t.Fatal("expected error for path outside allowed roots")
 	}
 }
+
+func TestValidateBrowsePath_ValidDirectory(t *testing.T) {
+	dir := t.TempDir()
+
+	cleaned, err := ValidateBrowsePath(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleaned != dir {
+		t.Errorf("got %q, want %q", cleaned, dir)
+	}
+}
+
+func TestValidateBrowsePath_EmptyPath(t *testing.T) {
+	_, err := ValidateBrowsePath("")
+	if err == nil {
+		t.Fatal("expected error for empty path, got nil")
+	}
+}
+
+func TestValidateBrowsePath_RelativePath(t *testing.T) {
+	_, err := ValidateBrowsePath("relative/path")
+	if err == nil {
+		t.Fatal("expected error for relative path, got nil")
+	}
+}
+
+func TestValidateBrowsePath_DotDotEscape(t *testing.T) {
+	_, err := ValidateBrowsePath("../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for ../ escape, got nil")
+	}
+}
+
+func TestValidateBrowsePath_NonExistentPath(t *testing.T) {
+	_, err := ValidateBrowsePath("/nonexistent/path/that/does/not/exist")
+	if err == nil {
+		t.Fatal("expected error for non-existent path, got nil")
+	}
+}
+
+func TestValidateBrowsePath_FileNotDirectory(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ValidateBrowsePath(filePath)
+	if err == nil {
+		t.Fatal("expected error for file path, got nil")
+	}
+}
+
+func TestValidateBrowsePath_ValidAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+
+	cleaned, err := ValidateBrowsePath(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleaned != dir {
+		t.Errorf("got %q, want %q", cleaned, dir)
+	}
+}
