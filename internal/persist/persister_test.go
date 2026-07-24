@@ -986,3 +986,200 @@ func TestRestore_MultipleTraces(t *testing.T) {
 		}
 	}
 }
+
+func TestFlush_WritesSessionsAndHistories(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().Truncate(time.Second)
+	sessions := []*session.UISession{
+		{
+			ID:        "flush-sess-1",
+			Title:     "Flush Session 1",
+			Status:    session.StatusIdle,
+			Messages:  []session.Message{{Role: "user", Content: "hello", CreatedAt: now}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			ID:        "flush-sess-2",
+			Title:     "Flush Session 2",
+			Status:    session.StatusIdle,
+			Messages:  []session.Message{{Role: "user", Content: "world", CreatedAt: now}},
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	histories := map[string][]llm.Message{
+		"flush-sess-1": {
+			{Role: "system", Content: "You are Eitri."},
+			{Role: "user", Content: "hello"},
+		},
+		"flush-sess-2": {
+			{Role: "system", Content: "You are Eitri."},
+			{Role: "user", Content: "world"},
+		},
+	}
+
+	err = p.Flush(sessions, histories, nil)
+	if err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	// Verify session symlinks exist
+	for _, id := range []string{"flush-sess-1", "flush-sess-2"} {
+		sessionLink := filepath.Join(rootDir, "sessions", id, "session.json")
+		linkTarget, err := os.Readlink(sessionLink)
+		if err != nil {
+			t.Fatalf("expected session symlink %s: %v", sessionLink, err)
+		}
+		if !strings.HasSuffix(linkTarget, ".json") {
+			t.Fatalf("symlink target %q does not end with .json", linkTarget)
+		}
+	}
+
+	// Verify history symlinks exist
+	for _, id := range []string{"flush-sess-1", "flush-sess-2"} {
+		historyLink := filepath.Join(rootDir, "history", id, "history.json")
+		linkTarget, err := os.Readlink(historyLink)
+		if err != nil {
+			t.Fatalf("expected history symlink %s: %v", historyLink, err)
+		}
+		if !strings.HasSuffix(linkTarget, ".json") {
+			t.Fatalf("symlink target %q does not end with .json", linkTarget)
+		}
+	}
+}
+
+func TestFlush_WritesUnpersistedTraces(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "flush-traces"
+	// Create session dir so SaveTrace doesn't fail on the session lookup
+	s := &session.UISession{
+		ID:        sessionID,
+		Title:     "Flush Traces",
+		Status:    session.StatusIdle,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = p.SnapshotSession(sessionID, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	traces := []*debug.HTTPTrace{
+		{ID: "flush_trace_1", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
+		{ID: "flush_trace_2", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 500},
+		{ID: "flush_trace_3", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
+	}
+
+	// Save one trace via SaveTrace (simulating OnComplete callback)
+	err = p.SaveTrace(sessionID, traces[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush with all three traces; only traces[1] and traces[2] should be new
+	err = p.Flush(nil, nil, traces)
+	if err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	// Verify all three traces now exist on disk
+	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	for _, tr := range traces {
+		traceFile := filepath.Join(tracesDir, string(tr.ID)+".json")
+		if _, err := os.Stat(traceFile); err != nil {
+			t.Errorf("expected trace file %s to exist: %v", traceFile, err)
+		}
+	}
+}
+
+func TestFlush_NilPersister(t *testing.T) {
+	// Calling Flush on a nil persister should not panic and return nil.
+	var p *Persister
+	err := p.Flush(nil, nil, nil)
+	if err != nil {
+		t.Errorf("expected nil error from nil persister Flush, got %v", err)
+	}
+}
+
+func TestFlush_NilSlices(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush with nil sessions, histories, and traces should be a no-op
+	err = p.Flush(nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+}
+
+func TestFlush_SkipsAlreadyPersistedTraces(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "skip-persisted"
+	s := &session.UISession{
+		ID:        sessionID,
+		Title:     "Skip Persisted",
+		Status:    session.StatusIdle,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = p.SnapshotSession(sessionID, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	traces := []*debug.HTTPTrace{
+		{ID: "skip_trace_1", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
+		{ID: "skip_trace_2", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
+	}
+
+	// Save both traces first
+	for _, tr := range traces {
+		if err := p.SaveTrace(sessionID, tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Track how many files exist now
+	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	entriesBefore, err := os.ReadDir(tracesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countBefore := len(entriesBefore)
+
+	// Flush should not re-save already-persisted traces
+	err = p.Flush(nil, nil, traces)
+	if err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	entriesAfter, err := os.ReadDir(tracesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countAfter := len(entriesAfter)
+
+	if countAfter != countBefore {
+		t.Errorf("expected same number of trace files after flush (%d), got %d", countBefore, countAfter)
+	}
+}
