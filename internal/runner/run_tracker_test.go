@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
@@ -261,7 +262,7 @@ func TestRunTracker_NotifyAllClosed(t *testing.T) {
 
 func TestRunTracker_BroadcastStatusUpdate(t *testing.T) {
 	rt := newRunTracker()
-	bb := newBrowserBroadcaster()
+	bb := broadcast.New()
 
 	uiMgr := uisession.NewManager(10, t.TempDir())
 	sess, err := uiMgr.Create("browser-1")

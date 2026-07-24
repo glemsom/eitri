@@ -12,18 +12,11 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
-
-// BrowserEvent is an event sent to browser-level SSE subscribers.
-// Used for broadcasting events that affect the entire browser UI
-// (e.g., session status changes across all sessions).
-type BrowserEvent struct {
-	Type string `json:"type"`
-	Data any    `json:"data,omitempty"`
-}
 
 // RunState holds SSE broadcast state and cancel for one run.
 type RunState struct {
@@ -58,7 +51,7 @@ type RunServiceDeps struct {
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
 	tracker   *runTracker
-	broadcast *browserBroadcaster
+	broadcast *broadcast.BrowserBroadcaster
 	subagents *subagentStore
 
 	confirmMu     sync.Mutex
@@ -78,7 +71,7 @@ const completedRunRetention = 5 * time.Second
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
 		tracker:           newRunTracker(),
-		broadcast:         newBrowserBroadcaster(),
+		broadcast:         broadcast.New(),
 		subagents:         newSubagentStore(),
 		confirmations:     make(map[string]chan ConfirmationResult),
 		uiSessionMgr:      deps.UISessionMgr,
@@ -111,7 +104,7 @@ func (s *RunService) SetCrashDumpFunc(fn func(err error, stack []byte)) {
 
 // SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.
 // Returns subscriber ID and receive-only channel.
-func (s *RunService) SubscribeBrowser(browserID string) (uint64, <-chan BrowserEvent) {
+func (s *RunService) SubscribeBrowser(browserID string) (uint64, <-chan broadcast.BrowserEvent) {
 	return s.broadcast.Subscribe(browserID)
 }
 
@@ -121,7 +114,7 @@ func (s *RunService) UnsubscribeBrowser(browserID string, id uint64) {
 }
 
 // BroadcastToBrowser sends an event to all browser-level SSE subscribers for the given browserID.
-func (s *RunService) BroadcastToBrowser(browserID string, evt BrowserEvent) {
+func (s *RunService) BroadcastToBrowser(browserID string, evt broadcast.BrowserEvent) {
 	s.broadcast.Broadcast(browserID, evt)
 }
 

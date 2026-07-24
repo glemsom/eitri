@@ -9,6 +9,8 @@ import (
 
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/broadcast"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -140,7 +142,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 					slog.String("child_session_id", childSess.ID),
 				)
 				// Broadcast session_status so the child appears in sidebar immediately
-				s.BroadcastToBrowser(parentSess.BrowserID, BrowserEvent{
+				s.BroadcastToBrowser(parentSess.BrowserID, broadcast.BrowserEvent{
 					Type: "session_status",
 					Data: map[string]any{
 						"session_id": childSess.ID,
@@ -343,7 +345,7 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 // buildBaseToolRegistry creates a tool registry with all standard tools
 // except delegate, collect, render_quick_replies, and skill (which are
 // only available to parent agents, not sub-agents).
-func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
+func buildBaseToolRegistry(cfg runconfig.RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
 	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout))
 	reg.Register(tool.NewGlobTool(cfg.Workspace))

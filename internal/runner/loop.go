@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
@@ -392,7 +393,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	broadcastContextUpdate()
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
-	return &MaxTurnsExceededError{Limit: maxTurns}
+	return &runconfig.MaxTurnsExceededError{Limit: maxTurns}
 }
 
 // isRequestBasedHistory returns true when the history manager is the

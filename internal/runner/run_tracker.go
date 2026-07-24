@@ -3,6 +3,7 @@ package runner
 import (
 	"sync"
 
+	"github.com/glemsom/eitri/internal/runner/broadcast"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -205,7 +206,7 @@ func (rt *runTracker) notifyAllClosed(message string) {
 }
 
 // broadcastStatusUpdate broadcasts a session status change to browser-level subscribers.
-func (rt *runTracker) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *browserBroadcaster) {
+func (rt *runTracker) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *broadcast.BrowserBroadcaster) {
 	if uiSessionMgr == nil {
 		return
 	}
@@ -214,7 +215,7 @@ func (rt *runTracker) broadcastStatusUpdate(sessionID string, status uisession.S
 	if sess == nil || sess.BrowserID == "" {
 		return
 	}
-	bb.Broadcast(sess.BrowserID, BrowserEvent{
+	bb.Broadcast(sess.BrowserID, broadcast.BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,

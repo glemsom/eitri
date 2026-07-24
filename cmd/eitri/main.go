@@ -24,6 +24,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 
 	runner "github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
@@ -100,7 +101,7 @@ func main() {
 	if *batchPrompt != "" {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
-		runCfg := runner.FromConfig(cfg, workspace, cmdTimeout)
+		runCfg := runconfig.FromConfig(cfg, workspace, cmdTimeout)
 
 		// Create debug recorder for HTTP trace capture even in batch mode
 		debugRecorder := debug.NewRecorder(0) // default capacity 20

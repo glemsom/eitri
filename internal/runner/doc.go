@@ -16,7 +16,9 @@
 //   - ConfirmationResult — user decision (approved/denied) for a path confirmation
 //   - ConfirmationFunc — callback signature for confirmation prompts
 //   - MaxTurnsExceededError — error returned when the agent hits the turn cap
+//     (defined in runconfig sub-package)
 //   - BrowserEvent — event sent to browser-level SSE subscribers
+//     (defined in broadcast sub-package)
 //
 // # Key interfaces
 //
@@ -30,29 +32,31 @@
 //
 // # File map
 //
-//	service.go         — RunService type, constructor, subscribe/unsubscribe,
-//	                     cancel, confirm path, browser SSE broadcast
-//	run.go             — StartRun (agent loop entry point), tool registry assembly,
-//	                     session persistence after run
-//	loop.go            — RunAgent: synchronous turn loop, LLM call, tool dispatch,
-//	                     SSE broadcast, context window estimation, streaming
-//	loop_helpers.go    — message trimming, content truncation, XML tag parsing,
-//	                     SSE event helpers, context window computation
-//	batch.go           — BatchRun: headless batch mode (no UI sessions,
-//	                     sessionHistoryManager, io.Writer output)
-//	system_prompt.go   — buildSystemPrompt and buildLLMService: shared helpers
-//	                     used by run.go, batch.go, and subagent.go.
-//	                     buildLLMService assembles auth, LLM service, tool
-//	                     registry, AND the system prompt in one seam call.
-//	subagent.go        — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
-//	                     sub-agent record tracking, restricted tool registry
-//	skill_context.go   — sessionSkillContext resolution, stale skill detection,
-//	                     skill directory enumeration
-//	interfaces.go      — HistoryManager and Confirmer contracts
-//	adapters.go        — sessionHistoryManager, requestHistoryManager,
-//	                     testConfirmerStub, funcConfirmer implementations
+//	service.go          — RunService type, constructor, subscribe/unsubscribe,
+//	                      cancel, confirm path, browser SSE broadcast
+//	run.go              — StartRun (agent loop entry point), tool registry assembly,
+//	                      session persistence after run
+//	loop.go             — RunAgent: synchronous turn loop, LLM call, tool dispatch,
+//	                      SSE broadcast, context window estimation, streaming
+//	loop_helpers.go     — message trimming, content truncation, XML tag parsing,
+//	                      SSE event helpers, context window computation
+//	batch.go            — BatchRun: headless batch mode (no UI sessions,
+//	                      sessionHistoryManager, io.Writer output)
+//	system_prompt.go    — buildSystemPrompt and buildLLMService: shared helpers
+//	                      used by run.go, batch.go, and subagent.go.
+//	                      buildLLMService assembles auth, LLM service, tool
+//	                      registry, AND the system prompt in one seam call.
+//	subagent.go         — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
+//	                      sub-agent record tracking, restricted tool registry
+//	skill_context.go    — sessionSkillContext resolution, stale skill detection,
+//	                      skill directory enumeration
+//	interfaces.go       — HistoryManager and Confirmer contracts
+//	adapters.go         — sessionHistoryManager, requestHistoryManager,
+//	                      testConfirmerStub, funcConfirmer implementations
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)
-//	runconfig.go       — RunConfig type, FromConfig builder
+//	runconfig/          — RunConfig type, FromConfig builder, MaxTurnsExceededError
+//	                     (sub-package)
+//	broadcast/          — BrowserBroadcaster, BrowserEvent (sub-package)
 //
 // # Dependencies
 //
@@ -66,7 +70,7 @@
 //   - provider  — auth resolution, provider descriptions
 //   - skills    — Skill discovery, activation, resource manifests
 //   - debug     — HTTP trace recorder (optional)
-//   - config    — (transitive through runconfig.go) Config value object
+//   - config    — (transitive through runconfig/) Config value object
 //
 // # Extension points
 //

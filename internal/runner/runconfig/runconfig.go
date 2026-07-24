@@ -1,7 +1,12 @@
-package runner
+// Package runconfig provides per-run configuration types.
+//
+// Extracted from the runner monolith to keep data types independent of
+// run lifecycle logic.
+package runconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -50,4 +55,13 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		CmdTimeout:          cmdTimeout,
 		ContextWindowTokens: cfg.ContextWindowTokens,
 	}
+}
+
+// MaxTurnsExceededError reports that a run hit its configured turn cap.
+type MaxTurnsExceededError struct {
+	Limit int
+}
+
+func (e *MaxTurnsExceededError) Error() string {
+	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
 }
