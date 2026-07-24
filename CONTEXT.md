@@ -25,6 +25,10 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Session workspace** | The filesystem root directory scoped to a single `UISession`. Defaults to the process CWD at session creation. All file tools (`bash`, `glob`, `grep`, `read`, `write`, `edit`) operate within this directory. Can be changed at any time via the directory browser UI; takes effect on the next agent run. Independent of the server's launch workspace. |
 | **Workspace directory browser** | An HTMX-driven server-side file explorer overlay that lets the user navigate to and select a session workspace. Shows directories only, with breadcrumb navigation and a "Select this folder" action. Triggered from the header workspace indicator or each session's sidebar entry. |
 | **Crash dump** | A timestamped directory under `~/.eitri/crash-dump/` containing diagnostic files written when Eitri encounters an unexpected failure (provider HTTP error, agent loop panic, batch run failure). Contains error chain, goroutine stacks, session state, HTTP traces, and sanitized config. |
+| **Snapshot** | A point-in-time dump of a single Session's full state (messages, components, skills, metadata) written to disk as JSON. Written after each complete agent turn (assistant message + all tool results). Used for crash recovery and historical debugging. |
+| **Session persistence** | The on-disk JSON files under `~/.eitri/sessions/<id>/` and `~/.eitri/history/<id>/` that survive server restarts. Restored on startup to rebuild in-memory session state. |
+| **Trace persistence** | Individual HTTP trace files written to `~/.eitri/sessions/<id>/traces/<trace_id>.json` on LLM provider call completion. Survive server restarts for post-mortem debugging. |
+| **Persister** | The `internal/persist/` package responsible for writing and reading session snapshots, conversation histories, and HTTP traces to/from disk. Owns the 1 GiB retention cap and directory layout under `~/.eitri/`. |
 
 ## Architecture decisions
 
@@ -47,6 +51,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0013](docs/adr/0013-sub-agents.md) | Sub-agent support via delegate/collect tools | Accepted |
 | [0014](docs/adr/0014-crash-dumps.md) | Crash dump directory for unexpected failures | Accepted |
 | [0015](docs/adr/0015-per-session-workspaces.md) | Per-session workspaces with directory browser | Accepted |
+| [0016](docs/adr/0016-session-persistence-json-snapshots.md) | Session persistence via JSON snapshots | Accepted |
 
 ## Project structure
 
