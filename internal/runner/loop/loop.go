@@ -1,4 +1,8 @@
-package runner
+// Package loop provides the agent turn loop — RunAgent drives the synchronous
+// LLM request/tool-dispatch cycle until completion, cancellation, or max turns.
+//
+// Extracted from the runner monolith (ticket #691).
+package loop
 
 import (
 	"context"
@@ -10,22 +14,12 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
 )
-
-// ConfirmationResult carries the user's decision for a confirmation prompt.
-type ConfirmationResult struct {
-	Path     string
-	Approved bool
-}
-
-// ConfirmationFunc is called when a tool needs user confirmation before
-// proceeding. It sends the confirmation request and blocks until the user
-// responds or the context is cancelled.
-type ConfirmationFunc func(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
 
 // RunSpec holds the transport/config fields for RunAgent.
 // These are the LLM service, request, tools, SSE writer, and turn/history caps.
@@ -54,13 +48,13 @@ type RunSpec struct {
 // Use DefaultRunOpts() to obtain safe defaults.
 type RunOpts struct {
 	// HistoryMgr handles reading and appending conversation history.
-	// Two concrete types exist: sessionHistoryManager (browser UI path)
-	// and requestHistoryManager (headless/direct-messages path).
-	HistoryMgr HistoryManager
+	// Two concrete types exist: NewSessionHistoryManager (browser UI path)
+	// and NewRequestHistoryManager (headless/direct-messages path).
+	HistoryMgr adapters.HistoryManager
 
 	// Confirmer handles user confirmation for path-based tool access.
 	// When nil, confirmation-dependent operations return errors to the LLM.
-	Confirmer Confirmer
+	Confirmer adapters.Confirmer
 
 	// UISessionMgr manages UI session state. Used for broadcasting components
 	// and quick replies to browser-based sessions.
@@ -131,7 +125,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			return
 		}
 		// Only broadcast for session-based (UI) history, not request-based.
-		if _, ok := opts.HistoryMgr.(*requestHistoryManager); ok {
+		if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
 			return
 		}
 		history := opts.HistoryMgr.History(opts.SessionID)
@@ -203,7 +197,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
 				opts.HistoryMgr.AppendAssistant(opts.SessionID, content.String(), toolCalls)
-				if isRequestBasedHistory(opts.HistoryMgr) {
+				if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
 					trimMessages(spec.Request, spec.MaxHistory)
 				}
 				return streamErr
@@ -232,14 +226,14 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				opts.HistoryMgr.AppendAssistant(opts.SessionID, contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
-			if isRequestBasedHistory(opts.HistoryMgr) {
+			if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
 				trimMessages(spec.Request, spec.MaxHistory)
 			}
 			return nil
 		}
 
 		// Trim conversation history if cap is set (only when not using session manager)
-		if isRequestBasedHistory(opts.HistoryMgr) {
+		if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
 			trimMessages(spec.Request, spec.MaxHistory)
 		}
 
@@ -335,7 +329,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			blocks := dispResult.Blocks
 			resultText := blocksToText(blocks)
 			isError := toolResultHasError(blocks)
-			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", truncateText(resultText, 200)), slog.Bool("error", isError))
+			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", TruncateText(resultText, 200)), slog.Bool("error", isError))
 
 			// Broadcast tool result event
 			spec.SSEWriter.ToolResult(tc.Function.Name, resultText)
@@ -394,12 +388,4 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
 	return &runconfig.MaxTurnsExceededError{Limit: maxTurns}
-}
-
-// isRequestBasedHistory returns true when the history manager is the
-// request-based variant, meaning history is stored directly on the
-// *llm.Request and must be trimmed by RunAgent when caps are set.
-func isRequestBasedHistory(mgr HistoryManager) bool {
-	_, ok := mgr.(*requestHistoryManager)
-	return ok
 }

@@ -10,25 +10,20 @@
 //
 //   - RunService — run lifecycle manager (start, cancel, subscribe, confirm)
 //   - RunConfig — per-run configuration (provider, model, system prompt, turns)
-//   - RunSpec — transport/config fields for RunAgent (LLM service, request, tools, SSE writer, caps)
-//   - RunOpts — runtime/UI options for RunAgent (history, confirmer, session, etc.)
-//   - RunState — one active run's SSE state, cancel func, and completion signal
-//   - ConfirmationResult — user decision (approved/denied) for a path confirmation
-//   - ConfirmationFunc — callback signature for confirmation prompts
-//   - MaxTurnsExceededError — error returned when the agent hits the turn cap
 //     (defined in runconfig sub-package)
+//   - RunState — one active run's SSE state, cancel func, and completion signal
 //   - BrowserEvent — event sent to browser-level SSE subscribers
 //     (defined in broadcast sub-package)
 //
-// # Key interfaces
+// # Sub-packages
 //
-//   - HistoryManager — abstracts conversation history storage (read + append).
-//     Two adapters exist: sessionHistoryManager (browser UI path via
-//     *history.SessionManager) and requestHistoryManager (headless/direct-messages
-//     path via *litellm.Request). Defined in interfaces.go.
-//   - Confirmer — abstracts user-confirmation flow. The production implementation
-//     uses a channel-based mechanism (RunService.confirmPath). testConfirmerStub
-//     provides canned results for unit tests. Defined in interfaces.go.
+//   - runconfig — RunConfig type, FromConfig builder, MaxTurnsExceededError
+//   - broadcast — BrowserBroadcaster, BrowserEvent types
+//   - adapters — HistoryManager and Confirmer interfaces + all implementations
+//     (sessionHistoryManager, requestHistoryManager, testConfirmerStub,
+//     funcConfirmer), ConfirmationResult and ConfirmationFunc value types
+//   - loop — RunAgent, RunSpec, RunOpts, the agent turn loop, streaming,
+//     tool dispatch, message trimming, and LLM error handling
 //
 // # File map
 //
@@ -36,10 +31,6 @@
 //	                      cancel, confirm path, browser SSE broadcast
 //	run.go              — StartRun (agent loop entry point), tool registry assembly,
 //	                      session persistence after run
-//	loop.go             — RunAgent: synchronous turn loop, LLM call, tool dispatch,
-//	                      SSE broadcast, context window estimation, streaming
-//	loop_helpers.go     — message trimming, content truncation, XML tag parsing,
-//	                      SSE event helpers, context window computation
 //	batch.go            — BatchRun: headless batch mode (no UI sessions,
 //	                      sessionHistoryManager, io.Writer output)
 //	system_prompt.go    — buildSystemPrompt and buildLLMService: shared helpers
@@ -50,13 +41,11 @@
 //	                      sub-agent record tracking, restricted tool registry
 //	skill_context.go    — sessionSkillContext resolution, stale skill detection,
 //	                      skill directory enumeration
-//	interfaces.go       — HistoryManager and Confirmer contracts
-//	adapters.go         — sessionHistoryManager, requestHistoryManager,
-//	                      testConfirmerStub, funcConfirmer implementations
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)
 //	runconfig/          — RunConfig type, FromConfig builder, MaxTurnsExceededError
-//	                     (sub-package)
 //	broadcast/          — BrowserBroadcaster, BrowserEvent (sub-package)
+//	adapters/           — HistoryManager, Confirmer, ConfirmationResult (sub-package)
+//	loop/               — RunAgent, RunSpec, RunOpts (sub-package)
 //
 // # Dependencies
 //
@@ -72,19 +61,26 @@
 //   - debug     — HTTP trace recorder (optional)
 //   - config    — (transitive through runconfig/) Config value object
 //
+// And from its own sub-packages:
+//
+//   - runner/runconfig  — RunConfig, MaxTurnsExceededError
+//   - runner/broadcast  — BrowserBroadcaster, BrowserEvent
+//   - runner/adapters   — HistoryManager, Confirmer, ConfirmationResult
+//   - runner/loop       — RunAgent, RunSpec, RunOpts
+//
 // # Extension points
 //
 //  1. Adding a new agent run lifecycle hook:
 //     Add a pre/post hook call in startRunWithConfig (run.go) or RunAgent
-//     (loop.go). Hooks have access to RunConfig, *litellm.Request, and
+//     (loop/loop.go). Hooks have access to RunConfig, *litellm.Request, and
 //     *runstate.State.
 //
 //  2. Adding a new HistoryManager adapter:
-//     Implement the HistoryManager interface (interfaces.go) and construct it
+//     Implement the HistoryManager interface (adapters package) and construct it
 //     in the adapter factory section of startRunWithConfig (run.go).
 //
 //  3. Adding a new Confirmer adapter:
-//     Implement the Confirmer interface (interfaces.go). The production
+//     Implement the Confirmer interface (adapters package). The production
 //     implementation uses channel-based confirmation via ResolveConfirmation;
 //     alternative adapters could use webhook calls or file-system signals.
 //

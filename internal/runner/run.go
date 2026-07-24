@@ -11,7 +11,9 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -119,22 +121,22 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		w := runstate.NewWriter(sseState)
 
 		// Construct adapters from service dependencies.
-		var historyMgr HistoryManager
+		var historyMgr adapters.HistoryManager
 		if s.historySessionMgr != nil {
-			historyMgr = newSessionHistoryManager(s.historySessionMgr, s.uiSessionMgr, sessionID)
+			historyMgr = adapters.NewSessionHistoryManager(s.historySessionMgr, s.uiSessionMgr, sessionID)
 		} else {
-			historyMgr = newRequestHistoryManager(req)
+			historyMgr = adapters.NewRequestHistoryManager(req)
 		}
-		confirmer := newFuncConfirmer(s.confirmPath)
+		confirmer := adapters.NewFuncConfirmer(s.confirmPath)
 
-		err := RunAgent(runCtx, RunSpec{
+		err := loop.RunAgent(runCtx, loop.RunSpec{
 			Service:    llmSvc,
 			Request:    req,
 			MaxTurns:   maxTurnsVal,
 			MaxHistory: maxHistory,
 			SSEWriter:  w,
 			Tools:      toolReg,
-		}, RunOpts{
+		}, loop.RunOpts{
 			HistoryMgr:    historyMgr,
 			Confirmer:     confirmer,
 			UISessionMgr:  s.uiSessionMgr,

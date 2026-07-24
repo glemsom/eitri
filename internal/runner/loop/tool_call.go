@@ -1,4 +1,4 @@
-package runner
+package loop
 
 import (
 	"encoding/json"

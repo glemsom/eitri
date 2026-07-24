@@ -13,6 +13,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 
+	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -803,7 +804,7 @@ func TestRunService_ResolveConfirmation_ResolvesPending(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var result *ConfirmationResult
+	var result *adapters.ConfirmationResult
 	var confirmErr error
 	done := make(chan struct{})
 
@@ -846,7 +847,7 @@ func TestRunService_ResolveConfirmation_Denied(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var result *ConfirmationResult
+	var result *adapters.ConfirmationResult
 	var confirmErr error
 	done := make(chan struct{})
 

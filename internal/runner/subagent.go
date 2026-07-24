@@ -9,7 +9,9 @@ import (
 
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -76,7 +78,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	slog.Info("spawning sub-agent",
 		slog.String("task_id", taskID),
 		slog.String("parent_session", sessionID),
-		slog.String("task", truncateText(task, 100)),
+		slog.String("task", loop.TruncateText(task, 100)),
 		slog.Int("max_turns", maxTurns),
 	)
 
@@ -128,7 +130,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	if s.uiSessionMgr != nil {
 		parentSess := s.uiSessionMgr.Get(sessionID)
 		if parentSess != nil {
-			title := truncateText(task, 60)
+			title := loop.TruncateText(task, 60)
 			childSess, childErr := s.uiSessionMgr.CreateChild(sessionID, parentSess.BrowserID, title)
 			if childErr != nil {
 				slog.Warn("failed to create child session for sub-agent",
@@ -189,16 +191,16 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}()
 
 		w := runstate.NewWriter(sseState)
-		historyMgr := newRequestHistoryManager(req)
+		historyMgr := adapters.NewRequestHistoryManager(req)
 
-		runErr := RunAgent(subCtx, RunSpec{
+		runErr := loop.RunAgent(subCtx, loop.RunSpec{
 			Service:    llmSvc,
 			Request:    req,
 			MaxTurns:   maxTurns,
 			MaxHistory: 0,
 			SSEWriter:  w,
 			Tools:      toolReg,
-		}, RunOpts{
+		}, loop.RunOpts{
 			HistoryMgr:    historyMgr,
 			Confirmer:     nil,
 			UISessionMgr:  s.uiSessionMgr,
