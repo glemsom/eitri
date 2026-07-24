@@ -26,6 +26,55 @@ type ConfirmationResult struct {
 // responds or the context is cancelled.
 type ConfirmationFunc func(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
 
+// AgentConfig bundles all configuration for RunAgent.
+// Using a single struct makes the function signature stable and self-documenting.
+type AgentConfig struct {
+	// Service is the LLM service used to generate responses.
+	Service llm.LLMService
+
+	// Request is the LLM request to send.
+	Request *llm.Request
+
+	// MaxTurns is the maximum number of assistant turns before the loop exits.
+	MaxTurns int
+
+	// MaxHistory is the maximum number of messages to keep in conversation history.
+	MaxHistory int
+
+	// SSEWriter broadcasts SSE events through the writer.
+	SSEWriter *runstate.Writer
+
+	// Tools is the registry of tools available to the agent.
+	Tools *tool.Registry
+
+	// HistoryMgr handles reading and appending conversation history.
+	// Two concrete types exist: sessionHistoryManager (browser UI path)
+	// and requestHistoryManager (headless/direct-messages path).
+	HistoryMgr HistoryManager
+
+	// Confirmer handles user confirmation for path-based tool access.
+	// When nil, confirmation-dependent operations return errors to the LLM.
+	Confirmer Confirmer
+
+	// UISessionMgr manages UI session state. Used for broadcasting components
+	// and quick replies to browser-based sessions.
+	UISessionMgr *uisession.Manager
+
+	// SessionID identifies the conversation session.
+	SessionID string
+
+	// ContextWindow is the configured context window token limit. When > 0,
+	// context_update SSE events are broadcast after each turn. When <= 0,
+	// no context_update events are emitted.
+	ContextWindow int
+
+	// CrashDumpFunc is called on panic with the error and stack trace. Optional.
+	CrashDumpFunc func(err error, stack []byte)
+
+	// Turns is updated each turn with the current turn count. Optional.
+	Turns *int
+}
+
 // RunAgent drives the synchronous agent turn loop.
 //
 // It sends the request to the LLM, processes tool calls via the registry,
@@ -42,39 +91,14 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // confirmer to pause for user input. On approval, the tool is re-executed
 // with the path temporarily allowed. On denial, an error is returned to the
 // LLM.
-//
-// contextWindow is the configured context window token limit. When > 0,
-// context_update SSE events are broadcast after each turn. When <= 0,
-// no context_update events are emitted.
-//
-// historyMgr handles reading and appending conversation history. Two concrete
-// types exist: sessionHistoryManager (browser UI path) and requestHistoryManager
-// (headless/direct-messages path).
-//
-// confirmer handles user confirmation for path-based tool access. When nil,
-// confirmation-dependent operations return errors to the LLM.
-func RunAgent(
-	ctx context.Context,
-	svc llm.LLMService,
-	req *llm.Request,
-	maxTurns int,
-	maxHistory int,
-	sseWriter *runstate.Writer,
-	tools *tool.Registry,
-	historyMgr HistoryManager,
-	confirmer Confirmer,
-	uisessionMgr *uisession.Manager,
-	sessionID string,
-	contextWindow int,
-	crashDumpFunc func(err error, stack []byte), // optional; called on panic
-	turns *int, // updated each turn with the current turn count
-) error {
+func RunAgent(ctx context.Context, cfg AgentConfig) error {
+	maxTurns := cfg.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 10
 	}
 
 	// Panic recovery: write crash dump then re-panic
-	if crashDumpFunc != nil {
+	if cfg.CrashDumpFunc != nil {
 		defer func() {
 			if r := recover(); r != nil {
 				var err error
@@ -84,7 +108,7 @@ func RunAgent(
 				default:
 					err = fmt.Errorf("panic: %v", x)
 				}
-				crashDumpFunc(err, runtimeDebug.Stack())
+				cfg.CrashDumpFunc(err, runtimeDebug.Stack())
 				panic(r)
 			}
 		}()
@@ -92,28 +116,28 @@ func RunAgent(
 
 	// Helper to broadcast context_update if enabled and historyMgr is available.
 	broadcastContextUpdate := func() {
-		if contextWindow <= 0 {
+		if cfg.ContextWindow <= 0 {
 			return
 		}
 		// Only broadcast for session-based (UI) history, not request-based.
-		if _, ok := historyMgr.(*requestHistoryManager); ok {
+		if _, ok := cfg.HistoryMgr.(*requestHistoryManager); ok {
 			return
 		}
-		history := historyMgr.History(sessionID)
+		history := cfg.HistoryMgr.History(cfg.SessionID)
 		if history == nil {
 			return
 		}
-		update := runstate.ComputeContext(history, contextWindow)
-		sseWriter.ContextUpdate(update)
+		update := runstate.ComputeContext(history, cfg.ContextWindow)
+		cfg.SSEWriter.ContextUpdate(update)
 	}
 
-	req.Stream = true
+	cfg.Request.Stream = true
 
 	// Compute tool definitions once before the loop, then reuse on every turn.
 	// This avoids re-iterating the registry and allocating new slices per turn.
 	var toolDefs []llm.ToolDef
-	if tools != nil {
-		toolDefs = toolDefsFromRegistry(tools)
+	if cfg.Tools != nil {
+		toolDefs = toolDefsFromRegistry(cfg.Tools)
 	}
 
 	for turn := 0; turn < maxTurns; turn++ {
@@ -122,14 +146,14 @@ func RunAgent(
 		}
 
 		// Load conversation history via adapter
-		req.Messages = historyMgr.History(sessionID)
+		cfg.Request.Messages = cfg.HistoryMgr.History(cfg.SessionID)
 
 		// Attach tool definitions (computed once before the loop)
 		if toolDefs != nil {
-			req.Tools = toolDefs
+			cfg.Request.Tools = toolDefs
 		}
 
-		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(req.Tools)), slog.Int("messages", len(req.Messages)))
+		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(cfg.Request.Tools)), slog.Int("messages", len(cfg.Request.Messages)))
 
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
@@ -138,7 +162,7 @@ func RunAgent(
 			err    error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			stream, err = svc.ChatStream(ctx, *req)
+			stream, err = cfg.Service.ChatStream(ctx, *cfg.Request)
 			if err == nil {
 				break
 			}
@@ -148,18 +172,18 @@ func RunAgent(
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
-				dumpRequestOnError(req, err, attempt+1)
+				dumpRequestOnError(cfg.Request, err, attempt+1)
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			dumpRequestOnError(req, err, maxRetries+1)
+			dumpRequestOnError(cfg.Request, err, maxRetries+1)
 			msg := fmt.Sprintf("LLM error: %v", err)
-			sseWriter.Error(msg)
+			cfg.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
 		}
 
 		// Process stream events
-		content, toolCalls, streamErr := drainStream(ctx, stream, sseWriter)
+		content, toolCalls, streamErr := drainStream(ctx, stream, cfg.SSEWriter)
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
@@ -167,13 +191,13 @@ func RunAgent(
 				// Always save even when empty (e.g. thinking-only stream) to maintain
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
-				historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
-				if isRequestBasedHistory(historyMgr) {
-					trimMessages(req, maxHistory)
+				cfg.HistoryMgr.AppendAssistant(cfg.SessionID, content.String(), toolCalls)
+				if isRequestBasedHistory(cfg.HistoryMgr) {
+					trimMessages(cfg.Request, cfg.MaxHistory)
 				}
 				return streamErr
 			}
-			sseWriter.Error(runstate.FormatErrorMessage(streamErr))
+			cfg.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
 			return streamErr
 		}
 		if len(toolCalls) > 0 {
@@ -191,25 +215,25 @@ func RunAgent(
 			broadcastContextUpdate()
 
 			usage := runstate.EstimateUsage(contentStr)
-			sseWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
+			cfg.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
-			if contentStr != "" || len(req.Messages) > 0 {
-				historyMgr.AppendAssistant(sessionID, contentStr, nil)
+			if contentStr != "" || len(cfg.Request.Messages) > 0 {
+				cfg.HistoryMgr.AppendAssistant(cfg.SessionID, contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
-			if isRequestBasedHistory(historyMgr) {
-				trimMessages(req, maxHistory)
+			if isRequestBasedHistory(cfg.HistoryMgr) {
+				trimMessages(cfg.Request, cfg.MaxHistory)
 			}
 			return nil
 		}
 
 		// Trim conversation history if cap is set (only when not using session manager)
-		if isRequestBasedHistory(historyMgr) {
-			trimMessages(req, maxHistory)
+		if isRequestBasedHistory(cfg.HistoryMgr) {
+			trimMessages(cfg.Request, cfg.MaxHistory)
 		}
 
 		// Has tool calls — add assistant message to history
-		historyMgr.AppendAssistant(sessionID, content.String(), toolCalls)
+		cfg.HistoryMgr.AppendAssistant(cfg.SessionID, content.String(), toolCalls)
 
 		// Execute each tool call sequentially
 
@@ -231,10 +255,10 @@ func RunAgent(
 			if len(argsForDisplay) == 0 {
 				argsForDisplay = json.RawMessage("{}")
 			}
-			sseWriter.ToolCall(tc.Function.Name, argsForDisplay)
+			cfg.SSEWriter.ToolCall(tc.Function.Name, argsForDisplay)
 
 			// Dispatch tool via registry
-			dispResult, dispErr := tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+			dispResult, dispErr := cfg.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 			if dispErr != nil {
 				// Feed unknown tool / dispatch errors back to the LLM as tool
 				// result instead of terminating the loop. LLMs commonly hallucinate
@@ -243,55 +267,55 @@ func RunAgent(
 				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
 				// Broadcast tool result so the error shows in the tool card
 				// (not as a separate error toast that closes the stream).
-				sseWriter.ToolResult(tc.Function.Name, errMsg)
+				cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 				// Record the error as a tool result so the LLM can see it
-				historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+				cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
 				continue
 			}
 
 			// Check if tool needs user confirmation
-			if dispResult.NeedsConfirm && confirmer != nil {
+			if dispResult.NeedsConfirm && cfg.Confirmer != nil {
 				confPath := dispResult.ConfirmPath
 				confMsg := dispResult.ConfirmMessage
 				slog.Debug("tool needs confirmation", slog.String("path", confPath), slog.String("message", confMsg))
 
 				// Send needs_confirmation SSE event
-				sseWriter.State().Broadcast(runstate.SSEEvent{
+				cfg.SSEWriter.State().Broadcast(runstate.SSEEvent{
 					Type:    "needs_confirmation",
 					Content: confMsg,
 					Data:    map[string]any{"path": confPath, "message": confMsg},
 				})
 
 				// Wait for user response
-				confirmResult, confirmErr := confirmer.Confirm(ctx, sessionID, confPath, confMsg)
+				confirmResult, confirmErr := cfg.Confirmer.Confirm(ctx, cfg.SessionID, confPath, confMsg)
 				if confirmErr != nil {
 					if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
 						return confirmErr
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
-					sseWriter.ToolResult(tc.Function.Name, errMsg)
-					historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+					cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 					continue
 				}
 
 				if confirmResult.Approved {
 					// Temporarily add the path to ReadTool's allowedPaths
 					// and re-dispatch
-					addReadToolAllowedPath(tools, confPath)
-					dispResult, dispErr = tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+					addReadToolAllowedPath(cfg.Tools, confPath)
+					dispResult, dispErr = cfg.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
-						sseWriter.ToolResult(tc.Function.Name, errMsg)
-						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+						cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+						cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 						continue
 					}
 					// Continue to process blocks below (resultText, Broadcast, etc.)
 				} else {
 					// Denial — return error to LLM
 					errMsg := "Access denied to path: " + confPath
-					sseWriter.ToolResult(tc.Function.Name, errMsg)
-					historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
+					cfg.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, errMsg, true)
 					continue
 				}
 			}
@@ -303,7 +327,7 @@ func RunAgent(
 			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", truncateText(resultText, 200)), slog.Bool("error", isError))
 
 			// Broadcast tool result event
-			sseWriter.ToolResult(tc.Function.Name, resultText)
+			cfg.SSEWriter.ToolResult(tc.Function.Name, resultText)
 
 			// Broadcast skill_activated if this was a successful skill load
 			if tc.Function.Name == "skill" && !isError {
@@ -312,23 +336,23 @@ func RunAgent(
 					Name string `json:"name"`
 				}
 				if err := json.Unmarshal(args, &skillArgs); err == nil && skillArgs.Name != "" {
-					sseWriter.SkillActivated(skillArgs.Name)
+					cfg.SSEWriter.SkillActivated(skillArgs.Name)
 				}
 			}
 
 			// Emit component event for compatible tools (except QuickReplies which stores inline)
 			if !isError || tc.Function.Name == "render_quick_replies" {
-				compName, compData, ok := emitComponentForTool(sseWriter, tc.Function.Name, args, blocks)
-				if ok && uisessionMgr != nil {
+				compName, compData, ok := emitComponentForTool(cfg.SSEWriter, tc.Function.Name, args, blocks)
+				if ok && cfg.UISessionMgr != nil {
 					if tc.Function.Name == "render_quick_replies" {
 						// QuickReplies stores inline on the assistant message, not as a component event
 						if opts, ok := compData["options"]; ok {
 							if optStrs, ok := opts.([]string); ok {
-								_ = uisessionMgr.SetQuickReplies(sessionID, optStrs)
+								_ = cfg.UISessionMgr.SetQuickReplies(cfg.SessionID, optStrs)
 							}
 						}
 					} else {
-						_ = uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
+						_ = cfg.UISessionMgr.AppendComponent(cfg.SessionID, uisession.ComponentData{
 							Name: compName,
 							Data: compData,
 						})
@@ -341,15 +365,15 @@ func RunAgent(
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Function.Name)
 			}
-			historyMgr.AppendTool(sessionID, tc.ID, resultContent, isError)
+			cfg.HistoryMgr.AppendTool(cfg.SessionID, tc.ID, resultContent, isError)
 		}
 
 		// Broadcast context_update after tool results appended to history
 		broadcastContextUpdate()
 
 		// Update turn count for external consumers
-		if turns != nil {
-			*turns = turn + 1
+		if cfg.Turns != nil {
+			*cfg.Turns = turn + 1
 		}
 	}
 
@@ -357,7 +381,7 @@ func RunAgent(
 	// Broadcast final context_update before error
 	broadcastContextUpdate()
 	msg := runstate.MaxTurnsMessage(maxTurns)
-	sseWriter.Error(msg)
+	cfg.SSEWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
 }
 
