@@ -16,7 +16,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 ## Features
 
 - **Single binary** — no runtime dependencies, no Docker, no Kubernetes. Just `eitri` on your `$PATH`.
-- **Agent loop with built-in tools** — `bash`, `glob`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, and more.
+- **Agent loop with built-in tools** — `bash`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, and more.
 - **Multi-provider LLM support** — works with OpenCode Go, GitHub Copilot, and Custom OpenAI providers. Configurable per session.
 - **Agent Skills** — modular skill packs that extend the agent's capabilities per-project (like Agent Skills for GitHub Copilot).
 - **Sub-agents** — the agent can delegate sub-tasks to subordinate agents via `delegate`/`collect` tools for parallel exploration.
