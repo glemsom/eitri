@@ -273,7 +273,7 @@ func RunAgent(
 						// Continue to process blocks below (resultText, Broadcast, etc.)
 					} else {
 						// Denial — return error to LLM
-						errMsg := fmt.Sprintf("Access denied to path: %s", needsConf.Path)
+						errMsg := "Access denied to path: " + needsConf.Path
 						sseWriter.ToolResult(tc.Function.Name, errMsg)
 						historyMgr.AppendTool(sessionID, tc.ID, errMsg, true)
 						continue
@@ -321,11 +321,11 @@ func RunAgent(
 						// QuickReplies stores inline on the assistant message, not as a component event
 						if opts, ok := compData["options"]; ok {
 							if optStrs, ok := opts.([]string); ok {
-								uisessionMgr.SetQuickReplies(sessionID, optStrs)
+								_ = uisessionMgr.SetQuickReplies(sessionID, optStrs)
 							}
 						}
 					} else {
-						uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
+						_ = uisessionMgr.AppendComponent(sessionID, uisession.ComponentData{
 							Name: compName,
 							Data: compData,
 						})

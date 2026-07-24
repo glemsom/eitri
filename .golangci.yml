@@ -1,0 +1,28 @@
+linters:
+  enable:
+    - recvcheck
+    - usestdlibvars
+    - perfsprint
+    - wastedassign
+    - gosimple
+    - errcheck
+    - govet
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosimple
+        - perfsprint
+        - usestdlibvars
+        - unused
+
+run:
+  timeout: 5m

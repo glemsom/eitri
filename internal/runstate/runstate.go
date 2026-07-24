@@ -479,7 +479,7 @@ func FormatErrorMessage(err error) string {
 	case strings.Contains(msg, "no such host") || strings.Contains(msg, "lookup"):
 		return "Cannot reach provider at the configured URL. Check base_url in Settings."
 	default:
-		return fmt.Sprintf("LLM error: %s", msg)
+		return "LLM error: " + msg
 	}
 }
 

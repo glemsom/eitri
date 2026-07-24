@@ -64,7 +64,8 @@ func (t *GlobTool) Call(ctx context.Context, args json.RawMessage) ([]litellm.Bl
 	var matches []string
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
 		// Match pattern against just the filename first (so *.go matches sub/qux.go)
-		matched, err := filepath.Match(parsed.Pattern, filepath.Base(relPath))
+		var matched bool
+		matched, err = filepath.Match(parsed.Pattern, filepath.Base(relPath))
 		if err != nil {
 			matched = false
 		}

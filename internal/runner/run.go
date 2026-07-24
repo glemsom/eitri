@@ -62,7 +62,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	s.parentCfgMu.Unlock()
 
 	if baseURL == "" || modelName == "" {
-		return nil, fmt.Errorf("provider not configured: set base_url and model in settings")
+		return nil, errors.New("provider not configured: set base_url and model in settings")
 	}
 
 	if providerID == "" {

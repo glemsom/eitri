@@ -46,5 +46,5 @@ func (t *RenderMermaidDiagramTool) Call(ctx context.Context, args json.RawMessag
 		return textBlocks("Error: 'code' field is required and must be non-empty"), nil, true
 	}
 
-	return textBlocks(fmt.Sprintf("Rendered MermaidDiagram with code:\n%s", parsed.Code)), nil, false
+	return textBlocks("Rendered MermaidDiagram with code:\n" + parsed.Code), nil, false
 }
