@@ -678,3 +678,235 @@ func TestWebFetch_FetchRealURL(t *testing.T) {
 		t.Errorf("output missing markdown content: %q", tb.Text)
 	}
 }
+
+// --- truncateContent unit tests ---
+
+func TestTruncateContent_UnderCap(t *testing.T) {
+	t.Parallel()
+	content := "short content"
+	got := truncateContent(content)
+	if got != content {
+		t.Errorf("truncateContent(%q) = %q, want %q", content, got, content)
+	}
+}
+
+func TestTruncateContent_AtCap(t *testing.T) {
+	t.Parallel()
+	content := strings.Repeat("a", contentCap)
+	got := truncateContent(content)
+	if got != content {
+		t.Errorf("truncateContent at cap should return unchanged, got len=%d", len(got))
+	}
+}
+
+func TestTruncateContent_OverCap(t *testing.T) {
+	t.Parallel()
+	// Build content well over the cap using element boundaries
+	content := strings.Repeat("paragraph\n\n", 5000) // ~60 KiB, well over 32 KiB cap
+	got := truncateContent(content)
+	if len(got) >= len(content) {
+		t.Errorf("truncateContent should shorten content, got len=%d >= original %d", len(got), len(content))
+	}
+	if !strings.HasSuffix(got, truncationMsg) {
+		t.Errorf("truncateContent should end with truncation message, got ...%q", got[len(got)-50:])
+	}
+}
+
+func TestTruncateContent_NoElementBoundary(t *testing.T) {
+	t.Parallel()
+	content := strings.Repeat("a ", contentCap) + "extra content"
+	got := truncateContent(content)
+	if len(got) >= len(content) {
+		t.Errorf("truncateContent should shorten content, got len=%d", len(got))
+	}
+	if !strings.HasSuffix(got, truncationMsg) {
+		t.Errorf("truncateContent should end with truncation message")
+	}
+}
+
+// --- renderNode / renderInline / renderCodeBlock direct tests ---
+
+func TestRenderCodeBlock(t *testing.T) {
+	t.Parallel()
+	html := `<pre><code>fmt.Println("hello")</code></pre>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	pre := doc.Find("pre")
+	renderCodeBlock(pre.Find("code"), &buf)
+	result := buf.String()
+	if !strings.Contains(result, "```") {
+		t.Errorf("code fence missing: %q", result)
+	}
+	if !strings.Contains(result, `fmt.Println("hello")`) {
+		t.Errorf("code content missing: %q", result)
+	}
+}
+
+func TestRenderNode_Paragraph(t *testing.T) {
+	t.Parallel()
+	html := `<p>Hello world</p>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("p"), &buf, 0)
+	result := buf.String()
+	if !strings.Contains(result, "Hello world") {
+		t.Errorf("paragraph text missing: %q", result)
+	}
+}
+
+func TestRenderNode_BoldText(t *testing.T) {
+	t.Parallel()
+	html := `<strong>important</strong>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("strong"), &buf, 0)
+	result := buf.String()
+	if !strings.Contains(result, "**important**") {
+		t.Errorf("bold rendering wrong: %q", result)
+	}
+}
+
+func TestRenderNode_ItalicText(t *testing.T) {
+	t.Parallel()
+	html := `<em>emphasis</em>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("em"), &buf, 0)
+	result := buf.String()
+	if !strings.Contains(result, "*emphasis*") {
+		t.Errorf("italic rendering wrong: %q", result)
+	}
+}
+
+func TestRenderNode_Blockquote(t *testing.T) {
+	t.Parallel()
+	html := `<blockquote>Cited text</blockquote>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("blockquote"), &buf, 0)
+	result := buf.String()
+	if !strings.Contains(result, "> Cited text") {
+		t.Errorf("blockquote rendering wrong: %q", result)
+	}
+}
+
+func TestRenderNode_HorizontalRule(t *testing.T) {
+	t.Parallel()
+	html := `<hr>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("hr"), &buf, 0)
+	result := buf.String()
+	if !strings.Contains(result, "---") {
+		t.Errorf("hr rendering wrong: %q", result)
+	}
+}
+
+func TestRenderNode_LineBreak(t *testing.T) {
+	t.Parallel()
+	html := `<br>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderNode(doc.Find("br"), &buf, 0)
+	result := buf.String()
+	if result != "\n" {
+		t.Errorf("br rendering wrong: %q", result)
+	}
+}
+
+func TestRenderInline_SimpleText(t *testing.T) {
+	t.Parallel()
+	html := `<p>Hello <strong>world</strong></p>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderInline(doc.Find("p"), &buf)
+	result := buf.String()
+	if !strings.Contains(result, "Hello") {
+		t.Errorf("inline text missing 'Hello': %q", result)
+	}
+	if !strings.Contains(result, "**world**") {
+		t.Errorf("inline bold missing '**world**': %q", result)
+	}
+}
+
+func TestRenderInline_InlineCode(t *testing.T) {
+	t.Parallel()
+	html := `<p>Use <code>fmt.Println()</code> to print</p>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderInline(doc.Find("p"), &buf)
+	result := buf.String()
+	if !strings.Contains(result, "`fmt.Println()`") {
+		t.Errorf("inline code missing: %q", result)
+	}
+}
+
+func TestRenderInline_Link(t *testing.T) {
+	t.Parallel()
+	html := `<a href="https://go.dev">Go</a>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderInline(doc.Find("body"), &buf) // body to get the link children
+	result := buf.String()
+	if !strings.Contains(result, "[Go](https://go.dev)") {
+		t.Errorf("link rendering wrong: %q", result)
+	}
+}
+
+func TestRenderInline_Image(t *testing.T) {
+	t.Parallel()
+	html := `<img src="https://example.com/pic.png" alt="Photo">`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	renderInline(doc.Find("body"), &buf)
+	result := buf.String()
+	if !strings.Contains(result, "![Photo](https://example.com/pic.png)") {
+		t.Errorf("image rendering wrong: %q", result)
+	}
+}
+
+// Test that the contentCap and truncationMsg constants are accessible
+func TestContentCap_Constant(t *testing.T) {
+	if contentCap <= 0 {
+		t.Errorf("contentCap = %d, want > 0", contentCap)
+	}
+	if truncationMsg == "" {
+		t.Error("truncationMsg should not be empty")
+	}
+	if !strings.HasPrefix(truncationMsg, "\n\n") {
+		t.Errorf("truncationMsg should start with double newline, got %q", truncationMsg)
+	}
+}

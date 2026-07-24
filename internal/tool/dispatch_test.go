@@ -181,3 +181,83 @@ func TestDispatch_ContextCancelled(t *testing.T) {
 		t.Fatal("expected error for cancelled context")
 	}
 }
+
+// ── Replace tests ──────────────────────────────────────────────────────────
+
+func TestRegistry_Replace(t *testing.T) {
+	r := NewRegistry()
+	original := &mockTool{
+		callFunc: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			return Success([]litellm.Block{litellm.TextBlock{Text: "original"}}), nil
+		},
+	}
+	r.Register(original)
+
+	replacement := &mockTool{
+		callFunc: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			return Success([]litellm.Block{litellm.TextBlock{Text: "replaced"}}), nil
+		},
+	}
+	r.Replace(replacement)
+
+	// Verify the tool now returns the replacement's result
+	result, err := r.Dispatch(context.Background(), "call_1", "mock_tool", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tb, ok := result.Blocks[0].(litellm.ToolResultBlock)
+	if !ok {
+		t.Fatalf("block is %T, want ToolResultBlock", result.Blocks[0])
+	}
+	innerBlock, ok := tb.Content[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("inner block is %T, want TextBlock", tb.Content[0])
+	}
+	if innerBlock.Text != "replaced" {
+		t.Errorf("got %q, want %q", innerBlock.Text, "replaced")
+	}
+}
+
+func TestRegistry_ReplacePanicsForUnknown(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for replacing unregistered tool")
+		}
+	}()
+
+	r := NewRegistry()
+	r.Replace(&mockTool{})
+}
+
+func TestRegistry_ReplacePanicsForEmptyName(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for empty name")
+		}
+	}()
+
+	r := NewRegistry()
+	r.Replace(&struct {
+		ToolHandler
+		name string
+	}{name: ""})
+}
+
+// ── All tests ──────────────────────────────────────────────────────────────
+
+func TestRegistry_All(t *testing.T) {
+	r := NewRegistry()
+	r.Register(&mockTool{})
+	r.Register(&errorTool{})
+
+	all := r.All()
+	if len(all) != 2 {
+		t.Fatalf("len(all) = %d, want 2", len(all))
+	}
+
+	// Verify all returns a copy — modifying it should not affect registry
+	all[0] = nil
+	if r.Lookup("mock_tool") == nil {
+		t.Error("registry was modified by changing All() result")
+	}
+}
