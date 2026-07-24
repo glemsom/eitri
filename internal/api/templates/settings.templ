@@ -145,6 +145,37 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			</details>
 
 			<details class="settings-details">
+				<summary><span>Compaction</span></summary>
+
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" id="compaction_enabled" name="compaction_enabled" value="true" if cfg.CompactionEnabled { checked }/>
+						Enable auto-compaction
+					</label>
+					<input type="hidden" name="compaction_enabled" value="false"/>
+					<small class="hint">Automatically compact session history when context window usage exceeds the high-water threshold. Reduces history to the low-water mark.</small>
+				</div>
+
+				<div class="form-group">
+					<label for="compaction_threshold_percent">High-water threshold (%)</label>
+					<div class="range-wrapper">
+						<input type="range" id="compaction_threshold_percent" name="compaction_threshold_percent" value={ cfg.CompactionThresholdPercent } min="50" max="100" class="range-input" oninput="document.getElementById('compaction_threshold_display').textContent = this.value"/>
+						<span id="compaction_threshold_display" class="range-value">{ cfg.CompactionThresholdPercent }%</span>
+					</div>
+					<small class="hint">When context window usage reaches this percentage, compaction triggers (50–100).</small>
+				</div>
+
+				<div class="form-group">
+					<label for="compaction_low_water_percent">Low-water mark (%)</label>
+					<div class="range-wrapper">
+						<input type="range" id="compaction_low_water_percent" name="compaction_low_water_percent" value={ cfg.CompactionLowWaterPercent } min="10" max="60" class="range-input" oninput="document.getElementById('compaction_low_water_display').textContent = this.value"/>
+						<span id="compaction_low_water_display" class="range-value">{ cfg.CompactionLowWaterPercent }%</span>
+					</div>
+					<small class="hint">History is compacted down to this percentage of the context window (10–60). Must be less than the high-water threshold.</small>
+				</div>
+			</details>
+
+			<details class="settings-details">
 				<summary><span>Sandbox</span></summary>
 
 				<div class="form-group">
