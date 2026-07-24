@@ -85,8 +85,8 @@
 // The render handler dispatches by RenderKind:
 //
 //   - "tool_card" — renders a <details> element showing tool progress/result
-//   - "component" — renders a Templ component fragment (DiffCard, MermaidDiagram,
-//     QuickReplies, FileEditCard, ErrorToast, etc.)
+//   - "component" — renders a Templ component fragment (MermaidDiagram,
+//     QuickReplies, ErrorToast, etc.)
 //
 // # Middleware
 //
@@ -128,6 +128,7 @@
 //     a) Define a RenderKind constant in internal/runstate/runstate.go.
 //     b) Create a Templ component in internal/api/templates/.
 //     c) Add a dispatch case in the render handler (handlers_chat.go handleRender).
+//     d) Optionally add a browser island JS file in internal/api/assets/.
 //     d) Optionally add a browser island JS file in internal/api/assets/.
 //
 //  3. Adding a new browser island:

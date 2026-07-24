@@ -418,7 +418,7 @@ func TestAppendComponent(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet — append should be no-op
-	comp := session.ComponentData{Name: "diff_card", Data: map[string]any{"key": "val"}}
+	comp := session.ComponentData{Name: "test_component", Data: map[string]any{"key": "val"}}
 	err := mgr.AppendComponent(sess.ID, comp)
 	if err != nil {
 		t.Fatalf("AppendComponent on empty session should not error: %v", err)
@@ -433,7 +433,7 @@ func TestAppendComponent(t *testing.T) {
 	assistantMsg := session.Message{Role: "assistant", Content: "Here is the diff"}
 	mgr.AppendMessage(sess.ID, assistantMsg)
 
-	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: map[string]any{"diff": "+new code"}})
+	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "test_component", Data: map[string]any{"diff": "+new code"}})
 	if err != nil {
 		t.Fatalf("AppendComponent failed: %v", err)
 	}
@@ -445,8 +445,8 @@ func TestAppendComponent(t *testing.T) {
 	if len(got.Messages[0].Components) != 1 {
 		t.Fatalf("Components count = %d, want 1", len(got.Messages[0].Components))
 	}
-	if got.Messages[0].Components[0].Name != "diff_card" {
-		t.Errorf("Component name = %q, want %q", got.Messages[0].Components[0].Name, "diff_card")
+	if got.Messages[0].Components[0].Name != "test_component" {
+		t.Errorf("Component name = %q, want %q", got.Messages[0].Components[0].Name, "test_component")
 	}
 	if got.Messages[0].Components[0].Data["diff"] != "+new code" {
 		t.Errorf("Component data diff = %v, want %v", got.Messages[0].Components[0].Data["diff"], "+new code")
@@ -472,7 +472,7 @@ func TestAppendComponent_NoAssistantMessage(t *testing.T) {
 	// Only user message — no assistant message yet
 	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
 
-	err := mgr.AppendComponent(sess.ID, session.ComponentData{Name: "diff_card", Data: nil})
+	err := mgr.AppendComponent(sess.ID, session.ComponentData{Name: "test_component", Data: nil})
 	if err != nil {
 		t.Fatalf("AppendComponent without assistant message should not error: %v", err)
 	}

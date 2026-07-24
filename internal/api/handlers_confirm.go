@@ -179,8 +179,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		}
 		contentHTML := renderMarkdownToHTML(content)
 		// Only inline components that belong inside the assistant bubble.
-		// FileEditCard is already rendered as a tool card; MermaidDiagram
-		// is the visual output of the LLM response and belongs inline.
+		// MermaidDiagram is the visual output of the LLM response and belongs inline.
 		componentsHTML := renderInlineComponentsToHTML(r.Context(), id, components)
 		if componentsHTML != "" {
 			contentHTML += "\n" + componentsHTML
@@ -221,50 +220,6 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			component := templates.QuickReplies(id, options)
-			component.Render(r.Context(), w)
-
-		case "DiffCard":
-			oldCode := ""
-			newCode := ""
-			lang := ""
-			if req.Data != nil {
-				if o, ok := req.Data["old"].(string); ok {
-					oldCode = o
-				}
-				if n, ok := req.Data["new"].(string); ok {
-					newCode = n
-				}
-				if l, ok := req.Data["lang"].(string); ok {
-					lang = l
-				}
-			}
-			component := templates.DiffCard(oldCode, newCode, lang)
-			component.Render(r.Context(), w)
-
-		case "FileEditCard":
-			path := ""
-			mode := ""
-			oldContent := ""
-			newContent := ""
-			bytesWritten := 0
-			if req.Data != nil {
-				if p, ok := req.Data["path"].(string); ok {
-					path = p
-				}
-				if m, ok := req.Data["mode"].(string); ok {
-					mode = m
-				}
-				if o, ok := req.Data["old"].(string); ok {
-					oldContent = o
-				}
-				if n, ok := req.Data["new"].(string); ok {
-					newContent = n
-				}
-				if bw, ok := req.Data["bytes_written"].(float64); ok {
-					bytesWritten = int(bw)
-				}
-			}
-			component := templates.FileEditCard(path, mode, oldContent, newContent, bytesWritten, nil)
 			component.Render(r.Context(), w)
 
 		default:

@@ -63,12 +63,10 @@ func toolResultHasError(blocks []litellm.Block) bool {
 var componentToolMap = map[string]string{
 	"render_mermaid_diagram": "MermaidDiagram",
 	"render_quick_replies":   "QuickReplies",
-	"edit":                   "FileEditCard",
 }
 
 // emitComponentForTool emits a component event based on the tool name and args.
-// Supported tools: render_mermaid_diagram, render_quick_replies, edit.
-// The edit tool emits a FileEditCard using old_text/new_text/path from args.
+// Supported tools: render_mermaid_diagram, render_quick_replies.
 // QuickReplies does NOT emit a component SSE event (chips are stored inline on the message).
 // Returns (componentName, data, ok) for the caller to also persist the component.
 func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMessage, blocks []litellm.Block) (string, map[string]any, bool) {
@@ -99,30 +97,6 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		data["options"] = parsed.Options
 		// QuickReplies renders inline — no separate SSE component event
 		return componentName, data, true
-
-	case "FileEditCard":
-		var parsed struct {
-			Path    string `json:"path"`
-			OldText string `json:"old_text"`
-			NewText string `json:"new_text"`
-		}
-		if err := json.Unmarshal(args, &parsed); err != nil {
-			return "", nil, false
-		}
-		if parsed.Path == "" {
-			return "", nil, false
-		}
-		if parsed.OldText == "" && parsed.NewText == "" {
-			return "", nil, false
-		}
-		fullOld := parsed.OldText
-		fullNew := parsed.NewText
-		data["path"] = parsed.Path
-		data["mode"] = "overwrite"
-		data["old"] = fullOld
-		data["new"] = fullNew
-		data["bytes_written"] = len(parsed.NewText)
-		// Note: dirs_created always empty for edit tool
 
 	default:
 		return "", nil, false

@@ -107,28 +107,13 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 		case "QuickReplies":
 			// QuickReplies are now stored inline on the message, not as a component.
 			// Skip rendering here — inserted by AssistantBubble.
-		case "DiffCard":
-			oldCode, _ := comp.Data["old"].(string)
-			newCode, _ := comp.Data["new"].(string)
-			lang, _ := comp.Data["lang"].(string)
-			compTempl := templates.DiffCard(oldCode, newCode, lang)
-			_ = compTempl.Render(ctx, &html)
-		case "FileEditCard":
-			path, _ := comp.Data["path"].(string)
-			mode, _ := comp.Data["mode"].(string)
-			oldContent, _ := comp.Data["old"].(string)
-			newContent, _ := comp.Data["new"].(string)
-			bytesWritten, _ := comp.Data["bytes_written"].(int)
-			compTempl := templates.FileEditCard(path, mode, oldContent, newContent, bytesWritten, nil)
-			_ = compTempl.Render(ctx, &html)
 		}
 	}
 	return html.String()
 }
 
 // renderInlineComponentsToHTML renders only components that belong inside the
-// assistant bubble content (not tool cards). FileEditCard is excluded because
-// it is rendered as a standalone tool card replacement.
+// assistant bubble content (not tool cards).
 func renderInlineComponentsToHTML(ctx context.Context, sessionID string, components []session.ComponentData) string {
 	if len(components) == 0 {
 		return ""
@@ -140,13 +125,6 @@ func renderInlineComponentsToHTML(ctx context.Context, sessionID string, compone
 			code, _ := comp.Data["code"].(string)
 			compTempl := templates.MermaidDiagram(code)
 			_ = compTempl.Render(ctx, &html)
-		case "DiffCard":
-			oldCode, _ := comp.Data["old"].(string)
-			newCode, _ := comp.Data["new"].(string)
-			lang, _ := comp.Data["lang"].(string)
-			compTempl := templates.DiffCard(oldCode, newCode, lang)
-			_ = compTempl.Render(ctx, &html)
-			// FileEditCard is excluded — rendered as a tool card.
 			// QuickReplies is excluded — rendered by AssistantBubble.
 		}
 	}
