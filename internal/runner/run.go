@@ -145,6 +145,25 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			CrashDumpFunc: s.crashDumpFunc,
 			Turns:         &state.Turns,
 			DebugLLMDir:   cfg.DebugLLMDir,
+			OnTurnComplete: func(sid string) {
+				if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
+					return
+				}
+				sess := s.uiSessionMgr.Get(sid)
+				if sess == nil {
+					return
+				}
+				historyMsgs := s.historySessionMgr.History(sid)
+				if historyMsgs == nil {
+					return
+				}
+				if err := s.persister.SnapshotSession(sid, sess, historyMsgs); err != nil {
+					slog.Warn("failed to snapshot session",
+						slog.String("session_id", sid),
+						slog.Any("error", err),
+					)
+				}
+			},
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

@@ -48,6 +48,11 @@ type Recorder struct {
 	inFlight         map[TraceID]*HTTPTrace
 	nextID           uint64
 	lastFailingTrace *HTTPTrace // most recent non-2xx trace, never evicted
+
+	// OnComplete, if non-nil, is called after every completed trace (from
+	// completeTrace or Record) with the fully populated trace. Set at startup
+	// to persist traces to disk via a Persister.
+	OnComplete func(trace *HTTPTrace)
 }
 
 // NewRecorder creates a Recorder with the given capacity.
@@ -123,6 +128,11 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 		cp := *trace
 		r.lastFailingTrace = &cp
 	}
+
+	// Fire OnComplete callback if set.
+	if r.OnComplete != nil {
+		r.OnComplete(trace)
+	}
 }
 
 // isSuccess returns true for HTTP 2xx status codes.
@@ -179,6 +189,11 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 	if !isSuccess(status) || errMsg != "" {
 		cp := *trace
 		r.lastFailingTrace = &cp
+	}
+
+	// Fire OnComplete callback if set.
+	if r.OnComplete != nil {
+		r.OnComplete(trace)
 	}
 }
 

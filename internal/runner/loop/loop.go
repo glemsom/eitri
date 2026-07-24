@@ -77,6 +77,13 @@ type RunOpts struct {
 	// DebugLLMDir is the directory for writing LLM debug files on error.
 	// When empty, no debug files are written.
 	DebugLLMDir string
+
+	// OnTurnComplete, if non-nil, is called after each complete turn (assistant
+	// message appended + all tool results processed). The sessionID is passed
+	// so the caller can read the latest state from the UI session/history managers
+	// and persist a snapshot. The snapshot runs synchronously and blocks the next
+	// turn or the SSE "done" event.
+	OnTurnComplete func(sessionID string)
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
@@ -233,6 +240,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
 				trimMessages(spec.Request, spec.MaxHistory)
 			}
+
+			// Fire per-turn snapshot callback
+			if opts.OnTurnComplete != nil {
+				opts.OnTurnComplete(opts.SessionID)
+			}
 			return nil
 		}
 
@@ -383,6 +395,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		// Update turn count for external consumers
 		if opts.Turns != nil {
 			*opts.Turns = turn + 1
+		}
+
+		// Fire per-turn snapshot callback
+		if opts.OnTurnComplete != nil {
+			opts.OnTurnComplete(opts.SessionID)
 		}
 	}
 

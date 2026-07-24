@@ -22,6 +22,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persist"
 
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
@@ -106,8 +107,24 @@ func main() {
 		// Create debug recorder for HTTP trace capture even in batch mode
 		debugRecorder := debug.NewRecorder(0) // default capacity 20
 
+		// Create persister for trace persistence in batch mode
+		persister, pErr := persist.New("")
+		if pErr != nil {
+			slog.Warn("failed to create persister for batch mode", slog.Any("error", pErr))
+			persister = nil
+		}
+		if persister != nil {
+			p := persister
+			debugRecorder.OnComplete = func(trace *debug.HTTPTrace) {
+				if err := p.SaveTrace(trace.SessionID, trace); err != nil {
+					slog.Warn("failed to save trace", slog.String("trace_id", string(trace.ID)), slog.Any("error", err))
+				}
+			}
+		}
+
 		runSvc := runner.NewRunService(runner.RunServiceDeps{
 			DebugRecorder: debugRecorder,
+			Persister:     persister,
 		})
 		runSvc.SetPersistAuth(nil)
 		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
@@ -154,12 +171,29 @@ func main() {
 	}
 
 	debugRecorder := debug.NewRecorder(0) // default capacity 20
+
+	// Create persister for session snapshot and trace persistence
+	persister, pErr := persist.New("")
+	if pErr != nil {
+		slog.Warn("failed to create persister", slog.Any("error", pErr))
+		persister = nil
+	}
+	if persister != nil {
+		p := persister
+		debugRecorder.OnComplete = func(trace *debug.HTTPTrace) {
+			if err := p.SaveTrace(trace.SessionID, trace); err != nil {
+				slog.Warn("failed to save trace", slog.String("trace_id", string(trace.ID)), slog.Any("error", err))
+			}
+		}
+	}
+
 	sessionMgr := session.NewManager(10, workspace)
 	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historyMgr,
 		DebugRecorder:     debugRecorder,
+		Persister:         persister,
 	})
 
 	skillsSvc := skills.NewService()
