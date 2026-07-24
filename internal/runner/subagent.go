@@ -349,7 +349,7 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 // only available to parent agents, not sub-agents).
 func buildBaseToolRegistry(cfg runconfig.RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
-	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout))
+	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout, cfg.Sandbox))
 	reg.Register(tool.NewGlobTool(cfg.Workspace))
 	reg.Register(tool.NewGrepTool(cfg.Workspace))
 	reg.Register(tool.NewReadTool(cfg.Workspace, skillDirs, cfg.AllowedReadPaths))

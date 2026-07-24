@@ -11,6 +11,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/sandbox"
 )
 
 // RunConfig bundles all per-run configuration that StartRun needs.
@@ -33,6 +34,7 @@ type RunConfig struct {
 	DebugPrompt         bool
 	DebugRequest        bool
 	DebugLLMDir         string
+	Sandbox             sandbox.Config
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -60,6 +62,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		DebugPrompt:         cfg.DebugPrompt,
 		DebugRequest:        cfg.DebugRequest,
 		DebugLLMDir:         cfg.DebugLLMDir,
+		Sandbox:             cfg.Sandbox,
 	}
 }
 

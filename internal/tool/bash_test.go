@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/sandbox"
 	"github.com/voocel/litellm"
 )
 
 func TestBash_Schema(t *testing.T) {
-	tool := NewBashTool("/tmp", 0)
+	tool := NewBashTool("/tmp", 0, sandbox.Config{Profile: sandbox.ProfileNone})
 	if tool.Name() != "bash" {
 		t.Errorf("Name = %q, want 'bash'", tool.Name())
 	}
@@ -31,7 +32,7 @@ func TestBash_Schema(t *testing.T) {
 }
 
 func TestBash_InvalidArgs(t *testing.T) {
-	tool := NewBashTool("/tmp", 0)
+	tool := NewBashTool("/tmp", 0, sandbox.Config{Profile: sandbox.ProfileNone})
 	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
@@ -39,7 +40,7 @@ func TestBash_InvalidArgs(t *testing.T) {
 }
 
 func TestBash_EmptyCommand(t *testing.T) {
-	tool := NewBashTool("/tmp", 0)
+	tool := NewBashTool("/tmp", 0, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,7 +73,7 @@ func TestBash_ArgsUnmarshal(t *testing.T) {
 
 func TestBash_RunsCommand(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello world"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -95,7 +96,7 @@ func TestBash_RunsCommand(t *testing.T) {
 
 func TestBash_ExitCode(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"exit 42"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -112,7 +113,7 @@ func TestBash_ExitCode(t *testing.T) {
 
 func TestBash_StderrCapture(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo stderr_output >&2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -129,7 +130,7 @@ func TestBash_StderrCapture(t *testing.T) {
 
 func TestBash_StdoutAndStderr(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo out; echo err >&2"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -146,7 +147,7 @@ func TestBash_StdoutAndStderr(t *testing.T) {
 
 func TestBash_ExitCodeWithOutput(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"echo hello && exit 3"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -163,7 +164,7 @@ func TestBash_ExitCodeWithOutput(t *testing.T) {
 
 func TestBash_Timeout(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Millisecond)
+	tool := NewBashTool(dir, 10*time.Millisecond, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"sleep 10"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -179,7 +180,7 @@ func TestBash_Timeout(t *testing.T) {
 
 func TestBash_WorkspaceDir(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"pwd"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -195,7 +196,7 @@ func TestBash_WorkspaceDir(t *testing.T) {
 
 func TestBash_Truncation(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewBashTool(dir, 10*time.Second)
+	tool := NewBashTool(dir, 10*time.Second, sandbox.Config{Profile: sandbox.ProfileNone})
 	// Generate >4 KiB of output
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"command":"python3 -c \"import sys; sys.stdout.write('A' * 6000)\""}`))
 	if err != nil {
