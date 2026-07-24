@@ -21,6 +21,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 - **Agent Skills** — modular skill packs that extend the agent's capabilities per-project (like Agent Skills for GitHub Copilot).
 - **Sub-agents** — the agent can delegate sub-tasks to subordinate agents via `delegate`/`collect` tools for parallel exploration.
 - **Chat UI** — HTMX-based browser UI with SSE streaming, Mermaid diagram rendering, file diffs, and a live context panel.
+- **Session persistence** — conversations survive server restarts; snapshots written after every agent turn and restored on startup.
 - **Headless batch mode** — `eitri -b "your prompt"` runs the agent from the terminal without a browser, streaming output to stdout.
 - **Self-hosted** — your data stays on your machine. No third-party cloud.
 
