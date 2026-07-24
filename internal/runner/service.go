@@ -11,6 +11,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
@@ -46,6 +47,7 @@ type RunServiceDeps struct {
 	SkillsService     *skills.Service
 	DebugRecorder     *debug.Recorder               // optional HTTP trace recorder
 	CrashDumpFunc     func(err error, stack []byte) // optional; called on fatal agent error
+	Persister         *persist.Persister            // optional; writes session snapshots & traces to disk
 }
 
 // RunService owns the run lifecycle: agent loop execution,
@@ -64,6 +66,7 @@ type RunService struct {
 	debugRecorder     *debug.Recorder
 	persistAuth       PersistAuthFunc
 	crashDumpFunc     func(err error, stack []byte)
+	persister         *persist.Persister // optional; writes session snapshots & traces to disk
 }
 
 const completedRunRetention = 5 * time.Second
@@ -80,6 +83,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		historySessionMgr: deps.HistorySessionMgr,
 		debugRecorder:     deps.DebugRecorder,
 		crashDumpFunc:     deps.CrashDumpFunc,
+		persister:         deps.Persister,
 	}
 }
 
