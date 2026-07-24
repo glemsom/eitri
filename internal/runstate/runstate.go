@@ -51,7 +51,7 @@ type TokenUsage struct {
 type State struct {
 	mu sync.Mutex
 
-	subscribers      map[uint64]chan SSEEvent
+	subscribers      map[uint64]*subscriber
 	nextSubscriber   uint64
 	streamsClosed    bool
 	history          []SSEEvent
@@ -68,8 +68,43 @@ type State struct {
 // New creates a new State ready for use.
 func New() *State {
 	return &State{
-		subscribers: make(map[uint64]chan SSEEvent),
+		subscribers: make(map[uint64]*subscriber),
 	}
+}
+
+// subscriber owns one SSE output channel. Its mutex serializes concurrent
+// send and close so no goroutine ever writes to a channel that another
+// goroutine is closing (or vice versa).
+type subscriber struct {
+	mu     sync.Mutex
+	closed bool
+	ch     chan SSEEvent
+}
+
+// send performs a non-blocking send. Safe to call concurrently with close.
+func (sub *subscriber) send(evt SSEEvent) {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if sub.closed {
+		return
+	}
+	select {
+	case sub.ch <- evt:
+	default:
+	}
+}
+
+// close marks the subscriber as closed and closes its channel. Safe to call
+// concurrently with send; whichever goroutine wins the lock first performs
+// the close and the other becomes a no-op.
+func (sub *subscriber) close() {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if sub.closed {
+		return
+	}
+	sub.closed = true
+	close(sub.ch)
 }
 
 // BufferString returns accumulated text.
@@ -127,8 +162,8 @@ func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 	if len(history) > bufSize {
 		bufSize = len(history)
 	}
-	ch := make(chan SSEEvent, bufSize)
-	s.subscribers[id] = ch
+	sub := &subscriber{ch: make(chan SSEEvent, bufSize)}
+	s.subscribers[id] = sub
 	s.subscriberCount++
 	if len(history) > 0 {
 		s.replayCount++
@@ -137,25 +172,27 @@ func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 	s.mu.Unlock()
 
 	// Replay history outside the lock so Subscribe cannot deadlock
-	// when history exceeds the default channel buffer.
+	// when history exceeds the default channel buffer. sub.send is
+	// safe to call concurrently with sub.close from another goroutine.
 	for _, evt := range history {
-		ch <- evt
+		sub.send(evt)
 	}
 
-	return id, ch, true
+	return id, sub.ch, true
 }
 
 // Unsubscribe removes a subscriber and closes its channel.
 func (s *State) Unsubscribe(id uint64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ch, ok := s.subscribers[id]
+	sub, ok := s.subscribers[id]
 	if !ok {
+		s.mu.Unlock()
 		return
 	}
 	delete(s.subscribers, id)
-	close(ch)
+	s.mu.Unlock()
+
+	sub.close()
 }
 
 // Broadcast sends an event to all current subscribers and appends it to history.
@@ -169,8 +206,8 @@ func (s *State) Broadcast(evt SSEEvent) {
 	s.history = append(s.history, evt)
 	s.mu.Unlock()
 
-	for _, ch := range subscribers {
-		sendSSEEvent(ch, evt)
+	for _, sub := range subscribers {
+		sub.send(evt)
 	}
 }
 
@@ -219,15 +256,15 @@ func (s *State) ReplayCount() uint64 {
 
 // broadcastPrepare locks the mutex and returns the subscriber list.
 // Returns nil if streams are closed. Caller must Unlock after use.
-func (s *State) broadcastPrepare() []chan SSEEvent {
+func (s *State) broadcastPrepare() []*subscriber {
 	s.mu.Lock()
 	if s.streamsClosed {
 		s.mu.Unlock()
 		return nil
 	}
-	subscribers := make([]chan SSEEvent, 0, len(s.subscribers))
-	for _, ch := range s.subscribers {
-		subscribers = append(subscribers, ch)
+	subscribers := make([]*subscriber, 0, len(s.subscribers))
+	for _, sub := range s.subscribers {
+		subscribers = append(subscribers, sub)
 	}
 	return subscribers
 }
@@ -243,28 +280,18 @@ func (s *State) closeStreams(evt *SSEEvent) {
 		s.history = append(s.history, *evt)
 	}
 	s.streamsClosed = true
-	subscribers := make([]chan SSEEvent, 0, len(s.subscribers))
-	for id, ch := range s.subscribers {
-		subscribers = append(subscribers, ch)
+	subscribers := make([]*subscriber, 0, len(s.subscribers))
+	for id, sub := range s.subscribers {
+		subscribers = append(subscribers, sub)
 		delete(s.subscribers, id)
 	}
 	s.mu.Unlock()
 
-	for _, ch := range subscribers {
+	for _, sub := range subscribers {
 		if evt != nil {
-			sendSSEEvent(ch, *evt)
+			sub.send(*evt)
 		}
-		close(ch)
-	}
-}
-
-func sendSSEEvent(ch chan SSEEvent, evt SSEEvent) {
-	defer func() {
-		_ = recover()
-	}()
-	select {
-	case ch <- evt:
-	default:
+		sub.close()
 	}
 }
 
