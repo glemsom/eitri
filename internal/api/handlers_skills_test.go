@@ -1020,3 +1020,14 @@ func TestDebugHTMX(t *testing.T) {
 		t.Fatalf("request failed: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Content-Type may not be set explicitly by templ
+	body, _ := io.ReadAll(resp.Body)
+	if len(body) == 0 {
+		t.Error("expected non-empty body for HTMX request")
+	}
+}
