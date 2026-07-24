@@ -63,12 +63,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		return nil, err
 	}
 
-	llmSvc, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth)
+	llmSvc, toolReg, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 	if err != nil {
 		return nil, err
 	}
 
-	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 	toolReg.Register(tool.NewRenderQuickReplies())
 	if s.skillsSvc != nil {
 		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))

@@ -38,14 +38,11 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", err
 	}
 
-	// Build LLM service (no debug recording in batch mode)
-	llmSvc, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth)
+	// Build LLM service + tool registry (no debug recording in batch mode)
+	llmSvc, toolReg, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 	if err != nil {
 		return "", err
 	}
-
-	// Build tool registry (base tools only — no delegate/collect/quick_replies/skill)
-	toolReg := buildBaseToolRegistry(cfg, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr)
 
 	// Create request (streaming only — history is managed by sessionHistoryManager)
 	req := &llm.Request{

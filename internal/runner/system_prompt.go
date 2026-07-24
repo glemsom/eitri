@@ -8,7 +8,9 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/tool"
 )
 
 // buildSystemPrompt assembles the full system prompt from the configured
@@ -43,10 +45,10 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 	return fullSystemPrompt, nil
 }
 
-// buildLLMService resolves provider authentication and constructs an LLM service
-// using the provider and model from cfg. If debugRecorder is non-nil and sessionID
+// buildLLMService resolves provider authentication, constructs an LLM service,
+// and builds the base tool registry. If debugRecorder is non-nil and sessionID
 // is non-empty, the service's HTTP transport is wrapped for request/response recording.
-func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc) (llm.LLMService, error) {
+func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) (llm.LLMService, *tool.Registry, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,
@@ -54,7 +56,7 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 	}
 	resolvedKey, _, err := provider.ResolveAuth(ctx, reqAuth, persistAuth)
 	if err != nil {
-		return nil, fmt.Errorf("auth resolution: %w", err)
+		return nil, nil, fmt.Errorf("auth resolution: %w", err)
 	}
 	apiKey := cfg.APIKey
 	if resolvedKey != "" {
@@ -74,7 +76,9 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 
 	llmSvc, err := llm.NewLLMService(adapterCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create LLM service: %w", err)
+		return nil, nil, fmt.Errorf("failed to create LLM service: %w", err)
 	}
-	return llmSvc, nil
+
+	toolReg := buildBaseToolRegistry(cfg, skillDirs, skillsSvc, uiSessionMgr)
+	return llmSvc, toolReg, nil
 }
