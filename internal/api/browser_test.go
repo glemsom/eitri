@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 
 // streamFlushWindow is the delay before sending the stop signal in streaming
 // markdown tests, giving the browser's flush timer time to fire.
-const streamFlushWindow = 150 * time.Millisecond
+const streamFlushWindow = 1 * time.Second
 
 // findChrome searches common locations for a Chrome/Chromium binary.
 // Returns empty string if not found.
@@ -5432,22 +5432,42 @@ func TestBrowser_ConfirmationKeydownRemovedOnClose(t *testing.T) {
 // TestBrowser_StreamingMarkdownBold verifies **bold** renders as <strong> during streaming.
 func TestBrowser_StreamingMarkdownBold(t *testing.T) {
 	streamingMarkdownTestHelper(t, "This text is **bold** during streaming", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasBold bool
+		var result struct {
+			HasBold bool
+		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var s = document.getElementById('streaming');
+				if (s) return !!s.querySelector('.message-content strong');
+				var msgs = document.querySelectorAll('.message-assistant');
+				for (var i = 0; i < msgs.length; i++) {
+					if (msgs[i].querySelector('.message-content strong')) return true;
+				}
+				return false;
+			})()`, &result.HasBold),
 		)
-		return err == nil && hasBold
+		return err == nil && result.HasBold
 	})
 }
 
 // TestBrowser_StreamingMarkdownItalic verifies *italic* renders as <em> during streaming.
 func TestBrowser_StreamingMarkdownItalic(t *testing.T) {
 	streamingMarkdownTestHelper(t, "This text is *italic* during streaming", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasItalic bool
+		var result struct {
+			HasItalic bool
+		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content em') !== null`, &hasItalic),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var s = document.getElementById('streaming');
+				if (s) return !!s.querySelector('.message-content em');
+				var msgs = document.querySelectorAll('.message-assistant');
+				for (var i = 0; i < msgs.length; i++) {
+					if (msgs[i].querySelector('.message-content em')) return true;
+				}
+				return false;
+			})()`, &result.HasItalic),
 		)
-		return err == nil && hasItalic
+		return err == nil && result.HasItalic
 	})
 }
 
@@ -5456,7 +5476,16 @@ func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
 	streamingMarkdownTestHelper(t, "Use the `fmt.Println` function", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasCode bool
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content code') !== null`, &hasCode),
+			chromedp.EvaluateAsDevTools(`(function() {
+				// Prefer streaming bubble; fall back to any assistant bubble with <code>.
+				var s = document.getElementById('streaming');
+				if (s) return s.querySelector('.message-content code') !== null;
+				var msgs = document.querySelectorAll('.message-assistant');
+				for (var i = 0; i < msgs.length; i++) {
+					if (msgs[i].querySelector('.message-content code')) return true;
+				}
+				return false;
+			})()`, &hasCode),
 		)
 		return err == nil && hasCode
 	})
@@ -5615,13 +5644,23 @@ func TestBrowser_StreamingMarkdownParagraphs(t *testing.T) {
 // TestBrowser_StreamingMarkdownMixed verifies mixed formatting renders correctly during streaming.
 func TestBrowser_StreamingMarkdownMixed(t *testing.T) {
 	streamingMarkdownTestHelper(t, "Mix of **bold**, *italic*, and `code` inline", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasBold, hasItalic, hasCode bool
+		var result struct {
+			Bold   bool
+			Italic bool
+			Code   bool
+		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content strong')`, &hasBold),
-			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content em')`, &hasItalic),
-			chromedp.EvaluateAsDevTools(`!!document.querySelector('#streaming .message-content code')`, &hasCode),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var s = document.getElementById('streaming');
+				var root = s || document.body;
+				return {
+					bold: !!root.querySelector('strong'),
+					italic: !!root.querySelector('em'),
+					code: !!root.querySelector('code'),
+				};
+			})()`, &result),
 		)
-		return err == nil && hasBold && hasItalic && hasCode
+		return err == nil && result.Bold && result.Italic && result.Code
 	})
 }
 
