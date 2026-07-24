@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp">
-  <img alt="Eitri" src="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp" width="160" height="160">
+  <img alt="Eitri" src="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp" width="320" height="320">
 </picture>
 
 # Eitri
