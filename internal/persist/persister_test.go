@@ -1183,3 +1183,256 @@ func TestFlush_SkipsAlreadyPersistedTraces(t *testing.T) {
 		t.Errorf("expected same number of trace files after flush (%d), got %d", countBefore, countAfter)
 	}
 }
+
+// timelineJSON is a minimal JSON representation of a runstate.Timeline for testing.
+// We use raw JSON to avoid importing runstate (which would create a dependency cycle).
+type timelineJSON struct {
+	Version     int         `json:"version"`
+	RunID       string      `json:"run_id"`
+	SessionID   string      `json:"session_id"`
+	StartedAt   time.Time   `json:"started_at"`
+	EndedAt     time.Time   `json:"ended_at"`
+	Termination *struct {
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+	} `json:"termination,omitempty"`
+	Events []struct {
+		Type string `json:"type"`
+		Turn int    `json:"turn"`
+		Tool string `json:"tool,omitempty"`
+	} `json:"events"`
+}
+
+func TestSaveTimeline_WritesFile(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "test-session"
+	now := time.Now().Truncate(time.Second).UTC()
+
+	timeline := map[string]any{
+		"version":    1,
+		"run_id":     "test-run-123",
+		"session_id": sessionID,
+		"provider": map[string]any{
+			"model":       "gpt-4",
+			"provider_id": "opencode_go",
+		},
+		"started_at": now,
+		"ended_at":   now.Add(time.Minute),
+		"termination": map[string]any{
+			"reason":  "completed",
+			"message": "",
+		},
+		"events": []map[string]any{
+			{
+				"type": "tool_call",
+				"turn": 1,
+				"tool": "grep",
+			},
+		},
+	}
+
+	err = p.SaveTimeline(sessionID, timeline)
+	if err != nil {
+		t.Fatalf("SaveTimeline returned error: %v", err)
+	}
+
+	// Verify timeline directory exists
+	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
+	info, err := os.Stat(timelineDir)
+	if err != nil {
+		t.Fatalf("expected timeline dir to exist: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("timeline path is not a directory")
+	}
+
+	// Verify a JSON file was created (filename based on started_at)
+	entries, err := os.ReadDir(timelineDir)
+	if err != nil {
+		t.Fatalf("cannot read timeline dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 timeline file, got %d", len(entries))
+	}
+	if !strings.HasSuffix(entries[0].Name(), ".json") {
+		t.Errorf("timeline file %q does not end with .json", entries[0].Name())
+	}
+
+	// Read and verify content
+	timelineFile := filepath.Join(timelineDir, entries[0].Name())
+	data, err := os.ReadFile(timelineFile)
+	if err != nil {
+		t.Fatalf("cannot read timeline file: %v", err)
+	}
+
+	var decoded timelineJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("cannot unmarshal timeline JSON: %v", err)
+	}
+	if decoded.Version != 1 {
+		t.Errorf("expected version 1, got %d", decoded.Version)
+	}
+	if decoded.RunID != "test-run-123" {
+		t.Errorf("expected run_id 'test-run-123', got %q", decoded.RunID)
+	}
+	if decoded.Termination == nil {
+		t.Fatal("expected termination to be present")
+	}
+	if decoded.Termination.Reason != "completed" {
+		t.Errorf("expected termination reason 'completed', got %q", decoded.Termination.Reason)
+	}
+	if len(decoded.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(decoded.Events))
+	}
+	if decoded.Events[0].Type != "tool_call" {
+		t.Errorf("expected event type 'tool_call', got %q", decoded.Events[0].Type)
+	}
+	if decoded.Events[0].Tool != "grep" {
+		t.Errorf("expected event tool 'grep', got %q", decoded.Events[0].Tool)
+	}
+}
+
+func TestSaveTimeline_MultipleRuns(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "multi-run-session"
+	baseTime := time.Date(2026, 7, 25, 17, 0, 0, 0, time.UTC)
+
+	// Save first timeline
+	timeline1 := map[string]any{
+		"version":    1,
+		"run_id":     "run-001",
+		"session_id": sessionID,
+		"provider":   map[string]any{"model": "gpt-4", "provider_id": "opencode_go"},
+		"started_at": baseTime,
+		"ended_at":   baseTime.Add(30 * time.Second),
+		"termination": map[string]any{
+			"reason":  "completed",
+			"message": "",
+		},
+		"events": []map[string]any{
+			{"type": "tool_call", "turn": 1, "tool": "grep"},
+		},
+	}
+	if err := p.SaveTimeline(sessionID, timeline1); err != nil {
+		t.Fatalf("first SaveTimeline: %v", err)
+	}
+
+	// Save second timeline (different start time)
+	timeline2 := map[string]any{
+		"version":    1,
+		"run_id":     "run-002",
+		"session_id": sessionID,
+		"provider":   map[string]any{"model": "gpt-4", "provider_id": "opencode_go"},
+		"started_at": baseTime.Add(time.Hour),
+		"ended_at":   baseTime.Add(time.Hour + 30*time.Second),
+		"termination": map[string]any{
+			"reason":  "max_turns",
+			"message": "Hit max turns limit",
+		},
+		"events": []map[string]any{
+			{"type": "tool_call", "turn": 1, "tool": "bash"},
+			{"type": "tool_call", "turn": 2, "tool": "read"},
+		},
+	}
+	if err := p.SaveTimeline(sessionID, timeline2); err != nil {
+		t.Fatalf("second SaveTimeline: %v", err)
+	}
+
+	// Both files should exist
+	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
+	entries, err := os.ReadDir(timelineDir)
+	if err != nil {
+		t.Fatalf("cannot read timeline dir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 timeline files, got %d", len(entries))
+	}
+
+	// Verify both run_ids are findable
+	var foundRun1, foundRun2 bool
+	for _, entry := range entries {
+		data, err := os.ReadFile(filepath.Join(timelineDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var decoded timelineJSON
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			continue
+		}
+		if decoded.RunID == "run-001" {
+			foundRun1 = true
+			if decoded.Events[0].Tool != "grep" {
+				t.Errorf("expected run-001 to contain grep tool call")
+			}
+		}
+		if decoded.RunID == "run-002" {
+			foundRun2 = true
+			if decoded.Termination == nil || decoded.Termination.Reason != "max_turns" {
+				t.Errorf("expected run-002 to have max_turns termination")
+			}
+			if len(decoded.Events) != 2 {
+				t.Errorf("expected run-002 to have 2 events, got %d", len(decoded.Events))
+			}
+		}
+	}
+	if !foundRun1 {
+		t.Error("timeline for run-001 not found")
+	}
+	if !foundRun2 {
+		t.Error("timeline for run-002 not found")
+	}
+}
+
+func TestSaveTimeline_FilePermissions(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "perm-test"
+	now := time.Now().UTC()
+
+	timeline := map[string]any{
+		"version":    1,
+		"run_id":     "perm-test-run",
+		"session_id": sessionID,
+		"provider":   map[string]any{"model": "test", "provider_id": "test"},
+		"started_at": now,
+		"ended_at":   now,
+		"events":     []map[string]any{},
+	}
+
+	if err := p.SaveTimeline(sessionID, timeline); err != nil {
+		t.Fatalf("SaveTimeline: %v", err)
+	}
+
+	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
+	entries, err := os.ReadDir(timelineDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no timeline files found")
+	}
+
+	info, err := entries[0].Info()
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("expected file permissions 0600, got %#o", perm)
+	}
+}
+

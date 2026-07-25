@@ -166,6 +166,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			return err
 		}
 
+		// Set current turn on the SSE writer so all events carry the turn number.
+		spec.SSEWriter.SetTurn(turn + 1)
+
 		// Load conversation history via adapter
 		spec.Request.Messages = opts.HistoryMgr.History()
 

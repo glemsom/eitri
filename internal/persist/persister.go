@@ -78,6 +78,42 @@ func New(rootDir string) (*Persister, error) {
 	return p, nil
 }
 
+// TimelineSchema is the canonical JSON schema marker for timeline files.
+// The actual schema is defined in the runstate package as runstate.Timeline.
+
+// SaveTimeline writes a condensed timeline for a single run to disk.
+// The file is written to <root>/sessions/<sessionID>/timeline/<filename>.json
+// atomically via temp-file + rename.
+func (p *Persister) SaveTimeline(sessionID string, timeline any) error {
+	timelineDir := filepath.Join(p.rootDir, "sessions", sessionID, "timeline")
+	if err := os.MkdirAll(timelineDir, 0700); err != nil {
+		return fmt.Errorf("cannot create timeline dir %s: %w", timelineDir, err)
+	}
+
+	data, err := json.Marshal(timeline)
+	if err != nil {
+		return fmt.Errorf("cannot marshal timeline: %w", err)
+	}
+
+	// Use start time as filename base. The timeline is passed from the caller
+	// and we use the started_at field for the filename.
+	var startedAt struct {
+		StartedAt time.Time `json:"started_at"`
+	}
+	if err := json.Unmarshal(data, &startedAt); err != nil {
+		return fmt.Errorf("cannot extract started_at from timeline: %w", err)
+	}
+
+	filename := timestampFilename(startedAt.StartedAt)
+	timelineFile := filepath.Join(timelineDir, filename)
+
+	if err := atomicWrite(timelineFile, data, 0600); err != nil {
+		return fmt.Errorf("cannot write timeline file: %w", err)
+	}
+
+	return nil
+}
+
 // SnapshotSession writes a full session snapshot and its LLM conversation
 // history to disk. Both are written as timestamped JSON files with atomic
 // symlink updates pointing to the latest version.
