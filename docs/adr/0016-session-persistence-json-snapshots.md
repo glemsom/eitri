@@ -60,10 +60,16 @@ snapshot for any session with active data is never pruned.
 
 ### Restore
 
-On startup, the latest snapshot for each session is read back and used to
-hydrate the in-memory session manager, history manager, and trace recorder.
-Restored sessions are always marked `idle` — a snapshot represents a completed
-turn, so there is no half-running state to resume.
+On startup, the latest snapshot for each session is read back from disk.
+All restored sessions are forced to `idle` status — a snapshot represents a
+completed turn, so there is no half-running state.
+
+**Session decoupling (v0.1.5+):** Sessions are no longer hydrated into the
+in-memory session manager on startup. Only LLM conversation histories and HTTP
+traces are restored into their respective managers. The session manager starts
+empty — the user creates new sessions via the + button in the sidebar. Disk
+snapshots persist solely for troubleshooting and historical debugging; they
+are not used to reconstruct active UI state after a restart.
 
 ### Separation of concerns
 
@@ -76,17 +82,19 @@ injected into the `RunService` and `Recorder` callbacks.
 
 Positive:
 
-- Sessions survive server restarts — the user sees their previous conversations
-  when they reopen the browser.
 - Timestamped snapshots provide a browsable history of session evolution
   (`ls`, `cat`, `jq` work without Eitri running).
 - The 1 GiB cap prevents unbounded disk growth while keeping all snapshots for
   any realistically-sized session.
 - Crash dump reuse: the same serialization models, directory conventions, and
   JSON tags are shared.
+- Session decoupling keeps the session manager pure in-memory — no restore
+  logic to maintain, no stale state on startup.
 
 Negative:
 
+- Sessions no longer survive server restarts in the UI — the user starts with
+  an empty sidebar on each restart and must create new sessions manually.
 - Full-JSON snapshots are not incremental — each snapshot duplicates the entire
   session state. At ~10-50 KB per snapshot this is negligible, but sessions with
   thousands of turns or large file diffs embedded in messages could grow.
