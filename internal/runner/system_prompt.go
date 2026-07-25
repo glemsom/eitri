@@ -34,12 +34,13 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		// No user override; try active persona.
 		if cfg.ActivePersona != "" {
 			def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
-			if err == nil {
-				if def.SystemPrompt != "" {
-					systemPrompt = def.SystemPrompt
-				}
-				personaInjectedSkills = def.InjectedSkills
+			if err != nil {
+				return "", fmt.Errorf("load persona %q: %w", cfg.ActivePersona, err)
 			}
+			if def.SystemPrompt != "" {
+				systemPrompt = def.SystemPrompt
+			}
+			personaInjectedSkills = def.InjectedSkills
 		}
 		// Fallback to built-in default.
 		if systemPrompt == "" {
