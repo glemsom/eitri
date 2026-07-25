@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
@@ -17,20 +18,27 @@ import (
 
 // buildSystemPrompt assembles the full system prompt from the active persona
 // (or user override or default), repository instructions, skills catalog,
-// and skill activations.
+// and skill activations — including skills injected by the persona.
 //
 // Precedence:
 //  1. cfg.SystemPrompt (user override) — if non-empty, used directly
 //  2. cfg.ActivePersona — resolved from disk, its SystemPrompt used as base
 //  3. history.DefaultSystemPrompt — built-in fallback
+//
+// Injected skills from the persona are resolved and added to the system prompt
+// alongside manually activated skills, with deduplication by skill name.
 func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
+	var personaInjectedSkills []string
 	if systemPrompt == "" {
 		// No user override; try active persona.
 		if cfg.ActivePersona != "" {
 			def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
-			if err == nil && def.SystemPrompt != "" {
-				systemPrompt = def.SystemPrompt
+			if err == nil {
+				if def.SystemPrompt != "" {
+					systemPrompt = def.SystemPrompt
+				}
+				personaInjectedSkills = def.InjectedSkills
 			}
 		}
 		// Fallback to built-in default.
@@ -56,7 +64,36 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		}
 	}
 
-	for _, activation := range skillCtx.Activations {
+	// Build combined activations: manually activated skills first,
+	// then persona-injected skills that are not already activated (dedup by name).
+	activations := make([]runSkillActivation, 0, len(skillCtx.Activations)+len(personaInjectedSkills))
+	seen := make(map[string]struct{}, len(skillCtx.Activations))
+	for _, a := range skillCtx.Activations {
+		activations = append(activations, a)
+		seen[a.Name] = struct{}{}
+	}
+
+	for _, skillName := range personaInjectedSkills {
+		if _, ok := seen[skillName]; ok {
+			continue // already manually activated
+		}
+		if skillsSvc == nil {
+			continue
+		}
+		skill := skillsSvc.Lookup(skillName)
+		if skill == nil {
+			slog.Warn("Persona-injected skill not found, skipping", "skill", skillName, "persona", cfg.ActivePersona)
+			continue
+		}
+		resources := skills.ListResources(skill.Path)
+		activations = append(activations, runSkillActivation{
+			Name:    skill.Name,
+			Content: skills.SkillContent(skill.Body, resources, skill.Path),
+		})
+		seen[skillName] = struct{}{}
+	}
+
+	for _, activation := range activations {
 		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
 	}
 

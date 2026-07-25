@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/glemsom/eitri/internal/persona"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // PersonaList renders the persona list as an HTML fragment for HTMX.
@@ -50,7 +51,8 @@ templ PersonaList(personas []*persona.PersonaDefinition, activePersona string) {
 
 // PersonaAddForm renders the inline "Add Persona" form.
 // It POSTs to /api/personas with form-encoded data.
-templ PersonaAddForm() {
+// availableSkills is the list of all discoverable skill names.
+templ PersonaAddForm(availableSkills []*skills.Skill) {
 	<div class="persona-form" id="persona-add-form">
 		<h4>Add Persona</h4>
 		<div class="form-group">
@@ -62,6 +64,21 @@ templ PersonaAddForm() {
 			<label for="system_prompt">System Prompt</label>
 			<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="6" placeholder="You are a specialized agent that..."></textarea>
 			<small class="hint">Leave empty to use the default system prompt.</small>
+		</div>
+		<div class="form-group">
+			<label>Injected Skills</label>
+			<small class="hint">Skills selected here are automatically loaded into the system prompt when this persona is active.</small>
+			<div class="skills-checkbox-group">
+				for _, s := range availableSkills {
+					<label class="checkbox-label">
+						<input type="checkbox" name="injected_skills" value={ s.Name }/>
+						<span class="skill-name">{ s.Name }</span>
+						if s.Description != "" {
+							<span class="skill-desc"> — { s.Description }</span>
+						}
+					</label>
+				}
+			</div>
 		</div>
 		<div class="form-actions">
 			<button type="button" class="btn btn-primary"
@@ -82,7 +99,8 @@ templ PersonaAddForm() {
 
 // PersonaEditForm renders the inline "Edit Persona" form.
 // It PUTs to /api/personas/{name} with form-encoded data.
-templ PersonaEditForm(p *persona.PersonaDefinition) {
+// availableSkills is the list of all discoverable skill names.
+templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Skill) {
 	<form class="persona-form" id={ "edit-form-" + p.Name }
 		hx-put={ "/api/personas/" + p.Name }
 		hx-target="#persona-list"
@@ -98,6 +116,25 @@ templ PersonaEditForm(p *persona.PersonaDefinition) {
 			<label for={ "prompt-" + p.Name }>System Prompt</label>
 			<textarea id={ "prompt-" + p.Name } name="system_prompt" class="monospace-textarea" rows="6">{ p.SystemPrompt }</textarea>
 			<small class="hint">Leave empty to use the default system prompt.</small>
+		</div>
+		<div class="form-group">
+			<label>Injected Skills</label>
+			<small class="hint">Skills selected here are automatically loaded into the system prompt when this persona is active.</small>
+			<div class="skills-checkbox-group">
+				for _, s := range availableSkills {
+					<label class="checkbox-label">
+						if isSkillSelected(p.InjectedSkills, s.Name) {
+							<input type="checkbox" name="injected_skills" value={ s.Name } checked/>
+						} else {
+							<input type="checkbox" name="injected_skills" value={ s.Name }/>
+						}
+						<span class="skill-name">{ s.Name }</span>
+						if s.Description != "" {
+							<span class="skill-desc"> — { s.Description }</span>
+						}
+					</label>
+				}
+			</div>
 		</div>
 		<div class="form-actions">
 			<button type="submit" class="btn btn-primary">Save</button>
@@ -144,4 +181,14 @@ func previewPrompt(prompt string) string {
 		return prompt
 	}
 	return string(runes[:maxLen]) + "…"
+}
+
+// isSkillSelected returns true if the given skill name is in the selected list.
+func isSkillSelected(selected []string, name string) bool {
+	for _, s := range selected {
+		if s == name {
+			return true
+		}
+	}
+	return false
 }

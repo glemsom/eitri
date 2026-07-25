@@ -35,7 +35,15 @@
 //	                 POST /api/sessions/{id}/cancel   (cancel running agent)
 //	                 POST /api/sessions/{id}/render   (render UI component)
 //	Confirm:         POST /api/sessions/{id}/confirm
-//	Skills:          GET  /skills
+//	Personas:        GET  /api/personas            (list JSON or HTML)
+	                 GET  /api/personas/add-form   (add-form HTML fragment)
+	                 POST /api/personas            (create)
+	                 GET  /api/personas/{name}     (get single or edit form)
+	                 PUT  /api/personas/{name}     (update)
+	                 DELETE /api/personas/{name}   (delete)
+	                 GET  /api/personas/selector   (header selector dropdown)
+	                 POST /api/personas/activate   (set active persona)
+	Skills:          GET  /skills
 //	                 GET  /api/skills
 //	                 POST /api/skills/refresh
 //	                 GET  /api/sessions/{id}/complete/skills
