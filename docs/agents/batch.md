@@ -11,7 +11,14 @@ eitri -b --persona reviewer "review the code in PR #123"
 
 The `-b` flag expects a prompt string (the remaining arguments after the flag). Output is streamed token-by-token to stdout as plain text (no SSE, no tool cards, no HTML).
 
-The optional `--persona` flag overrides the active persona for the batch run only — it does not change `config.json`. The persona is resolved from the workspace `.eitri/personas/` directory, falling back to `~/.eitri/personas/`. If the persona file does not exist, the run fails with a clear error.
+The optional `--persona` flag overrides the active persona for the batch run only — it does not change `config.json`.
+
+**Precedence (highest to lowest):**
+1. `--persona` CLI flag — overrides everything for this run
+2. `active_persona` in `config.json` — persistent per-workspace persona
+3. `"generic"` fallback — built-in default when neither is set
+
+The persona is resolved from the workspace `.eitri/personas/` directory, falling back to `~/.eitri/personas/`. If the persona file does not exist, the run fails with a clear error.
 
 ## How it works
 
