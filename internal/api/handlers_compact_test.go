@@ -9,6 +9,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/llm"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
@@ -25,6 +26,10 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historySessionMgr,
 	})
+
+	if err := persona.EnsureGeneric(workspace); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
 
 	// Write a minimal config to disk so loadConfigState succeeds.
 	cfgContent := `{

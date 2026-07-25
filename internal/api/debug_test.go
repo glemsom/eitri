@@ -9,6 +9,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -27,6 +28,11 @@ func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *ses
 			UISessionMgr: sessionMgr,
 		})
 	}
+
+	if err := persona.EnsureGeneric(workspace); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
+
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
