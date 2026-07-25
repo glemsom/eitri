@@ -61,12 +61,13 @@ while true; do
 Description: Implement issue #${NUMBER} — ${TITLE}
 ---
 
-Pick an unblocked \`ready-for-agent\` GitHub Issue WITHOUT an \`issue-type:parent\` tag to implement
+Pick an unblocked \`ready-for-agent\` GitHub Issue WITHOUT an \`issue-type:parent\` tag to implement.
 
 Step 1:
 - [ ] Create a branch for the implementation
 - [ ] Implement the work described in the GitHub issue using the \`tdd\` skill if possible
 - [ ] Ensure to update any relevant documentation
+- [ ] Run `make test` to ensure tests still pass
 - [ ] Commit and push changes to git
 - [ ] Create a GitHub pull request, ensure to link it to the GitHub issue we worked on
 
