@@ -55,6 +55,58 @@ func TestLoadDefaultsWhenFileMissing(t *testing.T) {
 	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
 		t.Fatal("Load() created config file — must not create file when missing")
 	}
+
+	// ActivePersona should default to "generic" when not set
+	if cfg.ActivePersona != "generic" {
+		t.Errorf("ActivePersona = %q, want %q", cfg.ActivePersona, "generic")
+	}
+}
+
+func TestLoad_ActivePersonaPreservedWhenSet(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{
+		"provider": "custom_openai",
+		"api_key": "sk-test123",
+		"base_url": "https://custom.example.com",
+		"active_persona": "my-custom-agent"
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+
+	if cfg.ActivePersona != "my-custom-agent" {
+		t.Errorf("ActivePersona = %q, want %q", cfg.ActivePersona, "my-custom-agent")
+	}
+}
+
+func TestLoad_ActivePersonaDefaultsToGenericWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	content := `{
+		"provider": "custom_openai",
+		"api_key": "sk-test123",
+		"active_persona": ""
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() = %v, want nil", err)
+	}
+
+	if cfg.ActivePersona != "generic" {
+		t.Errorf("ActivePersona = %q, want %q", cfg.ActivePersona, "generic")
+	}
 }
 
 func TestLoadFromFile(t *testing.T) {

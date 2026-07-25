@@ -24,6 +24,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/sandbox"
 
 	runner "github.com/glemsom/eitri/internal/runner"
@@ -110,6 +111,12 @@ func main() {
 		slog.Warn("bwrap sandbox: NOT available — commands running without isolation. Install bwrap for better security.")
 	default:
 		slog.Info("bwrap sandbox: enabled — commands run inside a sandbox")
+	}
+
+	// Ensure the generic persona exists on first run.
+	// This is idempotent — safe to call every startup.
+	if err := persona.EnsureGeneric(workspace); err != nil {
+		slog.Warn("failed to ensure generic persona", slog.Any("error", err))
 	}
 
 	if *batchPrompt != "" {

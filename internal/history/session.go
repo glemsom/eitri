@@ -14,7 +14,9 @@ const (
 	// assistant and tool messages until the next user message.
 	DefaultMaxExchanges = 150
 
-	// DefaultSystemPrompt is the fallback system prompt when none is configured.
+	// DefaultSystemPrompt is the fallback system prompt when no persona is active
+	// and no user override is set. The primary prompt comes from the active persona
+	// (see internal/persona.DefaultPrompt which is kept in sync with this value).
 	DefaultSystemPrompt = `You are Eitri, an expert AI coding agent. You can help the user by reading/writing/editing files, executing commands - and giving recommendations to the user.
 
 ## Core behavior

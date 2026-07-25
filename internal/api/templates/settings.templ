@@ -116,7 +116,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					<div class="char-count-wrapper">
 						<small class="char-count" id="prompt-char-count">{ len(cfg.SystemPrompt) } / 4096 chars</small>
 					</div>
-					<small class="hint">Overrides the active persona's system prompt for all sessions. Leave empty to use the persona's prompt.</small>
+					<small class="hint">Leave empty to use the active persona's prompt. This overrides the persona's system prompt for all sessions.</small>
 				</div>
 			</details>
 
