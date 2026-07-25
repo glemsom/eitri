@@ -545,6 +545,20 @@ This skill tests persona-based skill injection.
 	if !strings.Contains(prompt, `Activated skill "test-injected-skill":`) {
 		t.Fatalf("system prompt = %q, want it to contain Activated skill \"test-injected-skill\":", prompt)
 	}
+
+	// Verify the persona-injected skill appears in the session's ActiveSkills
+	// (i.e., the skill indicator in the UI).
+	activeSkills := h.sessionMgr.ActiveSkills(sessionID)
+	found := false
+	for _, name := range activeSkills {
+		if name == "test-injected-skill" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("session ActiveSkills = %v, expected to contain \"test-injected-skill\"", activeSkills)
+	}
 }
 
 // TestChatRun_PersonaFallbackOnMissing verifies that deleting the active persona's

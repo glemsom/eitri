@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/persona"
 
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/provider"
@@ -50,6 +51,20 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 	if cfg.ProviderID == "" {
 		cfg.ProviderID = "opencode_go"
+	}
+
+	// Activate persona-injected skills on the session so they appear in the
+	// skill indicator chips. Skills already active are silently skipped
+	// (ActivateSkill deduplicates).
+	if cfg.ActivePersona != "" && s.uiSessionMgr != nil && s.skillsSvc != nil {
+		def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
+		if err == nil {
+			for _, skillName := range def.InjectedSkills {
+				if s.skillsSvc.Lookup(skillName) != nil {
+					s.uiSessionMgr.ActivateSkill(sessionID, skillName)
+				}
+			}
+		}
 	}
 
 	skillCtx := s.resolveSessionSkillContext(sessionID)
