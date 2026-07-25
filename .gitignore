@@ -3,3 +3,4 @@ dist/
 *.test
 .scratch
 architecture-review.html
+.gocache/

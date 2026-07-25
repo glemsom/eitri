@@ -256,6 +256,43 @@ func (s *Server) handleDeletePersona(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleActivatePersona sets the active persona in the config and returns
+// the updated persona selector fragment for the header.
+func (s *Server) handleActivatePersona(w http.ResponseWriter, r *http.Request) {
+	workspace := s.config.Workspace
+
+	// Read persona name from form body (submitted by the <select> element)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	name := r.FormValue("active_persona")
+
+	// Verify persona exists
+	if name != "" {
+		_, err := persona.Load(workspace, name)
+		if err != nil {
+			writeConfigError(w, r, http.StatusNotFound, "Persona \""+name+"\" not found")
+			return
+		}
+	}
+
+	cfg, err := config.Load(s.config.ConfigPath)
+	if err != nil {
+		http.Error(w, "Failed to load config", http.StatusInternalServerError)
+		return
+	}
+
+	cfg.ActivePersona = name
+	if err := config.Save(s.config.ConfigPath, cfg); err != nil {
+		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return updated selector fragment
+	s.handlePersonaSelector(w, r)
+}
+
 // updatePersonaCatalog refreshes the persona_catalog field in the config file
 // to reflect the current set of persona files on disk.
 func (s *Server) updatePersonaCatalog(workspace string) {
@@ -277,4 +314,36 @@ func (s *Server) updatePersonaCatalog(workspace string) {
 	cfg.PersonaCatalog = newCatalog
 
 	_ = config.Save(s.config.ConfigPath, cfg)
+}
+
+// handlePersonaSelector returns an HTML fragment containing a <select>
+// dropdown of all available personas, with the active one selected.
+// Used by the header persona selector on every page.
+func (s *Server) handlePersonaSelector(w http.ResponseWriter, r *http.Request) {
+	workspace := s.config.Workspace
+	_ = persona.EnsureGeneric(workspace)
+
+	names, err := persona.List(workspace)
+	if err != nil {
+		http.Error(w, "Failed to list personas", http.StatusInternalServerError)
+		return
+	}
+
+	defs := make([]*persona.PersonaDefinition, 0, len(names))
+	for _, name := range names {
+		def, err := persona.Load(workspace, name)
+		if err != nil {
+			continue
+		}
+		defs = append(defs, def)
+	}
+
+	cfg, _ := config.Load(s.config.ConfigPath)
+	activePersona := persona.GenericName
+	if cfg != nil && cfg.ActivePersona != "" {
+		activePersona = cfg.ActivePersona
+	}
+
+	component := templates.PersonaSelector(defs, activePersona)
+	component.Render(r.Context(), w)
 }

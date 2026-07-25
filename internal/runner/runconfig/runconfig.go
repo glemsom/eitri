@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/sandbox"
 )
 
@@ -36,6 +35,10 @@ type RunConfig struct {
 	DebugLLMDir         string
 	Sandbox             sandbox.Config
 
+	// ActivePersona is the name of the currently selected persona, if any.
+	// An empty string means no persona selected (use default system prompt).
+	ActivePersona string
+
 	// Compaction controls automatic compression of old tool results
 	// to stay within the context window.
 	CompactionEnabled          bool
@@ -45,19 +48,16 @@ type RunConfig struct {
 
 // FromConfig builds a RunConfig from a Config value object plus
 // environment-specific workspace and command timeout.
+// SystemPrompt is passed through as-is (may be empty). The caller
+// or the system prompt builder applies persona resolution and defaults.
 func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) RunConfig {
-	sp := cfg.SystemPrompt
-	if sp == "" {
-		sp = history.DefaultSystemPrompt
-	}
-
 	return RunConfig{
 		ProviderID:          cfg.Provider,
 		BaseURL:             cfg.BaseURL,
 		APIKey:              cfg.APIKey,
 		ModelName:           cfg.Model,
 		ThinkingLevel:       cfg.ThinkingLevel,
-		SystemPrompt:        sp,
+		SystemPrompt:        cfg.SystemPrompt,
 		MaxTurns:            cfg.MaxTurns,
 		MaxHistory:          cfg.MaxHistory,
 		AllowedReadPaths:    cfg.AllowedReadPaths,
@@ -69,6 +69,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		DebugRequest:        cfg.DebugRequest,
 		DebugLLMDir:         cfg.DebugLLMDir,
 		Sandbox:             cfg.Sandbox,
+		ActivePersona:       cfg.ActivePersona,
 		CompactionEnabled:        cfg.CompactionEnabled,
 		CompactionThresholdPercent: cfg.CompactionThresholdPercent,
 		CompactionLowWaterPercent:  cfg.CompactionLowWaterPercent,

@@ -7,6 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -14,12 +15,28 @@ import (
 	"github.com/glemsom/eitri/internal/tool"
 )
 
-// buildSystemPrompt assembles the full system prompt from the configured
-// base prompt, repository instructions, skills catalog, and skill activations.
+// buildSystemPrompt assembles the full system prompt from the active persona
+// (or user override or default), repository instructions, skills catalog,
+// and skill activations.
+//
+// Precedence:
+//  1. cfg.SystemPrompt (user override) — if non-empty, used directly
+//  2. cfg.ActivePersona — resolved from disk, its SystemPrompt used as base
+//  3. history.DefaultSystemPrompt — built-in fallback
 func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
 	if systemPrompt == "" {
-		systemPrompt = history.DefaultSystemPrompt
+		// No user override; try active persona.
+		if cfg.ActivePersona != "" {
+			def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
+			if err == nil && def.SystemPrompt != "" {
+				systemPrompt = def.SystemPrompt
+			}
+		}
+		// Fallback to built-in default.
+		if systemPrompt == "" {
+			systemPrompt = history.DefaultSystemPrompt
+		}
 	}
 
 	fullSystemPrompt := systemPrompt

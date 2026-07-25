@@ -111,12 +111,12 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<summary><span>Prompt — { len(cfg.SystemPrompt) } / 4096 chars</span></summary>
 
 				<div class="form-group">
-					<label for="system_prompt">System Prompt</label>
-					<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="8" placeholder="Leave empty to use built-in default prompt.">{ cfg.SystemPrompt }</textarea>
+					<label for="system_prompt">System Prompt (session override)</label>
+					<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="8" placeholder="Leave empty to use the active persona's prompt.">{ cfg.SystemPrompt }</textarea>
 					<div class="char-count-wrapper">
 						<small class="char-count" id="prompt-char-count">{ len(cfg.SystemPrompt) } / 4096 chars</small>
 					</div>
-					<small class="hint">Applies to later runs only. Clear value to restore built-in default prompt.</small>
+					<small class="hint">Overrides the active persona's system prompt for all sessions. Leave empty to use the persona's prompt.</small>
 				</div>
 			</details>
 

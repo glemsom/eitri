@@ -1261,6 +1261,29 @@ details[open] .tool-chevron {
   color: var(--text);
 }
 
+/* Persona selector in header (issue #755) */
+.persona-selector {
+  display: inline-flex;
+  align-items: center;
+}
+
+.persona-selector select {
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  max-width: 160px;
+}
+
+.persona-selector select:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
