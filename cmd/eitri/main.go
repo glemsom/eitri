@@ -70,6 +70,7 @@ func main() {
 
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout")
+	personaFlag := flag.String("persona", "", "Persona name to use for batch run (overrides config active_persona)")
 	flag.Parse()
 
 	if *versionFlag {
@@ -123,6 +124,9 @@ func main() {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
 		runCfg := runconfig.FromConfig(cfg, workspace, cmdTimeout)
+		if *personaFlag != "" {
+			runCfg.ActivePersona = *personaFlag
+		}
 
 		// Create debug recorder for HTTP trace capture even in batch mode
 		debugRecorder := debug.NewRecorder(0) // default capacity 20
