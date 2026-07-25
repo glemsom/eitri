@@ -39,6 +39,8 @@ type testServerWithRuns struct {
 // and returns test handles for session/run/executor assertions.
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
@@ -48,7 +50,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	})
 	skillsSvc := skills.NewService()
 
-	if err := persona.EnsureGeneric(); err != nil {
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 
@@ -1228,8 +1230,10 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
 	srvWorkspace := t.TempDir()
-	if err := persona.EnsureGeneric(); err != nil {
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

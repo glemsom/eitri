@@ -19,6 +19,8 @@ import (
 // session manager, writing a minimal config file so the config is loadable.
 func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 	t.Helper()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
@@ -27,7 +29,7 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 		HistorySessionMgr: historySessionMgr,
 	})
 
-	if err := persona.EnsureGeneric(); err != nil {
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

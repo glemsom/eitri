@@ -19,6 +19,8 @@ import (
 // debug recorder, and run service. Any nil parameter is replaced with a default.
 func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *session.Manager, rec *debug.Recorder, runSvc *runner.RunService) *httptest.Server {
 	t.Helper()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
 	if sessionMgr == nil {
 		sessionMgr = session.NewManager(10, workspace)
 	}
@@ -29,7 +31,7 @@ func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *ses
 		})
 	}
 
-	if err := persona.EnsureGeneric(); err != nil {
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

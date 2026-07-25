@@ -20,6 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -27,6 +28,12 @@ import (
 
 func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 	t.Helper()
+	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	homeDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", homeDir)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+	_ = persona.EnsureGenericWithHome(homeDir) // ensure generic exists in isolated home
 	sessionMgr := session.NewManager(10, workspace)
 	skillsSvc := skills.NewService()
 	cfg := api.ServerConfig{
