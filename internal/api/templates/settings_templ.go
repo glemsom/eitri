@@ -471,7 +471,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " / 4096 chars</small></div><small class=\"hint\">Overrides the active persona's system prompt for all sessions. Leave empty to use the persona's prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " / 4096 chars</small></div><small class=\"hint\">Leave empty to use the active persona's prompt. This overrides the persona's system prompt for all sessions.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

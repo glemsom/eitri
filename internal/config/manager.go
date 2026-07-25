@@ -68,6 +68,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := Defaults()
+			applyDefaults(&cfg)
 			promoteEnvVars(&cfg)
 			return &cfg, nil
 		}
@@ -99,7 +100,15 @@ func Load(path string) (*Config, error) {
 		cfg.ContextWarningThresholdPercent = Defaults().ContextWarningThresholdPercent
 	}
 	promoteEnvVars(&cfg)
+	applyDefaults(&cfg)
 	return &cfg, nil
+}
+
+// applyDefaults sets config fields that should have non-zero defaults when absent.
+func applyDefaults(cfg *Config) {
+	if cfg.ActivePersona == "" {
+		cfg.ActivePersona = persona.GenericName
+	}
 }
 
 // promoteEnvVars promotes EITRI_DEBUG_* and EITRI_COMPACTION_* environment

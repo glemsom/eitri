@@ -13,11 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persona-driven system prompt**: active persona's system prompt is now
+  used as the base for runs. A persona selector in the chat top bar lets
+  users switch persona mid-session. The existing `system_prompt` config
+  field acts as a session override on top of the persona's prompt. (#755)
+- **Per-persona skill injection**: personas can declare injected skills
+  that are automatically loaded when the persona is active. Deduplication
+  prevents conflicts with manually activated skills. (#756)
+- **Subagent persona support**: the `delegate()` tool accepts an optional
+  `persona` field. Subagents can be spawned with any persona from the
+  user's catalog, enabling role-specific subagents while the parent stays
+  on another persona. (#757)
 - **Persona CRUD**: users can now define named personas (system prompt +
   optional injected skills) in Settings → Personas. Personas are stored
   as YAML files under `.eitri/personas/<name>.yaml`. The `generic` persona
   is auto-created on first run. Up to 10 custom personas enforced.
   See ADR-0018. (#754)
+- **Backward compatibility & cleanup**: `active_persona` defaults to
+  `"generic"` when unset. Generic persona auto-created on server startup.
+  `system_prompt` config field preserved as session override. Settings UI
+  updated to clarify its override role. (#758)
 
 - **bwrap sandboxing for bash commands**: shell commands now run inside a
   bubblewrap sandbox by default (requires `bwrap` on PATH; falls back
