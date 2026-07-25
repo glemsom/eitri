@@ -29,6 +29,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Session persistence** | The on-disk JSON files under `~/.eitri/sessions/<id>/` and `~/.eitri/history/<id>/` that survive server restarts. Restored on startup to rebuild in-memory session state. |
 | **Trace persistence** | Individual HTTP trace files written to `~/.eitri/sessions/<id>/traces/<trace_id>.json` on LLM provider call completion. Survive server restarts for post-mortem debugging. |
 | **Persister** | The `internal/persist/` package responsible for writing and reading session snapshots, conversation histories, and HTTP traces to/from disk. Owns the 1 GiB retention cap and directory layout under `~/.eitri/`. |
+| **Persona** | A named bundle of a system prompt and optional injected skills. Stored as `.eitri/personas/<name>.yaml`. The `generic` persona is always present. Personas determine the agent's behaviour instructions; tools and workspace are shared. |
 
 ## Architecture decisions
 
@@ -52,6 +53,8 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0014](docs/adr/0014-crash-dumps.md) | Crash dump directory for unexpected failures | Accepted |
 | [0015](docs/adr/0015-per-session-workspaces.md) | Per-session workspaces with directory browser | Accepted |
 | [0016](docs/adr/0016-session-persistence-json-snapshots.md) | Session persistence via JSON snapshots | Accepted |
+| [0017](docs/adr/0017-bwrap-sandbox.md) | bwrap sandbox for bash tool | Accepted (amended) |
+| [0018](docs/adr/0018-personas.md) | Personas — named system prompts with skill injection | Draft |
 
 ## Project structure
 
