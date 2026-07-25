@@ -116,7 +116,7 @@ func main() {
 
 	// Ensure the generic persona exists on first run.
 	// This is idempotent — safe to call every startup.
-	if err := persona.EnsureGeneric(workspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		slog.Warn("failed to ensure generic persona", slog.Any("error", err))
 	}
 

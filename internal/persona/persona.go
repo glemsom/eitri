@@ -254,11 +254,30 @@ func ListWithHome(workspace, homeDir string) ([]string, error) {
 	return names, nil
 }
 
-// EnsureGeneric creates the generic persona file if it doesn't exist.
-func EnsureGeneric(workspace string) error {
-	personaDir := Dir(workspace)
+// EnsureGeneric creates the generic persona file in the user-level home
+// directory (~/.eitri/personas/generic.yaml) if it doesn't already exist.
+// The generic persona is the built-in default and is shared across all
+// workspaces, so it lives at the user level rather than under any specific
+// workspace.
+func EnsureGeneric() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve user home dir: %w", err)
+	}
+	return EnsureGenericWithHome(homeDir)
+}
+
+// EnsureGenericWithHome creates the generic persona file under the given
+// home directory if it doesn't already exist. Used by EnsureGeneric and by
+// tests that need a hermetic home directory.
+func EnsureGenericWithHome(homeDir string) error {
+	if strings.TrimSpace(homeDir) == "" {
+		return fmt.Errorf("home dir must not be empty")
+	}
+
+	personaDir := UserDir(homeDir)
 	if err := os.MkdirAll(personaDir, 0700); err != nil {
-		return fmt.Errorf("create personas dir: %w", err)
+		return fmt.Errorf("create home personas dir: %w", err)
 	}
 
 	path := filepath.Join(personaDir, GenericName+".yaml")
@@ -266,11 +285,10 @@ func EnsureGeneric(workspace string) error {
 		return nil // already exists
 	}
 
-	def := &PersonaDefinition{
+	return SaveToHome(homeDir, &PersonaDefinition{
 		Name:         GenericName,
 		SystemPrompt: DefaultPrompt,
-	}
-	return Save(workspace, def)
+	})
 }
 
 // sanitizeName creates a safe filesystem name from a persona name.

@@ -27,7 +27,7 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 		HistorySessionMgr: historySessionMgr,
 	})
 
-	if err := persona.EnsureGeneric(workspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

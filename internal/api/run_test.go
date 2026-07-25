@@ -47,7 +47,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	})
 	skillsSvc := skills.NewService()
 
-	if err := persona.EnsureGeneric(workspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 
@@ -88,7 +88,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
-	if err := persona.EnsureGeneric(workspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 
@@ -1213,7 +1213,7 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	}
 
 	srvWorkspace := t.TempDir()
-	if err := persona.EnsureGeneric(srvWorkspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

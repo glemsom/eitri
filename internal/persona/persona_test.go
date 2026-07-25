@@ -133,17 +133,23 @@ func TestList(t *testing.T) {
 }
 
 func TestEnsureGeneric(t *testing.T) {
-	workspace := t.TempDir()
+	home := t.TempDir()
 
 	// First call should create generic
-	if err := EnsureGeneric(workspace); err != nil {
-		t.Fatalf("EnsureGeneric (first): %v", err)
+	if err := EnsureGenericWithHome(home); err != nil {
+		t.Fatalf("EnsureGenericWithHome (first): %v", err)
 	}
 
-	// Load and verify
-	def, err := Load(workspace, GenericName)
+	// Generic must live under the user-level home dir, not under any workspace.
+	homePath := filepath.Join(UserDir(home), GenericName+".yaml")
+	if _, err := os.Stat(homePath); err != nil {
+		t.Fatalf("generic persona not created in home dir %s: %v", homePath, err)
+	}
+
+	// Load it back via the home fallback path.
+	def, err := LoadWithHome(t.TempDir(), home, GenericName)
 	if err != nil {
-		t.Fatalf("Load generic: %v", err)
+		t.Fatalf("LoadWithHome generic: %v", err)
 	}
 	if def.Name != GenericName {
 		t.Errorf("Name = %q, want %q", def.Name, GenericName)
@@ -153,8 +159,35 @@ func TestEnsureGeneric(t *testing.T) {
 	}
 
 	// Second call should be idempotent
-	if err := EnsureGeneric(workspace); err != nil {
-		t.Fatalf("EnsureGeneric (second): %v", err)
+	if err := EnsureGenericWithHome(home); err != nil {
+		t.Fatalf("EnsureGenericWithHome (second): %v", err)
+	}
+}
+
+// TestEnsureGeneric_DoesNotWriteToWorkspace is the regression test for the
+// bug where the generic persona was being created in <workspace>/.eitri/personas/.
+// It must live in ~/.eitri/personas/ (the user-level home dir) so it is shared
+// across all workspaces and not duplicated in each project.
+func TestEnsureGeneric_DoesNotWriteToWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	home := t.TempDir()
+
+	if err := EnsureGenericWithHome(home); err != nil {
+		t.Fatalf("EnsureGenericWithHome: %v", err)
+	}
+
+	// The generic persona file must NOT exist in the workspace.
+	workspacePath := filepath.Join(Dir(workspace), GenericName+".yaml")
+	if _, err := os.Stat(workspacePath); !os.IsNotExist(err) {
+		t.Errorf("generic persona must not be created in workspace at %s, but it exists (err=%v)", workspacePath, err)
+	}
+}
+
+// TestEnsureGeneric_RejectsEmptyHome guards EnsureGenericWithHome against
+// silent fallback to a real user home dir.
+func TestEnsureGeneric_RejectsEmptyHome(t *testing.T) {
+	if err := EnsureGenericWithHome(""); err == nil {
+		t.Fatal("expected error for empty home dir, got nil")
 	}
 }
 

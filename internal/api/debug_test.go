@@ -29,7 +29,7 @@ func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *ses
 		})
 	}
 
-	if err := persona.EnsureGeneric(workspace); err != nil {
+	if err := persona.EnsureGeneric(); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 

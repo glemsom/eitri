@@ -18,8 +18,8 @@ import (
 func (s *Server) handleGetPersonas(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
 
-	// Ensure generic persona exists
-	_ = persona.EnsureGeneric(workspace)
+	// Ensure generic persona exists in the user-level home directory
+	_ = persona.EnsureGeneric()
 
 	names, err := persona.List(workspace)
 	if err != nil {
@@ -341,7 +341,9 @@ func (s *Server) updatePersonaCatalog(workspace string) {
 // Used by the header persona selector on every page.
 func (s *Server) handlePersonaSelector(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
-	_ = persona.EnsureGeneric(workspace)
+
+	// Ensure generic persona exists in the user-level home directory
+	_ = persona.EnsureGeneric()
 
 	names, err := persona.List(workspace)
 	if err != nil {

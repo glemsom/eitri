@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`generic` persona location**: the built-in `generic` persona is now
+  created in `~/.eitri/personas/` (user-level home) instead of
+  `<workspace>/.eitri/personas/`, so it is shared across workspaces and
+  not duplicated in each project.
+
 ### Changed
 
 - **TurnCompleter interface**: extracted the ~95-line `OnTurnComplete` closure

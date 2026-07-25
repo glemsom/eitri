@@ -341,8 +341,8 @@ func TestHandleDeletePersona_GenericFails(t *testing.T) {
 	server := newTestServerAtWorkspace(t, workspace)
 	defer server.Close()
 
-	// Ensure generic exists
-	persona.EnsureGeneric(workspace)
+	// Ensure generic exists in user-level home directory
+	persona.EnsureGeneric()
 
 	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/generic", nil)
 	if err != nil {
