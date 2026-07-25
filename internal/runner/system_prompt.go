@@ -35,12 +35,20 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		if cfg.ActivePersona != "" {
 			def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
 			if err != nil {
-				return "", fmt.Errorf("load persona %q: %w", cfg.ActivePersona, err)
+				// Persona file missing or unreadable — warn and fall back to default.
+				// This handles the case where active_persona was set in config but the
+				// file was deleted later (e.g. UI mode). Batch mode validates the persona
+				// explicitly before calling StartRun/BatchRun.
+				slog.Warn("persona not found, falling back to default",
+					slog.String("persona", cfg.ActivePersona),
+					slog.Any("error", err),
+				)
+			} else {
+				if def.SystemPrompt != "" {
+					systemPrompt = def.SystemPrompt
+				}
+				personaInjectedSkills = def.InjectedSkills
 			}
-			if def.SystemPrompt != "" {
-				systemPrompt = def.SystemPrompt
-			}
-			personaInjectedSkills = def.InjectedSkills
 		}
 		// Fallback to built-in default.
 		if systemPrompt == "" {

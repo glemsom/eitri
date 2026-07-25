@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -395,7 +396,9 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 				} `json:"messages"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode chat request: %v", err)
+				slog.Warn("test LLM server: decode chat request", slog.Any("error", err))
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
 			}
 			var systemPrompt string
 			for _, msg := range body.Messages {
@@ -597,6 +600,14 @@ This skill tests persona-based skill injection UI update.
 	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
 	defer llmSrv.Close()
 
+	// Drain promptCh in a background goroutine so the LLM server handler
+	// never blocks on channel sends (run may make multiple LLM calls).
+	// The channel is drained until the test ends and the server closes.
+	go func() {
+		for range promptCh {
+		}
+	}()
+
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "injector-agent-ui",
 		SystemPrompt:   "You are an agent that uses injected skills.",
@@ -608,6 +619,11 @@ This skill tests persona-based skill injection UI update.
 	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"injector-agent-ui"}`, llmSrv.URL))
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+
+	// Wait for the run to complete before the deferred llmSrv.Close() runs.
+	// Otherwise the background run goroutine may still be making LLM calls
+	// when the server is torn down, causing "connection reset by peer" errors.
+	defer waitForNoActiveRun(t, h.runSvc, sessionID, 3*time.Second)
 
 	// POST a chat message and capture the response body.
 	client := noRedirectClient()

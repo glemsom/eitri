@@ -125,6 +125,13 @@ func main() {
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
 		runCfg := runconfig.FromConfig(cfg, workspace, cmdTimeout)
 		if *personaFlag != "" {
+			// Validate persona exists before starting the batch run.
+			// This produces a clear error for non-existent --persona before any
+			// LLM connection is attempted.
+			if _, err := persona.Load(workspace, *personaFlag); err != nil {
+				fmt.Fprintf(os.Stderr, "Batch run failed: persona %q not found\n", *personaFlag)
+				os.Exit(1)
+			}
 			runCfg.ActivePersona = *personaFlag
 		}
 
