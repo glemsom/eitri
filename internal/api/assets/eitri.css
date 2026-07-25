@@ -1325,27 +1325,104 @@ details[open] .tool-chevron {
   color: var(--text);
 }
 
-/* Persona selector in header (issue #755) */
+/* Persona selector in header (issue #770) — custom dark dropdown */
 .persona-selector {
+  position: relative;
   display: inline-flex;
   align-items: center;
 }
 
-.persona-selector select {
-  font-size: 0.8rem;
+.persona-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-  max-width: 160px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
-.persona-selector select:hover {
+.persona-trigger:hover,
+.persona-trigger:focus {
   color: var(--text);
   border-color: var(--accent);
+  background: var(--surface-alt);
+}
+
+.persona-chevron {
+  font-size: 0.65rem;
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.persona-chevron-open {
+  transform: rotate(180deg);
+}
+
+.persona-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  padding: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.persona-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.persona-option:hover,
+.persona-option:focus {
+  background: var(--surface-alt);
+  outline: none;
+}
+
+.persona-option-active {
+  font-weight: 600;
+}
+
+.persona-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+.persona-checkmark {
+  color: var(--accent);
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.persona-option-name {
+  flex: 1;
 }
 
 /* Scrollbar */
