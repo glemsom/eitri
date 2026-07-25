@@ -12,7 +12,9 @@ import (
 type SubAgentManager interface {
 	// SpawnSubAgent starts a sub-agent in the background and returns a task ID.
 	// The sessionID comes from context via SessionIDKey.
-	SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int) (taskID string, err error)
+	// persona is an optional persona name; if empty, the sub-agent uses the parent's
+	// active persona (or generic).
+	SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int, persona string) (taskID string, err error)
 
 	// CollectSubAgents blocks until all listed tasks complete or ctx cancels.
 	CollectSubAgents(ctx context.Context, taskIDs []string) (map[string]SubAgentResult, error)

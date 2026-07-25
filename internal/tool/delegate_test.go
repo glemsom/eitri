@@ -12,14 +12,16 @@ import (
 
 // fakeSubAgentManager implements SubAgentManager for testing.
 type fakeSubAgentManager struct {
-	tasks   map[string]SubAgentResult
-	nextID  int
-	spawnFn func(ctx context.Context, sessionID, task string, maxTurns int) (taskID string, err error)
+	tasks     map[string]SubAgentResult
+	nextID    int
+	lastPersona string
+	spawnFn   func(ctx context.Context, sessionID, task string, maxTurns int, persona string) (taskID string, err error)
 }
 
-func (f *fakeSubAgentManager) SpawnSubAgent(ctx context.Context, _ string, task string, maxTurns int) (string, error) {
+func (f *fakeSubAgentManager) SpawnSubAgent(ctx context.Context, _ string, task string, maxTurns int, persona string) (string, error) {
+	f.lastPersona = persona
 	if f.spawnFn != nil {
-		return f.spawnFn(ctx, "", task, maxTurns)
+		return f.spawnFn(ctx, "", task, maxTurns, persona)
 	}
 	f.nextID++
 	taskID := fmt.Sprintf("task_test_%d", f.nextID)
@@ -104,6 +106,52 @@ func TestDelegateTool_Call_DefaultMaxTurns(t *testing.T) {
 	}
 	if result.IsError {
 		t.Fatal("result.IsError should be false")
+	}
+}
+
+func TestDelegateTool_Call_WithPersona(t *testing.T) {
+	mgr := &fakeSubAgentManager{}
+	d := NewDelegate(mgr)
+	args := json.RawMessage(`{"task": "research X", "persona": "analyst", "max_turns": 10}`)
+	result, err := d.Call(context.Background(), args)
+	if err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("result.IsError should be false for valid task")
+	}
+	if mgr.lastPersona != "analyst" {
+		t.Errorf("lastPersona = %q, want %q", mgr.lastPersona, "analyst")
+	}
+	// Result should contain task_id
+	txt := blocksToTextForTest(result.Blocks)
+	if !json.Valid([]byte(txt)) {
+		t.Fatalf("result is not valid JSON: %q", txt)
+	}
+	var res struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.Unmarshal([]byte(txt), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res.TaskID == "" {
+		t.Fatal("task_id should not be empty")
+	}
+}
+
+func TestDelegateTool_Call_WithoutPersona(t *testing.T) {
+	mgr := &fakeSubAgentManager{}
+	d := NewDelegate(mgr)
+	args := json.RawMessage(`{"task": "research X", "max_turns": 10}`)
+	result, err := d.Call(context.Background(), args)
+	if err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("result.IsError should be false for valid task")
+	}
+	if mgr.lastPersona != "" {
+		t.Errorf("lastPersona = %q, want empty", mgr.lastPersona)
 	}
 }
 

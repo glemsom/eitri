@@ -11,6 +11,7 @@ import (
 type delegateArgs struct {
 	Task     string `json:"task" jsonschema:"The task to delegate to a sub-agent (required)"`
 	MaxTurns int    `json:"max_turns" jsonschema:"Maximum number of turns for the sub-agent (default: 50)"`
+	Persona  string `json:"persona,omitempty" jsonschema:"Optional persona name to use for the sub-agent (default: generic)"`
 }
 
 // DelegateTool implements ToolHandler for the delegate tool.
@@ -55,7 +56,7 @@ func (t *DelegateTool) Call(ctx context.Context, args json.RawMessage) (ToolResu
 
 	sessionID, _ := ctx.Value(SessionIDKey).(string)
 
-	taskID, err := t.subMgr.SpawnSubAgent(ctx, sessionID, parsed.Task, parsed.MaxTurns)
+	taskID, err := t.subMgr.SpawnSubAgent(ctx, sessionID, parsed.Task, parsed.MaxTurns, parsed.Persona)
 	if err != nil {
 		return ToolResult{}, fmt.Errorf("delegate: %w", err)
 	}

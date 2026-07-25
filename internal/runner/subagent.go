@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
@@ -64,12 +65,36 @@ const subAgentReapTTL = 30 * time.Second
 // service, tool registry (restricted — no delegate/collect/quick_replies/skill),
 // and request-based history manager (no browser session persistence).
 //
+// personaName is an optional persona name. If non-empty, the sub-agent resolves
+// that persona from disk and uses its system prompt + injected skills. If the
+// persona file is missing or corrupt, a warning is logged and the sub-agent
+// falls back to generic. If empty, the sub-agent uses the parent's active
+// persona (or generic).
+//
 // Cancelling the parent run cascades to cancel all in-flight sub-agents.
-func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int) (taskID string, err error) {
+func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, maxTurns int, personaName string) (taskID string, err error) {
 	// Retrieve parent config for this session
 	parentCfg, ok := s.subagents.GetParentCfg(sessionID)
 	if !ok {
 		return "", fmt.Errorf("no parent run config found for session %s", sessionID)
+	}
+
+	// Resolve persona if specified
+	if personaName != "" {
+		resolved, err := persona.Load(parentCfg.Workspace, personaName)
+		if err != nil {
+			slog.Warn("sub-agent persona not found, falling back to generic",
+				slog.String("persona", personaName),
+				slog.Any("error", err),
+			)
+			parentCfg.ActivePersona = persona.GenericName
+		} else {
+			slog.Info("sub-agent using persona",
+				slog.String("persona", personaName),
+				slog.Int("injected_skills", len(resolved.InjectedSkills)),
+			)
+			parentCfg.ActivePersona = personaName
+		}
 	}
 
 	// Generate task ID
