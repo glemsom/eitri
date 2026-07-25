@@ -10,6 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/persona"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // handleGetPersonas returns all persona definitions as JSON or HTML fragment.
@@ -51,8 +52,24 @@ func (s *Server) handleGetPersonas(w http.ResponseWriter, r *http.Request) {
 
 // handleGetPersonaAddForm returns the HTML fragment for the add-persona form.
 func (s *Server) handleGetPersonaAddForm(w http.ResponseWriter, r *http.Request) {
-	component := templates.PersonaAddForm()
+	availableSkills := s.getAvailableSkills()
+	component := templates.PersonaAddForm(availableSkills)
 	component.Render(r.Context(), w)
+}
+
+// getAvailableSkills returns the list of effective (non-shadowed, non-disabled) skills
+// from the skills service, or an empty list if skills service is unavailable.
+func (s *Server) getAvailableSkills() []*skills.Skill {
+	if s.config.SkillsService == nil {
+		return nil
+	}
+	registry := s.config.SkillsService.Refresh()
+	effective := registry.Effective()
+	result := make([]*skills.Skill, 0, len(effective))
+	for _, skill := range effective {
+		result = append(result, skill)
+	}
+	return result
 }
 
 // parsePersonaRequest extracts persona fields from either a JSON body or form data.
@@ -172,7 +189,8 @@ func (s *Server) handleGetPersona(w http.ResponseWriter, r *http.Request) {
 
 	if isHTMXRequest(r) {
 		// Return the edit form fragment
-		component := templates.PersonaEditForm(def)
+		availableSkills := s.getAvailableSkills()
+		component := templates.PersonaEditForm(def, availableSkills)
 		component.Render(r.Context(), w)
 		return
 	}
