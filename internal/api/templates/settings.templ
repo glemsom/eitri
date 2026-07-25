@@ -197,6 +197,32 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 			</details>
 
+			<details class="settings-details">
+				<summary><span>Debug &amp; Diagnostics</span></summary>
+
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" id="debug_prompt" name="debug_prompt" value="true" if cfg.DebugPrompt { checked }/>
+						Debug prompt logging
+					</label>
+					<small class="hint">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small>
+				</div>
+
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" id="debug_request" name="debug_request" value="true" if cfg.DebugRequest { checked }/>
+						Debug request logging
+					</label>
+					<small class="hint">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small>
+				</div>
+
+				<div class="form-group">
+					<label for="debug_llm_dir">LLM debug output directory</label>
+					<input type="text" id="debug_llm_dir" name="debug_llm_dir" value={ cfg.DebugLLMDir } placeholder="/tmp/eitri-llm-debug"/>
+					<small class="hint">Directory to write debug logs on LLM errors (was <code>EITRI_DEBUG_LLM_DIR</code>).</small>
+				</div>
+			</details>
+
 			<div class="form-actions form-actions-sticky">
 				<button type="submit">Save</button>
 				<div id="test-connection-wrapper" class="test-connection-wrapper">
@@ -230,32 +256,6 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<div id="persona-form-errors" class="form-error"></div>
 			</div>
 		</details>
-
-		<details class="settings-details">
-			<summary><span>Debug &amp; Diagnostics</span></summary>
-
-				<div class="form-group">
-					<label class="checkbox-label">
-						<input type="checkbox" id="debug_prompt" name="debug_prompt" value="true" if cfg.DebugPrompt { checked }/>
-						Debug prompt logging
-					</label>
-					<small class="hint">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small>
-				</div>
-
-				<div class="form-group">
-					<label class="checkbox-label">
-						<input type="checkbox" id="debug_request" name="debug_request" value="true" if cfg.DebugRequest { checked }/>
-						Debug request logging
-					</label>
-					<small class="hint">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small>
-				</div>
-
-				<div class="form-group">
-					<label for="debug_llm_dir">LLM debug output directory</label>
-					<input type="text" id="debug_llm_dir" name="debug_llm_dir" value={ cfg.DebugLLMDir } placeholder="/tmp/eitri-llm-debug"/>
-					<small class="hint">Directory to write debug logs on LLM errors (was <code>EITRI_DEBUG_LLM_DIR</code>).</small>
-				</div>
-			</details>
 	</div>
 }
 
