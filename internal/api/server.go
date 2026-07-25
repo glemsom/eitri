@@ -251,6 +251,10 @@ func (s *Server) registerRoutes() {
 	// Manual compaction trigger (issue #723)
 	s.mux.HandleFunc("POST /api/sessions/{id}/compact", s.handleCompact)
 
+	// Session Report endpoints (issue #791)
+	s.mux.HandleFunc("GET /api/sessions/{id}/reports", s.handleListReports)
+	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.handleGetReport)
+
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
 

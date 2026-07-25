@@ -81,6 +81,119 @@ func New(rootDir string) (*Persister, error) {
 // TimelineSchema is the canonical JSON schema marker for timeline files.
 // The actual schema is defined in the runstate package as runstate.Timeline.
 
+// TimelineMeta holds metadata about a persisted timeline file.
+type TimelineMeta struct {
+	Filename  string    `json:"filename"`
+	StartedAt time.Time `json:"started_at"`
+	RunID     string    `json:"run_id"`
+}
+
+// ListTimelines returns metadata for all timeline files for a session.
+func (p *Persister) ListTimelines(sessionID string) ([]TimelineMeta, error) {
+	timelineDir := filepath.Join(p.rootDir, "sessions", sessionID, "timeline")
+	entries, err := os.ReadDir(timelineDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot list timeline dir %s: %w", timelineDir, err)
+	}
+
+	var metas []TimelineMeta
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		// Quick parse: read just the run_id and started_at from the JSON file.
+		path := filepath.Join(timelineDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue // skip unreadable files
+		}
+		var partial struct {
+			RunID     string    `json:"run_id"`
+			StartedAt time.Time `json:"started_at"`
+		}
+		if err := json.Unmarshal(data, &partial); err != nil {
+			continue
+		}
+		metas = append(metas, TimelineMeta{
+			Filename:  entry.Name(),
+			StartedAt: partial.StartedAt,
+			RunID:     partial.RunID,
+		})
+	}
+	return metas, nil
+}
+
+// LoadTimeline reads and parses a single timeline file for a session.
+func (p *Persister) LoadTimeline(sessionID, filename string) ([]byte, error) {
+	path := filepath.Join(p.rootDir, "sessions", sessionID, "timeline", filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read timeline file %s: %w", path, err)
+	}
+	return data, nil
+}
+
+// LoadLatestSessionSnapshot reads the current session snapshot (via symlink).
+func (p *Persister) LoadLatestSessionSnapshot(sessionID string) ([]byte, error) {
+	sessionLink := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
+	linkTarget, err := os.Readlink(sessionLink)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot read symlink %s: %w", sessionLink, err)
+	}
+	snapshotPath := filepath.Join(p.rootDir, "sessions", sessionID, linkTarget)
+	return os.ReadFile(snapshotPath)
+}
+
+// LoadLatestHistory reads the current conversation history (via symlink).
+func (p *Persister) LoadLatestHistory(sessionID string) ([]byte, error) {
+	historyLink := filepath.Join(p.rootDir, "history", sessionID, "history.json")
+	linkTarget, err := os.Readlink(historyLink)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot read history symlink %s: %w", historyLink, err)
+	}
+	histPath := filepath.Join(p.rootDir, "history", sessionID, linkTarget)
+	return os.ReadFile(histPath)
+}
+
+// ListTraces returns the filenames (without .json) of all trace files for a session.
+func (p *Persister) ListTraces(sessionID string) ([]string, error) {
+	tracesDir := filepath.Join(p.rootDir, "sessions", sessionID, "traces")
+	entries, err := os.ReadDir(tracesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot list traces dir %s: %w", tracesDir, err)
+	}
+	var ids []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		ids = append(ids, strings.TrimSuffix(entry.Name(), ".json"))
+	}
+	return ids, nil
+}
+
+// LoadTrace reads a single trace file for a session.
+func (p *Persister) LoadTrace(sessionID, traceID string) ([]byte, error) {
+	path := filepath.Join(p.rootDir, "sessions", sessionID, "traces", traceID+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read trace file %s: %w", path, err)
+	}
+	return data, nil
+}
+
 // SaveTimeline writes a condensed timeline for a single run to disk.
 // The file is written to <root>/sessions/<sessionID>/timeline/<filename>.json
 // atomically via temp-file + rename.
