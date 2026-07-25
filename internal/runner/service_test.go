@@ -356,7 +356,7 @@ func TestRunService_NotifySessionClosed_BroadcastsClosedEvent(t *testing.T) {
 func TestRunService_SpawnSubAgent_NoParentConfig(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 
-	_, err := svc.SpawnSubAgent(context.Background(), "nonexistent-session", "test task", 5)
+	_, err := svc.SpawnSubAgent(context.Background(), "nonexistent-session", "test task", 5, "")
 	if err == nil {
 		t.Fatal("expected error for missing parent config")
 	}
@@ -379,7 +379,7 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 	svc.subagents.StoreParentCfg("session-1", cfg)
 
 
-	taskID1, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 1", 5)
+	taskID1, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 1", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 		t.Fatalf("task ID = %q, want 'task_...'", taskID1)
 	}
 
-	taskID2, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 2", 10)
+	taskID2, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 2", 10, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
@@ -451,7 +451,7 @@ func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 	svc.subagents.StoreParentCfg("session-1", cfg)
 
 
-	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestRunService_Cancel_CancelsSubAgents(t *testing.T) {
 	}
 
 	// Spawn a sub-agent (should now have parent config)
-	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "sub task", 5)
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "sub task", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
@@ -565,7 +565,7 @@ func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
 	svc.subagents.StoreParentCfg(parent.ID, cfg)
 
 
-	taskID, err := svc.SpawnSubAgent(context.Background(), parent.ID, "research X", 5)
+	taskID, err := svc.SpawnSubAgent(context.Background(), parent.ID, "research X", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 	svc.subagents.StoreParentCfg("session-1", cfg)
 
 
-	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5)
+	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
