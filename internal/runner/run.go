@@ -173,6 +173,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					s.appendToSession(sessionID, content, reasoningContent)
 				}
 				s.snapshotSession(sessionID)
+				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+					Reason:  runstate.TerminationCancelled,
+					Message: "Run cancelled by user or context deadline exceeded",
+				})
 				return
 			}
 
@@ -191,10 +195,18 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content))
 				s.appendToSession(sessionID, content, reasoningContent)
 				s.snapshotSession(sessionID)
+				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+					Reason:  runstate.TerminationMaxTurns,
+					Message: limitMsg,
+				})
 				return
 			}
 
 			// Fatal error not covered above — trigger crash dump
+			s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+				Reason:  runstate.TerminationError,
+				Message: err.Error(),
+			})
 			if s.crashDumpFunc != nil {
 				s.crashDumpFunc(err, runtimeDebug.Stack())
 			}
@@ -207,11 +219,46 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			s.appendToSession(sessionID, content, reasoningContent)
 		}
 		s.snapshotSession(sessionID)
+		s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+			Reason:  runstate.TerminationCompleted,
+			Message: "",
+		})
 	}()
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
 
 	return skillCtx.Warnings, nil
+}
+
+// persistRunTimeline builds and persists a condensed timeline for the run.
+func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseState *runstate.State, cfg runconfig.RunConfig, termination *runstate.TimelineTermination) {
+	if s.persister == nil {
+		return
+	}
+
+	events := sseState.CondensedEvents()
+	now := time.Now()
+
+	timeline := &runstate.Timeline{
+		Version:   1,
+		RunID:     runstate.GenerateRunID(sessionID, state.StartedAt),
+		SessionID: sessionID,
+		Provider: runstate.TimelineProvider{
+			Model:      cfg.ModelName,
+			ProviderID: cfg.ProviderID,
+		},
+		StartedAt:   state.StartedAt,
+		EndedAt:     now,
+		Termination: termination,
+		Events:      events,
+	}
+
+	if err := s.persister.SaveTimeline(sessionID, timeline); err != nil {
+		slog.Warn("failed to persist timeline",
+			slog.String("session_id", sessionID),
+			slog.Any("error", err),
+		)
+	}
 }
 
 // appendToSession persists an assistant message to the UI session.

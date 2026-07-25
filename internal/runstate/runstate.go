@@ -37,6 +37,7 @@ type SSEEvent struct {
 	MessageID string      `json:"message_id,omitempty"`
 	Usage     *TokenUsage `json:"usage,omitempty"`
 	Timestamp time.Time   `json:"timestamp,omitempty"`
+	Turn      int         `json:"turn,omitempty"`
 }
 
 // TokenUsage holds token count information for a completed run.
@@ -297,7 +298,8 @@ func (s *State) closeStreams(evt *SSEEvent) {
 
 // Writer provides typed helpers that broadcast SSE events to a State.
 type Writer struct {
-	state *State
+	state       *State
+	currentTurn int
 }
 
 // NewWriter creates an SSE writer that broadcasts to state.
@@ -310,15 +312,20 @@ func (w *Writer) State() *State {
 	return w.state
 }
 
+// SetTurn sets the current turn number for events broadcast through this Writer.
+func (w *Writer) SetTurn(turn int) {
+	w.currentTurn = turn
+}
+
 // Token sends a text token event and appends to the text buffer.
 func (w *Writer) Token(content string) {
 	w.state.AppendBuffer(content)
-	w.state.Broadcast(SSEEvent{Type: "token", Content: content})
+	w.state.Broadcast(SSEEvent{Type: "token", Content: content, Turn: w.currentTurn})
 }
 
 // ToolCall sends a tool call event with kind "tool_card".
 func (w *Writer) ToolCall(name string, args any) {
-	w.state.Broadcast(SSEEvent{Type: "tool_call", Kind: RenderKindToolCard, Tool: name, Args: args})
+	w.state.Broadcast(SSEEvent{Type: "tool_call", Kind: RenderKindToolCard, Tool: name, Args: args, Turn: w.currentTurn})
 }
 
 // ToolResult sends a tool result event with kind "tool_card".
@@ -331,7 +338,7 @@ func (w *Writer) ToolResult(name string, output any) {
 			outputStr = string(b)
 		}
 	}
-	w.state.Broadcast(SSEEvent{Type: "tool_result", Kind: RenderKindToolCard, Tool: name, Output: outputStr})
+	w.state.Broadcast(SSEEvent{Type: "tool_result", Kind: RenderKindToolCard, Tool: name, Output: outputStr, Turn: w.currentTurn})
 }
 
 // Done sends a done event with optional token usage and closes streams.
@@ -341,17 +348,17 @@ func (w *Writer) Done(messageID string, usage *TokenUsage) {
 
 // Component sends a generative UI component event with kind "component".
 func (w *Writer) Component(data any) {
-	w.state.Broadcast(SSEEvent{Type: "component", Kind: RenderKindComponent, Data: data})
+	w.state.Broadcast(SSEEvent{Type: "component", Kind: RenderKindComponent, Data: data, Turn: w.currentTurn})
 }
 
 // ContextUpdate broadcasts a context_update SSE event with token estimates.
 func (w *Writer) ContextUpdate(update *ContextUpdate) {
-	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update})
+	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update, Turn: w.currentTurn})
 }
 
 // SkillActivated broadcasts a skill_activated event with the skill name.
 func (w *Writer) SkillActivated(name string) {
-	w.state.Broadcast(SSEEvent{Type: "skill_activated", Tool: name})
+	w.state.Broadcast(SSEEvent{Type: "skill_activated", Tool: name, Turn: w.currentTurn})
 }
 
 // Error sends an error event with kind "error" and closes streams.
@@ -363,7 +370,7 @@ func (w *Writer) Error(msg string) {
 // and appends to the reasoning buffer for persistence across session switches.
 func (w *Writer) ThinkingDelta(content string) {
 	w.state.AppendReasoningBuffer(content)
-	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content})
+	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content, Turn: w.currentTurn})
 }
 
 // ContextUpdate holds estimated token counts broken down by category.
