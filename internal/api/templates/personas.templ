@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/glemsom/eitri/internal/persona"
@@ -154,20 +155,47 @@ templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Sk
 // personas and allows switching the active persona.
 templ PersonaSelector(personas []*persona.PersonaDefinition, activePersona string) {
 	<div id="persona-selector" class="persona-selector">
-		<select
-			name="active_persona"
-			hx-post="/api/personas/activate"
-			hx-trigger="change"
-			hx-target="#persona-selector"
-			hx-swap="outerHTML"
+		<button
+			type="button"
+			class="persona-trigger"
+			aria-haspopup="listbox"
+			aria-expanded="false"
+			data-ps-target="trigger"
 		>
+			<span class="persona-trigger-label">{ activePersona }</span>
+			<span class="persona-chevron" data-ps-target="chevron">▾</span>
+		</button>
+		<div class="persona-dropdown" hidden role="listbox" data-ps-target="dropdown">
 			for _, p := range personas {
-				<option value={ p.Name } if p.Name == activePersona { selected }>
-					{ p.Name }
-				</option>
+				<button
+					type="button"
+					class={ "persona-option", templ.KV("persona-option-active", p.Name == activePersona) }
+					role="option"
+					aria-selected={ fmt.Sprintf("%t", p.Name == activePersona) }
+					hx-post="/api/personas/activate"
+					hx-vals={ personaActivateVals(p.Name) }
+					hx-target="#persona-selector"
+					hx-swap="outerHTML"
+				>
+					<span class="persona-check">
+						if p.Name == activePersona {
+							<span class="persona-checkmark">✓</span>
+						}
+					</span>
+					<span class="persona-option-name">{ p.Name }</span>
+				</button>
 			}
-		</select>
+		</div>
 	</div>
+}
+
+// personaActivateVals returns a JSON string of {"active_persona":"<name>"} suitable for hx-vals.
+func personaActivateVals(name string) string {
+	b, err := json.Marshal(map[string]string{"active_persona": name})
+	if err != nil {
+		return `{"active_persona":""}`
+	}
+	return string(b)
 }
 
 // previewPrompt returns the first 120 characters or the full prompt if shorter.
