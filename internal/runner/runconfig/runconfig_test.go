@@ -117,7 +117,7 @@ func TestFromConfig_MapsAllFields(t *testing.T) {
 	}
 }
 
-func TestFromConfig_DefaultsEmptySystemPrompt(t *testing.T) {
+func TestFromConfig_PassesThroughEmptySystemPrompt(t *testing.T) {
 	cfg := &config.Config{
 		Provider: "opencode_go",
 		BaseURL:  "http://localhost",
@@ -127,8 +127,9 @@ func TestFromConfig_DefaultsEmptySystemPrompt(t *testing.T) {
 
 	rc := FromConfig(cfg, "/ws", 10*time.Second)
 
-	if rc.SystemPrompt == "" {
-		t.Fatal("SystemPrompt should not be empty when config has empty SystemPrompt")
+	// SystemPrompt is passed through as-is; persona resolution happens later.
+	if rc.SystemPrompt != "" {
+		t.Fatalf("SystemPrompt should be empty when config has empty SystemPrompt, got %q", rc.SystemPrompt)
 	}
 }
 

@@ -244,6 +244,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("PUT /api/personas/{name}", s.handleUpdatePersona)
 	s.mux.HandleFunc("DELETE /api/personas/{name}", s.handleDeletePersona)
 
+	// Persona selector fragment for header (issue #755)
+	s.mux.HandleFunc("GET /api/personas/selector", s.handlePersonaSelector)
+	s.mux.HandleFunc("POST /api/personas/activate", s.handleActivatePersona)
+
 	// Manual compaction trigger (issue #723)
 	s.mux.HandleFunc("POST /api/sessions/{id}/compact", s.handleCompact)
 

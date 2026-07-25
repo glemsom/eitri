@@ -445,14 +445,14 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use built-in default prompt.\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt (session override)</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use the active persona's prompt.\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.SystemPrompt)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 115, Col: 167}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 115, Col: 171}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -471,7 +471,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " / 4096 chars</small></div><small class=\"hint\">Applies to later runs only. Clear value to restore built-in default prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " / 4096 chars</small></div><small class=\"hint\">Overrides the active persona's system prompt for all sessions. Leave empty to use the persona's prompt.</small></div></details> <details class=\"settings-details\"><summary><span>Timeouts &amp; Limits</span></summary><div class=\"form-group\"><label for=\"session_timeout\">Session Timeout (seconds)</label> <input type=\"number\" id=\"session_timeout\" name=\"session_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

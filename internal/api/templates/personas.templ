@@ -113,6 +113,26 @@ templ PersonaEditForm(p *persona.PersonaDefinition) {
 	</form>
 }
 
+// PersonaSelector renders a compact dropdown for the header that lists all
+// personas and allows switching the active persona.
+templ PersonaSelector(personas []*persona.PersonaDefinition, activePersona string) {
+	<div id="persona-selector" class="persona-selector">
+		<select
+			name="active_persona"
+			hx-post="/api/personas/activate"
+			hx-trigger="change"
+			hx-target="#persona-selector"
+			hx-swap="outerHTML"
+		>
+			for _, p := range personas {
+				<option value={ p.Name } if p.Name == activePersona { selected }>
+					{ p.Name }
+				</option>
+			}
+		</select>
+	</div>
+}
+
 // previewPrompt returns the first 120 characters or the full prompt if shorter.
 func previewPrompt(prompt string) string {
 	if prompt == "" {
