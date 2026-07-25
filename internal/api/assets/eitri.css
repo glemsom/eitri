@@ -2780,3 +2780,88 @@ eitri-context {
   color: var(--accent);
 }
 
+/* — Personas section — */
+.persona-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.persona-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.persona-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.persona-active-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+.persona-builtin-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.persona-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.persona-prompt-preview {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.persona-form {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 8px 0;
+}
+
+.persona-form h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.disabled-input {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.htmx-indicator {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-left: 8px;
+}
+
