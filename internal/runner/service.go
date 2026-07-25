@@ -32,6 +32,10 @@ type RunState struct {
 	Done      chan struct{}
 	doneOnce  sync.Once
 
+	// RunCfg holds the configuration for this run, used by the TurnCompleter
+	// for auto-compaction and other post-turn tasks.
+	RunCfg runconfig.RunConfig
+
 	SSE   *runstate.State
 	Turns int // turns consumed so far, updated by agent loop
 }
