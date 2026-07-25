@@ -1,0 +1,389 @@
+package api_test
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/glemsom/eitri/internal/persona"
+)
+
+// ————— handleGetPersonas —————
+
+func TestHandleGetPersonas_ReturnsJSON(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/personas")
+	if err != nil {
+		t.Fatalf("GET /api/personas failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var personas []*persona.PersonaDefinition
+	if err := json.Unmarshal(body, &personas); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+
+	// Generic persona should exist after first call
+	foundGeneric := false
+	for _, p := range personas {
+		if p.Name == "generic" {
+			foundGeneric = true
+			if p.SystemPrompt == "" {
+				t.Error("generic persona has empty SystemPrompt")
+			}
+			break
+		}
+	}
+	if !foundGeneric {
+		t.Error("generic persona not found in list")
+	}
+}
+
+func TestHandleGetPersonas_HTMX(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	req, err := http.NewRequest("GET", server.URL+"/api/personas", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("HX-Request", "true")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/personas (HTMX) failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+}
+
+// ————— handleCreatePersona —————
+
+func TestHandleCreatePersona_JSON(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	body := `{"name":"test-agent","system_prompt":"You are a test agent.","injected_skills":["read","write"]}`
+	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/personas failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("expected status 201, got %d", resp.StatusCode)
+	}
+
+	// Verify persona was saved
+	def, err := persona.Load(workspace, "test-agent")
+	if err != nil {
+		t.Fatalf("failed to load created persona: %v", err)
+	}
+	if def.SystemPrompt != "You are a test agent." {
+		t.Errorf("SystemPrompt = %q, want %q", def.SystemPrompt, "You are a test agent.")
+	}
+}
+
+func TestHandleCreatePersona_EmptyName(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	body := `{"name":"","system_prompt":"test"}`
+	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/personas failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleCreatePersona_Duplicate(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Create first
+	body := `{"name":"dup-agent","system_prompt":"first"}`
+	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("first POST failed: %v", err)
+	}
+	resp.Body.Close()
+
+	// Create duplicate
+	resp, err = http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("second POST failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("expected status 409 for duplicate, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleCreatePersona_FormEncoded(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	formBody := "name=form-agent&system_prompt=Created+via+form"
+	resp, err := http.Post(server.URL+"/api/personas", "application/x-www-form-urlencoded", strings.NewReader(formBody))
+	if err != nil {
+		t.Fatalf("POST /api/personas (form) failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+		// Verify persona exists
+		def, err := persona.Load(workspace, "form-agent")
+		if err != nil {
+			t.Fatalf("failed to load form-created persona: %v", err)
+		}
+		if def.SystemPrompt != "Created via form" {
+			t.Errorf("SystemPrompt = %q, want %q", def.SystemPrompt, "Created via form")
+		}
+	} else {
+		t.Errorf("expected 201 or 200, got %d", resp.StatusCode)
+	}
+}
+
+// ————— handleGetPersona —————
+
+func TestHandleGetPersona_Single(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Create persona first
+	persona.Save(workspace, &persona.PersonaDefinition{
+		Name:         "single",
+		SystemPrompt: "Single persona test.",
+	})
+
+	resp, err := http.Get(server.URL + "/api/personas/single")
+	if err != nil {
+		t.Fatalf("GET /api/personas/single failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	var def persona.PersonaDefinition
+	if err := json.NewDecoder(resp.Body).Decode(&def); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if def.Name != "single" {
+		t.Errorf("Name = %q, want %q", def.Name, "single")
+	}
+}
+
+func TestHandleGetPersona_NotFound(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/personas/nonexistent")
+	if err != nil {
+		t.Fatalf("GET /api/personas/nonexistent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+// ————— handleUpdatePersona —————
+
+func TestHandleUpdatePersona(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Create
+	persona.Save(workspace, &persona.PersonaDefinition{
+		Name:         "updatable",
+		SystemPrompt: "Original prompt.",
+	})
+
+	// Update via PUT
+	body := `{"system_prompt":"Updated prompt.","injected_skills":["skill1"]}`
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/personas/updatable", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /api/personas/updatable failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify update
+	def, err := persona.Load(workspace, "updatable")
+	if err != nil {
+		t.Fatalf("load after update: %v", err)
+	}
+	if def.SystemPrompt != "Updated prompt." {
+		t.Errorf("SystemPrompt = %q, want %q", def.SystemPrompt, "Updated prompt.")
+	}
+}
+
+func TestHandleUpdatePersona_NotFound(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	body := `{"system_prompt":"test"}`
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/personas/nonexistent", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+// ————— handleDeletePersona —————
+
+func TestHandleDeletePersona(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Create
+	persona.Save(workspace, &persona.PersonaDefinition{
+		Name:         "delete-me",
+		SystemPrompt: "To be deleted.",
+	})
+
+	// Delete
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/delete-me", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/personas/delete-me failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d", resp.StatusCode)
+	}
+
+	// Verify deletion
+	_, err = persona.Load(workspace, "delete-me")
+	if err == nil {
+		t.Error("persona still exists after deletion")
+	}
+}
+
+func TestHandleDeletePersona_GenericFails(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Ensure generic exists
+	persona.EnsureGeneric(workspace)
+
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/generic", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/personas/generic failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422 for deleting generic, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleDeletePersona_NotFound(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/nonexistent", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+// ————— handleGetPersonaAddForm —————
+
+func TestHandleGetPersonaAddForm(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/personas/add-form")
+	if err != nil {
+		t.Fatalf("GET /api/personas/add-form failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+}

@@ -236,6 +236,14 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/directory-browser", s.handleSessionDirectoryBrowser)
 	s.mux.HandleFunc("POST /api/sessions/{id}/workspace", s.handleUpdateWorkspace)
 
+	// Persona CRUD (issue #754)
+	s.mux.HandleFunc("GET /api/personas", s.handleGetPersonas)
+	s.mux.HandleFunc("GET /api/personas/add-form", s.handleGetPersonaAddForm)
+	s.mux.HandleFunc("POST /api/personas", s.handleCreatePersona)
+	s.mux.HandleFunc("GET /api/personas/{name}", s.handleGetPersona)
+	s.mux.HandleFunc("PUT /api/personas/{name}", s.handleUpdatePersona)
+	s.mux.HandleFunc("DELETE /api/personas/{name}", s.handleDeletePersona)
+
 	// Manual compaction trigger (issue #723)
 	s.mux.HandleFunc("POST /api/sessions/{id}/compact", s.handleCompact)
 

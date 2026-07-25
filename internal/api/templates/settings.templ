@@ -197,8 +197,42 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 			</details>
 
-			<details class="settings-details">
-				<summary><span>Debug &amp; Diagnostics</span></summary>
+			<div class="form-actions form-actions-sticky">
+				<button type="submit">Save</button>
+				<div id="test-connection-wrapper" class="test-connection-wrapper">
+					<button type="button" id="test-connection-btn" hx-get="/api/models" hx-target="#test-connection-result" hx-swap="innerHTML">Test Connection</button>
+					<div id="test-connection-result" class="test-connection-result"></div>
+				</div>
+				<span class="save-hint">(Ctrl+Enter to save)</span>
+			</div>
+		</form>
+
+		<!-- Personas section — outside the config form to avoid nested forms -->
+		<details class="settings-details">
+			<summary><span>Personas</span></summary>
+			<div id="persona-section">
+				<p class="text-muted">Personas define the system prompt and skills for the agent.</p>
+				<div id="persona-list"
+					hx-get="/api/personas"
+					hx-trigger="load"
+					hx-swap="innerHTML">
+					<p class="text-muted">Loading personas…</p>
+				</div>
+				<div class="form-actions">
+					<button type="button" class="btn btn-primary"
+						hx-get="/api/personas/add-form"
+						hx-target="#persona-add-area"
+						hx-swap="innerHTML">
+						+ Add Persona
+					</button>
+				</div>
+				<div id="persona-add-area"></div>
+				<div id="persona-form-errors" class="form-error"></div>
+			</div>
+		</details>
+
+		<details class="settings-details">
+			<summary><span>Debug &amp; Diagnostics</span></summary>
 
 				<div class="form-group">
 					<label class="checkbox-label">
@@ -222,16 +256,6 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					<small class="hint">Directory to write debug logs on LLM errors (was <code>EITRI_DEBUG_LLM_DIR</code>).</small>
 				</div>
 			</details>
-
-			<div class="form-actions form-actions-sticky">
-				<button type="submit">Save</button>
-				<div id="test-connection-wrapper" class="test-connection-wrapper">
-					<button type="button" id="test-connection-btn" hx-get="/api/models" hx-target="#test-connection-result" hx-swap="innerHTML">Test Connection</button>
-					<div id="test-connection-result" class="test-connection-result"></div>
-				</div>
-				<span class="save-hint">(Ctrl+Enter to save)</span>
-			</div>
-		</form>
 	</div>
 }
 

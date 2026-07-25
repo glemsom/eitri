@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/sandbox"
 )
@@ -38,6 +39,8 @@ type Config struct {
 	CompactionLowWaterPercent   int             `json:"compaction_low_water_percent,omitempty"`
 	ContextWarningThresholdPercent int          `json:"context_warning_threshold_percent,omitempty"`
 	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
+	ActivePersona               string          `json:"active_persona,omitempty"`
+	PersonaCatalog              map[string]string `json:"persona_catalog,omitempty"`
 }
 
 // Defaults returns a Config with default values.
@@ -227,6 +230,18 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("context_warning_threshold_percent must be between 10 and 95, got %d", cfg.ContextWarningThresholdPercent)
 	}
 
+	// Validate persona catalog limit
+	customCount := 0
+	for name := range cfg.PersonaCatalog {
+		if name != persona.GenericName {
+			customCount++
+		}
+	}
+	if customCount > persona.MaxCustomPersonas {
+		return fmt.Errorf("persona catalog exceeds maximum of %d custom personas (not counting %q), got %d",
+			persona.MaxCustomPersonas, persona.GenericName, customCount)
+	}
+
 	return nil
 }
 
@@ -397,6 +412,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["context_warning_threshold_percent"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.ContextWarningThresholdPercent = int(f)
+		}
+	}
+	if v, ok := patch["active_persona"]; ok {
+		if s, ok := v.(string); ok {
+			result.ActivePersona = s
 		}
 	}
 
