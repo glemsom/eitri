@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -385,5 +386,46 @@ func TestHandleGetPersonaAddForm(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+}
+
+// ————— 10-persona limit —————
+
+func TestHandleCreatePersona_LimitEnforced(t *testing.T) {
+	workspace := t.TempDir()
+	server := newTestServerAtWorkspace(t, workspace)
+	defer server.Close()
+
+	// Create 10 custom personas (the max)
+	for i := 1; i <= 10; i++ {
+		name := fmt.Sprintf("persona-%d", i)
+		body := fmt.Sprintf(`{"name":"%s","system_prompt":"Persona %d"}`, name, i)
+		resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST /api/personas (iteration %d) failed: %v", i, err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			t.Errorf("expected status 201 for persona %d, got %d", i, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	// Attempt to create an 11th persona
+	body := `{"name":"persona-11","system_prompt":"Extra persona"}`
+	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/personas (11th) failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity && resp.StatusCode != http.StatusConflict {
+		t.Errorf("expected status 422 or 409 for exceeding limit, got %d", resp.StatusCode)
+	}
+
+	// Verify the response body mentions the limit
+	respBody, _ := io.ReadAll(resp.Body)
+	msg := strings.ToLower(string(respBody))
+	if !strings.Contains(msg, "limit") && !strings.Contains(msg, "maximum") && !strings.Contains(msg, "10") {
+		t.Errorf("response body should mention the limit: %s", string(respBody))
 	}
 }
