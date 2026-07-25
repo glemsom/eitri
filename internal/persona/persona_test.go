@@ -8,14 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TestMain overrides HOME to a temporary directory so that Load/List/Delete
+// (which call os.UserHomeDir()) never touch the real user home dir.
+// This must NOT use os.RemoveAll on the real home dir's personas — ever.
 func TestMain(m *testing.M) {
-	// Clean up any persona files left in real home dir from other tests
-	home, _ := os.UserHomeDir()
-	personaDir := filepath.Join(home, ".eitri", "personas")
-	os.RemoveAll(personaDir)
-	os.MkdirAll(personaDir, 0700)
+	tempHome, err := os.MkdirTemp("", "persona-test-home-*")
+	if err != nil {
+		panic("failed to create temp home dir: " + err.Error())
+	}
+	os.Setenv("HOME", tempHome)
 	os.Exit(m.Run())
 }
+
 
 func TestSaveAndLoad(t *testing.T) {
 	workspace := t.TempDir()

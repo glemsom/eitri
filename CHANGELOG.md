@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `make test` no longer deletes `~/.eitri/personas`. Persona test `TestMain` now overrides `HOME` to a temp dir instead of calling `os.RemoveAll` on the real user home directory.
+
+### Fixed
+
 - **`generic` persona location**: the built-in `generic` persona is now
   created in `~/.eitri/personas/` (user-level home) instead of
   `<workspace>/.eitri/personas/`, so it is shared across workspaces and
