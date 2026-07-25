@@ -81,7 +81,7 @@ EOF
 )
 
 	# Run eitri in batch mode
-	if ! eitri -b "$PROMPT"; then
+	if ! eitri --persona generic -b "$PROMPT"; then
 		echo "Error: batch run for issue #$NUMBER failed" >&2
 		exit 1
 	fi
