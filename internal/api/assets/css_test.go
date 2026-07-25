@@ -90,6 +90,13 @@ func TestEmbeddedCSSContainsCriticalSelectors(t *testing.T) {
 		".tool-entry",
 		".mermaid-diagram",
 		".compact-btn",
+		".report-view",
+		".report-header",
+		".report-timeline",
+		".turn-card",
+		".tool-call-card",
+		".termination-chip",
+		".session-report-btn",
 	}
 
 	for _, sel := range critical {
