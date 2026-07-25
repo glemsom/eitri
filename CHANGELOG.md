@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **TurnCompleter interface**: extracted the ~95-line `OnTurnComplete` closure
+  passed to `loop.RunAgent` into a proper `TurnCompleter` interface. `RunService`
+  implements the interface. Compaction logic shared between auto-compaction
+  (turn callback) and manual compaction (`CompactSession`) via the new
+  `compactSessionHistory` helper. (#781)
+
 ### Removed
 
 - **glob tool**: removed (covered by `bash` + `find`). (#733, #737)

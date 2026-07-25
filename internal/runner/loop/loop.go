@@ -43,6 +43,13 @@ type RunSpec struct {
 	Tools *tool.Registry
 }
 
+// TurnCompleter is the interface for post-turn completion callbacks.
+// Implementations can persist session state, trigger compaction,
+// broadcast SSE events, or perform other post-turn cleanup.
+type TurnCompleter interface {
+	OnTurnComplete(ctx context.Context, sessionID string)
+}
+
 // RunOpts bundles the runtime/UI options for RunAgent.
 // Using a single struct makes the function signature stable and self-documenting.
 // Use DefaultRunOpts() to obtain safe defaults.
@@ -78,12 +85,11 @@ type RunOpts struct {
 	// When empty, no debug files are written.
 	DebugLLMDir string
 
-	// OnTurnComplete, if non-nil, is called after each complete turn (assistant
-	// message appended + all tool results processed). The sessionID is passed
-	// so the caller can read the latest state from the UI session/history managers
-	// and persist a snapshot. The snapshot runs synchronously and blocks the next
-	// turn or the SSE "done" event.
-	OnTurnComplete func(sessionID string)
+	// TurnCompleter, if non-nil, is called after each complete turn (assistant
+	// message appended + all tool results processed). The sessionID is already
+	// set on the RunOpts struct. The snapshot runs synchronously and blocks
+	// the next turn or the SSE "done" event.
+	TurnCompleter TurnCompleter
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
@@ -241,8 +247,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			}
 
 			// Fire per-turn snapshot callback
-			if opts.OnTurnComplete != nil {
-				opts.OnTurnComplete(opts.SessionID)
+			if opts.TurnCompleter != nil {
+				opts.TurnCompleter.OnTurnComplete(ctx, opts.SessionID)
 			}
 			return nil
 		}
@@ -397,8 +403,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Fire per-turn snapshot callback
-		if opts.OnTurnComplete != nil {
-			opts.OnTurnComplete(opts.SessionID)
+		if opts.TurnCompleter != nil {
+			opts.TurnCompleter.OnTurnComplete(ctx, opts.SessionID)
 		}
 	}
 

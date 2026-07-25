@@ -12,6 +12,7 @@ import (
 	"github.com/glemsom/eitri/internal/persona"
 
 	"github.com/glemsom/eitri/internal/compactor"
+
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
@@ -118,6 +119,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		StartedAt: time.Now(),
 		Done:      make(chan struct{}),
 		SSE:       sseState,
+		RunCfg:    cfg,
 	}
 	s.store(sessionID, state)
 
@@ -161,90 +163,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			CrashDumpFunc: s.crashDumpFunc,
 			Turns:         &state.Turns,
 			DebugLLMDir:   cfg.DebugLLMDir,
-			OnTurnComplete: func(sid string) {
-				if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
-					return
-				}
-				sess := s.uiSessionMgr.Get(sid)
-				if sess == nil {
-					return
-				}
-				historyMsgs := s.historySessionMgr.History(sid)
-				if historyMsgs == nil {
-					return
-				}
-				if err := s.persister.SnapshotSession(sid, sess, historyMsgs); err != nil {
-					slog.Warn("failed to snapshot session",
-						slog.String("session_id", sid),
-						slog.Any("error", err),
-					)
-				}
-
-				// Auto-compaction: if enabled and token usage exceeds high-water mark,
-				// compact tool results to free up context window space.
-				if !cfg.CompactionEnabled || contextWindowTokens <= 0 {
-					return
-				}
-				highWater := contextWindowTokens * cfg.CompactionThresholdPercent / 100
-				lowWater := contextWindowTokens * cfg.CompactionLowWaterPercent / 100
-				totalEst := compactor.MessagesTokenEstimate(historyMsgs)
-				if totalEst <= highWater {
-					return
-				}
-
-				compactedMsgs, compactedCount, freedTokens, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
-					HighWater: highWater,
-					LowWater:  lowWater,
-				})
-				if compErr != nil {
-					slog.Warn("compaction failed, will retry on next turn",
-						slog.String("session_id", sid),
-						slog.Any("error", compErr),
-					)
-					// Broadcast warning toast
-					if runState := s.get(sid); runState != nil {
-						runState.SSE.Broadcast(runstate.SSEEvent{
-							Type: "toast",
-							Data: map[string]any{
-								"level":   "warning",
-								"message": "Compaction failed: " + compErr.Error(),
-							},
-						})
-					}
-					return
-				}
-				if compactedMsgs == nil || compactedCount == 0 {
-					return
-				}
-
-				// Replace in-memory history with compacted version
-				s.historySessionMgr.RestoreHistory(sid, compactedMsgs)
-
-				// Snapshot the compacted history
-				sessAfter := s.uiSessionMgr.Get(sid)
-				historyAfter := s.historySessionMgr.History(sid)
-				if sessAfter != nil && historyAfter != nil {
-					if err := s.persister.SnapshotSession(sid, sessAfter, historyAfter); err != nil {
-						slog.Warn("failed to snapshot compacted session",
-							slog.String("session_id", sid),
-							slog.Any("error", err),
-						)
-					}
-				}
-
-				// Broadcast compaction_complete event for UI toast
-				freedK := freedTokens / 1000
-				if runState := s.get(sid); runState != nil {
-					runState.SSE.Broadcast(runstate.SSEEvent{
-						Type: "compaction_complete",
-						Data: map[string]any{
-							"compacted_count": compactedCount,
-							"freed_tokens":    freedTokens,
-							"message":         fmt.Sprintf("Compacted %d tool results — freed ~%dk tokens", compactedCount, freedK),
-						},
-					})
-				}
-			},
+			TurnCompleter: s,
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -361,5 +280,119 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 			"session_id": sessionID,
 			"status":     string(sess.Status),
 		},
+	})
+}
+
+// ── TurnCompleter implementation ────────────────────────────────────────────
+
+// OnTurnComplete implements loop.TurnCompleter. It is called after each
+// complete agent turn to persist snapshots and trigger auto-compaction.
+func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
+	if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
+		return
+	}
+	sess := s.uiSessionMgr.Get(sessionID)
+	if sess == nil {
+		return
+	}
+	historyMsgs := s.historySessionMgr.History(sessionID)
+	if historyMsgs == nil {
+		return
+	}
+
+	// Always snapshot after each turn.
+	if err := s.persister.SnapshotSession(sessionID, sess, historyMsgs); err != nil {
+		slog.Warn("failed to snapshot session",
+			slog.String("session_id", sessionID),
+			slog.Any("error", err),
+		)
+	}
+
+	// Auto-compaction: retrieve the run config from the active RunState.
+	state := s.get(sessionID)
+	if state == nil {
+		return
+	}
+	cfg := state.RunCfg
+	if !cfg.CompactionEnabled || cfg.ContextWindowTokens <= 0 {
+		return
+	}
+
+	highWater := cfg.ContextWindowTokens * cfg.CompactionThresholdPercent / 100
+	lowWater := cfg.ContextWindowTokens * cfg.CompactionLowWaterPercent / 100
+
+	// Build a throwaway LLM service for summarization.
+	llmSvc, err := newCompactLLMService(ctx, cfg, s.persistAuth)
+	if err != nil {
+		slog.Warn("compaction skipped: failed to create LLM service",
+			slog.String("session_id", sessionID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	compactedMsgs, compactedCount, freedTokens, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater)
+	if compErr != nil {
+		slog.Warn("compaction failed, will retry on next turn",
+			slog.String("session_id", sessionID),
+			slog.Any("error", compErr),
+		)
+		// Broadcast warning toast
+		if runState := s.get(sessionID); runState != nil {
+			runState.SSE.Broadcast(runstate.SSEEvent{
+				Type: "toast",
+				Data: map[string]any{
+					"level":   "warning",
+					"message": "Compaction failed: " + compErr.Error(),
+				},
+			})
+		}
+		return
+	}
+	if compactedMsgs == nil || compactedCount == 0 {
+		return
+	}
+
+	// Replace in-memory history with compacted version.
+	s.historySessionMgr.RestoreHistory(sessionID, compactedMsgs)
+
+	// Snapshot the compacted history.
+	sessAfter := s.uiSessionMgr.Get(sessionID)
+	historyAfter := s.historySessionMgr.History(sessionID)
+	if sessAfter != nil && historyAfter != nil {
+		if err := s.persister.SnapshotSession(sessionID, sessAfter, historyAfter); err != nil {
+			slog.Warn("failed to snapshot compacted session",
+				slog.String("session_id", sessionID),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	// Broadcast compaction_complete event for UI toast.
+	freedK := freedTokens / 1000
+	if runState := s.get(sessionID); runState != nil {
+		runState.SSE.Broadcast(runstate.SSEEvent{
+			Type: "compaction_complete",
+			Data: map[string]any{
+				"compacted_count": compactedCount,
+				"freed_tokens":    freedTokens,
+				"message":         fmt.Sprintf("Compacted %d tool results — freed ~%dk tokens", compactedCount, freedK),
+			},
+		})
+	}
+}
+
+// compactSessionHistory runs the compactor on the given messages using the
+// provided LLM service, gated by high-water and low-water thresholds.
+// Returns the compacted messages, count, freed tokens, and any error.
+// Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
+func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater int) ([]llm.Message, int, int, error) {
+	totalEst := compactor.MessagesTokenEstimate(messages)
+	if totalEst <= highWater {
+		return nil, 0, 0, nil
+	}
+	return compactor.New().Compact(ctx, messages, llmSvc, compactor.Thresholds{
+		HighWater: highWater,
+		LowWater:  lowWater,
 	})
 }
