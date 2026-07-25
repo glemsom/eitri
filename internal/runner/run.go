@@ -29,11 +29,11 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 }
 
 func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg runconfig.RunConfig) ([]string, error) {
-	if s.tracker.exchangeIfDone(sessionID) {
+	if s.exchangeIfDone(sessionID) {
 		// Previous run was done; clean slate
 	}
 
-	if s.tracker.get(sessionID) != nil {
+	if s.get(sessionID) != nil {
 		return nil, fmt.Errorf("session %s already has an active run", sessionID)
 	}
 
@@ -119,13 +119,13 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Done:      make(chan struct{}),
 		SSE:       sseState,
 	}
-	s.tracker.store(sessionID, state)
+	s.store(sessionID, state)
 
 	go func() {
 		defer func() {
 			state.finish()
 			time.Sleep(completedRunRetention)
-			s.tracker.remove(sessionID, state)
+			s.remove(sessionID, state)
 
 			// Clean up parent config for sub-agent setup
 			s.subagents.DeleteParentCfg(sessionID)
@@ -202,7 +202,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 						slog.Any("error", compErr),
 					)
 					// Broadcast warning toast
-					if runState := s.tracker.get(sid); runState != nil {
+					if runState := s.get(sid); runState != nil {
 						runState.SSE.Broadcast(runstate.SSEEvent{
 							Type: "toast",
 							Data: map[string]any{
@@ -234,7 +234,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 				// Broadcast compaction_complete event for UI toast
 				freedK := freedTokens / 1000
-				if runState := s.tracker.get(sid); runState != nil {
+				if runState := s.get(sid); runState != nil {
 					runState.SSE.Broadcast(runstate.SSEEvent{
 						Type: "compaction_complete",
 						Data: map[string]any{
