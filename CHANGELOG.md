@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Persona CRUD**: users can now define named personas (system prompt +
+  optional injected skills) in Settings → Personas. Personas are stored
+  as YAML files under `.eitri/personas/<name>.yaml`. The `generic` persona
+  is auto-created on first run. Up to 10 custom personas enforced.
+  See ADR-0018. (#754)
+
 - **bwrap sandboxing for bash commands**: shell commands now run inside a
   bubblewrap sandbox by default (requires `bwrap` on PATH; falls back
   gracefully). Read-only root filesystem, writable workspace and `/tmp`,
