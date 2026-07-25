@@ -6,9 +6,12 @@ Eitri supports a headless batch mode via the `-b` flag. Instead of starting the 
 
 ```bash
 eitri -b "implement the feature in issue #42"
+eitri -b --persona reviewer "review the code in PR #123"
 ```
 
 The `-b` flag expects a prompt string (the remaining arguments after the flag). Output is streamed token-by-token to stdout as plain text (no SSE, no tool cards, no HTML).
+
+The optional `--persona` flag overrides the active persona for the batch run only — it does not change `config.json`. The persona is resolved from the workspace `.eitri/personas/` directory, falling back to `~/.eitri/personas/`. If the persona file does not exist, the run fails with a clear error.
 
 ## How it works
 
