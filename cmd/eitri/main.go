@@ -216,10 +216,8 @@ func main() {
 		if rErr != nil {
 			slog.Warn("failed to restore persisted data", slog.Any("error", rErr))
 		} else {
-			// Hydrate session manager
-			for _, s := range restored.Sessions {
-				sessionMgr.Add(s)
-			}
+			// Sessions are no longer restored into the session manager on startup.
+			// They are still written to disk every turn for troubleshooting/debugging.
 			slog.Info("restored sessions from disk", slog.Int("count", len(restored.Sessions)))
 
 			// Hydrate history manager
