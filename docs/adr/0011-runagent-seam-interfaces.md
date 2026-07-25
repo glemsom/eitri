@@ -26,9 +26,10 @@ Test volume reflects this friction: `loop_test.go` is 1949 lines (5.3× the 363-
 
 | Loop operation | Session path | Non-session path |
 |---|---|---|
-| Load history | `sessionMgr.History(sessionID)` | `req.Messages` (already populated) |
+| Load history | `sessionMgr.History()` | `req.Messages` (already populated) |
 | Append assistant | `sessionMgr.AppendAssistant(...)` | `req.Messages = append(...)` |
 | Append tool result | `sessionMgr.AppendTool(...)` | `req.Messages = append(...)` |
+| Request-based? | `RequestBased() → false` | `RequestBased() → true` |
 | UI component replay | `uisessionMgr.AppendComponent(...)` | Skipped (no UI) |
 | Quick replies | `uisessionMgr.SetQuickReplies(...)` | Skipped (no UI) |
 
@@ -40,9 +41,10 @@ Introduce two internal seam interfaces in the `runner` package, and refactor `Ru
 
 ```go
 type HistoryManager interface {
-    History(sessionID string) []litellm.Message
-    AppendAssistant(sessionID string, content string, toolCalls []litellm.ToolCall)
-    AppendTool(sessionID string, toolCallID string, content string, isError bool)
+    History() []litellm.Message
+    AppendAssistant(content string, toolCalls []litellm.ToolCall)
+    AppendTool(toolCallID string, content string, isError bool)
+    RequestBased() bool
 }
 ```
 

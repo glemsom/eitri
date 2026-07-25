@@ -20,7 +20,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "hello")
 
 	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
-	msgs := adapter.History(sessionID)
+	msgs := adapter.History()
 
 	if len(msgs) == 0 {
 		t.Fatal("History() returned empty slice")
@@ -39,7 +39,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 func TestSessionHistoryManager_History_NilSessionMgr(t *testing.T) {
 	t.Parallel()
 	adapter := NewSessionHistoryManager(nil, nil, "test-session")
-	msgs := adapter.History("test-session")
+	msgs := adapter.History()
 	if msgs != nil {
 		t.Errorf("History() = %v, want nil when sessionMgr is nil", msgs)
 	}
@@ -53,9 +53,9 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "hi")
 
 	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
-	adapter.AppendAssistant(sessionID, "Hello!", nil)
+	adapter.AppendAssistant("Hello!", nil)
 
-	msgs := adapter.History(sessionID)
+	msgs := adapter.History()
 	last := msgs[len(msgs)-1]
 	if last.Role != "assistant" {
 		t.Errorf("last message role = %q, want %q", last.Role, "assistant")
@@ -69,7 +69,7 @@ func TestSessionHistoryManager_AppendAssistant_NilSessionMgr(t *testing.T) {
 	t.Parallel()
 	adapter := NewSessionHistoryManager(nil, nil, "test-session")
 	// Should not panic
-	adapter.AppendAssistant("test-session", "Hello!", nil)
+	adapter.AppendAssistant("Hello!", nil)
 }
 
 func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
@@ -83,9 +83,9 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
-	adapter.AppendAssistant(sessionID, "", toolCalls)
+	adapter.AppendAssistant("", toolCalls)
 
-	msgs := adapter.History(sessionID)
+	msgs := adapter.History()
 	last := msgs[len(msgs)-1]
 	if last.Role != "assistant" {
 		t.Errorf("last message role = %q, want %q", last.Role, "assistant")
@@ -106,9 +106,9 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "run tool")
 
 	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
-	adapter.AppendTool(sessionID, "call_1", "result content", false)
+	adapter.AppendTool("call_1", "result content", false)
 
-	msgs := adapter.History(sessionID)
+	msgs := adapter.History()
 	last := msgs[len(msgs)-1]
 	if last.Role != "tool" {
 		t.Errorf("last message role = %q, want %q", last.Role, "tool")
@@ -125,7 +125,7 @@ func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 	t.Parallel()
 	adapter := NewSessionHistoryManager(nil, nil, "test-session")
 	// Should not panic
-	adapter.AppendTool("test-session", "call_1", "result", false)
+	adapter.AppendTool("call_1", "result", false)
 }
 
 func TestSessionHistoryManager_Interface(t *testing.T) {
@@ -145,7 +145,7 @@ func TestRequestHistoryManager_History(t *testing.T) {
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
-	msgs := adapter.History("")
+	msgs := adapter.History()
 
 	if len(msgs) != 2 {
 		t.Fatalf("History() returned %d messages, want 2", len(msgs))
@@ -166,7 +166,7 @@ func TestRequestHistoryManager_HistoryReturnsSameSlice(t *testing.T) {
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
-	msgs := adapter.History("")
+	msgs := adapter.History()
 	// Modify the returned slice — should affect req.Messages since no copy is made
 	if len(msgs) > 0 {
 		msgs[0].Content = "modified"
@@ -184,7 +184,7 @@ func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
-	adapter.AppendAssistant("", "world", nil)
+	adapter.AppendAssistant("world", nil)
 
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
@@ -204,7 +204,7 @@ func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
-	adapter.AppendAssistant("", "", toolCalls)
+	adapter.AppendAssistant("", toolCalls)
 
 	if len(req.Messages) != 1 {
 		t.Fatalf("req.Messages length = %d, want 1", len(req.Messages))
@@ -225,7 +225,7 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
-	adapter.AppendTool("", "call_1", "tool result", false)
+	adapter.AppendTool("call_1", "tool result", false)
 
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
@@ -246,7 +246,7 @@ func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	req := &llm.Request{}
 	adapter := NewRequestHistoryManager(req)
 	// isError is not stored in llm.Message, but the content carries the error info.
-	adapter.AppendTool("", "call_err", "error message", true)
+	adapter.AppendTool("call_err", "error message", true)
 
 	if len(req.Messages) != 1 {
 		t.Fatalf("req.Messages length = %d, want 1", len(req.Messages))

@@ -35,14 +35,19 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // path via *llm.Request).
 type HistoryManager interface {
 	// History returns the full conversation history with system prompt prepended.
-	History(sessionID string) []llm.Message
+	History() []llm.Message
 
 	// AppendAssistant appends an assistant message with text content and
 	// optional tool calls.
-	AppendAssistant(sessionID, content string, toolCalls []llm.ToolCall)
+	AppendAssistant(content string, toolCalls []llm.ToolCall)
 
 	// AppendTool appends a tool result message.
-	AppendTool(sessionID, toolCallID, content string, isError bool)
+	AppendTool(toolCallID, content string, isError bool)
+
+	// RequestBased returns true when history is stored directly on the
+	// *llm.Request (requestHistoryManager) rather than in a session manager.
+	// When true, the caller must trim req.Messages directly when caps are set.
+	RequestBased() bool
 }
 
 // ── Confirmer ───────────────────────────────────────────────────────────────
@@ -78,8 +83,7 @@ func NewSessionHistoryManager(sessionMgr *history.SessionManager, uisessionMgr *
 }
 
 // History returns the conversation history from the session manager.
-// The ignored parameter is only present to satisfy the interface signature.
-func (m *sessionHistoryManager) History(_ string) []llm.Message {
+func (m *sessionHistoryManager) History() []llm.Message {
 	if m.sessionMgr == nil {
 		return nil
 	}
@@ -87,7 +91,7 @@ func (m *sessionHistoryManager) History(_ string) []llm.Message {
 }
 
 // AppendAssistant appends an assistant message to the session manager.
-func (m *sessionHistoryManager) AppendAssistant(_ string, content string, toolCalls []llm.ToolCall) {
+func (m *sessionHistoryManager) AppendAssistant(content string, toolCalls []llm.ToolCall) {
 	if m.sessionMgr == nil {
 		return
 	}
@@ -95,11 +99,16 @@ func (m *sessionHistoryManager) AppendAssistant(_ string, content string, toolCa
 }
 
 // AppendTool appends a tool result message to the session manager.
-func (m *sessionHistoryManager) AppendTool(_ string, toolCallID, content string, isError bool) {
+func (m *sessionHistoryManager) AppendTool(toolCallID, content string, isError bool) {
 	if m.sessionMgr == nil {
 		return
 	}
 	m.sessionMgr.AppendTool(m.sessionID, toolCallID, content, isError)
+}
+
+// RequestBased returns false since this implementation uses a session manager.
+func (m *sessionHistoryManager) RequestBased() bool {
+	return false
 }
 
 // ── requestHistoryManager ──────────────────────────────────────────────────
@@ -118,22 +127,13 @@ func NewRequestHistoryManager(req *llm.Request) *requestHistoryManager {
 	return &requestHistoryManager{req: req}
 }
 
-// IsRequestBasedHistory returns true when the HistoryManager is the
-// request-based variant (wrapping *llm.Request), meaning history is
-// stored directly on the request and must be trimmed by the caller
-// when caps are set.
-func IsRequestBasedHistory(mgr HistoryManager) bool {
-	_, ok := mgr.(*requestHistoryManager)
-	return ok
-}
-
 // History returns req.Messages as-is.
-func (m *requestHistoryManager) History(_ string) []llm.Message {
+func (m *requestHistoryManager) History() []llm.Message {
 	return m.req.Messages
 }
 
 // AppendAssistant appends an assistant message to req.Messages.
-func (m *requestHistoryManager) AppendAssistant(_ string, content string, toolCalls []llm.ToolCall) {
+func (m *requestHistoryManager) AppendAssistant(content string, toolCalls []llm.ToolCall) {
 	m.req.Messages = append(m.req.Messages, llm.Message{
 		Role:      "assistant",
 		Content:   content,
@@ -142,13 +142,18 @@ func (m *requestHistoryManager) AppendAssistant(_ string, content string, toolCa
 }
 
 // AppendTool appends a tool result message to req.Messages.
-func (m *requestHistoryManager) AppendTool(_ string, toolCallID, content string, isError bool) {
+func (m *requestHistoryManager) AppendTool(toolCallID, content string, isError bool) {
 	_ = isError // The error flag is not stored in llm.Message; content conveys it.
 	m.req.Messages = append(m.req.Messages, llm.Message{
 		Role:       "tool",
 		ToolCallID: toolCallID,
 		Content:    content,
 	})
+}
+
+// RequestBased returns true since this implementation wraps *llm.Request.
+func (m *requestHistoryManager) RequestBased() bool {
+	return true
 }
 
 // ── testConfirmerStub ─────────────────────────────────────────────────────
