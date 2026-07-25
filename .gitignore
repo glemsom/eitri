@@ -5,3 +5,4 @@ dist/
 architecture-review.html
 .gocache/
 .gomodcache/
+.eitri/
