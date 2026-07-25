@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -157,7 +158,8 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 		InjectedSkills: injectedSkills,
 	}
 
-	if err := persona.Save(workspace, def); err != nil {
+	homeDir, _ := os.UserHomeDir()
+	if err := persona.SaveToHome(homeDir, def); err != nil {
 		writeConfigError(w, r, http.StatusInternalServerError, "Failed to save persona: "+err.Error())
 		return
 	}

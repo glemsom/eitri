@@ -9,7 +9,16 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/persona"
+	"os"
+	"path/filepath"
 )
+
+func cleanPersonaHomeDir() {
+	home, _ := os.UserHomeDir()
+	personaDir := filepath.Join(home, ".eitri", "personas")
+	os.RemoveAll(personaDir)
+	os.MkdirAll(personaDir, 0700)
+}
 
 // ————— handleGetPersonas —————
 
@@ -85,6 +94,7 @@ func TestHandleGetPersonas_HTMX(t *testing.T) {
 // ————— handleCreatePersona —————
 
 func TestHandleCreatePersona_JSON(t *testing.T) {
+	cleanPersonaHomeDir()
 	workspace := t.TempDir()
 	server := newTestServerAtWorkspace(t, workspace)
 	defer server.Close()
@@ -392,6 +402,7 @@ func TestHandleGetPersonaAddForm(t *testing.T) {
 // ————— 10-persona limit —————
 
 func TestHandleCreatePersona_LimitEnforced(t *testing.T) {
+	cleanPersonaHomeDir()
 	workspace := t.TempDir()
 	server := newTestServerAtWorkspace(t, workspace)
 	defer server.Close()

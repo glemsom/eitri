@@ -8,6 +8,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestMain(m *testing.M) {
+	// Clean up any persona files left in real home dir from other tests
+	home, _ := os.UserHomeDir()
+	personaDir := filepath.Join(home, ".eitri", "personas")
+	os.RemoveAll(personaDir)
+	os.MkdirAll(personaDir, 0700)
+	os.Exit(m.Run())
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	workspace := t.TempDir()
 	def := &PersonaDefinition{

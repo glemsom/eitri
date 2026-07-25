@@ -44,6 +44,34 @@ const (
 	personasDirName = "personas"
 )
 
+// SaveToHome saves a persona definition to the user-level home directory (~/.eitri/personas/).
+// Unlike Save (which writes to workspace-scoped .eitri/personas/), this always writes to
+// the user's home configuration directory regardless of the current workspace.
+func SaveToHome(homeDir string, def *PersonaDefinition) error {
+	if def == nil {
+		return fmt.Errorf("persona definition is nil")
+	}
+	if strings.TrimSpace(def.Name) == "" {
+		return fmt.Errorf("persona name must not be empty")
+	}
+
+	personaDir := UserDir(homeDir)
+	if err := os.MkdirAll(personaDir, 0700); err != nil {
+		return fmt.Errorf("create home personas dir: %w", err)
+	}
+
+	data, err := yaml.Marshal(def)
+	if err != nil {
+		return fmt.Errorf("marshal persona: %w", err)
+	}
+
+	path := filepath.Join(personaDir, sanitizeName(def.Name)+".yaml")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write home persona file: %w", err)
+	}
+	return nil
+}
+
 // PersonaDefinition represents a single persona.
 type PersonaDefinition struct {
 	Name           string   `yaml:"name" json:"name"`
