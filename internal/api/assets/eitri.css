@@ -1048,6 +1048,37 @@ details[open] .tool-chevron {
   white-space: nowrap;
 }
 
+.active-skills-label.context-files-label {
+  margin-left: 0.3rem;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border, #30363d);
+}
+
+.context-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--surface, #0d1117);
+  border: 1px solid var(--border-muted, #21262d);
+  border-radius: 12px;
+  padding: 0.2rem 0.65rem 0.2rem 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted, #8b949e);
+  line-height: 1.4;
+  cursor: default;
+}
+
+.context-file-chip[data-depth="1"] {
+  border-style: dashed;
+  font-size: 0.75rem;
+}
+
+.context-file-chip-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
 /* Skills checkbox group for persona forms */
 .skills-checkbox-group {
   display: flex;

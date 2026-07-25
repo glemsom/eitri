@@ -39,6 +39,13 @@ type Message struct {
 	QuickReplies     []string        `json:"quick_replies,omitempty"`
 }
 
+// ContextFile represents a file loaded as additional agent context
+// (e.g., AGENTS.md or a file referenced by AGENTS.md).
+type ContextFile struct {
+	Path  string `json:"path"`  // relative path from workspace root (e.g. "AGENTS.md")
+	Depth int    `json:"depth"` // nesting depth: 0 = root (AGENTS.md), 1 = referenced by root, etc.
+}
+
 // UISession represents a browser-facing chat session.
 // UISession represents a browser-facing chat session with id, browser_id, title, status, messages.
 // ParentID is empty for root sessions and non-empty for child sessions (sub-agents).

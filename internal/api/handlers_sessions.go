@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
+	"github.com/glemsom/eitri/internal/runner"
 )
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +161,9 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	component := templates.ChatPage(sessions, id, renderedSession, sess.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail, state.cfg.CompactionEnabled, state.cfg.ContextWarningThresholdPercent)
+	contextFiles := runner.ScanContextFiles(sess.Workspace)
+
+	component := templates.ChatPage(sessions, id, renderedSession, sess.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail, state.cfg.CompactionEnabled, state.cfg.ContextWarningThresholdPercent, contextFiles)
 	component.Render(r.Context(), w)
 }
 

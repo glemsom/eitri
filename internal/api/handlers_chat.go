@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 
@@ -158,7 +159,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Render OOB-active-skill-chips swap for newly activated skills
 	if len(justActivatedSkills) > 0 {
-		_ = templates.ActiveSkillChips(sess.ActiveSkills, true).Render(r.Context(), w)
+		contextFiles := runner.ScanContextFiles(sess.Workspace)
+		_ = templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, true).Render(r.Context(), w)
 	}
 }
 

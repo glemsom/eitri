@@ -11,6 +11,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -263,18 +264,12 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Activate in session
-	activated := s.config.SessionManager.ActivateSkill(id, name)
+	s.config.SessionManager.ActivateSkill(id, name)
 
 	// Return HTMX fragment with updated chips
 	if r.Header.Get("HX-Request") == "true" {
-		if activated {
-			// Swap the active skills section
-			chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
-			chips.Render(r.Context(), w)
-			return
-		}
-		// Already active - return current state
-		chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
+		contextFiles := runner.ScanContextFiles(sess.Workspace)
+		chips := templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, false)
 		chips.Render(r.Context(), w)
 		return
 	}
@@ -296,7 +291,8 @@ func (s *Server) handleSessionSkillChips(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	chips := templates.ActiveSkillChips(sess.ActiveSkills, false)
+	contextFiles := runner.ScanContextFiles(sess.Workspace)
+	chips := templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, false)
 	chips.Render(r.Context(), w)
 }
 

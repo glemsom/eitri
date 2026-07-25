@@ -2,7 +2,9 @@ package templates
 
 import (
 	"fmt"
+	"path/filepath"
 
+	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -161,16 +163,34 @@ templ SkillDiagnostics(registry *skills.Registry) {
 	}
 }
 
-templ ActiveSkillChips(skillsList []string, swapOOB bool) {
+templ ActiveSkillChips(skillsList []string, contextFiles []session.ContextFile, swapOOB bool) {
 	<div id="active-skills" class="active-skills" if swapOOB { hx-swap-oob="outerHTML" }>
-		if len(skillsList) > 0 {
-			<span class="active-skills-label">Active skills:</span>
-			for _, name := range skillsList {
-				<span class="skill-chip" data-skill={ name }>
-					<span class="skill-chip-icon">&#x1F9E0;</span>
-					{ name }
-				</span>
+		if len(skillsList) > 0 || len(contextFiles) > 0 {
+			if len(skillsList) > 0 {
+				<span class="active-skills-label">Active skills:</span>
+				for _, name := range skillsList {
+					<span class="skill-chip" data-skill={ name }>
+						<span class="skill-chip-icon">&#x1F9E0;</span>
+						{ name }
+					</span>
+				}
+			}
+			if len(contextFiles) > 0 {
+				<span class="active-skills-label context-files-label">Context files:</span>
+				for _, cf := range contextFiles {
+					<span class="context-file-chip" data-depth={ cf.Depth } title={ cf.Path }>
+						<span class="context-file-chip-icon">@templ.Raw(contextFileIcon(cf.Depth))</span>
+						{ filepath.Base(cf.Path) }
+					</span>
+				}
 			}
 		}
 	</div>
+}
+
+func contextFileIcon(depth int) string {
+	if depth == 0 {
+		return "&#x1F4C4;" // document
+	}
+	return "&#x1F517;" // link
 }

@@ -12,7 +12,7 @@ import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
 // Workspace and stream indicators are in header (see Base template).
-func ChatView(sess *session.UISession, configValid bool, userEmail string) templ.Component {
+func ChatView(sess *session.UISession, configValid bool, userEmail string, contextFiles []session.ContextFile) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -37,7 +37,7 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = ActiveSkillChips(sess.ActiveSkills, false).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = ActiveSkillChips(sess.ActiveSkills, contextFiles, false).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

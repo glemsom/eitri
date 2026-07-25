@@ -4,10 +4,10 @@ import "github.com/glemsom/eitri/internal/session"
 
 // ChatView is the main chat page for a single session.
 // Workspace and stream indicators are in header (see Base template).
-templ ChatView(sess *session.UISession, configValid bool, userEmail string) {
+templ ChatView(sess *session.UISession, configValid bool, userEmail string, contextFiles []session.ContextFile) {
 	<div id="chat-view">
 		<div id="error-toasts"></div>
-		@ActiveSkillChips(sess.ActiveSkills, false)
+		@ActiveSkillChips(sess.ActiveSkills, contextFiles, false)
 		<div id="messages" class="messages">
 			if !configValid {
 				<div id="setup-banner" class="message message-system">
