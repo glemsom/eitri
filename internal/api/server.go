@@ -255,6 +255,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/sessions/{id}/reports", s.handleListReports)
 	s.mux.HandleFunc("GET /api/sessions/{id}/report", s.handleGetReport)
 
+	// Session Report UI page (issue #792)
+	s.mux.HandleFunc("GET /report/{id}", s.handleReportPage)
+	s.mux.HandleFunc("GET /api/report/{id}/fragment", s.handleReportFragment)
+
 	// Browser-level event stream for real-time UI updates (issue #514)
 	s.mux.HandleFunc("GET /api/events", s.handleBrowserEvents)
 

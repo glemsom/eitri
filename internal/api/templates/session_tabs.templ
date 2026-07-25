@@ -50,6 +50,7 @@ templ renderSessionTree(sessions []*session.UISession, children map[string][]*se
 						<span class="session-title">{ s.Title }</span>
 						<span class={ "status-dot", templ.KV("status-idle", s.Status == session.StatusIdle), templ.KV("status-running", s.Status == session.StatusRunning), templ.KV("status-error", s.Status == session.StatusError) }></span>
 					</a>
+					<a href={ templ.URL("/report/" + s.ID) } class="session-report-btn" title="Session Report">📊</a>
 					<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
 				</div>
 				if s.Workspace != "" {
@@ -74,6 +75,7 @@ templ renderSessionTree(sessions []*session.UISession, children map[string][]*se
 								<span class="session-title child-session-title">{ child.Title }</span>
 								<span class={ "status-dot", templ.KV("status-idle", child.Status == session.StatusIdle), templ.KV("status-running", child.Status == session.StatusRunning), templ.KV("status-error", child.Status == session.StatusError) }></span>
 							</a>
+							<a href={ templ.URL("/report/" + child.ID) } class="session-report-btn" title="Session Report">📊</a>
 						</div>
 					</div>
 				}
