@@ -191,13 +191,13 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			SSE:       sseState,
 		}
 
-		s.tracker.exchangeIfDone(record.ChildSessionID)
-		if s.tracker.get(record.ChildSessionID) != nil {
+		s.exchangeIfDone(record.ChildSessionID)
+		if s.get(record.ChildSessionID) != nil {
 			slog.Warn("child session already has active run", slog.String("child_session_id", record.ChildSessionID))
 			cancel()
 			return "", fmt.Errorf("child session %s already has an active run", record.ChildSessionID)
 		}
-		s.tracker.store(record.ChildSessionID, childRunState)
+		s.store(record.ChildSessionID, childRunState)
 	}
 
 	go func() {
@@ -205,7 +205,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			record.finish()
 			// Clean up child session's RunState from active runs
 			if record.ChildSessionID != "" {
-				s.tracker.remove(record.ChildSessionID, childRunState)
+				s.remove(record.ChildSessionID, childRunState)
 				// Update child session status to idle
 				s.broadcastSessionStatusUpdate(record.ChildSessionID, uisession.StatusIdle)
 			}

@@ -57,7 +57,14 @@ type RunServiceDeps struct {
 // RunService owns the run lifecycle: agent loop execution,
 // SSE broadcast, session persistence, and auth refresh callbacks.
 type RunService struct {
-	tracker   *runTracker
+	// Active runs map with concurrency-safe access (formerly runTracker).
+	mu     sync.Mutex
+	active map[string]*RunState
+
+	// Batch conversation context tracking (set by BatchRun, consumed by crash dump).
+	batchCtxMu   sync.Mutex
+	batchLastCtx *debug.ConversationContext
+
 	broadcast *broadcast.BrowserBroadcaster
 	subagents *subagentStore
 
@@ -78,7 +85,7 @@ const completedRunRetention = 5 * time.Second
 // NewRunService creates a RunService with the given dependencies.
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
-		tracker:           newRunTracker(),
+		active:            make(map[string]*RunState),
 		broadcast:         broadcast.New(),
 		subagents:         newSubagentStore(),
 		confirmations:     make(map[string]chan adapters.ConfirmationResult),
@@ -139,12 +146,12 @@ func (s *RunService) BrowserSubscribersCount(browserID string) int {
 
 // ActiveRun returns the active RunState for a session, or nil if none.
 func (s *RunService) ActiveRun(sessionID string) *RunState {
-	return s.tracker.getActive(sessionID)
+	return s.getActive(sessionID)
 }
 
 // lookupRun returns the run state without checking if done.
 func (s *RunService) lookupRun(sessionID string) *RunState {
-	return s.tracker.get(sessionID)
+	return s.get(sessionID)
 }
 
 // Subscribe attaches an SSE subscriber for an active run.
@@ -173,7 +180,7 @@ func (s *RunService) AppendEvent(state *RunState) string {
 }
 
 func (s *RunService) Cancel(sessionID string) bool {
-	state := s.tracker.removeRun(sessionID)
+	state := s.removeRun(sessionID)
 	if state == nil {
 		return false
 	}
@@ -197,7 +204,7 @@ func (s *RunService) Cancel(sessionID string) bool {
 }
 
 func (s *RunService) CancelAll() {
-	states := s.tracker.removeAll()
+	states := s.removeAll()
 	for _, state := range states {
 		slog.Info("run canceled", slog.String("session_id", state.SessionID))
 		state.Cancel()
@@ -206,11 +213,11 @@ func (s *RunService) CancelAll() {
 }
 
 func (s *RunService) ActiveRunCount() int {
-	return s.tracker.count()
+	return s.count()
 }
 
 func (s *RunService) LastBatchConversationContext() *debug.ConversationContext {
-	ctx := s.tracker.getBatchCtx()
+	ctx := s.getBatchCtx()
 	if ctx == nil {
 		return nil
 	}
@@ -222,15 +229,11 @@ func (s *RunService) LastBatchConversationContext() *debug.ConversationContext {
 }
 
 func (s *RunService) setBatchConversationContext(ctx *debug.ConversationContext) {
-	s.tracker.setBatchCtx(&debugConversationContext{
-		LastUserMessage:      ctx.LastUserMessage,
-		LastAssistantMessage: ctx.LastAssistantMessage,
-		TurnNumber:           ctx.TurnNumber,
-	})
+	s.setBatchCtx(ctx)
 }
 
 func (s *RunService) ActiveRunSSECounters() map[string]struct{ SubscriberCount, ReplayCount uint64 } {
-	return s.tracker.sseCounters()
+	return s.sseCounters()
 }
 
 // CompletedRunRetentionMs returns the completed run retention duration in milliseconds.
@@ -250,7 +253,7 @@ type RunSSESnapshot struct {
 }
 
 func (s *RunService) ActiveRunSSESnapshot(sessionID string) *RunSSESnapshot {
-	snap := s.tracker.sseSnapshot(sessionID)
+	snap := s.sseSnapshot(sessionID)
 	if snap == nil {
 		return nil
 	}
@@ -286,7 +289,204 @@ func (s *RunService) NotifySessionClosed(sessionID, message string) {
 }
 
 func (s *RunService) NotifyAllStreamsClosed(message string) {
-	s.tracker.notifyAllClosed(message)
+	s.notifyAllClosed(message)
+}
+
+// ── Inline run-tracker methods ──────────────────────────────────────────────
+// These were previously on a separate runTracker type. They now live directly
+// on RunService for simplicity. No behavior change.
+
+// get returns the RunState for a session without checking if done.
+func (s *RunService) get(sessionID string) *RunState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.active[sessionID]
+}
+
+// getActive returns the RunState for a session if it exists and is not done.
+func (s *RunService) getActive(sessionID string) *RunState {
+	s.mu.Lock()
+	state, exists := s.active[sessionID]
+	s.mu.Unlock()
+	if !exists {
+		return nil
+	}
+	select {
+	case <-state.Done:
+		return nil
+	default:
+		return state
+	}
+}
+
+// store inserts a RunState for a session.
+func (s *RunService) store(sessionID string, state *RunState) {
+	s.mu.Lock()
+	s.active[sessionID] = state
+	s.mu.Unlock()
+}
+
+// remove deletes the RunState for a session if it matches the given pointer.
+func (s *RunService) remove(sessionID string, state *RunState) {
+	s.mu.Lock()
+	if s.active[sessionID] == state {
+		delete(s.active, sessionID)
+	}
+	s.mu.Unlock()
+}
+
+// exchangeIfDone deletes the run state if it's done, returning true if removed.
+func (s *RunService) exchangeIfDone(sessionID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, exists := s.active[sessionID]; exists {
+		select {
+		case <-existing.Done:
+			delete(s.active, sessionID)
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// removeRun removes and returns the RunState for a session.
+func (s *RunService) removeRun(sessionID string) *RunState {
+	s.mu.Lock()
+	state, exists := s.active[sessionID]
+	if exists {
+		delete(s.active, sessionID)
+	}
+	s.mu.Unlock()
+	if !exists {
+		return nil
+	}
+	return state
+}
+
+// removeAll returns all RunStates and clears the map.
+func (s *RunService) removeAll() []*RunState {
+	s.mu.Lock()
+	states := make([]*RunState, 0, len(s.active))
+	for sessionID, state := range s.active {
+		delete(s.active, sessionID)
+		states = append(states, state)
+	}
+	s.mu.Unlock()
+	return states
+}
+
+// count returns the number of active runs.
+func (s *RunService) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.active)
+}
+
+// allActiveStates returns all non-done RunStates.
+func (s *RunService) allActiveStates() []*RunState {
+	s.mu.Lock()
+	states := make([]*RunState, 0, len(s.active))
+	for _, state := range s.active {
+		select {
+		case <-state.Done:
+		default:
+			states = append(states, state)
+		}
+	}
+	s.mu.Unlock()
+	return states
+}
+
+// sseCounters returns subscriber and replay counts for all active runs.
+func (s *RunService) sseCounters() map[string]struct{ SubscriberCount, ReplayCount uint64 } {
+	s.mu.Lock()
+	result := make(map[string]struct{ SubscriberCount, ReplayCount uint64 }, len(s.active))
+	for sessionID, state := range s.active {
+		select {
+		case <-state.Done:
+		default:
+			result[sessionID] = struct{ SubscriberCount, ReplayCount uint64 }{
+				SubscriberCount: state.SSE.SubscriberCount(),
+				ReplayCount:     state.SSE.ReplayCount(),
+			}
+		}
+	}
+	s.mu.Unlock()
+	return result
+}
+
+// sseSnapshot returns a snapshot of SSE counters, history, and run state for a session.
+func (s *RunService) sseSnapshot(sessionID string) *RunSSESnapshot {
+	s.mu.Lock()
+	state, exists := s.active[sessionID]
+	if !exists {
+		s.mu.Unlock()
+		return nil
+	}
+	select {
+	case <-state.Done:
+		s.mu.Unlock()
+		return nil
+	default:
+	}
+
+	history := state.SSE.History()
+	if len(history) > 50 {
+		history = history[len(history)-50:]
+	}
+
+	turns := state.Turns
+	s.mu.Unlock()
+
+	return &RunSSESnapshot{
+		SubscriberCount: state.SSE.SubscriberCount(),
+		ReplayCount:     state.SSE.ReplayCount(),
+		History:         history,
+		Busy:            true,
+		Turns:           turns,
+	}
+}
+
+// setBatchCtx stores the conversation context for the last batch run.
+func (s *RunService) setBatchCtx(ctx *debug.ConversationContext) {
+	s.batchCtxMu.Lock()
+	defer s.batchCtxMu.Unlock()
+	s.batchLastCtx = ctx
+}
+
+// getBatchCtx returns the conversation context from the last batch run.
+func (s *RunService) getBatchCtx() *debug.ConversationContext {
+	s.batchCtxMu.Lock()
+	defer s.batchCtxMu.Unlock()
+	return s.batchLastCtx
+}
+
+// notifyAllClosed broadcasts a closed event to all active sessions.
+func (s *RunService) notifyAllClosed(message string) {
+	for _, state := range s.allActiveStates() {
+		state.SSE.BroadcastClosed(message)
+	}
+}
+
+// broadcastStatusUpdate broadcasts a session status change to browser-level subscribers.
+func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *broadcast.BrowserBroadcaster) {
+	if uiSessionMgr == nil {
+		return
+	}
+	uiSessionMgr.UpdateStatus(sessionID, status)
+	sess := uiSessionMgr.Get(sessionID)
+	if sess == nil || sess.BrowserID == "" {
+		return
+	}
+	bb.Broadcast(sess.BrowserID, broadcast.BrowserEvent{
+		Type: "session_status",
+		Data: map[string]any{
+			"session_id": sessionID,
+			"status":     string(sess.Status),
+		},
+	})
 }
 
 // confirmPath implements ConfirmationFunc for RunAgent.
