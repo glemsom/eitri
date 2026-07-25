@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -466,6 +467,239 @@ func TestChatRun_SystemPromptFollowsConfigAcrossRuns(t *testing.T) {
 	if !strings.Contains(thirdPrompt, "You are Eitri, an expert AI coding agent") {
 		t.Fatalf("third run system prompt = %q, want built-in default prompt", thirdPrompt)
 	}
+}
+
+// TestChatRun_PersonaSystemPrompt verifies that setting active_persona to a
+// custom persona results in that persona's system prompt being sent to the LLM.
+func TestChatRun_PersonaSystemPrompt(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	promptCh := make(chan string, 1)
+	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
+	defer llmSrv.Close()
+
+	// Create a custom persona on disk.
+	customPrompt := "You are a custom test agent for persona testing."
+	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+		Name:         "test-agent",
+		SystemPrompt: customPrompt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set active_persona to the custom persona (no system_prompt override).
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"test-agent"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	prompt := <-promptCh
+	if !strings.Contains(prompt, customPrompt) {
+		t.Fatalf("system prompt = %q, want it to contain %q", prompt, customPrompt)
+	}
+}
+
+// TestChatRun_PersonaInjectedSkills verifies that a persona with injected_skills
+// produces a system prompt containing those skill instructions.
+func TestChatRun_PersonaInjectedSkills(t *testing.T) {
+	// Create a temporary directory for a test skill.
+	skillRoot := t.TempDir()
+	skillDir := filepath.Join(skillRoot, "test-injected-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: test-injected-skill
+description: A skill for testing persona injection
+---
+# Test Injected Skill
+This skill tests persona-based skill injection.
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: skillRoot, Scope: skills.ScopeProjectEitri}})
+
+	workspace := t.TempDir()
+	h := newManagedTestServerWithRunsAndSkillsService(t, workspace, skillsSvc)
+
+	promptCh := make(chan string, 1)
+	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
+	defer llmSrv.Close()
+
+	// Create a persona with injected_skills referencing our test skill.
+	if err := persona.Save(workspace, &persona.PersonaDefinition{
+		Name:           "injector-agent",
+		SystemPrompt:   "You are an agent that uses injected skills.",
+		InjectedSkills: []string{"test-injected-skill"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"injector-agent"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	prompt := <-promptCh
+	if !strings.Contains(prompt, `Activated skill "test-injected-skill":`) {
+		t.Fatalf("system prompt = %q, want it to contain Activated skill \"test-injected-skill\":", prompt)
+	}
+}
+
+// TestChatRun_PersonaFallbackOnMissing verifies that deleting the active persona's
+// file causes the run to fall back to the built-in default prompt.
+func TestChatRun_PersonaFallbackOnMissing(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	promptCh := make(chan string, 1)
+	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
+	defer llmSrv.Close()
+
+	// Create a custom persona and set it as active.
+	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+		Name:         "vanishing-agent",
+		SystemPrompt: "You will never see this prompt.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"vanishing-agent"}`, llmSrv.URL))
+
+	// Delete the persona file from disk to simulate corruption/removal.
+	if err := persona.Delete(h.workspace, "vanishing-agent"); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	prompt := <-promptCh
+	if strings.Contains(prompt, "You will never see this prompt") {
+		t.Fatalf("system prompt = %q, should NOT contain the deleted persona's prompt", prompt)
+	}
+	if !strings.Contains(prompt, "You are Eitri, an expert AI coding agent") {
+		t.Fatalf("system prompt = %q, want built-in default prompt as fallback", prompt)
+	}
+}
+
+// TestChatRun_MidSessionPersonaSwitch verifies that changing active_persona
+// between consecutive runs changes the system prompt for the new run.
+func TestChatRun_MidSessionPersonaSwitch(t *testing.T) {
+	h := newManagedTestServerWithRuns(t)
+
+	promptCh := make(chan string, 2)
+	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
+	defer llmSrv.Close()
+
+	// Create two personas.
+	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+		Name:         "persona-a",
+		SystemPrompt: "You are Persona A.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+		Name:         "persona-b",
+		SystemPrompt: "You are Persona B.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Start with persona A.
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"persona-a"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	firstPrompt := <-promptCh
+	if !strings.Contains(firstPrompt, "You are Persona A.") {
+		t.Fatalf("first run system prompt = %q, want Persona A content", firstPrompt)
+	}
+
+	// Wait for first run to finish.
+	waitForNoActiveRun(t, h.runSvc, sessionID, 2*time.Second)
+
+	// Switch to persona B.
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"persona-b"}`, llmSrv.URL))
+
+	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	secondPrompt := <-promptCh
+	if !strings.Contains(secondPrompt, "You are Persona B.") {
+		t.Fatalf("second run system prompt = %q, want Persona B content", secondPrompt)
+	}
+	if strings.Contains(secondPrompt, "You are Persona A.") {
+		t.Fatalf("second run system prompt = %q, should NOT contain Persona A content", secondPrompt)
+	}
+
+	waitForNoActiveRun(t, h.runSvc, sessionID, 2*time.Second)
+}
+
+// newCapturePromptLLMServer returns an httptest.Server acting as an OpenAI-compatible
+// LLM that captures the system message from each chat completion request and sends
+// it to the provided channel. If blockCh is non-nil, the first request will block
+// until blockCh is closed or receives a value.
+func newCapturePromptLLMServer(t *testing.T, promptCh chan<- string, blockCh <-chan struct{}) *httptest.Server {
+	t.Helper()
+	requestCount := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			requestCount++
+			var body struct {
+				Messages []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode chat request: %v", err)
+			}
+			var systemPrompt string
+			for _, msg := range body.Messages {
+				if msg.Role == "system" {
+					systemPrompt = msg.Content
+					break
+				}
+			}
+			promptCh <- systemPrompt
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			if requestCount == 1 && blockCh != nil {
+				<-blockCh
+			}
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// waitForNoActiveRun polls until ActiveRun returns nil for the given sessionID
+// or the timeout expires, at which point it fails the test.
+func waitForNoActiveRun(t *testing.T, runSvc *runner.RunService, sessionID string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if runSvc.ActiveRun(sessionID) == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("run did not finish within %v", timeout)
 }
 
 type capturedChatRequest struct {
