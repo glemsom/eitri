@@ -135,11 +135,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if opts.ContextWindow <= 0 {
 			return
 		}
-		// Only broadcast for session-based (UI) history, not request-based.
-		if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
+		if opts.HistoryMgr.RequestBased() {
 			return
 		}
-		history := opts.HistoryMgr.History(opts.SessionID)
+		history := opts.HistoryMgr.History()
 		if history == nil {
 			return
 		}
@@ -162,7 +161,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Load conversation history via adapter
-		spec.Request.Messages = opts.HistoryMgr.History(opts.SessionID)
+		spec.Request.Messages = opts.HistoryMgr.History()
 
 		// Attach tool definitions (computed once before the loop)
 		if toolDefs != nil {
@@ -207,8 +206,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				// Always save even when empty (e.g. thinking-only stream) to maintain
 				// user→assistant→user alternation — otherwise next user message creates
 				// consecutive user messages which some providers reject as malformed.
-				opts.HistoryMgr.AppendAssistant(opts.SessionID, content.String(), toolCalls)
-				if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
+				opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
+				if opts.HistoryMgr.RequestBased() {
 					trimMessages(spec.Request, spec.MaxHistory)
 				}
 				return streamErr
@@ -234,10 +233,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
 			if contentStr != "" || len(spec.Request.Messages) > 0 {
-				opts.HistoryMgr.AppendAssistant(opts.SessionID, contentStr, nil)
+				opts.HistoryMgr.AppendAssistant(contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
-			if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
+			if opts.HistoryMgr.RequestBased() {
 				trimMessages(spec.Request, spec.MaxHistory)
 			}
 
@@ -249,12 +248,12 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Trim conversation history if cap is set (only when not using session manager)
-		if adapters.IsRequestBasedHistory(opts.HistoryMgr) {
+		if opts.HistoryMgr.RequestBased() {
 			trimMessages(spec.Request, spec.MaxHistory)
 		}
 
 		// Has tool calls — add assistant message to history
-		opts.HistoryMgr.AppendAssistant(opts.SessionID, content.String(), toolCalls)
+		opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
 
 		// Execute each tool call sequentially
 
@@ -290,7 +289,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				// (not as a separate error toast that closes the stream).
 				spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
 				// Record the error as a tool result so the LLM can see it
-				opts.HistoryMgr.AppendTool(opts.SessionID, tc.ID, errMsg, true)
+				opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
 				continue
 			}
@@ -316,7 +315,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
 					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
-					opts.HistoryMgr.AppendTool(opts.SessionID, tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 					continue
 				}
 
@@ -328,7 +327,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
 						spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
-						opts.HistoryMgr.AppendTool(opts.SessionID, tc.ID, errMsg, true)
+						opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 						continue
 					}
 					// Continue to process blocks below (resultText, Broadcast, etc.)
@@ -336,7 +335,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					// Denial — return error to LLM
 					errMsg := "Access denied to path: " + confPath
 					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
-					opts.HistoryMgr.AppendTool(opts.SessionID, tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 					continue
 				}
 			}
@@ -386,7 +385,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Function.Name)
 			}
-			opts.HistoryMgr.AppendTool(opts.SessionID, tc.ID, resultContent, isError)
+			opts.HistoryMgr.AppendTool(tc.ID, resultContent, isError)
 		}
 
 		// Broadcast context_update after tool results appended to history
