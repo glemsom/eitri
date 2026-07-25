@@ -124,6 +124,11 @@ in both the UI and the backend API.
 
 ### Files on disk
 
+Persona files are stored in both locations, like skills (ADR-0002):
+
+1. `<workspace>/.eitri/personas/` — project-scoped personas (higher precedence)
+2. `~/.eitri/personas/` — user-level personas (lower precedence, shared across projects)
+
 ```
 .workspace/
   .eitri/
@@ -132,7 +137,16 @@ in both the UI and the backend API.
       reviewer.yaml
       debugger.yaml
     config.json          # existing, adds persona_catalog + active_persona
+
+~/.eitri/
+  personas/
+      generic.yaml
+      editor.yaml
 ```
+
+When loading, workspace-scoped versions shadow user-level versions with the
+same name. Saving always writes to the workspace-scoped directory. This mirrors
+the skills discovery pattern (see ADR-0002).
 
 ### Impact on existing users
 
