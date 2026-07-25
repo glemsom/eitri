@@ -561,6 +561,81 @@ This skill tests persona-based skill injection.
 	}
 }
 
+// TestChatRun_PersonaInjectedSkills_UIUpdate verifies that the chat response
+// includes the OOB-swapped skill chips for persona-injected skills.
+func TestChatRun_PersonaInjectedSkills_UIUpdate(t *testing.T) {
+	skillRoot := t.TempDir()
+	skillDir := filepath.Join(skillRoot, "test-injected-skill-ui")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: test-injected-skill-ui
+description: A skill for testing persona injection UI
+---
+# Test Injected Skill UI
+This skill tests persona-based skill injection UI update.
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	skillsSvc := skills.NewServiceWithRoots([]skills.Root{{Path: skillRoot, Scope: skills.ScopeProjectEitri}})
+
+	workspace := t.TempDir()
+	h := newManagedTestServerWithRunsAndSkillsService(t, workspace, skillsSvc)
+
+	promptCh := make(chan string, 1)
+	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
+	defer llmSrv.Close()
+
+	if err := persona.Save(workspace, &persona.PersonaDefinition{
+		Name:           "injector-agent-ui",
+		SystemPrompt:   "You are an agent that uses injected skills.",
+		InjectedSkills: []string{"test-injected-skill-ui"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"injector-agent-ui"}`, llmSrv.URL))
+
+	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+
+	// POST a chat message and capture the response body.
+	client := noRedirectClient()
+	chatPath := "/api/sessions/" + sessionID + "/chat"
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+chatPath, strings.NewReader("message=Hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(browserCookie)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("chat status = %d, want 200", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyStr := string(body)
+
+	// The response should contain an OOB swap of the active-skills div with the
+	// persona-injected skill chip.
+	if !strings.Contains(bodyStr, `id="active-skills"`) {
+		t.Fatalf("response body does not contain active-skills div (persona skill chips missing from OOB swap)")
+	}
+	if !strings.Contains(bodyStr, "test-injected-skill-ui") {
+		t.Fatalf("response body does not contain the persona-injected skill name in chips")
+	}
+}
+
 // TestChatRun_PersonaFallbackOnMissing verifies that deleting the active persona's
 // file causes the run to fall back to the built-in default prompt.
 func TestChatRun_PersonaFallbackOnMissing(t *testing.T) {

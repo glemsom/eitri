@@ -157,8 +157,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	_ = templates.UserBubble(renderMarkdownToHTML(message), cfgState.cfg.UserEmail).Render(r.Context(), w)
 	_ = templates.SessionTabs(sessions, id, true).Render(r.Context(), w)
 
-	// Render OOB-active-skill-chips swap for newly activated skills
-	if len(justActivatedSkills) > 0 {
+	// Render OOB-active-skill-chips swap for active skills (includes both
+	// slash command-activated and persona-injected skills). The OOB swap
+	// is idempotent — replacing existing chips with the same content is harmless.
+	if len(sess.ActiveSkills) > 0 {
 		contextFiles := runner.ScanContextFiles(sess.Workspace)
 		_ = templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, true).Render(r.Context(), w)
 	}
