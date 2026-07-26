@@ -559,6 +559,12 @@ This skill tests persona-based skill injection.
 	if !strings.Contains(prompt, `Required skills for this persona: test-injected-skill`) {
 		t.Fatalf("system prompt = %q, want it to contain required skills directive for \"test-injected-skill\"", prompt)
 	}
+	if !strings.Contains(prompt, `<required_skills>`) {
+		t.Fatalf("system prompt = %q, want it to contain <required_skills> block", prompt)
+	}
+	if !strings.Contains(prompt, `</required_skills>`) {
+		t.Fatalf("system prompt = %q, want it to contain </required_skills> closing tag", prompt)
+	}
 	if strings.Contains(prompt, `Activated skill "test-injected-skill":`) {
 		t.Fatalf("system prompt = %q, should NOT contain Activated skill content for persona-injected skills", prompt)
 	}

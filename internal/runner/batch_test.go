@@ -220,6 +220,12 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	if !strings.Contains(sysPrompt, "Required skills for this persona:") {
 		t.Fatalf("system prompt should contain required skills directive, got:\n%s", sysPrompt)
 	}
+	if !strings.Contains(sysPrompt, "<required_skills>") {
+		t.Fatalf("system prompt should contain <required_skills> block, got:\n%s", sysPrompt)
+	}
+	if !strings.Contains(sysPrompt, "</required_skills>") {
+		t.Fatalf("system prompt should contain </required_skills> closing tag, got:\n%s", sysPrompt)
+	}
 
 	// End-to-end test: BatchRun with ActivePersona pointing to the test persona.
 	// Use a dead-port connection pattern so the run fails (connection refused)

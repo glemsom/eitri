@@ -72,8 +72,11 @@ When a persona is active, the system prompt is assembled in this order:
    that takes precedence over the persona's prompt for one session only)
 3. **Repository instructions** (from `CONTEXT.md` / repository instructions file)
 4. **Skills catalog** (available skills, same as today)
-5. **Injected skills** (pre-loaded via the activation mechanism, same as
-   `skill()` calls would do, but injected automatically)
+5. **Injected skills** — listed as a startup directive instructing the agent
+   to call `skill("name")` for each required skill on its first turn, emitted
+   inside a `<required_skills>` XML block. Skills are NOT pre-injected with
+   content; the agent loads them via the `skill()` tool, establishing
+   commitment through the tool-call result.
 6. **Activated skills** (from `skill()` calls during the conversation)
 
 If a persona has injected skills, those skills are loaded via the existing
