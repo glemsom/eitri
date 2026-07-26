@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
-	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
@@ -57,11 +56,11 @@ type RunOpts struct {
 	// HistoryMgr handles reading and appending conversation history.
 	// Two concrete types exist: NewSessionHistoryManager (browser UI path)
 	// and NewRequestHistoryManager (headless/direct-messages path).
-	HistoryMgr adapters.HistoryManager
+	HistoryMgr HistoryManager
 
 	// Confirmer handles user confirmation for path-based tool access.
 	// When nil, confirmation-dependent operations return errors to the LLM.
-	Confirmer adapters.Confirmer
+	Confirmer Confirmer
 
 	// UISessionMgr manages UI session state. Used for broadcasting components
 	// and quick replies to browser-based sessions.

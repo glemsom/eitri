@@ -19,14 +19,14 @@
 //	runner/            — RunService wiring, RunConfig, RunState, run tracking,
 //	                     batch mode, sub-agent orchestration,
 //	                     system prompt assembly, skill context
-//	├── adapters/      — HistoryManager and Confirmer interfaces +
+//	├── loop/          — HistoryManager and Confirmer interfaces +
 //	│                    implementations (sessionHistoryManager,
 //	│                    requestHistoryManager, testConfirmerStub,
 //	│                    funcConfirmer), ConfirmationResult,
-//	│                    ConfirmationFunc value types
-//	└── loop/          — RunAgent, RunSpec, RunOpts, the agent turn
-//	                     loop, streaming, tool dispatch, message
-//	                     trimming, and LLM error handling
+//	│                    ConfirmationFunc value types; plus RunAgent,
+//	│                    RunSpec, RunOpts, the agent turn loop,
+//	│                    streaming, tool dispatch, message
+//	│                    trimming, and LLM error handling
 //
 // # Responsibilities by file
 //
@@ -35,7 +35,7 @@
 //	run.go           — StartRun (agent loop entry point), tool registry
 //	                   assembly, session persistence after run
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
-//	                   sessionHistoryManager, io.Writer output)
+//	                   loop.NewSessionHistoryManager, io.Writer output)
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
 //	                   helpers used by run.go, batch.go, and subagent.go.
 //	                   buildLLMService assembles auth, LLM service, tool
@@ -64,8 +64,8 @@
 //
 // And from its own sub-packages:
 //
-//   - runner/adapters   — HistoryManager, Confirmer, ConfirmationResult
-//   - runner/loop       — RunAgent, RunSpec, RunOpts
+//   - runner/loop  — RunAgent, RunSpec, RunOpts, HistoryManager, Confirmer,
+//                    ConfirmationResult
 //
 // # Extension points
 //
@@ -75,11 +75,11 @@
 //     *runstate.State.
 //
 //  2. Adding a new HistoryManager adapter:
-//     Implement the HistoryManager interface (adapters package) and construct it
+//     Implement the HistoryManager interface (loop package) and construct it
 //     in the adapter factory section of startRunWithConfig (run.go).
 //
 //  3. Adding a new Confirmer adapter:
-//     Implement the Confirmer interface (adapters package). The production
+//     Implement the Confirmer interface (loop package). The production
 //     implementation uses channel-based confirmation via ResolveConfirmation;
 //     alternative adapters could use webhook calls or file-system signals.
 //

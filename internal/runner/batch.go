@@ -11,7 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
-	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 )
@@ -63,7 +62,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	defer sessionMgr.Close(batchID)
 
 	// Wrap in a sessionHistoryManager (same adapter the UI path uses)
-	historyAdapter := adapters.NewSessionHistoryManager(sessionMgr, batchID)
+	historyAdapter := loop.NewSessionHistoryManager(sessionMgr, batchID)
 
 	// Create SSE state and writer (for use by RunAgent)
 	sseState := runstate.New()

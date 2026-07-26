@@ -16,7 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
-	"github.com/glemsom/eitri/internal/runner/adapters"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -73,7 +73,7 @@ type RunService struct {
 	subagents *subagentStore
 
 	confirmMu     sync.Mutex
-	confirmations map[string]chan adapters.ConfirmationResult // sessionID → confirmation channel
+	confirmations map[string]chan loop.ConfirmationResult // sessionID → confirmation channel
 
 	uiSessionMgr      *uisession.Manager
 	skillsSvc         *skills.Service
@@ -93,7 +93,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		active:            make(map[string]*RunState),
 		broadcast:         New(),
 		subagents:         newSubagentStore(),
-		confirmations:     make(map[string]chan adapters.ConfirmationResult),
+		confirmations:     make(map[string]chan loop.ConfirmationResult),
 		uiSessionMgr:      deps.UISessionMgr,
 		skillsSvc:         deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
@@ -538,13 +538,13 @@ func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.St
 // confirmPath implements ConfirmationFunc for RunAgent.
 // It creates a channel for the session, sends a needs_confirmation SSE event,
 // and blocks waiting for the user's response via the API endpoint.
-func (s *RunService) confirmPath(ctx context.Context, sessionID, path, message string) (*adapters.ConfirmationResult, error) {
+func (s *RunService) confirmPath(ctx context.Context, sessionID, path, message string) (*loop.ConfirmationResult, error) {
 	s.confirmMu.Lock()
 	// Check if channel already exists (should not happen in normal flow)
 	if existing, ok := s.confirmations[sessionID]; ok {
 		close(existing)
 	}
-	ch := make(chan adapters.ConfirmationResult, 1)
+	ch := make(chan loop.ConfirmationResult, 1)
 	s.confirmations[sessionID] = ch
 	s.confirmMu.Unlock()
 
@@ -573,7 +573,7 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 		return false
 	}
 	select {
-	case ch <- adapters.ConfirmationResult{Path: path, Approved: approved}:
+	case ch <- loop.ConfirmationResult{Path: path, Approved: approved}:
 		return true
 	default:
 		return false
