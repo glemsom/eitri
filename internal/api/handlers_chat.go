@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
@@ -108,7 +109,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Append user message to session
-	s.config.SessionManager.AppendMessage(id, session.Message{
+	s.config.SessionManager.AppendMessage(id, llm.Message{
 		Role:      "user",
 		Content:   prompt,
 		CreatedAt: time.Now(),

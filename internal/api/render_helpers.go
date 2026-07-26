@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/glemsom/eitri/internal/api/templates"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/session"
 )
 
 // hasMermaidComponent checks if a message has a MermaidDiagram component registered.
-func hasMermaidComponent(components []session.ComponentData) bool {
+func hasMermaidComponent(components []llm.ComponentData) bool {
 	for _, c := range components {
 		if c.Name == "MermaidDiagram" {
 			return true
@@ -70,7 +71,7 @@ func renderSessionForPage(sess *session.UISession) *session.UISession {
 	ctx := context.Background()
 	rendered := *sess
 	rendered.ActiveSkills = append([]string(nil), sess.ActiveSkills...)
-	rendered.Messages = make([]session.Message, len(sess.Messages))
+	rendered.Messages = make([]llm.Message, len(sess.Messages))
 	for i, msg := range sess.Messages {
 		rendered.Messages[i] = msg
 		if msg.Role == "assistant" {
@@ -93,7 +94,7 @@ func renderSessionForPage(sess *session.UISession) *session.UISession {
 
 // renderComponentsToHTML renders stored component data into HTML strings.
 // Components are rendered using the same templates as the SSE render endpoint.
-func renderComponentsToHTML(ctx context.Context, sessionID string, components []session.ComponentData) string {
+func renderComponentsToHTML(ctx context.Context, sessionID string, components []llm.ComponentData) string {
 	if len(components) == 0 {
 		return ""
 	}
@@ -114,7 +115,7 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 
 // renderInlineComponentsToHTML renders only components that belong inside the
 // assistant bubble content (not tool cards).
-func renderInlineComponentsToHTML(ctx context.Context, sessionID string, components []session.ComponentData) string {
+func renderInlineComponentsToHTML(ctx context.Context, sessionID string, components []llm.ComponentData) string {
 	if len(components) == 0 {
 		return ""
 	}
