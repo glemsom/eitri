@@ -3,9 +3,14 @@ package api_test
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -792,5 +797,212 @@ func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
 	// Session 1 should be deleted from manager
 	if got := sessionMgr.Get(sess1.ID); got != nil {
 		t.Error("permanently deleted session should not be in manager")
+	}
+}
+
+// ————— handleLoadSession —————
+
+// newTestServerWithPersister creates a test server with a session manager,
+// run service, and persister. Useful for testing session load from disk.
+func newTestServerWithPersister(t *testing.T) (*httptest.Server, *session.Manager, *persist.Persister) {
+	t.Helper()
+	eitriDir := t.TempDir()
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	historySessionMgr := history.NewSessionManager(50)
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historySessionMgr,
+		Persister:         p,
+	})
+	cfg := api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		SessionManager: sessionMgr,
+		RunService:     runSvc,
+		Persister:      p,
+	}
+	srv := api.NewServer(cfg)
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	return server, sessionMgr, p
+}
+
+func TestHandleLoadSession_LoadsSessionFromDisk(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-load-browser"
+
+	// Create and persist a session to disk
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Title = "Historical Session"
+	sess.Messages = []session.Message{
+		{Role: "user", Content: "Hello from the past"},
+		{Role: "assistant", Content: "Hello from the past as well"},
+	}
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+	sessionID := sess.ID
+
+	// Close the session so it's no longer in the manager
+	sessionMgr.Close(sessionID)
+
+	// Verify it's gone from the manager
+	if got := sessionMgr.Get(sessionID); got != nil {
+		t.Fatal("session should be closed before testing load")
+	}
+
+	// POST to load endpoint
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/load", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/{id}/load failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should succeed with 200 (HTMX response)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Should have HX-Redirect header to chat
+	redirect := resp.Header.Get("HX-Redirect")
+	if redirect != "/sessions/"+sessionID {
+		t.Errorf("expected HX-Redirect to /sessions/%s, got %q", sessionID, redirect)
+	}
+
+	// Verify session is now in the manager
+	loaded := sessionMgr.Get(sessionID)
+	if loaded == nil {
+		t.Fatal("session was not loaded into manager")
+	}
+	if loaded.Status != session.StatusIdle {
+		t.Errorf("loaded session status = %q, want %q", loaded.Status, session.StatusIdle)
+	}
+	if loaded.Title != "Historical Session" {
+		t.Errorf("Title = %q, want %q", loaded.Title, "Historical Session")
+	}
+	if len(loaded.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(loaded.Messages))
+	}
+	if loaded.Messages[0].Content != "Hello from the past" {
+		t.Errorf("Message[0].Content = %q, want %q", loaded.Messages[0].Content, "Hello from the past")
+	}
+}
+
+func TestHandleLoadSession_AlreadyActive_RedirectsToChat(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-already-active"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Session is already active, load should redirect
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sess.ID+"/load", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/{id}/load failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Non-HTMX request → standard 302 redirect
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected status 302, got %d", resp.StatusCode)
+	}
+
+	// Should redirect to chat
+	location := resp.Header.Get("Location")
+	if location != "/sessions/"+sess.ID {
+		t.Errorf("expected redirect to /sessions/%s, got %q", sess.ID, location)
+	}
+}
+
+func TestHandleLoadSession_NotFoundOnDisk_Returns404(t *testing.T) {
+	server, _, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-not-found"
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/nonexistent/load", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/nonexistent/load failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should return 404
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleLoadSession_NoBrowserID_GetsOne(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	// Create and persist a session
+	sess, err := sessionMgr.Create("some-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+	sessionID := sess.ID
+	sessionMgr.Close(sessionID)
+
+	// Request without a browser cookie
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sessionID+"/load", nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/{id}/load failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should get a browser_id cookie
+	var browserCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "browser_id" {
+			browserCookie = c
+			break
+		}
+	}
+	if browserCookie == nil {
+		t.Fatal("browser_id cookie should have been set")
+	}
+
+	// Should succeed with optional sidebar HTML and HX-Redirect header
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Should have HX-Redirect
+	redirect := resp.Header.Get("HX-Redirect")
+	if !strings.HasPrefix(redirect, "/sessions/") {
+		t.Errorf("expected HX-Redirect to /sessions/{id}, got %q", redirect)
+	}
+
+	// Session should now be in the manager
+	if loaded := sessionMgr.Get(sessionID); loaded == nil {
+		t.Error("session should have been loaded into manager")
 	}
 }

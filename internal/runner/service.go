@@ -283,6 +283,46 @@ func (s *RunService) CloseSession(sessionID string) error {
 	return nil
 }
 
+// LoadSessionFromDisk reads a session snapshot from disk via the persister,
+// adds it to the UI session manager (with status forced to idle), and restores
+// its conversation history in the history manager.
+// Returns the loaded session, or an error if the session doesn't exist on disk
+// or if reading/parsing fails.
+func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession, error) {
+	if s.persister == nil {
+		return nil, fmt.Errorf("persister not available")
+	}
+
+	data, err := s.persister.LoadSession(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load session from disk: %w", err)
+	}
+	if data == nil {
+		return nil, fmt.Errorf("session %s not found on disk", sessionID)
+	}
+
+	loaded, err := s.uiSessionMgr.LoadFromDisk(data)
+	if err != nil {
+		return nil, fmt.Errorf("cannot restore session to manager: %w", err)
+	}
+
+	// Restore conversation history in the history manager
+	if s.historySessionMgr != nil {
+		msgs := make([]llm.Message, 0, len(loaded.Messages))
+		for _, m := range loaded.Messages {
+			msgs = append(msgs, llm.Message{
+				Role:       m.Role,
+				Content:    m.Content,
+				ToolCallID: m.ToolCallID,
+				ToolCalls:  m.ToolCalls,
+			})
+		}
+		s.historySessionMgr.RestoreHistory(sessionID, msgs)
+	}
+
+	return loaded, nil
+}
+
 // NotifySessionClosed broadcasts a closed event for a session.
 func (s *RunService) NotifySessionClosed(sessionID, message string) {
 	state := s.lookupRun(sessionID)

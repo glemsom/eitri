@@ -5,6 +5,7 @@ package session
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -184,6 +185,39 @@ func (m *Manager) Add(sess *UISession) {
 		m.browserSessions[sess.BrowserID] = append(m.browserSessions[sess.BrowserID], sess.ID)
 	}
 }
+
+// LoadFromDisk adds a previously-persisted session back into the in-memory manager.
+// The data parameter is raw JSON (the contents of a session.json snapshot file).
+// The session status is forced to idle regardless of the stored value.
+// Returns the loaded session and nil error on success.
+// Returns an error if the data cannot be unmarshalled.
+// Returns ErrSessionIDCollision if a session with the same ID already exists
+// in the manager (should not happen with proper close).
+func (m *Manager) LoadFromDisk(data []byte) (*UISession, error) {
+	var sess UISession
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return nil, fmt.Errorf("cannot unmarshal session data: %w", err)
+	}
+
+	// Check for ID collision
+	m.mu.RLock()
+	_, exists := m.sessions[sess.ID]
+	m.mu.RUnlock()
+	if exists {
+		return nil, fmt.Errorf("%w: session %s", ErrSessionIDCollision, sess.ID)
+	}
+
+	sess.Status = StatusIdle
+	sess.UpdatedAt = time.Now()
+	sess.ClosedAt = nil
+
+	m.Add(&sess)
+	return &sess, nil
+}
+
+// ErrSessionIDCollision is returned by LoadFromDisk when a session with the
+// same ID already exists in the manager.
+var ErrSessionIDCollision = fmt.Errorf("session ID collision")
 
 // Get returns a session by ID. Returns nil if not found.
 func (m *Manager) Get(id string) *UISession {

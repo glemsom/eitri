@@ -284,3 +284,59 @@ func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
 
 	s.hxRedirect(w, r, "/sessions/"+newSess.ID)
 }
+
+// handleLoadSession loads a historical (closed) session back into the in-memory manager.
+// POST /api/sessions/{id}/load
+//
+// If the session is already active, redirects to its chat view (no-op).
+// If the session doesn't exist on disk, returns a 404 error toast.
+// On success, swaps the sidebar and navigates to the loaded session's chat view.
+func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	if browserID == "" {
+		browserID = s.ensureBrowserID(w, r)
+	}
+
+	// Already active → redirect to chat (no-op)
+	if sess := s.config.SessionManager.Get(id); sess != nil {
+		s.hxRedirect(w, r, "/sessions/"+id)
+		return
+	}
+
+	if s.config.RunService == nil {
+		http.Error(w, "Run service not available", http.StatusInternalServerError)
+		return
+	}
+
+	loaded, err := s.config.RunService.LoadSessionFromDisk(id)
+	if err != nil {
+		s.logger.Warn("failed to load session from disk",
+			slog.String("session_id", id),
+			slog.Any("error", err))
+		w.WriteHeader(http.StatusNotFound)
+		component := templates.ErrorToast("Session not found on disk")
+		component.Render(r.Context(), w)
+		return
+	}
+
+	// The loaded session may have a stale browser ID from when it was last active.
+	// Update it to the current browser so it appears in the sidebar.
+	if loaded.BrowserID != browserID {
+		// Remove the old browser registration and re-add with current browser
+		s.config.SessionManager.Delete(id)
+		loaded.BrowserID = browserID
+		// Reset ClosedAt so it appears as an active session
+		loaded.ClosedAt = nil
+		s.config.SessionManager.Add(loaded)
+	}
+
+	// Set HX-Redirect BEFORE writing any body content
+	w.Header().Set("HX-Redirect", "/sessions/"+id)
+
+	// Render the sidebar with the newly loaded session included
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	sidebar := templates.SessionTabsList(sessions, id)
+	sidebar.Render(r.Context(), w)
+}
