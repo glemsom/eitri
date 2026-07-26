@@ -171,7 +171,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 

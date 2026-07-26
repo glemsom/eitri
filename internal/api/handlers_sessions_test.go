@@ -485,9 +485,9 @@ func TestHandleGetSession_WithoutCookie_GetsOne(t *testing.T) {
 	}
 }
 
-// ————— handleDeleteSession (close) —————
+// ————— handleCloseSession —————
 
-func TestHandleDeleteSession_ClosesAndRedirects(t *testing.T) {
+func TestHandleCloseSession_ClosesAndRedirects(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -526,7 +526,7 @@ func TestHandleDeleteSession_ClosesAndRedirects(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteSession_NoBrowserID(t *testing.T) {
+func TestHandleCloseSession_NoBrowserID(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -551,7 +551,7 @@ func TestHandleDeleteSession_NoBrowserID(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteSession_OwnershipMismatch(t *testing.T) {
+func TestHandleCloseSession_OwnershipMismatch(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -576,7 +576,7 @@ func TestHandleDeleteSession_OwnershipMismatch(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteSession_NonExistentSession(t *testing.T) {
+func TestHandleCloseSession_NonExistentSession(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -606,7 +606,7 @@ func TestHandleDeleteSession_NonExistentSession(t *testing.T) {
 	}
 }
 
-func TestHandleDeleteSession_RedirectsToNextSession(t *testing.T) {
+func TestHandleCloseSession_RedirectsToNextSession(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
