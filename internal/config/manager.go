@@ -16,21 +16,22 @@ import (
 
 // Config represents the Eitri configuration schema.
 type Config struct {
-	Provider            string          `json:"provider"`
-	APIKey              string          `json:"api_key"`
-	ProviderAuth        json.RawMessage `json:"provider_auth,omitempty"`
-	AllowedReadPaths    []string        `json:"allowed_read_paths,omitempty"`
-	DisabledSkills      []string        `json:"disabled_skills,omitempty"`
-	UserEmail           string          `json:"user_email,omitempty"`
-	BaseURL             string          `json:"base_url"`
-	Model               string          `json:"model"`
-	ThinkingLevel       string          `json:"thinking_level"`
-	SystemPrompt        string          `json:"system_prompt"`
-	SessionTimeout      int64           `json:"session_timeout"`
-	CommandTimeout      int64           `json:"command_timeout"`
-	MaxTurns            int             `json:"max_turns"`
-	ContextWindowTokens int             `json:"context_window_tokens"`
-	MaxHistory          int             `json:"max_history"`
+	Provider                    string          `json:"provider"`
+	APIKey                      string          `json:"api_key"`
+	ProviderAuth                json.RawMessage `json:"provider_auth,omitempty"`
+	AllowedReadPaths            []string        `json:"allowed_read_paths,omitempty"`
+	DisabledSkills              []string        `json:"disabled_skills,omitempty"`
+	UserEmail                   string          `json:"user_email,omitempty"`
+	BaseURL                     string          `json:"base_url"`
+	Model                       string          `json:"model"`
+	ThinkingLevel               string          `json:"thinking_level"`
+	SystemPrompt                string          `json:"system_prompt"`
+	SessionTimeout              int64           `json:"session_timeout"`
+	CommandTimeout              int64           `json:"command_timeout"`
+	MaxTurns                    int             `json:"max_turns"`
+	ContextWindowTokens         int             `json:"context_window_tokens"`
+	ContextWindowOverridden     bool            `json:"context_window_overridden,omitempty"`
+	MaxHistory                  int             `json:"max_history"`
 	DebugPrompt              bool            `json:"debug_prompt,omitempty"`                // was EITRI_DEBUG_PROMPT=1
 	DebugRequest             bool            `json:"debug_request,omitempty"`               // was EITRI_DEBUG_REQUEST=1
 	DebugLLMDir              string          `json:"debug_llm_dir,omitempty"`               // was EITRI_DEBUG_LLM_DIR
@@ -363,6 +364,7 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["context_window_tokens"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.ContextWindowTokens = int(f)
+			result.ContextWindowOverridden = true
 		}
 	}
 	if v, ok := patch["max_history"]; ok {

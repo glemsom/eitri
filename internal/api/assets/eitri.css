@@ -2342,6 +2342,26 @@ eitri-composer {
   min-width: 0;
 }
 
+/* Context window row with inline source indicator */
+.context-window-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.context-window-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.context-window-source {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
 .checkbox-label {
   display: inline-flex;
   align-items: center;

@@ -140,7 +140,16 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 
 				<div class="form-group">
 					<label for="context_window_tokens">Context Window Tokens</label>
-					<input type="number" id="context_window_tokens" name="context_window_tokens" value={ cfg.ContextWindowTokens } min="1024" required/>
+					<div class="context-window-row">
+						<input type="number" id="context_window_tokens" name="context_window_tokens" value={ cfg.ContextWindowTokens } min="1024" required/>
+						<span class="context-window-source">
+							if cfg.ContextWindowOverridden {
+								&#128295; manual
+							} else {
+								&#128200; auto
+							}
+						</span>
+					</div>
 				</div>
 			</details>
 

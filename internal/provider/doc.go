@@ -15,6 +15,9 @@
 //   - GitHubDeviceCodeResponse — device-flow start response (user_code,
 //     verification_uri, etc.)
 //   - DiscoveryRequest / DiscoveryResult — model discovery input/output
+//     (DiscoveryResult.ModelContextWindows carries per-model context window
+//     token limits when the provider returns them or when the selected model's
+//     detail is fetched)
 //   - DiscoveryOptions — transport, refresh, and persistence config for discovery
 //   - ResolveAuthRequest — input for credential resolution without discovery
 //   - AuthUpdate — refreshed auth state returned for caller persistence
