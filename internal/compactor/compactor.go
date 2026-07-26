@@ -20,6 +20,12 @@ type Thresholds struct {
 	// LowWater is the estimated-token count below which compaction
 	// stops (e.g. 30% of the context window).
 	LowWater int
+
+	// MessageSizeThreshold is the minimum estimated-token count for an individual
+	// message (of any role) to be considered for compaction. Messages below this
+	// threshold are skipped. Default 0 means any message is eligible (existing
+	// behaviour for tool messages). Suggested default: 2000 tokens.
+	MessageSizeThreshold int
 }
 
 // tokenEstimate returns a rough estimate of the number of tokens in s.
@@ -66,18 +72,36 @@ func New() *Compactor {
 
 // summarizationPrompt builds a prompt that asks the LLM to summarise a
 // tool-result payload, preserving key facts.
-func summarizationPrompt(content string) string {
+func summarizationPrompt(role, content string) string {
 	const maxContentLen = 8000
 	truncated := content
 	if len(truncated) > maxContentLen {
 		truncated = truncated[:maxContentLen] + "\n... [truncated]"
 	}
-	return fmt.Sprintf(`Summarize the following tool result in 1-3 sentences. Preserve key facts, file paths, error messages, function names, and numerical values. Omit boilerplate and verbose logs.
+
+	switch role {
+	case "user":
+		return fmt.Sprintf(`Summarize the user's request in 1-3 sentences. Preserve key questions, file paths, error messages, and any specific requirements. Omit boilerplate and verbose logs.
+
+User message content:
+%s
+
+Summary:`, truncated)
+	case "assistant":
+		return fmt.Sprintf(`Summarize the assistant's response in 1-3 sentences. Preserve key facts, file paths, error messages, function names, and numerical values. Omit boilerplate and verbose reasoning.
+
+Assistant message content:
+%s
+
+Summary:`, truncated)
+	default:
+		return fmt.Sprintf(`Summarize the following tool result in 1-3 sentences. Preserve key facts, file paths, error messages, function names, and numerical values. Omit boilerplate and verbose logs.
 
 Tool result content:
 %s
 
 Summary:`, truncated)
+	}
 }
 
 // Compact scans the conversation history and replaces tool-result messages
@@ -118,15 +142,31 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 
 	// Greedy oldest-first scan: iterate from oldest to newest.
 	for i := 0; i < len(result); i++ {
-		if result[i].Role != "tool" {
-			continue
-		}
+		// Skip messages that don't have compactable content.
 		if result[i].Content == "" {
 			continue
 		}
 
-		// Skip already-compacted messages.
-		if strings.HasPrefix(result[i].Content, "[TOOL RESULT COMPACTED") {
+		// Skip already-compacted messages (both old tool format and new generic format).
+		if strings.HasPrefix(result[i].Content, "[TOOL RESULT COMPACTED") ||
+			strings.HasPrefix(result[i].Content, "[MESSAGE COMPACTED") {
+			continue
+		}
+
+		// Apply per-message size threshold: only compact messages that are large enough.
+		if thresholds.MessageSizeThreshold > 0 {
+			est := tokenEstimate(result[i].Content)
+			// Include tool call arguments for assistant messages.
+			for _, tc := range result[i].ToolCalls {
+				est += tokenEstimate(tc.Function.Arguments)
+			}
+			if est < thresholds.MessageSizeThreshold {
+				continue
+			}
+		}
+
+		// Only compact tool, user, and assistant messages (skip system messages).
+		if result[i].Role != "tool" && result[i].Role != "user" && result[i].Role != "assistant" {
 			continue
 		}
 
@@ -134,7 +174,7 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 		originalTokens := tokenEstimate(originalContent)
 
 		// Call LLM to summarise.
-		prompt := summarizationPrompt(originalContent)
+		prompt := summarizationPrompt(result[i].Role, originalContent)
 		summaries, err := llmSvc.Chat(ctx, llm.Request{
 			Messages: []llm.Message{
 				{Role: "user", Content: prompt},
@@ -150,7 +190,13 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 			continue
 		}
 
-		result[i].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		// Use different prefix depending on role.
+		if result[i].Role == "tool" {
+			result[i].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		} else {
+			// For user and assistant messages, preserve ToolCalls for assistant messages.
+			result[i].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		}
 		compactedCount++
 		freedTokens += originalTokens - tokenEstimate(result[i].Content)
 

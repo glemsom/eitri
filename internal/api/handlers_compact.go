@@ -76,7 +76,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	freedK := freed / 1000
-	toastMsg := fmt.Sprintf("Compacted %d tool results — freed ~%dk tokens", count, freedK)
+	toastMsg := fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", count, freedK)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Retarget", "#error-toasts")
 	w.WriteHeader(http.StatusOK)

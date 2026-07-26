@@ -375,7 +375,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		return
 	}
 
-	compactedMsgs, compactedCount, freedTokens, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater)
+	compactedMsgs, compactedCount, freedTokens, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater, cfg.CompactionMessageSizeThreshold)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -419,7 +419,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 			Data: map[string]any{
 				"compacted_count": compactedCount,
 				"freed_tokens":    freedTokens,
-				"message":         fmt.Sprintf("Compacted %d tool results — freed ~%dk tokens", compactedCount, freedK),
+				"message":         fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", compactedCount, freedK),
 			},
 		})
 	}
@@ -429,13 +429,14 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // provided LLM service, gated by high-water and low-water thresholds.
 // Returns the compacted messages, count, freed tokens, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater int) ([]llm.Message, int, int, error) {
+func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold int) ([]llm.Message, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages)
 	if totalEst <= highWater {
 		return nil, 0, 0, nil
 	}
 	return compactor.New().Compact(ctx, messages, llmSvc, compactor.Thresholds{
-		HighWater: highWater,
-		LowWater:  lowWater,
+		HighWater:            highWater,
+		LowWater:             lowWater,
+		MessageSizeThreshold: messageSizeThreshold,
 	})
 }

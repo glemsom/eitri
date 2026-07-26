@@ -41,9 +41,10 @@ type RunConfig struct {
 
 	// Compaction controls automatic compression of old tool results
 	// to stay within the context window.
-	CompactionEnabled          bool
-	CompactionThresholdPercent int // 0-100; high-water mark as % of context window
-	CompactionLowWaterPercent  int // 0-100; stop compaction when below this % of context window
+	CompactionEnabled              bool
+	CompactionThresholdPercent     int // 0-100; high-water mark as % of context window
+	CompactionLowWaterPercent      int // 0-100; stop compaction when below this % of context window
+	CompactionMessageSizeThreshold int // estimated-token threshold; messages below this are skipped
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -73,6 +74,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		CompactionEnabled:        cfg.CompactionEnabled,
 		CompactionThresholdPercent: cfg.CompactionThresholdPercent,
 		CompactionLowWaterPercent:  cfg.CompactionLowWaterPercent,
+		CompactionMessageSizeThreshold: cfg.CompactionMessageSizeThreshold,
 	}
 }
 
