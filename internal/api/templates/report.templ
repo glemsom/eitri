@@ -66,6 +66,12 @@ templ ReportHeader(rep *report.SessionReport, sessionID string) {
 				<a href={ templ.URL("/sessions/" + sessionID) } class="report-back-link" title="Back to chat">← Back to chat</a>
 			</h2>
 		</div>
+		if rep.SystemPrompt != "" {
+			<details class="report-system-prompt">
+				<summary>System Prompt</summary>
+				<pre class="report-system-prompt-content">{ rep.SystemPrompt }</pre>
+			</details>
+		}
 		<div class="report-header-meta">
 			<div class="report-meta-item">
 				<span class="report-meta-label">Model</span>

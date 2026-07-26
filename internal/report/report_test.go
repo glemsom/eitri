@@ -292,11 +292,82 @@ func TestGetReport_Reconstructed(t *testing.T) {
 	if rep.Title != "Reconstructed Session" {
 		t.Errorf("expected title 'Reconstructed Session', got %q", rep.Title)
 	}
+	if rep.SystemPrompt != "" {
+		t.Errorf("expected empty SystemPrompt (not in snapshot), got %q", rep.SystemPrompt)
+	}
 	if rep.Summary.Note != "limited data — no timeline persisted for this session" {
 		t.Errorf("expected note about limited data, got %q", rep.Summary.Note)
 	}
 	if len(rep.Turns) == 0 {
 		t.Fatal("expected at least 1 turn in reconstructed report")
+	}
+}
+
+func TestGetReport_Reconstructed_WithSystemPrompt(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-recon-sp"
+	now := time.Now().UTC()
+
+	// Write session snapshot WITH system_prompt
+	sessionDir := filepath.Join(dir, "sessions", sessionID)
+	if err := os.MkdirAll(sessionDir, 0700); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	sessionData, _ := json.Marshal(map[string]any{
+		"id":            sessionID,
+		"title":         "Reconstructed With SP",
+		"workspace":     "/tmp/test",
+		"system_prompt": "You are Eitri, an expert AI coding agent.",
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello", "created_at": now},
+			{"role": "assistant", "content": "Hi there!", "created_at": now},
+		},
+	})
+	snapshotFile := filepath.Join(sessionDir, "2025-01-01T00-00-00.json")
+	if err := os.WriteFile(snapshotFile, sessionData, 0600); err != nil {
+		t.Fatalf("failed to write snapshot: %v", err)
+	}
+	symlink := filepath.Join(sessionDir, "session.json")
+	os.Remove(symlink)
+	if err := os.Symlink("2025-01-01T00-00-00.json", symlink); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	// Write history
+	histData, _ := json.Marshal(persist.HistorySchema{
+		Version: 1,
+		Messages: []llm.Message{
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi there!"},
+		},
+	})
+	historyDir := filepath.Join(dir, "history", sessionID)
+	if err := os.MkdirAll(historyDir, 0700); err != nil {
+		t.Fatalf("failed to create history dir: %v", err)
+	}
+	histFile := filepath.Join(historyDir, "2025-01-01T00-00-00.json")
+	if err := os.WriteFile(histFile, histData, 0600); err != nil {
+		t.Fatalf("failed to write history: %v", err)
+	}
+	histSymlink := filepath.Join(historyDir, "history.json")
+	os.Remove(histSymlink)
+	if err := os.Symlink("2025-01-01T00-00-00.json", histSymlink); err != nil {
+		t.Fatalf("failed to create history symlink: %v", err)
+	}
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rep == nil {
+		t.Fatal("expected non-nil report")
+	}
+
+	if rep.ReportVersion != "reconstructed" {
+		t.Errorf("expected report_version 'reconstructed', got %q", rep.ReportVersion)
+	}
+	if rep.SystemPrompt != "You are Eitri, an expert AI coding agent." {
+		t.Errorf("expected SystemPrompt to be carried from snapshot, got %q", rep.SystemPrompt)
 	}
 }
 
