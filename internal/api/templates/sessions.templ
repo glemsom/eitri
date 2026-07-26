@@ -127,14 +127,14 @@ templ SessionsCleanup(diskUsageBytes int64) {
 					hx-post="/api/sessions/cleanup/delete-closed"
 					hx-confirm="Delete ALL closed sessions permanently? This cannot be undone."
 					hx-target="#sessions-list"
-					hx-swap="outerHTML"
+					hx-swap="innerHTML"
 				>Delete All Closed Sessions</button>
 				<button
 					class="btn btn-danger"
 					hx-post="/api/sessions/cleanup/clear-all-traces"
 					hx-confirm="Clear all trace files from all sessions? Session data will be preserved."
 					hx-target="#sessions-cleanup"
-					hx-swap="outerHTML"
+					hx-swap="innerHTML"
 				>Clear All Traces</button>
 			</div>
 			<div class="cleanup-prune">
@@ -155,7 +155,7 @@ templ SessionsCleanup(diskUsageBytes int64) {
 					hx-include="#prune-age-days"
 					hx-confirm="Permanently delete closed sessions older than the specified days?"
 					hx-target="#sessions-list"
-					hx-swap="outerHTML"
+					hx-swap="innerHTML"
 				>Prune</button>
 			</div>
 		</div>

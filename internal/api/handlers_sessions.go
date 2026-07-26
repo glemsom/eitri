@@ -498,6 +498,7 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 	}
 
 	component := templates.SessionsList(activeSessions, diskRows)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	component.Render(r.Context(), w)
 }
 
@@ -531,6 +532,7 @@ func (s *Server) handleCleanupClearAllTraces(w http.ResponseWriter, r *http.Requ
 
 	// Re-render cleanup section with refreshed disk usage
 	diskUsageBytes, _ := s.config.Persister.DiskUsageBytes()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	component := templates.SessionsCleanup(diskUsageBytes)
 	component.Render(r.Context(), w)
 }
