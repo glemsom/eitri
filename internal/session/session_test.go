@@ -92,6 +92,62 @@ func TestDelete(t *testing.T) {
 	}
 }
 
+func TestClose_RemovesFromMemoryButPreservesClosedAt(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	closed := mgr.Close(sess.ID)
+	if closed == nil {
+		t.Fatal("Close returned nil for existing session")
+	}
+	if closed.ID != sess.ID {
+		t.Errorf("Close returned wrong session")
+	}
+	if closed.ClosedAt == nil {
+		t.Error("Close should set ClosedAt timestamp")
+	}
+
+	// Should no longer be in the manager
+	if got := mgr.Get(sess.ID); got != nil {
+		t.Error("session should be removed from manager after close")
+	}
+
+	// Close non-existent
+	if c := mgr.Close("nonexistent"); c != nil {
+		t.Error("Close should return nil for non-existent")
+	}
+}
+
+func TestClose_CascadeClosesChildren(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	parent, _ := mgr.Create("browser-1")
+	child1, _ := mgr.CreateChild(parent.ID, "browser-1", "Child 1")
+	child2, _ := mgr.CreateChild(parent.ID, "browser-1", "Child 2")
+
+	// Close parent
+	mgr.Close(parent.ID)
+
+	// Parent should be gone from manager
+	if got := mgr.Get(parent.ID); got != nil {
+		t.Error("parent session should be removed from manager after close")
+	}
+
+	// Children should also be gone
+	if got := mgr.Get(child1.ID); got != nil {
+		t.Error("child session should be removed from manager after parent close")
+	}
+	if got := mgr.Get(child2.ID); got != nil {
+		t.Error("child session should be removed from manager after parent close")
+	}
+
+	// Browser should have no sessions
+	sessions := mgr.ListByBrowser("browser-1")
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions for browser after closing all, got %d", len(sessions))
+	}
+}
+
 func TestListByBrowser(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 

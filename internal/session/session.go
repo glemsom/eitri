@@ -67,6 +67,7 @@ type UISession struct {
 	Workspace    string    `json:"workspace"`     // filesystem root directory for this session
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	ClosedAt     *time.Time `json:"closed_at,omitempty"` // set when session is closed (not deleted)
 
 	// Ring buffer of last N rendered message IDs for dedup on reconnect.
 	// Capacity 10; oldest are evicted.
@@ -258,8 +259,60 @@ func (m *Manager) ChildrenOf(parentID string) []*UISession {
 	return result
 }
 
+// Close removes a session from the in-memory manager without deleting disk data.
+// Sets ClosedAt timestamp. Cascade-closes any child sessions.
+// Returns the closed session if found.
+func (m *Manager) Close(id string) *UISession {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sess := m.sessions[id]
+	if sess == nil {
+		return nil
+	}
+
+	now := time.Now()
+	sess.ClosedAt = &now
+
+	// Cascade close children first (collect IDs before closing entries)
+	var childIDs []string
+	for _, s := range m.sessions {
+		if s.ParentID == id {
+			childIDs = append(childIDs, s.ID)
+		}
+	}
+	browserID := sess.BrowserID
+	for _, cid := range childIDs {
+		if child := m.sessions[cid]; child != nil {
+			child.ClosedAt = &now
+		}
+		delete(m.sessions, cid)
+		bSessions := m.browserSessions[browserID]
+		for i, sid := range bSessions {
+			if sid == cid {
+				m.browserSessions[browserID] = append(bSessions[:i], bSessions[i+1:]...)
+				break
+			}
+		}
+	}
+
+	delete(m.sessions, id)
+
+	// Remove from browser sessions list
+	browserSessions := m.browserSessions[browserID]
+	for i, sid := range browserSessions {
+		if sid == id {
+			m.browserSessions[browserID] = append(browserSessions[:i], browserSessions[i+1:]...)
+			break
+		}
+	}
+
+	return sess
+}
+
 // Delete removes a session by ID. Cancels any active run (delegated to caller).
 // Cascade-deletes any child sessions. Returns the deleted session if found.
+// Unlike Close, this permanently removes the session; caller should also clean up disk data.
 func (m *Manager) Delete(id string) *UISession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
