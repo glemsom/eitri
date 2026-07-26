@@ -152,6 +152,48 @@ func (p *Persister) LoadSession(sessionID string) ([]byte, error) {
 	return data, nil
 }
 
+// SessionInfo holds the metadata about a persisted session needed for listing.
+type SessionInfo struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+	Messages  int       `json:"-"` // message count, derived from the full data
+}
+
+// LoadSessionInfo reads just the metadata of a session snapshot from disk
+// without loading full message content. Returns nil, nil if no snapshot exists.
+func (p *Persister) LoadSessionInfo(sessionID string) (*SessionInfo, error) {
+	data, err := p.LoadSession(sessionID)
+	if err != nil || data == nil {
+		return nil, err
+	}
+
+	// Parse into a minimal struct that extracts only top-level fields
+	// plus the message count.
+	raw := struct {
+		ID        string     `json:"id"`
+		Title     string     `json:"title"`
+		CreatedAt time.Time  `json:"created_at"`
+		UpdatedAt time.Time  `json:"updated_at"`
+		ClosedAt  *time.Time `json:"closed_at,omitempty"`
+		Messages  []any      `json:"messages"`
+	}{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("cannot parse session metadata: %w", err)
+	}
+
+	return &SessionInfo{
+		ID:        raw.ID,
+		Title:     raw.Title,
+		CreatedAt: raw.CreatedAt,
+		UpdatedAt: raw.UpdatedAt,
+		ClosedAt:  raw.ClosedAt,
+		Messages:  len(raw.Messages),
+	}, nil
+}
+
 // ListTraces returns the filenames (without .json) of all trace files for a session.
 func (p *Persister) ListTraces(sessionID string) ([]string, error) {
 	tracesDir := filepath.Join(p.rootDir, "sessions", sessionID, "traces")
@@ -317,6 +359,11 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 	return flushErr
 }
 
+// RootDir returns the root data directory of the persister.
+func (p *Persister) RootDir() string {
+	return p.rootDir
+}
+
 // DeleteSession removes all persisted data for a session from disk:
 // <root>/sessions/<id>/.
 // If the directory doesn't exist, the call is a no-op.
@@ -326,6 +373,54 @@ func (p *Persister) DeleteSession(sessionID string) error {
 		return err
 	}
 	return nil
+}
+
+// ListOnDiskSessionIDs returns the session IDs (directory names) found under
+// <root>/sessions/. Only directories are returned; the list is not sorted.
+func (p *Persister) ListOnDiskSessionIDs() ([]string, error) {
+	sessionsDir := filepath.Join(p.rootDir, "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot list sessions dir %s: %w", sessionsDir, err)
+	}
+
+	var ids []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			ids = append(ids, entry.Name())
+		}
+	}
+	return ids, nil
+}
+
+// DiskUsageBytes returns the total size in bytes of all files under
+// <root>/sessions/. If the directory doesn't exist, returns 0.
+func (p *Persister) DiskUsageBytes() (int64, error) {
+	sessionsDir := filepath.Join(p.rootDir, "sessions")
+	var total int64
+	err := filepath.WalkDir(sessionsDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if !d.IsDir() {
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	return total, err
 }
 
 // Prune scans sessions/ and history/ for total size. If total exceeds the
