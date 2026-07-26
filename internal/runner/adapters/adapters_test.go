@@ -19,7 +19,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "hello")
 
-	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
 	msgs := adapter.History()
 
 	if len(msgs) == 0 {
@@ -38,7 +38,7 @@ func TestSessionHistoryManager_History(t *testing.T) {
 
 func TestSessionHistoryManager_History_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := NewSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, "test-session")
 	msgs := adapter.History()
 	if msgs != nil {
 		t.Errorf("History() = %v, want nil when sessionMgr is nil", msgs)
@@ -52,7 +52,7 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
 	adapter.AppendAssistant("Hello!", nil)
 
 	msgs := adapter.History()
@@ -67,7 +67,7 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 
 func TestSessionHistoryManager_AppendAssistant_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := NewSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, "test-session")
 	// Should not panic
 	adapter.AppendAssistant("Hello!", nil)
 }
@@ -79,7 +79,7 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
 	}
@@ -105,7 +105,7 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	sessionMgr.Create(sessionID)
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	adapter := NewSessionHistoryManager(sessionMgr, nil, sessionID)
+	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
 	adapter.AppendTool("call_1", "result content", false)
 
 	msgs := adapter.History()
@@ -123,7 +123,7 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 
 func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 	t.Parallel()
-	adapter := NewSessionHistoryManager(nil, nil, "test-session")
+	adapter := NewSessionHistoryManager(nil, "test-session")
 	// Should not panic
 	adapter.AppendTool("call_1", "result", false)
 }

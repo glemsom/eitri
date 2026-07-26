@@ -64,7 +64,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg runconfig.
 	defer sessionMgr.Close(batchID)
 
 	// Wrap in a sessionHistoryManager (same adapter the UI path uses)
-	historyAdapter := adapters.NewSessionHistoryManager(sessionMgr, nil, batchID)
+	historyAdapter := adapters.NewSessionHistoryManager(sessionMgr, batchID)
 
 	// Create SSE state and writer (for use by RunAgent)
 	sseState := runstate.New()

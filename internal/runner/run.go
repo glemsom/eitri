@@ -150,7 +150,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		// Construct adapters from service dependencies.
 		var historyMgr adapters.HistoryManager
 		if s.historySessionMgr != nil {
-			historyMgr = adapters.NewSessionHistoryManager(s.historySessionMgr, s.uiSessionMgr, sessionID)
+			historyMgr = adapters.NewSessionHistoryManager(s.historySessionMgr, sessionID)
 		} else {
 			historyMgr = adapters.NewRequestHistoryManager(req)
 		}
