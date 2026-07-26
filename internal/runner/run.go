@@ -155,15 +155,17 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			SSEWriter:  w,
 			Tools:      toolReg,
 		}, loop.RunOpts{
-			HistoryMgr:    historyMgr,
-			Confirmer:     confirmer,
-			UISessionMgr:  s.uiSessionMgr,
-			SessionID:     sessionID,
-			ContextWindow: contextWindowTokens,
-			CrashDumpFunc: s.crashDumpFunc,
-			Turns:         &state.Turns,
-			DebugLLMDir:   cfg.DebugLLMDir,
-			TurnCompleter: s,
+			HistoryMgr:      historyMgr,
+			Confirmer:       confirmer,
+			UISessionMgr:    s.uiSessionMgr,
+			SessionID:       sessionID,
+			ContextWindow:   contextWindowTokens,
+			CrashDumpFunc:   s.crashDumpFunc,
+			Turns:           &state.Turns,
+			DebugLLMDir:     cfg.DebugLLMDir,
+			TurnCompleter:   s,
+			CalibrationStore: s.calibrationStore,
+			ModelName:       cfg.ModelName,
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

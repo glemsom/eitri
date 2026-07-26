@@ -226,13 +226,15 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			SSEWriter:  w,
 			Tools:      toolReg,
 		}, loop.RunOpts{
-			HistoryMgr:    historyMgr,
-			Confirmer:     nil,
-			UISessionMgr:  s.uiSessionMgr,
-			SessionID:     "",
-			ContextWindow: 0,
-			CrashDumpFunc: nil,
-			Turns:         nil,
+			HistoryMgr:       historyMgr,
+			Confirmer:        nil,
+			UISessionMgr:     s.uiSessionMgr,
+			SessionID:        "",
+			ContextWindow:    0,
+			CrashDumpFunc:    nil,
+			Turns:            nil,
+			CalibrationStore: s.calibrationStore,
+			ModelName:        parentCfg.ModelName,
 		})
 
 		// Persist sub-agent response to child UI session

@@ -30,6 +30,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 type serveOptions struct {
@@ -119,6 +120,9 @@ func main() {
 		slog.Warn("failed to ensure generic persona", slog.Any("error", err))
 	}
 
+	// Create calibration store for per-model chars-per-token tracking.
+	calStore := tokenizer.NewCalibrationStore()
+
 	if *batchPrompt != "" {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
@@ -153,8 +157,9 @@ func main() {
 		}
 
 		runSvc := runner.NewRunService(runner.RunServiceDeps{
-			DebugRecorder: debugRecorder,
-			Persister:     persister,
+			DebugRecorder:    debugRecorder,
+			Persister:        persister,
+			CalibrationStore: calStore,
 		})
 		runSvc.SetPersistAuth(nil)
 		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
@@ -249,6 +254,7 @@ func main() {
 		HistorySessionMgr: historyMgr,
 		DebugRecorder:     debugRecorder,
 		Persister:         persister,
+		CalibrationStore:  calStore,
 	})
 
 	skillsSvc := skills.NewService()
