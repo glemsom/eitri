@@ -3592,26 +3592,6 @@ eitri-context {
   text-decoration: underline;
 }
 
-/* Report button in sidebar */
-.session-report-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  font-size: 13px;
-  text-decoration: none;
-  border-radius: 4px;
-  opacity: 0.6;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.session-report-btn:hover {
-  opacity: 1;
-  background: var(--surface-alt);
-}
-
 /* === Sessions Management Page (issue #800) === */
 
 .sessions-view {
