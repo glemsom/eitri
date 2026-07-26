@@ -1,9 +1,12 @@
 package session_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -1087,5 +1090,153 @@ func TestUpdateLastAssistantContent_UpdatesUpdatedAt(t *testing.T) {
 	got := mgr.Get(sess.ID)
 	if got.UpdatedAt.Equal(originalUpdatedAt) {
 		t.Error("UpdatedAt should be updated after UpdateLastAssistantContent")
+	}
+}
+
+// ── LoadFromDisk ──────────────────────────────────────────────────────────
+
+func TestLoadFromDisk_UnmarshalSessionAndAddToManager(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	// Create a session, serialize it, then load from disk
+	sess, _ := mgr.Create("browser-1")
+	sess.Title = "Test Session"
+	sess.Status = session.StatusRunning // will be forced to idle
+	sess.Messages = []session.Message{
+		{Role: "user", Content: "Hello"},
+		{Role: "assistant", Content: "Hi there"},
+	}
+
+	// Marshal to simulate reading from disk
+	data, err := json.Marshal(sess)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	// Remove from manager to simulate a closed session
+	mgr.Delete(sess.ID)
+
+	// Load from disk
+	loaded, err := mgr.LoadFromDisk(data)
+	if err != nil {
+		t.Fatalf("LoadFromDisk failed: %v", err)
+	}
+
+	if loaded == nil {
+		t.Fatal("LoadFromDisk returned nil")
+	}
+	if loaded.Title != "Test Session" {
+		t.Errorf("Title = %q, want %q", loaded.Title, "Test Session")
+	}
+	if loaded.Status != session.StatusIdle {
+		t.Errorf("Status = %q, want %q (should be forced to idle)", loaded.Status, session.StatusIdle)
+	}
+	if len(loaded.Messages) != 2 {
+		t.Fatalf("Messages count = %d, want 2", len(loaded.Messages))
+	}
+	if loaded.Messages[0].Content != "Hello" {
+		t.Errorf("Message[0] content = %q, want %q", loaded.Messages[0].Content, "Hello")
+	}
+
+	// Verify it's in the manager
+	got := mgr.Get(loaded.ID)
+	if got == nil {
+		t.Fatal("Loaded session should be in manager")
+	}
+	if got.Status != session.StatusIdle {
+		t.Errorf("Status in manager = %q, want %q", got.Status, session.StatusIdle)
+	}
+}
+
+func TestLoadFromDisk_InvalidJSON(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	_, err := mgr.LoadFromDisk([]byte("invalid json"))
+	if err == nil {
+		t.Fatal("LoadFromDisk should fail on invalid JSON")
+	}
+}
+
+func TestLoadFromDisk_IDCollision(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	sess.Title = "Original"
+
+	// Marshal the session
+	data, err := json.Marshal(sess)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	// Try to load while it's still in the manager — should fail with ID collision
+	_, err = mgr.LoadFromDisk(data)
+	if err == nil {
+		t.Fatal("LoadFromDisk should fail with ID collision when session already exists")
+	}
+	if !strings.Contains(err.Error(), "session ID collision") {
+		t.Errorf("Error message should mention collision, got: %v", err)
+	}
+}
+
+func TestLoadFromDisk_ForceStatusIdle(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	sess.Status = session.StatusError // arbitrary non-idle status
+	sess.ClosedAt = timePtr(time.Now())
+
+	data, err := json.Marshal(sess)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	mgr.Delete(sess.ID)
+
+	loaded, err := mgr.LoadFromDisk(data)
+	if err != nil {
+		t.Fatalf("LoadFromDisk failed: %v", err)
+	}
+
+	if loaded.Status != session.StatusIdle {
+		t.Errorf("Status = %q, want %q", loaded.Status, session.StatusIdle)
+	}
+	if loaded.ClosedAt != nil {
+		t.Error("ClosedAt should be nil after LoadFromDisk")
+	}
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
+}
+
+func TestLoadFromDisk_PreservesMessages(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, _ := mgr.Create("browser-1")
+	sess.Messages = []session.Message{
+		{Role: "user", Content: "What is 2+2?"},
+		{Role: "assistant", Content: "4", ToolCalls: nil},
+		{Role: "tool", Content: "result", ToolCallID: "call_123"},
+	}
+
+	data, err := json.Marshal(sess)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	mgr.Delete(sess.ID)
+
+	loaded, err := mgr.LoadFromDisk(data)
+	if err != nil {
+		t.Fatalf("LoadFromDisk failed: %v", err)
+	}
+
+	if len(loaded.Messages) != 3 {
+		t.Fatalf("Messages count = %d, want 3", len(loaded.Messages))
+	}
+	if loaded.Messages[2].Role != "tool" || loaded.Messages[2].ToolCallID != "call_123" {
+		t.Errorf("Tool message not preserved: got Role=%q, ToolCallID=%q",
+			loaded.Messages[2].Role, loaded.Messages[2].ToolCallID)
 	}
 }

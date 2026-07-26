@@ -12,6 +12,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persist"
 
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
@@ -1527,5 +1528,123 @@ func TestRunService_GetPanicFree(t *testing.T) {
 	}()
 
 	time.Sleep(10 * time.Millisecond)
+}
+
+// ── LoadSessionFromDisk ────────────────────────────────────────────────────
+
+func TestRunService_LoadSessionFromDisk_LoadsAndRestores(t *testing.T) {
+	svc, uiSessionMgr := newRunServiceForTest(t)
+
+	// Create and persist a session via the manager
+	sess, err := uiSessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Title = "Historical Session"
+	sess.Messages = []uisession.Message{
+		{Role: "user", Content: "Hello from the past"},
+		{Role: "assistant", Content: "Hello from the past as well"},
+	}
+
+	// We need a persister for this. Create one and attach to the service.
+	eitriDir := t.TempDir()
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	svc.persister = p
+
+	// Save to disk
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+	sessionID := sess.ID
+
+	// Close session from manager
+	uiSessionMgr.Close(sessionID)
+
+	// Verify it's gone
+	if got := uiSessionMgr.Get(sessionID); got != nil {
+		t.Fatal("session should be closed before testing load")
+	}
+
+	// Load from disk
+	loaded, err := svc.LoadSessionFromDisk(sessionID)
+	if err != nil {
+		t.Fatalf("LoadSessionFromDisk: %v", err)
+	}
+
+	if loaded == nil {
+		t.Fatal("LoadSessionFromDisk returned nil")
+	}
+	if loaded.Title != "Historical Session" {
+		t.Errorf("Title = %q, want %q", loaded.Title, "Historical Session")
+	}
+	if loaded.Status != uisession.StatusIdle {
+		t.Errorf("Status = %q, want %q", loaded.Status, uisession.StatusIdle)
+	}
+
+	// Verify it's back in the manager
+	got := uiSessionMgr.Get(sessionID)
+	if got == nil {
+		t.Fatal("session should be restored to manager")
+	}
+
+	// Verify history was restored
+	history := svc.historySessionMgr.History(sessionID)
+	if history == nil {
+		t.Fatal("history should be restored")
+	}
+	// History includes system prompt + user + assistant
+	if len(history) < 2 {
+		t.Fatalf("history messages = %d, want at least 2", len(history))
+	}
+	foundUser := false
+	foundAssistant := false
+	for _, msg := range history {
+		if msg.Role == "user" && msg.Content == "Hello from the past" {
+			foundUser = true
+		}
+		if msg.Role == "assistant" && msg.Content == "Hello from the past as well" {
+			foundAssistant = true
+		}
+	}
+	if !foundUser {
+		t.Error("user message not found in restored history")
+	}
+	if !foundAssistant {
+		t.Error("assistant message not found in restored history")
+	}
+}
+
+func TestRunService_LoadSessionFromDisk_NoPersister(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	// svc.persister is nil by default
+
+	_, err := svc.LoadSessionFromDisk("any-id")
+	if err == nil {
+		t.Fatal("LoadSessionFromDisk should fail when persister is nil")
+	}
+	if !strings.Contains(err.Error(), "persister not available") {
+		t.Errorf("expected 'persister not available' error, got: %v", err)
+	}
+}
+
+func TestRunService_LoadSessionFromDisk_SessionNotFound(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	eitriDir := t.TempDir()
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	svc.persister = p
+
+	_, err = svc.LoadSessionFromDisk("nonexistent")
+	if err == nil {
+		t.Fatal("LoadSessionFromDisk should fail for nonexistent session")
+	}
+	if !strings.Contains(err.Error(), "not found on disk") {
+		t.Errorf("expected 'not found on disk' error, got: %v", err)
+	}
 }
 
