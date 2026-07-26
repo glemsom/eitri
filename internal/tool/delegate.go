@@ -10,7 +10,7 @@ import (
 
 type delegateArgs struct {
 	Task     string `json:"task" jsonschema:"The task to delegate to a sub-agent (required)"`
-	MaxTurns int    `json:"max_turns" jsonschema:"Maximum number of turns for the sub-agent (default: 50)"`
+	MaxTurns int    `json:"max_turns" jsonschema:"Maximum number of turns for the sub-agent (default: 250)"`
 	Persona  string `json:"persona,omitempty" jsonschema:"Optional persona name to use for the sub-agent (default: generic)"`
 }
 
@@ -51,7 +51,7 @@ func (t *DelegateTool) Call(ctx context.Context, args json.RawMessage) (ToolResu
 		return ToolError(TextBlocks("Error: 'task' parameter is required")), nil
 	}
 	if parsed.MaxTurns <= 0 {
-		parsed.MaxTurns = 50
+		parsed.MaxTurns = 250
 	}
 
 	sessionID, _ := ctx.Value(SessionIDKey).(string)
