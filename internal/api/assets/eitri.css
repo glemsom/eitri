@@ -3675,7 +3675,6 @@ eitri-context {
 }
 
 .sessions-table-container {
-  overflow-x: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -3683,7 +3682,6 @@ eitri-context {
 }
 
 .sessions-table {
-  min-width: 960px;
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
