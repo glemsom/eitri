@@ -471,3 +471,112 @@ func TestWrapCommand_WorkspaceReadWrite(t *testing.T) {
 		t.Errorf("host file content = %q, want %q", strings.TrimSpace(string(data)), "written")
 	}
 }
+
+// TestWrapCommand_TmpIsolation_CleanedUpBetweenCalls verifies that a file
+// written to /tmp during one sandboxed command is absent in a subsequent
+// call — confirming the ephemeral /tmp directory is cleaned up between
+// invocations.
+func TestWrapCommand_TmpIsolation_CleanedUpBetweenCalls(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	cfg := DefaultConfig()
+
+	// Define a unique sentinel filename for this test run.
+	sentinelPath := "/tmp/sentinel-879-cleanup"
+
+	// Step 1: Write the sentinel file to /tmp inside the sandbox.
+	exe1, args1, cleanup1, err := WrapCommand(dir, "touch "+sentinelPath, cfg)
+	defer cleanup1()
+	if err != nil {
+		t.Fatalf("WrapCommand (write): %v", err)
+	}
+	cmd1 := exec.Command(exe1, args1...)
+	cmd1.Dir = dir
+	if out, err := cmd1.CombinedOutput(); err != nil {
+		t.Fatalf("write command failed: %v\noutput: %s", err, out)
+	}
+
+	// Step 2: Check that the sentinel file does NOT exist in a new sandbox call.
+	exe2, args2, cleanup2, err := WrapCommand(dir, "test -f "+sentinelPath+" && echo found || echo not-found", cfg)
+	defer cleanup2()
+	if err != nil {
+		t.Fatalf("WrapCommand (check): %v", err)
+	}
+	cmd2 := exec.Command(exe2, args2...)
+	cmd2.Dir = dir
+	out2, err := cmd2.CombinedOutput()
+	if err != nil {
+		t.Fatalf("check command failed: %v\noutput: %s", err, out2)
+	}
+	if got := strings.TrimSpace(string(out2)); got != "not-found" {
+		t.Errorf("sentinel file still present after cleanup: output %q, want %q", got, "not-found")
+	}
+}
+
+// TestWrapCommand_TmpIsolation_NotSharedAcrossCalls verifies that files
+// written to /tmp in one sandbox call do not leak into the /tmp of a
+// different sandbox call — i.e. each invocation gets its own ephemeral
+// /tmp.
+func TestWrapCommand_TmpIsolation_NotSharedAcrossCalls(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	cfg := DefaultConfig()
+
+	// Step 1: Write a unique file to /tmp in the first sandbox call.
+	exe1, args1, cleanup1, err := WrapCommand(dir, "echo 'first-call-data' > /tmp/first-call-file", cfg)
+	defer cleanup1()
+	if err != nil {
+		t.Fatalf("WrapCommand (first call): %v", err)
+	}
+	cmd1 := exec.Command(exe1, args1...)
+	cmd1.Dir = dir
+	if out, err := cmd1.CombinedOutput(); err != nil {
+		t.Fatalf("first command failed: %v\noutput: %s", err, out)
+	}
+
+	// Step 2: In a second call, write a different file to /tmp and verify
+	// the first call's file is absent.
+	exe2, args2, cleanup2, err := WrapCommand(dir, `
+		echo 'second-call-data' > /tmp/second-call-file
+		if test -f /tmp/first-call-file; then
+			echo "LEAKED"
+		else
+			echo "isolated"
+		fi
+	`, cfg)
+	defer cleanup2()
+	if err != nil {
+		t.Fatalf("WrapCommand (second call): %v", err)
+	}
+	cmd2 := exec.Command(exe2, args2...)
+	cmd2.Dir = dir
+	out2, err := cmd2.CombinedOutput()
+	if err != nil {
+		t.Fatalf("second command failed: %v\noutput: %s", err, out2)
+	}
+	if got := strings.TrimSpace(string(out2)); got != "isolated" {
+		t.Errorf("/tmp is shared across calls: output %q, want %q", got, "isolated")
+	}
+}
