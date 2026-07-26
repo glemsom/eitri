@@ -1,12 +1,10 @@
 // Package persona manages agent personas — named profiles with a system prompt
 // and optional required skills.
 //
-// Personas are stored as YAML files under either:
-//   - <workspace>/.eitri/personas/<name>.yaml (project-scoped, higher precedence)
-//   - ~/.eitri/personas/<name>.yaml        (user-level, fallback)
-//
-// This mirrors the skills discovery pattern (ADR-0002): workspace overrides home.
-// Save always writes to the workspace directory; Load and List check both locations.
+// Personas are stored as YAML files under ~/.eitri/personas/<name>.yaml (user-level).
+// Unlike skills (which support workspace-level overrides), personas are always
+// user-level — they represent the user's agent behaviour preferences, not
+// project-specific capabilities.
 package persona
 
 import (
@@ -79,175 +77,126 @@ type PersonaDefinition struct {
 	RequiredSkills []string `yaml:"required_skills,omitempty" json:"required_skills,omitempty"`
 }
 
-// Dir returns the personas directory for the given workspace.
-func Dir(workspace string) string {
-	return filepath.Join(workspace, ".eitri", personasDirName)
-}
-
 // UserDir returns the user-level personas directory under the home .eitri.
 func UserDir(homeDir string) string {
 	return filepath.Join(homeDir, ".eitri", personasDirName)
 }
 
-// Save writes a persona definition to disk as <name>.yaml.
-// It creates the personas directory if it doesn't exist.
+// Save writes a persona definition to the user-level home directory (~/.eitri/personas/).
+// Personas are user-level, not workspace-scoped.
 func Save(workspace string, def *PersonaDefinition) error {
-	if def == nil {
-		return fmt.Errorf("persona definition is nil")
-	}
-	if strings.TrimSpace(def.Name) == "" {
-		return fmt.Errorf("persona name must not be empty")
-	}
-
-	personaDir := Dir(workspace)
-	if err := os.MkdirAll(personaDir, 0700); err != nil {
-		return fmt.Errorf("create personas dir: %w", err)
-	}
-
-	data, err := yaml.Marshal(def)
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("marshal persona: %w", err)
+		return fmt.Errorf("resolve user home dir: %w", err)
 	}
-
-	path := filepath.Join(personaDir, sanitizeName(def.Name)+".yaml")
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write persona file: %w", err)
-	}
-	return nil
+	return SaveToHome(homeDir, def)
 }
 
-// Load reads a persona definition from disk.
-// It first checks the workspace-scoped directory, then falls back to the user-level
-// home directory (determined via os.UserHomeDir).
-// The workspace parameter must be non-empty.
+// Load reads a persona definition from the user-level home directory (~/.eitri/personas/).
+// The workspace parameter is accepted for API compatibility but is ignored —
+// personas are always loaded from the user's home directory.
 func Load(workspace, name string) (*PersonaDefinition, error) {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("resolve user home dir: %w", err)
+	}
 	return LoadWithHome(workspace, homeDir, name)
 }
 
-// LoadWithHome reads a persona definition, checking workspace-scoped first,
-// then falling back to the user-level home directory.
+// LoadWithHome reads a persona definition from the user-level home directory.
+// The workspace parameter is accepted for API compatibility but is ignored.
 func LoadWithHome(workspace, homeDir, name string) (*PersonaDefinition, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("persona name must not be empty")
 	}
 
-	// Try workspace first (project-level override)
-	workspacePath := filepath.Join(Dir(workspace), sanitizeName(name)+".yaml")
-	data, err := os.ReadFile(workspacePath)
-	if err == nil {
-		var def PersonaDefinition
-		if err := yaml.Unmarshal(data, &def); err != nil {
-			return nil, fmt.Errorf("unmarshal persona: %w", err)
-		}
-		return &def, nil
+	if homeDir == "" {
+		return nil, fmt.Errorf("home dir must not be empty")
 	}
-	if !os.IsNotExist(err) {
+
+	path := filepath.Join(UserDir(homeDir), sanitizeName(name)+".yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("persona %q not found", name)
+		}
 		return nil, fmt.Errorf("read persona file: %w", err)
 	}
 
-	// Fall back to user-level home directory
-	if homeDir != "" {
-		homePath := filepath.Join(UserDir(homeDir), sanitizeName(name)+".yaml")
-		data, err = os.ReadFile(homePath)
-		if err == nil {
-			var def PersonaDefinition
-			if err := yaml.Unmarshal(data, &def); err != nil {
-				return nil, fmt.Errorf("unmarshal persona: %w", err)
-			}
-			return &def, nil
-		}
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read persona file: %w", err)
-		}
+	var def PersonaDefinition
+	if err := yaml.Unmarshal(data, &def); err != nil {
+		return nil, fmt.Errorf("unmarshal persona: %w", err)
 	}
-
-	return nil, fmt.Errorf("persona %q not found", name)
+	return &def, nil
 }
 
-// Delete removes a persona file from disk. It checks both workspace-scoped
-// and user-level home directories. It does not prevent deleting generic.
+// Delete removes a persona file from the user-level home directory.
+// The workspace parameter is accepted for API compatibility but is ignored.
 func Delete(workspace, name string) error {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve user home dir: %w", err)
+	}
 	return DeleteWithHome(workspace, homeDir, name)
 }
 
-// DeleteWithHome removes a persona file, checking the workspace directory first,
-// then the user-level home directory.
+// DeleteWithHome removes a persona file from the user-level home directory.
+// The workspace parameter is accepted for API compatibility but is ignored.
 func DeleteWithHome(workspace, homeDir, name string) error {
 	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("persona name must not be empty")
 	}
 
-	// Try workspace first
-	workspacePath := filepath.Join(Dir(workspace), sanitizeName(name)+".yaml")
-	if err := os.Remove(workspacePath); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
+	if homeDir == "" {
+		return fmt.Errorf("home dir must not be empty")
+	}
+
+	path := filepath.Join(UserDir(homeDir), sanitizeName(name)+".yaml")
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("persona %q not found", name)
+		}
 		return fmt.Errorf("delete persona file: %w", err)
 	}
-
-	// Try user-level home directory
-	if homeDir != "" {
-		homePath := filepath.Join(UserDir(homeDir), sanitizeName(name)+".yaml")
-		if err := os.Remove(homePath); err == nil {
-			return nil
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("delete persona file: %w", err)
-		}
-	}
-
-	return fmt.Errorf("persona %q not found", name)
+	return nil
 }
 
-// List returns persona names from the workspace-scoped directory, with a
-// fallback to the user-level home directory. Workspace names override
-// home-level names with the same name (de-duplicated, workspace wins).
+// List returns persona names from the user-level home directory.
+// The workspace parameter is accepted for API compatibility but is ignored.
 func List(workspace string) ([]string, error) {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("resolve user home dir: %w", err)
+	}
 	return ListWithHome(workspace, homeDir)
 }
 
-// ListWithHome enumerates personas from both workspace-scoped and user-level
-// directories. Workspace names take precedence over home names.
+// ListWithHome enumerates personas from the user-level home directory.
+// The workspace parameter is accepted for API compatibility but is ignored.
 func ListWithHome(workspace, homeDir string) ([]string, error) {
-	seen := make(map[string]bool)
+	if homeDir == "" {
+		return nil, fmt.Errorf("home dir must not be empty")
+	}
+
+	dir := UserDir(homeDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("read personas dir %s: %w", dir, err)
+	}
+
 	var names []string
-
-	addDir := func(dir string) error {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return fmt.Errorf("read personas dir %s: %w", dir, err)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			if !strings.HasSuffix(entry.Name(), ".yaml") {
-				continue
-			}
-			name := strings.TrimSuffix(entry.Name(), ".yaml")
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, name)
-			}
+		if !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
 		}
-		return nil
-	}
-
-	// Workspace first (higher precedence)
-	if err := addDir(Dir(workspace)); err != nil {
-		return nil, err
-	}
-
-	// Then user-level home
-	if homeDir != "" {
-		if err := addDir(UserDir(homeDir)); err != nil {
-			return nil, err
-		}
+		name := strings.TrimSuffix(entry.Name(), ".yaml")
+		names = append(names, name)
 	}
 
 	sort.Strings(names)

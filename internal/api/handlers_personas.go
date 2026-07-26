@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -225,7 +226,12 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 		RequiredSkills: injectedSkills,
 	}
 
-	if err := persona.Save(workspace, def); err != nil {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		writeConfigError(w, r, http.StatusInternalServerError, "Failed to resolve home directory: "+err.Error())
+		return
+	}
+	if err := persona.SaveToHome(homeDir, def); err != nil {
 		writeConfigError(w, r, http.StatusInternalServerError, "Failed to save persona: "+err.Error())
 		return
 	}
@@ -326,10 +332,15 @@ func (s *Server) updatePersonaCatalog(workspace string) {
 		return
 	}
 
-	// Rebuild catalog from current files
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
+	// Rebuild catalog from current files (absolute home paths)
 	newCatalog := make(map[string]string, len(names))
 	for _, name := range names {
-		newCatalog[name] = ".eitri/personas/" + name + ".yaml"
+		newCatalog[name] = filepath.Join(persona.UserDir(homeDir), name+".yaml")
 	}
 	cfg.PersonaCatalog = newCatalog
 

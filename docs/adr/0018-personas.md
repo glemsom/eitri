@@ -30,7 +30,7 @@ Introduce **personas** — named bundles of:
 
 #### Persona definition
 
-A persona is stored as a single YAML file in `<workspace>/.eitri/personas/<name>.yaml`:
+A persona is stored as a single YAML file in `~/.eitri/personas/<name>.yaml`:
 
 ```yaml
 name: reviewer
@@ -42,7 +42,7 @@ required_skills:
   - diagnosing-bugs
 ```
 
-The `generic` persona is always present. If no `.eitri/personas/generic.yaml`
+The `generic` persona is always present. If no `~/.eitri/personas/generic.yaml`
 file exists, it is created at startup with the current built-in default
 prompt and no required skills.
 
@@ -127,29 +127,27 @@ in both the UI and the backend API.
 
 ### Files on disk
 
-Persona files are stored in both locations, like skills (ADR-0002):
+Persona files are stored in the user-level home directory only:
 
-1. `<workspace>/.eitri/personas/` — project-scoped personas (higher precedence)
-2. `~/.eitri/personas/` — user-level personas (lower precedence, shared across projects)
+`~/.eitri/personas/<name>.yaml`
+
+Unlike skills (ADR-0002), personas are user-level preferences — they represent
+how the user wants the agent to behave, not project-specific capabilities.
+There is no workspace-scoped personas directory.
 
 ```
-.workspace/
-  .eitri/
-    personas/
-      generic.yaml
-      reviewer.yaml
-      debugger.yaml
-    config.json          # existing, adds persona_catalog + active_persona
-
 ~/.eitri/
   personas/
       generic.yaml
+      reviewer.yaml
+      debugger.yaml
       editor.yaml
 ```
 
-When loading, workspace-scoped versions shadow user-level versions with the
-same name. Saving always writes to the workspace-scoped directory. This mirrors
-the skills discovery pattern (see ADR-0002).
+Saving, loading, listing, and deleting all operate exclusively on the
+user-level home directory. The workspace parameter accepted by the
+`persona.Load`, `persona.Save`, `persona.List`, and `persona.Delete`
+functions is retained for API compatibility but ignored at runtime.
 
 ### Impact on existing users
 

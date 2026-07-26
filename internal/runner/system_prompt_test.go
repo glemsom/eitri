@@ -11,6 +11,17 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 )
 
+// TestMain overrides HOME to a temporary directory so that persona.Save/Load/List/Delete
+// (which call os.UserHomeDir()) never touch the real user home dir.
+func TestMain(m *testing.M) {
+	tempHome, err := os.MkdirTemp("", "runner-test-home-*")
+	if err != nil {
+		panic("failed to create temp home dir: " + err.Error())
+	}
+	os.Setenv("HOME", tempHome)
+	os.Exit(m.Run())
+}
+
 // writeTestSkill writes a minimal SKILL.md to the given root directory.
 func writeTestSkill(t *testing.T, rootDir, name, body string) {
 	t.Helper()

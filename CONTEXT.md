@@ -30,7 +30,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Session persistence** | On-disk JSON file `~/.eitri/sessions/<id>/session.json` that survives server restarts. Written atomically every turn for troubleshooting/debugging. Not restored on startup, but can be loaded on demand via `POST /api/sessions/{id}/load` to bring a historical session back into the in-memory session manager (status forced to idle). The Persister retains up to 1 GiB of timeline and trace files, evicting the oldest across all sessions. Session messages carry all LLM-oriented fields (tool calls, tool_call_id) so the snapshot is the single source of truth. |
 | **Trace persistence** | Individual HTTP trace files written to `~/.eitri/sessions/<id>/traces/<trace_id>.json` on LLM provider call completion. Survive server restarts for post-mortem debugging. |
 | **Persister** | The `internal/persist/` package responsible for writing and reading session snapshots, conversation histories, and HTTP traces to/from disk. Owns the 1 GiB retention cap and directory layout under `~/.eitri/`. |
-| **Persona** | A named bundle of a system prompt and optional injected skills. Stored as `.eitri/personas/<name>.yaml`. The `generic` persona is always present. Personas determine the agent's behaviour instructions; tools and workspace are shared. |
+| **Persona** | A named bundle of a system prompt and optional injected skills. Stored as `~/.eitri/personas/<name>.yaml` (user-level only — no workspace-scoped personas). The `generic` persona is always present. Personas determine the agent's behaviour instructions; tools and workspace are shared. |
 
 ## Architecture decisions
 

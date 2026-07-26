@@ -171,6 +171,12 @@ func TestBatchRun_ConversationContextCapturedOnError(t *testing.T) {
 }
 
 func TestBatchRun_UsesActivePersona(t *testing.T) {
+	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	homeDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", homeDir)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
 	workspace := t.TempDir()
 
 	// Create a test persona with a custom system prompt and an injected skill

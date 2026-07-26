@@ -84,6 +84,13 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 
 func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {
 	t.Helper()
+
+	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	homeDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", homeDir)
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+
 	sessionMgr := session.NewManager(10, workspace)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
@@ -91,7 +98,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
-	if err := persona.EnsureGeneric(); err != nil {
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
 	}
 
