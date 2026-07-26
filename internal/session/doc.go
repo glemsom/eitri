@@ -10,9 +10,16 @@
 // Each UISession holds messages, components, quick-reply options, and
 // reasoning content — all the data the browser needs to render the chat.
 //
+// View types (SessionMeta, Conversation, SessionConfig) provide typed
+// access to logical groups of UISession fields via Manager accessor
+// methods. The underlying data remains stored in UISession.
+//
 // Key types:
 //   - Manager — thread-safe session lifecycle manager
 //   - UISession — one browser chat session
+//   - SessionMeta — identity, status, and timestamp view
+//   - Conversation — messages, system prompt, and active skills view
+//   - SessionConfig — per-session settings view (workspace)
 //   - Message — canonical message type (alias for llm.Message)
 //   - ComponentData — UI component data (alias for llm.ComponentData)
 //   - Status — session status constants (idle, running, error)
@@ -21,6 +28,8 @@
 //   - NewManager — create a session manager with a capacity cap
 //   - Create / Get / GetValidated / Delete — CRUD with browser ownership
 //   - CreateChild — create a sub-agent child session
+//   - GetMeta / GetConversation / GetConfig — typed accessor views
+//   - UpdateMeta / AppendToConversation / UpdateConfig — typed setter methods
 //   - AppendMessage / AppendComponent — add data to a session
 //   - UpdateTitle / UpdateStatus — mutate session metadata
 //   - ActivateSkill / DeactivateSkill — manage active skills per session

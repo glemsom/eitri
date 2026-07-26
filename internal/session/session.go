@@ -68,6 +68,34 @@ type UISession struct {
 	renderedMessageIDIdx int      // next write index in the ring buffer
 }
 
+// SessionMeta holds the identity, status, and timestamp fields of a session.
+// It is a read-only view extracted from UISession — the underlying data
+// still lives in UISession.
+type SessionMeta struct {
+	ID        string
+	BrowserID string
+	ParentID  string
+	Title     string
+	Status    Status
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ClosedAt  *time.Time
+}
+
+// Conversation holds the chat data of a session.
+// It is a read-only view extracted from UISession.
+type Conversation struct {
+	Messages     []Message
+	SystemPrompt string
+	ActiveSkills []string
+}
+
+// SessionConfig holds per-session settings.
+// It is a read-only view extracted from UISession.
+type SessionConfig struct {
+	Workspace string
+}
+
 // Manager manages in-memory UI sessions with browser ownership.
 // Thread-safe. Enforces a maximum number of sessions globally.
 type Manager struct {
@@ -667,4 +695,109 @@ func (m *Manager) HasRenderedMessageID(id, messageID string) bool {
 		}
 	}
 	return false
+}
+
+// GetMeta returns a SessionMeta view of the session identified by id.
+// Returns nil if the session does not exist.
+func (m *Manager) GetMeta(id string) *SessionMeta {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	return &SessionMeta{
+		ID:        s.ID,
+		BrowserID: s.BrowserID,
+		ParentID:  s.ParentID,
+		Title:     s.Title,
+		Status:    s.Status,
+		CreatedAt: s.CreatedAt,
+		UpdatedAt: s.UpdatedAt,
+		ClosedAt:  s.ClosedAt,
+	}
+}
+
+// GetConversation returns a Conversation view of the session identified by id.
+// Returns nil if the session does not exist.
+func (m *Manager) GetConversation(id string) *Conversation {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	msgs := make([]Message, len(s.Messages))
+	copy(msgs, s.Messages)
+	skills := make([]string, len(s.ActiveSkills))
+	copy(skills, s.ActiveSkills)
+	return &Conversation{
+		Messages:     msgs,
+		SystemPrompt: s.SystemPrompt,
+		ActiveSkills: skills,
+	}
+}
+
+// GetConfig returns a SessionConfig view of the session identified by id.
+// Returns nil if the session does not exist.
+func (m *Manager) GetConfig(id string) *SessionConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[id]
+	if s == nil {
+		return nil
+	}
+	return &SessionConfig{
+		Workspace: s.Workspace,
+	}
+}
+
+// UpdateMeta updates the metadata fields of a session from the given SessionMeta.
+// Only non-zero-value fields are applied. The session's UpdatedAt is always set to now.
+// No-op if the session does not exist.
+func (m *Manager) UpdateMeta(id string, meta *SessionMeta) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || meta == nil {
+		return
+	}
+	if meta.Title != "" {
+		s.Title = meta.Title
+	}
+	if meta.Status != "" {
+		s.Status = meta.Status
+	}
+	if meta.ClosedAt != nil {
+		s.ClosedAt = meta.ClosedAt
+	}
+	s.UpdatedAt = time.Now()
+}
+
+// AppendToConversation appends a message to the session's conversation.
+// No-op if the session does not exist.
+func (m *Manager) AppendToConversation(id string, msg Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return
+	}
+	s.Messages = append(s.Messages, msg)
+	s.UpdatedAt = time.Now()
+}
+
+// UpdateConfig updates the configuration fields of a session from the given SessionConfig.
+// Only non-zero-value fields are applied. No-op if the session does not exist.
+func (m *Manager) UpdateConfig(id string, config *SessionConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil || config == nil {
+		return
+	}
+	if config.Workspace != "" {
+		s.Workspace = config.Workspace
+	}
+	s.UpdatedAt = time.Now()
 }
