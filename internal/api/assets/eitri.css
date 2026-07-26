@@ -3658,6 +3658,9 @@ eitri-context {
   max-width: 960px;
   margin: 0 auto;
   padding: 24px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .sessions-view h2 {
@@ -3767,7 +3770,7 @@ eitri-context {
 }
 
 .session-actions-cell {
-  width: 120px;
+  width: 180px;
   white-space: nowrap;
 }
 
