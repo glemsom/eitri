@@ -4,8 +4,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/history"
@@ -1004,5 +1006,199 @@ func TestHandleLoadSession_NoBrowserID_GetsOne(t *testing.T) {
 	// Session should now be in the manager
 	if loaded := sessionMgr.Get(sessionID); loaded == nil {
 		t.Error("session should have been loaded into manager")
+	}
+}
+
+// ————— handleCleanupPruneByAge —————
+
+func TestHandleCleanupPruneByAge_RequiresAgeDays(t *testing.T) {
+	server, _, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleCleanupPruneByAge_InvalidAgeDays(t *testing.T) {
+	server, _, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	form := url.Values{"age_days": {"-1"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleCleanupPruneByAge_PreservesActiveSessions(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-prune-active-browser"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark as closed recently (within 1 day)
+	now := time.Now()
+	sess.ClosedAt = &now
+
+	form := url.Values{"age_days": {"7"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Session should still exist (closed but younger than 7 days)
+	if got := sessionMgr.Get(sess.ID); got == nil {
+		t.Error("session that is closed but young should not be pruned")
+	}
+}
+
+func TestHandleCleanupPruneByAge_DeletesOldClosedSessions(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-prune-old-browser"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark as closed 30 days ago
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	sess.ClosedAt = &old
+
+	form := url.Values{"age_days": {"7"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Session should be deleted from memory
+	if got := sessionMgr.Get(sess.ID); got != nil {
+		t.Error("old closed session should have been pruned from memory")
+	}
+}
+
+func TestHandleCleanupPruneByAge_PreservesActiveNotClosedSessions(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-prune-active-not-closed-browser"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Do NOT close this session
+
+	form := url.Values{"age_days": {"1"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Active session should still exist
+	if got := sessionMgr.Get(sess.ID); got == nil {
+		t.Error("active (not closed) session should not be pruned")
+	}
+}
+
+func TestHandleCleanupPruneByAge_DeletesOldDiskSessions(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-prune-disk-browser"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Title = "Old Disk Session"
+	sess.Messages = []session.Message{
+		{Role: "user", Content: "old"},
+	}
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	sess.CreatedAt = old
+	sess.UpdatedAt = old
+	sess.ClosedAt = &old
+
+	// Persist to disk then close from manager
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+	sessionMgr.Close(sess.ID)
+
+	form := url.Values{"age_days": {"7"}}
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/prune-by-age failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Session should be deleted from disk
+	diskIDs, err := p.ListOnDiskSessionIDs()
+	if err != nil {
+		t.Fatalf("ListOnDiskSessionIDs: %v", err)
+	}
+	for _, id := range diskIDs {
+		if id == sess.ID {
+			t.Error("old closed disk session should have been pruned")
+		}
 	}
 }
