@@ -581,9 +581,8 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg r
 	// Snapshot the compacted history if persister is available.
 	if s.persister != nil {
 		sessAfter := s.uiSessionMgr.Get(sessionID)
-		historyAfter := s.historySessionMgr.History(sessionID)
-		if sessAfter != nil && historyAfter != nil {
-			if err := s.persister.SnapshotSession(sessionID, sessAfter, historyAfter); err != nil {
+		if sessAfter != nil {
+			if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
 				slog.Warn("failed to snapshot compacted session",
 					slog.String("session_id", sessionID),
 					slog.Any("error", err),

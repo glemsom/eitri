@@ -159,11 +159,11 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 	return runs, nil
 }
 
-// listRunsFromHistory reconstructs a best-effort run list from history only.
+// listRunsFromHistory reconstructs a best-effort run list from the session snapshot.
 func (svc *Service) listRunsFromHistory(sessionID string) ([]RunInfo, error) {
-	data, err := svc.persister.LoadLatestHistory(sessionID)
+	data, err := svc.persister.LoadSession(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("load history: %w", err)
+		return nil, fmt.Errorf("load session: %w", err)
 	}
 	if data == nil {
 		return nil, nil
@@ -376,7 +376,7 @@ func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary 
 
 // enrichFromSnapshot fills in titles, user messages, and reasoning content from session snapshot.
 func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) *SessionReport {
-	data, err := svc.persister.LoadLatestSessionSnapshot(sessionID)
+	data, err := svc.persister.LoadSession(sessionID)
 	if err != nil || data == nil {
 		return report
 	}
@@ -494,18 +494,21 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 	return report
 }
 
-// buildReconstructedReport builds a report from history only (no timeline).
+// buildReconstructedReport builds a report from session snapshot only (no timeline).
 func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, error) {
-	data, err := svc.persister.LoadLatestHistory(sessionID)
+	data, err := svc.persister.LoadSession(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("load history: %w", err)
+		return nil, fmt.Errorf("load session: %w", err)
 	}
 
-	snapData, _ := svc.persister.LoadLatestSessionSnapshot(sessionID)
+	var snapData []byte
+	if data != nil {
+		snapData = data
+	}
 
-	var title, workspace, model, provider string
+	var title, workspace string
+	var snap session.UISession
 	if snapData != nil {
-		var snap session.UISession
 		if err := json.Unmarshal(snapData, &snap); err == nil {
 			title = snap.Title
 			workspace = snap.Workspace
@@ -516,8 +519,6 @@ func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, 
 		SessionID:     sessionID,
 		Title:         title,
 		Workspace:     workspace,
-		Model:         model,
-		Provider:      provider,
 		ReportVersion: "reconstructed",
 		DurationMs:    0,
 		SubAgents:     []string{},
@@ -526,35 +527,33 @@ func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, 
 		},
 	}
 
-	if data != nil {
-		var hist persist.HistorySchema
-		if err := json.Unmarshal(data, &hist); err == nil {
-			turnNum := 0
-			for _, msg := range hist.Messages {
-				turnNum++
-				t := Turn{
-					Turn:      turnNum,
-					Role:      msg.Role,
-					Content:   msg.Content,
-					Timestamp: time.Now(),
-				}
-				// Extract tool calls from assistant messages
-				if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-					for _, tc := range msg.ToolCalls {
-						var args any
-						if tc.Function.Arguments != "" {
-							json.Unmarshal([]byte(tc.Function.Arguments), &args)
-						}
-						t.ToolCalls = append(t.ToolCalls, ToolCallInfo{
-							Name:      tc.Function.Name,
-							Arguments: args,
-						})
-					}
-				}
-				report.Turns = append(report.Turns, t)
-				report.Summary.TotalTurns++
-				report.Summary.TotalLLMCalls++
+	if snapData != nil && len(snap.Messages) > 0 {
+		turnNum := 0
+		for _, msg := range snap.Messages {
+			turnNum++
+			t := Turn{
+				Turn:             turnNum,
+				Role:             msg.Role,
+				Content:          msg.Content,
+				ReasoningContent: msg.ReasoningContent,
+				Timestamp:        msg.CreatedAt,
 			}
+			// Extract tool calls from assistant messages
+			if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					var args any
+					if tc.Function.Arguments != "" {
+						json.Unmarshal([]byte(tc.Function.Arguments), &args)
+					}
+					t.ToolCalls = append(t.ToolCalls, ToolCallInfo{
+						Name:      tc.Function.Name,
+						Arguments: args,
+					})
+				}
+			}
+			report.Turns = append(report.Turns, t)
+			report.Summary.TotalTurns++
+			report.Summary.TotalLLMCalls++
 		}
 	}
 

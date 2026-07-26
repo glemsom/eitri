@@ -19,14 +19,16 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
+// defaultRetention is the default maximum total size (1 GiB) for persisted data.
+const defaultRetention = 1 * 1024 * 1024 * 1024
+
 // iso8601Dashes is the time format used for timestamped filenames.
 // Colons are replaced by dashes for cross-platform filesystem compatibility.
 const iso8601Dashes = "2006-01-02T15-04-05"
 
-// defaultRetention is the default maximum total size (1 GiB) for persisted data.
-const defaultRetention = 1 * 1024 * 1024 * 1024
-
 // HistorySchema is the canonical JSON schema for history files.
+// Deprecated: The snapshot file (session.json) is now the single source of truth.
+// Kept for reading old-format data on disk.
 type HistorySchema struct {
 	Version      int           `json:"version"`
 	SystemPrompt string        `json:"system_prompt"`
@@ -36,6 +38,7 @@ type HistorySchema struct {
 // RestoredState holds all data recovered from disk on startup.
 type RestoredState struct {
 	Sessions map[string]*session.UISession
+	// Histories are derived from the session snapshot messages.
 	Histories map[string][]llm.Message // sessionID → conversation history with system prompt prepended
 	Traces    []*debug.HTTPTrace
 }
@@ -67,12 +70,10 @@ func New(rootDir string) (*Persister, error) {
 		persistedTraces: make(map[debug.TraceID]bool),
 	}
 
-	// Create directory tree
-	for _, dir := range []string{"sessions", "history"} {
-		path := filepath.Join(rootDir, dir)
-		if err := os.MkdirAll(path, 0700); err != nil {
-			return nil, fmt.Errorf("cannot create %s: %w", path, err)
-		}
+	// Create sessions directory tree
+	sessionsDir := filepath.Join(rootDir, "sessions")
+	if err := os.MkdirAll(sessionsDir, 0700); err != nil {
+		return nil, fmt.Errorf("cannot create sessions dir %s: %w", sessionsDir, err)
 	}
 
 	return p, nil
@@ -136,32 +137,19 @@ func (p *Persister) LoadTimeline(sessionID, filename string) ([]byte, error) {
 	return data, nil
 }
 
-// LoadLatestSessionSnapshot reads the current session snapshot (via symlink).
-func (p *Persister) LoadLatestSessionSnapshot(sessionID string) ([]byte, error) {
-	sessionLink := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
-	linkTarget, err := os.Readlink(sessionLink)
+// LoadSession reads the current session snapshot from disk.
+// Returns nil, nil if no snapshot exists for the session.
+// This is the replacement for LoadLatestSessionSnapshot and LoadLatestHistory.
+func (p *Persister) LoadSession(sessionID string) ([]byte, error) {
+	sessionFile := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
+	data, err := os.ReadFile(sessionFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("cannot read symlink %s: %w", sessionLink, err)
+		return nil, fmt.Errorf("cannot read session file %s: %w", sessionFile, err)
 	}
-	snapshotPath := filepath.Join(p.rootDir, "sessions", sessionID, linkTarget)
-	return os.ReadFile(snapshotPath)
-}
-
-// LoadLatestHistory reads the current conversation history (via symlink).
-func (p *Persister) LoadLatestHistory(sessionID string) ([]byte, error) {
-	historyLink := filepath.Join(p.rootDir, "history", sessionID, "history.json")
-	linkTarget, err := os.Readlink(historyLink)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("cannot read history symlink %s: %w", historyLink, err)
-	}
-	histPath := filepath.Join(p.rootDir, "history", sessionID, linkTarget)
-	return os.ReadFile(histPath)
+	return data, nil
 }
 
 // ListTraces returns the filenames (without .json) of all trace files for a session.
@@ -227,56 +215,24 @@ func (p *Persister) SaveTimeline(sessionID string, timeline any) error {
 	return nil
 }
 
-// SnapshotSession writes a full session snapshot and its LLM conversation
-// history to disk. Both are written as timestamped JSON files with atomic
-// symlink updates pointing to the latest version.
-func (p *Persister) SnapshotSession(sessionID string, s *session.UISession, history []llm.Message) error {
-	ts := time.Now().UTC()
-	filename := timestampFilename(ts)
-
-	// --- Session snapshot ---
+// SnapshotSession writes the full session snapshot to disk as a single
+// session.json file, overwritten atomically on each turn.
+// The snapshot now carries all LLM-oriented fields (tool calls, etc.)
+// so no separate history file is needed.
+func (p *Persister) SnapshotSession(sessionID string, s *session.UISession) error {
 	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
 	if err := os.MkdirAll(sessionDir, 0700); err != nil {
 		return fmt.Errorf("cannot create session dir %s: %w", sessionDir, err)
 	}
 
-	sessionData, err := json.Marshal(s)
+	data, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("cannot marshal session: %w", err)
 	}
 
-	sessionFile := filepath.Join(sessionDir, filename)
-	if err := atomicWrite(sessionFile, sessionData, 0600); err != nil {
+	sessionFile := filepath.Join(sessionDir, "session.json")
+	if err := atomicWrite(sessionFile, data, 0600); err != nil {
 		return fmt.Errorf("cannot write session file: %w", err)
-	}
-
-	// Update symlink: <sessionDir>/session.json -> filename
-	sessionLink := filepath.Join(sessionDir, "session.json")
-	if err := updateSymlink(sessionLink, filename); err != nil {
-		return fmt.Errorf("cannot update session symlink: %w", err)
-	}
-
-	// --- History snapshot ---
-	historyDir := filepath.Join(p.rootDir, "history", sessionID)
-	if err := os.MkdirAll(historyDir, 0700); err != nil {
-		return fmt.Errorf("cannot create history dir %s: %w", historyDir, err)
-	}
-
-	schema := buildHistorySchema(history)
-	histData, err := json.Marshal(schema)
-	if err != nil {
-		return fmt.Errorf("cannot marshal history: %w", err)
-	}
-
-	historyFile := filepath.Join(historyDir, filename)
-	if err := atomicWrite(historyFile, histData, 0600); err != nil {
-		return fmt.Errorf("cannot write history file: %w", err)
-	}
-
-	// Update symlink: <historyDir>/history.json -> filename
-	historyLink := filepath.Join(historyDir, "history.json")
-	if err := updateSymlink(historyLink, filename); err != nil {
-		return fmt.Errorf("cannot update history symlink: %w", err)
 	}
 
 	return nil
@@ -308,9 +264,8 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	return nil
 }
 
-// Flush writes any pending session snapshots, conversation histories, and
-// unpersisted HTTP traces to disk. It is intended for use during graceful
-// shutdown to ensure no data is lost.
+// Flush writes any pending session snapshots, unpersisted HTTP traces to disk.
+// It is intended for use during graceful shutdown to ensure no data is lost.
 //
 // For each session, a final snapshot is always written (the write is cheap
 // and guarantees consistency).
@@ -321,21 +276,16 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 // If flush fails for any individual item, the error is logged but Flush
 // continues with remaining items (best-effort). A combined error is returned
 // if any failures occurred.
-func (p *Persister) Flush(sessions []*session.UISession, histories map[string][]llm.Message, traces []*debug.HTTPTrace) error {
+func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTrace) error {
 	if p == nil {
 		return nil
 	}
 
 	var flushErr error
 
-	// Snapshot each session and its history.
+	// Snapshot each session.
 	for _, s := range sessions {
-		// Look up history for this session; may be nil/empty.
-		hist := histories[s.ID]
-		if hist == nil {
-			hist = []llm.Message{}
-		}
-		if err := p.SnapshotSession(s.ID, s, hist); err != nil {
+		if err := p.SnapshotSession(s.ID, s); err != nil {
 			slog.Warn("flush: failed to snapshot session",
 				slog.String("session_id", s.ID),
 				slog.Any("error", err))
@@ -368,97 +318,76 @@ func (p *Persister) Flush(sessions []*session.UISession, histories map[string][]
 }
 
 // DeleteSession removes all persisted data for a session from disk:
-// <root>/sessions/<id>/ and <root>/history/<id>/.
-// If the directories don't exist, the call is a no-op.
+// <root>/sessions/<id>/.
+// If the directory doesn't exist, the call is a no-op.
 func (p *Persister) DeleteSession(sessionID string) error {
-	var firstErr error
-
-	for _, dir := range []string{
-		filepath.Join(p.rootDir, "sessions", sessionID),
-		filepath.Join(p.rootDir, "history", sessionID),
-	} {
-		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
+	dir := filepath.Join(p.rootDir, "sessions", sessionID)
+	if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
+		return err
 	}
-
-	return firstErr
+	return nil
 }
 
 // Prune scans sessions/ and history/ for total size. If total exceeds the
 // retention cap (1 GiB by default), it removes the oldest timestamped
 // snapshot files across all sessions until the cap is met. The latest
 // snapshot (symlink target) for any session is never removed.
+// Prune scans sessions/ for total size. If total exceeds the retention cap
+// (1 GiB by default), it removes the oldest timeline and trace files until
+// the cap is met. The session.json file for any session is never removed.
 func (p *Persister) Prune() error {
-	type snapshotFile struct {
+	type candidateFile struct {
 		path  string
 		modTS time.Time
+		size  int64
 	}
 
-	var allSnapshots []snapshotFile
-	protected := make(map[string]bool) // paths that must not be deleted
+	var candidates []candidateFile
+	var totalSize int64
 
-	// Collect all timestamped snapshot files under sessions/ and history/
-	// and identify protected files (symlink targets).
-	baseDirs := []string{
-		filepath.Join(p.rootDir, "sessions"),
-		filepath.Join(p.rootDir, "history"),
-	}
+	baseDir := filepath.Join(p.rootDir, "sessions")
 
-	for _, base := range baseDirs {
-		err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				// Skip if directory doesn't exist
-				if os.IsNotExist(err) {
-					return filepath.SkipDir
-				}
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-
-			name := d.Name()
-			// Skip symlinks (session.json, history.json) and non-JSON files
-			if !strings.HasSuffix(name, ".json") {
-				return nil
-			}
-			if name == "session.json" || name == "history.json" {
-				// Resolve the symlink target and protect it
-				target, err := os.Readlink(path)
-				if err == nil {
-					targetPath := filepath.Join(filepath.Dir(path), target)
-					protected[targetPath] = true
-				}
-				return nil
-			}
-
-			// It's a timestamped snapshot file
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-			allSnapshots = append(allSnapshots, snapshotFile{
-				path:  path,
-				modTS: info.ModTime(),
-			})
-			return nil
-		})
+	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return filepath.SkipDir
+			}
 			return err
 		}
-	}
-
-	// Calculate total size
-	var totalSize int64
-	for _, sf := range allSnapshots {
-		info, err := os.Stat(sf.path)
-		if err != nil {
-			continue
+		if d.IsDir() {
+			return nil
 		}
+
+		name := d.Name()
+		if !strings.HasSuffix(name, ".json") {
+			return nil
+		}
+
+		// Protect session.json files — never remove the single source of truth.
+		if name == "session.json" {
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			totalSize += info.Size()
+			return nil
+		}
+
+		// Timeline and trace files are candidates for pruning.
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		candidates = append(candidates, candidateFile{
+			path:  path,
+			modTS: info.ModTime(),
+			size:  info.Size(),
+		})
 		totalSize += info.Size()
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	if totalSize <= p.retention {
@@ -466,40 +395,76 @@ func (p *Persister) Prune() error {
 	}
 
 	// Sort by modification time (oldest first)
-	sort.Slice(allSnapshots, func(i, j int) bool {
-		return allSnapshots[i].modTS.Before(allSnapshots[j].modTS)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].modTS.Before(candidates[j].modTS)
 	})
 
-	// Remove oldest files until under cap, skipping protected ones
+	// Remove oldest files until under cap
 	overage := totalSize - p.retention
-	for _, sf := range allSnapshots {
+	for _, cf := range candidates {
 		if overage <= 0 {
 			break
 		}
-		if protected[sf.path] {
+		if err := os.Remove(cf.path); err != nil {
 			continue
 		}
-		info, err := os.Stat(sf.path)
-		if err != nil {
-			continue
-		}
-		size := info.Size()
-		if err := os.Remove(sf.path); err != nil {
-			continue
-		}
-		overage -= size
+		overage -= cf.size
 	}
 
 	return nil
 }
 
-// Restore reads all persisted session snapshots, conversation histories, and
-// HTTP traces from disk and returns them as a RestoredState struct.
+// sessionSnapshotPath resolves the path to the session.json file for a session.
+// In the new single-file format, it's just <dir>/session.json.
+// For backward compatibility, if session.json is a symlink (old format),
+// it resolves the symlink to find the actual file.
+func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
+	sessionFile := filepath.Join(sessionsDir, sessionID, "session.json")
+	info, err := os.Lstat(sessionFile)
+	if err != nil {
+		return "", err
+	}
+	// If it's a symlink (old format), resolve it
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(sessionFile)
+		if err != nil {
+			return "", err
+		}
+		resolved := filepath.Join(sessionsDir, sessionID, target)
+		return resolved, nil
+	}
+	return sessionFile, nil
+}
+
+// sessionMessagesToHistory converts session.Message slice to []llm.Message
+// by extracting the LLM-relevant fields.
+func sessionMessagesToHistory(msgs []session.Message) []llm.Message {
+	result := make([]llm.Message, 0, len(msgs))
+	for _, m := range msgs {
+		llmMsg := llm.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+			ToolCalls:  m.ToolCalls,
+		}
+		result = append(result, llmMsg)
+	}
+	return result
+}
+
+// Restore reads all persisted session snapshots and HTTP traces from disk and
+// returns them as a RestoredState struct.
 // If no persisted data exists (first run), returns an empty RestoredState with no error.
 // All restored sessions have Status set to StatusIdle regardless of what the snapshot says.
+//
+// The restored Histories are derived from the session snapshots' Messages field,
+// which now contains all LLM-oriented fields.
+//
+// For backward compatibility, if old-format history data exists under history/
+// and no session.json was found, it attempts to read from the old format.
 func (p *Persister) Restore() (*RestoredState, error) {
 	state := &RestoredState{
-		Sessions: make(map[string]*session.UISession),
+		Sessions:  make(map[string]*session.UISession),
 		Histories: make(map[string][]llm.Message),
 		Traces:    make([]*debug.HTTPTrace, 0),
 	}
@@ -523,16 +488,16 @@ func (p *Persister) Restore() (*RestoredState, error) {
 		sessionID := entry.Name()
 
 		// --- Restore session snapshot ---
-		sessionLink := filepath.Join(sessionsDir, sessionID, "session.json")
-		linkTarget, err := os.Readlink(sessionLink)
+		snapshotPath, err := sessionSnapshotPath(sessionsDir, sessionID)
 		if err != nil {
 			if os.IsNotExist(err) {
-				continue // no snapshot for this session yet
+				// No session.json — try old-format history as fallback
+				state.loadOldFormatHistory(sessionID, historyDir)
+				continue
 			}
-			return nil, fmt.Errorf("cannot read symlink %s: %w", sessionLink, err)
+			return nil, fmt.Errorf("cannot resolve session snapshot for %s: %w", sessionID, err)
 		}
 
-		snapshotPath := filepath.Join(sessionsDir, sessionID, linkTarget)
 		data, err := os.ReadFile(snapshotPath)
 		if err != nil {
 			return nil, fmt.Errorf("cannot read snapshot %s: %w", snapshotPath, err)
@@ -548,34 +513,8 @@ func (p *Persister) Restore() (*RestoredState, error) {
 
 		state.Sessions[sessionID] = &s
 
-		// --- Restore conversation history ---
-		historyLink := filepath.Join(historyDir, sessionID, "history.json")
-		histLinkTarget, err := os.Readlink(historyLink)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue // no history for this session yet
-			}
-			return nil, fmt.Errorf("cannot read history symlink %s: %w", historyLink, err)
-		}
-
-		histPath := filepath.Join(historyDir, sessionID, histLinkTarget)
-		histData, err := os.ReadFile(histPath)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read history file %s: %w", histPath, err)
-		}
-
-		var histSchema HistorySchema
-		if err := json.Unmarshal(histData, &histSchema); err != nil {
-			return nil, fmt.Errorf("cannot unmarshal history %s: %w", histPath, err)
-		}
-
-		// Reconstruct the full message list with system prompt prepended
-		var messages []llm.Message
-		if histSchema.SystemPrompt != "" {
-			messages = append(messages, llm.Message{Role: "system", Content: histSchema.SystemPrompt})
-		}
-		messages = append(messages, histSchema.Messages...)
-		state.Histories[sessionID] = messages
+		// Derive history from session messages
+		state.Histories[sessionID] = sessionMessagesToHistory(s.Messages)
 
 		// --- Restore HTTP traces ---
 		tracesDir := filepath.Join(sessionsDir, sessionID, "traces")
@@ -604,36 +543,62 @@ func (p *Persister) Restore() (*RestoredState, error) {
 		}
 	}
 
+	// Backward compatibility: scan history/ for sessions not yet migrated
+	// to the new single-file format.
+	state.loadOldFormatHistories(sessionsDir, historyDir)
+
 	return state, nil
+}
+
+// loadOldFormatHistory reads a single session's history from the old-format
+// history/ directory. Used as fallback when no session.json exists.
+func (state *RestoredState) loadOldFormatHistory(sessionID, historyDir string) {
+	historyLink := filepath.Join(historyDir, sessionID, "history.json")
+	linkTarget, err := os.Readlink(historyLink)
+	if err != nil {
+		return // no old-format data either
+	}
+	histPath := filepath.Join(historyDir, sessionID, linkTarget)
+	histData, err := os.ReadFile(histPath)
+	if err != nil {
+		return
+	}
+
+	var histSchema HistorySchema
+	if err := json.Unmarshal(histData, &histSchema); err != nil {
+		return
+	}
+
+	var messages []llm.Message
+	if histSchema.SystemPrompt != "" {
+		messages = append(messages, llm.Message{Role: "system", Content: histSchema.SystemPrompt})
+	}
+	messages = append(messages, histSchema.Messages...)
+	state.Histories[sessionID] = messages
+}
+
+// loadOldFormatHistories scans history/ for sessions not yet in sessions/.
+func (state *RestoredState) loadOldFormatHistories(sessionsDir, historyDir string) {
+	historyEntries, err := os.ReadDir(historyDir)
+	if err != nil {
+		return // history/ doesn't exist or can't be read
+	}
+	for _, entry := range historyEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		sessionID := entry.Name()
+		// Only load if not already loaded from sessions/
+		if _, exists := state.Sessions[sessionID]; exists {
+			continue
+		}
+		state.loadOldFormatHistory(sessionID, historyDir)
+	}
 }
 
 // timestampFilename generates an ISO8601 filename with dashes instead of colons.
 func timestampFilename(ts time.Time) string {
 	return ts.Format(iso8601Dashes) + ".json"
-}
-
-// buildHistorySchema converts an []llm.Message slice (where the first message
-// may be a system prompt) into a HistorySchema with separate system_prompt
-// and messages fields.
-func buildHistorySchema(messages []llm.Message) HistorySchema {
-	schema := HistorySchema{
-		Version:  1,
-		Messages: make([]llm.Message, 0),
-	}
-
-	if len(messages) == 0 {
-		return schema
-	}
-
-	// Extract system prompt if first message has role "system"
-	if messages[0].Role == "system" {
-		schema.SystemPrompt = messages[0].Content
-		schema.Messages = messages[1:]
-	} else {
-		schema.Messages = messages
-	}
-
-	return schema
 }
 
 // atomicWrite writes data to a file atomically: write to a temp file in the
@@ -669,29 +634,5 @@ func atomicWrite(targetPath string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("cannot rename temp file to %s: %w", targetPath, err)
 	}
 	removed = true
-	return nil
-}
-
-// updateSymlink atomically updates a symlink to point to a new target.
-// It creates a temporary symlink and renames it over the existing one.
-func updateSymlink(linkPath, target string) error {
-	// If the symlink already exists, remove it first (os.Rename doesn't work
-	// across different types, and we can't atomically swap symlinks on Linux).
-	// We use a temp symlink in the same directory and rename.
-	dir := filepath.Dir(linkPath)
-	tmpLink := filepath.Join(dir, fmt.Sprintf(".%s.tmp-symlink", filepath.Base(linkPath)))
-
-	// Clean up any leftover temp symlink
-	os.Remove(tmpLink)
-
-	if err := os.Symlink(target, tmpLink); err != nil {
-		return fmt.Errorf("cannot create temp symlink: %w", err)
-	}
-
-	if err := os.Rename(tmpLink, linkPath); err != nil {
-		os.Remove(tmpLink) // best-effort cleanup
-		return fmt.Errorf("cannot rename symlink: %w", err)
-	}
-
 	return nil
 }
