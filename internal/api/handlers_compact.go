@@ -26,8 +26,8 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -57,7 +57,12 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	// Allow manual compaction even when auto-compaction is disabled.
 	// The user can still manually compact via the "Compact now" button.
 
-	runCfg := runner.FromConfig(cfg, sess.Workspace, 0)
+	cfgState := s.config.SessionManager.GetConfig(id)
+	workspace := ""
+	if cfgState != nil {
+		workspace = cfgState.Workspace
+	}
+	runCfg := runner.FromConfig(cfg, workspace, 0)
 
 	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(r.Context(), id, runCfg)
 	if err != nil {

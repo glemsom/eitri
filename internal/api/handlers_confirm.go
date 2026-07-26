@@ -31,8 +31,8 @@ func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -140,8 +140,8 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -164,12 +164,13 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		var content string
 		var components []llm.ComponentData
 		var quickReplies []string
-		if sess != nil {
-			for i := len(sess.Messages) - 1; i >= 0; i-- {
-				if sess.Messages[i].Role == "assistant" {
-					content = sess.Messages[i].Content
-					components = sess.Messages[i].Components
-					quickReplies = sess.Messages[i].QuickReplies
+		convo := s.config.SessionManager.GetConversation(id)
+		if convo != nil {
+			for i := len(convo.Messages) - 1; i >= 0; i-- {
+				if convo.Messages[i].Role == "assistant" {
+					content = convo.Messages[i].Content
+					components = convo.Messages[i].Components
+					quickReplies = convo.Messages[i].QuickReplies
 					break
 				}
 			}

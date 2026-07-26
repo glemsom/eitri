@@ -20,15 +20,18 @@ func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Re
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || (browserID != "" && sess.BrowserID != browserID) {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || (browserID != "" && meta.BrowserID != browserID) {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
 	pathParam := r.URL.Query().Get("path")
 	if pathParam == "" {
-		pathParam = sess.Workspace
+		cfg := s.config.SessionManager.GetConfig(id)
+		if cfg != nil {
+			pathParam = cfg.Workspace
+		}
 	}
 
 	// Validate and list directories
@@ -60,8 +63,8 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || (browserID != "" && sess.BrowserID != browserID) {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || (browserID != "" && meta.BrowserID != browserID) {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}

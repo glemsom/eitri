@@ -97,8 +97,8 @@ func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -137,8 +137,8 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -246,8 +246,8 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 	name := r.PathValue("name")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -268,8 +268,14 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 
 	// Return HTMX fragment with updated chips
 	if r.Header.Get("HX-Request") == "true" {
-		contextFiles := runner.ScanContextFiles(sess.Workspace)
-		chips := templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, false)
+		cfg := s.config.SessionManager.GetConfig(id)
+		workspace := ""
+		if cfg != nil {
+			workspace = cfg.Workspace
+		}
+		contextFiles := runner.ScanContextFiles(workspace)
+		activeSkills := s.config.SessionManager.ActiveSkills(id)
+		chips := templates.ActiveSkillChips(activeSkills, contextFiles, false)
 		chips.Render(r.Context(), w)
 		return
 	}
@@ -284,15 +290,21 @@ func (s *Server) handleSessionSkillChips(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	contextFiles := runner.ScanContextFiles(sess.Workspace)
-	chips := templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, false)
+	cfg := s.config.SessionManager.GetConfig(id)
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	contextFiles := runner.ScanContextFiles(workspace)
+	activeSkills := s.config.SessionManager.ActiveSkills(id)
+	chips := templates.ActiveSkillChips(activeSkills, contextFiles, false)
 	chips.Render(r.Context(), w)
 }
 
@@ -318,7 +330,8 @@ func (s *Server) handleDisableSkill(w http.ResponseWriter, r *http.Request) {
 	// Auto-deactivate in all sessions
 	deactivatedCount := 0
 	for _, sess := range s.config.SessionManager.All() {
-		for _, activeSkill := range sess.ActiveSkills {
+		activeSkills := s.config.SessionManager.ActiveSkills(sess.ID)
+		for _, activeSkill := range activeSkills {
 			if activeSkill == name {
 				s.config.SessionManager.DeactivateSkill(sess.ID, name)
 				deactivatedCount++
@@ -399,7 +412,8 @@ func (s *Server) handleDisableAllSkills(w http.ResponseWriter, r *http.Request) 
 	registry = s.refreshSkillsRegistry()
 
 	for _, sess := range s.config.SessionManager.All() {
-		for _, active := range sess.ActiveSkills {
+		activeSkills := s.config.SessionManager.ActiveSkills(sess.ID)
+		for _, active := range activeSkills {
 			s.config.SessionManager.DeactivateSkill(sess.ID, active)
 		}
 	}

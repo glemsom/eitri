@@ -310,16 +310,19 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 
 	// Restore conversation history in the history manager
 	if s.historySessionMgr != nil {
-		msgs := make([]llm.Message, 0, len(loaded.Messages))
-		for _, m := range loaded.Messages {
-			msgs = append(msgs, llm.Message{
-				Role:       m.Role,
-				Content:    m.Content,
-				ToolCallID: m.ToolCallID,
-				ToolCalls:  m.ToolCalls,
-			})
+		convo := s.uiSessionMgr.GetConversation(sessionID)
+		if convo != nil {
+			msgs := make([]llm.Message, 0, len(convo.Messages))
+			for _, m := range convo.Messages {
+				msgs = append(msgs, llm.Message{
+					Role:       m.Role,
+					Content:    m.Content,
+					ToolCallID: m.ToolCallID,
+					ToolCalls:  m.ToolCalls,
+				})
+			}
+			s.historySessionMgr.RestoreHistory(sessionID, msgs)
 		}
-		s.historySessionMgr.RestoreHistory(sessionID, msgs)
 	}
 
 	return loaded, nil
@@ -522,15 +525,15 @@ func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.St
 		return
 	}
 	uiSessionMgr.UpdateStatus(sessionID, status)
-	sess := uiSessionMgr.Get(sessionID)
-	if sess == nil || sess.BrowserID == "" {
+	meta := uiSessionMgr.GetMeta(sessionID)
+	if meta == nil || meta.BrowserID == "" {
 		return
 	}
-	bb.Broadcast(sess.BrowserID, BrowserEvent{
+	bb.Broadcast(meta.BrowserID, BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,
-			"status":     string(sess.Status),
+			"status":     string(meta.Status),
 		},
 	})
 }

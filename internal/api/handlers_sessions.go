@@ -128,24 +128,26 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		browserID = s.ensureBrowserID(w, r)
 	}
 
-	sess := s.config.SessionManager.Get(id)
+	meta := s.config.SessionManager.GetMeta(id)
+	cfg := s.config.SessionManager.GetConfig(id)
 
 	state := s.loadConfigState(r.Context())
 	configValid := state.valid()
 
 	// Stale session (id doesn't exist at all) → redirect to /
-	if sess == nil {
+	if meta == nil {
 		s.hxRedirect(w, r, "/")
 		return
 	}
 
 	// Ownership mismatch → 404
-	if sess.BrowserID != browserID {
+	if meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	sess := s.config.SessionManager.Get(id) // keep for renderSessionForPage
 	renderedSession := renderSessionForPage(sess)
 
 	contextWindow := state.cfg.ContextWindowTokens
@@ -164,9 +166,13 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	contextFiles := runner.ScanContextFiles(sess.Workspace)
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	contextFiles := runner.ScanContextFiles(workspace)
 
-	component := templates.ChatPage(sessions, id, renderedSession, sess.Workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail, state.cfg.CompactionEnabled, state.cfg.ContextWarningThresholdPercent, contextFiles)
+	component := templates.ChatPage(sessions, id, renderedSession, workspace, configValid, r.URL.Path, contextWindow, reasoningContent, state.cfg.UserEmail, state.cfg.CompactionEnabled, state.cfg.ContextWarningThresholdPercent, contextFiles)
 	component.Render(r.Context(), w)
 }
 
@@ -179,13 +185,13 @@ func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil {
 		// Session already gone — redirect
 		s.hxRedirect(w, r, "/")
 		return
 	}
-	if sess.BrowserID != browserID {
+	if meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -241,9 +247,9 @@ func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := s.config.SessionManager.Get(id)
-	if sess != nil {
-		if sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta != nil {
+		if meta.BrowserID != browserID {
 			http.Error(w, "Session not found", http.StatusNotFound)
 			return
 		}
@@ -299,7 +305,7 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loaded, err := s.config.RunService.LoadSessionFromDisk(id)
+	_, err := s.config.RunService.LoadSessionFromDisk(id)
 	if err != nil {
 		s.logger.Warn("failed to load session from disk",
 			slog.String("session_id", id),
@@ -312,13 +318,10 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 
 	// The loaded session may have a stale browser ID from when it was last active.
 	// Update it to the current browser so it appears in the sidebar.
-	if loaded.BrowserID != browserID {
-		// Remove the old browser registration and re-add with current browser
-		s.config.SessionManager.Delete(id)
-		loaded.BrowserID = browserID
-		// Reset ClosedAt so it appears as an active session
-		loaded.ClosedAt = nil
-		s.config.SessionManager.Add(loaded)
+	loadedMeta := s.config.SessionManager.GetMeta(id)
+	if loadedMeta != nil && loadedMeta.BrowserID != browserID {
+		s.config.SessionManager.SetBrowserID(id, browserID)
+		s.config.SessionManager.SetClosedAt(id, nil)
 	}
 
 	// Set HX-Redirect BEFORE writing any body content
