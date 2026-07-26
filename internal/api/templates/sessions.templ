@@ -1,0 +1,159 @@
+package templates
+
+import (
+	"time"
+
+	"github.com/glemsom/eitri/internal/session"
+)
+
+// SessionRow represents a single session entry on the Sessions page.
+// It combines data from in-memory active sessions and on-disk persisted sessions.
+type SessionRow struct {
+	ID        string
+	Title     string
+	TurnCount int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Duration  time.Duration
+	IsActive  bool     // session is currently in-memory and active
+	IsClosed  bool     // session has been closed (ClosedAt set)
+}
+
+// SessionsPage renders the full Sessions management page.
+templ SessionsPage(activeSessions []*session.UISession, diskSessions []SessionRow, diskUsageBytes int64, chatPath string, currentPath string, workspace string, contextWindow int) {
+	@Base("Eitri — Sessions", chatPath, nil, "", currentPath, workspace, contextWindow, "", false, 75) {
+		<div class="sessions-view">
+			<h2>Session Management</h2>
+			<p class="text-muted">Browse, load, and manage all your chat sessions.</p>
+
+			<div id="sessions-list">
+				@SessionsList(activeSessions, diskSessions)
+			</div>
+
+			<div id="sessions-cleanup">
+				@SessionsCleanup(diskUsageBytes)
+			</div>
+		</div>
+	}
+}
+
+templ SessionsList(activeSessions []*session.UISession, diskSessions []SessionRow) {
+	<div class="sessions-table-container">
+		<table class="sessions-table">
+			<thead>
+				<tr>
+					<th>Status</th>
+					<th>Title</th>
+					<th>Messages</th>
+					<th>Created</th>
+					<th>Updated / Closed</th>
+					<th>Duration</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, s := range activeSessions {
+					@SessionRowView(s.ID, s.Title, len(s.Messages), s.CreatedAt, updatedOrClosedTime(s), sessionDuration(s), true, s.ClosedAt != nil)
+				}
+				for _, d := range diskSessions {
+					@SessionRowView(d.ID, d.Title, d.TurnCount, d.CreatedAt, d.UpdatedAt, d.Duration, false, d.IsClosed)
+				}
+				if len(activeSessions) == 0 && len(diskSessions) == 0 {
+					<tr>
+						<td colspan="7" class="text-muted">No sessions found.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+templ SessionRowView(id string, title string, turnCount int, createdAt time.Time, updatedAt time.Time, duration time.Duration, isActive bool, isClosed bool) {
+	<tr>
+		<td class="session-status-cell">
+			if isActive {
+				<span class="status-badge status-active" title="Active in memory">&#9679; Active</span>
+			} else if isClosed {
+				<span class="status-badge status-closed" title="Closed">&#9679; Closed</span>
+			} else {
+				<span class="status-badge status-dormant" title="On disk">&#9679; Saved</span>
+			}
+		</td>
+		<td class="session-title-cell">{ title }</td>
+		<td class="session-count-cell">{ turnCount }</td>
+		<td class="session-date-cell">{ createdAt.Format("2006-01-02 15:04") }</td>
+		<td class="session-date-cell">{ updatedAt.Format("2006-01-02 15:04") }</td>
+		<td class="session-duration-cell">{ formatDuration(duration.Milliseconds()) }</td>
+		<td class="session-actions-cell">
+			if !isActive {
+				<button
+					class="btn btn-sm btn-primary"
+					hx-post={ templ.URL("/api/sessions/" + id + "/load") }
+					hx-target="body"
+					hx-swap="beforeend"
+					title="Load this session into the sidebar and navigate to chat"
+				>Load</button>
+			} else {
+				<a href={ templ.URL("/sessions/" + id) } class="btn btn-sm btn-secondary" title="Open this session in chat">
+					Open
+				</a>
+			}
+			<a href={ templ.URL("/report/" + id) } class="btn btn-sm" title="View session report">
+				📊
+			</a>
+			<button
+				class="btn btn-sm btn-danger"
+				hx-delete={ templ.URL("/api/sessions/" + id + "/permanent") }
+				hx-confirm="Permanently delete this session and all its data?"
+				hx-target="body"
+				hx-swap="beforeend"
+				title="Permanently delete this session"
+			>🗑</button>
+		</td>
+	</tr>
+}
+
+templ SessionsCleanup(diskUsageBytes int64) {
+	<details class="settings-details" open>
+		<summary>Storage &amp; Cleanup</summary>
+		<div class="cleanup-section">
+			<div class="cleanup-stat">
+				<span class="cleanup-label">Total disk usage:</span>
+				<span class="cleanup-value">{ formatBytes(int(diskUsageBytes)) }</span>
+			</div>
+			<div class="cleanup-actions">
+				<button
+					class="btn btn-danger"
+					hx-post="/api/sessions/cleanup/delete-closed"
+					hx-confirm="Delete ALL closed sessions permanently? This cannot be undone."
+					hx-target="#sessions-list"
+					hx-swap="outerHTML"
+				>Delete All Closed Sessions</button>
+				<button
+					class="btn btn-danger"
+					hx-post="/api/sessions/cleanup/clear-all-traces"
+					hx-confirm="Clear all trace files from all sessions? Session data will be preserved."
+					hx-target="#sessions-cleanup"
+					hx-swap="outerHTML"
+				>Clear All Traces</button>
+			</div>
+		</div>
+	</details>
+}
+
+// updatedOrClosedTime returns the closed time if set, otherwise the updated time.
+func updatedOrClosedTime(s *session.UISession) time.Time {
+	if s.ClosedAt != nil {
+		return *s.ClosedAt
+	}
+	return s.UpdatedAt
+}
+
+// sessionDuration computes the duration between created and last updated/closed time.
+func sessionDuration(s *session.UISession) time.Duration {
+	end := s.UpdatedAt
+	if s.ClosedAt != nil {
+		end = *s.ClosedAt
+	}
+	return end.Sub(s.CreatedAt)
+}

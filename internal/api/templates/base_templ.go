@@ -132,6 +132,10 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		templ_7745c5c3_Err = NavLink("/sessions", "Sessions", currentPath).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		templ_7745c5c3_Err = NavLink("/settings", "Settings", currentPath).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -160,7 +164,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/api/sessions/" + activeID + "/compact"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 90, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 91, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -173,7 +177,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(reasoningContent)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 100, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 101, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -191,7 +195,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(reasoningContent)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 104, Col: 644}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 105, Col: 644}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -251,7 +255,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var13 templ.SafeURL
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 119, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 120, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -264,7 +268,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 120, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 121, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -290,7 +294,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 126, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 127, Col: 9}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {

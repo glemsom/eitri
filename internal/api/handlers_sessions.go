@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -339,4 +342,211 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
 	sidebar := templates.SessionTabsList(sessions, id)
 	sidebar.Render(r.Context(), w)
+}
+
+// handleSessionsPage renders the full Sessions management page at GET /sessions.
+// It lists all active (in-memory) sessions plus all persisted sessions on disk.
+func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+
+	// Gather active (in-memory) sessions for this browser
+	var activeSessions []*session.UISession
+	if browserID != "" {
+		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
+	}
+
+	// Gather disk sessions
+	var diskRows []templates.SessionRow
+	if s.config.Persister != nil {
+		diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
+		if err != nil {
+			s.logger.Warn("failed to list disk sessions", slog.Any("error", err))
+		} else {
+			// Build a set of active IDs to exclude from disk listing
+			activeIDs := make(map[string]bool, len(activeSessions))
+			for _, as := range activeSessions {
+				activeIDs[as.ID] = true
+			}
+			for _, id := range diskIDs {
+				if activeIDs[id] {
+					continue // already shown in active section
+				}
+				info, err := s.config.Persister.LoadSessionInfo(id)
+				if err != nil {
+					s.logger.Warn("failed to load session metadata",
+						slog.String("session_id", id),
+						slog.Any("error", err))
+					continue
+				}
+				if info == nil {
+					continue
+				}
+				duration := info.UpdatedAt.Sub(info.CreatedAt)
+				if info.ClosedAt != nil {
+					duration = info.ClosedAt.Sub(info.CreatedAt)
+				}
+				diskRows = append(diskRows, templates.SessionRow{
+					ID:        info.ID,
+					Title:     info.Title,
+					TurnCount: info.Messages,
+					CreatedAt: info.CreatedAt,
+					UpdatedAt: info.UpdatedAt,
+					Duration:  duration,
+					IsActive:  false,
+					IsClosed:  info.ClosedAt != nil,
+				})
+			}
+		}
+	}
+
+	// Compute disk usage
+	var diskUsageBytes int64
+	if s.config.Persister != nil {
+		du, err := s.config.Persister.DiskUsageBytes()
+		if err != nil {
+			s.logger.Warn("failed to compute disk usage", slog.Any("error", err))
+		} else {
+			diskUsageBytes = du
+		}
+	}
+
+	component := templates.SessionsPage(activeSessions, diskRows, diskUsageBytes, s.chatPathForRequest(r), r.URL.Path, s.config.Workspace, 256000)
+	component.Render(r.Context(), w)
+}
+
+// handleCleanupDeleteClosed permanently removes ALL closed sessions from disk and memory.
+// POST /api/sessions/cleanup/delete-closed
+func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+
+	if s.config.Persister == nil {
+		http.Error(w, "Persister not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Collect all session IDs to delete: closed in-memory sessions + closed disk sessions
+	var toDelete []string
+
+	// Closed in-memory sessions for this browser
+	if browserID != "" {
+		for _, sess := range s.config.SessionManager.ListByBrowser(browserID) {
+			if sess.ClosedAt != nil {
+				toDelete = append(toDelete, sess.ID)
+			}
+		}
+	}
+
+	// Closed disk sessions (not in memory)
+	diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
+	if err != nil {
+		s.logger.Warn("failed to list disk sessions", slog.Any("error", err))
+	} else {
+		activeIDs := make(map[string]bool)
+		if browserID != "" {
+			for _, sess := range s.config.SessionManager.ListByBrowser(browserID) {
+				activeIDs[sess.ID] = true
+			}
+		}
+		for _, id := range diskIDs {
+			if activeIDs[id] {
+				continue
+			}
+			info, err := s.config.Persister.LoadSessionInfo(id)
+			if err != nil || info == nil {
+				continue
+			}
+			if info.ClosedAt != nil {
+				toDelete = append(toDelete, id)
+			}
+		}
+	}
+
+	// Perform deletion
+	var deleted int
+	for _, id := range toDelete {
+		// Close in-memory (if active)
+		if s.config.RunService != nil {
+			_ = s.config.RunService.CloseSession(id)
+		}
+		s.config.SessionManager.Delete(id)
+		if err := s.config.Persister.DeleteSession(id); err != nil {
+			s.logger.Warn("failed to delete session data",
+				slog.String("session_id", id),
+				slog.Any("error", err))
+			continue
+		}
+		deleted++
+	}
+
+	// Build updated sessions list for HTMX response
+	var activeSessions []*session.UISession
+	if browserID != "" {
+		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
+	}
+
+	remainingDiskIDs, _ := s.config.Persister.ListOnDiskSessionIDs()
+	activeIDSet := make(map[string]bool, len(activeSessions))
+	for _, as := range activeSessions {
+		activeIDSet[as.ID] = true
+	}
+	var diskRows []templates.SessionRow
+	for _, id := range remainingDiskIDs {
+		if activeIDSet[id] {
+			continue
+		}
+		info, err := s.config.Persister.LoadSessionInfo(id)
+		if err != nil || info == nil {
+			continue
+		}
+		duration := info.UpdatedAt.Sub(info.CreatedAt)
+		if info.ClosedAt != nil {
+			duration = info.ClosedAt.Sub(info.CreatedAt)
+		}
+		diskRows = append(diskRows, templates.SessionRow{
+			ID:        info.ID,
+			Title:     info.Title,
+			TurnCount: info.Messages,
+			CreatedAt: info.CreatedAt,
+			UpdatedAt: info.UpdatedAt,
+			Duration:  duration,
+			IsClosed:  info.ClosedAt != nil,
+		})
+	}
+
+	component := templates.SessionsList(activeSessions, diskRows)
+	component.Render(r.Context(), w)
+}
+
+// handleCleanupClearAllTraces removes all trace files from all sessions on disk.
+// POST /api/sessions/cleanup/clear-all-traces
+func (s *Server) handleCleanupClearAllTraces(w http.ResponseWriter, r *http.Request) {
+	if s.config.Persister == nil {
+		http.Error(w, "Persister not available", http.StatusInternalServerError)
+		return
+	}
+
+	diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
+	if err != nil {
+		http.Error(w, "Failed to list sessions", http.StatusInternalServerError)
+		return
+	}
+
+	var cleared int
+	for _, id := range diskIDs {
+		traces, err := s.config.Persister.ListTraces(id)
+		if err != nil {
+			continue
+		}
+		for _, traceID := range traces {
+			tracePath := filepath.Join(s.config.Persister.RootDir(), "sessions", id, "traces", traceID+".json")
+			if err := os.Remove(tracePath); err == nil {
+				cleared++
+			}
+		}
+	}
+
+	// Re-render cleanup section with refreshed disk usage
+	diskUsageBytes, _ := s.config.Persister.DiskUsageBytes()
+	component := templates.SessionsCleanup(diskUsageBytes)
+	component.Render(r.Context(), w)
 }
