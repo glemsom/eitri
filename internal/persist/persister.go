@@ -54,7 +54,7 @@ type Persister struct {
 
 // New creates a Persister rooted at the given directory. If rootDir is empty,
 // it defaults to ~/.eitri/. On construction, it creates the required directory
-// tree: <root>/sessions/ and <root>/history/.
+// tree: <root>/sessions/.
 func New(rootDir string) (*Persister, error) {
 	if rootDir == "" {
 		home, err := os.UserHomeDir()
@@ -423,10 +423,6 @@ func (p *Persister) DiskUsageBytes() (int64, error) {
 	return total, err
 }
 
-// Prune scans sessions/ and history/ for total size. If total exceeds the
-// retention cap (1 GiB by default), it removes the oldest timestamped
-// snapshot files across all sessions until the cap is met. The latest
-// snapshot (symlink target) for any session is never removed.
 // Prune scans sessions/ for total size. If total exceeds the retention cap
 // (1 GiB by default), it removes the oldest timeline and trace files until
 // the cap is met. The session.json file for any session is never removed.
