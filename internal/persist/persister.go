@@ -1,5 +1,6 @@
-// Package persist provides disk persistence for session snapshots,
-// LLM conversation history, and HTTP traces under a root data directory.
+// Package persist provides disk persistence for session snapshots and
+// HTTP traces under a root data directory. Old-format history files
+// (HistorySchema) are still readable on startup for backward compatibility.
 package persist
 
 import (
@@ -38,7 +39,7 @@ type HistorySchema struct {
 // RestoredState holds all data recovered from disk on startup.
 type RestoredState struct {
 	Sessions map[string]*session.UISession
-	// Histories are derived from the session snapshot messages.
+	// Histories are derived directly from session snapshot messages (canonical type).
 	Histories map[string][]llm.Message // sessionID → conversation history with system prompt prepended
 	Traces    []*debug.HTTPTrace
 }
@@ -559,29 +560,14 @@ func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
 	return sessionFile, nil
 }
 
-// sessionMessagesToHistory converts session.Message slice to []llm.Message
-// by extracting the LLM-relevant fields.
-func sessionMessagesToHistory(msgs []session.Message) []llm.Message {
-	result := make([]llm.Message, 0, len(msgs))
-	for _, m := range msgs {
-		llmMsg := llm.Message{
-			Role:       m.Role,
-			Content:    m.Content,
-			ToolCallID: m.ToolCallID,
-			ToolCalls:  m.ToolCalls,
-		}
-		result = append(result, llmMsg)
-	}
-	return result
-}
-
 // Restore reads all persisted session snapshots and HTTP traces from disk and
 // returns them as a RestoredState struct.
 // If no persisted data exists (first run), returns an empty RestoredState with no error.
 // All restored sessions have Status set to StatusIdle regardless of what the snapshot says.
 //
-// The restored Histories are derived from the session snapshots' Messages field,
-// which now contains all LLM-oriented fields.
+// The restored Histories are derived directly from the session snapshots' Messages
+// field (canonical llm.Message type). No conversion is needed since all consumers
+// use the canonical type.
 //
 // For backward compatibility, if old-format history data exists under history/
 // and no session.json was found, it attempts to read from the old format.
@@ -636,8 +622,8 @@ func (p *Persister) Restore() (*RestoredState, error) {
 
 		state.Sessions[sessionID] = &s
 
-		// Derive history from session messages
-		state.Histories[sessionID] = sessionMessagesToHistory(s.Messages)
+		// Derive history from session messages (canonical type, no conversion needed)
+		state.Histories[sessionID] = s.Messages
 
 		// --- Restore HTTP traces ---
 		tracesDir := filepath.Join(sessionsDir, sessionID, "traces")

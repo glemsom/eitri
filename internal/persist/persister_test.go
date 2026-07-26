@@ -858,44 +858,6 @@ func TestPrune_RemovesOldTraceFiles(t *testing.T) {
 	}
 }
 
-func TestSessionMessagesToHistory(t *testing.T) {
-	now := time.Now()
-	msgs := []session.Message{
-		{Role: "user", Content: "hello", CreatedAt: now},
-		{
-			Role:    "assistant",
-			Content: "Let me check",
-			ToolCalls: []llm.ToolCall{
-				{
-					ID:   "call-1",
-					Type: "function",
-					Function: llm.FunctionCall{
-						Name:      "test_func",
-						Arguments: `{"arg":"val"}`,
-					},
-				},
-			},
-			CreatedAt: now,
-		},
-		{Role: "tool", Content: "result", ToolCallID: "call-1", CreatedAt: now},
-	}
-
-	hist := sessionMessagesToHistory(msgs)
-	if len(hist) != 3 {
-		t.Fatalf("expected 3 history messages, got %d", len(hist))
-	}
-
-	if hist[0].Role != "user" || hist[0].Content != "hello" {
-		t.Errorf("hist[0] = %+v", hist[0])
-	}
-	if len(hist[1].ToolCalls) != 1 || hist[1].ToolCalls[0].ID != "call-1" {
-		t.Errorf("hist[1].ToolCalls mismatch: %+v", hist[1].ToolCalls)
-	}
-	if hist[2].Role != "tool" || hist[2].ToolCallID != "call-1" {
-		t.Errorf("hist[2] = %+v", hist[2])
-	}
-}
-
 func TestHistorySchema_BackwardCompat(t *testing.T) {
 	// Verify HistorySchema can still parse old-format data
 	schema := HistorySchema{
