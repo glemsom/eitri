@@ -15,7 +15,7 @@ Add two new built-in tools: `delegate` and `collect`.
 
 ### Tool design
 
-**`delegate(task: string, max_turns: int = 50)`** — non-blocking. Fires off a sub-agent in a background goroutine, returns a `taskID` immediately. The parent can fan out multiple delegates in one turn.
+**`delegate(task: string, max_turns: int = 250)`** — non-blocking. Fires off a sub-agent in a background goroutine, returns a `taskID` immediately. The parent can fan out multiple delegates in one turn.
 
 **`collect(task_ids: string[])`** — blocking. Waits for all listed sub-agents to complete (or for the parent context to cancel). Returns a structured JSON map keyed by task ID, each entry containing `status` (completed/error/cancelled), `result` (final assistant text), and `turn_count`.
 
