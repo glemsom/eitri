@@ -15,7 +15,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
@@ -430,7 +429,16 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	broadcastContextUpdate()
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
-	return &runconfig.MaxTurnsExceededError{Limit: maxTurns}
+	return &MaxTurnsExceededError{Limit: maxTurns}
+}
+
+// MaxTurnsExceededError reports that a run hit its configured turn cap.
+type MaxTurnsExceededError struct {
+	Limit int
+}
+
+func (e *MaxTurnsExceededError) Error() string {
+	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
 }
 
 // updateCalibration feeds provider usage data from a completed LLM response

@@ -12,7 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
@@ -480,9 +479,9 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
 
-	var maxTurnsErr *runconfig.MaxTurnsExceededError
+	var maxTurnsErr *MaxTurnsExceededError
 	if !errors.As(err, &maxTurnsErr) {
-		t.Fatalf("error type = %T, want *runconfig.MaxTurnsExceededError", err)
+		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
 	}
 	if maxTurnsErr.Limit != 1 {
 		t.Errorf("Limit = %d, want 1", maxTurnsErr.Limit)
@@ -1983,9 +1982,9 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected MaxTurnsExceededError, got nil")
 	}
-	var maxTurnsErr *runconfig.MaxTurnsExceededError
+	var maxTurnsErr *MaxTurnsExceededError
 	if !errors.As(err, &maxTurnsErr) {
-		t.Fatalf("error type = %T, want *runconfig.MaxTurnsExceededError", err)
+		t.Fatalf("error type = %T, want *MaxTurnsExceededError", err)
 	}
 
 	events := collectSSE(sseState)

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -67,7 +66,7 @@ func TestBuildSystemPrompt_NoRequiredSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "simple-agent",
 	}
@@ -98,7 +97,7 @@ func TestBuildSystemPrompt_SingleRequiredSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "reviewer",
 	}
@@ -151,7 +150,7 @@ func TestBuildSystemPrompt_MultipleRequiredSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "multi-skill-agent",
 	}
@@ -198,7 +197,7 @@ func TestBuildSystemPrompt_RequiredSkillNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "missing-skill-agent",
 	}
@@ -251,7 +250,7 @@ func TestBuildSystemPrompt_MixedActivations(t *testing.T) {
 		},
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "mixed-agent",
 	}
@@ -294,7 +293,7 @@ func TestBuildSystemPrompt_DefaultPromptWithRequiredSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "default-prompt-agent",
 	}
@@ -332,7 +331,7 @@ func TestBuildSystemPrompt_SkillsCatalogPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "catalog-agent",
 	}
@@ -369,7 +368,7 @@ func TestBuildSystemPrompt_UserOverrideSkipsDirective(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:      workspace,
 		ActivePersona:  "ignored-persona",
 		SystemPrompt:   "You are the user override prompt.",
@@ -396,7 +395,7 @@ func TestBuildSystemPrompt_UserOverrideSkipsDirective(t *testing.T) {
 func TestBuildSystemPrompt_EmptyActivationsNoPersona(t *testing.T) {
 	// With no persona and no activations, should produce just the default prompt
 	// plus repo instructions (if any). No directive, no catalog.
-	cfg := runconfig.RunConfig{}
+	cfg := RunConfig{}
 	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
 	if err != nil {
 		t.Fatalf("buildSystemPrompt: %v", err)

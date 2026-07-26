@@ -17,7 +17,6 @@ import (
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/loop"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
@@ -25,11 +24,11 @@ import (
 
 // StartRun starts a new agent run for a session with an explicit RunConfig.
 // Returns warnings about stale skills, and error if run fails.
-func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg runconfig.RunConfig) ([]string, error) {
+func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
 	return s.startRunWithConfig(ctx, sessionID, userMessage, cfg)
 }
 
-func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg runconfig.RunConfig) ([]string, error) {
+func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
 	if s.exchangeIfDone(sessionID) {
 		// Previous run was done; clean slate
 	}
@@ -191,7 +190,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				return
 			}
 
-			var maxTurnsErr *runconfig.MaxTurnsExceededError
+			var maxTurnsErr *loop.MaxTurnsExceededError
 			if errors.As(err, &maxTurnsErr) {
 				content := sseState.BufferString()
 				limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
@@ -242,7 +241,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 }
 
 // persistRunTimeline builds and persists a condensed timeline for the run.
-func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseState *runstate.State, cfg runconfig.RunConfig, termination *runstate.TimelineTermination) {
+func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseState *runstate.State, cfg RunConfig, termination *runstate.TimelineTermination) {
 	if s.persister == nil {
 		return
 	}

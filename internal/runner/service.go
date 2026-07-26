@@ -18,7 +18,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -35,7 +34,7 @@ type RunState struct {
 
 	// RunCfg holds the configuration for this run, used by the TurnCompleter
 	// for auto-compaction and other post-turn tasks.
-	RunCfg runconfig.RunConfig
+	RunCfg RunConfig
 
 	SSE   *runstate.State
 	Turns int // turns consumed so far, updated by agent loop
@@ -590,7 +589,7 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 // summarization, runs the compactor, replaces the history, snapshots the result,
 // and returns the number of messages compacted, approximate number of tokens freed,
 // and the number of tool-call argument blocks pruned.
-func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg runconfig.RunConfig) (compactedCount int, freedTokens int, prunedToolCalls int, _ error) {
+func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg RunConfig) (compactedCount int, freedTokens int, prunedToolCalls int, _ error) {
 	if s.historySessionMgr == nil {
 		return 0, 0, 0, fmt.Errorf("history session manager not available")
 	}
@@ -644,7 +643,7 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg r
 
 // newCompactLLMService creates a bare LLM service for summarization without
 // tool registries, system prompts, or skill context.
-func newCompactLLMService(ctx context.Context, cfg runconfig.RunConfig, persistAuth PersistAuthFunc) (llm.LLMService, error) {
+func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth PersistAuthFunc) (llm.LLMService, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,

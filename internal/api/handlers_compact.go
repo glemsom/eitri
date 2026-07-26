@@ -6,7 +6,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
+	"github.com/glemsom/eitri/internal/runner"
 )
 
 // handleCompact manually triggers compaction for a session's conversation history.
@@ -57,7 +57,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	// Allow manual compaction even when auto-compaction is disabled.
 	// The user can still manually compact via the "Compact now" button.
 
-	runCfg := runconfig.FromConfig(cfg, sess.Workspace, 0)
+	runCfg := runner.FromConfig(cfg, sess.Workspace, 0)
 
 	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(r.Context(), id, runCfg)
 	if err != nil {

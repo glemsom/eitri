@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 )
 
 // subagentStore manages sub-agent lifecycle — spawning records, collection,
@@ -17,13 +16,13 @@ type subagentStore struct {
 
 	// Parent run configs per session (for sub-agent setup)
 	parentCfgMu sync.Mutex
-	parentCfgs  map[string]runconfig.RunConfig
+	parentCfgs  map[string]RunConfig
 }
 
 func newSubagentStore() *subagentStore {
 	return &subagentStore{
 		agents:     make(map[string]*subAgentRecord),
-		parentCfgs: make(map[string]runconfig.RunConfig),
+		parentCfgs: make(map[string]RunConfig),
 	}
 }
 
@@ -90,14 +89,14 @@ func (ss *subagentStore) reapAfterTTL(taskID string) {
 }
 
 // StoreParentCfg stores a parent run config for sub-agent setup.
-func (ss *subagentStore) StoreParentCfg(sessionID string, cfg runconfig.RunConfig) {
+func (ss *subagentStore) StoreParentCfg(sessionID string, cfg RunConfig) {
 	ss.parentCfgMu.Lock()
 	ss.parentCfgs[sessionID] = cfg
 	ss.parentCfgMu.Unlock()
 }
 
 // GetParentCfg retrieves the parent run config for a session.
-func (ss *subagentStore) GetParentCfg(sessionID string) (runconfig.RunConfig, bool) {
+func (ss *subagentStore) GetParentCfg(sessionID string) (RunConfig, bool) {
 	ss.parentCfgMu.Lock()
 	cfg, ok := ss.parentCfgs[sessionID]
 	ss.parentCfgMu.Unlock()
