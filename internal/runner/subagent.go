@@ -11,7 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -168,7 +167,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 					slog.String("child_session_id", childSess.ID),
 				)
 				// Broadcast session_status so the child appears in sidebar immediately
-				s.BroadcastToBrowser(parentSess.BrowserID, broadcast.BrowserEvent{
+				s.BroadcastToBrowser(parentSess.BrowserID, BrowserEvent{
 					Type: "session_status",
 					Data: map[string]any{
 						"session_id": childSess.ID,

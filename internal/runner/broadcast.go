@@ -1,8 +1,7 @@
-// Package broadcast provides browser-level SSE event broadcasting.
-//
-// Extracted from the runner monolith to keep the broadcaster independent
-// of run lifecycle logic.
-package broadcast
+// Package runner provides the run lifecycle seam — it owns agent loop execution,
+// SSE broadcast, session persistence, auth refresh callbacks, and sub-agent
+// orchestration.
+package runner
 
 import "sync"
 

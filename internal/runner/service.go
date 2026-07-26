@@ -17,7 +17,6 @@ import (
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -70,7 +69,7 @@ type RunService struct {
 	batchCtxMu   sync.Mutex
 	batchLastCtx *debug.ConversationContext
 
-	broadcast *broadcast.BrowserBroadcaster
+	broadcast *BrowserBroadcaster
 	subagents *subagentStore
 
 	confirmMu     sync.Mutex
@@ -92,7 +91,7 @@ const completedRunRetention = 5 * time.Second
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
 		active:            make(map[string]*RunState),
-		broadcast:         broadcast.New(),
+		broadcast:         New(),
 		subagents:         newSubagentStore(),
 		confirmations:     make(map[string]chan adapters.ConfirmationResult),
 		uiSessionMgr:      deps.UISessionMgr,
@@ -132,7 +131,7 @@ func (s *RunService) HistorySessionManager() *history.SessionManager {
 
 // SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.
 // Returns subscriber ID and receive-only channel.
-func (s *RunService) SubscribeBrowser(browserID string) (uint64, <-chan broadcast.BrowserEvent) {
+func (s *RunService) SubscribeBrowser(browserID string) (uint64, <-chan BrowserEvent) {
 	return s.broadcast.Subscribe(browserID)
 }
 
@@ -142,7 +141,7 @@ func (s *RunService) UnsubscribeBrowser(browserID string, id uint64) {
 }
 
 // BroadcastToBrowser sends an event to all browser-level SSE subscribers for the given browserID.
-func (s *RunService) BroadcastToBrowser(browserID string, evt broadcast.BrowserEvent) {
+func (s *RunService) BroadcastToBrowser(browserID string, evt BrowserEvent) {
 	s.broadcast.Broadcast(browserID, evt)
 }
 
@@ -518,7 +517,7 @@ func (s *RunService) notifyAllClosed(message string) {
 }
 
 // broadcastStatusUpdate broadcasts a session status change to browser-level subscribers.
-func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *broadcast.BrowserBroadcaster) {
+func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *BrowserBroadcaster) {
 	if uiSessionMgr == nil {
 		return
 	}
@@ -527,7 +526,7 @@ func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.St
 	if sess == nil || sess.BrowserID == "" {
 		return
 	}
-	bb.Broadcast(sess.BrowserID, broadcast.BrowserEvent{
+	bb.Broadcast(sess.BrowserID, BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,
