@@ -73,7 +73,7 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 	if skillsSvc != nil {
 		catalog := skillsSvc.SkillsCatalogXML()
 		if catalog != "" {
-			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context."
+			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context. After loading a skill, check its instructions for references to other skills — if any are mentioned, load them too."
 		}
 	}
 
