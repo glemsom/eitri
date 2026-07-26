@@ -13,8 +13,8 @@
 // Key types:
 //   - Manager — thread-safe session lifecycle manager
 //   - UISession — one browser chat session
-//   - Message — a single chat message with role, content, components
-//   - ComponentData — rendered UI component attached to an assistant message
+//   - Message — canonical message type (alias for llm.Message)
+//   - ComponentData — UI component data (alias for llm.ComponentData)
 //   - Status — session status constants (idle, running, error)
 //
 // Key functions:
@@ -26,7 +26,7 @@
 //   - ActivateSkill / DeactivateSkill — manage active skills per session
 //   - AddRenderedMessageID / HasRenderedMessageID — dedup ring buffer
 //
-// Dependencies: none (stdlib only)
+// Dependencies: internal/llm (Message and ComponentData type aliases)
 //
 // Extension points:
 //   - Add session persistence (e.g. SQLite) for crash recovery

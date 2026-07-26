@@ -26,26 +26,14 @@ const (
 
 const sessionTitlePreviewMaxRunes = 31
 
-// ComponentData holds a rendered UI component attached to an assistant message.
-type ComponentData struct {
-	Name string         `json:"name"`
-	Data map[string]any `json:"data"`
-}
+// Message is the canonical message type used throughout the application.
+// It is defined in internal/llm and re-exported here for backward compatibility
+// of the JSON serialization format. New code should import it directly from llm.
+type Message = llm.Message
 
-// Message represents a single chat message in a session.
-// It is the consolidated message type used for both UI rendering and
-// persisted snapshots. The llm package uses its own wire type for API
-// communication; conversion happens at the adapter layer.
-type Message struct {
-	Role             string          `json:"role"`
-	Content          string          `json:"content"`
-	ReasoningContent string          `json:"reasoning_content,omitempty"`
-	ToolCallID       string          `json:"tool_call_id,omitempty"`
-	ToolCalls        []llm.ToolCall  `json:"tool_calls,omitempty"`
-	CreatedAt        time.Time       `json:"created_at"`
-	Components       []ComponentData `json:"components,omitempty"`
-	QuickReplies     []string        `json:"quick_replies,omitempty"`
-}
+// ComponentData holds a rendered UI component attached to an assistant message.
+// It is defined in internal/llm and re-exported here for backward compatibility.
+type ComponentData = llm.ComponentData
 
 // ContextFile represents a file loaded as additional agent context
 // (e.g., AGENTS.md or a file referenced by AGENTS.md).

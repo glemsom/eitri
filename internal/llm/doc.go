@@ -10,7 +10,8 @@
 //   - LLMService — the core interface for chat completions (Chat + ChatStream)
 //   - Request — provider-agnostic chat completion request
 //   - Response — non-streaming chat completion response
-//   - Message — one message in the conversation (role, content, tool calls)
+//   - Message — canonical message type used throughout the application (role, content,
+//     reasoning content, tool calls, UI metadata)
 //   - ToolCall — a function call made by the LLM
 //   - FunctionCall — name + JSON arguments of a tool call
 //   - ToolDef — tool definition for the LLM (name, description, schema)
