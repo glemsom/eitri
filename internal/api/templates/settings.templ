@@ -2,13 +2,13 @@ package templates
 
 import "github.com/glemsom/eitri/internal/config"
 
-templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string, contextWindow int, bwrapAvailable bool) {
+templ SettingsView(cfg *config.Config, models []string, workspace string, chatPath string, currentPath string, contextWindow int, bwrapAvailable bool, supportedLevels []string) {
 	@Base("Eitri — Settings", chatPath, nil, "", currentPath, workspace, contextWindow, "", false, 75) {
-		@SettingsForm(cfg, models, "", "", nil, "", bwrapAvailable)
+		@SettingsForm(cfg, models, "", "", nil, "", bwrapAvailable, supportedLevels)
 	}
 }
 
-templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string, bwrapAvailable bool) {
+templ SettingsForm(cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *CopilotDeviceFlowView, successMessage string, bwrapAvailable bool, supportedLevels []string) {
 	<div id="settings-form" class="settings-view">
 		if errorMessage != "" {
 			@ErrorToast(errorMessage)
@@ -86,7 +86,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<summary><span>Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="visibility:hidden;">&#9696;</span></span></summary>
 
 				<div class="form-group">
-					<select id="model" name="model">
+					<select id="model" name="model" hx-put="/api/config" hx-trigger="change" hx-target="#settings-form" hx-swap="outerHTML">
 						<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
 						for _, m := range models {
 							<option value={ m } if cfg.Model == m { selected }>{ m }</option>
@@ -99,9 +99,11 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					<label for="thinking_level">Thinking Level</label>
 					<select id="thinking_level" name="thinking_level">
 						<option value="" if cfg.ThinkingLevel == "" { selected }>Default (off)</option>
-						<option value="low" if cfg.ThinkingLevel == "low" { selected }>Low</option>
-						<option value="medium" if cfg.ThinkingLevel == "medium" { selected }>Medium</option>
-						<option value="high" if cfg.ThinkingLevel == "high" { selected }>High</option>
+						if len(supportedLevels) > 0 {
+							for _, level := range supportedLevels {
+								<option value={ level } if cfg.ThinkingLevel == level { selected }>{ capitalize(level) }</option>
+							}
+						}
 					</select>
 					<small class="hint">Controls reasoning depth. Supported by DeepSeek, O-series, and other reasoning models. Requires provider support.</small>
 				</div>

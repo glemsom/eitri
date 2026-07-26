@@ -67,6 +67,15 @@ func joinSandboxPaths(paths []string) string {
 	return strings.Join(paths, "\n")
 }
 
+// capitalize returns s with the first letter uppercased.
+// Used in templates to display thinking level names.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 // sandboxBadge returns a short HTML string describing the current sandbox state.
 func sandboxBadge(profile string, bwrapAvailable bool) string {
 	switch {

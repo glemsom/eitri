@@ -130,13 +130,19 @@ func validateForCopilotDeviceFlow(cfg *config.Config) error {
 }
 
 func writeSettingsFormWithState(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView) {
-	writeSettingsFormWithStateAndSuccess(w, r, status, cfg, models, errorMessage, noticeMessage, deviceFlow, "")
+	levels := provider.SupportedThinkingLevels(cfg.Provider, cfg.Model)
+	writeSettingsFormWithStateAndSuccessWithLevels(w, r, status, cfg, models, errorMessage, noticeMessage, deviceFlow, "", levels)
 }
 
 func writeSettingsFormWithStateAndSuccess(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView, successMessage string) {
+	levels := provider.SupportedThinkingLevels(cfg.Provider, cfg.Model)
+	writeSettingsFormWithStateAndSuccessWithLevels(w, r, status, cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage, levels)
+}
+
+func writeSettingsFormWithStateAndSuccessWithLevels(w http.ResponseWriter, r *http.Request, status int, cfg *config.Config, models []string, errorMessage string, noticeMessage string, deviceFlow *templates.CopilotDeviceFlowView, successMessage string, supportedLevels []string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage, sandbox.BwrapAvailable()).Render(r.Context(), w)
+	_ = templates.SettingsForm(cfg, models, errorMessage, noticeMessage, deviceFlow, successMessage, sandbox.BwrapAvailable(), supportedLevels).Render(r.Context(), w)
 }
 
 func (s *Server) startCopilotDeviceFlow(ctx context.Context) (*provider.GitHubDeviceCodeResponse, error) {
