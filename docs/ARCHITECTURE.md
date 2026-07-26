@@ -117,7 +117,7 @@ Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path 
 | `sandbox.go` | `WrapCommand()` — wraps a shell command inside a bubblewrap sandbox; falls back to direct execution if bwrap is unavailable, OS is not Linux, or profile is `"none"` |
 | `sandbox_test.go` | Unit and integration tests for `WrapCommand` (skip if bwrap not on PATH) |
 
-Provides `WrapCommand(workspace, command, Config)` which returns the executable and arguments for running a command inside a bubblewrap sandbox. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale.
+Provides `WrapCommand(workspace, command, Config)` which returns the executable, arguments, and a cleanup function for running a command inside a bubblewrap sandbox. The sandbox creates an ephemeral temporary directory under `/tmp` and binds it as `/tmp` inside the sandbox, ensuring temp file isolation between commands. The returned cleanup function removes the ephemeral dir and logs at warn level on failure. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale.
 
 ### `internal/runstate/` — SSE broadcast + context tracking
 

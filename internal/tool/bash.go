@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -70,13 +71,16 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 	}
 
 	// Build command through sandbox wrapper
-	execPath, execArgs, err := sandbox.WrapCommand(t.workspace, parsed.Command, t.sandboxConfig)
+	execPath, execArgs, cleanup, err := sandbox.WrapCommand(t.workspace, parsed.Command, t.sandboxConfig)
+	defer cleanup()
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: sandbox setup failed: %v", err))), nil
 	}
 
 	cmd := exec.CommandContext(execCtx, execPath, execArgs...)
 	cmd.Dir = t.workspace
+	// Ensure TMPDIR points to the ephemeral /tmp inside the sandbox.
+	cmd.Env = append(os.Environ(), "TMPDIR=/tmp")
 
 	// Capture stdout and stderr via pipes
 	var stdoutBuf, stderrBuf bytes.Buffer

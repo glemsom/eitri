@@ -17,6 +17,7 @@ package sandbox
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -88,31 +89,60 @@ func BwrapAvailable() bool {
 	return bwrapAvailableCached()
 }
 
-// WrapCommand returns the executable path and argument list that the
-// caller should pass to exec.Command. When sandboxing is active the
-// returned executable is bwrap and the arguments include the full
-// sandbox specification; otherwise the returned executable is "bash"
-// with ["-c", command].
+// cleanup is a no-op fallback that can be returned when no cleanup is needed.
+func nopCleanup() {}
+
+// WrapCommand returns the executable path, argument list, and a cleanup
+// function that the caller should defer. When sandboxing is active the
+// returned executable is bwrap and the arguments include the full sandbox
+// specification; otherwise the returned executable is "bash" with
+// ["-c", command].
+//
+// The function creates an ephemeral temporary directory under /tmp that
+// is mounted as /tmp inside the sandbox. The returned cleanup function
+// removes this directory and logs at warn level on failure. The cleanup
+// is idempotent — safe to call even if the directory was already removed.
 //
 // If bwrap is not found on PATH, or is found but not usable (e.g. due to
 // missing user namespace support), the function falls back to direct
-// execution and logs a warning at debug level.
-func WrapCommand(workspace, command string, cfg Config) (string, []string, error) {
+// execution, cleans up the already-created tmpdir, and returns a no-op
+// cleanup so callers can always defer it.
+func WrapCommand(workspace, command string, cfg Config) (string, []string, func(), error) {
 	// Normalise zero config to defaults.
 	if cfg.Profile == "" {
 		cfg = DefaultConfig()
 	}
 
-	if cfg.Profile == ProfileNone || cfg.Profile == "" {
-		return "bash", []string{"-c", command}, nil
+	// Create ephemeral temp dir early so we can clean up on fallback paths.
+	tmpDir, err := os.MkdirTemp("/tmp", "eitri-sandbox-*")
+	if err != nil {
+		return "", nil, nopCleanup, fmt.Errorf("sandbox: creating ephemeral tmp dir: %w", err)
+	}
+
+	// If MkdirTemp succeeded we need to clean up unless we return the real cleanup.
+	// cleanupTmp removes tmpDir and logs at warn level on failure.
+	cleanupTmp := func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			slog.Warn("sandbox: failed to clean up ephemeral tmp dir",
+				"path", tmpDir,
+				"error", err,
+			)
+		}
+	}
+
+	if cfg.Profile == ProfileNone {
+		cleanupTmp()
+		return "bash", []string{"-c", command}, nopCleanup, nil
 	}
 
 	if runtime.GOOS != "linux" {
-		return "bash", []string{"-c", command}, nil
+		cleanupTmp()
+		return "bash", []string{"-c", command}, nopCleanup, nil
 	}
 
 	if workspace == "" {
-		return "", nil, fmt.Errorf("sandbox: workspace is required for sandboxed execution")
+		cleanupTmp()
+		return "", nil, nopCleanup, fmt.Errorf("sandbox: workspace is required for sandboxed execution")
 	}
 
 	bwrap, err := bwrapPathCached()
@@ -120,14 +150,16 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 		slog.Debug("bwrap not found on PATH, running command without sandbox",
 			slog.String("workspace", workspace),
 		)
-		return "bash", []string{"-c", command}, nil
+		cleanupTmp()
+		return "bash", []string{"-c", command}, nopCleanup, nil
 	}
 
 	if !BwrapAvailable() {
 		slog.Debug("bwrap found on PATH but not usable (likely no user namespace support), running command without sandbox",
 			slog.String("workspace", workspace),
 		)
-		return "bash", []string{"-c", command}, nil
+		cleanupTmp()
+		return "bash", []string{"-c", command}, nopCleanup, nil
 	}
 
 	// Build bwrap arguments.
@@ -142,7 +174,7 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 	args = append(args,
 		"--ro-bind", "/", "/",
 		"--bind", workspace, workspace,
-		"--bind", "/tmp", "/tmp",
+		"--bind", tmpDir, "/tmp",
 		"--dev", "/dev",
 		"--proc", "/proc",
 	)
@@ -161,5 +193,5 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, error
 		"--", "bash", "-c", command,
 	)
 
-	return bwrap, args, nil
+	return bwrap, args, cleanupTmp, nil
 }

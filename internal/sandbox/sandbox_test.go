@@ -33,7 +33,8 @@ func TestIsZero(t *testing.T) {
 }
 
 func TestWrapCommand_ProfileNone(t *testing.T) {
-	exe, args, err := WrapCommand("/workspace", "echo hi", Config{Profile: ProfileNone})
+	exe, args, cleanup, err := WrapCommand("/workspace", "echo hi", Config{Profile: ProfileNone})
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +64,8 @@ func TestBwrapAvailable(t *testing.T) {
 func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
 	// bwrap might or might not be installed/usable; either is fine.
 	// We verify the fallback path works.
-	exe, args, err := WrapCommand("/workspace", "echo hi", DefaultConfig())
+	exe, args, cleanup, err := WrapCommand("/workspace", "echo hi", DefaultConfig())
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,7 +97,8 @@ func TestWrapCommand_Default_BwrapNotAvailable(t *testing.T) {
 
 func TestWrapCommand_Default_NoNetwork(t *testing.T) {
 	cfg := Config{Profile: ProfileDefault, Network: false}
-	_, args, err := WrapCommand("/workspace", "echo hi", cfg)
+	_, args, cleanup, err := WrapCommand("/workspace", "echo hi", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +126,8 @@ func TestWrapCommand_Default_ArgStructure(t *testing.T) {
 	}
 
 	cfg := DefaultConfig()
-	exe, args, err := WrapCommand("/my/workspace", "ls -la", cfg)
+	exe, args, cleanup, err := WrapCommand("/my/workspace", "ls -la", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,10 +137,10 @@ func TestWrapCommand_Default_ArgStructure(t *testing.T) {
 	}
 
 	// Check essential flags are present.
+	// Note: --bind tmpDir /tmp uses an ephemeral temp dir, not /tmp literally.
 	essential := []string{"--die-with-parent", "--new-session", "--unshare-pid",
 		"--ro-bind", "/", "/",
 		"--bind", "/my/workspace", "/my/workspace",
-		"--bind", "/tmp", "/tmp",
 		"--dev", "/dev",
 		"--proc", "/proc",
 		"--chdir", "/my/workspace",
@@ -153,6 +157,18 @@ func TestWrapCommand_Default_ArgStructure(t *testing.T) {
 		if !found {
 			t.Errorf("missing argument: %s", flag)
 		}
+	}
+
+	// Verify --bind <tmpdir> /tmp is present (ephemeral tmp).
+	foundTmpBind := false
+	for i, a := range args {
+		if a == "--bind" && i+2 < len(args) && args[i+2] == "/tmp" {
+			foundTmpBind = true
+			break
+		}
+	}
+	if !foundTmpBind {
+		t.Error("missing --bind <tmpdir> /tmp")
 	}
 
 	// Verify the command is at the end after --.
@@ -190,7 +206,8 @@ func TestWrapCommand_ExtraWritablePaths(t *testing.T) {
 		ExtraWritablePaths: []string{"/opt/cache", "/var/log"},
 	}
 
-	_, args, err := WrapCommand("/workspace", "echo hi", cfg)
+	_, args, cleanup, err := WrapCommand("/workspace", "echo hi", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -225,7 +242,8 @@ func TestWrapCommand_EmptyExtraWritablePaths(t *testing.T) {
 		ExtraWritablePaths: []string{"", "  "},
 	}
 
-	_, args, err := WrapCommand("/workspace", "echo hi", cfg)
+	_, args, cleanup, err := WrapCommand("/workspace", "echo hi", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,7 +258,8 @@ func TestWrapCommand_EmptyExtraWritablePaths(t *testing.T) {
 
 func TestWrapCommand_EmptyWorkspace(t *testing.T) {
 	cfg := Config{Profile: ProfileDefault, Network: true}
-	_, _, err := WrapCommand("", "echo hi", cfg)
+	_, _, cleanup, err := WrapCommand("", "echo hi", cfg)
+	defer cleanup()
 	if err == nil {
 		t.Fatal("expected error for empty workspace")
 	}
@@ -248,7 +267,8 @@ func TestWrapCommand_EmptyWorkspace(t *testing.T) {
 
 func TestWrapCommand_ZeroConfigDefaultsToDefault(t *testing.T) {
 	// Zero config should behave like DefaultConfig.
-	_, args, err := WrapCommand("/w", "echo hi", Config{})
+	_, args, cleanup, err := WrapCommand("/w", "echo hi", Config{})
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +294,8 @@ func TestNonLinuxFallback(t *testing.T) {
 	// but we can verify the logic by checking that WrapCommand doesn't
 	// error on non-Linux in CI. This is a smoke test.
 	cfg := DefaultConfig()
-	exe, args, err := WrapCommand("/w", "echo hi", cfg)
+	exe, args, cleanup, err := WrapCommand("/w", "echo hi", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,7 +309,8 @@ func TestNonLinuxFallback(t *testing.T) {
 func BenchmarkWrapCommand(b *testing.B) {
 	cfg := DefaultConfig()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = WrapCommand("/workspace", "echo hello", cfg)
+		_, _, cleanup, _ := WrapCommand("/workspace", "echo hello", cfg)
+		cleanup()
 	}
 }
 
@@ -299,10 +321,19 @@ func TestWrapCommand_ActualExecution(t *testing.T) {
 		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
 	cfg := DefaultConfig()
 
-	exe, args, err := WrapCommand(dir, "echo sandboxed-ok", cfg)
+	exe, args, cleanup, err := WrapCommand(dir, "echo sandboxed-ok", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("WrapCommand: %v", err)
 	}
@@ -325,11 +356,20 @@ func TestWrapCommand_ReadOnlyRoot(t *testing.T) {
 		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
 	cfg := DefaultConfig()
 
 	// Test reading a file from /etc works.
-	exe, args, err := WrapCommand(dir, "head -c 10 /etc/hostname 2>/dev/null || echo ok", cfg)
+	exe, args, cleanup, err := WrapCommand(dir, "head -c 10 /etc/hostname 2>/dev/null || echo ok", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("WrapCommand: %v", err)
 	}
@@ -342,7 +382,8 @@ func TestWrapCommand_ReadOnlyRoot(t *testing.T) {
 	_ = out // /etc/hostname might or might not exist; we just check no crash
 
 	// Test writing to /usr is rejected.
-	exe2, args2, err := WrapCommand(dir, "touch /usr/test-write-123 2>&1", cfg)
+	exe2, args2, cleanup2, err := WrapCommand(dir, "touch /usr/test-write-123 2>&1", cfg)
+	defer cleanup2()
 	if err != nil {
 		t.Fatalf("WrapCommand: %v", err)
 	}
@@ -364,10 +405,19 @@ func TestWrapCommand_Network(t *testing.T) {
 		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
 	cfg := DefaultConfig()
 
-	exe, args, err := WrapCommand(dir, "curl --version", cfg)
+	exe, args, cleanup, err := WrapCommand(dir, "curl --version", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("WrapCommand: %v", err)
 	}
@@ -386,10 +436,19 @@ func TestWrapCommand_WorkspaceReadWrite(t *testing.T) {
 		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
+	if err != nil {
+		t.Fatalf("creating test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
 	cfg := DefaultConfig()
 
-	exe, args, err := WrapCommand(dir, "echo written > test-file.txt && cat test-file.txt", cfg)
+	exe, args, cleanup, err := WrapCommand(dir, "echo written > test-file.txt && cat test-file.txt", cfg)
+	defer cleanup()
 	if err != nil {
 		t.Fatalf("WrapCommand: %v", err)
 	}
