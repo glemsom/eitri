@@ -251,6 +251,11 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("context_warning_threshold_percent must be between 10 and 95, got %d", cfg.ContextWarningThresholdPercent)
 	}
 
+	// Validate thinking_level field values
+	if cfg.ThinkingLevel != "" && cfg.ThinkingLevel != "low" && cfg.ThinkingLevel != "medium" && cfg.ThinkingLevel != "high" {
+		return fmt.Errorf("thinking_level must be one of \"\", \"low\", \"medium\", \"high\", got %q", cfg.ThinkingLevel)
+	}
+
 	// Validate persona catalog limit
 	customCount := 0
 	for name := range cfg.PersonaCatalog {

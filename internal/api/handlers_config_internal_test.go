@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -508,3 +509,61 @@ func TestHandlePutConfig_FallsBackToStaticTableWhenDiscoveryHasNoData(t *testing
 		t.Errorf("ContextWindowTokens = %d, want 128000 (fallback to static table)", loaded.ContextWindowTokens)
 	}
 }
+
+func TestHandlePutConfig_ClearsThinkingLevelForUnsupportedModel(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             providerSrv.URL,
+		APIKey:              "sk-test",
+		Model:               "gpt-4o", // does not support thinking levels
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 128000,
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT with thinking_level=high on a non-reasoning model
+	body := `{"thinking_level":"high","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	// Verify thinking_level was cleared in saved config
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ThinkingLevel != "" {
+		t.Errorf("ThinkingLevel = %q, want empty (cleared for unsupported model)", loaded.ThinkingLevel)
+	}
+
+	// Verify response body contains a notice about the clearing
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyStr := string(bodyBytes)
+	if !strings.Contains(bodyStr, "does not support reasoning effort") {
+		t.Errorf("response body should contain notice about clearing, got: %s", bodyStr)
+	}
+}
+

@@ -125,7 +125,15 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	}
 
 	if parentCfg.ThinkingLevel != "" {
-		req.ReasoningEffort = parentCfg.ThinkingLevel
+		if levels := provider.SupportedThinkingLevels(parentCfg.ProviderID, parentCfg.ModelName); len(levels) == 0 {
+			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+				slog.String("model", parentCfg.ModelName),
+				slog.String("provider", parentCfg.ProviderID),
+				slog.String("thinking_level", parentCfg.ThinkingLevel),
+			)
+		} else {
+			req.ReasoningEffort = parentCfg.ThinkingLevel
+		}
 	}
 	req.Messages = []llm.Message{
 		{Role: "system", Content: systemPrompt},

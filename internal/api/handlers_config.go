@@ -131,6 +131,17 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 
 	newCfg := normalizePatchedConfig(cfg, patch)
 
+	// Validate thinking_level against the selected model.
+	// If the model does not support the chosen level, clear it and surface a notice.
+	var notice string
+	if newCfg.ThinkingLevel != "" && newCfg.Model != "" {
+		levels := provider.SupportedThinkingLevels(newCfg.Provider, newCfg.Model)
+		if len(levels) == 0 {
+			notice = fmt.Sprintf("Thinking level %q cleared — model %q does not support reasoning effort.", newCfg.ThinkingLevel, newCfg.Model)
+			newCfg.ThinkingLevel = ""
+		}
+	}
+
 	// Validate field-level constraints
 	if err := config.Validate(newCfg); err != nil {
 		if isHTMXRequest(r) {
@@ -177,8 +188,8 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Render form with success indicator
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "", "", nil, "✓ Saved", sandbox.BwrapAvailable())
+	// Render form with success indicator (and notice if thinking_level was cleared)
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", notice, nil, "✓ Saved", sandbox.BwrapAvailable())
 	component.Render(r.Context(), w)
 }
 
