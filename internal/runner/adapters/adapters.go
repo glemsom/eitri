@@ -11,7 +11,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
-	uisession "github.com/glemsom/eitri/internal/session"
 )
 
 // ── Value types ─────────────────────────────────────────────────────────────
@@ -64,21 +63,19 @@ type Confirmer interface {
 // ── sessionHistoryManager ──────────────────────────────────────────────────
 
 // sessionHistoryManager implements HistoryManager for the browser UI path.
-// It wraps *history.SessionManager, *uisession.Manager, and the sessionID
-// that was supplied when RunAgent was called.
+// It wraps *history.SessionManager and the sessionID that was supplied when
+// RunAgent was called.
 type sessionHistoryManager struct {
-	sessionMgr   *history.SessionManager
-	uisessionMgr *uisession.Manager
-	sessionID    string
+	sessionMgr *history.SessionManager
+	sessionID  string
 }
 
 // NewSessionHistoryManager creates a sessionHistoryManager.
 // The sessionID is baked in because it is known at construction time.
-func NewSessionHistoryManager(sessionMgr *history.SessionManager, uisessionMgr *uisession.Manager, sessionID string) *sessionHistoryManager {
+func NewSessionHistoryManager(sessionMgr *history.SessionManager, sessionID string) *sessionHistoryManager {
 	return &sessionHistoryManager{
-		sessionMgr:   sessionMgr,
-		uisessionMgr: uisessionMgr,
-		sessionID:    sessionID,
+		sessionMgr: sessionMgr,
+		sessionID:  sessionID,
 	}
 }
 

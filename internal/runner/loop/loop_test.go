@@ -1772,7 +1772,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1861,7 +1861,7 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1916,7 +1916,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1972,7 +1972,7 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -2077,7 +2077,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -2156,7 +2156,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, nil, sessionID),
+			HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     sessionID,

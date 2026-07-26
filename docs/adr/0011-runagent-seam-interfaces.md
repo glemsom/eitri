@@ -50,7 +50,7 @@ type HistoryManager interface {
 
 Two adapters:
 
-- **`sessionHistoryManager`** — wraps `*history.SessionManager`, `*uisession.Manager`, and `sessionID`. Satisfies all three methods and also handles component replay/quick-replies for the browser UI path.
+- **`sessionHistoryManager`** — wraps `*history.SessionManager` and `sessionID`. Satisfies all three methods for the browser UI path. Component replay and quick-replies are handled directly via `RunOpts.UISessionMgr`.
 - **`requestHistoryManager`** — wraps `*litellm.Request`. Satisfies the three methods by mutating `req.Messages` directly. No-op for UI component operations.
 
 ### Confirmer interface

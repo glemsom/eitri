@@ -5,7 +5,7 @@
 The codebase has two nearly identical `Message` structs: `llm.Message` (in `internal/llm/types.go`) and `session.Message` (in `internal/session/session.go`). The `session.Message` is a superset of `llm.Message` with UI extras (`ReasoningContent`, `CreatedAt`, `Components`, `QuickReplies`). Every data path that crosses from persistence → LLM API or LLM API → UI requires manual conversion:
 
 - `internal/persist/persister.go` — `sessionMessagesToHistory()` and `historyToSessionMessages()`
-- `internal/runner/adapters/adapters.go` — both `sessionHistoryManager` and `requestHistoryManager` convert between the two
+- `internal/runner/adapters/adapters.go` — both `sessionHistoryManager` and `requestHistoryManager` previously converted between the two types; now they use the canonical type directly
 
 This forces anyone (human or LLM) reading a code path to constantly ask "which type am I looking at? Where does the conversion happen? Which fields survive?" Two types that are nearly 1:1 make every data-flow path twice as long to trace.
 
