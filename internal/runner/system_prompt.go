@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
@@ -25,8 +26,11 @@ import (
 //  2. cfg.ActivePersona — resolved from disk, its SystemPrompt used as base
 //  3. history.DefaultSystemPrompt — built-in fallback
 //
-// Injected skills from the persona are resolved and added to the system prompt
-// alongside manually activated skills, with deduplication by skill name.
+// Manually activated skills (loaded by the agent via skill()) are injected
+// with their full content under the "Activated skill" label.
+// Persona-injected skills are NOT pre-injected; they are listed as a
+// startup directive instructing the agent to call skill() for each one,
+// establishing commitment through the tool-call result.
 func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
 	var personaInjectedSkills []string
@@ -73,18 +77,33 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		}
 	}
 
-	// Build combined activations: manually activated skills first,
-	// then persona-injected skills that are not already activated (dedup by name).
-	activations := make([]runSkillActivation, 0, len(skillCtx.Activations)+len(personaInjectedSkills))
+	// Build a set of persona-injected skill names for quick lookup.
+	personaInjectedSet := make(map[string]struct{}, len(personaInjectedSkills))
+	for _, name := range personaInjectedSkills {
+		personaInjectedSet[name] = struct{}{}
+	}
+
+	// Separate manually activated skills (loaded by the agent via skill())
+	// from persona-injected skills. Persona-injected skills are NOT
+	// pre-injected with content; instead they are listed as a directive
+	// below so the agent calls skill() to load each one on its first turn.
+	var manuallyActivated []runSkillActivation
+	var personaRequired []string
 	seen := make(map[string]struct{}, len(skillCtx.Activations))
 	for _, a := range skillCtx.Activations {
-		activations = append(activations, a)
+		if _, ok := personaInjectedSet[a.Name]; ok {
+			// Persona-injected — track for directive, don't inject content
+			personaRequired = append(personaRequired, a.Name)
+		} else {
+			manuallyActivated = append(manuallyActivated, a)
+		}
 		seen[a.Name] = struct{}{}
 	}
 
+	// Add persona-injected skills that aren't yet in the session activations.
 	for _, skillName := range personaInjectedSkills {
 		if _, ok := seen[skillName]; ok {
-			continue // already manually activated
+			continue // already tracked above
 		}
 		if skillsSvc == nil {
 			continue
@@ -94,16 +113,18 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 			slog.Warn("Persona-injected skill not found, skipping", "skill", skillName, "persona", cfg.ActivePersona)
 			continue
 		}
-		resources := skills.ListResources(skill.Path)
-		activations = append(activations, runSkillActivation{
-			Name:    skill.Name,
-			Content: skills.SkillContent(skill.Body, resources, skill.Path),
-		})
+		personaRequired = append(personaRequired, skillName)
 		seen[skillName] = struct{}{}
 	}
 
-	for _, activation := range activations {
+	// Add manually activated skill content.
+	for _, activation := range manuallyActivated {
 		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
+	}
+
+	// Add directive for persona-injected skills so the agent loads them.
+	if len(personaRequired) > 0 {
+		fullSystemPrompt += "\n\nRequired skills for this persona: " + strings.Join(personaRequired, ", ") + ".\nCall skill(\"name\") for each to load the skill's instructions, references, and scripts into context."
 	}
 
 	return fullSystemPrompt, nil

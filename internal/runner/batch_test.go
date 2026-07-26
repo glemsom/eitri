@@ -214,8 +214,11 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	if !strings.Contains(sysPrompt, "test-review-skill") {
 		t.Fatalf("system prompt should reference injected skill name, got:\n%s", sysPrompt)
 	}
-	if !strings.Contains(sysPrompt, "Review the code for potential bugs and security issues.") {
-		t.Fatalf("system prompt should contain injected skill body, got:\n%s", sysPrompt)
+	if strings.Contains(sysPrompt, "Review the code for potential bugs and security issues.") {
+		t.Fatalf("system prompt should NOT contain injected skill body (skills are loaded via skill() tool), got:\n%s", sysPrompt)
+	}
+	if !strings.Contains(sysPrompt, "Required skills for this persona:") {
+		t.Fatalf("system prompt should contain required skills directive, got:\n%s", sysPrompt)
 	}
 
 	// End-to-end test: BatchRun with ActivePersona pointing to the test persona.
