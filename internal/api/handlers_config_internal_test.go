@@ -360,3 +360,151 @@ func TestBuildBreadcrumbs_TrailingSlash(t *testing.T) {
 		t.Errorf("last label = %q, want %q", crumbs[2].Label, "user")
 	}
 }
+
+func TestHandlePutConfig_AutoPopulatesContextWindowFromDiscovery(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models/gpt-4o" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"id":"gpt-4o","context_length":128000}`))
+			return
+		}
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             providerSrv.URL,
+		APIKey:              "sk-test",
+		Model:               "", // no model selected yet
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000, // default
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT with model change — should auto-populate context window
+	body := `{"model":"gpt-4o","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	// Verify saved config has auto-populated context window
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After auto-populate from discovery, context should be 128000
+	if loaded.ContextWindowTokens != 128000 {
+		t.Errorf("ContextWindowTokens = %d, want 128000 (auto-populated from discovery)", loaded.ContextWindowTokens)
+	}
+}
+
+func TestHandlePutConfig_DoesNotOverrideWhenContextWindowOverridden(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:                "custom_openai",
+		BaseURL:                 providerSrv.URL,
+		APIKey:                  "sk-test",
+		Model:                   "gpt-4o",
+		SessionTimeout:          30 * 60_000_000_000,
+		CommandTimeout:          60 * 1_000_000_000,
+		MaxTurns:                25,
+		ContextWindowTokens:     99999, // manually set value
+		ContextWindowOverridden: true,
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT with same model — should NOT override ContextWindowTokens
+	body := `{"model":"gpt-4o","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ContextWindowTokens != 99999 {
+		t.Errorf("ContextWindowTokens = %d, want 99999 (should not override)", loaded.ContextWindowTokens)
+	}
+}
+
+func TestHandlePutConfig_FallsBackToStaticTableWhenDiscoveryHasNoData(t *testing.T) {
+	// Provider returns models but no context_length field and no model detail endpoint
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             providerSrv.URL,
+		APIKey:              "sk-test",
+		Model:               "old-model",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000, // default
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT with model change to gpt-4o — should fall back to static table (128000)
+	body := `{"model":"gpt-4o","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ContextWindowTokens != 128000 {
+		t.Errorf("ContextWindowTokens = %d, want 128000 (fallback to static table)", loaded.ContextWindowTokens)
+	}
+}

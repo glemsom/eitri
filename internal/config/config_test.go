@@ -1227,4 +1227,47 @@ func TestLoad_PromotesCompactionLowWaterEnvVar(t *testing.T) {
 	}
 }
 
+func TestMerge_ContextWindowTokensSetsOverridden(t *testing.T) {
+	cfg := config.Defaults()
+	patch := map[string]any{
+		"context_window_tokens": float64(200000),
+	}
+	result := config.Merge(&cfg, patch)
+	if result.ContextWindowTokens != 200000 {
+		t.Errorf("ContextWindowTokens = %d, want 200000", result.ContextWindowTokens)
+	}
+	if !result.ContextWindowOverridden {
+		t.Error("ContextWindowOverridden = false, want true after patch")
+	}
+}
+
+func TestMerge_ContextWindowTokensUnpatchedLeavesOverriddenFalse(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.ContextWindowOverridden = false
+	patch := map[string]any{
+		"model": "gpt-4o",
+	}
+	result := config.Merge(&cfg, patch)
+	if result.ContextWindowOverridden {
+		t.Error("ContextWindowOverridden = true, want false when context_window_tokens not in patch")
+	}
+	// Existing overridden state should be preserved
+	cfg2 := config.Defaults()
+	cfg2.ContextWindowOverridden = true
+	result2 := config.Merge(&cfg2, patch)
+	if !result2.ContextWindowOverridden {
+		t.Error("ContextWindowOverridden = false, want true (preserved from original)")
+	}
+}
+
+func TestContextWindowForModel_ReturnsValue(t *testing.T) {
+	// Tests the static table fallback used by auto-populate
+	if got := provider.ContextWindowForModel("gpt-4o"); got != 128000 {
+		t.Errorf("ContextWindowForModel(gpt-4o) = %d, want 128000", got)
+	}
+	if got := provider.ContextWindowForModel("unknown-model"); got != 0 {
+		t.Errorf("ContextWindowForModel(unknown-model) = %d, want 0", got)
+	}
+}
+
 

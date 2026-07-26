@@ -391,3 +391,119 @@ func TestResolveAuth_PersistAuthCanPersistRefreshedToken(t *testing.T) {
 		t.Fatalf("authUpdate = %#v, want nil", authUpdate)
 	}
 }
+
+func TestDiscoverModels_OpenAICompatibleReturnsContextWindowForSelectedModel(t *testing.T) {
+	t.Parallel()
+
+	// Model list server
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini"}]}`)
+			return
+		}
+		// Model detail endpoint
+		if r.URL.Path == "/v1/models/gpt-4o" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"id":"gpt-4o","context_length":128000}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer modelsSrv.Close()
+
+	result, err := provider.DiscoverModels(context.Background(), provider.DiscoveryRequest{
+		ProviderID:    "opencode_go",
+		BaseURL:       modelsSrv.URL + "/v1",
+		APIKey:        "sk-test",
+		SelectedModel: "gpt-4o",
+	}, provider.DiscoveryOptions{HTTPClient: http.DefaultClient})
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+
+	// Should have context window for the selected model
+	if cw, ok := result.ModelContextWindows["gpt-4o"]; !ok || cw != 128000 {
+		t.Errorf("ModelContextWindows[gpt-4o] = %d, want 128000", cw)
+	}
+	// Should NOT have context window for unselected model
+	if cw, ok := result.ModelContextWindows["gpt-4o-mini"]; ok {
+		t.Errorf("ModelContextWindows[gpt-4o-mini] = %d, want absent (was 0)", cw)
+	}
+}
+
+func TestDiscoverModels_OpenAICompatibleIgnoresModelDetailOnFailure(t *testing.T) {
+	t.Parallel()
+
+	calledDetail := false
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"object":"list","data":[{"id":"gpt-4o"}]}`)
+			return
+		}
+		if r.URL.Path == "/v1/models/gpt-4o" {
+			calledDetail = true
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer modelsSrv.Close()
+
+	result, err := provider.DiscoverModels(context.Background(), provider.DiscoveryRequest{
+		ProviderID:    "opencode_go",
+		BaseURL:       modelsSrv.URL + "/v1",
+		APIKey:        "sk-test",
+		SelectedModel: "gpt-4o",
+	}, provider.DiscoveryOptions{HTTPClient: http.DefaultClient})
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if !calledDetail {
+		t.Fatal("model detail endpoint was not called")
+	}
+	// Should have no context windows (the map should be nil or empty)
+	if len(result.ModelContextWindows) != 0 {
+		t.Errorf("ModelContextWindows = %#v, want empty", result.ModelContextWindows)
+	}
+}
+
+func TestDiscoverModels_GitHubCopilotReturnsContextWindows(t *testing.T) {
+	t.Parallel()
+
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"data": [
+				{"id":"gpt-4o","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000},
+				{"id":"gpt-4o-mini","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000}
+			]
+		}`)
+	}))
+	defer modelsSrv.Close()
+
+	encoded, err := provider.EncodeGitHubCopilotAuthState(provider.GitHubCopilotAuthState{
+		AccessToken: "gho-test",
+		TokenType:   "bearer",
+		Scope:       "read:user",
+	})
+	if err != nil {
+		t.Fatalf("EncodeGitHubCopilotAuthState error: %v", err)
+	}
+
+	result, err := provider.DiscoverModels(context.Background(), provider.DiscoveryRequest{
+		ProviderID:   "github_copilot",
+		BaseURL:      modelsSrv.URL,
+		ProviderAuth: encoded,
+	}, provider.DiscoveryOptions{HTTPClient: http.DefaultClient})
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if cw, ok := result.ModelContextWindows["gpt-4o"]; !ok || cw != 128000 {
+		t.Errorf("ModelContextWindows[gpt-4o] = %d, want 128000", cw)
+	}
+	if cw, ok := result.ModelContextWindows["gpt-4o-mini"]; !ok || cw != 128000 {
+		t.Errorf("ModelContextWindows[gpt-4o-mini] = %d, want 128000", cw)
+	}
+}

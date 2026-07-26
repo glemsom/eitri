@@ -234,7 +234,7 @@ func PersonaAddForm(availableSkills []*skills.Skill) templ.Component {
 			templ_7745c5c3_Var12 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"persona-form\" id=\"persona-add-form\"><h4>Add Persona</h4><div class=\"form-group\"><label for=\"name\">Name</label> <input type=\"text\" id=\"name\" name=\"name\" placeholder=\"my-custom-agent\" required> <small class=\"hint\">Unique identifier for this persona.</small></div><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"6\" placeholder=\"You are a specialized agent that...\"></textarea> <small class=\"hint\">Leave empty to use the default system prompt.</small></div><div class=\"form-group\"><label>Injected Skills</label> <small class=\"hint\">Skills selected here are automatically loaded into the system prompt when this persona is active.</small><div class=\"skills-checkbox-group\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"persona-form\" id=\"persona-add-form\"><h4>Add Persona</h4><div class=\"form-group\"><label for=\"name\">Name</label> <input type=\"text\" id=\"name\" name=\"name\" placeholder=\"my-custom-agent\" required> <small class=\"hint\">Unique identifier for this persona.</small></div><div class=\"form-group\"><label for=\"system_prompt\">System Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"6\" placeholder=\"You are a specialized agent that...\"></textarea> <small class=\"hint\">Leave empty to use the default system prompt.</small></div><div class=\"form-group\"><label>Required Skills</label> <small class=\"hint\">Skills selected here are automatically loaded into the system prompt when this persona is active.</small><div class=\"skills-checkbox-group\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -442,7 +442,7 @@ func PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Ski
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</textarea> <small class=\"hint\">Leave empty to use the default system prompt.</small></div><div class=\"form-group\"><label>Injected Skills</label> <small class=\"hint\">Skills selected here are automatically loaded into the system prompt when this persona is active.</small><div class=\"skills-checkbox-group\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</textarea> <small class=\"hint\">Leave empty to use the default system prompt.</small></div><div class=\"form-group\"><label>Required Skills</label> <small class=\"hint\">Skills selected here are automatically loaded into the system prompt when this persona is active.</small><div class=\"skills-checkbox-group\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
