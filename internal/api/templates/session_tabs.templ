@@ -3,8 +3,8 @@ package templates
 import "github.com/glemsom/eitri/internal/session"
 
 // SessionTabs renders the session sidebar list.
-// Shows all sessions as a vertical list with title, status dot, and close button.
-// Child sessions (with ParentID) are rendered indented under their parent.
+// Shows only active sessions as a vertical list with title, status dot, and close button.
+// Child sessions (with ParentID) are rendered indented under their parent with title and status dot.
 // Active session is visually distinct.
 templ SessionTabs(sessions []*session.UISession, activeID string, swapOOB bool) {
 	<div
@@ -50,21 +50,8 @@ templ renderSessionTree(sessions []*session.UISession, children map[string][]*se
 						<span class="session-title">{ s.Title }</span>
 						<span class={ "status-dot", templ.KV("status-idle", s.Status == session.StatusIdle), templ.KV("status-running", s.Status == session.StatusRunning), templ.KV("status-error", s.Status == session.StatusError) }></span>
 					</a>
-					<a href={ templ.URL("/report/" + s.ID) } class="session-report-btn" title="Session Report">📊</a>
 					<button class="session-close" hx-delete={ templ.URL("/api/sessions/" + s.ID) } hx-target="body" hx-push-url="true" title="Close session">&times;</button>
 				</div>
-				if s.Workspace != "" {
-					<div class="session-workspace">
-						<button class="session-workspace-btn"
-							hx-get={ "/api/sessions/" + s.ID + "/directory-browser" }
-							hx-target="body"
-							hx-swap="beforeend"
-							title="Browse workspace directory"
-							aria-label="Browse workspace directory"
-						>&#x1F4C2;</button>
-						<span class="session-workspace-path" title={ s.Workspace }>{ shortWorkspacePath(s.Workspace) }</span>
-					</div>
-				}
 			</div>
 			// Render children indented under this parent
 			if childList, has := children[s.ID]; has && len(childList) > 0 {
@@ -75,7 +62,6 @@ templ renderSessionTree(sessions []*session.UISession, children map[string][]*se
 								<span class="session-title child-session-title">{ child.Title }</span>
 								<span class={ "status-dot", templ.KV("status-idle", child.Status == session.StatusIdle), templ.KV("status-running", child.Status == session.StatusRunning), templ.KV("status-error", child.Status == session.StatusError) }></span>
 							</a>
-							<a href={ templ.URL("/report/" + child.ID) } class="session-report-btn" title="Session Report">📊</a>
 						</div>
 					</div>
 				}
