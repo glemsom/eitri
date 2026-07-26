@@ -148,7 +148,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if history == nil {
 			return
 		}
-		update := runstate.ComputeContext(history, opts.ContextWindow)
+		update := runstate.ComputeContext(history, opts.ContextWindow, nil, "")
 		spec.SSEWriter.ContextUpdate(update)
 	}
 
@@ -238,7 +238,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// Broadcast final context_update before done
 			broadcastContextUpdate()
 
-			usage := runstate.EstimateUsage(contentStr)
+			usage := runstate.EstimateUsage(contentStr, nil, "")
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
 			if contentStr != "" || len(spec.Request.Messages) > 0 {

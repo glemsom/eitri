@@ -140,7 +140,7 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 	// Each large message is ~2100 tokens, summary is ~3 tokens.
 	// So total ~42000 tokens, after one compaction ~42000 - 2100 + 3 ≈ 39903.
 	// Set LowWater to 40000 so after first compaction we stop.
-	totalEst := messagesTokenEstimate(msgs)
+	totalEst := messagesTokenEstimate(msgs, nil, "")
 	thresholds := Thresholds{
 		HighWater: totalEst - 1,       // trigger compaction
 		LowWater:  totalEst - 1000,    // stop after freeing ~1000 tokens (one message)
@@ -527,7 +527,7 @@ func TestTokenEstimate(t *testing.T) {
 		{"1234567890", 2}, // 10/4=2
 	}
 	for _, tt := range tests {
-		got := tokenEstimate(tt.input)
+		got := tokenEstimate(tt.input, nil, "")
 		if got != tt.want {
 			t.Errorf("tokenEstimate(%q) = %d, want %d", tt.input, got, tt.want)
 		}
@@ -542,7 +542,7 @@ func TestMessagesTokenEstimate(t *testing.T) {
 			{Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
 	}
-	total := messagesTokenEstimate(msgs)
+	total := messagesTokenEstimate(msgs, nil, "")
 	// 2 + 1 + 1 + 3 = 7
 	if total != 7 {
 		t.Errorf("messagesTokenEstimate = %d, want 7", total)
@@ -1081,7 +1081,7 @@ func TestCompact_SaliencePreservesHighValueMessages(t *testing.T) {
 	llmSvc := &mockLLMService{summary: "compacted"}
 
 	// Estimate total tokens.
-	totalEst := messagesTokenEstimate(msgs)
+	totalEst := messagesTokenEstimate(msgs, nil, "")
 	// Set LowWater high enough that only 1-2 messages get compacted.
 	lowWater := totalEst - 1500 // compact ~1500 tokens worth
 
