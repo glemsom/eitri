@@ -1,4 +1,4 @@
-package runconfig
+package runner
 
 import (
 	"encoding/json"

@@ -27,7 +27,6 @@ import (
 	"github.com/glemsom/eitri/internal/sandbox"
 
 	runner "github.com/glemsom/eitri/internal/runner"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tokenizer"
@@ -126,7 +125,7 @@ func main() {
 	if *batchPrompt != "" {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
-		runCfg := runconfig.FromConfig(cfg, workspace, cmdTimeout)
+		runCfg := runner.FromConfig(cfg, workspace, cmdTimeout)
 		if *personaFlag != "" {
 			// Validate persona exists before starting the batch run.
 			// This produces a clear error for non-existent --persona before any

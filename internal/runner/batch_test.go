@@ -11,14 +11,13 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/skills"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
 func TestBatchRun_ReturnsErrorForMissingBaseURL(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		ModelName:  "test-model",
 	}
@@ -34,7 +33,7 @@ func TestBatchRun_ReturnsErrorForMissingBaseURL(t *testing.T) {
 
 func TestBatchRun_ReturnsErrorForMissingModel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 	}
@@ -50,7 +49,7 @@ func TestBatchRun_ReturnsErrorForMissingModel(t *testing.T) {
 
 func TestBatchRun_ReturnsErrorOnCancelledContext(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 		APIKey:     "test-key",
@@ -69,7 +68,7 @@ func TestBatchRun_ReturnsErrorOnCancelledContext(t *testing.T) {
 
 func TestBatchRun_FailsGracefullyOnConnectionFailure(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1",
 		APIKey:     "test-key",
@@ -139,7 +138,7 @@ func TestExtractLastMessages(t *testing.T) {
 
 func TestBatchRun_ConversationContextCapturedOnError(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1", // connection refused -> error
 		APIKey:     "test-key",
@@ -206,7 +205,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 
 	// Verify that buildSystemPrompt produces output containing the persona's
 	// custom system prompt and the injected skill's content.
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		Workspace:     workspace,
 		ActivePersona: "test-reviewer",
 	}
@@ -244,7 +243,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 		SkillsService:     skillsSvc,
 	})
 
-	batchCfg := runconfig.RunConfig{
+	batchCfg := RunConfig{
 		ProviderID:    "opencode_go",
 		BaseURL:       "http://127.0.0.1:1", // connection refused -> error
 		APIKey:        "test-key",

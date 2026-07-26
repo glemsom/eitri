@@ -11,7 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tool"
@@ -31,7 +30,7 @@ import (
 // Persona-required skills are NOT pre-injected; they are listed as a
 // startup directive instructing the agent to call skill() for each one,
 // establishing commitment through the tool-call result.
-func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
+func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
 	var personaRequiredSkills []string
 	if systemPrompt == "" {
@@ -137,7 +136,7 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 // builds the base tool registry, and assembles the system prompt.
 // If debugRecorder is non-nil and sessionID is non-empty, the service's HTTP
 // transport is wrapped for request/response recording.
-func buildLLMService(ctx context.Context, cfg runconfig.RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
+func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,

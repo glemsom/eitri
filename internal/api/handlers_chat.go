@@ -10,7 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -96,7 +95,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdTimeout := time.Duration(cfgState.cfg.CommandTimeout)
-	runCfg := runconfig.FromConfig(cfgState.cfg, sess.Workspace, cmdTimeout)
+	runCfg := runner.FromConfig(cfgState.cfg, sess.Workspace, cmdTimeout)
 
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {

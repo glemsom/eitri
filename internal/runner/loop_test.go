@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 )
 
 func TestRunService_CrashDumpOnFatalError(t *testing.T) {
@@ -28,7 +27,7 @@ func TestRunService_CrashDumpOnFatalError(t *testing.T) {
 	})
 
 	// Start a run with a garbage URL that will fail
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://127.0.0.1:1", // unlikely to have an LLM server
 		APIKey:     "test-key",
@@ -70,7 +69,7 @@ func TestRunService_CrashDumpNotCalledOnCancel(t *testing.T) {
 		},
 	})
 
-	cfg := runconfig.RunConfig{
+	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    "http://test.local",
 		APIKey:     "test-key",

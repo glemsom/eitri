@@ -13,7 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/loop"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 )
 
@@ -24,7 +23,7 @@ import (
 // Confirmation requests are denied (nil confirmer → error returned to LLM).
 //
 // Returns the final accumulated response text alongside any error.
-func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg runconfig.RunConfig, out io.Writer) (string, error) {
+func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig, out io.Writer) (string, error) {
 	slog.Info("batch run starting",
 		slog.String("model", cfg.ModelName),
 		slog.String("provider", cfg.ProviderID),

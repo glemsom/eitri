@@ -13,7 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/loop"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -374,7 +373,7 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 // buildBaseToolRegistry creates a tool registry with all standard tools
 // except delegate, collect, render_quick_replies, and skill (which are
 // only available to parent agents, not sub-agents).
-func buildBaseToolRegistry(cfg runconfig.RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
+func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
 	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout, cfg.Sandbox))
 	reg.Register(tool.NewGrepTool(cfg.Workspace))

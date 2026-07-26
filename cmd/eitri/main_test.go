@@ -16,7 +16,6 @@ import (
 	"time"
 
 	runner "github.com/glemsom/eitri/internal/runner"
-	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -92,7 +91,7 @@ func TestCleanupRuntimeCancelsRuns(t *testing.T) {
 		UISessionMgr: session.NewManager(10, t.TempDir()),
 	})
 
-	runCfg := runconfig.RunConfig{
+	runCfg := runner.RunConfig{
 		ProviderID: "custom_openai",
 		BaseURL:    provider.URL,
 		APIKey:     "sk-test",
