@@ -44,7 +44,7 @@ func UserBubble(htmlContent string, userEmail string) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(gravatarURL(userEmail)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `chat_bubble.templ`, Line: 9, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/chat_bubble.templ`, Line: 9, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {

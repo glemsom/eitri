@@ -1217,6 +1217,29 @@ details[open] .tool-chevron {
   background: #c0392b;
 }
 
+/* Base button class — makes any element (a, span, div) render as a button.
+   Matches the default <button> styling from the generic button rule. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 /* Button hierarchy classes for skill page actions (issue #486) */
 .btn-primary {
   background: var(--accent) !important;
