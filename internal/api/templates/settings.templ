@@ -205,7 +205,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			<details class="settings-details">
 				<summary>
 					<span>Sandbox</span>
-					<span class="sandbox-badge">{ sandboxBadge(string(cfg.Sandbox.Profile), bwrapAvailable) }</span>
+					<span class="sandbox-badge">@templ.Raw(sandboxBadge(string(cfg.Sandbox.Profile), bwrapAvailable))</span>
 				</summary>
 
 				<div class="form-group">
