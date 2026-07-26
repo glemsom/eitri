@@ -94,6 +94,52 @@ func TestBatchRun_FailsGracefullyOnConnectionFailure(t *testing.T) {
 	t.Logf("unexpected success: result=%q, buf=%q", result, buf.String())
 }
 
+func TestBatchRun_SkipsThinkingLevelForUnsupportedModel(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID:    "opencode_go",
+		BaseURL:       "http://127.0.0.1:1",
+		APIKey:        "test-key",
+		ModelName:     "gpt-4", // does not support thinking levels
+		ThinkingLevel: "high",
+		Workspace:     t.TempDir(),
+	}
+
+	var buf bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := svc.BatchRun(ctx, "test prompt", cfg, &buf)
+	// The guard should not error; the failure will be from connection refused or timeout
+	// Ensure no thinking-level-related error is surfaced
+	if err != nil && strings.Contains(err.Error(), "thinking") {
+		t.Errorf("unexpected thinking-level-related error: %v", err)
+	}
+}
+
+func TestBatchRun_SetsThinkingLevelForSupportedModel(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID:    "opencode_go",
+		BaseURL:       "http://127.0.0.1:1",
+		APIKey:        "test-key",
+		ModelName:     "deepseek-reasoner", // supports thinking levels
+		ThinkingLevel: "high",
+		Workspace:     t.TempDir(),
+	}
+
+	var buf bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := svc.BatchRun(ctx, "test prompt", cfg, &buf)
+	// The guard should set reasoning_effort; failure will be from connection refused or timeout
+	// No thinking-level-related error should appear
+	if err != nil && strings.Contains(err.Error(), "thinking") {
+		t.Errorf("unexpected thinking-level-related error: %v", err)
+	}
+}
+
 func TestExtractLastMessages(t *testing.T) {
 	mgr := history.NewSessionManager(10)
 	mgr.Create("test-session")

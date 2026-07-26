@@ -809,6 +809,34 @@ func TestValidate_AcceptsEmptyDebugLLMDir(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsInvalidThinkingLevel(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test-key"
+
+	for _, level := range []string{"extreme", "on", "yes", "1", "true"} {
+		cfg.ThinkingLevel = level
+		err := config.Validate(&cfg)
+		if err == nil {
+			t.Errorf("Validate(thinking_level=%q) = nil, want error", level)
+		}
+		if !strings.Contains(err.Error(), "thinking_level") {
+			t.Errorf("Validate(thinking_level=%q) error = %q, want message about thinking_level", level, err.Error())
+		}
+	}
+}
+
+func TestValidate_AcceptsValidThinkingLevels(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test-key"
+
+	for _, level := range []string{"", "low", "medium", "high"} {
+		cfg.ThinkingLevel = level
+		if err := config.Validate(&cfg); err != nil {
+			t.Errorf("Validate(thinking_level=%q) = %v, want nil", level, err)
+		}
+	}
+}
+
 func TestMerge_DebugPrompt(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.APIKey = "sk-test"

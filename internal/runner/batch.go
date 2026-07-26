@@ -11,6 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 )
@@ -45,7 +46,15 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		Stream: true,
 	}
 	if cfg.ThinkingLevel != "" {
-		req.ReasoningEffort = cfg.ThinkingLevel
+		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, cfg.ModelName); len(levels) == 0 {
+			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+				slog.String("model", cfg.ModelName),
+				slog.String("provider", cfg.ProviderID),
+				slog.String("thinking_level", cfg.ThinkingLevel),
+			)
+		} else {
+			req.ReasoningEffort = cfg.ThinkingLevel
+		}
 	}
 
 	// Generate a unique session ID for this batch run

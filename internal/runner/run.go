@@ -109,7 +109,15 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 
 	if cfg.ThinkingLevel != "" {
-		req.ReasoningEffort = cfg.ThinkingLevel
+		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, modelName); len(levels) == 0 {
+			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+				slog.String("model", modelName),
+				slog.String("provider", cfg.ProviderID),
+				slog.String("thinking_level", cfg.ThinkingLevel),
+			)
+		} else {
+			req.ReasoningEffort = cfg.ThinkingLevel
+		}
 	}
 
 	sseState := runstate.New()
