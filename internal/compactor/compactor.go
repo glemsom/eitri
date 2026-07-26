@@ -26,6 +26,12 @@ type Thresholds struct {
 	// threshold are skipped. Default 0 means any message is eligible (existing
 	// behaviour for tool messages). Suggested default: 2000 tokens.
 	MessageSizeThreshold int
+
+	// ToolCallRetentionTurns controls how many recent assistant messages retain
+	// their full ToolCall arguments. Assistant messages older than this (counting
+	// only assistant messages) have their ToolCall.Function.Arguments pruned to a
+	// compact placeholder. Default 0 means no pruning.
+	ToolCallRetentionTurns int
 }
 
 // tokenEstimate returns a rough estimate of the number of tokens in s.
@@ -116,11 +122,18 @@ Summary:`, truncated)
 // If a summarization call fails for one tool result, it is skipped and
 // compaction continues with the next one.
 //
+// Tool call argument pruning: if ToolCallRetentionTurns > 0, assistant messages
+// beyond the last N (counting only assistant messages) have their
+// ToolCall.Function.Arguments replaced with a compact placeholder.
+// The ID and Function.Name are preserved. Already-pruned tool calls (detectable
+// via the "pruned" JSON prefix) are not re-pruned.
+//
 // Returns the modified message list (a copy) if any compaction occurred,
 // or nil if no compaction was needed. The original slice is never modified.
 // compactedCount and freedTokens report the number of messages compacted
 // and the approximate token count saved.
-func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, err error) {
+// prunedToolCalls reports how many tool call argument blocks were pruned.
+func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
 	if thresholds.HighWater <= 0 {
 		thresholds.HighWater = 90 // sensible default
 	}
@@ -139,9 +152,49 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 
 	compactedCount = 0
 	freedTokens = 0
+	prunedToolCalls = 0
+
+	// Count total assistant messages for retention-window calculation.
+	totalAssistantMsgs := 0
+	for _, m := range result {
+		if m.Role == "assistant" {
+			totalAssistantMsgs++
+		}
+	}
+
+	assistantIndex := 0 // 0-based index among assistant messages only
 
 	// Greedy oldest-first scan: iterate from oldest to newest.
 	for i := 0; i < len(result); i++ {
+		// --- Tool call argument pruning ---
+		if result[i].Role == "assistant" {
+			isWithinRetention := false
+			if thresholds.ToolCallRetentionTurns > 0 {
+				isWithinRetention = assistantIndex+thresholds.ToolCallRetentionTurns >= totalAssistantMsgs
+			}
+			if !isWithinRetention && len(result[i].ToolCalls) > 0 {
+				for j := range result[i].ToolCalls {
+					tc := &result[i].ToolCalls[j]
+					args := tc.Function.Arguments
+					if args == "" {
+						continue
+					}
+					// Skip already-pruned tool calls (detectable via the placeholder prefix).
+					if strings.HasPrefix(args, `{"pruned": "~`) {
+						continue
+					}
+					// Replace arguments with compact placeholder.
+					placeholder := fmt.Sprintf(`{"pruned": "~%d chars"}`, len(args))
+					prunedTokens := tokenEstimate(args)
+					tc.Function.Arguments = placeholder
+					freedTokens += prunedTokens - tokenEstimate(placeholder)
+					prunedToolCalls++
+				}
+			}
+			assistantIndex++
+		}
+
+		// --- Content summarization ---
 		// Skip messages that don't have compactable content.
 		if result[i].Content == "" {
 			continue
@@ -207,9 +260,9 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 		}
 	}
 
-	if compactedCount == 0 {
-		return nil, 0, 0, nil
+	if compactedCount == 0 && prunedToolCalls == 0 {
+		return nil, 0, 0, 0, nil
 	}
 
-	return result, compactedCount, freedTokens, nil
+	return result, compactedCount, freedTokens, prunedToolCalls, nil
 }

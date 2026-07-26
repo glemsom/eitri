@@ -45,6 +45,7 @@ type RunConfig struct {
 	CompactionThresholdPercent     int // 0-100; high-water mark as % of context window
 	CompactionLowWaterPercent      int // 0-100; stop compaction when below this % of context window
 	CompactionMessageSizeThreshold int // estimated-token threshold; messages below this are skipped
+	CompactionToolCallRetentionTurns int // number of recent assistant messages whose ToolCall arguments are preserved
 }
 
 // FromConfig builds a RunConfig from a Config value object plus
@@ -75,6 +76,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		CompactionThresholdPercent: cfg.CompactionThresholdPercent,
 		CompactionLowWaterPercent:  cfg.CompactionLowWaterPercent,
 		CompactionMessageSizeThreshold: cfg.CompactionMessageSizeThreshold,
+		CompactionToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
 	}
 }
 

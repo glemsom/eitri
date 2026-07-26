@@ -59,7 +59,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 
 	runCfg := runconfig.FromConfig(cfg, sess.Workspace, 0)
 
-	count, freed, err := s.config.RunService.CompactSession(r.Context(), id, runCfg)
+	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(r.Context(), id, runCfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -67,8 +67,8 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if count == 0 {
-		// No tool results found to compact
+	if count == 0 && prunedToolCalls == 0 {
+		// No results found to compact or prune
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
 		_ = templates.ErrorToast("No tool results found to compact").Render(r.Context(), w)
@@ -77,6 +77,9 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 
 	freedK := freed / 1000
 	toastMsg := fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", count, freedK)
+	if prunedToolCalls > 0 {
+		toastMsg += fmt.Sprintf(". %d tool calls pruned", prunedToolCalls)
+	}
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Retarget", "#error-toasts")
 	w.WriteHeader(http.StatusOK)

@@ -173,6 +173,15 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					</div>
 					<small class="hint">History is compacted down to this percentage of the context window (10–60). Must be less than the high-water threshold.</small>
 				</div>
+
+				<div class="form-group">
+					<label for="compaction_tool_call_retention_turns">Tool call retention (turns)</label>
+					<div class="range-wrapper">
+						<input type="range" id="compaction_tool_call_retention_turns" name="compaction_tool_call_retention_turns" value={ cfg.CompactionToolCallRetentionTurns } min="0" max="50" class="range-input" oninput="document.getElementById('compaction_tool_call_retention_display').textContent = this.value"/>
+						<span id="compaction_tool_call_retention_display" class="range-value">{ cfg.CompactionToolCallRetentionTurns }</span>
+					</div>
+					<small class="hint">Number of recent assistant messages whose tool-call arguments are preserved. Older messages have arguments pruned to save tokens (0 = disable pruning).</small>
+				</div>
 			</details>
 
 			<details class="settings-details">
