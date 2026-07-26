@@ -7,21 +7,27 @@
 // skills, manages a rendered-message-ID ring buffer for dedup on reconnect,
 // and enforces a global session cap.
 //
-// Each UISession holds messages, components, quick-reply options, and
-// reasoning content — all the data the browser needs to render the chat.
+// Internally, Manager stores session data in three sub-stores for clean
+// separation of concerns:
+//   - metaStore (SessionMeta) — identity, status, timestamps, ring buffer
+//   - convoStore (Conversation) — messages, system prompt, active skills
+//   - configStore (SessionConfig) — workspace path
 //
-// View types (SessionMeta, Conversation, SessionConfig) provide typed
-// access to logical groups of UISession fields via Manager accessor
-// methods. The underlying data remains stored in UISession.
+// UISession is kept as a JSON serialization facade — it is assembled from
+// the three sub-stores on demand when snapshot I/O or direct field access
+// is needed. All runtime CRUD and mutation operations work on the sub-stores
+// directly through typed accessor methods.
+//
+// The JSON snapshot format (session.json on disk) remains fully backward-
+// compatible: existing snapshots from before the sub-store split are still
+// loadable via LoadFromDisk.
 //
 // Key types:
 //   - Manager — thread-safe session lifecycle manager
-//   - UISession — one browser chat session
-//   - SessionMeta — identity, status, and timestamp view
-//   - Conversation — messages, system prompt, and active skills view
-//   - SessionConfig — per-session settings view (workspace)
-//   - Message — canonical message type (alias for llm.Message)
-//   - ComponentData — UI component data (alias for llm.ComponentData)
+//   - UISession — JSON serialization facade for one browser chat session
+//   - SessionMeta — identity, status, and timestamp view (meta sub-store)
+//   - Conversation — messages, system prompt, and active skills (convo sub-store)
+//   - SessionConfig — per-session settings, e.g. workspace (config sub-store)
 //   - Status — session status constants (idle, running, error)
 //
 // Key functions:

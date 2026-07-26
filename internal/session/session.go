@@ -26,8 +26,6 @@ const (
 
 const sessionTitlePreviewMaxRunes = 31
 
-
-
 // ContextFile represents a file loaded as additional agent context
 // (e.g., AGENTS.md or a file referenced by AGENTS.md).
 type ContextFile struct {
@@ -36,6 +34,7 @@ type ContextFile struct {
 }
 
 // UISession represents a browser-facing chat session.
+// It is a JSON serialization facade assembled from Manager sub-stores.
 // UISession represents a browser-facing chat session with id, browser_id, title, status, messages.
 // ParentID is empty for root sessions and non-empty for child sessions (sub-agents).
 type UISession struct {
@@ -62,8 +61,7 @@ type UISession struct {
 }
 
 // SessionMeta holds the identity, status, and timestamp fields of a session.
-// It is a read-only view extracted from UISession — the underlying data
-// still lives in UISession.
+// Used as the meta sub-store in Manager.
 type SessionMeta struct {
 	ID        string
 	BrowserID string
@@ -73,10 +71,14 @@ type SessionMeta struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	ClosedAt  *time.Time
+
+	// Ring buffer of last N rendered message IDs for dedup on reconnect.
+	RenderedMessageIDs   []string
+	renderedMessageIDIdx int
 }
 
 // Conversation holds the chat data of a session.
-// It is a read-only view extracted from UISession.
+// Used as the conversation sub-store in Manager.
 type Conversation struct {
 	Messages     []llm.Message
 	SystemPrompt string
@@ -84,18 +86,23 @@ type Conversation struct {
 }
 
 // SessionConfig holds per-session settings.
-// It is a read-only view extracted from UISession.
+// Used as the config sub-store in Manager.
 type SessionConfig struct {
 	Workspace string
 }
 
 // Manager manages in-memory UI sessions with browser ownership.
 // Thread-safe. Enforces a maximum number of sessions globally.
+// Session data is stored in three sub-stores for clean separation:
+// metaStore (identity, status, timestamps), convoStore (messages,
+// system prompt, active skills), configStore (workspace).
 type Manager struct {
 	mu               sync.RWMutex
-	sessions         map[string]*UISession // sessionID → session
-	browserSessions  map[string][]string   // browserID → ordered session IDs
-	nextSessionNum   map[string]int        // browserID → next session number
+	metaStore        map[string]*SessionMeta    // sessionID → metadata
+	convoStore       map[string]*Conversation   // sessionID → conversation data
+	configStore      map[string]*SessionConfig  // sessionID → config
+	browserSessions  map[string][]string         // browserID → ordered session IDs
+	nextSessionNum   map[string]int              // browserID → next session number
 	maxSessions      int
 	defaultWorkspace string // filesystem root for new sessions
 }
@@ -107,7 +114,9 @@ func NewManager(maxSessions int, defaultWorkspace string) *Manager {
 		maxSessions = 10
 	}
 	return &Manager{
-		sessions:         make(map[string]*UISession),
+		metaStore:        make(map[string]*SessionMeta),
+		convoStore:       make(map[string]*Conversation),
+		configStore:      make(map[string]*SessionConfig),
 		browserSessions:  make(map[string][]string),
 		nextSessionNum:   make(map[string]int),
 		maxSessions:      maxSessions,
@@ -115,26 +124,74 @@ func NewManager(maxSessions int, defaultWorkspace string) *Manager {
 	}
 }
 
-// copySession returns a shallow copy of a UISession with a fresh Messages slice
-// so the caller can read fields without holding the manager lock.
-func copySession(s *UISession) *UISession {
-	cp := *s
-	cp.Messages = make([]llm.Message, len(s.Messages))
-	copy(cp.Messages, s.Messages)
-	cp.RenderedMessageIDs = make([]string, len(s.RenderedMessageIDs))
-	copy(cp.RenderedMessageIDs, s.RenderedMessageIDs)
-	return &cp
+// assembleSession builds a UISession from the three sub-stores.
+// Returns nil if the session ID does not exist in metaStore.
+// The caller receives a deep copy safe to use outside the lock.
+func (m *Manager) assembleSession(id string) *UISession {
+	meta := m.metaStore[id]
+	if meta == nil {
+		return nil
+	}
+	convo := m.convoStore[id]
+	cfg := m.configStore[id]
+
+	s := &UISession{
+		ID:                   meta.ID,
+		BrowserID:            meta.BrowserID,
+		ParentID:             meta.ParentID,
+		Title:                meta.Title,
+		Status:               meta.Status,
+		CreatedAt:            meta.CreatedAt,
+		UpdatedAt:            meta.UpdatedAt,
+		ClosedAt:             meta.ClosedAt,
+		RenderedMessageIDs:   make([]string, len(meta.RenderedMessageIDs)),
+		renderedMessageIDIdx: meta.renderedMessageIDIdx,
+	}
+	copy(s.RenderedMessageIDs, meta.RenderedMessageIDs)
+
+	if convo != nil {
+		s.Messages = make([]llm.Message, len(convo.Messages))
+		copy(s.Messages, convo.Messages)
+		s.SystemPrompt = convo.SystemPrompt
+		s.ActiveSkills = make([]string, len(convo.ActiveSkills))
+		copy(s.ActiveSkills, convo.ActiveSkills)
+	}
+
+	if cfg != nil {
+		s.Workspace = cfg.Workspace
+	}
+
+	return s
 }
 
-// All returns a copy of all sessions. Used for bulk operations.
-func (m *Manager) All() []*UISession {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	result := make([]*UISession, 0, len(m.sessions))
-	for _, s := range m.sessions {
-		result = append(result, copySession(s))
+// splitSession disassembles a UISession into the three sub-store entries.
+// Must be called with m.mu held (write lock).
+func (m *Manager) splitSession(s *UISession) {
+	m.metaStore[s.ID] = &SessionMeta{
+		ID:                   s.ID,
+		BrowserID:            s.BrowserID,
+		ParentID:             s.ParentID,
+		Title:                s.Title,
+		Status:               s.Status,
+		CreatedAt:            s.CreatedAt,
+		UpdatedAt:            s.UpdatedAt,
+		ClosedAt:             s.ClosedAt,
+		RenderedMessageIDs:   make([]string, len(s.RenderedMessageIDs)),
+		renderedMessageIDIdx: s.renderedMessageIDIdx,
 	}
-	return result
+	copy(m.metaStore[s.ID].RenderedMessageIDs, s.RenderedMessageIDs)
+
+	m.convoStore[s.ID] = &Conversation{
+		Messages:     make([]llm.Message, len(s.Messages)),
+		SystemPrompt: s.SystemPrompt,
+		ActiveSkills: make([]string, len(s.ActiveSkills)),
+	}
+	copy(m.convoStore[s.ID].Messages, s.Messages)
+	copy(m.convoStore[s.ID].ActiveSkills, s.ActiveSkills)
+
+	m.configStore[s.ID] = &SessionConfig{
+		Workspace: s.Workspace,
+	}
 }
 
 // newID generates a random hex identifier using crypto/rand.
@@ -146,6 +203,19 @@ func newID() string {
 	return fmt.Sprintf("%x", b)
 }
 
+// All returns a copy of all sessions. Used for bulk operations.
+func (m *Manager) All() []*UISession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]*UISession, 0, len(m.metaStore))
+	for id := range m.metaStore {
+		if s := m.assembleSession(id); s != nil {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // Create creates a new session for the given browser_id.
 // Returns the session and any error. If the browser has reached the session cap,
 // returns a CapReached error.
@@ -154,28 +224,32 @@ func (m *Manager) Create(browserID string) (*UISession, error) {
 	defer m.mu.Unlock()
 
 	// Check global cap
-	if len(m.sessions) >= m.maxSessions {
+	if len(m.metaStore) >= m.maxSessions {
 		return nil, fmt.Errorf("session cap of %d reached", m.maxSessions)
 	}
 
 	id := newID()
 	m.nextSessionNum[browserID]++
 
-	sess := &UISession{
+	now := time.Now()
+	m.metaStore[id] = &SessionMeta{
 		ID:        id,
 		BrowserID: browserID,
 		Title:     fmt.Sprintf("Session %d", m.nextSessionNum[browserID]),
 		Status:    StatusIdle,
-		Messages:  make([]llm.Message, 0),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	m.convoStore[id] = &Conversation{
+		Messages: make([]llm.Message, 0),
+	}
+	m.configStore[id] = &SessionConfig{
 		Workspace: m.defaultWorkspace,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
 	}
 
-	m.sessions[id] = sess
 	m.browserSessions[browserID] = append(m.browserSessions[browserID], id)
 
-	return sess, nil
+	return m.assembleSession(id), nil
 }
 
 // Add inserts a pre-existing session directly into the manager.
@@ -185,7 +259,7 @@ func (m *Manager) Add(sess *UISession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.sessions[sess.ID] = sess
+	m.splitSession(sess)
 	// Ensure it appears in browser sessions list
 	found := false
 	for _, id := range m.browserSessions[sess.BrowserID] {
@@ -214,7 +288,7 @@ func (m *Manager) LoadFromDisk(data []byte) (*UISession, error) {
 
 	// Check for ID collision
 	m.mu.RLock()
-	_, exists := m.sessions[sess.ID]
+	_, exists := m.metaStore[sess.ID]
 	m.mu.RUnlock()
 	if exists {
 		return nil, fmt.Errorf("%w: session %s", ErrSessionIDCollision, sess.ID)
@@ -225,7 +299,10 @@ func (m *Manager) LoadFromDisk(data []byte) (*UISession, error) {
 	sess.ClosedAt = nil
 
 	m.Add(&sess)
-	return &sess, nil
+	// Return an assembled copy
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.assembleSession(sess.ID), nil
 }
 
 // ErrSessionIDCollision is returned by LoadFromDisk when a session with the
@@ -236,7 +313,7 @@ var ErrSessionIDCollision = fmt.Errorf("session ID collision")
 func (m *Manager) Get(id string) *UISession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.sessions[id]
+	return m.assembleSession(id)
 }
 
 // GetValidated returns a session by ID, checking ownership by browser_id.
@@ -245,14 +322,14 @@ func (m *Manager) Get(id string) *UISession {
 func (m *Manager) GetValidated(id, browserID string) (*UISession, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	sess := m.sessions[id]
-	if sess == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return nil, false
 	}
-	if sess.BrowserID != browserID {
+	if meta.BrowserID != browserID {
 		return nil, false
 	}
-	return sess, true
+	return m.assembleSession(id), true
 }
 
 // CreateChild creates a child session under a parent session.
@@ -262,34 +339,37 @@ func (m *Manager) CreateChild(parentID, browserID, title string) (*UISession, er
 	defer m.mu.Unlock()
 
 	// Verify parent exists
-	parent := m.sessions[parentID]
-	if parent == nil {
+	parentMeta := m.metaStore[parentID]
+	if parentMeta == nil {
 		return nil, fmt.Errorf("parent session %s not found", parentID)
 	}
 
 	// Check global cap
-	if len(m.sessions) >= m.maxSessions {
+	if len(m.metaStore) >= m.maxSessions {
 		return nil, fmt.Errorf("session cap of %d reached", m.maxSessions)
 	}
 
 	id := newID()
-
-	sess := &UISession{
+	now := time.Now()
+	m.metaStore[id] = &SessionMeta{
 		ID:        id,
 		BrowserID: browserID,
 		ParentID:  parentID,
 		Title:     title,
 		Status:    StatusRunning,
-		Messages:  make([]llm.Message, 0),
-		Workspace: parent.Workspace,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	m.convoStore[id] = &Conversation{
+		Messages: make([]llm.Message, 0),
+	}
+	m.configStore[id] = &SessionConfig{
+		Workspace: m.configStore[parentID].Workspace,
 	}
 
-	m.sessions[id] = sess
 	m.browserSessions[browserID] = append(m.browserSessions[browserID], id)
 
-	return sess, nil
+	return m.assembleSession(id), nil
 }
 
 // ChildrenOf returns all child sessions for a given parent session ID.
@@ -298,33 +378,35 @@ func (m *Manager) ChildrenOf(parentID string) []*UISession {
 	defer m.mu.RUnlock()
 
 	var result []*UISession
-	for _, s := range m.sessions {
-		if s.ParentID == parentID {
-			result = append(result, s)
+	for id, meta := range m.metaStore {
+		if meta.ParentID == parentID {
+			if s := m.assembleSession(id); s != nil {
+				result = append(result, s)
+			}
 		}
 	}
 	return result
 }
 
-// Close removes a session from the in-memory manager without deleting disk data.
-// Sets ClosedAt timestamp. Cascade-closes any child sessions.
 // cascadeRemoveChildren removes all child sessions of the given parent from the manager.
 // If beforeRemove is non-nil, it is called on each child before removal (e.g. to set ClosedAt).
 // Must be called with m.mu held.
 func (m *Manager) cascadeRemoveChildren(parentID, browserID string, beforeRemove func(*UISession)) {
 	var childIDs []string
-	for _, s := range m.sessions {
-		if s.ParentID == parentID {
-			childIDs = append(childIDs, s.ID)
+	for id, meta := range m.metaStore {
+		if meta.ParentID == parentID {
+			childIDs = append(childIDs, id)
 		}
 	}
 	for _, cid := range childIDs {
-		if child := m.sessions[cid]; child != nil {
-			if beforeRemove != nil {
+		if beforeRemove != nil {
+			if child := m.assembleSession(cid); child != nil {
 				beforeRemove(child)
 			}
 		}
-		delete(m.sessions, cid)
+		delete(m.metaStore, cid)
+		delete(m.convoStore, cid)
+		delete(m.configStore, cid)
 		bSessions := m.browserSessions[browserID]
 		for i, sid := range bSessions {
 			if sid == cid {
@@ -335,30 +417,40 @@ func (m *Manager) cascadeRemoveChildren(parentID, browserID string, beforeRemove
 	}
 }
 
+// Close removes a session from the in-memory manager without deleting disk data.
+// Sets ClosedAt timestamp. Cascade-closes any child sessions.
 func (m *Manager) Close(id string) *UISession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sess := m.sessions[id]
-	if sess == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return nil
 	}
 
 	now := time.Now()
-	sess.ClosedAt = &now
+	meta.ClosedAt = &now
+	meta.UpdatedAt = now
 
 	// Cascade close children first
-	m.cascadeRemoveChildren(id, sess.BrowserID, func(child *UISession) {
-		child.ClosedAt = &now
+	m.cascadeRemoveChildren(id, meta.BrowserID, func(child *UISession) {
+		if childMeta := m.metaStore[child.ID]; childMeta != nil {
+			childMeta.ClosedAt = &now
+			childMeta.UpdatedAt = now
+		}
 	})
 
-	delete(m.sessions, id)
+	sess := m.assembleSession(id)
+
+	delete(m.metaStore, id)
+	delete(m.convoStore, id)
+	delete(m.configStore, id)
 
 	// Remove from browser sessions list
-	browserSessions := m.browserSessions[sess.BrowserID]
+	browserSessions := m.browserSessions[meta.BrowserID]
 	for i, sid := range browserSessions {
 		if sid == id {
-			m.browserSessions[sess.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
+			m.browserSessions[meta.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
 			break
 		}
 	}
@@ -373,21 +465,25 @@ func (m *Manager) Delete(id string) *UISession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sess := m.sessions[id]
-	if sess == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return nil
 	}
 
-	// Cascade delete children first
-	m.cascadeRemoveChildren(id, sess.BrowserID, nil)
+	sess := m.assembleSession(id)
 
-	delete(m.sessions, id)
+	// Cascade delete children first
+	m.cascadeRemoveChildren(id, meta.BrowserID, nil)
+
+	delete(m.metaStore, id)
+	delete(m.convoStore, id)
+	delete(m.configStore, id)
 
 	// Remove from browser sessions list
-	browserSessions := m.browserSessions[sess.BrowserID]
+	browserSessions := m.browserSessions[meta.BrowserID]
 	for i, sid := range browserSessions {
 		if sid == id {
-			m.browserSessions[sess.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
+			m.browserSessions[meta.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
 			break
 		}
 	}
@@ -403,8 +499,8 @@ func (m *Manager) ListByBrowser(browserID string) []*UISession {
 	ids := m.browserSessions[browserID]
 	result := make([]*UISession, 0, len(ids))
 	for _, id := range ids {
-		if s := m.sessions[id]; s != nil {
-			result = append(result, copySession(s))
+		if s := m.assembleSession(id); s != nil {
+			result = append(result, s)
 		}
 	}
 	return result
@@ -431,7 +527,7 @@ func (m *Manager) LastActive(browserID string) *UISession {
 func (m *Manager) Count() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return len(m.sessions)
+	return len(m.metaStore)
 }
 
 // BrowserCount returns the number of sessions for a given browser_id.
@@ -445,9 +541,9 @@ func (m *Manager) BrowserCount(browserID string) int {
 func (m *Manager) UpdateTitle(id, title string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
-		s.Title = title
-		s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.Title = title
+		meta.UpdatedAt = time.Now()
 	}
 }
 
@@ -455,9 +551,9 @@ func (m *Manager) UpdateTitle(id, title string) {
 func (m *Manager) UpdateStatus(id string, status Status) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
-		s.Status = status
-		s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.Status = status
+		meta.UpdatedAt = time.Now()
 	}
 }
 
@@ -466,9 +562,11 @@ func (m *Manager) UpdateStatus(id string, status Status) {
 func (m *Manager) SetWorkspace(id, workspace string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
-		s.Workspace = workspace
-		s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		if cfg := m.configStore[id]; cfg != nil {
+			cfg.Workspace = workspace
+		}
+		meta.UpdatedAt = time.Now()
 	}
 }
 
@@ -477,14 +575,18 @@ func (m *Manager) SetWorkspace(id, workspace string) {
 func (m *Manager) AppendMessage(id string, msg llm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
+	if convo := m.convoStore[id]; convo != nil {
 		if msg.Role == "user" {
 			if title := sessionTitlePreview(msg.Content); title != "" {
-				s.Title = title
+				if meta := m.metaStore[id]; meta != nil {
+					meta.Title = title
+				}
 			}
 		}
-		s.Messages = append(s.Messages, msg)
-		s.UpdatedAt = time.Now()
+		convo.Messages = append(convo.Messages, msg)
+		if meta := m.metaStore[id]; meta != nil {
+			meta.UpdatedAt = time.Now()
+		}
 	}
 }
 
@@ -493,26 +595,28 @@ func (m *Manager) AppendMessage(id string, msg llm.Message) {
 func (m *Manager) AppendComponent(id string, comp llm.ComponentData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return nil
 	}
-	if len(s.Messages) == 0 {
+	if len(convo.Messages) == 0 {
 		return nil
 	}
-	last := &s.Messages[len(s.Messages)-1]
+	last := &convo.Messages[len(convo.Messages)-1]
 	if last.Role != "assistant" {
 		// Create an assistant message so components have a target to attach to.
 		// Content will be filled when the run completes.
-		s.Messages = append(s.Messages, llm.Message{
+		convo.Messages = append(convo.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
 		})
-		last = &s.Messages[len(s.Messages)-1]
+		last = &convo.Messages[len(convo.Messages)-1]
 	}
 	last.Components = append(last.Components, comp)
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 	return nil
 }
 
@@ -521,20 +625,22 @@ func (m *Manager) AppendComponent(id string, comp llm.ComponentData) error {
 func (m *Manager) SetQuickReplies(id string, options []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return nil
 	}
-	if len(s.Messages) == 0 || s.Messages[len(s.Messages)-1].Role != "assistant" {
-		s.Messages = append(s.Messages, llm.Message{
+	if len(convo.Messages) == 0 || convo.Messages[len(convo.Messages)-1].Role != "assistant" {
+		convo.Messages = append(convo.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
 		})
 	}
-	last := &s.Messages[len(s.Messages)-1]
+	last := &convo.Messages[len(convo.Messages)-1]
 	last.QuickReplies = options
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 	return nil
 }
 
@@ -543,33 +649,37 @@ func (m *Manager) SetQuickReplies(id string, options []string) error {
 func (m *Manager) UpdateLastAssistantContent(id, content string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil || len(s.Messages) == 0 {
+	convo := m.convoStore[id]
+	if convo == nil || len(convo.Messages) == 0 {
 		return
 	}
-	last := &s.Messages[len(s.Messages)-1]
+	last := &convo.Messages[len(convo.Messages)-1]
 	if last.Role != "assistant" {
 		return
 	}
 	last.Content = content
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 }
 
-// AppendingReasoningContent appends reasoning content to the last assistant message.
+// AppendLastReasoningContent appends reasoning content to the last assistant message.
 // Does nothing if session not found or last message is not assistant.
 func (m *Manager) AppendLastReasoningContent(id, reasoningContent string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil || len(s.Messages) == 0 {
+	convo := m.convoStore[id]
+	if convo == nil || len(convo.Messages) == 0 {
 		return
 	}
-	last := &s.Messages[len(s.Messages)-1]
+	last := &convo.Messages[len(convo.Messages)-1]
 	if last.Role != "assistant" {
 		return
 	}
 	last.ReasoningContent += reasoningContent
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 }
 
 // SetLastReasoningContent sets the reasoning content on the last assistant message.
@@ -577,16 +687,18 @@ func (m *Manager) AppendLastReasoningContent(id, reasoningContent string) {
 func (m *Manager) SetLastReasoningContent(id, reasoningContent string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil || len(s.Messages) == 0 {
+	convo := m.convoStore[id]
+	if convo == nil || len(convo.Messages) == 0 {
 		return
 	}
-	last := &s.Messages[len(s.Messages)-1]
+	last := &convo.Messages[len(convo.Messages)-1]
 	if last.Role != "assistant" {
 		return
 	}
 	last.ReasoningContent = reasoningContent
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 }
 
 func sessionTitlePreview(message string) string {
@@ -606,17 +718,19 @@ func sessionTitlePreview(message string) string {
 func (m *Manager) ActivateSkill(id, skillName string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return false
 	}
-	for _, existing := range s.ActiveSkills {
+	for _, existing := range convo.ActiveSkills {
 		if existing == skillName {
 			return false // already active
 		}
 	}
-	s.ActiveSkills = append(s.ActiveSkills, skillName)
-	s.UpdatedAt = time.Now()
+	convo.ActiveSkills = append(convo.ActiveSkills, skillName)
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 	return true
 }
 
@@ -624,14 +738,16 @@ func (m *Manager) ActivateSkill(id, skillName string) bool {
 func (m *Manager) DeactivateSkill(id, skillName string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return
 	}
-	for i, name := range s.ActiveSkills {
+	for i, name := range convo.ActiveSkills {
 		if name == skillName {
-			s.ActiveSkills = append(s.ActiveSkills[:i], s.ActiveSkills[i+1:]...)
-			s.UpdatedAt = time.Now()
+			convo.ActiveSkills = append(convo.ActiveSkills[:i], convo.ActiveSkills[i+1:]...)
+			if meta := m.metaStore[id]; meta != nil {
+				meta.UpdatedAt = time.Now()
+			}
 			return
 		}
 	}
@@ -641,12 +757,12 @@ func (m *Manager) DeactivateSkill(id, skillName string) {
 func (m *Manager) ActiveSkills(id string) []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return nil
 	}
-	result := make([]string, len(s.ActiveSkills))
-	copy(result, s.ActiveSkills)
+	result := make([]string, len(convo.ActiveSkills))
+	copy(result, convo.ActiveSkills)
 	return result
 }
 
@@ -658,31 +774,31 @@ const ringBufferCap = 10
 func (m *Manager) AddRenderedMessageID(id, messageID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return
 	}
 	if messageID == "" {
 		return
 	}
 	// Initialize ring buffer on first use
-	if s.RenderedMessageIDs == nil {
-		s.RenderedMessageIDs = make([]string, ringBufferCap)
-		s.renderedMessageIDIdx = 0
+	if meta.RenderedMessageIDs == nil {
+		meta.RenderedMessageIDs = make([]string, ringBufferCap)
+		meta.renderedMessageIDIdx = 0
 	}
-	s.RenderedMessageIDs[s.renderedMessageIDIdx] = messageID
-	s.renderedMessageIDIdx = (s.renderedMessageIDIdx + 1) % ringBufferCap
+	meta.RenderedMessageIDs[meta.renderedMessageIDIdx] = messageID
+	meta.renderedMessageIDIdx = (meta.renderedMessageIDIdx + 1) % ringBufferCap
 }
 
 // HasRenderedMessageID returns true if the message ID is in the session's dedup ring buffer.
 func (m *Manager) HasRenderedMessageID(id, messageID string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[id]
-	if s == nil || s.RenderedMessageIDs == nil || messageID == "" {
+	meta := m.metaStore[id]
+	if meta == nil || meta.RenderedMessageIDs == nil || messageID == "" {
 		return false
 	}
-	for _, mid := range s.RenderedMessageIDs {
+	for _, mid := range meta.RenderedMessageIDs {
 		if mid == messageID {
 			return true
 		}
@@ -692,56 +808,63 @@ func (m *Manager) HasRenderedMessageID(id, messageID string) bool {
 
 // GetMeta returns a SessionMeta view of the session identified by id.
 // Returns nil if the session does not exist.
+// The returned SessionMeta is a copy safe for use outside the lock.
 func (m *Manager) GetMeta(id string) *SessionMeta {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[id]
-	if s == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return nil
 	}
-	return &SessionMeta{
-		ID:        s.ID,
-		BrowserID: s.BrowserID,
-		ParentID:  s.ParentID,
-		Title:     s.Title,
-		Status:    s.Status,
-		CreatedAt: s.CreatedAt,
-		UpdatedAt: s.UpdatedAt,
-		ClosedAt:  s.ClosedAt,
+	cp := &SessionMeta{
+		ID:                   meta.ID,
+		BrowserID:            meta.BrowserID,
+		ParentID:             meta.ParentID,
+		Title:                meta.Title,
+		Status:               meta.Status,
+		CreatedAt:            meta.CreatedAt,
+		UpdatedAt:            meta.UpdatedAt,
+		ClosedAt:             meta.ClosedAt,
+		RenderedMessageIDs:   make([]string, len(meta.RenderedMessageIDs)),
+		renderedMessageIDIdx: meta.renderedMessageIDIdx,
 	}
+	copy(cp.RenderedMessageIDs, meta.RenderedMessageIDs)
+	return cp
 }
 
 // GetConversation returns a Conversation view of the session identified by id.
 // Returns nil if the session does not exist.
+// The returned Conversation is a copy safe for use outside the lock.
 func (m *Manager) GetConversation(id string) *Conversation {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return nil
 	}
-	msgs := make([]llm.Message, len(s.Messages))
-	copy(msgs, s.Messages)
-	skills := make([]string, len(s.ActiveSkills))
-	copy(skills, s.ActiveSkills)
+	msgs := make([]llm.Message, len(convo.Messages))
+	copy(msgs, convo.Messages)
+	skills := make([]string, len(convo.ActiveSkills))
+	copy(skills, convo.ActiveSkills)
 	return &Conversation{
 		Messages:     msgs,
-		SystemPrompt: s.SystemPrompt,
+		SystemPrompt: convo.SystemPrompt,
 		ActiveSkills: skills,
 	}
 }
 
 // GetConfig returns a SessionConfig view of the session identified by id.
 // Returns nil if the session does not exist.
+// The returned SessionConfig is a copy safe for use outside the lock.
 func (m *Manager) GetConfig(id string) *SessionConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[id]
-	if s == nil {
+	cfg := m.configStore[id]
+	if cfg == nil {
 		return nil
 	}
 	return &SessionConfig{
-		Workspace: s.Workspace,
+		Workspace: cfg.Workspace,
 	}
 }
 
@@ -751,20 +874,20 @@ func (m *Manager) GetConfig(id string) *SessionConfig {
 func (m *Manager) UpdateMeta(id string, meta *SessionMeta) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil || meta == nil {
+	existing := m.metaStore[id]
+	if existing == nil || meta == nil {
 		return
 	}
 	if meta.Title != "" {
-		s.Title = meta.Title
+		existing.Title = meta.Title
 	}
 	if meta.Status != "" {
-		s.Status = meta.Status
+		existing.Status = meta.Status
 	}
 	if meta.ClosedAt != nil {
-		s.ClosedAt = meta.ClosedAt
+		existing.ClosedAt = meta.ClosedAt
 	}
-	s.UpdatedAt = time.Now()
+	existing.UpdatedAt = time.Now()
 }
 
 // AppendToConversation appends a message to the session's conversation.
@@ -772,12 +895,14 @@ func (m *Manager) UpdateMeta(id string, meta *SessionMeta) {
 func (m *Manager) AppendToConversation(id string, msg llm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	convo := m.convoStore[id]
+	if convo == nil {
 		return
 	}
-	s.Messages = append(s.Messages, msg)
-	s.UpdatedAt = time.Now()
+	convo.Messages = append(convo.Messages, msg)
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 }
 
 // UpdateConfig updates the configuration fields of a session from the given SessionConfig.
@@ -785,14 +910,16 @@ func (m *Manager) AppendToConversation(id string, msg llm.Message) {
 func (m *Manager) UpdateConfig(id string, config *SessionConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil || config == nil {
+	existingCfg := m.configStore[id]
+	if existingCfg == nil || config == nil {
 		return
 	}
 	if config.Workspace != "" {
-		s.Workspace = config.Workspace
+		existingCfg.Workspace = config.Workspace
 	}
-	s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
 }
 
 // SetSystemPrompt sets the system prompt on a session.
@@ -800,9 +927,11 @@ func (m *Manager) UpdateConfig(id string, config *SessionConfig) {
 func (m *Manager) SetSystemPrompt(id, prompt string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
-		s.SystemPrompt = prompt
-		s.UpdatedAt = time.Now()
+	if convo := m.convoStore[id]; convo != nil {
+		convo.SystemPrompt = prompt
+		if meta := m.metaStore[id]; meta != nil {
+			meta.UpdatedAt = time.Now()
+		}
 	}
 }
 
@@ -812,23 +941,23 @@ func (m *Manager) SetSystemPrompt(id, prompt string) {
 func (m *Manager) SetBrowserID(id, browserID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.sessions[id]
-	if s == nil {
+	meta := m.metaStore[id]
+	if meta == nil {
 		return
 	}
 	// Remove from old browser index
-	if s.BrowserID != "" {
-		oldList := m.browserSessions[s.BrowserID]
+	if meta.BrowserID != "" {
+		oldList := m.browserSessions[meta.BrowserID]
 		for i, sid := range oldList {
 			if sid == id {
-				m.browserSessions[s.BrowserID] = append(oldList[:i], oldList[i+1:]...)
+				m.browserSessions[meta.BrowserID] = append(oldList[:i], oldList[i+1:]...)
 				break
 			}
 		}
 	}
-	s.BrowserID = browserID
+	meta.BrowserID = browserID
 	m.browserSessions[browserID] = append(m.browserSessions[browserID], id)
-	s.UpdatedAt = time.Now()
+	meta.UpdatedAt = time.Now()
 }
 
 // SetClosedAt sets the ClosedAt timestamp on a session. Pass nil to clear it.
@@ -836,8 +965,8 @@ func (m *Manager) SetBrowserID(id, browserID string) {
 func (m *Manager) SetClosedAt(id string, t *time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[id]; s != nil {
-		s.ClosedAt = t
-		s.UpdatedAt = time.Now()
+	if meta := m.metaStore[id]; meta != nil {
+		meta.ClosedAt = t
+		meta.UpdatedAt = time.Now()
 	}
 }
