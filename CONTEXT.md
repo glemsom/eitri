@@ -73,6 +73,7 @@ eitri/
 ├── scripts/                   # Install script, release tools
 ├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
 ├── docs/TESTING.md            # Test runbook
+├── docs/debug-api.md          # Debug API reference (JSON API for operational inspection)
 ├── docs/providers/            # User-facing provider setup/operation guides
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
@@ -81,7 +82,6 @@ eitri/
 ├── VERSION                    # Canonical version string (semver)
 ├── CHANGELOG.md               # Keep a Changelog-formatted release notes
 ├── README.md                  # Human-facing project overview
-├── initial.md                 # Original product vision
 ```
 
 > **AI agents**: read `docs/ARCHITECTURE.md` before making changes — it covers module boundaries, key types, data flow, and extension points in detail.
