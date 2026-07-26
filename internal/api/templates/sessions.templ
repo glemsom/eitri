@@ -73,10 +73,8 @@ templ SessionRowView(id string, title string, turnCount int, createdAt time.Time
 		<td class="session-status-cell">
 			if isActive {
 				<span class="status-badge status-active" title="Active in memory">&#9679; Active</span>
-			} else if isClosed {
-				<span class="status-badge status-closed" title="Closed">&#9679; Closed</span>
 			} else {
-				<span class="status-badge status-dormant" title="On disk">&#9679; Saved</span>
+				<span class="status-badge status-closed" title="Closed">&#9679; Closed</span>
 			}
 		</td>
 		<td class="session-title-cell">{ title }</td>

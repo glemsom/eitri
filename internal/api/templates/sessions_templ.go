@@ -172,13 +172,8 @@ func SessionRowView(id string, title string, turnCount int, createdAt time.Time,
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else if isClosed {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"status-badge status-closed\" title=\"Closed\">&#9679; Closed</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span class=\"status-badge status-dormant\" title=\"On disk\">&#9679; Saved</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"status-badge status-closed\" title=\"Closed\">&#9679; Closed</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

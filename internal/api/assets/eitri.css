@@ -3758,11 +3758,6 @@ eitri-context {
   background: color-mix(in srgb, var(--text-muted) 15%, transparent);
 }
 
-.status-dormant {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-secondary) 15%, transparent);
-}
-
 .session-title-cell {
   max-width: 300px;
   overflow: hidden;
