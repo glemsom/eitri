@@ -14,20 +14,6 @@
 //   - BrowserEvent — event sent to browser-level SSE subscribers
 //     (defined in this package)
 //
-// # Sub-package hierarchy
-//
-//	runner/            — RunService wiring, RunConfig, RunState, run tracking,
-//	                     batch mode, sub-agent orchestration,
-//	                     system prompt assembly, skill context
-//	├── loop/          — HistoryManager and Confirmer interfaces +
-//	│                    implementations (sessionHistoryManager,
-//	│                    requestHistoryManager, testConfirmerStub,
-//	│                    funcConfirmer), ConfirmationResult,
-//	│                    ConfirmationFunc value types; plus RunAgent,
-//	│                    RunSpec, RunOpts, the agent turn loop,
-//	│                    streaming, tool dispatch, message
-//	│                    trimming, and LLM error handling
-//
 // # Responsibilities by file
 //
 //	service.go       — RunService type, constructor, subscribe/unsubscribe,
@@ -60,12 +46,9 @@
 //   - provider  — auth resolution, provider descriptions
 //   - skills    — Skill discovery, activation, resource manifests
 //   - debug     — HTTP trace recorder (optional)
-//   - config    — (transitive through runconfig/) Config value object
-//
-// And from its own sub-packages:
-//
-//   - runner/loop  — RunAgent, RunSpec, RunOpts, HistoryManager, Confirmer,
-//                    ConfirmationResult
+//   - config    — Config value object
+//   - runner/loop — RunAgent, RunSpec, RunOpts, HistoryManager, Confirmer,
+//                   ConfirmationResult
 //
 // # Extension points
 //
