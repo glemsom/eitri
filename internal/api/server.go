@@ -204,6 +204,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /sessions", s.handleSessionsPage)
 	s.mux.HandleFunc("POST /api/sessions/cleanup/delete-closed", s.handleCleanupDeleteClosed)
 	s.mux.HandleFunc("POST /api/sessions/cleanup/clear-all-traces", s.handleCleanupClearAllTraces)
+	s.mux.HandleFunc("POST /api/sessions/cleanup/prune-by-age", s.handleCleanupPruneByAge)
 
 	// Settings
 	s.mux.HandleFunc("GET /settings", s.handleSettings)

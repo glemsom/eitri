@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
@@ -549,4 +550,128 @@ func (s *Server) handleCleanupClearAllTraces(w http.ResponseWriter, r *http.Requ
 	diskUsageBytes, _ := s.config.Persister.DiskUsageBytes()
 	component := templates.SessionsCleanup(diskUsageBytes)
 	component.Render(r.Context(), w)
+}
+
+// handleCleanupPruneByAge permanently removes closed sessions older than the specified age.
+// POST /api/sessions/cleanup/prune-by-age
+func (s *Server) handleCleanupPruneByAge(w http.ResponseWriter, r *http.Request) {
+	browserID := s.browserIDFromRequest(r)
+
+	if s.config.Persister == nil {
+		http.Error(w, "Persister not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse age-in-days from form value
+	ageDaysStr := r.FormValue("age_days")
+	if ageDaysStr == "" {
+		http.Error(w, "age_days parameter is required", http.StatusBadRequest)
+		return
+	}
+	ageDays, err := strconv.Atoi(ageDaysStr)
+	if err != nil || ageDays < 1 {
+		http.Error(w, "age_days must be a positive integer", http.StatusBadRequest)
+		return
+	}
+	cutoff := time.Now().Add(-time.Duration(ageDays) * 24 * time.Hour)
+
+	// Collect closed session IDs past the age threshold
+	var toDelete []string
+
+	// Closed in-memory sessions for this browser
+	if browserID != "" {
+		for _, sess := range s.config.SessionManager.ListByBrowser(browserID) {
+			if sess.ClosedAt != nil && sess.ClosedAt.Before(cutoff) {
+				toDelete = append(toDelete, sess.ID)
+			}
+		}
+	}
+
+	// Closed disk sessions (not in memory)
+	diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
+	if err != nil {
+		s.logger.Warn("failed to list disk sessions", slog.Any("error", err))
+	} else {
+		activeIDs := make(map[string]bool)
+		if browserID != "" {
+			for _, sess := range s.config.SessionManager.ListByBrowser(browserID) {
+				activeIDs[sess.ID] = true
+			}
+		}
+		for _, id := range diskIDs {
+			if activeIDs[id] {
+				continue
+			}
+			info, err := s.config.Persister.LoadSessionInfo(id)
+			if err != nil || info == nil {
+				continue
+			}
+			if info.ClosedAt != nil && info.ClosedAt.Before(cutoff) {
+				toDelete = append(toDelete, id)
+			}
+		}
+	}
+
+	// Perform deletion
+	var deleted int
+	for _, id := range toDelete {
+		if s.config.RunService != nil {
+			_ = s.config.RunService.CloseSession(id)
+		}
+		s.config.SessionManager.Delete(id)
+		if err := s.config.Persister.DeleteSession(id); err != nil {
+			s.logger.Warn("failed to delete session data",
+				slog.String("session_id", id),
+				slog.Any("error", err))
+			continue
+		}
+		deleted++
+	}
+
+	// Build updated sessions list for HTMX response
+	var activeSessions []*session.UISession
+	if browserID != "" {
+		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
+	}
+
+	remainingDiskIDs, _ := s.config.Persister.ListOnDiskSessionIDs()
+	activeIDSet := make(map[string]bool, len(activeSessions))
+	for _, as := range activeSessions {
+		activeIDSet[as.ID] = true
+	}
+	var diskRows []templates.SessionRow
+	for _, id := range remainingDiskIDs {
+		if activeIDSet[id] {
+			continue
+		}
+		info, err := s.config.Persister.LoadSessionInfo(id)
+		if err != nil || info == nil {
+			continue
+		}
+		duration := info.UpdatedAt.Sub(info.CreatedAt)
+		if info.ClosedAt != nil {
+			duration = info.ClosedAt.Sub(info.CreatedAt)
+		}
+		diskRows = append(diskRows, templates.SessionRow{
+			ID:        info.ID,
+			Title:     info.Title,
+			TurnCount: info.Messages,
+			CreatedAt: info.CreatedAt,
+			UpdatedAt: info.UpdatedAt,
+			Duration:  duration,
+			IsClosed:  info.ClosedAt != nil,
+		})
+	}
+
+	// Render both the sessions list (for the list swap) and cleanup (for stats)
+	// We swap the sessions list outerHTML and the cleanup section via OOB swap
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.SessionsList(activeSessions, diskRows).Render(r.Context(), w)
+	diskUsageBytes, _ := s.config.Persister.DiskUsageBytes()
+
+	// Render cleanup section as OOB swap to update disk usage
+	// Use a wrapping div with hx-swap-oob for HTMX out-of-band swap
+	_, _ = fmt.Fprintf(w, `<div id="sessions-cleanup" hx-swap-oob="true">`)
+	_ = templates.SessionsCleanup(diskUsageBytes).Render(r.Context(), w)
+	_, _ = fmt.Fprintf(w, `</div>`)
 }

@@ -137,6 +137,27 @@ templ SessionsCleanup(diskUsageBytes int64) {
 					hx-swap="outerHTML"
 				>Clear All Traces</button>
 			</div>
+			<div class="cleanup-prune">
+				<label for="prune-age-days">Prune sessions older than</label>
+				<input
+					type="number"
+					id="prune-age-days"
+					name="age_days"
+					class="input"
+					value="7"
+					min="1"
+					style="width:5em;text-align:center;"
+				/>
+				<span class="cleanup-label">days</span>
+				<button
+					class="btn btn-danger"
+					hx-post="/api/sessions/cleanup/prune-by-age"
+					hx-include="#prune-age-days"
+					hx-confirm="Permanently delete closed sessions older than the specified days?"
+					hx-target="#sessions-list"
+					hx-swap="outerHTML"
+				>Prune</button>
+			</div>
 		</div>
 	</details>
 }
