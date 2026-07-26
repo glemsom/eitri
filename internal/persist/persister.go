@@ -282,8 +282,21 @@ func (p *Persister) SnapshotSession(sessionID string, s *session.UISession) erro
 
 // SaveTrace writes a single HTTP trace to disk as a JSON file.
 // The file is written to <root>/sessions/<sessionID>/traces/<trace_id>.json.
+//
+// If the session has been permanently deleted (no session.json on disk),
+// SaveTrace is a no-op — it returns nil without writing anything. This
+// prevents both shutdown Flush and asynchronous OnComplete callbacks from
+// recreating deleted session directories.
 func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
-	tracesDir := filepath.Join(p.rootDir, "sessions", sessionID, "traces")
+	// If session.json is gone the session was permanently deleted — do not
+	// recreate the directory by writing a trace.
+	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
+	sessionFile := filepath.Join(sessionDir, "session.json")
+	if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
+		return nil
+	}
+
+	tracesDir := filepath.Join(sessionDir, "traces")
 	if err := os.MkdirAll(tracesDir, 0700); err != nil {
 		return fmt.Errorf("cannot create traces dir %s: %w", tracesDir, err)
 	}
@@ -315,6 +328,10 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 // persisted (e.g. via the OnComplete callback). In-flight traces are always
 // persisted.
 //
+// Traces belonging to permanently deleted sessions are skipped: if a trace's
+// session is not in the provided sessions list and its session.json is gone
+// from disk, the session was permanently deleted and its trace data is discarded.
+//
 // If flush fails for any individual item, the error is logged but Flush
 // continues with remaining items (best-effort). A combined error is returned
 // if any failures occurred.
@@ -338,6 +355,13 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 	}
 
 	// Persist any traces not yet saved to disk.
+	// Skip traces for sessions that have been permanently deleted
+	// (not in live list and no session.json on disk).
+	liveIDs := make(map[string]bool, len(sessions))
+	for _, s := range sessions {
+		liveIDs[s.ID] = true
+	}
+
 	for _, trace := range traces {
 		p.mu.Lock()
 		alreadyPersisted := p.persistedTraces[trace.ID]
@@ -345,6 +369,14 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 
 		if alreadyPersisted {
 			continue
+		}
+		// If the session isn't live and its session.json is gone,
+		// the session was permanently deleted — skip its traces.
+		if !liveIDs[trace.SessionID] {
+			sessionFile := filepath.Join(p.rootDir, "sessions", trace.SessionID, "session.json")
+			if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
+				continue
+			}
 		}
 		if err := p.SaveTrace(trace.SessionID, trace); err != nil {
 			slog.Warn("flush: failed to save trace",

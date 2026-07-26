@@ -184,6 +184,13 @@ func TestSaveTrace_WritesFile(t *testing.T) {
 	}
 
 	sessionID := "trace-session"
+	// A session.json must exist — SaveTrace guards against recreating
+	// deleted sessions.
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
 	trace := &debug.HTTPTrace{
 		ID:          "trace_42",
 		SessionID:   sessionID,
@@ -232,6 +239,13 @@ func TestSaveTrace_CreatesTracesDir(t *testing.T) {
 	}
 
 	sessionID := "new-trace-session"
+	// A session.json must exist — SaveTrace guards against recreating
+	// deleted sessions.
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
 	trace := &debug.HTTPTrace{
 		ID:        "trace_1",
 		SessionID: sessionID,
@@ -474,6 +488,11 @@ func TestListTraces_ReturnsIDs(t *testing.T) {
 	}
 
 	sessionID := "trace-list"
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
 	trace := &debug.HTTPTrace{
 		ID:        "trace-list-1",
 		SessionID: sessionID,
@@ -502,6 +521,11 @@ func TestLoadTrace_ReturnsTrace(t *testing.T) {
 	}
 
 	sessionID := "load-trace"
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
 	trace := &debug.HTTPTrace{
 		ID:        "trace-load-1",
 		SessionID: sessionID,
