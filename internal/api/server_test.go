@@ -1134,14 +1134,15 @@ func TestPutConfigExistingProvidersUseProfileModelDiscovery(t *testing.T) {
 			var gotPath string
 			var gotAuth string
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotPath = r.URL.Path
-				gotAuth = r.Header.Get("Authorization")
-				if r.URL.Path != "/v1/models" {
-					http.NotFound(w, r)
+				if r.URL.Path == "/v1/models" {
+					gotPath = r.URL.Path
+					gotAuth = r.Header.Get("Authorization")
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 					return
 				}
-				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+				// Model detail request (/v1/models/{model}) or other paths — return 404.
+				http.NotFound(w, r)
 			}))
 			t.Cleanup(provider.Close)
 
