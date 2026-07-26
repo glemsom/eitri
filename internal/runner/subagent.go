@@ -91,7 +91,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		} else {
 			slog.Info("sub-agent using persona",
 				slog.String("persona", personaName),
-				slog.Int("injected_skills", len(resolved.InjectedSkills)),
+				slog.Int("required_skills", len(resolved.RequiredSkills)),
 			)
 			parentCfg.ActivePersona = personaName
 		}

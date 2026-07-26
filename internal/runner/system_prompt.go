@@ -19,7 +19,7 @@ import (
 
 // buildSystemPrompt assembles the full system prompt from the active persona
 // (or user override or default), repository instructions, skills catalog,
-// and skill activations — including skills injected by the persona.
+// and skill activations — including skills required by the persona.
 //
 // Precedence:
 //  1. cfg.SystemPrompt (user override) — if non-empty, used directly
@@ -28,12 +28,12 @@ import (
 //
 // Manually activated skills (loaded by the agent via skill()) are injected
 // with their full content under the "Activated skill" label.
-// Persona-injected skills are NOT pre-injected; they are listed as a
+// Persona-required skills are NOT pre-injected; they are listed as a
 // startup directive instructing the agent to call skill() for each one,
 // establishing commitment through the tool-call result.
 func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
 	systemPrompt := cfg.SystemPrompt
-	var personaInjectedSkills []string
+	var personaRequiredSkills []string
 	if systemPrompt == "" {
 		// No user override; try active persona.
 		if cfg.ActivePersona != "" {
@@ -51,7 +51,7 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 				if def.SystemPrompt != "" {
 					systemPrompt = def.SystemPrompt
 				}
-				personaInjectedSkills = def.InjectedSkills
+				personaRequiredSkills = def.RequiredSkills
 			}
 		}
 		// Fallback to built-in default.
@@ -77,22 +77,22 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		}
 	}
 
-	// Build a set of persona-injected skill names for quick lookup.
-	personaInjectedSet := make(map[string]struct{}, len(personaInjectedSkills))
-	for _, name := range personaInjectedSkills {
-		personaInjectedSet[name] = struct{}{}
+	// Build a set of persona-required skill names for quick lookup.
+	personaRequiredSet := make(map[string]struct{}, len(personaRequiredSkills))
+	for _, name := range personaRequiredSkills {
+		personaRequiredSet[name] = struct{}{}
 	}
 
 	// Separate manually activated skills (loaded by the agent via skill())
-	// from persona-injected skills. Persona-injected skills are NOT
+	// from persona-required skills. Persona-required skills are NOT
 	// pre-injected with content; instead they are listed as a directive
 	// below so the agent calls skill() to load each one on its first turn.
 	var manuallyActivated []runSkillActivation
 	var personaRequired []string
 	seen := make(map[string]struct{}, len(skillCtx.Activations))
 	for _, a := range skillCtx.Activations {
-		if _, ok := personaInjectedSet[a.Name]; ok {
-			// Persona-injected — track for directive, don't inject content
+		if _, ok := personaRequiredSet[a.Name]; ok {
+			// Persona-required — track for directive, don't inject content
 			personaRequired = append(personaRequired, a.Name)
 		} else {
 			manuallyActivated = append(manuallyActivated, a)
@@ -100,8 +100,8 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		seen[a.Name] = struct{}{}
 	}
 
-	// Add persona-injected skills that aren't yet in the session activations.
-	for _, skillName := range personaInjectedSkills {
+	// Add persona-required skills that aren't yet in the session activations.
+	for _, skillName := range personaRequiredSkills {
 		if _, ok := seen[skillName]; ok {
 			continue // already tracked above
 		}
@@ -110,7 +110,7 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		}
 		skill := skillsSvc.Lookup(skillName)
 		if skill == nil {
-			slog.Warn("Persona-injected skill not found, skipping", "skill", skillName, "persona", cfg.ActivePersona)
+			slog.Warn("Persona-required skill not found, skipping", "skill", skillName, "persona", cfg.ActivePersona)
 			continue
 		}
 		personaRequired = append(personaRequired, skillName)
@@ -122,7 +122,7 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
 	}
 
-	// Add directive for persona-injected skills so the agent loads them.
+	// Add directive for persona-required skills so the agent loads them.
 	// The <required_skills> XML block mirrors the <repository_instructions> pattern,
 	// giving the directive strong visual separation and making it harder for the
 	// agent to overlook.

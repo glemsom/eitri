@@ -1,5 +1,5 @@
 // Package persona manages agent personas — named profiles with a system prompt
-// and optional injected skills.
+// and optional required skills.
 //
 // Personas are stored as YAML files under either:
 //   - <workspace>/.eitri/personas/<name>.yaml (project-scoped, higher precedence)
@@ -76,7 +76,7 @@ func SaveToHome(homeDir string, def *PersonaDefinition) error {
 type PersonaDefinition struct {
 	Name           string   `yaml:"name" json:"name"`
 	SystemPrompt   string   `yaml:"system_prompt" json:"system_prompt"`
-	InjectedSkills []string `yaml:"injected_skills,omitempty" json:"injected_skills,omitempty"`
+	RequiredSkills []string `yaml:"required_skills,omitempty" json:"required_skills,omitempty"`
 }
 
 // Dir returns the personas directory for the given workspace.

@@ -23,7 +23,7 @@ If a user wants a subagent to adopt a different tone, role, or skill set
 Introduce **personas** — named bundles of:
 
 1. A **system prompt** (the persona's core instructions).
-2. A list of **injected skills** — skill names to pre-load into the
+2. A list of **required skills** — skill names to pre-load into the
    system prompt whenever this persona is active.
 
 ### Concepts
@@ -37,14 +37,14 @@ name: reviewer
 system_prompt: |
   You are a strict code reviewer. Focus on correctness, performance,
   and maintainability. Be thorough but polite.
-injected_skills:
+required_skills:
   - code-review
   - diagnosing-bugs
 ```
 
 The `generic` persona is always present. If no `.eitri/personas/generic.yaml`
 file exists, it is created at startup with the current built-in default
-prompt and no injected skills.
+prompt and no required skills.
 
 #### Persona catalog
 
@@ -72,22 +72,22 @@ When a persona is active, the system prompt is assembled in this order:
    that takes precedence over the persona's prompt for one session only)
 3. **Repository instructions** (from `CONTEXT.md` / repository instructions file)
 4. **Skills catalog** (available skills, same as today)
-5. **Injected skills** — listed as a startup directive instructing the agent
+5. **Required skills** — listed as a startup directive instructing the agent
    to call `skill("name")` for each required skill on its first turn, emitted
    inside a `<required_skills>` XML block. Skills are NOT pre-injected with
    content; the agent loads them via the `skill()` tool, establishing
    commitment through the tool-call result.
 6. **Activated skills** (from `skill()` calls during the conversation)
 
-If a persona has injected skills, those skills are loaded via the existing
+If a persona has required skills, those skills are loaded via the existing
 `sessionSkillContext.Activations` mechanism. Deduplication ensures a skill's
-instructions appear at most once, whether injected or manually activated.
+instructions appear at most once, whether required or manually activated.
 
 #### Persona lifecycle
 
 | Action | Behaviour |
 |--------|-----------|
-| Create | User opens "Manage Personas" UI, fills in name + prompt + injected skills. Saved to `.eitri/personas/<name>.yaml`. Config catalog updated. |
+| Create | User opens "Manage Personas" UI, fills in name + prompt + required skills. Saved to `.eitri/personas/<name>.yaml`. Config catalog updated. |
 | Edit | Same as create but overwrites existing file. |
 | Delete | File removed from `.eitri/personas/`. Config catalog updated. Orphaned sessions continue with their last persona. |
 | Select | Config's `active_persona` updated. Takes effect on next run. |
@@ -122,7 +122,7 @@ in both the UI and the backend API.
 | UI element | Location | Behaviour |
 |------------|----------|-----------|
 | Persona selector | Top bar, next to workspace selector | Dropdown listing `generic` + all custom personas. Current selection highlighted. |
-| Manage Personas | Settings page, new section | List of personas with add/edit/delete. Each entry: name (text), system prompt (textarea), injected skills (multi-select from discovered skills). |
+| Manage Personas | Settings page, new section | List of personas with add/edit/delete. Each entry: name (text), system prompt (textarea), required skills (multi-select from discovered skills). |
 | Skill multi-select | Inside persona editor | Fetches available skills from backend, presents checkboxes/combobox. Saves as list of skill names. |
 
 ### Files on disk
@@ -182,10 +182,10 @@ the persona's prompt (but does not modify the persona file).
 | Q14 | How does subagent get its persona? | Reads `.eitri/personas/<name>.yaml` from disk. Parent passes name only. |
 | Q16 | Is `generic` on disk? | Yes. Auto-created if missing. |
 | Q17 | Does persona replace dynamic parts? | No. Dynamic parts (tools, workspace context, skills) are appended. |
-| Q18 | Skill deduplication? | Injected skills go through the same `Activations` mechanism; dedup ensures unique content. |
+| Q18 | Skill deduplication? | Required skills go through the same `Activations` mechanism; dedup ensures unique content. |
 | Q20 | Config shape? | `system_prompt` kept as override. `persona_catalog` + `active_persona` added. |
 | Q23 | Switch mid-session? | Same session, new system prompt from next turn. Old messages retained. |
-| Q24 | Injected skills mechanism? | Via `Activations` — same path as manual `skill()` activation, just injected automatically. |
+| Q24 | Required skills mechanism? | Via `Activations` — same path as manual `skill()` activation, just loaded automatically. |
 
 ## Consequences
 
@@ -199,12 +199,12 @@ the persona's prompt (but does not modify the persona file).
   are a behaviour switch, not an isolation boundary.
 - File-per-persona on disk enables version control, sharing, and backup.
 - Backward compatible — existing users see no change.
-- Injected skills reuse the existing activation machinery; minimal new code.
+- Required skills reuse the existing activation machinery; minimal new code.
 
 ### Negative
 
 - Persona system prompts consume context window tokens — especially with
-  injected skills. Power users who inject many skills per persona may hit
+  required skills. Power users who require many skills per persona may hit
   the context limit faster.
 - Shared workspace across personas can lead to confusion: a "reviewer"
   persona and a "tutor" persona operate on the same files. This is
@@ -228,7 +228,7 @@ the persona's prompt (but does not modify the persona file).
 ## Implementation sketch
 
 ### Phase 1 — Data model and persistence
-1. Add `PersonaDefinition` struct (name, system prompt, injected skills).
+1. Add `PersonaDefinition` struct (name, system prompt, required skills).
 2. Add `persona_catalog` (map[string]string) and `active_persona` to `config.Config`.
 3. Implement `persona.Load(name)` and `persona.Save(definition)` in a new
    `internal/persona` package.
@@ -237,7 +237,7 @@ the persona's prompt (but does not modify the persona file).
 
 ### Phase 2 — System prompt assembly
 1. Modify `buildSystemPrompt` in `internal/runner/system_prompt.go` to
-   accept a persona name, load the persona, and inject skills via
+   accept a persona name, load the persona, and load required skills via
    `sessionSkillContext.Activations`.
 2. Add deduplication to skill activation: if a skill is already in
    `Activations`, skip re-adding.
@@ -246,7 +246,7 @@ the persona's prompt (but does not modify the persona file).
 ### Phase 3 — Subagent persona support
 1. Extend `delegate()` tool to accept an optional `persona` field.
 2. In `SpawnSubAgent`, resolve persona from disk and use its prompt +
-   injected skills instead of the parent's.
+   required skills instead of the parent's.
 3. Ensure subagents that cannot load their persona fall back to `generic`.
 
 ### Phase 4 — UI
