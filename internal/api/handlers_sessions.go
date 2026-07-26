@@ -242,26 +242,24 @@ func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := s.config.SessionManager.Get(id)
-	if sess == nil {
-		// Session already gone — redirect
-		s.hxRedirect(w, r, "/")
-		return
-	}
-	if sess.BrowserID != browserID {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	s.notifySessionClosed(id, "Session deleted")
-	if s.config.RunService != nil {
-		if err := s.config.RunService.CloseSession(id); err != nil {
-			http.Error(w, "Failed to close session", http.StatusInternalServerError)
+	if sess != nil {
+		if sess.BrowserID != browserID {
+			http.Error(w, "Session not found", http.StatusNotFound)
 			return
 		}
-	}
-	s.config.SessionManager.Delete(id)
 
-	// Permanently remove persisted data from disk
+		s.notifySessionClosed(id, "Session deleted")
+		if s.config.RunService != nil {
+			if err := s.config.RunService.CloseSession(id); err != nil {
+				http.Error(w, "Failed to close session", http.StatusInternalServerError)
+				return
+			}
+		}
+		s.config.SessionManager.Delete(id)
+	}
+
+	// Permanently remove persisted data from disk (handles both in-memory
+	// and disk-only sessions — e.g. closed sessions listed on the Sessions page).
 	if p := s.config.Persister; p != nil {
 		if err := p.DeleteSession(id); err != nil {
 			s.logger.Warn("failed to delete persisted session data",

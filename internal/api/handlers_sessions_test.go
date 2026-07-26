@@ -747,18 +747,19 @@ func TestHandlePermanentDelete_NonExistentSession(t *testing.T) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("DELETE /api/sessions/nonexistent/permanent failed: %v", err)
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Should redirect to /
+	// Should redirect — the handler still cleans up disk (no-op) then
+	// falls through to create a new session for the browser.
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("expected status 302, got %d", resp.StatusCode)
 	}
 
 	location := resp.Header.Get("Location")
-	if location != "/" {
-		t.Errorf("expected redirect to /, got %q", location)
+	if !strings.HasPrefix(location, "/sessions/") {
+		t.Errorf("expected redirect to /sessions/{id}, got %q", location)
 	}
 }
 
@@ -802,10 +803,12 @@ func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
 	}
 }
 
+
 // ————— handleLoadSession —————
 
 // newTestServerWithPersister creates a test server with a session manager,
-// run service, and persister. Useful for testing session load from disk.
+// run service, and persister. Useful for testing session load from disk and
+// permanent delete of disk-only sessions.
 func newTestServerWithPersister(t *testing.T) (*httptest.Server, *session.Manager, *persist.Persister) {
 	t.Helper()
 	eitriDir := t.TempDir()
@@ -832,6 +835,69 @@ func newTestServerWithPersister(t *testing.T) (*httptest.Server, *session.Manage
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
 	return server, sessionMgr, p
+}
+
+// TestHandlePermanentDelete_DiskOnlySession proves that permanent delete
+// also removes sessions that are only on disk (closed, not in memory).
+// Regression test for the bug where the handler would just redirect without
+// deleting when Get() returns nil for disk-only sessions.
+func TestHandlePermanentDelete_DiskOnlySession(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-perm-disk-only"
+
+	// Create a session and persist it to disk
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	// Close the session (removes from memory, keeps disk data)
+	sessionMgr.Close(sess.ID)
+
+	// Verify it's gone from memory but still on disk
+	if got := sessionMgr.Get(sess.ID); got != nil {
+		t.Fatal("session should not be in memory after close")
+	}
+	diskIDs, err := p.ListOnDiskSessionIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, id := range diskIDs {
+		if id == sess.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("session should still be on disk after close")
+	}
+
+	// Now permanently delete via API
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID+"/permanent", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
+	}
+	resp.Body.Close()
+
+	// The session should be deleted from disk
+	diskIDs, err = p.ListOnDiskSessionIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range diskIDs {
+		if id == sess.ID {
+			t.Fatal("permanently deleted session should not remain on disk")
+		}
+	}
 }
 
 func TestHandleLoadSession_LoadsSessionFromDisk(t *testing.T) {
