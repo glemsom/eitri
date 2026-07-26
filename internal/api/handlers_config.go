@@ -80,7 +80,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if contextWindow == 0 {
 		contextWindow = 256000
 	}
-	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow, sandbox.BwrapAvailable())
+	levels := provider.SupportedThinkingLevels(state.cfg.Provider, state.cfg.Model)
+	component := templates.SettingsView(state.cfg, state.models, s.config.Workspace, s.chatPathForRequest(r), r.URL.Path, contextWindow, sandbox.BwrapAvailable(), levels)
 	component.Render(r.Context(), w)
 }
 
@@ -101,7 +102,8 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX-aware: return HTML fragment when HX-Request header is present
 	if isHTMXRequest(r) {
-		component := templates.SettingsForm(maskedCfg, models, "", "", nil, "", sandbox.BwrapAvailable())
+		levels := provider.SupportedThinkingLevels(maskedCfg.Provider, maskedCfg.Model)
+		component := templates.SettingsForm(maskedCfg, models, "", "", nil, "", sandbox.BwrapAvailable(), levels)
 		component.Render(r.Context(), w)
 		return
 	}
@@ -134,8 +136,8 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Validate thinking_level against the selected model.
 	// If the model does not support the chosen level, clear it and surface a notice.
 	var notice string
+	levels := provider.SupportedThinkingLevels(newCfg.Provider, newCfg.Model)
 	if newCfg.ThinkingLevel != "" && newCfg.Model != "" {
-		levels := provider.SupportedThinkingLevels(newCfg.Provider, newCfg.Model)
 		if len(levels) == 0 {
 			notice = fmt.Sprintf("Thinking level %q cleared — model %q does not support reasoning effort.", newCfg.ThinkingLevel, newCfg.Model)
 			newCfg.ThinkingLevel = ""
@@ -189,7 +191,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render form with success indicator (and notice if thinking_level was cleared)
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "", notice, nil, "✓ Saved", sandbox.BwrapAvailable())
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", notice, nil, "✓ Saved", sandbox.BwrapAvailable(), levels)
 	component.Render(r.Context(), w)
 }
 

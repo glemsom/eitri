@@ -259,6 +259,83 @@ func TestLoadConfigState_ValidConfig(t *testing.T) {
 	}
 }
 
+func TestWriteSettingsForm_ThinkingLevelDropdown_NonReasoningModel(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+
+	cfg := &config.Config{
+		Provider: "custom_openai",
+		Model:    "gpt-4o", // non-reasoning model
+		BaseURL:  "http://example.com",
+		APIKey:   "sk-test",
+	}
+	models := []string{"gpt-4o", "gpt-3.5-turbo"}
+	writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(body)
+
+	// Non-reasoning model should only show "Default (off)" option
+	if !strings.Contains(html, "Default (off)") {
+		t.Error("expected 'Default (off)' option for non-reasoning model")
+	}
+	// Should NOT include low/medium/high options
+	if strings.Contains(html, "value=\"low\"") {
+		t.Error("should NOT contain 'low' option for non-reasoning model")
+	}
+	if strings.Contains(html, "value=\"medium\"") {
+		t.Error("should NOT contain 'medium' option for non-reasoning model")
+	}
+	if strings.Contains(html, "value=\"high\"") {
+		t.Error("should NOT contain 'high' option for non-reasoning model")
+	}
+}
+
+func TestWriteSettingsForm_ThinkingLevelDropdown_ReasoningModel(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+
+	cfg := &config.Config{
+		Provider: "custom_openai",
+		Model:    "deepseek-r1", // reasoning model
+		BaseURL:  "http://example.com",
+		APIKey:   "sk-test",
+	}
+	models := []string{"deepseek-r1", "gpt-4o"}
+	writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(body)
+
+	// Reasoning model should show "Default (off)" plus reasoning options
+	if !strings.Contains(html, "Default (off)") {
+		t.Error("expected 'Default (off)' option for reasoning model")
+	}
+	if !strings.Contains(html, "value=\"low\"") {
+		t.Error("expected 'low' option for reasoning model")
+	}
+	if !strings.Contains(html, "value=\"medium\"") {
+		t.Error("expected 'medium' option for reasoning model")
+	}
+	if !strings.Contains(html, "value=\"high\"") {
+		t.Error("expected 'high' option for reasoning model")
+	}
+	// Check that the display text is capitalized
+	if !strings.Contains(html, ">Low</option>") {
+		t.Error("expected 'Low' display text for reasoning model")
+	}
+	if !strings.Contains(html, ">Medium</option>") {
+		t.Error("expected 'Medium' display text for reasoning model")
+	}
+	if !strings.Contains(html, ">High</option>") {
+		t.Error("expected 'High' display text for reasoning model")
+	}
+}
+
 // newInternalTestServer creates a minimal Server for internal test use.
 func newInternalTestServer(t *testing.T) *Server {
 	t.Helper()
