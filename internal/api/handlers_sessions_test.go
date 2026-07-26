@@ -1379,7 +1379,7 @@ func TestHandleCleanupPruneByAge_PreservesActiveSessions(t *testing.T) {
 
 	// Mark as closed recently (within 1 day)
 	now := time.Now()
-	sess.ClosedAt = &now
+	sessionMgr.SetClosedAt(sess.ID, &now)
 
 	form := url.Values{"age_days": {"7"}}
 	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
@@ -1415,7 +1415,7 @@ func TestHandleCleanupPruneByAge_DeletesOldClosedSessions(t *testing.T) {
 
 	// Mark as closed 30 days ago
 	old := time.Now().Add(-30 * 24 * time.Hour)
-	sess.ClosedAt = &old
+	sessionMgr.SetClosedAt(sess.ID, &old)
 
 	form := url.Values{"age_days": {"7"}}
 	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/prune-by-age",
