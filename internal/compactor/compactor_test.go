@@ -226,12 +226,26 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 	}
 	_ = callCount
 
-	// First tool should be compacted, second should be skipped due to error.
-	if !strings.HasPrefix(result2[1].Content, "[TOOL RESULT COMPACTED") {
-		t.Error("expected first tool result to be compacted")
+	// With all roles eligible, the scan order is:
+	//   msgs2[0]=user("first") → call 1 succeeds → compacted as [MESSAGE COMPACTED]
+	//   msgs2[1]=tool("first large...") → call 2 fails → skipped
+	//   msgs2[2]=user("second") → call 3 succeeds → compacted as [MESSAGE COMPACTED]
+	//   msgs2[3]=tool("second large...") → call 4 succeeds → compacted as [TOOL RESULT COMPACTED]
+	// First message (user) should be compacted.
+	if !strings.HasPrefix(result2[0].Content, "[MESSAGE COMPACTED") {
+		t.Error("expected first user message to be compacted")
 	}
-	if strings.HasPrefix(result2[3].Content, "[TOOL RESULT COMPACTED") {
-		t.Error("expected second tool result to NOT be compacted (LLM error)")
+	// Second message (tool) should be skipped due to LLM error (call 2).
+	if strings.HasPrefix(result2[1].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("expected first tool result to NOT be compacted (LLM error on call 2)")
+	}
+	// Third message (user) should be compacted.
+	if !strings.HasPrefix(result2[2].Content, "[MESSAGE COMPACTED") {
+		t.Error("expected second user message to be compacted")
+	}
+	// Fourth message (tool) should be compacted (call 4 succeeds).
+	if !strings.HasPrefix(result2[3].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("expected second tool result to be compacted (call 4 succeeds)")
 	}
 }
 
@@ -316,18 +330,18 @@ func TestCompact_ReturnsNilOnEmptyMessages(t *testing.T) {
 	}
 }
 
-func TestCompact_NonToolMessagesPreserved(t *testing.T) {
+func TestCompact_CompactsAllRoles(t *testing.T) {
 	c := New()
 	msgs := []llm.Message{
 		{Role: "system", Content: "You are Eitri."},
-		{Role: "user", Content: "hello"},
-		{Role: "assistant", Content: "hi", ToolCalls: []llm.ToolCall{
+		{Role: "user", Content: strings.Repeat("hello ", 500)}, // large user message
+		{Role: "assistant", Content: strings.Repeat("hi ", 500), ToolCalls: []llm.ToolCall{
 			{ID: "call1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
 		{Role: "tool", Content: "file1.txt\nfile2.txt\n" + strings.Repeat("data\n", 200), ToolCallID: "call1"},
 		{Role: "user", Content: "good"},
 	}
-	llmSvc := &mockLLMService{summary: "listed files"}
+	llmSvc := &mockLLMService{summary: "summarized content"}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -344,21 +358,124 @@ func TestCompact_NonToolMessagesPreserved(t *testing.T) {
 		t.Fatalf("expected freed > 0, got %d", freed)
 	}
 
-	// System message preserved.
+	// System message preserved (never compacted).
 	if result[0].Role != "system" || result[0].Content != "You are Eitri." {
 		t.Error("system message was modified")
 	}
-	// Assistant message preserved with tool calls.
-	if result[2].Role != "assistant" || len(result[2].ToolCalls) != 1 {
-		t.Error("assistant tool calls were modified")
+	// User message compacted with generic prefix.
+	if !strings.HasPrefix(result[1].Content, "[MESSAGE COMPACTED") {
+		t.Error("user message was not compacted")
 	}
-	// Tool message compacted.
+	// Assistant message compacted but tool calls preserved.
+	if result[2].Role != "assistant" || len(result[2].ToolCalls) != 1 {
+		t.Error("assistant tool calls were lost during compaction")
+	}
+	if !strings.HasPrefix(result[2].Content, "[MESSAGE COMPACTED") {
+		t.Error("assistant message was not compacted")
+	}
+	// Tool message compacted with tool-specific prefix.
 	if !strings.HasPrefix(result[3].Content, "[TOOL RESULT COMPACTED") {
 		t.Error("tool result was not compacted")
 	}
-	// User message preserved.
-	if result[4].Role != "user" || result[4].Content != "good" {
-		t.Error("user message was modified")
+	// Small user message (4 chars) is also compacted because threshold is 0.
+	if !strings.HasPrefix(result[4].Content, "[MESSAGE COMPACTED") {
+		t.Error("small user message should be compacted when MessageSizeThreshold is 0")
+	}
+}
+
+func TestCompact_MessageSizeThreshold_SkipsSmallMessages(t *testing.T) {
+	c := New()
+	msgs := []llm.Message{
+		{Role: "user", Content: "small"},                                          // ~1 token
+		{Role: "user", Content: strings.Repeat("large payload ", 800)},            // ~10400 chars → ~2600 tokens
+		{Role: "assistant", Content: "tiny"},                                      // ~1 token
+		{Role: "assistant", Content: strings.Repeat("big response data ", 800)},   // ~10400 chars → ~2600 tokens
+		{Role: "tool", Content: "tiny tool"},                                      // ~1 token
+		{Role: "tool", Content: strings.Repeat("massive tool output\n", 400)},     // ~10400 chars → ~2600 tokens
+	}
+	llmSvc := &mockLLMService{summary: "summary"}
+	thresholds := Thresholds{HighWater: 1, LowWater: 0, MessageSizeThreshold: 2000}
+
+	result, count, freed, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
+	}
+
+	// Small user message should NOT be compacted (below threshold).
+	if result[0].Content != "small" {
+		t.Error("small user message was compacted but should have been skipped by MessageSizeThreshold")
+	}
+	// Large user message should be compacted.
+	if !strings.HasPrefix(result[1].Content, "[MESSAGE COMPACTED") {
+		t.Error("large user message should be compacted")
+	}
+	// Small assistant message should NOT be compacted.
+	if result[2].Content != "tiny" {
+		t.Error("small assistant message was compacted but should have been skipped")
+	}
+	// Large assistant message should be compacted.
+	if !strings.HasPrefix(result[3].Content, "[MESSAGE COMPACTED") {
+		t.Error("large assistant message should be compacted")
+	}
+	// Small tool message should NOT be compacted (below threshold now).
+	if result[4].Content != "tiny tool" {
+		t.Error("small tool message was compacted but should have been skipped by MessageSizeThreshold")
+	}
+	// Large tool message should be compacted.
+	if !strings.HasPrefix(result[5].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("large tool message should be compacted")
+	}
+
+	// All large messages are above threshold (2600 > 2000), so count should be 3.
+	if count != 3 {
+		t.Errorf("expected 3 compacted messages, got %d", count)
+	}
+}
+
+func TestCompact_AlreadyCompactedDifferentPrefixes(t *testing.T) {
+	c := New()
+	msgs := []llm.Message{
+		{Role: "user", Content: "[MESSAGE COMPACTED - originally 50 tokens] user summary here"},
+		{Role: "tool", Content: "[TOOL RESULT COMPACTED - originally 100 tokens] tool summary here"},
+		{Role: "user", Content: strings.Repeat("fresh user content ", 400)},
+		{Role: "tool", Content: strings.Repeat("fresh tool content ", 400)},
+	}
+	llmSvc := &mockLLMService{summary: "new summary"}
+	thresholds := Thresholds{HighWater: 1, LowWater: 0}
+
+	result, count, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// Already-compacted messages should remain unchanged.
+	if result[0].Content != "[MESSAGE COMPACTED - originally 50 tokens] user summary here" {
+		t.Error("already compacted user message was modified")
+	}
+	if result[1].Content != "[TOOL RESULT COMPACTED - originally 100 tokens] tool summary here" {
+		t.Error("already compacted tool message was modified")
+	}
+	// Fresh messages should be compacted.
+	if !strings.HasPrefix(result[2].Content, "[MESSAGE COMPACTED") {
+		t.Error("fresh user message was not compacted")
+	}
+	if !strings.HasPrefix(result[3].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("fresh tool message was not compacted")
 	}
 }
 

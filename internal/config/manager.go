@@ -34,9 +34,10 @@ type Config struct {
 	DebugPrompt              bool            `json:"debug_prompt,omitempty"`                // was EITRI_DEBUG_PROMPT=1
 	DebugRequest             bool            `json:"debug_request,omitempty"`               // was EITRI_DEBUG_REQUEST=1
 	DebugLLMDir              string          `json:"debug_llm_dir,omitempty"`               // was EITRI_DEBUG_LLM_DIR
-	CompactionEnabled           bool            `json:"compaction_enabled"`
-	CompactionThresholdPercent  int             `json:"compaction_threshold_percent,omitempty"`
-	CompactionLowWaterPercent   int             `json:"compaction_low_water_percent,omitempty"`
+	CompactionEnabled              bool  `json:"compaction_enabled"`
+	CompactionThresholdPercent     int   `json:"compaction_threshold_percent,omitempty"`
+	CompactionLowWaterPercent      int   `json:"compaction_low_water_percent,omitempty"`
+	CompactionMessageSizeThreshold int   `json:"compaction_message_size_threshold,omitempty"`
 	ContextWarningThresholdPercent int          `json:"context_warning_threshold_percent,omitempty"`
 	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
 	ActivePersona               string          `json:"active_persona,omitempty"`
@@ -54,9 +55,10 @@ func Defaults() Config {
 		MaxTurns:                 75,
 		ContextWindowTokens:      256000,
 		MaxHistory:               50,
-		CompactionEnabled:        true,
-		CompactionThresholdPercent: 90,
-		CompactionLowWaterPercent:  30,
+		CompactionEnabled:              true,
+		CompactionThresholdPercent:     90,
+		CompactionLowWaterPercent:      30,
+		CompactionMessageSizeThreshold: 2000,
 		ContextWarningThresholdPercent: 75,
 		Sandbox:                  sandbox.DefaultConfig(),
 	}
@@ -142,6 +144,11 @@ func promoteEnvVars(cfg *Config) {
 	if v := os.Getenv("EITRI_COMPACTION_LOW_WATER_PERCENT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 10 && n <= 60 {
 			cfg.CompactionLowWaterPercent = n
+		}
+	}
+	if v := os.Getenv("EITRI_COMPACTION_MESSAGE_SIZE_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.CompactionMessageSizeThreshold = n
 		}
 	}
 	if v := os.Getenv("EITRI_CONTEXT_WARNING_THRESHOLD_PERCENT"); v != "" {
