@@ -10,7 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
-	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -214,7 +213,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}()
 
 		w := runstate.NewWriter(sseState)
-		historyMgr := adapters.NewRequestHistoryManager(req)
+		historyMgr := loop.NewRequestHistoryManager(req)
 
 		runErr := loop.RunAgent(subCtx, loop.RunSpec{
 			Service:    llmSvc,

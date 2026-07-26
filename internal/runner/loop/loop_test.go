@@ -11,7 +11,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
-	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
@@ -153,7 +152,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -235,7 +234,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -344,7 +343,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -403,7 +402,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -467,7 +466,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -515,7 +514,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -576,7 +575,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -633,7 +632,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -673,7 +672,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -752,7 +751,7 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -800,7 +799,7 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -857,7 +856,7 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -904,7 +903,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -955,7 +954,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1005,7 +1004,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1070,7 +1069,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1195,7 +1194,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 				SSEWriter:  w,
 				Tools:      nil,
 			}, RunOpts{
-				HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+				HistoryMgr:    NewRequestHistoryManager(&req),
 				Confirmer:     nil,
 				UISessionMgr:  nil,
 				SessionID:     "",
@@ -1405,7 +1404,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1468,7 +1467,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1528,7 +1527,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1595,7 +1594,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1658,7 +1657,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1721,7 +1720,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1771,7 +1770,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1860,7 +1859,7 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1915,7 +1914,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -1971,7 +1970,7 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -2028,7 +2027,7 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2076,7 +2075,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     sessionID,
@@ -2155,7 +2154,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    adapters.NewSessionHistoryManager(sessionMgr, sessionID),
+			HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     sessionID,
@@ -2255,7 +2254,7 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	toolReg.Register(confirmTool)
 
 	// Stub approves
-	confirmer := adapters.NewTestConfirmerStub(&adapters.ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
+	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
 
 	req := llm.Request{
 		Model: "test-model",
@@ -2272,7 +2271,7 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2341,7 +2340,7 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	toolReg.Register(alwaysNeedsTool)
 
 	// Stub denies
-	confirmer := adapters.NewTestConfirmerStub(&adapters.ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
+	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
 
 	req := llm.Request{
 		Model: "test-model",
@@ -2358,7 +2357,7 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2488,7 +2487,7 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(&req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2558,7 +2557,7 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -2609,7 +2608,7 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    adapters.NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(&req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -2761,7 +2760,7 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:       adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:       NewRequestHistoryManager(&req),
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        "",
@@ -2834,7 +2833,7 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:       adapters.NewRequestHistoryManager(&req),
+		HistoryMgr:       NewRequestHistoryManager(&req),
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        "",

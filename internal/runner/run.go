@@ -14,7 +14,6 @@ import (
 	"github.com/glemsom/eitri/internal/compactor"
 
 	"github.com/glemsom/eitri/internal/provider"
-	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -146,13 +145,13 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		w := runstate.NewWriter(sseState)
 
 		// Construct adapters from service dependencies.
-		var historyMgr adapters.HistoryManager
+		var historyMgr loop.HistoryManager
 		if s.historySessionMgr != nil {
-			historyMgr = adapters.NewSessionHistoryManager(s.historySessionMgr, sessionID)
+			historyMgr = loop.NewSessionHistoryManager(s.historySessionMgr, sessionID)
 		} else {
-			historyMgr = adapters.NewRequestHistoryManager(req)
+			historyMgr = loop.NewRequestHistoryManager(req)
 		}
-		confirmer := adapters.NewFuncConfirmer(s.confirmPath)
+		confirmer := loop.NewFuncConfirmer(s.confirmPath)
 
 		err := loop.RunAgent(runCtx, loop.RunSpec{
 			Service:    llmSvc,

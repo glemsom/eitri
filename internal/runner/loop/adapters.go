@@ -1,9 +1,9 @@
-// Package adapters provides HistoryManager and Confirmer interfaces and their
+// Package loop provides HistoryManager and Confirmer interfaces and their
 // implementations — the seam between the agent loop and its runtime context
 // (browser UI sessions vs headless/direct-messages mode).
 //
-// Extracted from the runner monolith (ticket #691).
-package adapters
+// Merged from the former runner/adapters sub-package (issues #860, #691).
+package loop
 
 import (
 	"context"
