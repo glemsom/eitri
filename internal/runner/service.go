@@ -584,36 +584,38 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 //
 // It builds a minimal LLM service (no tools, no system prompt construction) for
 // summarization, runs the compactor, replaces the history, snapshots the result,
-// and returns the number of messages compacted and the approximate number of tokens freed.
-func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg runconfig.RunConfig) (compactedCount int, freedTokens int, _ error) {
+// and returns the number of messages compacted, approximate number of tokens freed,
+// and the number of tool-call argument blocks pruned.
+func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg runconfig.RunConfig) (compactedCount int, freedTokens int, prunedToolCalls int, _ error) {
 	if s.historySessionMgr == nil {
-		return 0, 0, fmt.Errorf("history session manager not available")
+		return 0, 0, 0, fmt.Errorf("history session manager not available")
 	}
 
 	// Build a minimal LLM service for summarization (no tools needed).
 	llmSvc, err := newCompactLLMService(ctx, cfg, s.persistAuth)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to create LLM service for compaction: %w", err)
+		return 0, 0, 0, fmt.Errorf("failed to create LLM service for compaction: %w", err)
 	}
 
 	historyMsgs := s.historySessionMgr.History(sessionID)
 	if historyMsgs == nil {
-		return 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
+		return 0, 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
 	}
 
 	// Manual compaction always runs — no high-water gate.
 	// LowWater=0 means the compactor will compact until no more
 	// tool results remain (or the default low-water logic activates).
-	compactedMsgs, count, freed, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
-		HighWater:            0,
-		LowWater:             0,
-		MessageSizeThreshold: cfg.CompactionMessageSizeThreshold,
+	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
+		HighWater:              0,
+		LowWater:               0,
+		MessageSizeThreshold:   cfg.CompactionMessageSizeThreshold,
+		ToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
 	})
 	if compErr != nil {
-		return 0, 0, fmt.Errorf("compaction failed: %w", compErr)
+		return 0, 0, 0, fmt.Errorf("compaction failed: %w", compErr)
 	}
-	if compactedMsgs == nil || count == 0 {
-		return 0, 0, nil
+	if compactedMsgs == nil || (count == 0 && prunedCount == 0) {
+		return 0, 0, 0, nil
 	}
 
 	// Replace in-memory history with compacted version.
@@ -632,7 +634,7 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg r
 		}
 	}
 
-	return count, freed, nil
+	return count, freed, prunedCount, nil
 }
 
 // newCompactLLMService creates a bare LLM service for summarization without

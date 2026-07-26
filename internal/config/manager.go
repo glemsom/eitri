@@ -38,6 +38,7 @@ type Config struct {
 	CompactionThresholdPercent     int   `json:"compaction_threshold_percent,omitempty"`
 	CompactionLowWaterPercent      int   `json:"compaction_low_water_percent,omitempty"`
 	CompactionMessageSizeThreshold int   `json:"compaction_message_size_threshold,omitempty"`
+	CompactionToolCallRetentionTurns int   `json:"compaction_tool_call_retention_turns,omitempty"`
 	ContextWarningThresholdPercent int          `json:"context_warning_threshold_percent,omitempty"`
 	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
 	ActivePersona               string          `json:"active_persona,omitempty"`
@@ -59,6 +60,7 @@ func Defaults() Config {
 		CompactionThresholdPercent:     90,
 		CompactionLowWaterPercent:      30,
 		CompactionMessageSizeThreshold: 2000,
+		CompactionToolCallRetentionTurns: 5,
 		ContextWarningThresholdPercent: 75,
 		Sandbox:                  sandbox.DefaultConfig(),
 	}
@@ -423,6 +425,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["compaction_low_water_percent"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.CompactionLowWaterPercent = int(f)
+		}
+	}
+	if v, ok := patch["compaction_tool_call_retention_turns"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.CompactionToolCallRetentionTurns = int(f)
 		}
 	}
 	if v, ok := patch["context_warning_threshold_percent"]; ok {

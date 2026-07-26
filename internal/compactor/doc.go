@@ -8,11 +8,12 @@
 // # Usage
 //
 //	c := &compactor.Compactor{}
-//	compacted, count, freed, err := c.Compact(ctx, messages, llmSvc, thresholds)
+//	compacted, count, freed, pruned, err := c.Compact(ctx, messages, llmSvc, thresholds)
 //	if compacted != nil {
 //	    // use compacted messages
 //	    // count = number of messages compacted
 //	    // freed = approximate tokens freed
+//	    // pruned = number of tool-call argument blocks pruned
 //	}
 //
 // # Thresholds
@@ -25,6 +26,9 @@
 //   - MessageSizeThreshold: minimum estimated-token count for an individual
 //     message to be eligible for compaction. Messages below this threshold
 //     are skipped. A value of 0 means no threshold (all messages eligible).
+//   - ToolCallRetentionTurns: number of recent assistant messages whose ToolCall
+//     arguments are preserved. Older assistant messages have their arguments
+//     pruned to a compact placeholder. 0 means no pruning.
 //
 // # Role-aware compaction
 //
@@ -38,4 +42,13 @@
 //
 // Already-compacted messages (detected by either prefix) are skipped to
 // avoid re-compaction.
+//
+// # Tool call argument pruning
+//
+// When ToolCallRetentionTurns > 0, the compactor scans assistant messages and
+// prunes the Function.Arguments field of ToolCalls on messages beyond the
+// retention window. The ID and Function.Name are preserved. Arguments are
+// replaced with a placeholder like {"pruned": "~N chars"} encoding the original
+// size. Already-pruned tool calls (detectable via the placeholder prefix) are
+// not re-pruned.
 package compactor

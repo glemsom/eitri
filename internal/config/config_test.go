@@ -883,6 +883,9 @@ func TestDefaults_CompactionFields(t *testing.T) {
 	if def.CompactionLowWaterPercent != 30 {
 		t.Errorf("CompactionLowWaterPercent = %d, want 30", def.CompactionLowWaterPercent)
 	}
+	if def.CompactionToolCallRetentionTurns != 5 {
+		t.Errorf("CompactionToolCallRetentionTurns = %d, want 5", def.CompactionToolCallRetentionTurns)
+	}
 }
 
 func TestValidate_CompactionDefaultsAppliedWhenZero(t *testing.T) {

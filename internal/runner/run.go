@@ -375,7 +375,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		return
 	}
 
-	compactedMsgs, compactedCount, freedTokens, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater, cfg.CompactionMessageSizeThreshold)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -393,7 +393,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		}
 		return
 	}
-	if compactedMsgs == nil || compactedCount == 0 {
+	if compactedMsgs == nil || (compactedCount == 0 && prunedToolCalls == 0) {
 		return
 	}
 
@@ -413,13 +413,18 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 
 	// Broadcast compaction_complete event for UI toast.
 	freedK := freedTokens / 1000
+	message := fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", compactedCount, freedK)
+	if prunedToolCalls > 0 {
+		message += fmt.Sprintf(". %d tool calls pruned", prunedToolCalls)
+	}
 	if runState := s.get(sessionID); runState != nil {
 		runState.SSE.Broadcast(runstate.SSEEvent{
 			Type: "compaction_complete",
 			Data: map[string]any{
-				"compacted_count": compactedCount,
-				"freed_tokens":    freedTokens,
-				"message":         fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", compactedCount, freedK),
+				"compacted_count":   compactedCount,
+				"freed_tokens":      freedTokens,
+				"pruned_tool_calls": prunedToolCalls,
+				"message":           message,
 			},
 		})
 	}
@@ -427,16 +432,17 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 
 // compactSessionHistory runs the compactor on the given messages using the
 // provided LLM service, gated by high-water and low-water thresholds.
-// Returns the compacted messages, count, freed tokens, and any error.
+// Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold int) ([]llm.Message, int, int, error) {
+func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int) ([]llm.Message, int, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages)
 	if totalEst <= highWater {
-		return nil, 0, 0, nil
+		return nil, 0, 0, 0, nil
 	}
 	return compactor.New().Compact(ctx, messages, llmSvc, compactor.Thresholds{
-		HighWater:            highWater,
-		LowWater:             lowWater,
-		MessageSizeThreshold: messageSizeThreshold,
+		HighWater:              highWater,
+		LowWater:               lowWater,
+		MessageSizeThreshold:   messageSizeThreshold,
+		ToolCallRetentionTurns: toolCallRetentionTurns,
 	})
 }
