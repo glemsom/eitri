@@ -752,18 +752,18 @@ func TestHandlePermanentDelete_NonExistentSession(t *testing.T) {
 	defer resp.Body.Close()
 
 	// Should redirect — the handler still cleans up disk (no-op) then
-	// falls through to create a new session for the browser.
+	// falls through to the sessions management page.
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("expected status 302, got %d", resp.StatusCode)
 	}
 
 	location := resp.Header.Get("Location")
-	if !strings.HasPrefix(location, "/sessions/") {
-		t.Errorf("expected redirect to /sessions/{id}, got %q", location)
+	if location != "/sessions" {
+		t.Errorf("expected redirect to /sessions, got %q", location)
 	}
 }
 
-func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
+func TestHandlePermanentDelete_RedirectsToSessionsPage(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -776,7 +776,7 @@ func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess2, err := sessionMgr.Create(browserID)
+	_, err = sessionMgr.Create(browserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -791,10 +791,10 @@ func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Should redirect to the remaining session
+	// Should redirect to the sessions management page
 	location := resp.Header.Get("Location")
-	if location != "/sessions/"+sess2.ID {
-		t.Errorf("expected redirect to /sessions/%s, got %q", sess2.ID, location)
+	if location != "/sessions" {
+		t.Errorf("expected redirect to /sessions, got %q", location)
 	}
 
 	// Session 1 should be deleted from manager

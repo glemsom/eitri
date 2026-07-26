@@ -268,23 +268,10 @@ func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Redirect to next available session or root
-	sessions := s.config.SessionManager.ListByBrowser(browserID)
-	if len(sessions) > 0 {
-		s.hxRedirect(w, r, "/sessions/"+sessions[0].ID)
-		return
-	}
-
-	// No sessions left, create one
-	newSess, err := s.config.SessionManager.Create(browserID)
-	if err != nil {
-		w.WriteHeader(http.StatusTooManyRequests)
-		component := templates.ErrorToast(err.Error())
-		component.Render(r.Context(), w)
-		return
-	}
-
-	s.hxRedirect(w, r, "/sessions/"+newSess.ID)
+	// Redirect to the sessions management page so the user sees the updated list.
+	// Using HX-Redirect over a swap means HTMX does a full page navigation,
+	// which refreshes the disk-session listing.
+	s.hxRedirect(w, r, "/sessions")
 }
 
 // handleLoadSession loads a historical (closed) session back into the in-memory manager.
@@ -345,14 +332,12 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 
 // handleSessionsPage renders the full Sessions management page at GET /sessions.
 // It lists all active (in-memory) sessions plus all persisted sessions on disk.
+// Ensures the browser_id cookie exists so the delete (🗑) and load buttons work.
 func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
-	browserID := s.browserIDFromRequest(r)
+	browserID := s.ensureBrowserID(w, r)
 
 	// Gather active (in-memory) sessions for this browser
-	var activeSessions []*session.UISession
-	if browserID != "" {
-		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
-	}
+	activeSessions := s.config.SessionManager.ListByBrowser(browserID)
 
 	// Gather disk sessions
 	var diskRows []templates.SessionRow
