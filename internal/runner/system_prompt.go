@@ -123,8 +123,11 @@ func buildSystemPrompt(cfg runconfig.RunConfig, skillCtx sessionSkillContext, sk
 	}
 
 	// Add directive for persona-injected skills so the agent loads them.
+	// The <required_skills> XML block mirrors the <repository_instructions> pattern,
+	// giving the directive strong visual separation and making it harder for the
+	// agent to overlook.
 	if len(personaRequired) > 0 {
-		fullSystemPrompt += "\n\nRequired skills for this persona: " + strings.Join(personaRequired, ", ") + ".\nCall skill(\"name\") for each to load the skill's instructions, references, and scripts into context."
+		fullSystemPrompt += "\n\n<required_skills>\nRequired skills for this persona: " + strings.Join(personaRequired, ", ") + ".\nOn your first turn, call skill(\"name\") for each required skill above to load its instructions, references, and scripts into context.\n</required_skills>"
 	}
 
 	return fullSystemPrompt, nil
