@@ -295,7 +295,33 @@ func (m *Manager) ChildrenOf(parentID string) []*UISession {
 
 // Close removes a session from the in-memory manager without deleting disk data.
 // Sets ClosedAt timestamp. Cascade-closes any child sessions.
-// Returns the closed session if found.
+// cascadeRemoveChildren removes all child sessions of the given parent from the manager.
+// If beforeRemove is non-nil, it is called on each child before removal (e.g. to set ClosedAt).
+// Must be called with m.mu held.
+func (m *Manager) cascadeRemoveChildren(parentID, browserID string, beforeRemove func(*UISession)) {
+	var childIDs []string
+	for _, s := range m.sessions {
+		if s.ParentID == parentID {
+			childIDs = append(childIDs, s.ID)
+		}
+	}
+	for _, cid := range childIDs {
+		if child := m.sessions[cid]; child != nil {
+			if beforeRemove != nil {
+				beforeRemove(child)
+			}
+		}
+		delete(m.sessions, cid)
+		bSessions := m.browserSessions[browserID]
+		for i, sid := range bSessions {
+			if sid == cid {
+				m.browserSessions[browserID] = append(bSessions[:i], bSessions[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
 func (m *Manager) Close(id string) *UISession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -308,35 +334,18 @@ func (m *Manager) Close(id string) *UISession {
 	now := time.Now()
 	sess.ClosedAt = &now
 
-	// Cascade close children first (collect IDs before closing entries)
-	var childIDs []string
-	for _, s := range m.sessions {
-		if s.ParentID == id {
-			childIDs = append(childIDs, s.ID)
-		}
-	}
-	browserID := sess.BrowserID
-	for _, cid := range childIDs {
-		if child := m.sessions[cid]; child != nil {
-			child.ClosedAt = &now
-		}
-		delete(m.sessions, cid)
-		bSessions := m.browserSessions[browserID]
-		for i, sid := range bSessions {
-			if sid == cid {
-				m.browserSessions[browserID] = append(bSessions[:i], bSessions[i+1:]...)
-				break
-			}
-		}
-	}
+	// Cascade close children first
+	m.cascadeRemoveChildren(id, sess.BrowserID, func(child *UISession) {
+		child.ClosedAt = &now
+	})
 
 	delete(m.sessions, id)
 
 	// Remove from browser sessions list
-	browserSessions := m.browserSessions[browserID]
+	browserSessions := m.browserSessions[sess.BrowserID]
 	for i, sid := range browserSessions {
 		if sid == id {
-			m.browserSessions[browserID] = append(browserSessions[:i], browserSessions[i+1:]...)
+			m.browserSessions[sess.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
 			break
 		}
 	}
@@ -356,32 +365,16 @@ func (m *Manager) Delete(id string) *UISession {
 		return nil
 	}
 
-	// Cascade delete children first (collect IDs before deleting entries)
-	var childIDs []string
-	for _, s := range m.sessions {
-		if s.ParentID == id {
-			childIDs = append(childIDs, s.ID)
-		}
-	}
-	browserID := sess.BrowserID
-	for _, cid := range childIDs {
-		delete(m.sessions, cid)
-		bSessions := m.browserSessions[browserID]
-		for i, sid := range bSessions {
-			if sid == cid {
-				m.browserSessions[browserID] = append(bSessions[:i], bSessions[i+1:]...)
-				break
-			}
-		}
-	}
+	// Cascade delete children first
+	m.cascadeRemoveChildren(id, sess.BrowserID, nil)
 
 	delete(m.sessions, id)
 
 	// Remove from browser sessions list
-	browserSessions := m.browserSessions[browserID]
+	browserSessions := m.browserSessions[sess.BrowserID]
 	for i, sid := range browserSessions {
 		if sid == id {
-			m.browserSessions[browserID] = append(browserSessions[:i], browserSessions[i+1:]...)
+			m.browserSessions[sess.BrowserID] = append(browserSessions[:i], browserSessions[i+1:]...)
 			break
 		}
 	}
