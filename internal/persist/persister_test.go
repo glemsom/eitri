@@ -2,7 +2,6 @@ package persist
 
 import (
 	"encoding/json"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,7 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
-func TestNew_CreatesDirectories(t *testing.T) {
+func TestNew_CreatesSessionsDirectory(t *testing.T) {
 	rootDir := t.TempDir()
 
 	p, err := New(rootDir)
@@ -25,40 +24,35 @@ func TestNew_CreatesDirectories(t *testing.T) {
 		t.Fatal("New returned nil Persister")
 	}
 
-	// Verify directory tree exists
-	for _, dir := range []string{"sessions", "history"} {
-		path := filepath.Join(rootDir, dir)
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("expected dir %s to exist: %v", path, err)
-		}
-		if !info.IsDir() {
-			t.Fatalf("expected %s to be a directory", path)
-		}
-		// Check permissions (0700)
-		perm := info.Mode().Perm()
-		if perm != 0700 {
-			t.Errorf("expected dir %s to have 0700 permissions, got %#o", path, perm)
-		}
+	// Verify sessions directory exists
+	sessionsPath := filepath.Join(rootDir, "sessions")
+	info, err := os.Stat(sessionsPath)
+	if err != nil {
+		t.Fatalf("expected dir %s to exist: %v", sessionsPath, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected %s to be a directory", sessionsPath)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0700 {
+		t.Errorf("expected dir %s to have 0700 permissions, got %#o", sessionsPath, perm)
+	}
+
+	// Verify history directory is NOT created
+	historyPath := filepath.Join(rootDir, "history")
+	if _, err := os.Stat(historyPath); !os.IsNotExist(err) {
+		t.Errorf("expected history dir %s to NOT exist", historyPath)
 	}
 }
 
 func TestNew_DefaultRoot(t *testing.T) {
-	// We can't easily test the actual default (~/.eitri/) without affecting
-	// the host system. Instead, verify that passing an empty string errors
-	// (or we could mock - but for now just ensure the constructor handles it).
-	// The spec says "defaults to ~/.eitri/sessions if empty" but then the
-	// body says "Root dir defaults to ~/.eitri/sessions if empty." - let's
-	// check consistency: the directory tree is <root>/sessions/ and <root>/history/,
-	// so root defaults to ~/.eitri/.
 	_, err := New("")
 	if err != nil {
-		// Accept either error (empty root) or auto-defaulting
 		t.Logf("New with empty root returned: %v", err)
 	}
 }
 
-func TestSnapshotSession_WritesFiles(t *testing.T) {
+func TestSnapshotSession_WritesSingleFile(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
@@ -76,187 +70,109 @@ func TestSnapshotSession_WritesFiles(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	history := []llm.Message{
-		{Role: "system", Content: "You are Eitri."},
-		{Role: "user", Content: "hello"},
-	}
-
-	err = p.SnapshotSession(sessionID, s, history)
+	err = p.SnapshotSession(sessionID, s)
 	if err != nil {
 		t.Fatalf("SnapshotSession returned error: %v", err)
 	}
 
-	// Check session symlink exists
-	sessionLink := filepath.Join(rootDir, "sessions", sessionID, "session.json")
-	linkTarget, err := os.Readlink(sessionLink)
+	// Check session.json exists as a regular file (not symlink)
+	sessionFile := filepath.Join(rootDir, "sessions", sessionID, "session.json")
+	info, err := os.Stat(sessionFile)
 	if err != nil {
-		t.Fatalf("expected session symlink %s: %v", sessionLink, err)
+		t.Fatalf("expected session file %s to exist: %v", sessionFile, err)
+	}
+	if info.IsDir() {
+		t.Fatalf("expected %s to be a regular file", sessionFile)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("expected %s to be a regular file, not a symlink", sessionFile)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected file %s to have 0600 permissions, got %#o", sessionFile, info.Mode().Perm())
 	}
 
-	// The link target should be a timestamped file in the same directory
-	if !strings.HasSuffix(linkTarget, ".json") {
-		t.Fatalf("symlink target %q does not end with .json", linkTarget)
-	}
-	if strings.Contains(linkTarget, "/") {
-		t.Fatalf("symlink target %q should be a relative filename", linkTarget)
-	}
-
-	// Read the symlink target to verify session content
-	sessionFile := filepath.Join(filepath.Dir(sessionLink), linkTarget)
+	// Verify the content parses back correctly
 	data, err := os.ReadFile(sessionFile)
 	if err != nil {
-		t.Fatalf("cannot read session file %s: %v", sessionFile, err)
+		t.Fatalf("cannot read session file: %v", err)
 	}
 	var restored session.UISession
 	if err := json.Unmarshal(data, &restored); err != nil {
-		t.Fatalf("cannot unmarshal session JSON: %v", err)
+		t.Fatalf("cannot unmarshal session: %v", err)
 	}
 	if restored.ID != sessionID {
-		t.Errorf("expected session ID %q, got %q", sessionID, restored.ID)
+		t.Errorf("restored ID = %q, want %q", restored.ID, sessionID)
 	}
 	if restored.Title != "Test Session" {
-		t.Errorf("expected title %q, got %q", "Test Session", restored.Title)
+		t.Errorf("restored title = %q, want %q", restored.Title, "Test Session")
+	}
+	if len(restored.Messages) != 1 || restored.Messages[0].Content != "hello" {
+		t.Errorf("restored messages mismatch: %+v", restored.Messages)
 	}
 
-	// Check history symlink exists
-	historyLink := filepath.Join(rootDir, "history", sessionID, "history.json")
-	historyLinkTarget, err := os.Readlink(historyLink)
-	if err != nil {
-		t.Fatalf("expected history symlink %s: %v", historyLink, err)
-	}
-
-	// Read the history symlink target
-	historyFile := filepath.Join(filepath.Dir(historyLink), historyLinkTarget)
-	histData, err := os.ReadFile(historyFile)
-	if err != nil {
-		t.Fatalf("cannot read history file %s: %v", historyFile, err)
-	}
-	var histSchema HistorySchema
-	if err := json.Unmarshal(histData, &histSchema); err != nil {
-		t.Fatalf("cannot unmarshal history JSON: %v", err)
-	}
-	if histSchema.Version != 1 {
-		t.Errorf("expected history version 1, got %d", histSchema.Version)
-	}
-	if histSchema.SystemPrompt != "You are Eitri." {
-		t.Errorf("expected system_prompt %q, got %q", "You are Eitri.", histSchema.SystemPrompt)
-	}
-	if len(histSchema.Messages) != 1 || histSchema.Messages[0].Content != "hello" {
-		t.Errorf("expected 1 message with content 'hello', got %+v", histSchema.Messages)
-	}
-
-	// Check file permissions (0600)
-	for _, f := range []string{sessionFile, historyFile} {
-		info, err := os.Stat(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		perm := info.Mode().Perm()
-		if perm != 0600 {
-			t.Errorf("expected file %s to have 0600 permissions, got %#o", f, perm)
-		}
+	// Verify history directory was NOT created
+	historyDir := filepath.Join(rootDir, "history", sessionID)
+	if _, err := os.Stat(historyDir); !os.IsNotExist(err) {
+		t.Errorf("history dir %s should not exist", historyDir)
 	}
 }
 
-func TestSnapshotSession_AtomicSymlinkUpdate(t *testing.T) {
+func TestSnapshotSession_OverwritesOnSecondCall(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sessionID := "test-atomic"
+	sessionID := "test-overwrite"
 	s1 := &session.UISession{
 		ID:     sessionID,
 		Title:  "First Snapshot",
 		Status: session.StatusIdle,
 	}
-	history1 := []llm.Message{
-		{Role: "system", Content: "System 1"},
-		{Role: "user", Content: "msg 1"},
-	}
 
-	err = p.SnapshotSession(sessionID, s1, history1)
+	err = p.SnapshotSession(sessionID, s1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Read the first symlink target
-	sessionLink := filepath.Join(rootDir, "sessions", sessionID, "session.json")
-	firstTarget, _ := os.Readlink(sessionLink)
+	// Wait a bit to ensure different timestamps if needed
+	time.Sleep(100 * time.Millisecond)
 
-	historyLink := filepath.Join(rootDir, "history", sessionID, "history.json")
-	firstHistTarget, _ := os.Readlink(historyLink)
-
-	// Write a second snapshot (wait >1s to ensure different timestamp)
-	time.Sleep(1100 * time.Millisecond)
 	s2 := &session.UISession{
 		ID:     sessionID,
 		Title:  "Second Snapshot",
 		Status: session.StatusIdle,
 	}
-	history2 := []llm.Message{
-		{Role: "system", Content: "System 2"},
-		{Role: "user", Content: "msg 2"},
-	}
 
-	err = p.SnapshotSession(sessionID, s2, history2)
+	err = p.SnapshotSession(sessionID, s2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Symlink should now point to a different target
-	secondTarget, _ := os.Readlink(sessionLink)
-	if secondTarget == firstTarget {
-		t.Errorf("expected symlink to point to a new file after second snapshot, still points to %q", firstTarget)
+	// There should still be only one session.json file
+	sessionFile := filepath.Join(rootDir, "sessions", sessionID, "session.json")
+	data, err := os.ReadFile(sessionFile)
+	if err != nil {
+		t.Fatalf("cannot read session file: %v", err)
 	}
-
-	secondHistTarget, _ := os.Readlink(historyLink)
-	if secondHistTarget == firstHistTarget {
-		t.Errorf("expected history symlink to point to a new file after second snapshot, still points to %q", firstHistTarget)
-	}
-
-	// Verify the symlink target contains the latest data
-	sessionFile := filepath.Join(filepath.Dir(sessionLink), secondTarget)
-	data, _ := os.ReadFile(sessionFile)
 	var restored session.UISession
-	json.Unmarshal(data, &restored)
-	if restored.Title != "Second Snapshot" {
-		t.Errorf("expected symlink target to contain 'Second Snapshot', got %q", restored.Title)
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("cannot unmarshal: %v", err)
 	}
-}
+	if restored.Title != "Second Snapshot" {
+		t.Errorf("expected title %q, got %q", "Second Snapshot", restored.Title)
+	}
 
-func TestSnapshotSession_NoSystemPrompt(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
+	// No timestamped files should exist
+	entries, err := os.ReadDir(filepath.Join(rootDir, "sessions", sessionID))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	sessionID := "no-sys-prompt"
-	s := &session.UISession{ID: sessionID, Status: session.StatusIdle}
-	// No system prompt message
-	history := []llm.Message{
-		{Role: "user", Content: "hello"},
-	}
-
-	err = p.SnapshotSession(sessionID, s, history)
-	if err != nil {
-		t.Fatalf("SnapshotSession returned error: %v", err)
-	}
-
-	historyLink := filepath.Join(rootDir, "history", sessionID, "history.json")
-	linkTarget, _ := os.Readlink(historyLink)
-	histFile := filepath.Join(filepath.Dir(historyLink), linkTarget)
-	data, _ := os.ReadFile(histFile)
-	var histSchema HistorySchema
-	json.Unmarshal(data, &histSchema)
-
-	if histSchema.SystemPrompt != "" {
-		t.Errorf("expected empty system_prompt when no system message in history, got %q", histSchema.SystemPrompt)
-	}
-	if len(histSchema.Messages) != 1 {
-		t.Errorf("expected 1 message, got %d", len(histSchema.Messages))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") && e.Name() != "session.json" {
+			t.Errorf("unexpected timestamped file: %s", e.Name())
+		}
 	}
 }
 
@@ -298,7 +214,6 @@ func TestSaveTrace_WritesFile(t *testing.T) {
 		t.Errorf("expected method POST, got %q", restored.Method)
 	}
 
-	// Check permissions
 	info, err := os.Stat(traceFile)
 	if err != nil {
 		t.Fatal(err)
@@ -324,7 +239,6 @@ func TestSaveTrace_CreatesTracesDir(t *testing.T) {
 		URL:       "/health",
 	}
 
-	// Traces dir should not exist yet
 	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
 	if _, err := os.Stat(tracesDir); !os.IsNotExist(err) {
 		t.Fatal("expected traces dir to not exist before SaveTrace")
@@ -335,13 +249,12 @@ func TestSaveTrace_CreatesTracesDir(t *testing.T) {
 		t.Fatalf("SaveTrace returned error: %v", err)
 	}
 
-	// Now it should exist
 	if _, err := os.Stat(tracesDir); err != nil {
 		t.Fatalf("expected traces dir to exist after SaveTrace: %v", err)
 	}
 }
 
-func TestDeleteSession_RemovesDirectories(t *testing.T) {
+func TestDeleteSession_RemovesDirectory(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
@@ -350,19 +263,15 @@ func TestDeleteSession_RemovesDirectories(t *testing.T) {
 
 	sessionID := "delete-me"
 	s := &session.UISession{ID: sessionID, Status: session.StatusIdle}
-	err = p.SnapshotSession(sessionID, s, nil)
+	err = p.SnapshotSession(sessionID, s)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify directories exist
+	// Verify sessions dir exists
 	sessionDir := filepath.Join(rootDir, "sessions", sessionID)
-	historyDir := filepath.Join(rootDir, "history", sessionID)
 	if _, err := os.Stat(sessionDir); err != nil {
 		t.Fatalf("expected session dir to exist: %v", err)
-	}
-	if _, err := os.Stat(historyDir); err != nil {
-		t.Fatalf("expected history dir to exist: %v", err)
 	}
 
 	// Delete
@@ -371,836 +280,124 @@ func TestDeleteSession_RemovesDirectories(t *testing.T) {
 		t.Fatalf("DeleteSession returned error: %v", err)
 	}
 
-	// Verify directories are gone
 	if _, err := os.Stat(sessionDir); !os.IsNotExist(err) {
-		t.Errorf("expected session dir to be removed, stat returned: %v", err)
-	}
-	if _, err := os.Stat(historyDir); !os.IsNotExist(err) {
-		t.Errorf("expected history dir to be removed, stat returned: %v", err)
+		t.Errorf("expected session dir to be removed after DeleteSession")
 	}
 }
 
-func TestDeleteSession_NoopIfNotExists(t *testing.T) {
+func TestDeleteSession_NoopOnMissing(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Deleting a non-existent session should not error
-	err = p.DeleteSession("nonexistent-session")
+	err = p.DeleteSession("nonexistent")
 	if err != nil {
-		t.Fatalf("DeleteSession on non-existent session returned error: %v", err)
+		t.Fatalf("DeleteSession on nonexistent returned error: %v", err)
 	}
 }
 
-func TestSnapshotSession_HistoryWithNoMessages(t *testing.T) {
+func TestLoadSession_ReturnsSessionData(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sessionID := "no-history"
-	s := &session.UISession{ID: sessionID, Status: session.StatusIdle}
-
-	// nil history should not crash
-	err = p.SnapshotSession(sessionID, s, nil)
-	if err != nil {
-		t.Fatalf("SnapshotSession with nil history returned error: %v", err)
-	}
-
-	// History dir should exist with valid file
-	historyLink := filepath.Join(rootDir, "history", sessionID, "history.json")
-	linkTarget, err := os.Readlink(historyLink)
-	if err != nil {
-		t.Fatalf("expected history symlink: %v", err)
-	}
-	histFile := filepath.Join(filepath.Dir(historyLink), linkTarget)
-	data, _ := os.ReadFile(histFile)
-	var histSchema HistorySchema
-	if err := json.Unmarshal(data, &histSchema); err != nil {
-		t.Fatalf("cannot unmarshal history JSON: %v", err)
-	}
-	if histSchema.Version != 1 {
-		t.Errorf("expected version 1, got %d", histSchema.Version)
-	}
-	if len(histSchema.Messages) != 0 {
-		t.Errorf("expected 0 messages, got %d", len(histSchema.Messages))
-	}
-}
-
-func TestPrune_RemovesOldSnapshots(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create two sessions, each with multiple snapshots
-	for _, sid := range []string{"session-a", "session-b"} {
-		for i := 0; i < 3; i++ {
-			s := &session.UISession{
-				ID:     sid,
-				Title:  "Snapshot",
-				Status: session.StatusIdle,
-			}
-			time.Sleep(10 * time.Millisecond) // ensure different timestamps
-			err := p.SnapshotSession(sid, s, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	// Count total snapshot files before pruning
-	var beforeCount int
-	filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".json") && d.Name() != "session.json" && d.Name() != "history.json" {
-			beforeCount++
-		}
-		return nil
-	})
-	// We should have 3 snapshots * 2 sessions * 2 types (session + history) = 12 timestamped files
-	// But Prune removes _timestamped_ snapshot files; the symlink targets are not removed
-	// So we need at least 2 * (3-1) = 4 prunable files per session+history = 8 total removable
-	// Actually, let's just test that Prune works by setting a very small cap
-
-	// No, the cap is fixed at 1 GiB. So we can't easily test it with small files.
-	// Let's test the pruning logic differently - we create a scenario where we manually
-	// trigger pruning and verify old files are removed.
-	// For now, let's just verify Prune doesn't error and doesn't crash.
-	err = p.Prune()
-	if err != nil {
-		t.Fatalf("Prune returned error: %v", err)
-	}
-}
-
-func TestPrune_RemovesOldestBeyondCap(t *testing.T) {
-	rootDir := t.TempDir()
-	// Use a very small cap (100 bytes) to trigger pruning
-	p := &Persister{
-		rootDir:    rootDir,
-		retention:  100, // 100 bytes max
-	}
-
-	// Create initial directories
-	if err := os.MkdirAll(filepath.Join(rootDir, "sessions"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(rootDir, "history"), 0700); err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "prune-test"
-	sessionDir := filepath.Join(rootDir, "sessions", sessionID)
-	historyDir := filepath.Join(rootDir, "history", sessionID)
-
-	// Write several timestamped snapshots
-	for i := 0; i < 5; i++ {
-		time.Sleep(5 * time.Millisecond)
-		s := &session.UISession{ID: sessionID, Title: "Test", Status: session.StatusIdle}
-		data, _ := json.Marshal(s)
-		filename := time.Now().UTC().Format(iso8601Dashes) + ".json"
-		os.MkdirAll(sessionDir, 0700)
-		os.WriteFile(filepath.Join(sessionDir, filename), data, 0600)
-
-		histSchema := HistorySchema{Version: 1, Messages: []llm.Message{}}
-		histData, _ := json.Marshal(histSchema)
-		os.MkdirAll(historyDir, 0700)
-		os.WriteFile(filepath.Join(historyDir, filename), histData, 0600)
-	}
-
-	// Create a symlink to the latest snapshot (so it's protected)
-	latestFile := ""
-	entries, _ := os.ReadDir(sessionDir)
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			latestFile = e.Name()
-		}
-	}
-	if latestFile != "" {
-		os.Symlink(latestFile, filepath.Join(sessionDir, "session.json"))
-	}
-	// Also for history
-	histLatestFile := ""
-	entries, _ = os.ReadDir(historyDir)
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			histLatestFile = e.Name()
-		}
-	}
-	if histLatestFile != "" {
-		os.Symlink(histLatestFile, filepath.Join(historyDir, "history.json"))
-	}
-
-	// Prune
-	err := p.Prune()
-	if err != nil {
-		t.Fatalf("Prune returned error: %v", err)
-	}
-
-	// Verify the latest snapshot is still there
-	if _, err := os.Stat(filepath.Join(sessionDir, latestFile)); err != nil {
-		t.Errorf("expected latest session snapshot %s to be preserved: %v", latestFile, err)
-	}
-	if _, err := os.Stat(filepath.Join(historyDir, histLatestFile)); err != nil {
-		t.Errorf("expected latest history snapshot %s to be preserved: %v", histLatestFile, err)
-	}
-
-	// Verify we're under the cap (rough check)
-	var totalSize int64
-	filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			info, _ := d.Info()
-			totalSize += info.Size()
-		}
-		return nil
-	})
-	// Allow some overhead for symlinks and directories
-	if totalSize > 200 {
-		t.Logf("total size after prune: %d bytes (cap was 100)", totalSize)
-	}
-}
-
-func TestAtomicWrite(t *testing.T) {
-	rootDir := t.TempDir()
-	targetFile := filepath.Join(rootDir, "target.json")
-
-	// Test atomic write
-	err := atomicWrite(targetFile, []byte(`{"hello":"world"}`), 0600)
-	if err != nil {
-		t.Fatalf("atomicWrite returned error: %v", err)
-	}
-
-	data, err := os.ReadFile(targetFile)
-	if err != nil {
-		t.Fatalf("cannot read target: %v", err)
-	}
-	if string(data) != `{"hello":"world"}` {
-		t.Errorf("expected file content %q, got %q", `{"hello":"world"}`, string(data))
-	}
-
-	// Check permissions
-	info, err := os.Stat(targetFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("expected 0600 permissions, got %#o", info.Mode().Perm())
-	}
-}
-
-func TestAtomicWrite_NoPartialWrite(t *testing.T) {
-	rootDir := t.TempDir()
-	targetFile := filepath.Join(rootDir, "target.json")
-
-	// Write initial content
-	atomicWrite(targetFile, []byte("initial"), 0600)
-
-	// Overwrite with new content
-	err := atomicWrite(targetFile, []byte("updated content"), 0600)
-	if err != nil {
-		t.Fatalf("atomicWrite returned error: %v", err)
-	}
-
-	data, _ := os.ReadFile(targetFile)
-	if string(data) != "updated content" {
-		t.Errorf("expected 'updated content', got %q", string(data))
-	}
-}
-
-// Test that timestamped filenames use ISO8601 with dashes (no colons)
-func TestTimestampFilename(t *testing.T) {
-	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	filename := timestampFilename(now)
-	expected := "2024-01-15T10-30-00.json"
-	if filename != expected {
-		t.Errorf("expected %q, got %q", expected, filename)
-	}
-
-	// Verify no colons in the filename
-	if strings.Contains(filename, ":") {
-		t.Errorf("filename should not contain colons: %q", filename)
-	}
-}
-
-func TestHistorySchema_Version(t *testing.T) {
-	// Verify the HistorySchema version is 1
-	schema := HistorySchema{Version: 1}
-	data, _ := json.Marshal(schema)
-
-	var decoded HistorySchema
-	json.Unmarshal(data, &decoded)
-	if decoded.Version != 1 {
-		t.Errorf("expected version 1, got %d", decoded.Version)
-	}
-}
-
-// Test that symlink is updated atomically: the symlink points to a real file
-// at all times (the temp file is written to the same directory, then renamed).
-func TestSnapshotSession_SymlinkPointsToExistingFile(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "symlink-test"
-	s := &session.UISession{ID: sessionID, Status: session.StatusIdle}
-	err = p.SnapshotSession(sessionID, s, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionLink := filepath.Join(rootDir, "sessions", sessionID, "session.json")
-	target, err := os.Readlink(sessionLink)
-	if err != nil {
-		t.Fatalf("cannot read symlink: %v", err)
-	}
-
-	// The symlink target should be a filename in the same directory
-	targetPath := filepath.Join(filepath.Dir(sessionLink), target)
-	info, err := os.Stat(targetPath)
-	if err != nil {
-		t.Fatalf("symlink target %s does not exist: %v", targetPath, err)
-	}
-	if info.IsDir() {
-		t.Fatalf("symlink target %s is a directory, expected file", targetPath)
-	}
-}
-
-func TestRestore_EmptyDir(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	state, err := p.Restore()
-	if err != nil {
-		t.Fatalf("Restore on empty dir returned error: %v", err)
-	}
-	if state == nil {
-		t.Fatal("Restore returned nil state")
-	}
-	if len(state.Sessions) != 0 {
-		t.Errorf("expected 0 sessions, got %d", len(state.Sessions))
-	}
-	if len(state.Histories) != 0 {
-		t.Errorf("expected 0 histories, got %d", len(state.Histories))
-	}
-	if len(state.Traces) != 0 {
-		t.Errorf("expected 0 traces, got %d", len(state.Traces))
-	}
-}
-
-func TestRestore_RestoresSessionAndHistory(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Write a session
-	sessionID := "restore-test-1"
+	sessionID := "load-test"
 	now := time.Now().Truncate(time.Second)
 	s := &session.UISession{
 		ID:        sessionID,
-		BrowserID: "browser-1",
-		Title:     "Restored Session",
-		Status:    session.StatusRunning, // was running before restart
-		Messages: []session.Message{
-			{Role: "user", Content: "hello", CreatedAt: now},
-			{Role: "assistant", Content: "hi there", CreatedAt: now},
+		Title:     "Load Test",
+		Status:    session.StatusIdle,
+		Messages:  []session.Message{
+			{Role: "user", Content: "hi", CreatedAt: now},
+			{Role: "assistant", Content: "hello", CreatedAt: now, ToolCalls: []llm.ToolCall{
+				{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "test", Arguments: `{}`}},
+			}},
 		},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	history := []llm.Message{
-		{Role: "system", Content: "You are Eitri."},
-		{Role: "user", Content: "hello"},
-		{Role: "assistant", Content: "hi there"},
-	}
 
-	err = p.SnapshotSession(sessionID, s, history)
+	err = p.SnapshotSession(sessionID, s)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Write a trace for this session
-	trace1 := &debug.HTTPTrace{
-		ID:        "trace_1",
-		SessionID: sessionID,
-		Method:    "POST",
-		URL:       "/v1/chat/completions",
-		Status:    200,
-	}
-	err = p.SaveTrace(sessionID, trace1)
+	data, err := p.LoadSession(sessionID)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("LoadSession returned error: %v", err)
+	}
+	if data == nil {
+		t.Fatal("LoadSession returned nil data")
 	}
 
-	// Create a second session
-	sessionID2 := "restore-test-2"
-	s2 := &session.UISession{
-		ID:        sessionID2,
-		BrowserID: "browser-1",
-		Title:     "Second Session",
-		Status:    session.StatusIdle,
-		Messages: []session.Message{
-			{Role: "user", Content: "world", CreatedAt: now},
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
+	var restored session.UISession
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("cannot unmarshal: %v", err)
 	}
-	history2 := []llm.Message{
-		{Role: "user", Content: "world"},
+	if len(restored.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(restored.Messages))
 	}
-
-	err = p.SnapshotSession(sessionID2, s2, history2)
-	if err != nil {
-		t.Fatal(err)
+	if restored.Messages[1].ToolCallID != "" {
+		t.Errorf("expected empty ToolCallID, got %q", restored.Messages[1].ToolCallID)
 	}
-
-	// Now restore into a fresh persister pointing at the same root
-	p2, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
+	if len(restored.Messages[1].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(restored.Messages[1].ToolCalls))
 	}
-	state, err := p2.Restore()
-	if err != nil {
-		t.Fatalf("Restore returned error: %v", err)
-	}
-	if state == nil {
-		t.Fatal("Restore returned nil state")
-	}
-
-	// Verify sessions
-	if len(state.Sessions) != 2 {
-		t.Fatalf("expected 2 sessions, got %d", len(state.Sessions))
-	}
-
-	// Check first session
-	restoredS1, ok := state.Sessions[sessionID]
-	if !ok {
-		t.Fatalf("session %q not found in restored state", sessionID)
-	}
-	if restoredS1.Title != "Restored Session" {
-		t.Errorf("expected title %q, got %q", "Restored Session", restoredS1.Title)
-	}
-	if restoredS1.Status != session.StatusIdle {
-		t.Errorf("expected restored session status to be StatusIdle, got %q", restoredS1.Status)
-	}
-	if len(restoredS1.Messages) != 2 {
-		t.Errorf("expected 2 messages, got %d", len(restoredS1.Messages))
-	}
-	if restoredS1.BrowserID != "browser-1" {
-		t.Errorf("expected browser_id %q, got %q", "browser-1", restoredS1.BrowserID)
-	}
-
-	// Check second session
-	restoredS2, ok := state.Sessions[sessionID2]
-	if !ok {
-		t.Fatalf("session %q not found in restored state", sessionID2)
-	}
-	if restoredS2.Title != "Second Session" {
-		t.Errorf("expected title %q, got %q", "Second Session", restoredS2.Title)
-	}
-	if restoredS2.Status != session.StatusIdle {
-		t.Errorf("expected restored session status to be StatusIdle, got %q", restoredS2.Status)
-	}
-
-	// Verify histories
-	if len(state.Histories) != 2 {
-		t.Fatalf("expected 2 histories, got %d", len(state.Histories))
-	}
-
-	// First history should have system prompt + messages
-	h1, ok := state.Histories[sessionID]
-	if !ok {
-		t.Fatalf("history for session %q not found", sessionID)
-	}
-	if len(h1) != 3 {
-		t.Fatalf("expected 3 messages in history (system+user+assistant), got %d", len(h1))
-	}
-	if h1[0].Role != "system" || h1[0].Content != "You are Eitri." {
-		t.Errorf("expected first message to be system prompt, got role=%q content=%q", h1[0].Role, h1[0].Content)
-	}
-	if h1[1].Role != "user" || h1[1].Content != "hello" {
-		t.Errorf("expected second message to be user/hello, got role=%q content=%q", h1[1].Role, h1[1].Content)
-	}
-
-	// Second history has no system prompt
-	h2, ok := state.Histories[sessionID2]
-	if !ok {
-		t.Fatalf("history for session %q not found", sessionID2)
-	}
-	if len(h2) != 1 {
-		t.Fatalf("expected 1 message in history, got %d", len(h2))
-	}
-	if h2[0].Role != "user" || h2[0].Content != "world" {
-		t.Errorf("expected user/world, got role=%q content=%q", h2[0].Role, h2[0].Content)
-	}
-
-	// Verify traces
-	if len(state.Traces) != 1 {
-		t.Fatalf("expected 1 trace, got %d", len(state.Traces))
-	}
-	if state.Traces[0].ID != "trace_1" {
-		t.Errorf("expected trace ID %q, got %q", "trace_1", state.Traces[0].ID)
-	}
-	if state.Traces[0].SessionID != sessionID {
-		t.Errorf("expected trace session ID %q, got %q", sessionID, state.Traces[0].SessionID)
+	if restored.Messages[1].ToolCalls[0].ID != "call-1" {
+		t.Errorf("tool call ID = %q, want %q", restored.Messages[1].ToolCalls[0].ID, "call-1")
 	}
 }
 
-func TestRestore_NonExistentDir(t *testing.T) {
-	rootDir := t.TempDir()
-	// Create a persister but don't write anything — the sessions/ and history/
-	// directories exist because New creates them. Remove them to simulate first run.
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Remove the sessions dir to simulate a truly empty state
-	os.RemoveAll(filepath.Join(rootDir, "sessions"))
-	os.RemoveAll(filepath.Join(rootDir, "history"))
-
-	state, err := p.Restore()
-	if err != nil {
-		t.Fatalf("Restore on non-existent dir returned error: %v", err)
-	}
-	if state == nil {
-		t.Fatal("Restore returned nil state")
-	}
-	if len(state.Sessions) != 0 {
-		t.Errorf("expected 0 sessions, got %d", len(state.Sessions))
-	}
-}
-
-func TestRestore_ForceStatusIdle(t *testing.T) {
+func TestLoadSession_ReturnsNilOnMissing(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Write a session with StatusRunning
-	sessionID := "was-running"
-	s := &session.UISession{
-		ID:        sessionID,
-		Title:     "Was Running",
-		Status:    session.StatusRunning,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	err = p.SnapshotSession(sessionID, s, nil)
+	data, err := p.LoadSession("nonexistent")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("LoadSession returned error: %v", err)
 	}
-
-	// Write another with StatusError
-	sessionID2 := "was-error"
-	s2 := &session.UISession{
-		ID:        sessionID2,
-		Title:     "Was Error",
-		Status:    session.StatusError,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	err = p.SnapshotSession(sessionID2, s2, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	state, err := p.Restore()
-	if err != nil {
-		t.Fatalf("Restore returned error: %v", err)
-	}
-
-	if state.Sessions[sessionID].Status != session.StatusIdle {
-		t.Errorf("expected StatusIdle for session that was StatusRunning, got %q", state.Sessions[sessionID].Status)
-	}
-	if state.Sessions[sessionID2].Status != session.StatusIdle {
-		t.Errorf("expected StatusIdle for session that was StatusError, got %q", state.Sessions[sessionID2].Status)
+	if data != nil {
+		t.Fatal("LoadSession should return nil for missing session")
 	}
 }
 
-func TestRestore_MultipleTraces(t *testing.T) {
+func TestFlush_SnapshotsSessions(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sessionID := "multi-trace"
-	s := &session.UISession{
-		ID:        sessionID,
-		Title:     "Multi Trace",
-		Status:    session.StatusIdle,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	err = p.SnapshotSession(sessionID, s, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s1 := &session.UISession{ID: "sess-1", Status: session.StatusIdle}
+	s2 := &session.UISession{ID: "sess-2", Status: session.StatusIdle}
+	sessions := []*session.UISession{s1, s2}
 
-	// Write multiple traces
-	traces := []*debug.HTTPTrace{
-		{ID: "trace_a", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
-		{ID: "trace_b", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 500},
-		{ID: "trace_c", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
-	}
-	for _, tr := range traces {
-		if err := p.SaveTrace(sessionID, tr); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	state, err := p.Restore()
-	if err != nil {
-		t.Fatalf("Restore returned error: %v", err)
-	}
-
-	if len(state.Traces) != 3 {
-		t.Fatalf("expected 3 traces, got %d", len(state.Traces))
-	}
-
-	// Verify all traces are present (order may vary)
-	found := make(map[debug.TraceID]bool)
-	for _, tr := range state.Traces {
-		found[tr.ID] = true
-	}
-	for _, expected := range []debug.TraceID{"trace_a", "trace_b", "trace_c"} {
-		if !found[expected] {
-			t.Errorf("trace %q not found in restored traces", expected)
-		}
-	}
-}
-
-func TestFlush_WritesSessionsAndHistories(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	now := time.Now().Truncate(time.Second)
-	sessions := []*session.UISession{
-		{
-			ID:        "flush-sess-1",
-			Title:     "Flush Session 1",
-			Status:    session.StatusIdle,
-			Messages:  []session.Message{{Role: "user", Content: "hello", CreatedAt: now}},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:        "flush-sess-2",
-			Title:     "Flush Session 2",
-			Status:    session.StatusIdle,
-			Messages:  []session.Message{{Role: "user", Content: "world", CreatedAt: now}},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	histories := map[string][]llm.Message{
-		"flush-sess-1": {
-			{Role: "system", Content: "You are Eitri."},
-			{Role: "user", Content: "hello"},
-		},
-		"flush-sess-2": {
-			{Role: "system", Content: "You are Eitri."},
-			{Role: "user", Content: "world"},
-		},
-	}
-
-	err = p.Flush(sessions, histories, nil)
+	err = p.Flush(sessions, nil)
 	if err != nil {
 		t.Fatalf("Flush returned error: %v", err)
 	}
 
-	// Verify session symlinks exist
-	for _, id := range []string{"flush-sess-1", "flush-sess-2"} {
-		sessionLink := filepath.Join(rootDir, "sessions", id, "session.json")
-		linkTarget, err := os.Readlink(sessionLink)
-		if err != nil {
-			t.Fatalf("expected session symlink %s: %v", sessionLink, err)
-		}
-		if !strings.HasSuffix(linkTarget, ".json") {
-			t.Fatalf("symlink target %q does not end with .json", linkTarget)
-		}
-	}
-
-	// Verify history symlinks exist
-	for _, id := range []string{"flush-sess-1", "flush-sess-2"} {
-		historyLink := filepath.Join(rootDir, "history", id, "history.json")
-		linkTarget, err := os.Readlink(historyLink)
-		if err != nil {
-			t.Fatalf("expected history symlink %s: %v", historyLink, err)
-		}
-		if !strings.HasSuffix(linkTarget, ".json") {
-			t.Fatalf("symlink target %q does not end with .json", linkTarget)
+	for _, sid := range []string{"sess-1", "sess-2"} {
+		sessionFile := filepath.Join(rootDir, "sessions", sid, "session.json")
+		if _, err := os.Stat(sessionFile); err != nil {
+			t.Errorf("expected session file %s to exist after Flush: %v", sessionFile, err)
 		}
 	}
 }
 
-func TestFlush_WritesUnpersistedTraces(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "flush-traces"
-	// Create session dir so SaveTrace doesn't fail on the session lookup
-	s := &session.UISession{
-		ID:        sessionID,
-		Title:     "Flush Traces",
-		Status:    session.StatusIdle,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	err = p.SnapshotSession(sessionID, s, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	traces := []*debug.HTTPTrace{
-		{ID: "flush_trace_1", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
-		{ID: "flush_trace_2", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 500},
-		{ID: "flush_trace_3", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
-	}
-
-	// Save one trace via SaveTrace (simulating OnComplete callback)
-	err = p.SaveTrace(sessionID, traces[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Flush with all three traces; only traces[1] and traces[2] should be new
-	err = p.Flush(nil, nil, traces)
-	if err != nil {
-		t.Fatalf("Flush returned error: %v", err)
-	}
-
-	// Verify all three traces now exist on disk
-	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
-	for _, tr := range traces {
-		traceFile := filepath.Join(tracesDir, string(tr.ID)+".json")
-		if _, err := os.Stat(traceFile); err != nil {
-			t.Errorf("expected trace file %s to exist: %v", traceFile, err)
-		}
-	}
-}
-
-func TestFlush_NilPersister(t *testing.T) {
-	// Calling Flush on a nil persister should not panic and return nil.
+func TestFlush_NilSafe(t *testing.T) {
 	var p *Persister
-	err := p.Flush(nil, nil, nil)
+	err := p.Flush(nil, nil)
 	if err != nil {
-		t.Errorf("expected nil error from nil persister Flush, got %v", err)
+		t.Fatalf("Flush on nil Persister should be safe, got error: %v", err)
 	}
-}
-
-func TestFlush_NilSlices(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Flush with nil sessions, histories, and traces should be a no-op
-	err = p.Flush(nil, nil, nil)
-	if err != nil {
-		t.Fatalf("Flush returned error: %v", err)
-	}
-}
-
-func TestFlush_SkipsAlreadyPersistedTraces(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "skip-persisted"
-	s := &session.UISession{
-		ID:        sessionID,
-		Title:     "Skip Persisted",
-		Status:    session.StatusIdle,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	err = p.SnapshotSession(sessionID, s, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	traces := []*debug.HTTPTrace{
-		{ID: "skip_trace_1", SessionID: sessionID, Method: "GET", URL: "/v1/models", Status: 200},
-		{ID: "skip_trace_2", SessionID: sessionID, Method: "POST", URL: "/v1/chat", Status: 200},
-	}
-
-	// Save both traces first
-	for _, tr := range traces {
-		if err := p.SaveTrace(sessionID, tr); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Track how many files exist now
-	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
-	entriesBefore, err := os.ReadDir(tracesDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	countBefore := len(entriesBefore)
-
-	// Flush should not re-save already-persisted traces
-	err = p.Flush(nil, nil, traces)
-	if err != nil {
-		t.Fatalf("Flush returned error: %v", err)
-	}
-
-	entriesAfter, err := os.ReadDir(tracesDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	countAfter := len(entriesAfter)
-
-	if countAfter != countBefore {
-		t.Errorf("expected same number of trace files after flush (%d), got %d", countBefore, countAfter)
-	}
-}
-
-// timelineJSON is a minimal JSON representation of a runstate.Timeline for testing.
-// We use raw JSON to avoid importing runstate (which would create a dependency cycle).
-type timelineJSON struct {
-	Version     int         `json:"version"`
-	RunID       string      `json:"run_id"`
-	SessionID   string      `json:"session_id"`
-	StartedAt   time.Time   `json:"started_at"`
-	EndedAt     time.Time   `json:"ended_at"`
-	Termination *struct {
-		Reason  string `json:"reason"`
-		Message string `json:"message"`
-	} `json:"termination,omitempty"`
-	Events []struct {
-		Type string `json:"type"`
-		Turn int    `json:"turn"`
-		Tool string `json:"tool,omitempty"`
-	} `json:"events"`
 }
 
 func TestSaveTimeline_WritesFile(t *testing.T) {
@@ -1210,30 +407,15 @@ func TestSaveTimeline_WritesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessionID := "test-session"
-	now := time.Now().Truncate(time.Second).UTC()
-
-	timeline := map[string]any{
-		"version":    1,
-		"run_id":     "test-run-123",
-		"session_id": sessionID,
-		"provider": map[string]any{
-			"model":       "gpt-4",
-			"provider_id": "opencode_go",
-		},
-		"started_at": now,
-		"ended_at":   now.Add(time.Minute),
-		"termination": map[string]any{
-			"reason":  "completed",
-			"message": "",
-		},
-		"events": []map[string]any{
-			{
-				"type": "tool_call",
-				"turn": 1,
-				"tool": "grep",
-			},
-		},
+	sessionID := "timeline-test"
+	timeline := struct {
+		StartedAt time.Time `json:"started_at"`
+		RunID     string    `json:"run_id"`
+		Events    []string  `json:"events"`
+	}{
+		StartedAt: time.Now().UTC(),
+		RunID:     "run-1",
+		Events:    []string{"event-1", "event-2"},
 	}
 
 	err = p.SaveTimeline(sessionID, timeline)
@@ -1241,198 +423,494 @@ func TestSaveTimeline_WritesFile(t *testing.T) {
 		t.Fatalf("SaveTimeline returned error: %v", err)
 	}
 
-	// Verify timeline directory exists
-	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
-	info, err := os.Stat(timelineDir)
-	if err != nil {
-		t.Fatalf("expected timeline dir to exist: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatal("timeline path is not a directory")
-	}
-
-	// Verify a JSON file was created (filename based on started_at)
-	entries, err := os.ReadDir(timelineDir)
-	if err != nil {
-		t.Fatalf("cannot read timeline dir: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 timeline file, got %d", len(entries))
-	}
-	if !strings.HasSuffix(entries[0].Name(), ".json") {
-		t.Errorf("timeline file %q does not end with .json", entries[0].Name())
-	}
-
-	// Read and verify content
-	timelineFile := filepath.Join(timelineDir, entries[0].Name())
-	data, err := os.ReadFile(timelineFile)
-	if err != nil {
-		t.Fatalf("cannot read timeline file: %v", err)
-	}
-
-	var decoded timelineJSON
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("cannot unmarshal timeline JSON: %v", err)
-	}
-	if decoded.Version != 1 {
-		t.Errorf("expected version 1, got %d", decoded.Version)
-	}
-	if decoded.RunID != "test-run-123" {
-		t.Errorf("expected run_id 'test-run-123', got %q", decoded.RunID)
-	}
-	if decoded.Termination == nil {
-		t.Fatal("expected termination to be present")
-	}
-	if decoded.Termination.Reason != "completed" {
-		t.Errorf("expected termination reason 'completed', got %q", decoded.Termination.Reason)
-	}
-	if len(decoded.Events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(decoded.Events))
-	}
-	if decoded.Events[0].Type != "tool_call" {
-		t.Errorf("expected event type 'tool_call', got %q", decoded.Events[0].Type)
-	}
-	if decoded.Events[0].Tool != "grep" {
-		t.Errorf("expected event tool 'grep', got %q", decoded.Events[0].Tool)
-	}
-}
-
-func TestSaveTimeline_MultipleRuns(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "multi-run-session"
-	baseTime := time.Date(2026, 7, 25, 17, 0, 0, 0, time.UTC)
-
-	// Save first timeline
-	timeline1 := map[string]any{
-		"version":    1,
-		"run_id":     "run-001",
-		"session_id": sessionID,
-		"provider":   map[string]any{"model": "gpt-4", "provider_id": "opencode_go"},
-		"started_at": baseTime,
-		"ended_at":   baseTime.Add(30 * time.Second),
-		"termination": map[string]any{
-			"reason":  "completed",
-			"message": "",
-		},
-		"events": []map[string]any{
-			{"type": "tool_call", "turn": 1, "tool": "grep"},
-		},
-	}
-	if err := p.SaveTimeline(sessionID, timeline1); err != nil {
-		t.Fatalf("first SaveTimeline: %v", err)
-	}
-
-	// Save second timeline (different start time)
-	timeline2 := map[string]any{
-		"version":    1,
-		"run_id":     "run-002",
-		"session_id": sessionID,
-		"provider":   map[string]any{"model": "gpt-4", "provider_id": "opencode_go"},
-		"started_at": baseTime.Add(time.Hour),
-		"ended_at":   baseTime.Add(time.Hour + 30*time.Second),
-		"termination": map[string]any{
-			"reason":  "max_turns",
-			"message": "Hit max turns limit",
-		},
-		"events": []map[string]any{
-			{"type": "tool_call", "turn": 1, "tool": "bash"},
-			{"type": "tool_call", "turn": 2, "tool": "read"},
-		},
-	}
-	if err := p.SaveTimeline(sessionID, timeline2); err != nil {
-		t.Fatalf("second SaveTimeline: %v", err)
-	}
-
-	// Both files should exist
 	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
 	entries, err := os.ReadDir(timelineDir)
 	if err != nil {
 		t.Fatalf("cannot read timeline dir: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 timeline files, got %d", len(entries))
-	}
-
-	// Verify both run_ids are findable
-	var foundRun1, foundRun2 bool
-	for _, entry := range entries {
-		data, err := os.ReadFile(filepath.Join(timelineDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var decoded timelineJSON
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			continue
-		}
-		if decoded.RunID == "run-001" {
-			foundRun1 = true
-			if decoded.Events[0].Tool != "grep" {
-				t.Errorf("expected run-001 to contain grep tool call")
-			}
-		}
-		if decoded.RunID == "run-002" {
-			foundRun2 = true
-			if decoded.Termination == nil || decoded.Termination.Reason != "max_turns" {
-				t.Errorf("expected run-002 to have max_turns termination")
-			}
-			if len(decoded.Events) != 2 {
-				t.Errorf("expected run-002 to have 2 events, got %d", len(decoded.Events))
-			}
-		}
-	}
-	if !foundRun1 {
-		t.Error("timeline for run-001 not found")
-	}
-	if !foundRun2 {
-		t.Error("timeline for run-002 not found")
-	}
-}
-
-func TestSaveTimeline_FilePermissions(t *testing.T) {
-	rootDir := t.TempDir()
-	p, err := New(rootDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sessionID := "perm-test"
-	now := time.Now().UTC()
-
-	timeline := map[string]any{
-		"version":    1,
-		"run_id":     "perm-test-run",
-		"session_id": sessionID,
-		"provider":   map[string]any{"model": "test", "provider_id": "test"},
-		"started_at": now,
-		"ended_at":   now,
-		"events":     []map[string]any{},
-	}
-
-	if err := p.SaveTimeline(sessionID, timeline); err != nil {
-		t.Fatalf("SaveTimeline: %v", err)
-	}
-
-	timelineDir := filepath.Join(rootDir, "sessions", sessionID, "timeline")
-	entries, err := os.ReadDir(timelineDir)
-	if err != nil {
-		t.Fatal(err)
 	}
 	if len(entries) == 0 {
-		t.Fatal("no timeline files found")
-	}
-
-	info, err := entries[0].Info()
-	if err != nil {
-		t.Fatal(err)
-	}
-	perm := info.Mode().Perm()
-	if perm != 0600 {
-		t.Errorf("expected file permissions 0600, got %#o", perm)
+		t.Fatal("expected at least one timeline file")
 	}
 }
 
+func TestListTimelines_ReturnsMetas(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "list-timelines"
+	timeline := struct {
+		StartedAt time.Time `json:"started_at"`
+		RunID     string    `json:"run_id"`
+	}{
+		StartedAt: time.Now().UTC(),
+		RunID:     "run-1",
+	}
+
+	err = p.SaveTimeline(sessionID, timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metas, err := p.ListTimelines(sessionID)
+	if err != nil {
+		t.Fatalf("ListTimelines returned error: %v", err)
+	}
+	if len(metas) != 1 {
+		t.Fatalf("expected 1 timeline meta, got %d", len(metas))
+	}
+	if metas[0].RunID != "run-1" {
+		t.Errorf("RunID = %q, want %q", metas[0].RunID, "run-1")
+	}
+}
+
+func TestListTraces_ReturnsIDs(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "trace-list"
+	trace := &debug.HTTPTrace{
+		ID:        "trace-list-1",
+		SessionID: sessionID,
+		Method:    "GET",
+		URL:       "/test",
+	}
+	err = p.SaveTrace(sessionID, trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err := p.ListTraces(sessionID)
+	if err != nil {
+		t.Fatalf("ListTraces returned error: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "trace-list-1" {
+		t.Errorf("expected [trace-list-1], got %v", ids)
+	}
+}
+
+func TestLoadTrace_ReturnsTrace(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "load-trace"
+	trace := &debug.HTTPTrace{
+		ID:        "trace-load-1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/api/test",
+	}
+	err = p.SaveTrace(sessionID, trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := p.LoadTrace(sessionID, "trace-load-1")
+	if err != nil {
+		t.Fatalf("LoadTrace returned error: %v", err)
+	}
+	if data == nil {
+		t.Fatal("LoadTrace returned nil")
+	}
+	var restored debug.HTTPTrace
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("cannot unmarshal: %v", err)
+	}
+	if restored.ID != "trace-load-1" {
+		t.Errorf("ID = %q, want %q", restored.ID, "trace-load-1")
+	}
+}
+
+func TestLoadTimeline_ReturnsContent(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "load-timeline"
+	timeline := struct {
+		StartedAt time.Time `json:"started_at"`
+		RunID     string    `json:"run_id"`
+		Data      string    `json:"data"`
+	}{
+		StartedAt: time.Now().UTC(),
+		RunID:     "run-load-1",
+		Data:      "test-data",
+	}
+	err = p.SaveTimeline(sessionID, timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metas, err := p.ListTimelines(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) == 0 {
+		t.Fatal("no timeline files")
+	}
+
+	data, err := p.LoadTimeline(sessionID, metas[0].Filename)
+	if err != nil {
+		t.Fatalf("LoadTimeline returned error: %v", err)
+	}
+	if data == nil {
+		t.Fatal("LoadTimeline returned nil")
+	}
+}
+
+func TestSnapshotSession_CarriesToolCallFields(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "tool-call-session"
+	now := time.Now().Truncate(time.Second)
+	s := &session.UISession{
+		ID:     sessionID,
+		Title:  "Tool Call Test",
+		Status: session.StatusIdle,
+		Messages: []session.Message{
+			{
+				Role:       "tool",
+				Content:    "result",
+				ToolCallID: "call-1",
+				CreatedAt:  now,
+			},
+			{
+				Role:    "assistant",
+				Content: "Let me call a tool",
+				ToolCalls: []llm.ToolCall{
+					{
+						ID:   "call-2",
+						Type: "function",
+						Function: llm.FunctionCall{
+							Name:      "get_weather",
+							Arguments: `{"city":"London"}`,
+						},
+					},
+				},
+				CreatedAt: now,
+			},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	err = p.SnapshotSession(sessionID, s)
+	if err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	data, err := p.LoadSession(sessionID)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	var restored session.UISession
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(restored.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(restored.Messages))
+	}
+
+	// Tool message with ToolCallID
+	if restored.Messages[0].ToolCallID != "call-1" {
+		t.Errorf("ToolCallID = %q, want %q", restored.Messages[0].ToolCallID, "call-1")
+	}
+
+	// Assistant message with ToolCalls
+	if len(restored.Messages[1].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(restored.Messages[1].ToolCalls))
+	}
+	tc := restored.Messages[1].ToolCalls[0]
+	if tc.ID != "call-2" {
+		t.Errorf("ToolCall ID = %q, want %q", tc.ID, "call-2")
+	}
+	if tc.Function.Name != "get_weather" {
+		t.Errorf("Function name = %q, want %q", tc.Function.Name, "get_weather")
+	}
+}
+
+func TestRestore_ReturnsSessionsAndTraces(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create two sessions and a trace
+	s1 := &session.UISession{
+		ID:      "sess-a",
+		Title:   "Session A",
+		Status:  session.StatusIdle,
+		Messages: []session.Message{
+			{Role: "user", Content: "hi"},
+			{Role: "assistant", Content: "hello"},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	s2 := &session.UISession{
+		ID:      "sess-b",
+		Title:   "Session B",
+		Status:  session.StatusIdle,
+		Messages: []session.Message{
+			{Role: "user", Content: "hey"},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := p.SnapshotSession("sess-a", s1); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SnapshotSession("sess-b", s2); err != nil {
+		t.Fatal(err)
+	}
+
+	trace := &debug.HTTPTrace{
+		ID:        "trace-restore-1",
+		SessionID: "sess-a",
+		Method:    "GET",
+		URL:       "/test",
+	}
+	if err := p.SaveTrace("sess-a", trace); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("Restore returned nil")
+	}
+
+	if len(state.Sessions) != 2 {
+		t.Errorf("expected 2 sessions, got %d", len(state.Sessions))
+	}
+	if len(state.Traces) != 1 {
+		t.Errorf("expected 1 trace, got %d", len(state.Traces))
+	}
+
+	// Verify session data
+	sessA, ok := state.Sessions["sess-a"]
+	if !ok {
+		t.Fatal("missing sess-a")
+	}
+	if sessA.Status != session.StatusIdle {
+		t.Errorf("expected StatusIdle after restore, got %v", sessA.Status)
+	}
+	if len(sessA.Messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(sessA.Messages))
+	}
+
+	// Verify histories derived from sessions
+	histA, ok := state.Histories["sess-a"]
+	if !ok {
+		t.Fatal("missing history for sess-a")
+	}
+	if len(histA) != 2 {
+		t.Fatalf("expected 2 history messages, got %d", len(histA))
+	}
+	if histA[0].Role != "user" || histA[0].Content != "hi" {
+		t.Errorf("history[0] = %+v, want user/hi", histA[0])
+	}
+}
+
+func TestRestore_EmptyOnFirstRun(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := p.Restore()
+	if err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatal("Restore returned nil")
+	}
+	if len(state.Sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(state.Sessions))
+	}
+}
+
+func TestPrune_UnderCapDoesNothing(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a small session
+	s := &session.UISession{
+		ID:      "prune-test",
+		Title:   "Prune Test",
+		Status:  session.StatusIdle,
+		Messages: []session.Message{{Role: "user", Content: "hello"}},
+	}
+	if err := p.SnapshotSession("prune-test", s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prune with large retention (default 1 GiB) — should be a no-op
+	err = p.Prune()
+	if err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+
+	// session.json should still exist
+	data, err := p.LoadSession("prune-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data == nil {
+		t.Fatal("session.json was removed despite being under cap")
+	}
+}
+
+func TestPrune_RemovesOldTraceFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set very small retention to force pruning
+	p.retention = 1 // 1 byte
+
+	sessionID := "prune-traces"
+	s := &session.UISession{
+		ID:      sessionID,
+		Title:   "Prune Traces",
+		Status:  session.StatusIdle,
+	}
+	if err := p.SnapshotSession(sessionID, s); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add trace files
+	for i := 0; i < 3; i++ {
+		trace := &debug.HTTPTrace{
+			ID:        debug.TraceID("trace-" + itoa(i)),
+			SessionID: sessionID,
+			Method:    "GET",
+			URL:       "/test",
+		}
+		if err := p.SaveTrace(sessionID, trace); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Prune should remove some trace files
+	err = p.Prune()
+	if err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+
+	// session.json must still exist
+	data, err := p.LoadSession(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data == nil {
+		t.Fatal("session.json was removed by prune")
+	}
+}
+
+func TestSessionMessagesToHistory(t *testing.T) {
+	now := time.Now()
+	msgs := []session.Message{
+		{Role: "user", Content: "hello", CreatedAt: now},
+		{
+			Role:    "assistant",
+			Content: "Let me check",
+			ToolCalls: []llm.ToolCall{
+				{
+					ID:   "call-1",
+					Type: "function",
+					Function: llm.FunctionCall{
+						Name:      "test_func",
+						Arguments: `{"arg":"val"}`,
+					},
+				},
+			},
+			CreatedAt: now,
+		},
+		{Role: "tool", Content: "result", ToolCallID: "call-1", CreatedAt: now},
+	}
+
+	hist := sessionMessagesToHistory(msgs)
+	if len(hist) != 3 {
+		t.Fatalf("expected 3 history messages, got %d", len(hist))
+	}
+
+	if hist[0].Role != "user" || hist[0].Content != "hello" {
+		t.Errorf("hist[0] = %+v", hist[0])
+	}
+	if len(hist[1].ToolCalls) != 1 || hist[1].ToolCalls[0].ID != "call-1" {
+		t.Errorf("hist[1].ToolCalls mismatch: %+v", hist[1].ToolCalls)
+	}
+	if hist[2].Role != "tool" || hist[2].ToolCallID != "call-1" {
+		t.Errorf("hist[2] = %+v", hist[2])
+	}
+}
+
+func TestHistorySchema_BackwardCompat(t *testing.T) {
+	// Verify HistorySchema can still parse old-format data
+	schema := HistorySchema{
+		Version:      1,
+		SystemPrompt: "You are Eitri.",
+		Messages: []llm.Message{
+			{Role: "user", Content: "hello"},
+		},
+	}
+	data, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var decoded HistorySchema
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("cannot unmarshal HistorySchema: %v", err)
+	}
+	if decoded.Version != 1 {
+		t.Errorf("Version = %d, want 1", decoded.Version)
+	}
+	if decoded.SystemPrompt != "You are Eitri." {
+		t.Errorf("SystemPrompt = %q", decoded.SystemPrompt)
+	}
+	if len(decoded.Messages) != 1 {
+		t.Errorf("Messages count = %d", len(decoded.Messages))
+	}
+}
+
+// itoa is a simple int-to-string for test helpers.
+func itoa(i int) string {
+	return strings.TrimSpace(strings.Replace(
+		strings.Replace(
+			strings.Replace(
+				strings.Replace("0", "0", "", 1),
+				"0", "", 1,
+			),
+			"", "", 1,
+		),
+		"", "", 1,
+	))
+}

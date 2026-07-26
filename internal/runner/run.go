@@ -287,20 +287,16 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 	})
 }
 
-// snapshotSession persists the current UI session and history to disk.
+// snapshotSession persists the current UI session to disk.
 func (s *RunService) snapshotSession(sessionID string) {
-	if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
+	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
 	sess := s.uiSessionMgr.Get(sessionID)
 	if sess == nil {
 		return
 	}
-	historyMsgs := s.historySessionMgr.History(sessionID)
-	if historyMsgs == nil {
-		return
-	}
-	if err := s.persister.SnapshotSession(sessionID, sess, historyMsgs); err != nil {
+	if err := s.persister.SnapshotSession(sessionID, sess); err != nil {
 		slog.Warn("failed to snapshot session",
 			slog.String("session_id", sessionID),
 			slog.Any("error", err),
@@ -335,24 +331,25 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 // OnTurnComplete implements loop.TurnCompleter. It is called after each
 // complete agent turn to persist snapshots and trigger auto-compaction.
 func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
-	if s.persister == nil || s.uiSessionMgr == nil || s.historySessionMgr == nil {
+	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
 	sess := s.uiSessionMgr.Get(sessionID)
 	if sess == nil {
 		return
 	}
-	historyMsgs := s.historySessionMgr.History(sessionID)
-	if historyMsgs == nil {
-		return
-	}
 
 	// Always snapshot after each turn.
-	if err := s.persister.SnapshotSession(sessionID, sess, historyMsgs); err != nil {
+	if err := s.persister.SnapshotSession(sessionID, sess); err != nil {
 		slog.Warn("failed to snapshot session",
 			slog.String("session_id", sessionID),
 			slog.Any("error", err),
 		)
+	}
+
+	historyMsgs := s.historySessionMgr.History(sessionID)
+	if historyMsgs == nil {
+		return
 	}
 
 	// Auto-compaction: retrieve the run config from the active RunState.
@@ -405,9 +402,8 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 
 	// Snapshot the compacted history.
 	sessAfter := s.uiSessionMgr.Get(sessionID)
-	historyAfter := s.historySessionMgr.History(sessionID)
-	if sessAfter != nil && historyAfter != nil {
-		if err := s.persister.SnapshotSession(sessionID, sessAfter, historyAfter); err != nil {
+	if sessAfter != nil {
+		if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
 			slog.Warn("failed to snapshot compacted session",
 				slog.String("session_id", sessionID),
 				slog.Any("error", err),

@@ -1,6 +1,6 @@
 # 0016 — Session persistence via JSON snapshots
 
-**Status:** Accepted
+**Status:** Accepted (updated for single-file snapshot)
 
 ## Context
 
@@ -12,28 +12,27 @@ persistence layer that survives restarts and lets users inspect past sessions.
 
 ## Decision
 
-Persist session state as timestamped JSON snapshot files under `~/.eitri/`,
-written after each complete agent turn. Key design choices:
+Persist session state as a single `session.json` snapshot file per session under
+`~/.eitri/sessions/<id>/`, written atomically after each complete agent turn.
+Key design choices:
 
 ### File layout
 
 ```
 ~/.eitri/
 ├── config.json
-├── sessions/
-│   └── <session_id>/
-│       ├── session.json              ← symlink to latest timestamped file
-│       ├── 2024-01-15T10-30-00.json  ← full UISession state
-│       ├── 2024-01-15T10-31-15.json
-│       └── traces/
-│           ├── trace_1.json          ← one file per HTTP trace
-│           └── trace_2.json
-└── history/
+└── sessions/
     └── <session_id>/
-        ├── history.json              ← symlink to latest timestamped file
-        ├── 2024-01-15T10-30-00.json  ← LLM conversation (canonical schema)
-        └── 2024-01-15T10-31-15.json
+        ├── session.json              ← single snapshot (atomically overwritten)
+        ├── timeline/                 ← condensed run timelines
+        │   └── 2024-01-15T10-30-00.json
+        └── traces/
+            └── trace_1.json
 ```
+
+The `history/` directory has been removed. Session messages now carry all
+LLM-oriented fields (tool calls, tool_call_id) so the snapshot is the single
+source of truth for both UI rendering and LLM replay.
 
 ### Snapshot trigger
 
@@ -44,25 +43,22 @@ unsaved data.
 
 ### Write path
 
-- Timestamped files use ISO8601 with colons replaced by dashes for cross-platform
-  filesystem compatibility (same convention as crash dumps).
-- The latest snapshot is pointed to by a symlink (`session.json → 2024-...json`),
-  updated atomically via temp-file + rename.
-- History files use a canonical JSON schema with a `version` field (start at 1)
-  rather than dumping internal structs directly, giving freedom to change the
-  internal LLM message type without breaking disk format.
+- `session.json` is written atomically via temp-file + rename in the same
+  directory (`.<name>.tmp-*` → `session.json`), preventing partial writes.
+- No timestamped chain files or symlinks — a single overwritten file per session.
 
 ### Retention
 
-Keep all snapshots, with a global 1 GiB cap. Pruning evicts the oldest
-timestamped files across all sessions when the cap is exceeded. The latest
-snapshot for any session with active data is never pruned.
+The global 1 GiB cap applies to the `sessions/` directory. Pruning evicts the
+oldest timeline and trace files across all sessions when the cap is exceeded.
+The `session.json` file is never pruned.
 
 ### Restore
 
 On startup, the latest snapshot for each session is read back from disk.
 All restored sessions are forced to `idle` status — a snapshot represents a
-completed turn, so there is no half-running state.
+completed turn, so there is no half-running state. LLM conversation histories
+are derived from the session snapshot messages.
 
 **Session decoupling (v0.1.5+):** Sessions are no longer hydrated into the
 in-memory session manager on startup. Only LLM conversation histories and HTTP
@@ -78,18 +74,27 @@ manager, and trace recorder remain pure in-memory with no filesystem
 dependencies. The Persister is wired in at the `cmd/eitri/main.go` level and
 injected into the `RunService` and `Recorder` callbacks.
 
+### Message consolidation
+
+`session.Message` now embeds LLM-oriented fields (`ToolCallID`, `ToolCalls`)
+so that one message type serves both UI rendering and LLM replay. The `llm`
+package continues to use its own wire type for API communication; conversion
+happens at the adapter layer.
+
 ## Consequences
 
 Positive:
 
-- Timestamped snapshots provide a browsable history of session evolution
-  (`ls`, `cat`, `jq` work without Eitri running).
-- The 1 GiB cap prevents unbounded disk growth while keeping all snapshots for
-  any realistically-sized session.
+- Snapshot browsing is straightforward (`cat`, `jq` work without Eitri running).
+- The 1 GiB cap prevents unbounded disk growth.
 - Crash dump reuse: the same serialization models, directory conventions, and
   JSON tags are shared.
 - Session decoupling keeps the session manager pure in-memory — no restore
   logic to maintain, no stale state on startup.
+- Single-file format eliminates timestamped file accumulation and symlink
+  complexity.
+- History is embedded in the session snapshot, removing the `history/` directory
+  and the `HistorySchema` type (kept for backward-compatible reads).
 
 Negative:
 

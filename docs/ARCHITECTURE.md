@@ -14,7 +14,7 @@ flowchart LR
     subgraph Server["cmd/eitri (HTTP + SSE server)"]
         API["api/ (routes, SSE)"]
         RunSvc["runner/ (RunService)"]
-        UISess["session/ (UI sessions)"]
+        UISess["session/ (UI sessions + messages)"]
         LLMHist["history/ (LLM history)"]
         LLMTrp["llm/ (LLM transport)"]
         RunSt["runstate/ (SSE broadcast)"]

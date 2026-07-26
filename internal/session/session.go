@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // Status represents the current state of a session.
@@ -30,10 +32,15 @@ type ComponentData struct {
 }
 
 // Message represents a single chat message in a session.
+// It is the consolidated message type used for both UI rendering and
+// persisted snapshots. The llm package uses its own wire type for API
+// communication; conversion happens at the adapter layer.
 type Message struct {
 	Role             string          `json:"role"`
 	Content          string          `json:"content"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	ToolCalls        []llm.ToolCall  `json:"tool_calls,omitempty"`
 	CreatedAt        time.Time       `json:"created_at"`
 	Components       []ComponentData `json:"components,omitempty"`
 	QuickReplies     []string        `json:"quick_replies,omitempty"`

@@ -22,7 +22,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/sandbox"
@@ -319,18 +318,11 @@ func main() {
 	// Flush any pending data to disk before shutting down.
 	if persister != nil {
 		sessions := sessionMgr.All()
-		histories := make(map[string][]llm.Message, len(sessions))
-		for _, s := range sessions {
-			hist := historyMgr.History(s.ID)
-			if hist != nil {
-				histories[s.ID] = hist
-			}
-		}
 		traces := debugRecorder.List(0, "", "")
 		inFlight := debugRecorder.InFlight()
 		allTraces := append(traces, inFlight...)
 
-		if err := persister.Flush(sessions, histories, allTraces); err != nil {
+		if err := persister.Flush(sessions, allTraces); err != nil {
 			slog.Warn("flush on shutdown failed", slog.Any("error", err))
 		} else {
 			slog.Info("flush on shutdown completed")
