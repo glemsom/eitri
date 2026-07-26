@@ -5,6 +5,8 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/llm"
@@ -32,6 +34,18 @@ type Thresholds struct {
 	// only assistant messages) have their ToolCall.Function.Arguments pruned to a
 	// compact placeholder. Default 0 means no pruning.
 	ToolCallRetentionTurns int
+
+	// SalienceEnabled controls whether salience-scored compaction ordering is used.
+	// When enabled, the compactor scores each compactable message by heuristic
+	// importance and compacts the lowest-scoring (least important) messages first.
+	// When disabled, the original oldest-first greedy behaviour is used. Default true.
+	SalienceEnabled bool
+
+	// HighSalienceSkipThreshold is the salience score above which a message is
+	// skipped entirely during compaction (not considered for compaction even if
+	// it exceeds the size threshold). A value of 0 means no messages are skipped
+	// based on salience (only the scoring order is used). Default 0.
+	HighSalienceSkipThreshold int
 }
 
 // tokenEstimate returns a rough estimate of the number of tokens in s.
@@ -110,6 +124,108 @@ Summary:`, truncated)
 	}
 }
 
+// salienceScore returns a heuristic importance score for a message's content.
+// Higher scores indicate more important content that should be preserved longer.
+// The score considers:
+//   - Presence of error/failure indicators (+20 each)
+//   - Presence of stack traces (+30)
+//   - Presence of file paths and function names (+10 each)
+//   - Presence of numerical results/measurements (+5 each)
+//   - Message length: very short messages (<100 chars) score low (-15)
+//   - Message length: very long verbose messages (>5000 chars) score lower (-10)
+//   - Absence of any signal above means plain boilerplate scores lowest
+func salienceScore(content string) int {
+	if content == "" {
+		return 0
+	}
+	score := 50 // base score for any content
+
+	// Error/failure indicators
+	errorPatterns := []string{
+		"(?i)\\berror\\b",
+		"(?i)\\bfail(ed|ure)?\\b",
+		"(?i)\\bexception\\b",
+		"(?i)\\bpanic\\b",
+		"(?i)\\bcrash\\b",
+		"(?i)\\b(sigsegv|segfault|core dump)\\b",
+		"(?i)\\b(timeout|timed out)\\b",
+		"(?i)\\bpermission denied\\b",
+		"(?i)\\bnot found\\b",
+		"(?i)\\bcannot find\\b",
+		"(?i)\\bunable to\\b",
+		"(?i)\\bundefined\\b",
+		"(?i)\\bsyntax error\\b",
+		"(?i)\\bcompile error\\b",
+	}
+	for _, pat := range errorPatterns {
+		if matched, _ := regexp.MatchString(pat, content); matched {
+			score += 20
+		}
+	}
+
+	// Stack traces (lines starting with spaces and containing file paths)
+	stackTracePattern := regexp.MustCompile(`(?m)^\s+at\s+\S+\.\S+\(.*:\d+\)`)
+	if stackTracePattern.MatchString(content) {
+		score += 30
+	}
+	// Generic stack frame pattern: ./path/file.go:123 or /path/file.go:123
+	stackFramePattern := regexp.MustCompile(`(?m)^\s*(?:at\s+)?[/.\w]+/[\w./-]+\.\w+:\d+`)
+	if stackFramePattern.MatchString(content) {
+		score += 20
+	}
+
+	// File paths (paths starting with /, ./ or containing file extensions)
+	filePathPattern := regexp.MustCompile(`(?:/\w+)+/[\w.-]+\.\w+`)
+	filePaths := filePathPattern.FindAllString(content, -1)
+	score += len(filePaths) * 10
+
+	// Function/method names (identifier followed by parentheses)
+	funcPattern := regexp.MustCompile(`\b[a-zA-Z_]\w*\(.*?\)`)
+	funcNames := funcPattern.FindAllString(content, -1)
+	// Filter out common noise words
+	noiseWords := map[string]bool{"if": true, "for": true, "when": true, "with": true, "not": true, "and": true, "or": true, "the": true, "but": true, "has": true, "had": true, "get": true, "got": true, "set": true, "use": true, "used": true, "see": true, "say": true, "says": true, "make": true, "made": true, "take": true, "took": true, "put": true, "run": true, "ran": true, "try": true, "tried": true, "let": true, "log": true, "cat": true, "ls": true}
+	signalFuncCount := 0
+	for _, f := range funcNames {
+		// Keep only if it looks like a real function (longer than 2 chars, contains lowercase after uppercase, etc.)
+		name := strings.SplitN(f, "(", 1)[0]
+		if !noiseWords[name] && len(name) > 2 {
+			signalFuncCount++
+		}
+	}
+	score += signalFuncCount * 10
+
+	// Numerical results/measurements (numbers near common units or indicators)
+	numericPattern := regexp.MustCompile(`\b\d+[.,]?\d*\s*(?:passed|failed|errors?|tests?|coverage|ms|s|bytes?|KB|MB|GB|lines?|files?|%|percent|of|total)\b`)
+	numerics := numericPattern.FindAllString(content, -1)
+	score += len(numerics) * 5
+
+	// General numerical values that look like measurements (percentages, large numbers)
+	measurementPattern := regexp.MustCompile(`\b\d+[.,]\d+%?\b`)
+	measurements := measurementPattern.FindAllString(content, -1)
+	score += len(measurements) * 3
+
+	// Message length adjustments
+	if len(content) < 100 {
+		score -= 15 // Very short messages are likely low-value
+	} else if len(content) > 5000 {
+		score -= 10 // Very long verbose messages may be noise
+	}
+	if len(content) > 200 {
+		score += 5 // Substantial content has some value
+	}
+
+	return score
+}
+
+// compactableMessage represents a message that has been identified as eligible
+// for compaction, along with its salience score and original index.
+type compactableMessage struct {
+	index           int
+	score           int
+	originalContent string
+	originalTokens  int
+}
+
 // Compact scans the conversation history and replaces tool-result messages
 // with LLM-generated summaries. It always attempts compaction regardless of
 // the estimated token count — the caller decides whether to call Compact
@@ -118,8 +234,14 @@ Summary:`, truncated)
 // Compaction stops once the total falls below the LowWater threshold.
 // The LowWater stop condition prevents runaway compaction of the entire history.
 //
-// The scan proceeds greedily from the oldest tool result forward.
-// If a summarization call fails for one tool result, it is skipped and
+// When SalienceEnabled is true (default), the scan collects all compactable
+// messages, scores each by heuristic salience, sorts by score ascending,
+// and compacts from lowest score (least important) first. Messages whose
+// salience score exceeds HighSalienceSkipThreshold are skipped entirely.
+// When SalienceEnabled is false, the original greedy oldest-first behaviour
+// is used.
+//
+// If a summarization call fails for one message, it is skipped and
 // compaction continues with the next one.
 //
 // Tool call argument pruning: if ToolCallRetentionTurns > 0, assistant messages
@@ -144,8 +266,6 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 		thresholds.LowWater = thresholds.HighWater / 3
 	}
 
-	totalEst := messagesTokenEstimate(messages)
-
 	// Work on a copy so the original is never mutated.
 	result := make([]llm.Message, len(messages))
 	copy(result, messages)
@@ -154,7 +274,7 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 	freedTokens = 0
 	prunedToolCalls = 0
 
-	// Count total assistant messages for retention-window calculation.
+	// --- Pass 1: Tool call argument pruning (always runs, independent of salience) ---
 	totalAssistantMsgs := 0
 	for _, m := range result {
 		if m.Role == "assistant" {
@@ -163,10 +283,7 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 	}
 
 	assistantIndex := 0 // 0-based index among assistant messages only
-
-	// Greedy oldest-first scan: iterate from oldest to newest.
 	for i := 0; i < len(result); i++ {
-		// --- Tool call argument pruning ---
 		if result[i].Role == "assistant" {
 			isWithinRetention := false
 			if thresholds.ToolCallRetentionTurns > 0 {
@@ -193,23 +310,55 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 			}
 			assistantIndex++
 		}
+	}
 
-		// --- Content summarization ---
+	// --- Pass 2: Content summarization ---
+	if thresholds.SalienceEnabled {
+		// Salience-scored ordering: collect eligible messages, score, sort, compact.
+		result, compactedCount, freedTokens = c.compactBySalience(ctx, result, llmSvc, thresholds)
+	} else {
+		// Legacy oldest-first greedy behaviour.
+		result, compactedCount, freedTokens = c.compactOldestFirst(ctx, result, llmSvc, thresholds)
+	}
+
+	if compactedCount == 0 && prunedToolCalls == 0 {
+		return nil, 0, 0, 0, nil
+	}
+
+	return result, compactedCount, freedTokens, prunedToolCalls, nil
+}
+
+// compactBySalience collects all compactable messages, scores them by heuristic
+// salience, sorts by score ascending (lowest first), and compacts from the
+// least important message upwards. Messages with a salience score above
+// thresholds.HighSalienceSkipThreshold are skipped entirely. The low-water stop
+// condition is checked after each compaction.
+func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) ([]llm.Message, int, int) {
+	result := make([]llm.Message, len(messages))
+	copy(result, messages)
+
+	compactedCount := 0
+	freedTokens := 0
+
+	// Collect all compactable messages with their scores.
+	var candidates []compactableMessage
+	for i := 0; i < len(result); i++ {
 		// Skip messages that don't have compactable content.
 		if result[i].Content == "" {
 			continue
 		}
-
-		// Skip already-compacted messages (both old tool format and new generic format).
+		// Skip already-compacted messages.
 		if strings.HasPrefix(result[i].Content, "[TOOL RESULT COMPACTED") ||
 			strings.HasPrefix(result[i].Content, "[MESSAGE COMPACTED") {
 			continue
 		}
-
-		// Apply per-message size threshold: only compact messages that are large enough.
+		// Only compact tool, user, and assistant messages (skip system messages).
+		if result[i].Role != "tool" && result[i].Role != "user" && result[i].Role != "assistant" {
+			continue
+		}
+		// Apply per-message size threshold.
 		if thresholds.MessageSizeThreshold > 0 {
 			est := tokenEstimate(result[i].Content)
-			// Include tool call arguments for assistant messages.
 			for _, tc := range result[i].ToolCalls {
 				est += tokenEstimate(tc.Function.Arguments)
 			}
@@ -217,17 +366,40 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 				continue
 			}
 		}
+		// Score the message content.
+		score := salienceScore(result[i].Content)
 
-		// Only compact tool, user, and assistant messages (skip system messages).
-		if result[i].Role != "tool" && result[i].Role != "user" && result[i].Role != "assistant" {
+		// Skip very high salience messages entirely.
+		if thresholds.HighSalienceSkipThreshold > 0 && score >= thresholds.HighSalienceSkipThreshold {
 			continue
 		}
 
-		originalContent := result[i].Content
+		candidates = append(candidates, compactableMessage{
+			index:           i,
+			score:           score,
+			originalContent: result[i].Content,
+			originalTokens:  tokenEstimate(result[i].Content),
+		})
+	}
+
+	// Sort candidates by score ascending (least important first).
+	sort.Slice(candidates, func(a, b int) bool {
+		return candidates[a].score < candidates[b].score
+	})
+
+	// Compact candidates in order.
+	totalEst := messagesTokenEstimate(result)
+	for _, cand := range candidates {
+		// Check low-water before each compaction.
+		if totalEst <= thresholds.LowWater {
+			break
+		}
+
+		originalContent := result[cand.index].Content
 		originalTokens := tokenEstimate(originalContent)
 
 		// Call LLM to summarise.
-		prompt := summarizationPrompt(result[i].Role, originalContent)
+		prompt := summarizationPrompt(result[cand.index].Role, originalContent)
 		summaries, err := llmSvc.Chat(ctx, llm.Request{
 			Messages: []llm.Message{
 				{Role: "user", Content: prompt},
@@ -244,25 +416,87 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 		}
 
 		// Use different prefix depending on role.
+		if result[cand.index].Role == "tool" {
+			result[cand.index].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		} else {
+			result[cand.index].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		}
+		compactedCount++
+		freedTokens += originalTokens - tokenEstimate(result[cand.index].Content)
+
+		// Re-estimate total.
+		totalEst = messagesTokenEstimate(result)
+	}
+
+	return result, compactedCount, freedTokens
+}
+
+// compactOldestFirst implements the original greedy oldest-first scan:
+// iterate from oldest to newest and compact the first eligible message found.
+func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) ([]llm.Message, int, int) {
+	result := make([]llm.Message, len(messages))
+	copy(result, messages)
+
+	compactedCount := 0
+	freedTokens := 0
+	totalEst := messagesTokenEstimate(result)
+
+	for i := 0; i < len(result); i++ {
+		// --- Content summarization ---
+		if result[i].Content == "" {
+			continue
+		}
+		// Skip already-compacted messages.
+		if strings.HasPrefix(result[i].Content, "[TOOL RESULT COMPACTED") ||
+			strings.HasPrefix(result[i].Content, "[MESSAGE COMPACTED") {
+			continue
+		}
+		// Apply per-message size threshold.
+		if thresholds.MessageSizeThreshold > 0 {
+			est := tokenEstimate(result[i].Content)
+			for _, tc := range result[i].ToolCalls {
+				est += tokenEstimate(tc.Function.Arguments)
+			}
+			if est < thresholds.MessageSizeThreshold {
+				continue
+			}
+		}
+		// Only compact tool, user, and assistant messages.
+		if result[i].Role != "tool" && result[i].Role != "user" && result[i].Role != "assistant" {
+			continue
+		}
+
+		originalContent := result[i].Content
+		originalTokens := tokenEstimate(originalContent)
+
+		prompt := summarizationPrompt(result[i].Role, originalContent)
+		summaries, err := llmSvc.Chat(ctx, llm.Request{
+			Messages: []llm.Message{
+				{Role: "user", Content: prompt},
+			},
+		})
+		if err != nil {
+			continue
+		}
+
+		summary := strings.TrimSpace(summaries.Content)
+		if summary == "" {
+			continue
+		}
+
 		if result[i].Role == "tool" {
 			result[i].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		} else {
-			// For user and assistant messages, preserve ToolCalls for assistant messages.
 			result[i].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		}
 		compactedCount++
 		freedTokens += originalTokens - tokenEstimate(result[i].Content)
 
-		// Re-estimate total; stop if below LowWater.
 		totalEst = messagesTokenEstimate(result)
 		if totalEst <= thresholds.LowWater {
 			break
 		}
 	}
 
-	if compactedCount == 0 && prunedToolCalls == 0 {
-		return nil, 0, 0, 0, nil
-	}
-
-	return result, compactedCount, freedTokens, prunedToolCalls, nil
+	return result, compactedCount, freedTokens
 }

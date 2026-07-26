@@ -375,7 +375,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		return
 	}
 
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, historyMsgs, llmSvc, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -434,15 +434,16 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // provided LLM service, gated by high-water and low-water thresholds.
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int) ([]llm.Message, int, int, int, error) {
+func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool) ([]llm.Message, int, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages)
 	if totalEst <= highWater {
 		return nil, 0, 0, 0, nil
 	}
 	return compactor.New().Compact(ctx, messages, llmSvc, compactor.Thresholds{
-		HighWater:              highWater,
-		LowWater:               lowWater,
-		MessageSizeThreshold:   messageSizeThreshold,
-		ToolCallRetentionTurns: toolCallRetentionTurns,
+		HighWater:                highWater,
+		LowWater:                 lowWater,
+		MessageSizeThreshold:     messageSizeThreshold,
+		ToolCallRetentionTurns:   toolCallRetentionTurns,
+		SalienceEnabled:          salienceEnabled,
 	})
 }

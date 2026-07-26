@@ -182,6 +182,15 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 					</div>
 					<small class="hint">Number of recent assistant messages whose tool-call arguments are preserved. Older messages have arguments pruned to save tokens (0 = disable pruning).</small>
 				</div>
+
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" id="compaction_salience_enabled" name="compaction_salience_enabled" value="true" if cfg.CompactionSalienceEnabled { checked }/>
+						Enable salience-based compaction ordering
+					</label>
+					<input type="hidden" name="compaction_salience_enabled" value="false"/>
+					<small class="hint">When enabled, important messages (errors, stack traces) are preserved longer during compaction. When disabled, the oldest messages are compacted first regardless of importance.</small>
+				</div>
 			</details>
 
 			<details class="settings-details">
