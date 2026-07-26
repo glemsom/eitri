@@ -1,5 +1,7 @@
 # Spec 001: Unify llm.Message and session.Message into a single canonical type
 
+**Status**: ✅ Implemented (PR #857, v0.1.5)
+
 ## Problem
 
 The codebase has two nearly identical `Message` structs: `llm.Message` (in `internal/llm/types.go`) and `session.Message` (in `internal/session/session.go`). The `session.Message` is a superset of `llm.Message` with UI extras (`ReasoningContent`, `CreatedAt`, `Components`, `QuickReplies`). Every data path that crosses from persistence → LLM API or LLM API → UI requires manual conversion:

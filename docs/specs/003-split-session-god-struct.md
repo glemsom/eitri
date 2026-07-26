@@ -1,5 +1,7 @@
 # Spec 003: Split UISession god-struct into focused sub-types
 
+**Status**: ✅ Implemented (v0.1.5, refactored Manager internals)
+
 ## Problem
 
 `UISession` (682 lines in `internal/session/session.go`) mixes three distinct concerns in one struct:

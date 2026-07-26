@@ -17,6 +17,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Child session** | A `UISession` with a `ParentID` field, created when a browser-visible parent delegates to a sub-agent. Appears nested under the parent in the sidebar tree. |
 | **Skill** | Agent Skills-compatible directory containing `SKILL.md` instructions and optional `scripts/`, `references/`, and `assets/`. Discovered from fixed project/user roots and activated per session. |
 | **Bash tool** | Executes shell commands via `os/exec.Command`. Commands run inside a bubblewrap sandbox (defense-in-depth) with read-only root, writable workspace and /tmp. Falls back to direct execution when bwrap is unavailable or profile is "none". Proper stdout/stderr separation, exit code handling. Per-command timeout configurable via `command_timeout`. |
+| **Compactor** | The `internal/compactor/` package that scans conversation history for oversized messages and replaces them with LLM-generated summaries. Controlled by `compaction_size_threshold` config (default 2000 estimated tokens). Compacted non-tool messages are tagged with `[MESSAGE COMPACTED]` prefix to prevent re-compaction. Runs automatically after each turn and on demand via `CompactSession`. |
 | **Model** | LLM accessible via a litellm-backed Provider adapter. OpenCode Go models route by prefix (qwen*/minimax* → Anthropic /v1/messages, rest → OpenAI /chat/completions). GitHub Copilot and OpenRouter use dedicated adapters. Configured via Settings or `~/.eitri/config.json`. |
 | **HTML-over-wire shell** | Go/Templ/HTMX-rendered application frame and fragments. Server owns canonical UI state and rendering. |
 | **Browser island** | Isolated client-side behavior attached to server-rendered markup; owns only local ephemeral UI state. |
@@ -55,7 +56,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0015](docs/adr/0015-per-session-workspaces.md) | Per-session workspaces with directory browser | Accepted |
 | [0016](docs/adr/0016-session-persistence-json-snapshots.md) | Session persistence via JSON snapshots | Accepted |
 | [0017](docs/adr/0017-bwrap-sandbox.md) | bwrap sandbox for bash tool | Accepted (amended) |
-| [0018](docs/adr/0018-personas.md) | Personas — named system prompts with skill injection | Draft |
+| [0018](docs/adr/0018-personas.md) | Personas — named system prompts with skill injection | Accepted |
 
 ## Project structure
 
@@ -63,18 +64,30 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 eitri/
 ├── cmd/eitri/                 # Entry point — starts HTTP+SSE server
 ├── internal/
-│   ├── agent/                 # Agent loop, tool definitions, LLM service interface
 │   ├── api/                   # HTTP server, SSE, HTMX/Templ render endpoints
 │   │   └── templates/         # Templ source files and generated Go
+│   ├── compactor/             # Message compaction (summarization of oversized messages)
 │   ├── config/                # ~/.eitri config management
+│   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
+│   ├── fileutil/              # File path validation and I/O operations
+│   ├── history/               # LLM conversation history (per-session sliding window)
+│   ├── llm/                   # LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot)
+│   ├── persist/               # Session snapshots, conversation history, HTTP traces on disk
+│   ├── persona/               # Persona (named system prompt) management
+│   ├── provider/              # Provider profiles + auth seams
+│   ├── report/                # Session report generation
 │   ├── runner/                # RunService — run lifecycle + agent loop orchestrator, SSE broadcast, auth persist callbacks
-│   ├── tool/                  # Built-in tools
-│   └── skills/                # Agent Skills discovery, registry, activation
+│   │   └── loop/              # Agent turn loop (deep, earns its own package)
+│   ├── runstate/              # SSE broadcast infrastructure + context tracking
+│   ├── sandbox/               # bwrap sandbox wrapper for bash tool
+│   ├── session/               # UI session management (in-memory, browser-facing)
+│   ├── skills/                # Agent Skills discovery, registry, activation
+│   ├── tokenizer/             # Token estimation and calibration (chars-per-token EMA)
+│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, skill, delegate, collect)
 ├── scripts/                   # Install script, release tools
 ├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
 ├── docs/TESTING.md            # Test runbook
 ├── docs/debug-api.md          # Debug API reference (JSON API for operational inspection)
-├── docs/providers/            # User-facing provider setup/operation guides
 ├── docs/adr/                  # Architecture Decision Records
 ├── docs/agents/               # Agent documentation framework
 ├── go.mod

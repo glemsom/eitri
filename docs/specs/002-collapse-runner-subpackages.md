@@ -1,5 +1,7 @@
 # Spec 002: Collapse shallow runner sub-packages back into runner/
 
+**Status**: ✅ Implemented (PRs #871, #872, #873, v0.1.5)
+
 ## Problem
 
 The `internal/runner/` package has 4 sub-packages, 3 of which are shallow wrappers that each contain only one file with one type or interface:

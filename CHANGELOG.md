@@ -165,7 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture Decision Records (docs/adr/).
 - Install script for Linux (scripts/install.sh).
 
-[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/glemsom/eitri/releases/tag/v0.1.5
 [0.1.4]: https://github.com/glemsom/eitri/releases/tag/v0.1.4
 [0.1.3]: https://github.com/glemsom/eitri/releases/tag/v0.1.3
 [0.1.1]: https://github.com/glemsom/eitri/releases/tag/v0.1.1

@@ -13,7 +13,7 @@ flowchart LR
 
     subgraph Server["cmd/eitri (HTTP + SSE server)"]
         API["api/ (routes, SSE)"]
-        RunSvc["runner/ (RunService)"]
+        RunSvc["runner/ (RunService + loop/)"]
         UISess["session/ (UI sessions + messages)"]
         LLMHist["history/ (LLM history)"]
         LLMTrp["llm/ (LLM transport)"]
@@ -25,6 +25,11 @@ flowchart LR
         Config["config/ (JSON file)"]
         Provider["provider/ (profiles + auth)"]
         Debug["debug/ (crash dumps, HTTP traces)"]
+        Persist["persist/ (session snapshots, traces)"]
+        Compactor["compactor/ (message compaction)"]
+        Persona["persona/ (named system prompts)"]
+        Report["report/ (session reports)"]
+        Tokenizer["tokenizer/ (token estimation + calibration)"]
     end
 
     Browser <-->|SSE + HTMX request/response| Server
@@ -235,11 +240,10 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()` |
 | `subagent_store.go` | Thread-safe sub-agent task storage and cancellation |
 | `run_tracker.go` | Tracks active `RunState` records per session |
+| `runconfig.go` | `RunConfig` — runtime configuration snapshot from config + workspace |
+| `broadcast.go` | `Broadcaster` — fan-out event distribution used by runner |
 | `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer` |
-| `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `stream.go`, `tool_call.go`, `debug.go`) |
-| `adapters/` | `ConfirmationFunc`, `NewFuncConfirmer` — confirmation seam |
-| `broadcast/` | `Broadcaster` — fan-out event distribution used by runner |
-| `runconfig/` | `RunConfig` — runtime configuration snapshot from config + workspace |
+| `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `stream.go`, `tool_call.go`, `debug.go`) + `adapters.go` (confirmation seam: `ConfirmationFunc`, `NewFuncConfirmer`) |
 
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
 1. Validates config, snapshots runtime limits (`max_turns`, `context_window_tokens`)
@@ -438,20 +442,26 @@ eitri/
 ├── cmd/eitri/                 # Entry point
 ├── internal/
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
+│   ├── compactor/             # Message compaction
 │   ├── config/                # Config loading, validation, atomic writes
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history
 │   ├── llm/                   # LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot)
+│   ├── persist/               # Session snapshots, history, traces on disk
+│   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams
+│   ├── report/                # Session report generation
 │   ├── runner/                # Run lifecycle + agent loop
-│   │   ├── adapters/          # Confirmation seam
-│   │   ├── broadcast/         # Fan-out event distribution
-│   │   ├── loop/              # Agent turn loop
-│   │   └── runconfig/         # Runtime configuration snapshot
+│   │   ├── loop/              # Agent turn loop + adapters.go (confirmation seam)
+│   │   ├── runconfig.go       # Runtime configuration snapshot
+│   │   ├── broadcast.go       # Fan-out event distribution
+│   │   └── ...                # Flat files (service.go, run.go, subagent.go, system_prompt.go, etc.)
 │   ├── runstate/              # SSE broadcast infrastructure + context tracking
+│   ├── sandbox/               # bwrap sandbox wrapper
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
+│   ├── tokenizer/             # Token estimation and calibration
 │   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, skill, delegate, collect)
 ├── scripts/
 ├── docs/
