@@ -29,6 +29,8 @@
 //   - Describe / MustDescribe — return Descriptor for a provider ID
 //   - IDs — return all supported provider IDs
 //   - SupportedThinkingLevels — return thinking levels for a model
+//   - ContextWindowForModel — look up context window token limit from static
+//     prefix-matched table of known models
 //   - DiscoverModels — fetch available models from a provider endpoint
 //   - ResolveAuth — resolve credentials with optional token refresh
 //   - ValidateCredentials — quick credential sanity check
