@@ -302,7 +302,7 @@ func SessionRowView(id string, title string, turnCount int, createdAt time.Time,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"btn btn-sm\" title=\"View session report\">📊</a> <button class=\"btn btn-sm btn-danger\" hx-delete=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"btn btn-sm btn-secondary\" title=\"View session report\">📊</a> <button class=\"btn btn-sm btn-danger\" hx-delete=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -357,7 +357,7 @@ func SessionsCleanup(diskUsageBytes int64) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</span></div><div class=\"cleanup-actions\"><button class=\"btn btn-danger\" hx-post=\"/api/sessions/cleanup/delete-closed\" hx-confirm=\"Delete ALL stored (persisted) sessions? Active in-memory sessions will be preserved. This cannot be undone.\" hx-target=\"#sessions-list\" hx-swap=\"innerHTML\">Delete All Stored Sessions</button> <button class=\"btn btn-danger\" hx-post=\"/api/sessions/cleanup/clear-all-traces\" hx-confirm=\"Clear all trace files from all sessions? Session data will be preserved.\" hx-target=\"#sessions-cleanup\" hx-swap=\"innerHTML\">Clear All Traces</button></div><div class=\"cleanup-prune\"><label for=\"prune-age-days\">Prune sessions older than</label> <input type=\"number\" id=\"prune-age-days\" name=\"age_days\" value=\"7\" min=\"1\"> <span class=\"cleanup-label\">days</span> <button class=\"btn btn-danger\" hx-post=\"/api/sessions/cleanup/prune-by-age\" hx-include=\"#prune-age-days\" hx-confirm=\"Permanently delete closed sessions older than the specified days?\" hx-target=\"#sessions-list\" hx-swap=\"innerHTML\">Prune</button></div></div></details>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</span></div><div class=\"cleanup-actions\"><button class=\"btn btn-sm btn-danger\" hx-post=\"/api/sessions/cleanup/delete-closed\" hx-confirm=\"Delete ALL stored (persisted) sessions? Active in-memory sessions will be preserved. This cannot be undone.\" hx-target=\"#sessions-list\" hx-swap=\"innerHTML\">Delete All Stored Sessions</button> <button class=\"btn btn-sm btn-danger\" hx-post=\"/api/sessions/cleanup/clear-all-traces\" hx-confirm=\"Clear all trace files from all sessions? Session data will be preserved.\" hx-target=\"#sessions-cleanup\" hx-swap=\"innerHTML\">Clear All Traces</button></div><div class=\"cleanup-prune\"><label for=\"prune-age-days\">Prune sessions older than</label> <input type=\"number\" id=\"prune-age-days\" name=\"age_days\" value=\"7\" min=\"1\"> <span class=\"cleanup-label\">days</span> <button class=\"btn btn-sm btn-danger\" hx-post=\"/api/sessions/cleanup/prune-by-age\" hx-include=\"#prune-age-days\" hx-confirm=\"Permanently delete closed sessions older than the specified days?\" hx-target=\"#sessions-list\" hx-swap=\"innerHTML\">Prune</button></div></div></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
