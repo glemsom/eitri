@@ -80,7 +80,7 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 		var req struct {
 			Name           string   `json:"name"`
 			SystemPrompt   string   `json:"system_prompt"`
-			InjectedSkills []string `json:"injected_skills,omitempty"`
+			RequiredSkills []string `json:"required_skills,omitempty"`
 		}
 		body, readErr := io.ReadAll(r.Body)
 		if readErr != nil {
@@ -94,7 +94,7 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 		}
 		name = req.Name
 		systemPrompt = req.SystemPrompt
-		injectedSkills = req.InjectedSkills
+		injectedSkills = req.RequiredSkills
 		return
 	}
 
@@ -106,7 +106,7 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 	name = r.Form.Get("name")
 	systemPrompt = r.Form.Get("system_prompt")
 	// Skills may come as a comma-separated list or repeated form fields
-	if skillsStr := r.Form.Get("injected_skills"); skillsStr != "" {
+	if skillsStr := r.Form.Get("required_skills"); skillsStr != "" {
 		for _, s := range strings.Split(skillsStr, ",") {
 			s = strings.TrimSpace(s)
 			if s != "" {
@@ -155,7 +155,7 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 	def := &persona.PersonaDefinition{
 		Name:           name,
 		SystemPrompt:   systemPrompt,
-		InjectedSkills: injectedSkills,
+		RequiredSkills: injectedSkills,
 	}
 
 	homeDir, _ := os.UserHomeDir()
@@ -222,7 +222,7 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 	def := &persona.PersonaDefinition{
 		Name:           name,
 		SystemPrompt:   systemPrompt,
-		InjectedSkills: injectedSkills,
+		RequiredSkills: injectedSkills,
 	}
 
 	if err := persona.Save(workspace, def); err != nil {

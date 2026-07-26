@@ -67,12 +67,12 @@ templ PersonaAddForm(availableSkills []*skills.Skill) {
 			<small class="hint">Leave empty to use the default system prompt.</small>
 		</div>
 		<div class="form-group">
-			<label>Injected Skills</label>
+			<label>Required Skills</label>
 			<small class="hint">Skills selected here are automatically loaded into the system prompt when this persona is active.</small>
 			<div class="skills-checkbox-group">
 				for _, s := range availableSkills {
 					<label class="checkbox-label">
-						<input type="checkbox" name="injected_skills" value={ s.Name }/>
+						<input type="checkbox" name="required_skills" value={ s.Name }/>
 						<span class="skill-name">{ s.Name }</span>
 						if s.Description != "" {
 							<span class="skill-desc"> — { s.Description }</span>
@@ -119,15 +119,15 @@ templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Sk
 			<small class="hint">Leave empty to use the default system prompt.</small>
 		</div>
 		<div class="form-group">
-			<label>Injected Skills</label>
+			<label>Required Skills</label>
 			<small class="hint">Skills selected here are automatically loaded into the system prompt when this persona is active.</small>
 			<div class="skills-checkbox-group">
 				for _, s := range availableSkills {
 					<label class="checkbox-label">
-						if isSkillSelected(p.InjectedSkills, s.Name) {
-							<input type="checkbox" name="injected_skills" value={ s.Name } checked/>
+						if isSkillSelected(p.RequiredSkills, s.Name) {
+							<input type="checkbox" name="required_skills" value={ s.Name } checked/>
 						} else {
-							<input type="checkbox" name="injected_skills" value={ s.Name }/>
+							<input type="checkbox" name="required_skills" value={ s.Name }/>
 						}
 						<span class="skill-name">{ s.Name }</span>
 						if s.Description != "" {

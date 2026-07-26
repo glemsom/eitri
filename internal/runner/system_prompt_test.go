@@ -47,7 +47,7 @@ func newSkillsServiceWithSkills(t *testing.T, skillMap map[string]string) *skill
 }
 
 func TestBuildSystemPrompt_NoRequiredSkills(t *testing.T) {
-	// When persona has no InjectedSkills, no required-skills directive should appear.
+	// When persona has no RequiredSkills, no required-skills directive should appear.
 	workspace := t.TempDir()
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:         "simple-agent",
@@ -82,7 +82,7 @@ func TestBuildSystemPrompt_SingleRequiredSkill(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "reviewer",
 		SystemPrompt:   "You are a code reviewer.",
-		InjectedSkills: []string{skillName},
+		RequiredSkills: []string{skillName},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestBuildSystemPrompt_MultipleRequiredSkills(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "multi-skill-agent",
 		SystemPrompt:   "You are a multi-skill agent.",
-		InjectedSkills: skillNames,
+		RequiredSkills: skillNames,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestBuildSystemPrompt_RequiredSkillNotFound(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "missing-skill-agent",
 		SystemPrompt:   "You are an agent.",
-		InjectedSkills: []string{"nonexistent-skill", "existing-skill"},
+		RequiredSkills: []string{"nonexistent-skill", "existing-skill"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestBuildSystemPrompt_MixedActivations(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "mixed-agent",
 		SystemPrompt:   "You are a mixed agent.",
-		InjectedSkills: []string{requiredSkillName},
+		RequiredSkills: []string{requiredSkillName},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestBuildSystemPrompt_DefaultPromptWithRequiredSkills(t *testing.T) {
 
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "default-prompt-agent",
-		InjectedSkills: []string{skillName},
+		RequiredSkills: []string{skillName},
 		// No SystemPrompt set — should use the package-level DefaultPrompt
 	}); err != nil {
 		t.Fatal(err)
@@ -316,7 +316,7 @@ func TestBuildSystemPrompt_SkillsCatalogPresent(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "catalog-agent",
 		SystemPrompt:   "You are a catalog agent.",
-		InjectedSkills: []string{reqSkill},
+		RequiredSkills: []string{reqSkill},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestBuildSystemPrompt_UserOverrideSkipsDirective(t *testing.T) {
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
 		Name:           "ignored-persona",
 		SystemPrompt:   "You are an ignored persona.",
-		InjectedSkills: []string{"some-skill"},
+		RequiredSkills: []string{"some-skill"},
 	}); err != nil {
 		t.Fatal(err)
 	}

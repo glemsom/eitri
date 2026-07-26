@@ -177,7 +177,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	personaDef := &persona.PersonaDefinition{
 		Name:           "test-reviewer",
 		SystemPrompt:   "You are a code reviewer. Be thorough and check for edge cases.",
-		InjectedSkills: []string{"test-review-skill"},
+		RequiredSkills: []string{"test-review-skill"},
 	}
 	if err := persona.Save(workspace, personaDef); err != nil {
 		t.Fatalf("save persona: %v", err)

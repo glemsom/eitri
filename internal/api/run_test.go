@@ -513,21 +513,21 @@ func TestChatRun_PersonaSystemPrompt(t *testing.T) {
 	}
 }
 
-// TestChatRun_PersonaInjectedSkills verifies that a persona with injected_skills
+// TestChatRun_PersonaRequiredSkills verifies that a persona with required_skills
 // produces a system prompt containing those skill instructions.
-func TestChatRun_PersonaInjectedSkills(t *testing.T) {
+func TestChatRun_PersonaRequiredSkills(t *testing.T) {
 	// Create a temporary directory for a test skill.
 	skillRoot := t.TempDir()
-	skillDir := filepath.Join(skillRoot, "test-injected-skill")
+	skillDir := filepath.Join(skillRoot, "test-required-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: test-injected-skill
-description: A skill for testing persona injection
+name: test-required-skill
+description: A skill for testing persona required skills
 ---
-# Test Injected Skill
-This skill tests persona-based skill injection.
+# Test Required Skill
+This skill tests persona-based required skills.
 `), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -541,23 +541,23 @@ This skill tests persona-based skill injection.
 	llmSrv := newCapturePromptLLMServer(t, promptCh, nil)
 	defer llmSrv.Close()
 
-	// Create a persona with injected_skills referencing our test skill.
+	// Create a persona with required_skills referencing our test skill.
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
-		Name:           "injector-agent",
-		SystemPrompt:   "You are an agent that uses injected skills.",
-		InjectedSkills: []string{"test-injected-skill"},
+		Name:           "required-skill-agent",
+		SystemPrompt:   "You are an agent that uses required skills.",
+		RequiredSkills: []string{"test-required-skill"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"injector-agent"}`, llmSrv.URL))
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"required-skill-agent"}`, llmSrv.URL))
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 
 	prompt := <-promptCh
-	if !strings.Contains(prompt, `Required skills for this persona: test-injected-skill`) {
-		t.Fatalf("system prompt = %q, want it to contain required skills directive for \"test-injected-skill\"", prompt)
+	if !strings.Contains(prompt, `Required skills for this persona: test-required-skill`) {
+		t.Fatalf("system prompt = %q, want it to contain required skills directive for \"test-required-skill\"", prompt)
 	}
 	if !strings.Contains(prompt, `<required_skills>`) {
 		t.Fatalf("system prompt = %q, want it to contain <required_skills> block", prompt)
@@ -565,39 +565,39 @@ This skill tests persona-based skill injection.
 	if !strings.Contains(prompt, `</required_skills>`) {
 		t.Fatalf("system prompt = %q, want it to contain </required_skills> closing tag", prompt)
 	}
-	if strings.Contains(prompt, `Activated skill "test-injected-skill":`) {
-		t.Fatalf("system prompt = %q, should NOT contain Activated skill content for persona-injected skills", prompt)
+	if strings.Contains(prompt, `Activated skill "test-required-skill":`) {
+		t.Fatalf("system prompt = %q, should NOT contain Activated skill content for persona-required skills", prompt)
 	}
 
-	// Verify the persona-injected skill appears in the session's ActiveSkills
+	// Verify the persona-required skill appears in the session's ActiveSkills
 	// (i.e., the skill indicator in the UI).
 	activeSkills := h.sessionMgr.ActiveSkills(sessionID)
 	found := false
 	for _, name := range activeSkills {
-		if name == "test-injected-skill" {
+		if name == "test-required-skill" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("session ActiveSkills = %v, expected to contain \"test-injected-skill\"", activeSkills)
+		t.Fatalf("session ActiveSkills = %v, expected to contain \"test-required-skill\"", activeSkills)
 	}
 }
 
-// TestChatRun_PersonaInjectedSkills_UIUpdate verifies that the chat response
-// includes the OOB-swapped skill chips for persona-injected skills.
-func TestChatRun_PersonaInjectedSkills_UIUpdate(t *testing.T) {
+// TestChatRun_PersonaRequiredSkills_UIUpdate verifies that the chat response
+// includes the OOB-swapped skill chips for persona-required skills.
+func TestChatRun_PersonaRequiredSkills_UIUpdate(t *testing.T) {
 	skillRoot := t.TempDir()
-	skillDir := filepath.Join(skillRoot, "test-injected-skill-ui")
+	skillDir := filepath.Join(skillRoot, "test-required-skill-ui")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: test-injected-skill-ui
-description: A skill for testing persona injection UI
+name: test-required-skill-ui
+description: A skill for testing persona required skills UI
 ---
-# Test Injected Skill UI
-This skill tests persona-based skill injection UI update.
+# Test Required Skill UI
+This skill tests persona-based required skills UI update.
 `), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -620,14 +620,14 @@ This skill tests persona-based skill injection UI update.
 	}()
 
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
-		Name:           "injector-agent-ui",
-		SystemPrompt:   "You are an agent that uses injected skills.",
-		InjectedSkills: []string{"test-injected-skill-ui"},
+		Name:           "required-skill-agent-ui",
+		SystemPrompt:   "You are an agent that uses required skills.",
+		RequiredSkills: []string{"test-required-skill-ui"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"injector-agent-ui"}`, llmSrv.URL))
+	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"required-skill-agent-ui"}`, llmSrv.URL))
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 
@@ -663,11 +663,11 @@ This skill tests persona-based skill injection UI update.
 	bodyStr := string(body)
 
 	// The response should contain an OOB swap of the active-skills div with the
-	// persona-injected skill chip.
+	// persona-required skill chip.
 	if !strings.Contains(bodyStr, `id="active-skills"`) {
 		t.Fatalf("response body does not contain active-skills div (persona skill chips missing from OOB swap)")
 	}
-	if !strings.Contains(bodyStr, "test-injected-skill-ui") {
+	if !strings.Contains(bodyStr, "test-required-skill-ui") {
 		t.Fatalf("response body does not contain the persona-injected skill name in chips")
 	}
 }

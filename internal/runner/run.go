@@ -60,7 +60,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	if cfg.ActivePersona != "" && s.uiSessionMgr != nil && s.skillsSvc != nil {
 		def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
 		if err == nil {
-			for _, skillName := range def.InjectedSkills {
+			for _, skillName := range def.RequiredSkills {
 				if s.skillsSvc.Lookup(skillName) != nil {
 					s.uiSessionMgr.ActivateSkill(sessionID, skillName)
 				}

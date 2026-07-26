@@ -89,7 +89,7 @@ func TestHandleCreatePersona_JSON(t *testing.T) {
 	server := newTestServerAtWorkspace(t, workspace)
 	defer server.Close()
 
-	body := `{"name":"test-agent","system_prompt":"You are a test agent.","injected_skills":["read","write"]}`
+	body := `{"name":"test-agent","system_prompt":"You are a test agent.","required_skills":["read","write"]}`
 	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST /api/personas failed: %v", err)
@@ -240,7 +240,7 @@ func TestHandleUpdatePersona(t *testing.T) {
 	})
 
 	// Update via PUT
-	body := `{"system_prompt":"Updated prompt.","injected_skills":["skill1"]}`
+	body := `{"system_prompt":"Updated prompt.","required_skills":["skill1"]}`
 	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/personas/updatable", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)

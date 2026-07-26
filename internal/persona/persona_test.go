@@ -26,7 +26,7 @@ func TestSaveAndLoad(t *testing.T) {
 	def := &PersonaDefinition{
 		Name:         "test-persona",
 		SystemPrompt: "You are a test agent.",
-		InjectedSkills: []string{"skill1", "skill2"},
+		RequiredSkills: []string{"skill1", "skill2"},
 	}
 
 	if err := Save(workspace, def); err != nil {
@@ -44,8 +44,8 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.SystemPrompt != "You are a test agent." {
 		t.Errorf("SystemPrompt = %q, want %q", loaded.SystemPrompt, "You are a test agent.")
 	}
-	if len(loaded.InjectedSkills) != 2 || loaded.InjectedSkills[0] != "skill1" {
-		t.Errorf("InjectedSkills = %v, want [skill1 skill2]", loaded.InjectedSkills)
+	if len(loaded.RequiredSkills) != 2 || loaded.RequiredSkills[0] != "skill1" {
+		t.Errorf("RequiredSkills = %v, want [skill1 skill2]", loaded.RequiredSkills)
 	}
 }
 

@@ -239,7 +239,7 @@ func PersonaAddForm(availableSkills []*skills.Skill) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, s := range availableSkills {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<label class=\"checkbox-label\"><input type=\"checkbox\" name=\"injected_skills\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<label class=\"checkbox-label\"><input type=\"checkbox\" name=\"required_skills\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -451,8 +451,8 @@ func PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Ski
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if isSkillSelected(p.InjectedSkills, s.Name) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<input type=\"checkbox\" name=\"injected_skills\" value=\"")
+			if isSkillSelected(p.RequiredSkills, s.Name) {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<input type=\"checkbox\" name=\"required_skills\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -470,7 +470,7 @@ func PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Ski
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<input type=\"checkbox\" name=\"injected_skills\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<input type=\"checkbox\" name=\"required_skills\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
