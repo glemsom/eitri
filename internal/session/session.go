@@ -29,6 +29,10 @@ const sessionTitlePreviewMaxRunes = 31
 // Message is the canonical message type used throughout the application.
 // It is defined in internal/llm and re-exported here for backward compatibility
 // of the JSON serialization format. New code should import it directly from llm.
+//
+// This completes the migration of internal/session/ to the canonical Message
+// type (Spec 001, #854). The type alias ensures existing JSON snapshots on disk
+// remain loadable while the runtime uses the unified type directly.
 type Message = llm.Message
 
 // ComponentData holds a rendered UI component attached to an assistant message.
