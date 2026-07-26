@@ -87,7 +87,10 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 	allSessions := s.config.SessionManager.All()
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
-		summary := sessionToSummary(sess)
+		summary := sessionToSummaryFromID(s.config.SessionManager, sess.ID)
+		if summary == nil {
+			continue
+		}
 		// Enrich with run info if run active — snapshot under RunService.mu
 		if summary.Run != nil && s.config.RunService != nil {
 			if snap := s.config.RunService.ActiveRunSSESnapshot(sess.ID); snap != nil {
@@ -102,7 +105,7 @@ func (s *Server) handleDebugSessions(w http.ResponseWriter, r *http.Request) {
 		if s.config.DebugRecorder != nil {
 			summary.LatestHTTP = s.config.DebugRecorder.LastN(sess.ID, 3)
 		}
-		summaries = append(summaries, summary)
+		summaries = append(summaries, *summary)
 	}
 	if summaries == nil {
 		summaries = []debugSessionSummary{}
@@ -117,21 +120,22 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil {
 		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
+	convo := s.config.SessionManager.GetConversation(id)
 
 	// Support ?limit_messages=N
-	msgCount := len(sess.Messages)
+	msgCount := len(convo.Messages)
 	if limitStr := r.URL.Query().Get("limit_messages"); limitStr != "" {
 		if n, err := strconv.Atoi(limitStr); err == nil && n >= 0 && n < msgCount {
 			msgCount = n
 		}
 	}
 
-	messages := sess.Messages
+	messages := convo.Messages
 	if msgCount < len(messages) {
 		messages = messages[len(messages)-msgCount:]
 	}
@@ -140,16 +144,16 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 	}
 
 	detail := debugSessionDetail{
-		Session:      sessionToSummary(sess),
+		Session:      sessionToSummary(meta, convo),
 		Messages:     messages,
-		ActiveSkills: sess.ActiveSkills,
+		ActiveSkills: convo.ActiveSkills,
 	}
 	// Enrich with latest HTTP traces
 	if s.config.DebugRecorder != nil {
 		detail.Session.LatestHTTP = s.config.DebugRecorder.LastN(id, 3)
 	}
-	if sess.Status != session.StatusIdle {
-		detail.Run = &runInfo{Status: string(sess.Status)}
+	if meta.Status != session.StatusIdle {
+		detail.Run = &runInfo{Status: string(meta.Status)}
 		if s.config.RunService != nil {
 			if snap := s.config.RunService.ActiveRunSSESnapshot(id); snap != nil {
 				detail.Run.Busy = snap.Busy
@@ -292,23 +296,33 @@ func sanitizeConfig(cfg *config.Config) *sanitizedConfig {
 	}
 }
 
-func sessionToSummary(sess *session.UISession) debugSessionSummary {
-	lastMsgTime := sess.UpdatedAt
-	if len(sess.Messages) > 0 {
-		lastMsgTime = sess.Messages[len(sess.Messages)-1].CreatedAt
+func sessionToSummary(meta *session.SessionMeta, convo *session.Conversation) debugSessionSummary {
+	lastMsgTime := meta.UpdatedAt
+	if len(convo.Messages) > 0 {
+		lastMsgTime = convo.Messages[len(convo.Messages)-1].CreatedAt
 	}
 	summary := debugSessionSummary{
-		ID:                   sess.ID,
-		Title:                sess.Title,
-		Status:               string(sess.Status),
-		MessageCount:         len(sess.Messages),
-		ActiveSkills:         sess.ActiveSkills,
+		ID:                   meta.ID,
+		Title:                meta.Title,
+		Status:               string(meta.Status),
+		MessageCount:         len(convo.Messages),
+		ActiveSkills:         convo.ActiveSkills,
 		LastMessageTimestamp: lastMsgTime,
 	}
-	if sess.Status != session.StatusIdle {
-		summary.Run = &runInfo{Status: string(sess.Status)}
+	if meta.Status != session.StatusIdle {
+		summary.Run = &runInfo{Status: string(meta.Status)}
 	}
 	return summary
+}
+
+func sessionToSummaryFromID(mgr *session.Manager, id string) *debugSessionSummary {
+	meta := mgr.GetMeta(id)
+	if meta == nil {
+		return nil
+	}
+	convo := mgr.GetConversation(id)
+	summary := sessionToSummary(meta, convo)
+	return &summary
 }
 
 func (s *Server) handleDebugHTTP(w http.ResponseWriter, r *http.Request) {
@@ -385,7 +399,10 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 	allSessions := s.config.SessionManager.All()
 	summaries := make([]debugSessionSummary, 0, len(allSessions))
 	for _, sess := range allSessions {
-		summary := sessionToSummary(sess)
+		summary := sessionToSummaryFromID(s.config.SessionManager, sess.ID)
+		if summary == nil {
+			continue
+		}
 		if summary.Run != nil && s.config.RunService != nil {
 			if snap := s.config.RunService.ActiveRunSSESnapshot(sess.ID); snap != nil {
 				summary.Run.SSESubscriberCount = snap.SubscriberCount
@@ -396,7 +413,7 @@ func (s *Server) handleDebugUmbrella(w http.ResponseWriter, r *http.Request) {
 		if s.config.DebugRecorder != nil {
 			summary.LatestHTTP = s.config.DebugRecorder.LastN(sess.ID, 3)
 		}
-		summaries = append(summaries, summary)
+		summaries = append(summaries, *summary)
 	}
 	if summaries == nil {
 		summaries = []debugSessionSummary{}

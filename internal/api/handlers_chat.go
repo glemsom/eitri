@@ -20,8 +20,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -94,7 +93,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdTimeout := time.Duration(cfgState.cfg.CommandTimeout)
-	runCfg := runner.FromConfig(cfgState.cfg, sess.Workspace, cmdTimeout)
+	cfg := s.config.SessionManager.GetConfig(id)
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	runCfg := runner.FromConfig(cfgState.cfg, workspace, cmdTimeout)
 
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {
@@ -136,9 +140,9 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast run-started status to browser subscribers for real-time sidebar update
 	if s.config.RunService != nil {
-		sess := s.config.SessionManager.Get(id)
-		if sess != nil && sess.BrowserID != "" {
-			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
+		meta := s.config.SessionManager.GetMeta(id)
+		if meta != nil && meta.BrowserID != "" {
+			s.config.RunService.BroadcastToBrowser(meta.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
 				Data: map[string]any{
 					"session_id": id,
@@ -159,9 +163,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Render OOB-active-skill-chips swap for active skills (includes both
 	// slash command-activated and persona-injected skills). The OOB swap
 	// is idempotent — replacing existing chips with the same content is harmless.
-	if len(sess.ActiveSkills) > 0 {
-		contextFiles := runner.ScanContextFiles(sess.Workspace)
-		_ = templates.ActiveSkillChips(sess.ActiveSkills, contextFiles, true).Render(r.Context(), w)
+	activeSkills := s.config.SessionManager.ActiveSkills(id)
+	if len(activeSkills) > 0 {
+		contextFiles := runner.ScanContextFiles(workspace)
+		_ = templates.ActiveSkillChips(activeSkills, contextFiles, true).Render(r.Context(), w)
 	}
 }
 
@@ -169,8 +174,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -252,8 +256,8 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	sess := s.config.SessionManager.Get(id)
-	if sess == nil || sess.BrowserID != browserID {
+	meta := s.config.SessionManager.GetMeta(id)
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -263,8 +267,8 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast session status update for real-time sidebar refresh
 	if s.config.RunService != nil {
-		if sess.BrowserID != "" {
-			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
+		if meta.BrowserID != "" {
+			s.config.RunService.BroadcastToBrowser(meta.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
 				Data: map[string]any{
 					"session_id": id,

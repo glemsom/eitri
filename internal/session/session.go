@@ -794,3 +794,50 @@ func (m *Manager) UpdateConfig(id string, config *SessionConfig) {
 	}
 	s.UpdatedAt = time.Now()
 }
+
+// SetSystemPrompt sets the system prompt on a session.
+// No-op if the session does not exist.
+func (m *Manager) SetSystemPrompt(id, prompt string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.sessions[id]; s != nil {
+		s.SystemPrompt = prompt
+		s.UpdatedAt = time.Now()
+	}
+}
+
+// SetBrowserID reassigns a session to a new browser ID.
+// Handles updating both the session's BrowserID field and the
+// browser session index. No-op if the session does not exist.
+func (m *Manager) SetBrowserID(id, browserID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return
+	}
+	// Remove from old browser index
+	if s.BrowserID != "" {
+		oldList := m.browserSessions[s.BrowserID]
+		for i, sid := range oldList {
+			if sid == id {
+				m.browserSessions[s.BrowserID] = append(oldList[:i], oldList[i+1:]...)
+				break
+			}
+		}
+	}
+	s.BrowserID = browserID
+	m.browserSessions[browserID] = append(m.browserSessions[browserID], id)
+	s.UpdatedAt = time.Now()
+}
+
+// SetClosedAt sets the ClosedAt timestamp on a session. Pass nil to clear it.
+// No-op if the session does not exist.
+func (m *Manager) SetClosedAt(id string, t *time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.sessions[id]; s != nil {
+		s.ClosedAt = t
+		s.UpdatedAt = time.Now()
+	}
+}

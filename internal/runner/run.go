@@ -83,10 +83,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	// Store the system prompt on the UI session so it gets persisted
 	// in session snapshots and displayed in reports.
 	if s.uiSessionMgr != nil {
-		sess := s.uiSessionMgr.Get(sessionID)
-		if sess != nil {
-			sess.SystemPrompt = fullSystemPrompt
-		}
+		s.uiSessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
 	}
 
 	if s.historySessionMgr != nil {
@@ -276,9 +273,9 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 	}
 	// If the last message is an empty assistant (created by AppendComponent),
 	// update its content instead of creating a duplicate.
-	sess := s.uiSessionMgr.Get(sessionID)
-	if sess != nil && len(sess.Messages) > 0 {
-		last := sess.Messages[len(sess.Messages)-1]
+	convo := s.uiSessionMgr.GetConversation(sessionID)
+	if convo != nil && len(convo.Messages) > 0 {
+		last := convo.Messages[len(convo.Messages)-1]
 		if last.Role == "assistant" && last.Content == "" {
 			s.uiSessionMgr.UpdateLastAssistantContent(sessionID, content)
 			if reasoningContent != "" {
@@ -318,18 +315,15 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	}
 	s.uiSessionMgr.UpdateStatus(sessionID, status)
 
-	sess := s.uiSessionMgr.Get(sessionID)
-	if sess == nil {
+	meta := s.uiSessionMgr.GetMeta(sessionID)
+	if meta == nil || meta.BrowserID == "" {
 		return
 	}
-	if sess.BrowserID == "" {
-		return
-	}
-	s.broadcast.Broadcast(sess.BrowserID, BrowserEvent{
+	s.broadcast.Broadcast(meta.BrowserID, BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,
-			"status":     string(sess.Status),
+			"status":     string(meta.Status),
 		},
 	})
 }

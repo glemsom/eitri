@@ -151,7 +151,17 @@ func TestSessionToSummary_Idle(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	summary := sessionToSummary(sess)
+	meta := &session.SessionMeta{
+		ID:        sess.ID,
+		Title:     sess.Title,
+		Status:    sess.Status,
+		CreatedAt: sess.CreatedAt,
+		UpdatedAt: sess.UpdatedAt,
+	}
+	convo := &session.Conversation{
+		Messages: sess.Messages,
+	}
+	summary := sessionToSummary(meta, convo)
 	if summary.ID != "sess-1" {
 		t.Errorf("ID = %q, want %q", summary.ID, "sess-1")
 	}
@@ -179,7 +189,17 @@ func TestSessionToSummary_Running(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	summary := sessionToSummary(sess)
+	meta := &session.SessionMeta{
+		ID:        sess.ID,
+		Title:     sess.Title,
+		Status:    sess.Status,
+		CreatedAt: sess.CreatedAt,
+		UpdatedAt: sess.UpdatedAt,
+	}
+	convo := &session.Conversation{
+		Messages: sess.Messages,
+	}
+	summary := sessionToSummary(meta, convo)
 	if summary.Status != "running" {
 		t.Errorf("Status = %q, want running", summary.Status)
 	}
@@ -206,7 +226,17 @@ func TestSessionToSummary_NoMessages(t *testing.T) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	summary := sessionToSummary(sess)
+	meta := &session.SessionMeta{
+		ID:        sess.ID,
+		Title:     sess.Title,
+		Status:    sess.Status,
+		CreatedAt: sess.CreatedAt,
+		UpdatedAt: sess.UpdatedAt,
+	}
+	convo := &session.Conversation{
+		Messages: sess.Messages,
+	}
+	summary := sessionToSummary(meta, convo)
 	if summary.LastMessageTimestamp != now {
 		t.Errorf("LastMessageTimestamp = %v, want %v (no messages, fallback to UpdatedAt)", summary.LastMessageTimestamp, now)
 	}
@@ -218,7 +248,15 @@ func TestSessionToSummary_Error(t *testing.T) {
 		Title:  "Errored Session",
 		Status: session.StatusError,
 	}
-	summary := sessionToSummary(sess)
+	meta := &session.SessionMeta{
+		ID:     sess.ID,
+		Title:  sess.Title,
+		Status: sess.Status,
+	}
+	convo := &session.Conversation{
+		Messages: sess.Messages,
+	}
+	summary := sessionToSummary(meta, convo)
 	if summary.Status != "error" {
 		t.Errorf("Status = %q, want error", summary.Status)
 	}
