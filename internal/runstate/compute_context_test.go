@@ -9,7 +9,7 @@ import (
 func TestComputeContext_EmptyInput(t *testing.T) {
 	t.Parallel()
 
-	result := ComputeContext([]llm.Message{}, 128000)
+	result := ComputeContext([]llm.Message{}, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -44,7 +44,7 @@ func TestComputeContext_SystemPromptOnly(t *testing.T) {
 		{Role: "system", Content: "You are a helpful assistant."},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -72,7 +72,7 @@ func TestComputeContext_SystemWithSingleExchange(t *testing.T) {
 		{Role: "assistant", Content: "Hi there! How can I help?"},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -106,7 +106,7 @@ func TestComputeContext_SystemWithHistoryAndSkills(t *testing.T) {
 		{Role: "tool", Content: "file1.txt\nfile2.txt", ToolCallID: "call_1"},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -140,7 +140,7 @@ func TestComputeContext_SkillTokensExtractedCorrectly(t *testing.T) {
 		},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -169,7 +169,7 @@ func TestComputeContext_LargeContent(t *testing.T) {
 		{Role: "user", Content: string(largeContent)},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -192,7 +192,7 @@ func TestComputeContext_MultipleSystemMessages(t *testing.T) {
 		{Role: "user", Content: "Hello!"},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -217,7 +217,7 @@ func TestComputeContext_NoSkillNoActivatedSkill(t *testing.T) {
 		{Role: "user", Content: "Hi"},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -234,7 +234,7 @@ func TestComputeContext_CustomContextWindow(t *testing.T) {
 		{Role: "system", Content: "You are helpful."},
 	}
 
-	result := ComputeContext(msgs, 32000)
+	result := ComputeContext(msgs, 32000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -254,7 +254,7 @@ func TestComputeContext_ToolRoleIsHistory(t *testing.T) {
 		{Role: "tool", Content: "output", ToolCallID: "call_1"},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")
@@ -275,7 +275,7 @@ func TestComputeContext_CompletionTokensZero(t *testing.T) {
 		{Role: "system", Content: "You are helpful."},
 	}
 
-	result := ComputeContext(msgs, 128000)
+	result := ComputeContext(msgs, 128000, nil, "")
 
 	if result == nil {
 		t.Fatal("ComputeContext returned nil")

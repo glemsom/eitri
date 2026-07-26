@@ -1225,7 +1225,7 @@ func TestState_SubscribersCannotSubscribeAfterClose(t *testing.T) {
 func TestEstimateUsage_EmptyText(t *testing.T) {
 	t.Parallel()
 
-	result := EstimateUsage("")
+	result := EstimateUsage("", nil, "")
 	if result == nil {
 		t.Fatal("EstimateUsage returned nil")
 	}
@@ -1244,7 +1244,7 @@ func TestEstimateUsage_EmptyText(t *testing.T) {
 func TestEstimateUsage_ShortText(t *testing.T) {
 	t.Parallel()
 
-	result := EstimateUsage("Hello")
+	result := EstimateUsage("Hello", nil, "")
 	if result == nil {
 		t.Fatal("EstimateUsage returned nil")
 	}
@@ -1261,7 +1261,7 @@ func TestEstimateUsage_LongText(t *testing.T) {
 	for i := range text {
 		text[i] = 'a'
 	}
-	result := EstimateUsage(string(text))
+	result := EstimateUsage(string(text), nil, "")
 	if result == nil {
 		t.Fatal("EstimateUsage returned nil")
 	}
@@ -1283,10 +1283,7 @@ func TestEstimateUsage_TokenBreakdown(t *testing.T) {
 	for i := range text {
 		text[i] = 'a'
 	}
-	result := EstimateUsage(string(text))
-	if result == nil {
-		t.Fatal("EstimateUsage returned nil")
-	}
+	result := EstimateUsage(string(text), nil, "")
 	if result.TotalTokens != 1000 {
 		t.Errorf("TotalTokens = %d, want 1000", result.TotalTokens)
 	}

@@ -192,7 +192,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					content += "\n\n" + limitMsg
 				}
 				reasoningContent := sseState.ReasoningBufferString()
-				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content))
+				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content, nil, ""))
 				s.appendToSession(sessionID, content, reasoningContent)
 				s.snapshotSession(sessionID)
 				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
@@ -435,7 +435,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
 func compactSessionHistory(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool) ([]llm.Message, int, int, int, error) {
-	totalEst := compactor.MessagesTokenEstimate(messages)
+	totalEst := compactor.MessagesTokenEstimate(messages, nil, "")
 	if totalEst <= highWater {
 		return nil, 0, 0, 0, nil
 	}

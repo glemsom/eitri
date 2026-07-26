@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 // RenderKind maps SSE events to the render kind the browser island should POST.
@@ -384,7 +385,8 @@ type ContextUpdate struct {
 	SkillTokens      int `json:"skill_tokens"`
 }
 
-// ComputeContext estimates token counts for the given messages using a 4-char-per-token heuristic.
+// ComputeContext estimates token counts for the given messages using a
+// configurable chars-per-token ratio (from CalibrationStore, default 4.0).
 //
 // Token breakdown:
 //   - System tokens: sum of content lengths for messages with role "system"
@@ -393,8 +395,11 @@ type ContextUpdate struct {
 //   - Prompt tokens: system + history (skill tokens are part of system)
 //   - Completion tokens: 0 (set by caller when known)
 //   - Total tokens: prompt + completion
-func ComputeContext(messages []llm.Message, contextWindow int) *ContextUpdate {
-	const charsPerToken = 4
+func ComputeContext(messages []llm.Message, contextWindow int, store *tokenizer.CalibrationStore, model string) *ContextUpdate {
+	cpt := 4.0
+	if store != nil {
+		cpt = store.Lookup(model)
+	}
 
 	var historyLen int
 	var systemBuilder strings.Builder
@@ -409,7 +414,7 @@ func ComputeContext(messages []llm.Message, contextWindow int) *ContextUpdate {
 	}
 
 	systemContent := systemBuilder.String()
-	systemTokens := len(systemContent) / charsPerToken
+	systemTokens := int(float64(len(systemContent)) / cpt)
 	if systemTokens < 1 && len(systemContent) > 0 {
 		systemTokens = 1
 	}
@@ -418,10 +423,10 @@ func ComputeContext(messages []llm.Message, contextWindow int) *ContextUpdate {
 	var skillTokens int
 	if idx := strings.LastIndex(systemContent, "Activated skill"); idx >= 0 {
 		skillContent := systemContent[idx+len("Activated skill"):]
-		skillTokens = len(skillContent) / charsPerToken
+		skillTokens = int(float64(len(skillContent)) / cpt)
 	}
 
-	historyTokens := historyLen / charsPerToken
+	historyTokens := int(float64(historyLen) / cpt)
 	if historyTokens < 1 && historyLen > 0 {
 		historyTokens = 1
 	}
@@ -442,11 +447,15 @@ func ComputeContext(messages []llm.Message, contextWindow int) *ContextUpdate {
 }
 
 // EstimateUsage estimates token counts from text length.
-// Uses a rough ratio: ~4 chars per token for English text.
+// Uses the CalibrationStore's chars-per-token ratio for the given model,
+// falling back to 4.0 (the default) when store is nil.
 // This is a fallback when the provider doesn't return usage data.
-func EstimateUsage(text string) *TokenUsage {
-	const charsPerToken = 4
-	totalTokens := len(text) / charsPerToken
+func EstimateUsage(text string, store *tokenizer.CalibrationStore, model string) *TokenUsage {
+	cpt := 4.0
+	if store != nil {
+		cpt = store.Lookup(model)
+	}
+	totalTokens := int(float64(len(text)) / cpt)
 	if totalTokens < 1 {
 		totalTokens = 1
 	}

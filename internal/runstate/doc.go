@@ -12,7 +12,8 @@
 // that compose SSEEvent structs and broadcast them via State.
 //
 // ComputeContext estimates token counts for the current conversation using a
-// 4-char-per-token heuristic, broken down by category (system, skill, history).
+// configurable chars-per-token ratio (from CalibrationStore, default 4.0),
+// broken down by category (system, skill, history).
 //
 // Key types:
 //   - State — SSE subscriber fan-out and event history

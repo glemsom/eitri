@@ -118,7 +118,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg runconfig.
 	// cancellation before it could broadcast a done/error event), close them
 	// now so the subscriber goroutine terminates.
 	if !sseState.Closed() {
-		w.Done("batch_complete", runstate.EstimateUsage(sseState.BufferString()))
+		w.Done("batch_complete", runstate.EstimateUsage(sseState.BufferString(), nil, ""))
 	}
 
 	// Wait for subscriber goroutine to finish streaming remaining tokens
