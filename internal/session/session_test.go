@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 func TestCreateAndGet(t *testing.T) {
@@ -301,7 +302,7 @@ func TestAppendMessage(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	msg := session.Message{Role: "user", Content: "hello"}
+	msg := llm.Message{Role: "user", Content: "hello"}
 	mgr.AppendMessage(sess.ID, msg)
 
 	got := mgr.Get(sess.ID)
@@ -320,7 +321,7 @@ func TestAppendMessage_FirstUserMessageSetsTruncatedTitle(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   Fix   flaky session tab title behavior across browser tabs and runs   "})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "   Fix   flaky session tab title behavior across browser tabs and runs   "})
 
 	got := mgr.Get(sess.ID)
 	if got.Title != "Fix flaky session tab title be…" {
@@ -332,9 +333,9 @@ func TestAppendMessage_EveryUserMessageUpdatesTitle(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "first question"})
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "second question should rename"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "first question"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "answer"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "second question should rename"})
 
 	got := mgr.Get(sess.ID)
 	if got.Title != "second question should rename" {
@@ -346,7 +347,7 @@ func TestAppendMessage_BlankFirstUserMessageKeepsPlaceholderTitle(t *testing.T) 
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "   \n\t  "})
 
 	got := mgr.Get(sess.ID)
 	if got.Title != "Session 1" {
@@ -358,8 +359,8 @@ func TestAppendMessage_BlankFirstUserMessageDoesNotBlockLaterRename(t *testing.T
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "   \n\t  "})
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "real first question"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "   \n\t  "})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "real first question"})
 
 	got := mgr.Get(sess.ID)
 	if got.Title != "real first question" {
@@ -477,7 +478,7 @@ func TestAppendComponent(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 
 	// No assistant message yet — append should be no-op
-	comp := session.ComponentData{Name: "test_component", Data: map[string]any{"key": "val"}}
+	comp := llm.ComponentData{Name: "test_component", Data: map[string]any{"key": "val"}}
 	err := mgr.AppendComponent(sess.ID, comp)
 	if err != nil {
 		t.Fatalf("AppendComponent on empty session should not error: %v", err)
@@ -489,10 +490,10 @@ func TestAppendComponent(t *testing.T) {
 	}
 
 	// Add assistant message, then append component
-	assistantMsg := session.Message{Role: "assistant", Content: "Here is the diff"}
+	assistantMsg := llm.Message{Role: "assistant", Content: "Here is the diff"}
 	mgr.AppendMessage(sess.ID, assistantMsg)
 
-	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "test_component", Data: map[string]any{"diff": "+new code"}})
+	err = mgr.AppendComponent(sess.ID, llm.ComponentData{Name: "test_component", Data: map[string]any{"diff": "+new code"}})
 	if err != nil {
 		t.Fatalf("AppendComponent failed: %v", err)
 	}
@@ -512,7 +513,7 @@ func TestAppendComponent(t *testing.T) {
 	}
 
 	// Append second component to same message
-	err = mgr.AppendComponent(sess.ID, session.ComponentData{Name: "mermaid", Data: map[string]any{"chart": "graph"}})
+	err = mgr.AppendComponent(sess.ID, llm.ComponentData{Name: "mermaid", Data: map[string]any{"chart": "graph"}})
 	if err != nil {
 		t.Fatalf("AppendComponent second failed: %v", err)
 	}
@@ -529,9 +530,9 @@ func TestAppendComponent_NoAssistantMessage(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 
 	// Only user message — no assistant message yet
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "hello"})
 
-	err := mgr.AppendComponent(sess.ID, session.ComponentData{Name: "test_component", Data: nil})
+	err := mgr.AppendComponent(sess.ID, llm.ComponentData{Name: "test_component", Data: nil})
 	if err != nil {
 		t.Fatalf("AppendComponent without assistant message should not error: %v", err)
 	}
@@ -557,7 +558,7 @@ func TestAppendComponent_NoAssistantMessage(t *testing.T) {
 func TestAppendComponent_NonexistentSession(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
-	err := mgr.AppendComponent("nonexistent", session.ComponentData{Name: "test", Data: nil})
+	err := mgr.AppendComponent("nonexistent", llm.ComponentData{Name: "test", Data: nil})
 	if err != nil {
 		t.Errorf("AppendComponent for nonexistent session should not error, got: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestAppendComponent_ConcurrentSafety(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "answer"})
 
 	// Run concurrent appends to check for races
 	var wg sync.WaitGroup
@@ -575,7 +576,7 @@ func TestAppendComponent_ConcurrentSafety(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			mgr.AppendComponent(sess.ID, session.ComponentData{Name: "comp", Data: map[string]any{"i": i}})
+			mgr.AppendComponent(sess.ID, llm.ComponentData{Name: "comp", Data: map[string]any{"i": i}})
 		}(i)
 	}
 	wg.Wait()
@@ -630,8 +631,8 @@ func TestSetQuickReplies(t *testing.T) {
 	// Set on existing assistant message preserves quick replies on that message
 	mgr2 := session.NewManager(10, t.TempDir())
 	sess2, _ := mgr2.Create("browser-2")
-	mgr2.AppendMessage(sess2.ID, session.Message{Role: "user", Content: "hello"})
-	mgr2.AppendMessage(sess2.ID, session.Message{Role: "assistant", Content: "world"})
+	mgr2.AppendMessage(sess2.ID, llm.Message{Role: "user", Content: "hello"})
+	mgr2.AppendMessage(sess2.ID, llm.Message{Role: "assistant", Content: "world"})
 	err = mgr2.SetQuickReplies(sess2.ID, []string{"a", "b"})
 	if err != nil {
 		t.Fatalf("SetQuickReplies on existing assistant should not error: %v", err)
@@ -662,7 +663,7 @@ func TestSetLastReasoningContent(t *testing.T) {
 	}
 
 	// Add user message first
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "hello"})
 
 	// No assistant message yet → still no-op
 	mgr.SetLastReasoningContent(sess.ID, "should not appear 2")
@@ -672,7 +673,7 @@ func TestSetLastReasoningContent(t *testing.T) {
 	}
 
 	// Add assistant message
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "answer"})
 
 	// Set reasoning content
 	mgr.SetLastReasoningContent(sess.ID, "reasoning text")
@@ -712,7 +713,7 @@ func TestAppendLastReasoningContent(t *testing.T) {
 	}
 
 	// Add assistant message
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "answer"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "answer"})
 
 	// Append reasoning content (simulating streaming)
 	mgr.AppendLastReasoningContent(sess.ID, "part1")
@@ -739,7 +740,7 @@ func TestReasoningContentInAppendMessage(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 
 	// Create message with reasoning content directly
-	mgr.AppendMessage(sess.ID, session.Message{
+	mgr.AppendMessage(sess.ID, llm.Message{
 		Role:             "assistant",
 		Content:          "final answer",
 		ReasoningContent: "my reasoning",
@@ -1026,7 +1027,7 @@ func TestUpdateLastAssistantContent_UpdatesContent(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "original"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "original"})
 
 	mgr.UpdateLastAssistantContent(sess.ID, "updated")
 
@@ -1043,7 +1044,7 @@ func TestUpdateLastAssistantContent_NoAssistantMessage(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "hello"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "hello"})
 
 	// Should be a no-op since last message is not assistant
 	mgr.UpdateLastAssistantContent(sess.ID, "updated")
@@ -1082,7 +1083,7 @@ func TestUpdateLastAssistantContent_UpdatesUpdatedAt(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	mgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "original"})
+	mgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "original"})
 	originalUpdatedAt := mgr.Get(sess.ID).UpdatedAt
 
 	mgr.UpdateLastAssistantContent(sess.ID, "updated")
@@ -1102,7 +1103,7 @@ func TestLoadFromDisk_UnmarshalSessionAndAddToManager(t *testing.T) {
 	sess, _ := mgr.Create("browser-1")
 	sess.Title = "Test Session"
 	sess.Status = session.StatusRunning // will be forced to idle
-	sess.Messages = []session.Message{
+	sess.Messages = []llm.Message{
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: "Hi there"},
 	}
@@ -1214,7 +1215,7 @@ func TestLoadFromDisk_PreservesMessages(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, _ := mgr.Create("browser-1")
-	sess.Messages = []session.Message{
+	sess.Messages = []llm.Message{
 		{Role: "user", Content: "What is 2+2?"},
 		{Role: "assistant", Content: "4", ToolCalls: nil},
 		{Role: "tool", Content: "result", ToolCallID: "call_123"},

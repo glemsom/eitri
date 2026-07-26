@@ -395,7 +395,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 							}
 						}
 					} else {
-						_ = opts.UISessionMgr.AppendComponent(opts.SessionID, uisession.ComponentData{
+						_ = opts.UISessionMgr.AppendComponent(opts.SessionID, llm.ComponentData{
 							Name: compName,
 							Data: compData,
 						})

@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // ————— handleRoot —————
@@ -912,7 +913,7 @@ func TestHandleLoadSession_LoadsSessionFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.Title = "Historical Session"
-	sess.Messages = []session.Message{
+	sess.Messages = []llm.Message{
 		{Role: "user", Content: "Hello from the past"},
 		{Role: "assistant", Content: "Hello from the past as well"},
 	}
@@ -1481,7 +1482,7 @@ func TestHandleCleanupPruneByAge_DeletesOldDiskSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.Title = "Old Disk Session"
-	sess.Messages = []session.Message{
+	sess.Messages = []llm.Message{
 		{Role: "user", Content: "old"},
 	}
 	old := time.Now().Add(-30 * 24 * time.Hour)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -146,7 +147,7 @@ func TestSessionToSummary_Idle(t *testing.T) {
 		ID:        "sess-1",
 		Title:     "Test Session",
 		Status:    session.StatusIdle,
-		Messages:  []session.Message{},
+		Messages:  []llm.Message{},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -174,7 +175,7 @@ func TestSessionToSummary_Running(t *testing.T) {
 		ID:        "sess-2",
 		Title:     "Active Session",
 		Status:    session.StatusRunning,
-		Messages:  []session.Message{{Role: "user", Content: "hello", CreatedAt: now}},
+		Messages:  []llm.Message{{Role: "user", Content: "hello", CreatedAt: now}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}

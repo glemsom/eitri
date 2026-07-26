@@ -24,6 +24,7 @@ import (
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -1857,7 +1858,7 @@ func TestRenderMarkdown_DedupByMessageID(t *testing.T) {
 	}
 
 	sessionID := loc[1:]
-	ts.sessionMgr.AppendMessage(sessionID, session.Message{
+	ts.sessionMgr.AppendMessage(sessionID, llm.Message{
 		Role:    "assistant",
 		Content: "Hello world",
 	})
@@ -1925,7 +1926,7 @@ func TestRenderMarkdown_DedupSkipsNoMessageID(t *testing.T) {
 	}
 
 	sessionID := loc[1:]
-	ts.sessionMgr.AppendMessage(sessionID, session.Message{
+	ts.sessionMgr.AppendMessage(sessionID, llm.Message{
 		Role:    "assistant",
 		Content: "Hello world",
 	})

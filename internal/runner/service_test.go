@@ -19,6 +19,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
@@ -1541,7 +1542,7 @@ func TestRunService_LoadSessionFromDisk_LoadsAndRestores(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.Title = "Historical Session"
-	sess.Messages = []uisession.Message{
+	sess.Messages = []llm.Message{
 		{Role: "user", Content: "Hello from the past"},
 		{Role: "assistant", Content: "Hello from the past as well"},
 	}

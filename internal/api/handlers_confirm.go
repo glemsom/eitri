@@ -9,7 +9,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 )
 
 // unifiedRenderRequest is the JSON body for the unified render route.
@@ -162,7 +162,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 
 	case "markdown":
 		var content string
-		var components []session.ComponentData
+		var components []llm.ComponentData
 		var quickReplies []string
 		if sess != nil {
 			for i := len(sess.Messages) - 1; i >= 0; i-- {

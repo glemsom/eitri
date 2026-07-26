@@ -14,16 +14,6 @@ type Request struct {
 	SessionID       string // session-scoped prompt cache key; set only when provider supports prompt caching
 }
 
-// WireMessage is the legacy wire-format message for LLM API communication.
-// It is a subset of the canonical Message type and is used internally by
-// adapter implementations. New code should use Message instead.
-type WireMessage struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-}
-
 // ToolCall represents a function call made by the LLM.
 type ToolCall struct {
 	ID       string       `json:"id,omitempty"`

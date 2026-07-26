@@ -12,6 +12,7 @@ import (
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -204,8 +205,8 @@ func TestDebugSessionByID_WithMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "Hello", CreatedAt: time.Now()})
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "Hi!", CreatedAt: time.Now()})
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "Hello", CreatedAt: time.Now()})
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "Hi!", CreatedAt: time.Now()})
 
 	rec := debug.NewRecorder(10)
 	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte("req"), []byte("resp"), 200, time.Second, "", nil)
@@ -274,8 +275,8 @@ func TestDebugSessionByID_InvalidLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "Hello", CreatedAt: time.Now()})
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: "Hi!", CreatedAt: time.Now()})
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "Hello", CreatedAt: time.Now()})
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: "Hi!", CreatedAt: time.Now()})
 
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
 		sessionManager: sessionMgr,
