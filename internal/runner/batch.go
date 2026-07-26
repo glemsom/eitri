@@ -104,14 +104,16 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg runconfig.
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, loop.RunOpts{
-		HistoryMgr:    historyAdapter,
-		Confirmer:     nil,
-		UISessionMgr:  nil,
-		SessionID:     batchID,
-		ContextWindow: cfg.ContextWindowTokens,
-		CrashDumpFunc: nil,
-		Turns:         &turns,
-		DebugLLMDir:   cfg.DebugLLMDir,
+		HistoryMgr:      historyAdapter,
+		Confirmer:       nil,
+		UISessionMgr:    nil,
+		SessionID:       batchID,
+		ContextWindow:   cfg.ContextWindowTokens,
+		CrashDumpFunc:   nil,
+		Turns:           &turns,
+		DebugLLMDir:     cfg.DebugLLMDir,
+		CalibrationStore: s.calibrationStore,
+		ModelName:       cfg.ModelName,
 	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context

@@ -10,19 +10,22 @@ import (
 
 // drainStream reads all events from a stream channel and collects text content
 // and tool calls. Token events are forwarded to the SSE writer.
+// Returns the accumulated content, any tool calls, the Usage from the Done event
+// (may be nil if the provider did not send usage data), and any error.
 func drainStream(
 	ctx context.Context,
 	stream <-chan llm.StreamEvent,
 	sseWriter *runstate.Writer,
-) (*strings.Builder, []llm.ToolCall, error) {
+) (*strings.Builder, []llm.ToolCall, *llm.Usage, error) {
 	var content strings.Builder
 	var toolCalls []llm.ToolCall
+	var usage *llm.Usage
 
 	for {
 		select {
 		case evt, ok := <-stream:
 			if !ok {
-				return &content, toolCalls, nil
+				return &content, toolCalls, usage, nil
 			}
 
 			switch evt.Type {
@@ -42,13 +45,14 @@ func drainStream(
 				}
 
 			case llm.StreamEventTypeDone:
-				return &content, toolCalls, nil
+				usage = evt.Usage
+				return &content, toolCalls, usage, nil
 
 			case llm.StreamEventTypeError:
 				if evt.Error != nil {
-					return &content, toolCalls, evt.Error
+					return &content, toolCalls, usage, evt.Error
 				}
-				return &content, toolCalls, nil
+				return &content, toolCalls, usage, nil
 			}
 
 		case <-ctx.Done():
@@ -61,7 +65,7 @@ func drainStream(
 				select {
 				case evt, ok := <-stream:
 					if !ok {
-						return &content, toolCalls, ctx.Err()
+						return &content, toolCalls, usage, ctx.Err()
 					}
 					switch evt.Type {
 					case llm.StreamEventTypeToken:
@@ -76,16 +80,17 @@ func drainStream(
 							toolCalls = evt.ToolCalls
 						}
 					case llm.StreamEventTypeDone:
-						return &content, toolCalls, ctx.Err()
+						usage = evt.Usage
+						return &content, toolCalls, usage, ctx.Err()
 					case llm.StreamEventTypeError:
 						if evt.Error != nil {
-							return &content, toolCalls, evt.Error
+							return &content, toolCalls, usage, evt.Error
 						}
-						return &content, toolCalls, ctx.Err()
+						return &content, toolCalls, usage, ctx.Err()
 					}
 				default:
 					// No more buffered events — proceed with cancellation
-					return &content, toolCalls, ctx.Err()
+					return &content, toolCalls, usage, ctx.Err()
 				}
 			}
 		}

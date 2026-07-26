@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/adapters"
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
 )
@@ -2642,3 +2643,222 @@ func requirePanic(t *testing.T, fn func()) {
 	fn()
 }
 
+// ── Calibration tests ───────────────────────────────────────────────────────
+
+func TestUpdateCalibration_NilStore(t *testing.T) {
+	t.Parallel()
+	updateCalibration(nil, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 10})
+}
+
+func TestUpdateCalibration_EmptyModel(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	updateCalibration(store, "", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 10})
+	if cpt := store.Lookup(""); cpt != tokenizer.DefaultCPT {
+		t.Errorf("expected default CPT, got %f", cpt)
+	}
+}
+
+func TestUpdateCalibration_NilUsage(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, nil)
+	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
+		t.Errorf("expected default CPT, got %f", cpt)
+	}
+}
+
+func TestUpdateCalibration_ZeroPromptTokens(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 0})
+	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
+		t.Errorf("expected default CPT, got %f", cpt)
+	}
+}
+
+func TestUpdateCalibration_EmptyMessages(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	updateCalibration(store, "gpt-4", nil, &llm.Usage{PromptTokens: 10})
+	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
+		t.Errorf("expected default CPT, got %f", cpt)
+	}
+}
+
+func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	messages := []llm.Message{
+		{Role: "system", Content: "You are a helpful assistant."},          // 28 chars
+		{Role: "user", Content: "What is the weather?"},                    // 20 chars
+		{Role: "assistant", Content: "Let me check."},                      // 13 chars
+	}
+	// Input text length = 28 + 20 + 13 = 61 chars
+	// PromptTokens = 10
+	// CPT = 61 / 10 = 6.1
+	usage := &llm.Usage{PromptTokens: 10}
+
+	updateCalibration(store, "gpt-4", messages, usage)
+
+	cpt := store.Lookup("gpt-4")
+	expected := tokenizer.EMAAlpha*6.1 + (1-tokenizer.EMAAlpha)*tokenizer.DefaultCPT
+	expected = float64(int(expected*100)) / 100 // match rounding
+	if cpt != expected {
+		t.Errorf("Lookup() = %f, want %f (observed=6.1, old=%f)", cpt, expected, tokenizer.DefaultCPT)
+	}
+}
+
+func TestUpdateCalibration_MultipleUpdates(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	messages := []llm.Message{
+		{Role: "user", Content: "Hello, world!"},
+	}
+
+	// First update: len=13, tokens=3 → CPT≈4.33
+	updateCalibration(store, "gpt-4", messages, &llm.Usage{PromptTokens: 3})
+	cpt1 := store.Lookup("gpt-4")
+	if cpt1 == tokenizer.DefaultCPT {
+		t.Error("CPT should have diverged from default after first update")
+	}
+
+	// Second update: same messages, tokens=5 → CPT=2.6
+	updateCalibration(store, "gpt-4", messages, &llm.Usage{PromptTokens: 5})
+	cpt2 := store.Lookup("gpt-4")
+	if cpt2 == cpt1 {
+		t.Error("CPT should have changed after second update")
+	}
+}
+
+// TestRunAgent_CalibrationUpdate verifies that the CalibrationStore is NOT
+// updated when the provider does not return usage data in the Done event.
+func TestRunAgent_CalibrationUpdate(t *testing.T) {
+	t.Parallel()
+
+	store := tokenizer.NewCalibrationStore()
+
+	svc := newMockLLM([]mockTurn{
+		{
+			tokens: []tokenEvent{{content: "Hello! How can I help you?"}},
+		},
+	})
+
+	req := llm.Request{
+		Model: "gpt-4",
+		Messages: []llm.Message{
+			{Role: "user", Content: "Say hello"},
+		},
+	}
+
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:       adapters.NewRequestHistoryManager(&req),
+		Confirmer:        nil,
+		UISessionMgr:     nil,
+		SessionID:        "",
+		ContextWindow:    0,
+		CrashDumpFunc:    nil,
+		Turns:            nil,
+		CalibrationStore: store,
+		ModelName:        "gpt-4",
+	})
+	if err != nil {
+		t.Fatalf("RunAgent failed: %v", err)
+	}
+
+	// The mock sends StreamEventTypeDone without Usage data, so calibration
+	// should NOT have been updated (store.Lookup returns default).
+	cpt := store.Lookup("gpt-4")
+	if cpt != tokenizer.DefaultCPT {
+		t.Errorf("CPT should remain default when provider returns no usage, got %f", cpt)
+	}
+}
+
+// mockLLMWithUsage is an LLM service that returns usage data in the Done event.
+type mockLLMWithUsage struct {
+	msg   string
+	usage *llm.Usage
+}
+
+func (m *mockLLMWithUsage) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
+	return &llm.Response{
+		Content: m.msg,
+		Usage:   m.usage,
+	}, nil
+}
+
+func (m *mockLLMWithUsage) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
+	ch := make(chan llm.StreamEvent, 4)
+	ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: m.msg}
+	ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone, Usage: m.usage}
+	close(ch)
+	return ch, nil
+}
+
+// TestRunAgent_CalibrationUpdateWithUsage verifies that the CalibrationStore
+// is updated when the provider includes usage data in the Done event.
+func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
+	t.Parallel()
+
+	store := tokenizer.NewCalibrationStore()
+
+	svc := &mockLLMWithUsage{
+		msg:   "Hello!",
+		usage: &llm.Usage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
+	}
+
+	req := llm.Request{
+		Model: "gpt-4",
+		Messages: []llm.Message{
+			{Role: "user", Content: "Say hello"},
+		},
+	}
+
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Service:    svc,
+		Request:    &req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:       adapters.NewRequestHistoryManager(&req),
+		Confirmer:        nil,
+		UISessionMgr:     nil,
+		SessionID:        "",
+		ContextWindow:    0,
+		CrashDumpFunc:    nil,
+		Turns:            nil,
+		CalibrationStore: store,
+		ModelName:        "gpt-4",
+	})
+	if err != nil {
+		t.Fatalf("RunAgent failed: %v", err)
+	}
+
+	// Input text: "Say hello" = 9 chars
+	// PromptTokens: 5
+	// Observed CPT: 9/5 = 1.8
+	cpt := store.Lookup("gpt-4")
+	expected := tokenizer.EMAAlpha*1.8 + (1-tokenizer.EMAAlpha)*tokenizer.DefaultCPT
+	expected = float64(int(expected*100)) / 100
+	if cpt != expected {
+		t.Errorf("CPT = %f, want %f", cpt, expected)
+	}
+}
+
+// ensure tokenizer import is used
+var _ = tokenizer.NewCalibrationStore

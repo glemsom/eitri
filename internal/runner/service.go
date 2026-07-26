@@ -22,6 +22,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 // RunState holds SSE broadcast state and cancel for one run.
@@ -56,6 +57,7 @@ type RunServiceDeps struct {
 	DebugRecorder     *debug.Recorder               // optional HTTP trace recorder
 	CrashDumpFunc     func(err error, stack []byte) // optional; called on fatal agent error
 	Persister         *persist.Persister            // optional; writes session snapshots & traces to disk
+	CalibrationStore  *tokenizer.CalibrationStore   // optional; per-model CPT calibration
 }
 
 // RunService owns the run lifecycle: agent loop execution,
@@ -82,6 +84,7 @@ type RunService struct {
 	persistAuth       PersistAuthFunc
 	crashDumpFunc     func(err error, stack []byte)
 	persister         *persist.Persister // optional; writes session snapshots & traces to disk
+	calibrationStore  *tokenizer.CalibrationStore // optional; per-model CPT calibration
 }
 
 const completedRunRetention = 5 * time.Second
@@ -99,6 +102,7 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		debugRecorder:     deps.DebugRecorder,
 		crashDumpFunc:     deps.CrashDumpFunc,
 		persister:         deps.Persister,
+		calibrationStore:  deps.CalibrationStore,
 	}
 }
 

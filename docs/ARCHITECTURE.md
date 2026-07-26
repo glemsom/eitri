@@ -129,7 +129,16 @@ Provides `WrapCommand(workspace, command, Config)` which returns the executable 
 
 Network-agnostic: manages channels, not HTTP connections. Each active runner run creates one `State` via `runstate.New()`. The runner broadcasts `SSEEvent` values; `api.Server` connects subscribers to SSE HTTP streams.
 
-**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length.
+**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios.
+
+### `internal/tokenizer/` — Token estimation and calibration
+
+| File | Responsibility |
+|------|---------------|
+| `calibration_store.go` | `CalibrationStore` — per-model chars-per-token (CPT) exponential moving average with thread-safe access |
+| `calibration_store_test.go` | Unit tests for EMA math, concurrent access, default fallback, reset |
+
+The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns.
 
 ### `internal/session/` — UI session management
 

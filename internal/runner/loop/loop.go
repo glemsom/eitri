@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/runconfig"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 )
 
@@ -90,6 +91,15 @@ type RunOpts struct {
 	// set on the RunOpts struct. The snapshot runs synchronously and blocks
 	// the next turn or the SSE "done" event.
 	TurnCompleter TurnCompleter
+
+	// CalibrationStore tracks per-model chars-per-token averages.
+	// When non-nil, token usage from LLM responses is fed back to update
+	// the calibration after each streaming response completes.
+	CalibrationStore *tokenizer.CalibrationStore
+
+	// ModelName is the current model identifier, used as the key for
+	// calibration lookups and updates. When empty, calibration is skipped.
+	ModelName string
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
@@ -207,7 +217,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Process stream events
-		content, toolCalls, streamErr := drainStream(ctx, stream, spec.SSEWriter)
+		content, toolCalls, usage, streamErr := drainStream(ctx, stream, spec.SSEWriter)
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
@@ -224,6 +234,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
 			return streamErr
 		}
+
+		// Feed provider usage data into CalibrationStore.
+		updateCalibration(opts.CalibrationStore, opts.ModelName, spec.Request.Messages, usage)
+
 		if len(toolCalls) > 0 {
 			slog.Debug("tool calls received", slog.Int("count", len(toolCalls)))
 			for _, tc := range toolCalls {
@@ -417,4 +431,45 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
 	return &runconfig.MaxTurnsExceededError{Limit: maxTurns}
+}
+
+// updateCalibration feeds provider usage data from a completed LLM response
+// into the CalibrationStore. It computes chars_per_token = inputLen / promptTokens
+// and calls store.Update(model, cpt).
+//
+// Edge cases handled:
+//   - store is nil → skip
+//   - model name is empty → skip
+//   - usage is nil or PromptTokens == 0 → skip
+//   - first turn uses default CPT if no calibration data exists yet
+//
+// Calibration changes are logged at Debug level.
+func updateCalibration(store *tokenizer.CalibrationStore, model string, messages []llm.Message, usage *llm.Usage) {
+	if store == nil || model == "" || usage == nil || usage.PromptTokens <= 0 {
+		return
+	}
+
+	// Compute total input text length from the messages sent in the request.
+	inputLen := 0
+	for _, msg := range messages {
+		inputLen += len(msg.Content)
+	}
+	if inputLen == 0 {
+		return
+	}
+
+	cpt := float64(inputLen) / float64(usage.PromptTokens)
+
+	oldCPT := store.Lookup(model)
+	store.Update(model, cpt)
+	newCPT := store.Lookup(model)
+
+	slog.Debug("calibration update",
+		slog.String("model", model),
+		slog.Float64("old_cpt", oldCPT),
+		slog.Float64("new_cpt", newCPT),
+		slog.Float64("observed_cpt", cpt),
+		slog.Int("prompt_tokens", usage.PromptTokens),
+		slog.Int("input_chars", inputLen),
+	)
 }
