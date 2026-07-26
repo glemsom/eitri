@@ -83,6 +83,15 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	toolReg.Register(tool.NewDelegate(s))
 	toolReg.Register(tool.NewCollect(s))
 
+	// Store the system prompt on the UI session so it gets persisted
+	// in session snapshots and displayed in reports.
+	if s.uiSessionMgr != nil {
+		sess := s.uiSessionMgr.Get(sessionID)
+		if sess != nil {
+			sess.SystemPrompt = fullSystemPrompt
+		}
+	}
+
 	if s.historySessionMgr != nil {
 		s.historySessionMgr.Create(sessionID)
 		s.historySessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)

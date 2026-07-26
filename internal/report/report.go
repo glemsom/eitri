@@ -80,6 +80,7 @@ type Summary struct {
 type SessionReport struct {
 	SessionID   string            `json:"session_id"`
 	Title       string            `json:"title"`
+	SystemPrompt string           `json:"system_prompt,omitempty"`
 	Model       string            `json:"model"`
 	Provider    string            `json:"provider"`
 	Workspace   string            `json:"workspace"`
@@ -388,6 +389,7 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 
 	report.Title = snap.Title
 	report.Workspace = snap.Workspace
+	report.SystemPrompt = snap.SystemPrompt
 
 	// Map messages into turns by looking at timestamps
 	msgIdx := 0

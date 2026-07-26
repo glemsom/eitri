@@ -70,6 +70,10 @@ type UISession struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 	ClosedAt     *time.Time `json:"closed_at,omitempty"` // set when session is closed (not deleted)
 
+	// SystemPrompt is the system prompt used for this session's run.
+	// Persisted to session snapshots so reports can display it.
+	SystemPrompt string `json:"system_prompt,omitempty"`
+
 	// Ring buffer of last N rendered message IDs for dedup on reconnect.
 	// Capacity 10; oldest are evicted.
 	RenderedMessageIDs   []string `json:"rendered_message_ids,omitempty"`

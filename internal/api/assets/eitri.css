@@ -3234,6 +3234,43 @@ eitri-context {
   border-color: var(--accent);
 }
 
+/* System Prompt section */
+.report-system-prompt {
+  margin-top: 12px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.report-system-prompt summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.report-system-prompt summary:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.report-system-prompt-content {
+  padding: 12px;
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
 /* Timeline */
 .report-timeline {
   display: flex;
