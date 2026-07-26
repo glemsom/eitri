@@ -1075,6 +1075,199 @@ func TestHandleLoadSession_NoBrowserID_GetsOne(t *testing.T) {
 	}
 }
 
+// ————— handleCleanupDeleteClosed —————
+
+func TestHandleCleanupDeleteClosed_DeletesClosedInMemorySessions(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-del-closed-mem"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close via the API so ClosedAt is persisted
+	closeReq, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID, nil)
+	closeReq.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	closeResp, err := client.Do(closeReq)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id} failed: %v", err)
+	}
+	closeResp.Body.Close()
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/delete-closed", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/delete-closed failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Session should be gone from manager
+	if got := sessionMgr.Get(sess.ID); got != nil {
+		t.Error("closed session was not deleted from manager")
+	}
+}
+
+func TestHandleCleanupDeleteClosed_PreservesActiveSessions(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-del-closed-preserve"
+	active, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close the second session via API
+	closeReq, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+closed.ID, nil)
+	closeReq.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	closeResp, err := client.Do(closeReq)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id} failed: %v", err)
+	}
+	closeResp.Body.Close()
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/delete-closed", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/delete-closed failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Active session should remain
+	if got := sessionMgr.Get(active.ID); got == nil {
+		t.Error("active session was deleted but should have been preserved")
+	}
+	// Closed session should be gone
+	if got := sessionMgr.Get(closed.ID); got != nil {
+		t.Error("closed session was not deleted")
+	}
+}
+
+func TestHandleCleanupDeleteClosed_DeletesClosedDiskSessions(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-del-closed-disk"
+
+	// Create, persist, and close a session via the API (which persists ClosedAt)
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	// Close via the API handler so ClosedAt is persisted
+	closeReq, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID, nil)
+	closeReq.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	closeResp, err := client.Do(closeReq)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id} failed: %v", err)
+	}
+	closeResp.Body.Close()
+
+	// Verify ClosedAt was persisted by checking the disk info
+	info, err := p.LoadSessionInfo(sess.ID)
+	if err != nil {
+		t.Fatalf("LoadSessionInfo: %v", err)
+	}
+	if info == nil {
+		t.Fatal("session should still be on disk")
+	}
+	if info.ClosedAt == nil {
+		t.Error("ClosedAt should be persisted on disk after close")
+	}
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/delete-closed", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/delete-closed failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Should not be on disk anymore
+	diskIDs, err := p.ListOnDiskSessionIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range diskIDs {
+		if id == sess.ID {
+			t.Error("closed disk session was not deleted")
+		}
+	}
+}
+
+func TestHandleCleanupDeleteClosed_ReturnsValidHTML(t *testing.T) {
+	server, sessionMgr, _ := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-del-closed-html"
+	_, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close via API so persister has ClosedAt
+	closeReq, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+closed.ID, nil)
+	closeReq.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	closeResp, err := client.Do(closeReq)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id} failed: %v", err)
+	}
+	closeResp.Body.Close()
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/delete-closed", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/delete-closed failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	content := string(body)
+
+	// Response should be HTML containing a sessions-table
+	if !strings.Contains(content, "sessions-table") {
+		t.Errorf("response should contain a sessions-table, got: %s", content[:min(len(content), 500)])
+	}
+
+	// Should NOT contain an <html> tag (should be a fragment, not full document)
+	if strings.Contains(content, "<html") {
+		t.Error("response should be an HTML fragment, not a full document")
+	}
+}
+
 // ————— handleCleanupPruneByAge —————
 
 func TestHandleCleanupPruneByAge_RequiresAgeDays(t *testing.T) {

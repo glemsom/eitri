@@ -3683,7 +3683,8 @@ eitri-context {
 }
 
 .sessions-table {
-  width: 100%;
+  min-width: 100%;
+  width: auto;
   border-collapse: collapse;
   font-size: 14px;
 }

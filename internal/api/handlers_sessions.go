@@ -199,16 +199,17 @@ func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Save final snapshot before removing from memory
-	if p := s.config.Persister; p != nil {
-		if err := p.SnapshotSession(id, sess); err != nil {
+	// Close session in memory (sets ClosedAt timestamp before final snapshot)
+	closedSess := s.config.SessionManager.Close(id)
+
+	// Save final snapshot with ClosedAt set so delete-closed can find it
+	if p := s.config.Persister; p != nil && closedSess != nil {
+		if err := p.SnapshotSession(id, closedSess); err != nil {
 			s.logger.Warn("failed to snapshot session on close",
 				slog.String("session_id", id),
 				slog.Any("error", err))
 		}
 	}
-
-	s.config.SessionManager.Close(id)
 
 	// Redirect to next available session or root
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
