@@ -15,7 +15,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -327,7 +326,7 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	if sess.BrowserID == "" {
 		return
 	}
-	s.broadcast.Broadcast(sess.BrowserID, broadcast.BrowserEvent{
+	s.broadcast.Broadcast(sess.BrowserID, BrowserEvent{
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,

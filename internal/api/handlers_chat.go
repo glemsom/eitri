@@ -9,7 +9,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runner"
-	"github.com/glemsom/eitri/internal/runner/broadcast"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -139,7 +138,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if s.config.RunService != nil {
 		sess := s.config.SessionManager.Get(id)
 		if sess != nil && sess.BrowserID != "" {
-			s.config.RunService.BroadcastToBrowser(sess.BrowserID, broadcast.BrowserEvent{
+			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
 				Data: map[string]any{
 					"session_id": id,
@@ -265,7 +264,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	// Broadcast session status update for real-time sidebar refresh
 	if s.config.RunService != nil {
 		if sess.BrowserID != "" {
-			s.config.RunService.BroadcastToBrowser(sess.BrowserID, broadcast.BrowserEvent{
+			s.config.RunService.BroadcastToBrowser(sess.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
 				Data: map[string]any{
 					"session_id": id,
@@ -306,7 +305,7 @@ func (s *Server) handleBrowserEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	// Send initial connected event
-	fmt.Fprintf(w, "data: %s\n\n", string(mustJSON(broadcast.BrowserEvent{Type: "connected"})))
+	fmt.Fprintf(w, "data: %s\n\n", string(mustJSON(runner.BrowserEvent{Type: "connected"})))
 	flusher.Flush()
 
 	ctx := r.Context()

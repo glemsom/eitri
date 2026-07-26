@@ -15,7 +15,6 @@ import (
 	"github.com/glemsom/eitri/internal/persist"
 
 	"github.com/glemsom/eitri/internal/runner/adapters"
-	"github.com/glemsom/eitri/internal/runner/broadcast"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/llm"
@@ -888,7 +887,7 @@ func TestRunService_BroadcastToBrowser_DeliversToSubscribers(t *testing.T) {
 	id, ch := svc.SubscribeBrowser("browser-1")
 	defer svc.UnsubscribeBrowser("browser-1", id)
 
-	evt := broadcast.BrowserEvent{Type: "test-event", Data: "hello"}
+	evt := BrowserEvent{Type: "test-event", Data: "hello"}
 	svc.BroadcastToBrowser("browser-1", evt)
 
 	select {
@@ -1423,7 +1422,7 @@ func TestRunService_NotifyAllClosed(t *testing.T) {
 
 func TestRunService_BroadcastStatusUpdate(t *testing.T) {
 	svc := NewRunService(RunServiceDeps{})
-	bb := broadcast.New()
+	bb := New()
 
 	uiMgr := uisession.NewManager(10, t.TempDir())
 	sess, err := uiMgr.Create("browser-1")

@@ -12,14 +12,13 @@
 //   - RunConfig — per-run configuration (provider, model, system prompt, turns)
 //   - RunState — one active run's SSE state, cancel func, and completion signal
 //   - BrowserEvent — event sent to browser-level SSE subscribers
-//     (defined in broadcast sub-package)
+//     (defined in this package)
 //
 // # Sub-package hierarchy
 //
 //	runner/            — RunService wiring, RunConfig, RunState, run tracking,
 //	                     batch mode, sub-agent orchestration,
 //	                     system prompt assembly, skill context
-//	├── broadcast/     — BrowserBroadcaster, BrowserEvent types
 //	├── adapters/      — HistoryManager and Confirmer interfaces +
 //	│                    implementations (sessionHistoryManager,
 //	│                    requestHistoryManager, testConfirmerStub,
@@ -65,7 +64,6 @@
 //
 // And from its own sub-packages:
 //
-//   - runner/broadcast  — BrowserBroadcaster, BrowserEvent
 //   - runner/adapters   — HistoryManager, Confirmer, ConfirmationResult
 //   - runner/loop       — RunAgent, RunSpec, RunOpts
 //
