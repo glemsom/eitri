@@ -606,10 +606,11 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg r
 	// LowWater=0 means the compactor will compact until no more
 	// tool results remain (or the default low-water logic activates).
 	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
-		HighWater:              0,
-		LowWater:               0,
-		MessageSizeThreshold:   cfg.CompactionMessageSizeThreshold,
-		ToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
+		HighWater:                0,
+		LowWater:                 0,
+		MessageSizeThreshold:     cfg.CompactionMessageSizeThreshold,
+		ToolCallRetentionTurns:   cfg.CompactionToolCallRetentionTurns,
+		SalienceEnabled:          cfg.CompactionSalienceEnabled,
 	})
 	if compErr != nil {
 		return 0, 0, 0, fmt.Errorf("compaction failed: %w", compErr)

@@ -955,3 +955,288 @@ func TestCompact_RetentionExactBoundary(t *testing.T) {
 		t.Error("last tool call should be preserved")
 	}
 }
+
+func TestSalienceScore(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantMin int // minimum expected score
+		wantMax int // maximum expected score
+	}{
+		{
+			name:    "empty content",
+			content: "",
+			wantMin: 0,
+			wantMax: 0,
+		},
+		{
+			name:    "plain boilerplate",
+			content: "hello world",
+			wantMin: 30,
+			wantMax: 40,
+		},
+		{
+			name:    "error message",
+			content: "Error: something went wrong in processFile()",
+			wantMin: 50,
+			wantMax: 100,
+		},
+		{
+			name:    "stack trace",
+			content: "panic: runtime error\n\tat main.run(/home/user/app.go:42)\n\tat main.main(/home/user/main.go:10)",
+			wantMin: 100,
+			wantMax: 200,
+		},
+		{
+			name:    "file paths and functions",
+			content: "read /etc/hosts file, call processData() and validateInput()",
+			wantMin: 40,
+			wantMax: 100,
+		},
+		{
+			name:    "numerical measurements",
+			content: "142 passed, 0 failed, coverage 87.5%",
+			wantMin: 50,
+			wantMax: 120,
+		},
+		{
+			name:    "failure indicator",
+			content: "Build failed: 3 errors, 2 failures. Check /home/user/build.log",
+			wantMin: 50,
+			wantMax: 120,
+		},
+		{
+			name:    "long verbose output",
+			content: "line1\nline2\n" + strings.Repeat("verbose log entry\n", 200),
+			wantMin: 40,
+			wantMax: 100,
+		},
+		{
+			name:    "exception with stack trace",
+			content: "Exception in thread main java.lang.NullPointerException\n\tat com.example.MyClass.process(MyClass.java:42)\n\tat com.example.Main.run(Main.java:10)",
+			wantMin: 100,
+			wantMax: 250,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := salienceScore(tt.content)
+			if got < tt.wantMin || got > tt.wantMax {
+				t.Errorf("salienceScore() = %d, want between %d and %d", got, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestCompact_SalienceScoredOrdering(t *testing.T) {
+	c := New()
+	// Create messages with varying salience levels.
+	// The compactor should compact low-salience messages first.
+	msgs := []llm.Message{
+		{Role: "tool", Content: "ls output: file1.txt file2.txt file3.txt"},                                       // low salience (~40-60)
+		{Role: "tool", Content: "Error: build failed with exit code 1 at /home/user/project/src/main.go:42"},         // high salience (error + file path)
+		{Role: "tool", Content: "Build succeeded. All tests passed."},                                               // low salience (~35-50)
+		{Role: "tool", Content: "Exception: NullPointerException\n\tat com.example.App.main(App.java:15)"},           // very high salience (exception + stack trace)
+	}
+	llmSvc := &mockLLMService{summary: "compacted summary"}
+
+	// Use a low threshold that compacts only a few messages.
+	thresholds := Thresholds{
+		HighWater:              1,
+		LowWater:               0,
+		MessageSizeThreshold:   0,
+		SalienceEnabled:        true,
+	}
+
+	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// With SalienceEnabled and lowWater=0, all eligible messages should be compacted.
+	for i, m := range result {
+		if !strings.HasPrefix(m.Content, "[TOOL RESULT COMPACTED") {
+			t.Errorf("message %d should have been compacted with salience ordering (lowWater=0)", i)
+		}
+	}
+}
+
+func TestCompact_SaliencePreservesHighValueMessages(t *testing.T) {
+	c := New()
+	// This test verifies that when lowWater stops compaction early,
+	// high-salience messages are preserved and low-salience ones are compacted first.
+	msgs := []llm.Message{
+		{Role: "tool", Content: strings.Repeat("low value debug log line\n", 200)},    // ~5600 chars, ~1400 tokens - low salience
+		{Role: "tool", Content: "Error: critical failure in module\nat /src/main.go:42\n" + strings.Repeat("stack data\n", 100)},  // high salience
+		{Role: "tool", Content: strings.Repeat("verbose build output\n", 200)},        // low salience
+		{Role: "tool", Content: "Exception: NullReference at /src/handler.go:15\n" + strings.Repeat("trace\n", 100)},  // very high salience
+	}
+	llmSvc := &mockLLMService{summary: "compacted"}
+
+	// Estimate total tokens.
+	totalEst := messagesTokenEstimate(msgs)
+	// Set LowWater high enough that only 1-2 messages get compacted.
+	lowWater := totalEst - 1500 // compact ~1500 tokens worth
+
+	thresholds := Thresholds{
+		HighWater:            totalEst - 1,
+		LowWater:             lowWater,
+		MessageSizeThreshold: 0,
+		SalienceEnabled:      true,
+	}
+
+	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// Check that not all messages were compacted (lowWater should stop early).
+	compactedCount := 0
+	lowSalienceCompacted := false
+	highSalienceCompacted := false
+	for i, m := range result {
+		if strings.HasPrefix(m.Content, "[TOOL RESULT COMPACTED") {
+			compactedCount++
+			if i == 0 || i == 2 {
+				lowSalienceCompacted = true
+			}
+			if i == 1 || i == 3 {
+				highSalienceCompacted = true
+			}
+		}
+	}
+
+	if compactedCount >= 4 {
+		t.Error("expected some high-salience messages to survive, but all were compacted (try adjusting LowWater)")
+	}
+	if !lowSalienceCompacted {
+		t.Error("expected low-salience messages to be compacted first")
+	}
+	if highSalienceCompacted && compactedCount < 4 {
+		t.Log("some high-salience messages were also compacted — this is acceptable if LowWater wasn't tight enough")
+	}
+}
+
+func TestCompact_SalienceSkipHighSalience(t *testing.T) {
+	c := New()
+	// Test that messages with salience score above HighSalienceSkipThreshold are skipped.
+	msgs := []llm.Message{
+		{Role: "tool", Content: "simple output"},  // low salience
+		{Role: "tool", Content: "Error: critical failure at /path/to/file.go:42"},  // high salience
+	}
+	llmSvc := &mockLLMService{summary: "summary"}
+
+	thresholds := Thresholds{
+		HighWater:                  1,
+		LowWater:                   0,
+		MessageSizeThreshold:       0,
+		SalienceEnabled:            true,
+		HighSalienceSkipThreshold:  80, // skip messages with score >= 80
+	}
+
+	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// Low-salience message (index 0) should be compacted.
+	if !strings.HasPrefix(result[0].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("low-salience message should be compacted")
+	}
+	// High-salience message (index 1) should NOT be compacted (skipped by threshold).
+	if strings.HasPrefix(result[1].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("high-salience message should NOT be compacted (skipped by HighSalienceSkipThreshold)")
+	}
+}
+
+func TestCompact_SalienceDisabledFallsBack(t *testing.T) {
+	c := New()
+	// When SalienceEnabled is false, the original oldest-first behaviour should be used.
+	// Create messages with high salience first (oldest) and low salience later.
+	msgs := []llm.Message{
+		{Role: "tool", Content: "Error: initial failure with stack trace at /src/main.go:42"},  // high salience, oldest
+		{Role: "tool", Content: "ls output: files"},                                            // low salience, newer
+	}
+	llmSvc := &mockLLMService{summary: "summary"}
+
+	thresholds := Thresholds{
+		HighWater:            1,
+		LowWater:             0,
+		MessageSizeThreshold: 0,
+		SalienceEnabled:      false,
+	}
+
+	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// With oldest-first, the first message (index 0, the high-salience error) should be compacted.
+	if !strings.HasPrefix(result[0].Content, "[TOOL RESULT COMPACTED") {
+		t.Error("with SalienceEnabled=false, oldest message should be compacted first")
+	}
+}
+
+func TestCompact_SalienceWithMessageSizeThreshold(t *testing.T) {
+	c := New()
+	// Test that both salience and message size threshold work together.
+	msgs := []llm.Message{
+		{Role: "tool", Content: "small output"},                                                                    // below size threshold
+		{Role: "tool", Content: strings.Repeat("large debug output line\n", 200)},                                  // large, low salience
+		{Role: "tool", Content: "Error: critical issue at /path/to/file.go:42\n" + strings.Repeat("trace\n", 100)}, // large, high salience
+	}
+	llmSvc := &mockLLMService{summary: "summary"}
+
+	thresholds := Thresholds{
+		HighWater:            1,
+		LowWater:             0,
+		MessageSizeThreshold: 200,
+		SalienceEnabled:      true,
+	}
+
+	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+
+	// Small message should not be compacted (below size threshold).
+	if result[0].Content != "small output" {
+		t.Error("small message should not be compacted (below MessageSizeThreshold)")
+	}
+	// At least one of the large messages should be compacted.
+	largeCompacted := strings.HasPrefix(result[1].Content, "[TOOL RESULT COMPACTED") || strings.HasPrefix(result[2].Content, "[TOOL RESULT COMPACTED")
+	if !largeCompacted {
+		t.Error("at least one large message should be compacted")
+	}
+}

@@ -18,7 +18,7 @@
 //
 // # Thresholds
 //
-// Compaction uses a two-threshold system:
+// Compaction uses a multi-threshold system:
 //   - HighWater: when total estimated tokens exceed this value, compaction
 //     triggers (e.g., 90% of the context window).
 //   - LowWater: compaction stops once total estimated tokens fall below
@@ -29,6 +29,27 @@
 //   - ToolCallRetentionTurns: number of recent assistant messages whose ToolCall
 //     arguments are preserved. Older assistant messages have their arguments
 //     pruned to a compact placeholder. 0 means no pruning.
+//   - SalienceEnabled: when true (default), messages are scored by heuristic
+//     salience and compaction proceeds from lowest-scoring (least important)
+//     message first. When false, the original greedy oldest-first behaviour
+//     is used.
+//   - HighSalienceSkipThreshold: messages whose salience score equals or exceeds
+//     this value are skipped entirely and never compacted. 0 means no messages
+//     are skipped based on salience.
+//
+// # Salience scoring
+//
+// When SalienceEnabled is true, each compactable message is scored by a heuristic
+// that considers:
+//   - Presence of error/failure indicators (error, fail, exception, panic, etc.)
+//   - Presence of stack traces and file paths
+//   - Presence of function/method names
+//   - Presence of numerical results and measurements
+//   - Message length (very short or very long verbose messages score lower)
+//
+// Messages are sorted by score ascending and compacted from least important first.
+// The low-water stop condition is checked after each compaction, respecting the
+// new ordering.
 //
 // # Role-aware compaction
 //
