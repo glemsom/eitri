@@ -398,8 +398,14 @@ func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
 	component.Render(r.Context(), w)
 }
 
-// handleCleanupDeleteClosed permanently removes ALL closed sessions from disk and memory.
+// handleCleanupDeleteClosed permanently removes ALL persisted sessions from disk and memory.
 // POST /api/sessions/cleanup/delete-closed
+//
+// "Stored sessions" means sessions persisted on disk that are not currently
+// active in memory.  This includes sessions that were properly closed (have
+// ClosedAt set) as well as sessions that were snapshotted during a run but
+// never explicitly closed (missing ClosedAt due to earlier code versions, crash
+// without close, etc.).  Active in-memory sessions are preserved.
 func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Request) {
 	browserID := s.browserIDFromRequest(r)
 
@@ -408,7 +414,7 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Collect all session IDs to delete: closed in-memory sessions + closed disk sessions
+	// Collect all session IDs to delete: closed in-memory sessions + stored disk sessions
 	var toDelete []string
 
 	// Closed in-memory sessions for this browser
@@ -420,7 +426,9 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Closed disk sessions (not in memory)
+	// Disk sessions (not in memory) — delete all of them, regardless of ClosedAt.
+	// Sessions stored on disk without ClosedAt (e.g. from before the fix, or
+	// saved during a run then never explicitly closed) must be deletable too.
 	diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
 	if err != nil {
 		s.logger.Warn("failed to list disk sessions", slog.Any("error", err))
@@ -435,13 +443,9 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 			if activeIDs[id] {
 				continue
 			}
-			info, err := s.config.Persister.LoadSessionInfo(id)
-			if err != nil || info == nil {
-				continue
-			}
-			if info.ClosedAt != nil {
-				toDelete = append(toDelete, id)
-			}
+			// No need to load info — we delete every disk session that isn't
+			// in memory.  LoadSessionInfo is an unnecessary read at this point.
+			toDelete = append(toDelete, id)
 		}
 	}
 
@@ -535,7 +539,7 @@ func (s *Server) handleCleanupPruneByAge(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Closed disk sessions (not in memory)
+	// Disk sessions (not in memory)
 	diskIDs, err := s.config.Persister.ListOnDiskSessionIDs()
 	if err != nil {
 		s.logger.Warn("failed to list disk sessions", slog.Any("error", err))
@@ -554,7 +558,13 @@ func (s *Server) handleCleanupPruneByAge(w http.ResponseWriter, r *http.Request)
 			if err != nil || info == nil {
 				continue
 			}
-			if info.ClosedAt != nil && info.ClosedAt.Before(cutoff) {
+			// Use ClosedAt if available, fall back to UpdatedAt for sessions
+			// that were snapshotted without being explicitly closed.
+			ageRef := info.UpdatedAt
+			if info.ClosedAt != nil {
+				ageRef = *info.ClosedAt
+			}
+			if ageRef.Before(cutoff) {
 				toDelete = append(toDelete, id)
 			}
 		}

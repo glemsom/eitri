@@ -1267,6 +1267,68 @@ func TestHandleCleanupDeleteClosed_RedirectsToSessions(t *testing.T) {
 	}
 }
 
+// TestHandleCleanupDeleteClosed_DeletesSessionsWithoutClosedAt proves that
+// sessions stored on disk without a ClosedAt timestamp are still deleted
+// by the cleanup handler. This is the core bug: sessions persisted during
+// normal runs (Flush) or from earlier code versions have no closed_at field,
+// so the old ClosedAt != nil guard skipped them entirely.
+func TestHandleCleanupDeleteClosed_DeletesSessionsWithoutClosedAt(t *testing.T) {
+	server, sessionMgr, p := newTestServerWithPersister(t)
+	client := noRedirectClient()
+
+	browserID := "test-no-closedat"
+
+	// Create a session
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Snapshot it WITHOUT closing — simulates what Flush does during a run,
+	// and what old code did before the Close/Snapshot ordering fix.
+	if err := p.SnapshotSession(sess.ID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	// Remove from memory (simulates server restart or explicit close without persist)
+	sessionMgr.Close(sess.ID)
+
+	// Verify: on disk but WITHOUT ClosedAt
+	info, err := p.LoadSessionInfo(sess.ID)
+	if err != nil {
+		t.Fatalf("LoadSessionInfo: %v", err)
+	}
+	if info == nil {
+		t.Fatal("session should be on disk")
+	}
+	if info.ClosedAt != nil {
+		t.Fatal("session should NOT have ClosedAt — this test requires a snapshot without close")
+	}
+
+	// Now call cleanup — this should delete the session even though ClosedAt is nil
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/cleanup/delete-closed", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/cleanup/delete-closed failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (redirect), got %d", resp.StatusCode)
+	}
+
+	// Session should be gone from disk
+	info, err = p.LoadSessionInfo(sess.ID)
+	if err != nil {
+		t.Fatalf("LoadSessionInfo after cleanup: %v", err)
+	}
+	if info != nil {
+		t.Fatal("session WITHOUT ClosedAt was NOT deleted by cleanup handler — BUG!")
+	}
+}
+
 // ————— handleCleanupPruneByAge —————
 
 func TestHandleCleanupPruneByAge_RequiresAgeDays(t *testing.T) {
