@@ -13,6 +13,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -317,7 +318,7 @@ func TestHandleRender_MarkdownKind(t *testing.T) {
 	}
 
 	// Add an assistant message so markdown render can find it
-	sessionMgr.AppendMessage(sess.ID, session.Message{
+	sessionMgr.AppendMessage(sess.ID, llm.Message{
 		Role:    "assistant",
 		Content: "Hello **world**!",
 	})
@@ -364,7 +365,7 @@ func TestHandleRender_MarkdownDedupByMessageID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessionMgr.AppendMessage(sess.ID, session.Message{
+	sessionMgr.AppendMessage(sess.ID, llm.Message{
 		Role:    "assistant",
 		Content: "Test content",
 	})

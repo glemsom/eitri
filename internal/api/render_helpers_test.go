@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/session"
 )
 
 // ─── hasMermaidComponent ───────────────────────────────────────────────
 
 func TestHasMermaidComponent_True(t *testing.T) {
-	components := []session.ComponentData{
+	components := []llm.ComponentData{
 		{Name: "QuickReplies", Data: map[string]any{}},
 		{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}},
 	}
@@ -21,7 +22,7 @@ func TestHasMermaidComponent_True(t *testing.T) {
 }
 
 func TestHasMermaidComponent_False(t *testing.T) {
-	components := []session.ComponentData{
+	components := []llm.ComponentData{
 		{Name: "QuickReplies", Data: map[string]any{}},
 		{Name: "SomeOtherComponent", Data: map[string]any{}},
 	}
@@ -31,7 +32,7 @@ func TestHasMermaidComponent_False(t *testing.T) {
 }
 
 func TestHasMermaidComponent_Empty(t *testing.T) {
-	if hasMermaidComponent([]session.ComponentData{}) {
+	if hasMermaidComponent([]llm.ComponentData{}) {
 		t.Error("expected hasMermaidComponent to return false for empty slice")
 	}
 }
@@ -117,7 +118,7 @@ func TestRenderSessionForPage_EmptySession(t *testing.T) {
 func TestRenderSessionForPage_UserMessage(t *testing.T) {
 	sess := &session.UISession{
 		ID: "sess-1",
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "Hello **world**"},
 		},
 	}
@@ -140,7 +141,7 @@ func TestRenderSessionForPage_UserMessage(t *testing.T) {
 func TestRenderSessionForPage_AssistantWithoutMermaid(t *testing.T) {
 	sess := &session.UISession{
 		ID: "sess-1",
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{Role: "assistant", Content: "Hello **world**\n\n```go\nfmt.Println(\"hi\")\n```"},
 		},
 	}
@@ -165,11 +166,11 @@ func TestRenderSessionForPage_AssistantWithoutMermaid(t *testing.T) {
 func TestRenderSessionForPage_AssistantWithMermaidComponent(t *testing.T) {
 	sess := &session.UISession{
 		ID: "sess-1",
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{
 				Role:    "assistant",
 				Content: "Here is a diagram:\n\n```mermaid\ngraph TD; A-->B;\n```\n\nDone.",
-				Components: []session.ComponentData{
+				Components: []llm.ComponentData{
 					{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}},
 				},
 			},
@@ -223,14 +224,14 @@ func TestRenderComponentsToHTML_Empty(t *testing.T) {
 	if got != "" {
 		t.Errorf("expected empty for nil components, got %q", got)
 	}
-	got = renderComponentsToHTML(context.Background(), "sess-1", []session.ComponentData{})
+	got = renderComponentsToHTML(context.Background(), "sess-1", []llm.ComponentData{})
 	if got != "" {
 		t.Errorf("expected empty for empty components, got %q", got)
 	}
 }
 
 func TestRenderComponentsToHTML_MermaidDiagram(t *testing.T) {
-	components := []session.ComponentData{
+	components := []llm.ComponentData{
 		{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}},
 	}
 	got := renderComponentsToHTML(context.Background(), "sess-1", components)
@@ -246,7 +247,7 @@ func TestRenderComponentsToHTML_MermaidDiagram(t *testing.T) {
 }
 
 func TestRenderComponentsToHTML_MultipleComponents(t *testing.T) {
-	components := []session.ComponentData{
+	components := []llm.ComponentData{
 		{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A;"}},
 	}
 	got := renderComponentsToHTML(context.Background(), "sess-1", components)

@@ -65,7 +65,7 @@ func TestSnapshotSession_WritesSingleFile(t *testing.T) {
 		ID:        sessionID,
 		Title:     "Test Session",
 		Status:    session.StatusIdle,
-		Messages:  []session.Message{{Role: "user", Content: "hello", CreatedAt: now}},
+		Messages:  []llm.Message{{Role: "user", Content: "hello", CreatedAt: now}},
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -325,7 +325,7 @@ func TestLoadSession_ReturnsSessionData(t *testing.T) {
 		ID:        sessionID,
 		Title:     "Load Test",
 		Status:    session.StatusIdle,
-		Messages:  []session.Message{
+		Messages:  []llm.Message{
 			{Role: "user", Content: "hi", CreatedAt: now},
 			{Role: "assistant", Content: "hello", CreatedAt: now, ToolCalls: []llm.ToolCall{
 				{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "test", Arguments: `{}`}},
@@ -605,7 +605,7 @@ func TestSnapshotSession_CarriesToolCallFields(t *testing.T) {
 		ID:     sessionID,
 		Title:  "Tool Call Test",
 		Status: session.StatusIdle,
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{
 				Role:       "tool",
 				Content:    "result",
@@ -680,7 +680,7 @@ func TestRestore_ReturnsSessionsAndTraces(t *testing.T) {
 		ID:      "sess-a",
 		Title:   "Session A",
 		Status:  session.StatusIdle,
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hi"},
 			{Role: "assistant", Content: "hello"},
 		},
@@ -691,7 +691,7 @@ func TestRestore_ReturnsSessionsAndTraces(t *testing.T) {
 		ID:      "sess-b",
 		Title:   "Session B",
 		Status:  session.StatusIdle,
-		Messages: []session.Message{
+		Messages: []llm.Message{
 			{Role: "user", Content: "hey"},
 		},
 		CreatedAt: time.Now(),
@@ -786,7 +786,7 @@ func TestPrune_UnderCapDoesNothing(t *testing.T) {
 		ID:      "prune-test",
 		Title:   "Prune Test",
 		Status:  session.StatusIdle,
-		Messages: []session.Message{{Role: "user", Content: "hello"}},
+		Messages: []llm.Message{{Role: "user", Content: "hello"}},
 	}
 	if err := p.SnapshotSession("prune-test", s); err != nil {
 		t.Fatal(err)

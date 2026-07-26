@@ -13,6 +13,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -709,8 +710,8 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "user", Content: "show rich output"})
-	sessionMgr.AppendMessage(sess.ID, session.Message{Role: "assistant", Content: strings.Join([]string{
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "show rich output"})
+	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: strings.Join([]string{
 		"Here is rich output.",
 		"",
 		"Inline math $a+b$.",

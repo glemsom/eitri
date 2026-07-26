@@ -25,24 +25,4 @@ type ComponentData struct {
 	Data map[string]any `json:"data"`
 }
 
-// ToOld converts the canonical Message to the legacy wire-format Message.
-// This is a temporary helper for code not yet migrated to the canonical type.
-func (m Message) ToOld() WireMessage {
-	return WireMessage{
-		Role:       m.Role,
-		Content:    m.Content,
-		ToolCallID: m.ToolCallID,
-		ToolCalls:  m.ToolCalls,
-	}
-}
 
-// FromOld creates a canonical Message from a legacy wire-format Message.
-// This is a temporary helper for code producing the old type.
-func FromOld(old WireMessage) Message {
-	return Message{
-		Role:       old.Role,
-		Content:    old.Content,
-		ToolCallID: old.ToolCallID,
-		ToolCalls:  old.ToolCalls,
-	}
-}

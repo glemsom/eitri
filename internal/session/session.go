@@ -26,18 +26,7 @@ const (
 
 const sessionTitlePreviewMaxRunes = 31
 
-// Message is the canonical message type used throughout the application.
-// It is defined in internal/llm and re-exported here for backward compatibility
-// of the JSON serialization format. New code should import it directly from llm.
-//
-// This completes the migration of internal/session/ to the canonical Message
-// type (Spec 001, #854). The type alias ensures existing JSON snapshots on disk
-// remain loadable while the runtime uses the unified type directly.
-type Message = llm.Message
 
-// ComponentData holds a rendered UI component attached to an assistant message.
-// It is defined in internal/llm and re-exported here for backward compatibility.
-type ComponentData = llm.ComponentData
 
 // ContextFile represents a file loaded as additional agent context
 // (e.g., AGENTS.md or a file referenced by AGENTS.md).
@@ -55,7 +44,7 @@ type UISession struct {
 	ParentID     string    `json:"parent_id,omitempty"`
 	Title        string    `json:"title"`
 	Status       Status    `json:"status"`
-	Messages     []Message `json:"messages"`
+	Messages     []llm.Message `json:"messages"`
 	ActiveSkills []string  `json:"active_skills"` // names of activated skills
 	Workspace    string    `json:"workspace"`     // filesystem root directory for this session
 	CreatedAt    time.Time `json:"created_at"`
@@ -89,7 +78,7 @@ type SessionMeta struct {
 // Conversation holds the chat data of a session.
 // It is a read-only view extracted from UISession.
 type Conversation struct {
-	Messages     []Message
+	Messages     []llm.Message
 	SystemPrompt string
 	ActiveSkills []string
 }
@@ -130,7 +119,7 @@ func NewManager(maxSessions int, defaultWorkspace string) *Manager {
 // so the caller can read fields without holding the manager lock.
 func copySession(s *UISession) *UISession {
 	cp := *s
-	cp.Messages = make([]Message, len(s.Messages))
+	cp.Messages = make([]llm.Message, len(s.Messages))
 	copy(cp.Messages, s.Messages)
 	cp.RenderedMessageIDs = make([]string, len(s.RenderedMessageIDs))
 	copy(cp.RenderedMessageIDs, s.RenderedMessageIDs)
@@ -177,7 +166,7 @@ func (m *Manager) Create(browserID string) (*UISession, error) {
 		BrowserID: browserID,
 		Title:     fmt.Sprintf("Session %d", m.nextSessionNum[browserID]),
 		Status:    StatusIdle,
-		Messages:  make([]Message, 0),
+		Messages:  make([]llm.Message, 0),
 		Workspace: m.defaultWorkspace,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -291,7 +280,7 @@ func (m *Manager) CreateChild(parentID, browserID, title string) (*UISession, er
 		ParentID:  parentID,
 		Title:     title,
 		Status:    StatusRunning,
-		Messages:  make([]Message, 0),
+		Messages:  make([]llm.Message, 0),
 		Workspace: parent.Workspace,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -485,7 +474,7 @@ func (m *Manager) SetWorkspace(id, workspace string) {
 
 // AppendMessage appends a message to a session. No-op if session not found.
 // Title is updated to the latest user message's preview.
-func (m *Manager) AppendMessage(id string, msg Message) {
+func (m *Manager) AppendMessage(id string, msg llm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if s := m.sessions[id]; s != nil {
@@ -501,7 +490,7 @@ func (m *Manager) AppendMessage(id string, msg Message) {
 
 // AppendComponent appends component data to a session.
 // Creates an empty assistant message if no assistant message exists yet.
-func (m *Manager) AppendComponent(id string, comp ComponentData) error {
+func (m *Manager) AppendComponent(id string, comp llm.ComponentData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
@@ -515,7 +504,7 @@ func (m *Manager) AppendComponent(id string, comp ComponentData) error {
 	if last.Role != "assistant" {
 		// Create an assistant message so components have a target to attach to.
 		// Content will be filled when the run completes.
-		s.Messages = append(s.Messages, Message{
+		s.Messages = append(s.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
@@ -537,7 +526,7 @@ func (m *Manager) SetQuickReplies(id string, options []string) error {
 		return nil
 	}
 	if len(s.Messages) == 0 || s.Messages[len(s.Messages)-1].Role != "assistant" {
-		s.Messages = append(s.Messages, Message{
+		s.Messages = append(s.Messages, llm.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
@@ -731,7 +720,7 @@ func (m *Manager) GetConversation(id string) *Conversation {
 	if s == nil {
 		return nil
 	}
-	msgs := make([]Message, len(s.Messages))
+	msgs := make([]llm.Message, len(s.Messages))
 	copy(msgs, s.Messages)
 	skills := make([]string, len(s.ActiveSkills))
 	copy(skills, s.ActiveSkills)
@@ -780,7 +769,7 @@ func (m *Manager) UpdateMeta(id string, meta *SessionMeta) {
 
 // AppendToConversation appends a message to the session's conversation.
 // No-op if the session does not exist.
-func (m *Manager) AppendToConversation(id string, msg Message) {
+func (m *Manager) AppendToConversation(id string, msg llm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]

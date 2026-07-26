@@ -290,7 +290,7 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 			return
 		}
 	}
-	s.uiSessionMgr.AppendMessage(sessionID, uisession.Message{
+	s.uiSessionMgr.AppendMessage(sessionID, llm.Message{
 		Role:             "assistant",
 		Content:          content,
 		ReasoningContent: reasoningContent,
