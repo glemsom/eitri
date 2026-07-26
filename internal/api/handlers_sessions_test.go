@@ -1105,8 +1105,12 @@ func TestHandleCleanupDeleteClosed_DeletesClosedInMemorySessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	// Handler redirects to /sessions (HX-Redirect in production, standard Location redirect in test)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 redirect, got %d", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/sessions" {
+		t.Errorf("expected redirect to /sessions, got %q", loc)
 	}
 
 	// Session should be gone from manager
@@ -1147,8 +1151,8 @@ func TestHandleCleanupDeleteClosed_PreservesActiveSessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Active session should remain
@@ -1206,8 +1210,8 @@ func TestHandleCleanupDeleteClosed_DeletesClosedDiskSessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Should not be on disk anymore
@@ -1222,11 +1226,11 @@ func TestHandleCleanupDeleteClosed_DeletesClosedDiskSessions(t *testing.T) {
 	}
 }
 
-func TestHandleCleanupDeleteClosed_ReturnsValidHTML(t *testing.T) {
+func TestHandleCleanupDeleteClosed_RedirectsToSessions(t *testing.T) {
 	server, sessionMgr, _ := newTestServerWithPersister(t)
 	client := noRedirectClient()
 
-	browserID := "test-del-closed-html"
+	browserID := "test-del-closed-redirect"
 	_, err := sessionMgr.Create(browserID)
 	if err != nil {
 		t.Fatal(err)
@@ -1254,17 +1258,12 @@ func TestHandleCleanupDeleteClosed_ReturnsValidHTML(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	content := string(body)
-
-	// Response should be HTML containing a sessions-table
-	if !strings.Contains(content, "sessions-table") {
-		t.Errorf("response should contain a sessions-table, got: %s", content[:min(len(content), 500)])
+	// Should redirect to /sessions
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302, got %d", resp.StatusCode)
 	}
-
-	// Should NOT contain an <html> tag (should be a fragment, not full document)
-	if strings.Contains(content, "<html") {
-		t.Error("response should be an HTML fragment, not a full document")
+	if loc := resp.Header.Get("Location"); loc != "/sessions" {
+		t.Errorf("expected redirect Location to /sessions, got %q", loc)
 	}
 }
 
@@ -1331,8 +1330,8 @@ func TestHandleCleanupPruneByAge_PreservesActiveSessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Session should still exist (closed but younger than 7 days)
@@ -1367,8 +1366,8 @@ func TestHandleCleanupPruneByAge_DeletesOldClosedSessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Session should be deleted from memory
@@ -1400,8 +1399,8 @@ func TestHandleCleanupPruneByAge_PreservesActiveNotClosedSessions(t *testing.T) 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Active session should still exist
@@ -1446,8 +1445,8 @@ func TestHandleCleanupPruneByAge_DeletesOldDiskSessions(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected 302 (HX-Redirect), got %d", resp.StatusCode)
 	}
 
 	// Session should be deleted from disk

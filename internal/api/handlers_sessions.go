@@ -12,7 +12,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/runner"
-	"github.com/glemsom/eitri/internal/session"
 )
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -447,7 +446,6 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Perform deletion
-	var deleted int
 	for _, id := range toDelete {
 		// Close in-memory (if active)
 		if s.config.RunService != nil {
@@ -460,47 +458,11 @@ func (s *Server) handleCleanupDeleteClosed(w http.ResponseWriter, r *http.Reques
 				slog.Any("error", err))
 			continue
 		}
-		deleted++
 	}
 
-	// Build updated sessions list for HTMX response
-	var activeSessions []*session.UISession
-	if browserID != "" {
-		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
-	}
-
-	remainingDiskIDs, _ := s.config.Persister.ListOnDiskSessionIDs()
-	activeIDSet := make(map[string]bool, len(activeSessions))
-	for _, as := range activeSessions {
-		activeIDSet[as.ID] = true
-	}
-	var diskRows []templates.SessionRow
-	for _, id := range remainingDiskIDs {
-		if activeIDSet[id] {
-			continue
-		}
-		info, err := s.config.Persister.LoadSessionInfo(id)
-		if err != nil || info == nil {
-			continue
-		}
-		duration := info.UpdatedAt.Sub(info.CreatedAt)
-		if info.ClosedAt != nil {
-			duration = info.ClosedAt.Sub(info.CreatedAt)
-		}
-		diskRows = append(diskRows, templates.SessionRow{
-			ID:        info.ID,
-			Title:     info.Title,
-			TurnCount: info.Messages,
-			CreatedAt: info.CreatedAt,
-			UpdatedAt: info.UpdatedAt,
-			Duration:  duration,
-			IsClosed:  info.ClosedAt != nil,
-		})
-	}
-
-	component := templates.SessionsList(activeSessions, diskRows)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	component.Render(r.Context(), w)
+	// Redirect to sessions page so the user sees the updated list.
+	// Full page navigation guarantees the UI reflects the changes reliably.
+	s.hxRedirect(w, r, "/sessions")
 }
 
 // handleCleanupClearAllTraces removes all trace files from all sessions on disk.
@@ -599,7 +561,6 @@ func (s *Server) handleCleanupPruneByAge(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Perform deletion
-	var deleted int
 	for _, id := range toDelete {
 		if s.config.RunService != nil {
 			_ = s.config.RunService.CloseSession(id)
@@ -611,53 +572,8 @@ func (s *Server) handleCleanupPruneByAge(w http.ResponseWriter, r *http.Request)
 				slog.Any("error", err))
 			continue
 		}
-		deleted++
 	}
 
-	// Build updated sessions list for HTMX response
-	var activeSessions []*session.UISession
-	if browserID != "" {
-		activeSessions = s.config.SessionManager.ListByBrowser(browserID)
-	}
-
-	remainingDiskIDs, _ := s.config.Persister.ListOnDiskSessionIDs()
-	activeIDSet := make(map[string]bool, len(activeSessions))
-	for _, as := range activeSessions {
-		activeIDSet[as.ID] = true
-	}
-	var diskRows []templates.SessionRow
-	for _, id := range remainingDiskIDs {
-		if activeIDSet[id] {
-			continue
-		}
-		info, err := s.config.Persister.LoadSessionInfo(id)
-		if err != nil || info == nil {
-			continue
-		}
-		duration := info.UpdatedAt.Sub(info.CreatedAt)
-		if info.ClosedAt != nil {
-			duration = info.ClosedAt.Sub(info.CreatedAt)
-		}
-		diskRows = append(diskRows, templates.SessionRow{
-			ID:        info.ID,
-			Title:     info.Title,
-			TurnCount: info.Messages,
-			CreatedAt: info.CreatedAt,
-			UpdatedAt: info.UpdatedAt,
-			Duration:  duration,
-			IsClosed:  info.ClosedAt != nil,
-		})
-	}
-
-	// Render both the sessions list (for the list swap) and cleanup (for stats)
-	// We swap the sessions list outerHTML and the cleanup section via OOB swap
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = templates.SessionsList(activeSessions, diskRows).Render(r.Context(), w)
-	diskUsageBytes, _ := s.config.Persister.DiskUsageBytes()
-
-	// Render cleanup section as OOB swap to update disk usage
-	// Use a wrapping div with hx-swap-oob for HTMX out-of-band swap
-	_, _ = fmt.Fprintf(w, `<div id="sessions-cleanup" hx-swap-oob="true">`)
-	_ = templates.SessionsCleanup(diskUsageBytes).Render(r.Context(), w)
-	_, _ = fmt.Fprintf(w, `</div>`)
+	// Redirect to sessions page so the user sees the updated list.
+	s.hxRedirect(w, r, "/sessions")
 }
