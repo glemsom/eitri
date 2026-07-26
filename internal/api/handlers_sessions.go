@@ -194,9 +194,70 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// Save final snapshot before removing from memory
+	if p := s.config.Persister; p != nil {
+		if err := p.SnapshotSession(id, sess); err != nil {
+			s.logger.Warn("failed to snapshot session on close",
+				slog.String("session_id", id),
+				slog.Any("error", err))
+		}
+	}
+
+	s.config.SessionManager.Close(id)
+
+	// Redirect to next available session or root
+	sessions := s.config.SessionManager.ListByBrowser(browserID)
+	if len(sessions) > 0 {
+		s.hxRedirect(w, r, "/sessions/"+sessions[0].ID)
+		return
+	}
+
+	// No sessions left, create one
+	newSess, err := s.config.SessionManager.Create(browserID)
+	if err != nil {
+		w.WriteHeader(http.StatusTooManyRequests)
+		component := templates.ErrorToast(err.Error())
+		component.Render(r.Context(), w)
+		return
+	}
+
+	s.hxRedirect(w, r, "/sessions/"+newSess.ID)
+}
+
+// handlePermanentDelete permanently removes a session from both memory and disk.
+// This is the "delete" action (vs close which keeps disk data).
+// Wired from the gear menu Sessions page (ticket #5).
+func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	browserID := s.browserIDFromRequest(r)
+
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
+
+	sess := s.config.SessionManager.Get(id)
+	if sess == nil {
+		// Session already gone — redirect
+		s.hxRedirect(w, r, "/")
+		return
+	}
+	if sess.BrowserID != browserID {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	s.notifySessionClosed(id, "Session deleted")
+	if s.config.RunService != nil {
+		if err := s.config.RunService.CloseSession(id); err != nil {
+			http.Error(w, "Failed to close session", http.StatusInternalServerError)
+			return
+		}
+	}
 	s.config.SessionManager.Delete(id)
 
-	// Remove persisted data from disk (best-effort; in-memory deletion already happened)
+	// Permanently remove persisted data from disk
 	if p := s.config.Persister; p != nil {
 		if err := p.DeleteSession(id); err != nil {
 			s.logger.Warn("failed to delete persisted session data",

@@ -478,9 +478,9 @@ func TestHandleGetSession_WithoutCookie_GetsOne(t *testing.T) {
 	}
 }
 
-// ————— handleDeleteSession —————
+// ————— handleDeleteSession (close) —————
 
-func TestHandleDeleteSession_DeletesAndRedirects(t *testing.T) {
+func TestHandleDeleteSession_ClosesAndRedirects(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
@@ -488,7 +488,7 @@ func TestHandleDeleteSession_DeletesAndRedirects(t *testing.T) {
 
 	client := noRedirectClient()
 
-	browserID := "test-delete-session"
+	browserID := "test-close-session"
 	sess, err := sessionMgr.Create(browserID)
 	if err != nil {
 		t.Fatal(err)
@@ -503,7 +503,7 @@ func TestHandleDeleteSession_DeletesAndRedirects(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Should redirect to a new session (handler creates one when last is deleted)
+	// Should redirect to a new session (handler creates one when last is closed)
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("expected status 302, got %d", resp.StatusCode)
 	}
@@ -513,9 +513,9 @@ func TestHandleDeleteSession_DeletesAndRedirects(t *testing.T) {
 		t.Errorf("expected redirect to /sessions/{id}, got %q", location)
 	}
 
-	// Session should be deleted
-	if deleted := sessionMgr.Get(sess.ID); deleted != nil {
-		t.Error("session was not deleted from manager")
+	// Session should be closed (removed from manager)
+	if closed := sessionMgr.Get(sess.ID); closed != nil {
+		t.Error("session was not closed from manager")
 	}
 }
 
@@ -577,7 +577,7 @@ func TestHandleDeleteSession_NonExistentSession(t *testing.T) {
 
 	client := noRedirectClient()
 
-	browserID := "test-delete-nonexistent"
+	browserID := "test-close-nonexistent"
 
 	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/nonexistent", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -607,7 +607,7 @@ func TestHandleDeleteSession_RedirectsToNextSession(t *testing.T) {
 
 	client := noRedirectClient()
 
-	browserID := "test-delete-multi"
+	browserID := "test-close-multi"
 	sess1, err := sessionMgr.Create(browserID)
 	if err != nil {
 		t.Fatal(err)
@@ -617,7 +617,7 @@ func TestHandleDeleteSession_RedirectsToNextSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Delete the first session
+	// Close the first session (was delete, now close)
 	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess1.ID, nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
 
@@ -631,5 +631,166 @@ func TestHandleDeleteSession_RedirectsToNextSession(t *testing.T) {
 	location := resp.Header.Get("Location")
 	if location != "/sessions/"+sess2.ID {
 		t.Errorf("expected redirect to /sessions/%s, got %q", sess2.ID, location)
+	}
+
+	// Session 1 should be closed in manager
+	if got := sessionMgr.Get(sess1.ID); got != nil {
+		t.Error("closed session should not be in manager")
+	}
+}
+
+// ————— handlePermanentDelete —————
+
+func TestHandlePermanentDelete_RemovesFromMemoryAndDisk(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	client := noRedirectClient()
+
+	browserID := "test-perm-delete"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID+"/permanent", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should redirect
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected status 302, got %d", resp.StatusCode)
+	}
+
+	// Session should be deleted from manager
+	if got := sessionMgr.Get(sess.ID); got != nil {
+		t.Error("session was not deleted from manager")
+	}
+}
+
+func TestHandlePermanentDelete_NoBrowserID(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	sess, err := sessionMgr.Create("some-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Permanent delete without cookie
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID+"/permanent", nil)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandlePermanentDelete_OwnershipMismatch(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	sess, err := sessionMgr.Create("owner-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess.ID+"/permanent", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: "different-browser"})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandlePermanentDelete_NonExistentSession(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	client := noRedirectClient()
+
+	browserID := "test-perm-nonexistent"
+
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/nonexistent/permanent", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/nonexistent/permanent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should redirect to /
+	if resp.StatusCode != http.StatusFound {
+		t.Errorf("expected status 302, got %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	if location != "/" {
+		t.Errorf("expected redirect to /, got %q", location)
+	}
+}
+
+func TestHandlePermanentDelete_RedirectsToNextSession(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	client := noRedirectClient()
+
+	browserID := "test-perm-multi"
+	sess1, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess2, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Permanently delete the first session
+	req, _ := http.NewRequest("DELETE", server.URL+"/api/sessions/"+sess1.ID+"/permanent", nil)
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/sessions/{id}/permanent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should redirect to the remaining session
+	location := resp.Header.Get("Location")
+	if location != "/sessions/"+sess2.ID {
+		t.Errorf("expected redirect to /sessions/%s, got %q", sess2.ID, location)
+	}
+
+	// Session 1 should be deleted from manager
+	if got := sessionMgr.Get(sess1.ID); got != nil {
+		t.Error("permanently deleted session should not be in manager")
 	}
 }

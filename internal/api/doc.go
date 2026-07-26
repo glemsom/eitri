@@ -23,9 +23,10 @@
 //	Health:          GET  /health
 //	Static assets:   GET  /static/*       (embedded in assets.Files via embed.FS)
 //	Root page:       GET  /{$}            (serves the base HTML shell)
-//	Sessions:        POST /api/sessions   (create)
-//	                 GET  /sessions/{id}  (view)
-//	                 DELETE /api/sessions/{id}
+//	Sessions:        POST /api/sessions             (create)
+//	                 GET  /sessions/{id}            (view)
+//	                 DELETE /api/sessions/{id}       (close — saves snapshot, removes from memory, keeps disk data)
+//	                 DELETE /api/sessions/{id}/permanent (permanent — removes from both memory and disk)
 //	Settings:        GET  /settings
 //	                 GET  /api/config
 //	                 PUT  /api/config

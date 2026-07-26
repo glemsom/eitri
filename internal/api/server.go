@@ -197,6 +197,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
 	s.mux.HandleFunc("GET /sessions/{id}", s.handleGetSession)
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
+	s.mux.HandleFunc("DELETE /api/sessions/{id}/permanent", s.handlePermanentDelete)
 
 	// Settings
 	s.mux.HandleFunc("GET /settings", s.handleSettings)
