@@ -94,7 +94,7 @@ templ SessionRowView(id string, title string, turnCount int, createdAt time.Time
 					title="Load this session into the sidebar and navigate to chat"
 				>Load</button>
 			} else {
-				<a href={ templ.URL("/sessions/" + id) } class="btn btn-sm btn-secondary" title="Open this session in chat">
+				<a href={ templ.URL("/sessions/" + id) } class="btn btn-sm btn-primary" title="Open this session in chat">
 					Open
 				</a>
 			}

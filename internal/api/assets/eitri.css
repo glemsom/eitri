@@ -3655,7 +3655,6 @@ eitri-context {
 /* === Sessions Management Page (issue #800) === */
 
 .sessions-view {
-  max-width: 960px;
   margin: 0 auto;
   padding: 24px;
   flex: 1;
