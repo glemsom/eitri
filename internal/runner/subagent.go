@@ -429,5 +429,6 @@ func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.
 	reg.Register(tool.NewEditTool(cfg.Workspace))
 	reg.Register(tool.NewRenderMermaidDiagram())
 	reg.Register(tool.NewWebFetchTool())
+	reg.Register(tool.NewBrowserTool(cfg.BrowserWsUrl))
 	return reg
 }
