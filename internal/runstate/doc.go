@@ -31,7 +31,7 @@
 //   - MaxTurnsMessage — user-facing max-turns message
 //
 // Dependencies:
-//   - internal/litellm — litellm.Message type for context computation
+//   - internal/message — message.Message type for context computation
 //
 // Extension points:
 //   - Add new SSE event types by adding fields to SSEEvent or creating new
