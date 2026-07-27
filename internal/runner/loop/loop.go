@@ -257,10 +257,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 
 		// Load conversation history via adapter
 		history := opts.HistoryMgr.History()
-
 		// Build litellm request from llm request + current history + tools
 		litellmReq := buildLitellmRequest(spec.Request, history, toolDefs)
-
 		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(litellmReq.Tools)), slog.Int("messages", len(litellmReq.Messages)))
 
 		// Call LLM streaming with retry on transient errors
@@ -524,6 +522,12 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 
 // processStream consumes a litellm.Stream using Next() and a type-switch,
 // accumulating content, tool calls, and usage until DoneEvent or ErrorEvent.
+//
+// IMPORTANT: The OpenAI-style SSE stream provider does NOT emit ToolUseDone
+// events — it emits ToolUseStart + ToolUseDelta deltas and then a final
+// DoneEvent. When DoneEvent arrives, any tool calls that were started via
+// ToolUseStart/Delta must be finalized from the accumulator. We track tool
+// start indices locally so we can synthesize ToolUseDone events on DoneEvent.
 func processStream(
 	ctx context.Context,
 	stream litellm.Stream,
@@ -541,6 +545,11 @@ func processStream(
 	var toolCalls []litellm.ToolUseBlock
 	var usage *litellm.Usage
 	toolAcc := litellm.NewToolUseAccumulator()
+
+	// Track which tool use IDs were started via ToolUseStart but not yet
+	// finalized via ToolUseDone. Some providers (OpenAI-style SSE) never
+	// emit ToolUseDone; we finalize them on DoneEvent instead.
+	startedToolIDs := make(map[string]bool)
 
 	for {
 		// Check context before each event
@@ -572,6 +581,11 @@ func processStream(
 			sseWriter.ThinkingDelta(e.Text)
 
 		case litellm.ToolUseStart:
+			// Track the tool ID so we can finalize it on DoneEvent
+			// if the provider never emits ToolUseDone.
+			if e.ID != "" {
+				startedToolIDs[e.ID] = true
+			}
 			toolAcc.Start(e)
 
 		case litellm.ToolUseDelta:
@@ -582,12 +596,21 @@ func processStream(
 			if block != nil {
 				toolCalls = append(toolCalls, *block)
 			}
+			delete(startedToolIDs, e.ID)
 
 		case litellm.UsageEvent:
 			usage = &e.Usage
 
 		case litellm.DoneEvent:
-			// Flush any remaining tool calls from the accumulator
+			// OpenAI-style SSE providers (including OpenCode Go) don't emit
+			// ToolUseDone. Finalize any pending tool calls here.
+			for id := range startedToolIDs {
+				_, block, _ := toolAcc.Done(litellm.ToolUseDone{ID: id})
+				if block != nil {
+					toolCalls = append(toolCalls, *block)
+				}
+			}
+			startedToolIDs = nil
 			return content, toolCalls, usage, nil
 
 		case litellm.ErrorEvent:
@@ -595,7 +618,6 @@ func processStream(
 		}
 	}
 }
-
 // drainRemaining reads any buffered events from the stream when the context
 // has been cancelled. This mirrors the previous drainStream buffered-event
 // drain behaviour.
@@ -607,9 +629,17 @@ func drainRemaining(
 	toolAcc *litellm.ToolUseAccumulator,
 	sseWriter *runstate.Writer,
 ) {
+	startedToolIDs := make(map[string]bool)
 	for {
 		event, err := stream.Next()
 		if err != nil {
+			// Finalize pending tool calls before returning
+			for id := range startedToolIDs {
+				_, block, _ := toolAcc.Done(litellm.ToolUseDone{ID: id})
+				if block != nil {
+					*toolCalls = append(*toolCalls, *block)
+				}
+			}
 			return
 		}
 		switch e := event.(type) {
@@ -619,6 +649,9 @@ func drainRemaining(
 		case litellm.ReasoningDelta:
 			sseWriter.ThinkingDelta(e.Text)
 		case litellm.ToolUseStart:
+			if e.ID != "" {
+				startedToolIDs[e.ID] = true
+			}
 			toolAcc.Start(e)
 		case litellm.ToolUseDelta:
 			toolAcc.Delta(e)
@@ -627,9 +660,17 @@ func drainRemaining(
 			if block != nil {
 				*toolCalls = append(*toolCalls, *block)
 			}
+			delete(startedToolIDs, e.ID)
 		case litellm.UsageEvent:
 			*usage = &e.Usage
 		case litellm.DoneEvent:
+			// Finalize pending tool calls before returning
+			for id := range startedToolIDs {
+				_, block, _ := toolAcc.Done(litellm.ToolUseDone{ID: id})
+				if block != nil {
+					*toolCalls = append(*toolCalls, *block)
+				}
+			}
 			return
 		case litellm.ErrorEvent:
 			return
