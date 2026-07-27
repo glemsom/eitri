@@ -762,10 +762,10 @@ func TestBrowser_FormatDOMSummary(t *testing.T) {
 			name:  "with inputs",
 			title: "",
 			elements: []domElement{
-				{Type: "input", InputType: "text", Value: "", Placeholder: "Enter name", Selector: "body > input#name"},
+				{Type: "input", InputType: "text", Value: "", Placeholder: "Enter name", Name: "username", Selector: "body > input#name"},
 				{Type: "input", InputType: "email", Value: "user@test.com", Placeholder: "", Selector: "body > input#email"},
 			},
-			wantSub: []string{`<text placeholder="Enter name">`, `body > input#name`, `value="user@test.com"`, `body > input#email`},
+			wantSub: []string{`<text placeholder="Enter name">`, `name="username"`, `body > input#name`, `value="user@test.com"`, `body > input#email`},
 		},
 		{
 			name:  "link with no text",

@@ -66,6 +66,7 @@ type domElement struct {
 	InputType   string `json:"input_type,omitempty"`
 	Value       string `json:"value,omitempty"`
 	Placeholder string `json:"placeholder,omitempty"`
+	Name        string `json:"name,omitempty"`
 	Selector    string `json:"selector"`
 }
 
@@ -643,7 +644,7 @@ func (t *NativeBrowserTool) getDOMStructuralSummary(tabCtx context.Context) (Too
 	js := `
 (function() {
 	var results = [];
-	var maxDepth = 4;
+	var maxDepth = 12;
 	var maxElements = 50;
 	var count = 0;
 
@@ -712,11 +713,14 @@ func (t *NativeBrowserTool) getDOMStructuralSummary(tabCtx context.Context) (Too
 		}
 
 		// Inputs
+		// Skip hidden elements (display:none, type=hidden)
+		if (el.offsetParent === null && tag !== 'select') return;
+		if (tag === 'input' && el.type === 'hidden') return;
 		if ((tag === 'input' && el.type !== 'submit' && el.type !== 'button' && el.type !== 'hidden') || tag === 'textarea' || tag === 'select') {
 			var val = el.value || '';
 			var placeholder = el.placeholder || '';
 			var inputType = el.type || tag;
-			results.push({ type: 'input', input_type: inputType, value: val, placeholder: placeholder, selector: sel });
+				results.push({ type: 'input', input_type: inputType, value: val, placeholder: placeholder, name: el.name || '', selector: sel });
 			count++;
 		}
 
@@ -817,6 +821,9 @@ func (t *NativeBrowserTool) formatDOMSummary(title string, elements []domElement
 			}
 			if inp.Value != "" {
 				desc += fmt.Sprintf(" value=%q", inp.Value)
+			}
+			if inp.Name != "" {
+				desc += fmt.Sprintf(" name=%q", inp.Name)
 			}
 			fmt.Fprintf(&b, "  %s\n    Selector: %s\n", desc, inp.Selector)
 		}
