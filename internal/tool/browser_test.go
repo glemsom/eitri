@@ -373,6 +373,76 @@ func TestBrowser_NavigateAction_ActionNameInDescription(t *testing.T) {
 	}
 }
 
+func TestBrowser_ClickAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"click","args":{"selector":"#btn"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+}
+
+func TestBrowser_ClickAction_MissingSelector(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"click","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing selector")
+	}
+}
+
+func TestBrowser_ClickAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"click","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_ClickAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"click","args":{"target_id":"tab-1","selector":"#btn"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_ClickAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"click","args":{"target_id":"tab-1","selector":"#btn"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_ClickAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "click") {
+		t.Error("Description should mention 'click' action")
+	}
+}
+
 func TestBrowser_BuildDOMSummary(t *testing.T) {
 	t.Parallel()
 
