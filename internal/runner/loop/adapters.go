@@ -155,9 +155,16 @@ func (m *requestHistoryManager) RequestBased() bool {
 // ── Conversion helpers ────────────────────────────────────────────────────
 
 // assistantToLitellmMsg converts assistant message fields to a litellm.Message.
+// Always includes at least a TextBlock so the serialised JSON always has a
+// "content" field. Without it, an empty-assistant message produces
+// {"role":"assistant"} which is invalid for providers expecting
+// OpenAI-compatible format.
 func assistantToLitellmMsg(content string, toolCalls []litellm.ToolUseBlock) litellm.Message {
-	var blocks []litellm.Block
-	if content != "" {
+	blocks := make([]litellm.Block, 0, 1+len(toolCalls))
+	// Always produce a TextBlock. When content is empty and no tool calls
+	// exist, still emit an empty TextBlock so JSON has content:"" instead
+	// of omitting "content" entirely.
+	if content != "" || len(toolCalls) == 0 {
 		blocks = append(blocks, litellm.TextBlock{Text: content})
 	}
 	for _, tc := range toolCalls {
@@ -170,9 +177,6 @@ func assistantToLitellmMsg(content string, toolCalls []litellm.ToolUseBlock) lit
 			Name:      tc.Name,
 			Arguments: args,
 		})
-	}
-	if blocks == nil {
-		blocks = []litellm.Block{litellm.TextBlock{Text: content}}
 	}
 	return litellm.Message{
 		Role:   litellm.Role("assistant"),

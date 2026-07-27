@@ -80,14 +80,13 @@ func TestRunAgent_EmptyStream_CompletesSuccessfully(t *testing.T) {
 	for _, evt := range events {
 		if evt.Type == "token" {
 			t.Errorf("unexpected token event for empty stream, got: %+v", evt)
-		}
+			}
 	}
 
-	// Verify an empty assistant message was appended to history
-	if len(req.Messages) != 2 {
-		t.Fatalf("req.Messages length = %d, want 2 (user + empty assistant)", len(req.Messages))
-	}
-	if string(req.Messages[1].Role) != "assistant" {
-		t.Errorf("message[1] role = %q, want %q", req.Messages[1].Role, "assistant")
+	// Verify NO empty assistant message was appended — empty assistant
+	// messages produce invalid {"role":"assistant"} without content
+	// which some providers reject.
+	if len(req.Messages) != 1 {
+		t.Fatalf("req.Messages length = %d, want 1 (only the original user message; empty assistant should not be appended)", len(req.Messages))
 	}
 }

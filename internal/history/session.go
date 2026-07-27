@@ -167,8 +167,14 @@ func (m *SessionManager) AppendUser(id, text string) {
 }
 
 // AppendAssistant appends an assistant message with text content and optional
-// tool calls. No-op if session does not exist.
+// tool calls. No-op if session does not exist, or if both content and
 func (m *SessionManager) AppendAssistant(id, content string, toolCalls []message.ToolCall) {
+	// Skip empty assistant messages — they serialise as
+	// {"role":"assistant"} with no content or tool_calls, which some
+	// providers reject.
+	if content == "" && len(toolCalls) == 0 {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]

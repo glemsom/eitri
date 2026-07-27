@@ -357,7 +357,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			usage := runstate.EstimateUsage(contentStr, nil, "")
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
-			if contentStr != "" || len(history) > 0 {
+			// Only append when there's actual content — empty assistant messages
+			// produce invalid OpenAI-format JSON and may be rejected by providers.
+			if contentStr != "" {
 				opts.HistoryMgr.AppendAssistant(contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
