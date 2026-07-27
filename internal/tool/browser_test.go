@@ -508,3 +508,219 @@ func TestBrowser_ScreenshotAction_ActionNameInDescription(t *testing.T) {
 		t.Error("Description should mention 'screenshot' action")
 	}
 }
+
+// --- get_dom action tests ---
+
+func TestBrowser_GetDOMAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_dom","args":{}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+	if len(result.Blocks) > 0 {
+		if text, ok := result.Blocks[0].(litellm.TextBlock); ok {
+			if !strings.Contains(text.Text, "target_id") {
+				t.Errorf("error message should mention target_id, got: %s", text.Text)
+			}
+		}
+	}
+}
+
+func TestBrowser_GetDOMAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_dom","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_GetDOMAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_dom","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_GetDOMAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"get_dom","args":{"target_id":"tab-1"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_GetDOMAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "get_dom") {
+		t.Error("Description should mention 'get_dom' action")
+	}
+}
+
+func TestBrowser_CleanDOMHTML(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: `<div>Hello</div>`,
+			want:  `<div>Hello</div>`,
+		},
+		{
+			input: `<div><script>alert('xss')</script><p>text</p></div>`,
+			want:  `<div><p>text</p></div>`,
+		},
+		{
+			input: `<div><style>body { color: red; }</style><p>text</p></div>`,
+			want:  `<div><p>text</p></div>`,
+		},
+		{
+			input: `<div><!-- comment --><p>text</p></div>`,
+			want:  `<div><p>text</p></div>`,
+		},
+		{
+			input: `<div>  lots   of   spaces  </div>`,
+			want:  `<div> lots of spaces </div>`,
+		},
+		{
+			input: `<div><script>a</script><style>b</style><!-- c --><p>d</p></div>`,
+			want:  `<div><p>d</p></div>`,
+		},
+	}
+	for _, tt := range tests {
+		got := cleanDOMHTML(tt.input)
+		if got != tt.want {
+			t.Errorf("cleanDOMHTML(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestBrowser_FormatDOMSummary(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+
+	tests := []struct {
+		name     string
+		title    string
+		elements []domElement
+		wantSub  []string // substrings that must be present
+		notWant  []string // substrings that must NOT be present
+	}{
+		{
+			name:  "empty",
+			title: "",
+			elements: nil,
+			wantSub: []string{"No significant DOM elements found."},
+		},
+		{
+			name:  "with title and headings",
+			title: "Test Page",
+			elements: []domElement{
+				{Type: "heading", Level: "h1", Text: "Main Title", Selector: "body > h1"},
+				{Type: "heading", Level: "h2", Text: "Sub Title", Selector: "body > h2"},
+			},
+			wantSub: []string{"Title: Test Page", "h1: Main Title", "h2: Sub Title", "body > h1", "body > h2"},
+		},
+		{
+			name:  "with links",
+			title: "",
+			elements: []domElement{
+				{Type: "link", Text: "Click Here", Href: "https://example.com", Selector: "body > a"},
+			},
+			wantSub: []string{"Click Here", "https://example.com", "body > a"},
+		},
+		{
+			name:  "with buttons",
+			title: "",
+			elements: []domElement{
+				{Type: "button", Text: "Submit", Selector: "body > button#submit"},
+			},
+			wantSub: []string{"Submit", "body > button#submit"},
+		},
+		{
+			name:  "with inputs",
+			title: "",
+			elements: []domElement{
+				{Type: "input", InputType: "text", Value: "", Placeholder: "Enter name", Selector: "body > input#name"},
+				{Type: "input", InputType: "email", Value: "user@test.com", Placeholder: "", Selector: "body > input#email"},
+			},
+			wantSub: []string{`<text placeholder="Enter name">`, `body > input#name`, `value="user@test.com"`, `body > input#email`},
+		},
+		{
+			name:  "link with no text",
+			title: "",
+			elements: []domElement{
+				{Type: "link", Text: "", Href: "https://example.com", Selector: "body > a"},
+			},
+			wantSub: []string{"(no text)", "https://example.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tool.formatDOMSummary(tt.title, tt.elements)
+			if !result.IsError && result.IsError {
+				t.Error("result.IsError = true, want false")
+			}
+			if len(result.Blocks) == 0 {
+				t.Fatal("result has no blocks")
+			}
+			text, ok := result.Blocks[0].(litellm.TextBlock)
+			if !ok {
+				t.Fatal("result block is not a TextBlock")
+			}
+			for _, sub := range tt.wantSub {
+				if !strings.Contains(text.Text, sub) {
+					t.Errorf("result missing %q:\n%s", sub, text.Text)
+				}
+			}
+			for _, sub := range tt.notWant {
+				if strings.Contains(text.Text, sub) {
+					t.Errorf("result should not contain %q:\n%s", sub, text.Text)
+				}
+			}
+		})
+	}
+}
+
+func TestBrowser_FormatDOMSummary_Truncation(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+
+	// Build a very long title to trigger truncation
+	longTitle := strings.Repeat("Long Title ", 5000)
+	elements := []domElement{
+		{Type: "heading", Level: "h1", Text: longTitle, Selector: "h1"},
+	}
+
+	result := tool.formatDOMSummary("", elements)
+	if len(result.Blocks) == 0 {
+		t.Fatal("result has no blocks")
+	}
+	text, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatal("result block is not a TextBlock")
+	}
+	if !strings.Contains(text.Text, "output truncated") {
+		t.Error("expected truncation message in output")
+	}
+}
