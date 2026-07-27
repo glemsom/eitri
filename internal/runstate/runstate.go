@@ -6,6 +6,7 @@ package runstate
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -498,8 +499,22 @@ func FormatErrorMessage(err error) string {
 	case strings.Contains(msg, "no such host") || strings.Contains(msg, "lookup"):
 		return "Cannot reach provider at the configured URL. Check base_url in Settings."
 	default:
-		return "LLM error: " + msg
+		return "LLM error: " + stripHTMLTags(msg)
 	}
+}
+
+// stripHTMLTags removes HTML tags from a string.
+func stripHTMLTags(s string) string {
+	re := regexp.MustCompile(`<[^>]*>`)
+	result := re.ReplaceAllString(s, "")
+	// Collapse multiple whitespace
+	space := regexp.MustCompile(`\s+`)
+	result = strings.TrimSpace(space.ReplaceAllString(result, " "))
+	// Truncate long messages to 200 chars
+	if len(result) > 200 {
+		result = result[:200] + "..."
+	}
+	return result
 }
 
 // MaxTurnsMessage returns a user-facing message for max-turn limits.

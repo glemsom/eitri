@@ -299,7 +299,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				}
 				// Non-retryable stream error
 				dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
-				msg := fmt.Sprintf("LLM error: %v", streamErr)
+				msg := runstate.FormatErrorMessage(streamErr)
 				spec.SSEWriter.Error(msg)
 				return fmt.Errorf("chat stream: %w", streamErr)
 			}
@@ -320,7 +320,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				continue
 			}
 			dumpRequestOnError(litellmReq, err, maxRetries+1, opts.DebugLLMDir)
-			msg := fmt.Sprintf("LLM error: %v", err)
+			msg := runstate.FormatErrorMessage(err)
 			spec.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
 		}
