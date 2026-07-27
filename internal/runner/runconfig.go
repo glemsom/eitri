@@ -35,6 +35,11 @@ type RunConfig struct {
 	DebugLLMDir         string
 	Sandbox             sandbox.Config
 
+	// BrowserWsUrl is the WebSocket URL of a remote Chrome DevTools Protocol
+	// endpoint (e.g. "ws://127.0.0.1:9222/devtools/browser/...").
+	// If empty, the browser tool returns a descriptive error.
+	BrowserWsUrl string
+
 	// ActivePersona is the name of the currently selected persona, if any.
 	// An empty string means no persona selected (use default system prompt).
 	ActivePersona string
@@ -72,6 +77,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		DebugRequest:        cfg.DebugRequest,
 		DebugLLMDir:         cfg.DebugLLMDir,
 		Sandbox:             cfg.Sandbox,
+		BrowserWsUrl:        cfg.BrowserWsUrl,
 		ActivePersona:       cfg.ActivePersona,
 		CompactionEnabled:        cfg.CompactionEnabled,
 		CompactionThresholdPercent: cfg.CompactionThresholdPercent,

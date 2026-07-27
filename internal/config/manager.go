@@ -45,6 +45,7 @@ type Config struct {
 	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
 	ActivePersona               string          `json:"active_persona,omitempty"`
 	PersonaCatalog              map[string]string `json:"persona_catalog,omitempty"`
+	BrowserWsUrl                string          `json:"browser_ws_url,omitempty"`
 }
 
 // Defaults returns a Config with default values.
