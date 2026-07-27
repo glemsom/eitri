@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Profile identifies a sandboxing profile.
@@ -121,13 +122,21 @@ func WrapCommand(workspace, command string, cfg Config) (string, []string, func(
 
 	// If MkdirTemp succeeded we need to clean up unless we return the real cleanup.
 	// cleanupTmp removes tmpDir and logs at warn level on failure.
+	// Retries up to 3 times with 50ms backoff to handle stale bwrap mount
+	// references that can transiently cause EACCES on unlinkat.
 	cleanupTmp := func() {
-		if err := os.RemoveAll(tmpDir); err != nil {
-			slog.Warn("sandbox: failed to clean up ephemeral tmp dir",
-				"path", tmpDir,
-				"error", err,
-			)
+		var err error
+		for range 3 {
+			err = os.RemoveAll(tmpDir)
+			if err == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
+		slog.Warn("sandbox: failed to clean up ephemeral tmp dir",
+			"path", tmpDir,
+			"error", err,
+		)
 	}
 
 	if cfg.Profile == ProfileNone {
