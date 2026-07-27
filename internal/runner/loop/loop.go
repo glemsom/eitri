@@ -145,7 +145,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	}
 
 	// Helper to broadcast context_update if enabled and historyMgr is available.
-	broadcastContextUpdate := func() {
+	// actualUsage may be nil; if set, its prompt/completion tokens are included
+	// in the ContextUpdate as actual provider usage for the current LLM call.
+	broadcastContextUpdate := func(actualUsage *llm.Usage) {
 		if opts.ContextWindow <= 0 {
 			return
 		}
@@ -157,6 +159,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			return
 		}
 		update := runstate.ComputeContext(history, opts.ContextWindow, nil, "")
+		if actualUsage != nil {
+			update.ActualPromptTokens = actualUsage.PromptTokens
+			update.ActualCompletionTokens = actualUsage.CompletionTokens
+		}
 		spec.SSEWriter.ContextUpdate(update)
 	}
 
@@ -247,8 +253,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if len(toolCalls) == 0 {
 			contentStr := content.String()
 
-			// Broadcast final context_update before done
-			broadcastContextUpdate()
+			// Broadcast final context_update before done, including actual provider usage
+			broadcastContextUpdate(usage)
 
 			usage := runstate.EstimateUsage(contentStr, nil, "")
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
@@ -409,8 +415,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			opts.HistoryMgr.AppendTool(tc.ID, resultContent, isError)
 		}
 
-		// Broadcast context_update after tool results appended to history
-		broadcastContextUpdate()
+		// Broadcast context_update after tool results appended to history,
+		// including actual provider usage from this turn's LLM call.
+		broadcastContextUpdate(usage)
 
 		// Update turn count for external consumers
 		if opts.Turns != nil {
@@ -424,8 +431,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	}
 
 	// Max turns exceeded
-	// Broadcast final context_update before error
-	broadcastContextUpdate()
+	// Broadcast final context_update before error (no actual usage available)
+	broadcastContextUpdate(nil)
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}

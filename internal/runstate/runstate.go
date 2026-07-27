@@ -383,6 +383,9 @@ type ContextUpdate struct {
 	SystemTokens     int `json:"system_tokens"`
 	HistoryTokens    int `json:"history_tokens"`
 	SkillTokens      int `json:"skill_tokens"`
+	// Actual provider token usage from the LLM response (if available).
+	ActualPromptTokens     int `json:"actual_prompt_tokens,omitempty"`
+	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
 }
 
 // ComputeContext estimates token counts for the given messages using a

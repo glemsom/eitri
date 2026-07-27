@@ -31,9 +31,11 @@ type RunInfo struct {
 
 // ContextInfo holds token usage for context updates.
 type ContextInfo struct {
-	TotalTokens   int `json:"total_tokens"`
-	PromptTokens  int `json:"prompt_tokens"`
-	ContextWindow int `json:"context_window"`
+	TotalTokens           int `json:"total_tokens"`
+	PromptTokens          int `json:"prompt_tokens"`
+	ContextWindow         int `json:"context_window"`
+	ActualPromptTokens    int `json:"actual_prompt_tokens,omitempty"`
+	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
 }
 
 // ToolCallInfo represents one tool call in a turn.
@@ -72,6 +74,8 @@ type Summary struct {
 	HallucinatedTools   []string `json:"hallucinated_tools,omitempty"`
 	EstimatedTotalTokens int     `json:"estimated_total_tokens"`
 	EstimatedCompletionTokens int `json:"estimated_completion_tokens"`
+	TotalPromptTokens     int    `json:"total_prompt_tokens,omitempty"`
+	TotalCompletionTokens int    `json:"total_completion_tokens,omitempty"`
 	TotalDurationMs     int64    `json:"total_duration_ms"`
 	Note                string   `json:"note,omitempty"`
 }
@@ -285,9 +289,11 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timel
 			}
 		case "context_update":
 			ci := &ContextInfo{
-				TotalTokens:   evt.TotalTokens,
-				PromptTokens:  evt.PromptTokens,
-				ContextWindow: evt.ContextWindow,
+				TotalTokens:           evt.TotalTokens,
+				PromptTokens:          evt.PromptTokens,
+				ContextWindow:         evt.ContextWindow,
+				ActualPromptTokens:    evt.ActualPromptTokens,
+				ActualCompletionTokens: evt.ActualCompletionTokens,
 			}
 			if lastContextBefore != nil {
 				t.ContextBefore = lastContextBefore
@@ -357,10 +363,22 @@ func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary 
 		}
 	}
 
+	// Compute total actual usage across all assistant turns
+	totalPromptTokens := 0
+	totalCompletionTokens := 0
+	for _, t := range turns {
+		if t.Role == "assistant" && t.ContextAfter != nil {
+			totalPromptTokens += t.ContextAfter.ActualPromptTokens
+			totalCompletionTokens += t.ContextAfter.ActualCompletionTokens
+		}
+	}
+
 	summary.TotalToolCalls = toolCallCount
 	summary.FailedToolCalls = failedCount
 	summary.TotalLLMCalls = len(turns)
 	summary.EstimatedTotalTokens = totalTokens
+	summary.TotalPromptTokens = totalPromptTokens
+	summary.TotalCompletionTokens = totalCompletionTokens
 
 	for name := range failedNames {
 		summary.FailedToolNames = append(summary.FailedToolNames, name)

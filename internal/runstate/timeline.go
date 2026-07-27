@@ -34,6 +34,9 @@ type TimelineEvent struct {
 	TotalTokens   int `json:"total_tokens,omitempty"`
 	PromptTokens  int `json:"prompt_tokens,omitempty"`
 	ContextWindow int `json:"context_window,omitempty"`
+	// Actual provider token usage (if available from LLM response)
+	ActualPromptTokens     int `json:"actual_prompt_tokens,omitempty"`
+	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
 
 	// Component
 	Name string `json:"name,omitempty"`
@@ -126,6 +129,8 @@ func (s *State) CondensedEvents() []TimelineEvent {
 				timelineEvt.TotalTokens = cu.TotalTokens
 				timelineEvt.PromptTokens = cu.PromptTokens
 				timelineEvt.ContextWindow = cu.ContextWindow
+				timelineEvt.ActualPromptTokens = cu.ActualPromptTokens
+				timelineEvt.ActualCompletionTokens = cu.ActualCompletionTokens
 			}
 
 		case "component":
