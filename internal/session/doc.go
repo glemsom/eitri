@@ -41,7 +41,7 @@
 //   - ActivateSkill / DeactivateSkill — manage active skills per session
 //   - AddRenderedMessageID / HasRenderedMessageID — dedup ring buffer
 //
-// Dependencies: internal/llm (Message and ComponentData type aliases)
+// Dependencies: internal/message (Message and ComponentData types)
 //
 // Extension points:
 //   - Add session persistence (e.g. SQLite) for crash recovery

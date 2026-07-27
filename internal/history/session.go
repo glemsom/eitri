@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/message"
 )
 
@@ -76,7 +77,7 @@ func (m *SessionManager) Create(id string) {
 // The first message with Role "system" is treated as the system prompt and stored
 // separately; all remaining messages form the conversation history.
 // If the session doesn't exist, it is created first.
-func (m *SessionManager) RestoreHistory(id string, messages []llm.Message) {
+func (m *SessionManager) RestoreHistory(id string, messages []message.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -98,12 +99,12 @@ func (m *SessionManager) RestoreHistory(id string, messages []llm.Message) {
 	}
 }
 
-// toEitriMessages converts a slice of llm.Message to a slice of EitriMessage,
+// toEitriMessages converts a slice of message.Message to a slice of EitriMessage,
 // preserving CreatedAt, Components, and QuickReplies.
-func toEitriMessages(msgs []llm.Message) []message.EitriMessage {
+func toEitriMessages(msgs []message.Message) []message.EitriMessage {
 	out := make([]message.EitriMessage, len(msgs))
 	for i, m := range msgs {
-		litellmMsg := llm.ToLitellmMessage(m)
+		litellmMsg := message.ToLitellmMessage(m)
 		out[i] = message.EitriMessage{
 			Message:      litellmMsg,
 			CreatedAt:    m.CreatedAt,
@@ -114,12 +115,12 @@ func toEitriMessages(msgs []llm.Message) []message.EitriMessage {
 	return out
 }
 
-// toLlmMessages converts a slice of EitriMessage to a slice of llm.Message,
+// toMessages converts a slice of EitriMessage to a slice of message.Message,
 // preserving CreatedAt, Components, and QuickReplies.
-func toLlmMessages(msgs []message.EitriMessage) []llm.Message {
-	out := make([]llm.Message, len(msgs))
+func toMessages(msgs []message.EitriMessage) []message.Message {
+	out := make([]message.Message, len(msgs))
 	for i, em := range msgs {
-		m := llm.FromLitellmMessage(em.Message)
+		m := message.FromLitellmMessage(em.Message)
 		m.CreatedAt = em.CreatedAt
 		m.Components = em.Components
 		m.QuickReplies = em.QuickReplies
@@ -157,9 +158,9 @@ func (m *SessionManager) AppendUser(id, text string) {
 	if s == nil {
 		return
 	}
-	msg := llm.Message{Role: "user", Content: text}
+	msg := message.Message{Role: "user", Content: text}
 	s.messages = append(s.messages, message.EitriMessage{
-		Message:   llm.ToLitellmMessage(msg),
+		Message:   message.ToLitellmMessage(msg),
 		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
@@ -167,20 +168,20 @@ func (m *SessionManager) AppendUser(id, text string) {
 
 // AppendAssistant appends an assistant message with text content and optional
 // tool calls. No-op if session does not exist.
-func (m *SessionManager) AppendAssistant(id, content string, toolCalls []llm.ToolCall) {
+func (m *SessionManager) AppendAssistant(id, content string, toolCalls []message.ToolCall) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return
 	}
-	msg := llm.Message{
+	msg := message.Message{
 		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
 	}
 	s.messages = append(s.messages, message.EitriMessage{
-		Message:   llm.ToLitellmMessage(msg),
+		Message:   message.ToLitellmMessage(msg),
 		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
@@ -194,21 +195,21 @@ func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool)
 	if s == nil {
 		return
 	}
-	msg := llm.Message{
+	msg := message.Message{
 		Role:       "tool",
 		ToolCallID: toolUseID,
 		Content:    content,
 	}
 	s.messages = append(s.messages, message.EitriMessage{
-		Message:   llm.ToLitellmMessage(msg),
+		Message:   message.ToLitellmMessage(msg),
 		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
 
 // History returns a copy of the conversation history with the system prompt
-// prepended. Returns nil if session does not exist.
-func (m *SessionManager) History(id string) []llm.Message {
+// prepended as an EitriMessage. Returns nil if session does not exist.
+func (m *SessionManager) History(id string) []message.EitriMessage {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	s := m.sessions[id]
@@ -221,15 +222,20 @@ func (m *SessionManager) History(id string) []llm.Message {
 	if sysPrompt == "" {
 		sysPrompt = DefaultSystemPrompt
 	}
-	sysMsg := llm.Message{
-		Role:    "system",
-		Content: sysPrompt,
+
+	// Build system prompt as an EitriMessage
+	sysMsg := message.EitriMessage{
+		Message: litellm.Message{
+			Role:   litellm.Role("system"),
+			Blocks: []litellm.Block{litellm.TextBlock{Text: sysPrompt}},
+		},
+		CreatedAt: time.Now(),
 	}
 
-	// Convert stored EitriMessages to llm.Message and prepend system prompt
-	messages := make([]llm.Message, 0, 1+len(s.messages))
+	// Prepend system message to stored EitriMessages
+	messages := make([]message.EitriMessage, 0, 1+len(s.messages))
 	messages = append(messages, sysMsg)
-	messages = append(messages, toLlmMessages(s.messages)...)
+	messages = append(messages, s.messages...)
 
 	return messages
 }

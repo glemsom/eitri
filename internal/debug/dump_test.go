@@ -10,7 +10,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 func TestCrashDirName(t *testing.T) {
@@ -50,7 +50,7 @@ func TestWriteCrashDump_Basic(t *testing.T) {
 				ID:     "sess-1",
 				Title:  "Test Session",
 				Status: session.StatusIdle,
-				Messages: []llm.Message{
+				Messages: []message.Message{
 					{Role: "user", Content: "hello", CreatedAt: time.Now()},
 					{Role: "assistant", Content: "hi there", CreatedAt: time.Now()},
 				},

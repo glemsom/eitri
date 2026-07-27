@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runstate"
 )
@@ -259,7 +259,7 @@ func TestGetReport_Reconstructed(t *testing.T) {
 	// Write history
 	histData, _ := json.Marshal(persist.HistorySchema{
 		Version: 1,
-		Messages: []llm.Message{
+		Messages: []message.Message{
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi there!"},
 		},
@@ -336,7 +336,7 @@ func TestGetReport_Reconstructed_WithSystemPrompt(t *testing.T) {
 	// Write history
 	histData, _ := json.Marshal(persist.HistorySchema{
 		Version: 1,
-		Messages: []llm.Message{
+		Messages: []message.Message{
 			{Role: "user", Content: "Hello"},
 			{Role: "assistant", Content: "Hi there!"},
 		},

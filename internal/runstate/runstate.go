@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -398,7 +398,7 @@ type ContextUpdate struct {
 //   - Prompt tokens: system + history (skill tokens are part of system)
 //   - Completion tokens: 0 (set by caller when known)
 //   - Total tokens: prompt + completion
-func ComputeContext(messages []llm.Message, contextWindow int, store *tokenizer.CalibrationStore, model string) *ContextUpdate {
+func ComputeContext(messages []message.Message, contextWindow int, store *tokenizer.CalibrationStore, model string) *ContextUpdate {
 	cpt := 4.0
 	if store != nil {
 		cpt = store.Lookup(model)

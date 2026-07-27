@@ -17,7 +17,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
@@ -59,7 +59,7 @@ func TestStartRun_InjectsRepoInstructions(t *testing.T) {
 	if len(hist) < 1 {
 		t.Fatal("no history entries")
 	}
-	sysPrompt := hist[0].Content
+	sysPrompt := hist[0].Content()
 	if !strings.Contains(sysPrompt, "<repository_instructions>") {
 		t.Fatalf("system prompt should contain <repository_instructions> tags, got:\n%s", sysPrompt)
 	}
@@ -110,14 +110,14 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 	if len(hist2) != 4 {
 		t.Fatalf("History length after StartRun = %d, want 4 (sys+user+asst+user)", len(hist2))
 	}
-	if hist2[1].Content != "Hi, my name is Glenn" {
-		t.Errorf("First user message changed: got %q", hist2[1].Content)
+	if hist2[1].Content() != "Hi, my name is Glenn" {
+		t.Errorf("First user message changed: got %q", hist2[1].Content())
 	}
-	if hist2[2].Content != "Hello Glenn!" {
-		t.Errorf("Assistant message changed: got %q", hist2[2].Content)
+	if hist2[2].Content() != "Hello Glenn!" {
+		t.Errorf("Assistant message changed: got %q", hist2[2].Content())
 	}
-	if hist2[3].Content != "another message" {
-		t.Errorf("Second user message = %q, want 'another message'", hist2[3].Content)
+	if hist2[3].Content() != "another message" {
+		t.Errorf("Second user message = %q, want 'another message'", hist2[3].Content())
 	}
 }
 
@@ -1540,7 +1540,7 @@ func TestRunService_LoadSessionFromDisk_LoadsAndRestores(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess.Title = "Historical Session"
-	sess.Messages = []llm.Message{
+	sess.Messages = []message.Message{
 		{Role: "user", Content: "Hello from the past"},
 		{Role: "assistant", Content: "Hello from the past as well"},
 	}
@@ -1601,10 +1601,10 @@ func TestRunService_LoadSessionFromDisk_LoadsAndRestores(t *testing.T) {
 	foundUser := false
 	foundAssistant := false
 	for _, msg := range history {
-		if msg.Role == "user" && msg.Content == "Hello from the past" {
+		if msg.Role == "user" && msg.Content() == "Hello from the past" {
 			foundUser = true
 		}
-		if msg.Role == "assistant" && msg.Content == "Hello from the past as well" {
+		if msg.Role == "assistant" && msg.Content() == "Hello from the past as well" {
 			foundAssistant = true
 		}
 	}

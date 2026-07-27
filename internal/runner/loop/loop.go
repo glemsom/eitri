@@ -17,7 +17,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
@@ -113,10 +113,10 @@ func DefaultRunOpts() RunOpts {
 
 // buildLitellmRequest creates a per-turn litellm.Request from the base request
 // config, current conversation history, and tool definitions.
-func buildLitellmRequest(base *litellm.Request, history []llm.Message, tools []litellm.Tool) *litellm.Request {
+func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, tools []litellm.Tool) *litellm.Request {
 	messages := make([]litellm.Message, 0, len(history))
 	for _, m := range history {
-		messages = append(messages, toLitellmMessage(m))
+		messages = append(messages, m.ToLitellm())
 	}
 
 	lr := &litellm.Request{
@@ -142,44 +142,30 @@ func buildLitellmRequest(base *litellm.Request, history []llm.Message, tools []l
 	return lr
 }
 
-// toLitellmMessage converts an llm.Message to a litellm.Message.
-func toLitellmMessage(m llm.Message) litellm.Message {
-	var blocks []litellm.Block
+// toLitellmMessage converts an EitriMessage to a litellm.Message by calling .ToLitellm().
+func toLitellmMessage(m message.EitriMessage) litellm.Message {
+	return m.ToLitellm()
+}
 
-	// Assistant messages with tool calls get structured blocks
-	if m.Role == "assistant" && len(m.ToolCalls) > 0 {
-		if m.Content != "" {
-			blocks = append(blocks, litellm.TextBlock{Text: m.Content})
+// litellmMsgText returns the concatenated text from all TextBlocks in a litellm.Message.
+func litellmMsgText(msg litellm.Message) string {
+	var text string
+	for _, block := range msg.Blocks {
+		if tb, ok := block.(litellm.TextBlock); ok {
+			text += tb.Text
 		}
-		for _, tc := range m.ToolCalls {
-			args := json.RawMessage(tc.Function.Arguments)
-			if !json.Valid(args) {
-				args = json.RawMessage("{}")
-			}
-			blocks = append(blocks, litellm.ToolUseBlock{
-				ID:        tc.ID,
-				Name:      tc.Function.Name,
-				Arguments: args,
-			})
-		}
-	} else if m.Role == "tool" {
-		blocks = append(blocks, litellm.ToolResultBlock{
-			ToolUseID: m.ToolCallID,
-			Content:   []litellm.Block{litellm.TextBlock{Text: m.Content}},
-		})
-	} else {
-		// System, user, or simple assistant messages
-		content := m.Content
-		if m.ReasoningContent != "" {
-			content = m.ReasoningContent + "\n" + content
-		}
-		blocks = append(blocks, litellm.TextBlock{Text: content})
 	}
+	return text
+}
 
-	return litellm.Message{
-		Role:   litellm.Role(m.Role),
-		Blocks: blocks,
+// toFlatMessages converts []message.EitriMessage to []message.Message for
+// consumers that need the flat field access pattern (e.g. ComputeContext).
+func toFlatMessages(msgs []message.EitriMessage) []message.Message {
+	out := make([]message.Message, len(msgs))
+	for i, m := range msgs {
+		out[i] = m.ToMessage()
 	}
+	return out
 }
 
 // IsReasoningModel returns true for models known to support thinking/reasoning
@@ -246,7 +232,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if history == nil {
 			return
 		}
-		update := runstate.ComputeContext(history, opts.ContextWindow, nil, "")
+		update := runstate.ComputeContext(toFlatMessages(history), opts.ContextWindow, nil, "")
 		if actualUsage != nil {
 			update.ActualPromptTokens = actualUsage.InputTokens
 			update.ActualCompletionTokens = actualUsage.OutputTokens
@@ -354,7 +340,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Feed provider usage data into CalibrationStore.
-		updateCalibration(opts.CalibrationStore, opts.ModelName, history, usage)
+		updateCalibration(opts.CalibrationStore, opts.ModelName, litellmReq.Messages, usage)
 
 		if len(toolCalls) > 0 {
 			slog.Debug("tool calls received", slog.Int("count", len(toolCalls)))
@@ -499,7 +485,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 							}
 						}
 					} else {
-						_ = opts.UISessionMgr.AppendComponent(opts.SessionID, llm.ComponentData{
+						_ = opts.UISessionMgr.AppendComponent(opts.SessionID, message.ComponentData{
 							Name: compName,
 							Data: compData,
 						})
@@ -651,28 +637,11 @@ func drainRemaining(
 	}
 }
 
-// toolCallsToLLM converts []litellm.ToolUseBlock to []llm.ToolCall for
-// storage in HistoryManager.
-func toolCallsToLLM(tcs []litellm.ToolUseBlock) []llm.ToolCall {
-	if len(tcs) == 0 {
-		return nil
-	}
-	out := make([]llm.ToolCall, len(tcs))
-	for i, tc := range tcs {
-		args := ""
-		if len(tc.Arguments) > 0 {
-			args = string(tc.Arguments)
-		}
-		out[i] = llm.ToolCall{
-			ID:   tc.ID,
-			Type: "function",
-			Function: llm.FunctionCall{
-				Name:      tc.Name,
-				Arguments: args,
-			},
-		}
-	}
-	return out
+// toolCallsToLLM converts []litellm.ToolUseBlock to []litellm.ToolUseBlock.
+// This is a no-op identity function kept for compatibility; the
+// HistoryManager.AppendAssistant now accepts []litellm.ToolUseBlock directly.
+func toolCallsToLLM(tcs []litellm.ToolUseBlock) []litellm.ToolUseBlock {
+	return tcs
 }
 
 // MaxTurnsExceededError reports that a run hit its configured turn cap.
@@ -687,7 +656,7 @@ func (e *MaxTurnsExceededError) Error() string {
 // updateCalibration feeds provider usage data from a completed LLM response
 // into the CalibrationStore. It computes chars_per_token = inputLen / promptTokens
 // and calls store.Update(model, cpt).
-func updateCalibration(store *tokenizer.CalibrationStore, model string, messages []llm.Message, usage *litellm.Usage) {
+func updateCalibration(store *tokenizer.CalibrationStore, model string, messages []litellm.Message, usage *litellm.Usage) {
 	if store == nil || model == "" || usage == nil || usage.InputTokens <= 0 {
 		return
 	}
@@ -695,7 +664,7 @@ func updateCalibration(store *tokenizer.CalibrationStore, model string, messages
 	// Compute total input text length from the messages sent in the request.
 	inputLen := 0
 	for _, msg := range messages {
-		inputLen += len(msg.Content)
+		inputLen += len(litellmMsgText(msg))
 	}
 	if inputLen == 0 {
 		return

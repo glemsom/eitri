@@ -8,7 +8,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -37,7 +37,7 @@ type runInfo struct {
 // debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
 type debugSessionDetail struct {
 	Session      debugSessionSummary `json:"session"`
-	Messages     []llm.Message       `json:"messages"`
+	Messages     []message.Message       `json:"messages"`
 	ActiveSkills []string            `json:"active_skills"`
 	Run          *runInfo            `json:"run,omitempty"`
 	SSEHistory   []runstate.SSEEvent `json:"sse_history,omitempty"`
@@ -140,7 +140,7 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 		messages = messages[len(messages)-msgCount:]
 	}
 	if messages == nil {
-		messages = []llm.Message{}
+		messages = []message.Message{}
 	}
 
 	detail := debugSessionDetail{

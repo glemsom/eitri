@@ -10,7 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -183,7 +183,7 @@ func TestHandleCompact_WithHistory_NoOpWhenLLMFails(t *testing.T) {
 
 	// Populate history with a tool result above the high-water mark (1024*50/100=512).
 	// 200 lines of ~34 chars = ~6800 chars ≈ 1700 tokens, well over the threshold.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "run the build"},
 		{Role: "tool", Content: strings.Repeat("Build output with lots of detail\n", 200)},

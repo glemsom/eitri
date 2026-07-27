@@ -15,7 +15,7 @@ import (
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -314,9 +314,9 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 	if s.historySessionMgr != nil {
 		convo := s.uiSessionMgr.GetConversation(sessionID)
 		if convo != nil {
-			msgs := make([]llm.Message, 0, len(convo.Messages))
+			msgs := make([]message.Message, 0, len(convo.Messages))
 			for _, m := range convo.Messages {
-				msgs = append(msgs, llm.Message{
+				msgs = append(msgs, message.Message{
 					Role:       m.Role,
 					Content:    m.Content,
 					ToolCallID: m.ToolCallID,
@@ -609,10 +609,16 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 		return 0, 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
 	}
 
+	// Convert to flat messages for the compactor
+	flatMsgs := make([]message.Message, len(historyMsgs))
+	for i, em := range historyMsgs {
+		flatMsgs[i] = em.ToMessage()
+	}
+
 	// Manual compaction always runs — no high-water gate.
 	// LowWater=0 means the compactor will compact until no more
 	// tool results remain (or the default low-water logic activates).
-	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, historyMsgs, llmSvc, compactor.Thresholds{
+	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, flatMsgs, llmSvc, compactor.Thresholds{
 		HighWater:                0,
 		LowWater:                 0,
 		MessageSizeThreshold:     cfg.CompactionMessageSizeThreshold,
