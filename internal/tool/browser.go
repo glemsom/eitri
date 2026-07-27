@@ -42,6 +42,24 @@ type screenshotArgs struct {
 	TargetID string `json:"target_id" jsonschema:"Target tab ID to capture screenshot of"`
 }
 
+// getDOMArgs defines the JSON schema for the get_dom action.
+type getDOMArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to get DOM from"`
+	Selector string `json:"selector,omitempty" jsonschema:"Optional CSS selector to get outerHTML of a specific element"`
+}
+
+// domElement represents a single DOM element in the structural summary.
+type domElement struct {
+	Type        string `json:"type"`
+	Level       string `json:"level,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Href        string `json:"href,omitempty"`
+	InputType   string `json:"input_type,omitempty"`
+	Value       string `json:"value,omitempty"`
+	Placeholder string `json:"placeholder,omitempty"`
+	Selector    string `json:"selector"`
+}
+
 // remoteConnection holds the allocator context and cancel func for one session.
 type remoteConnection struct {
 	ctx    context.Context
@@ -121,6 +139,8 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 		return t.typeText(allocCtx, parsed.Args)
 	case "screenshot":
 		return t.screenshot(allocCtx, parsed.Args)
+	case "get_dom":
+		return t.getDOM(allocCtx, parsed.Args)
 	default:
 		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
 	}
@@ -328,6 +348,281 @@ func (t *NativeBrowserTool) screenshot(allocCtx context.Context, rawArgs json.Ra
 		litellm.TextBlock{Text: fmt.Sprintf("Screenshot saved to %s", filename)},
 		litellm.ImageBlock{Data: pngData, MIME: "image/png"},
 	}), nil
+}
+
+// getDOM returns the DOM content of a page in two modes:
+// - Without selector: a structural summary with headings, links, buttons, inputs, and their CSS selectors
+// - With selector: the cleaned outerHTML of the matched element
+func (t *NativeBrowserTool) getDOM(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+	var args getDOMArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid get_dom action args: %v", err))), nil
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for get_dom action")), nil
+	}
+
+	// Attach to the target tab
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
+	defer tabCancel()
+
+	if args.Selector != "" {
+		return t.getDOMBySelector(tabCtx, args.Selector)
+	}
+
+	return t.getDOMStructuralSummary(tabCtx)
+}
+
+// getDOMBySelector returns the cleaned outerHTML of the element matching the given CSS selector.
+func (t *NativeBrowserTool) getDOMBySelector(tabCtx context.Context, selector string) (ToolResult, error) {
+	// Check if the element exists first
+	var exists bool
+	if err := chromedp.Run(tabCtx,
+		chromedp.Evaluate(fmt.Sprintf(`document.querySelector(%q) !== null`, selector), &exists),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: get_dom failed: %v", err))), nil
+	}
+
+	if !exists {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: No element matching selector %q", selector))), nil
+	}
+
+	// Get the outerHTML
+	var outerHTML string
+	if err := chromedp.Run(tabCtx,
+		chromedp.OuterHTML(selector, &outerHTML, chromedp.ByQuery),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to get outerHTML for selector %q: %v", selector, err))), nil
+	}
+
+	// Clean the HTML: strip <script>, <style>, comments, and extra whitespace
+	cleaned := cleanDOMHTML(outerHTML)
+
+	// Cap at approximately 8K tokens (roughly 32K chars for safety)
+	const maxChars = 32000
+	if len(cleaned) > maxChars {
+		cleaned = cleaned[:maxChars] + "\n\n... [output truncated: DOM content exceeded 8K token limit]"
+	}
+
+	return TextResult(cleaned), nil
+}
+
+// getDOMStructuralSummary traverses the page DOM and returns a compressed structural summary.
+func (t *NativeBrowserTool) getDOMStructuralSummary(tabCtx context.Context) (ToolResult, error) {
+	// Use JavaScript to extract the DOM structure
+	js := `
+(function() {
+	var results = [];
+	var maxDepth = 4;
+	var maxElements = 50;
+	var count = 0;
+
+	function getCSSSelector(el) {
+		if (el.id) {
+			return '#' + el.id;
+		}
+		var path = [];
+		var current = el;
+		while (current && current !== document.body && current !== document.documentElement) {
+			var selector = current.tagName.toLowerCase();
+			if (current.id) {
+				selector = '#' + current.id;
+				path.unshift(selector);
+				break;
+			}
+			if (current.className && typeof current.className === 'string') {
+				selector += '.' + current.className.trim().split(/\\s+/).join('.');
+			}
+			var sibling = current;
+			var nth = 1;
+			while ((sibling = sibling.previousElementSibling)) {
+				if (sibling.tagName === current.tagName) nth++;
+			}
+			if (nth > 1) selector += ':nth-of-type(' + nth + ')';
+			path.unshift(selector);
+			current = current.parentElement;
+		}
+		return path.join(' > ');
+	}
+
+	function extractInfo(el, depth) {
+		if (count >= maxElements) return;
+		if (depth > maxDepth) return;
+		if (!el || el.nodeType !== 1) return;
+
+		var tag = el.tagName.toLowerCase();
+		var sel = getCSSSelector(el);
+
+		// Headings
+		if (/^h[1-6]$/.test(tag)) {
+			var text = el.textContent.trim();
+			if (text) {
+				results.push({ type: 'heading', level: tag, text: text, selector: sel });
+				count++;
+			}
+		}
+
+		// Links
+		if (tag === 'a' && el.href) {
+			var text = el.textContent.trim();
+			results.push({ type: 'link', text: text, href: el.href, selector: sel });
+			count++;
+		}
+
+		// Buttons
+		if (tag === 'button') {
+			var text = el.textContent.trim() || el.value || '';
+			results.push({ type: 'button', text: text, selector: sel });
+			count++;
+		}
+		if (tag === 'input' && el.type === 'submit') {
+			var text = el.value || 'Submit';
+			results.push({ type: 'button', text: text, selector: sel });
+			count++;
+		}
+
+		// Inputs
+		if ((tag === 'input' && el.type !== 'submit' && el.type !== 'button' && el.type !== 'hidden') || tag === 'textarea' || tag === 'select') {
+			var val = el.value || '';
+			var placeholder = el.placeholder || '';
+			var inputType = el.type || tag;
+			results.push({ type: 'input', input_type: inputType, value: val, placeholder: placeholder, selector: sel });
+			count++;
+		}
+
+		// Recurse into children
+		for (var i = 0; i < el.children.length; i++) {
+			extractInfo(el.children[i], depth + 1);
+		}
+	}
+
+	// Get title
+	var title = document.title || '';
+
+	// Start traversal from body
+	if (document.body) {
+		extractInfo(document.body, 0);
+	}
+
+	return JSON.stringify({ title: title, elements: results });
+})();
+`
+
+	var resultJSON string
+	if err := chromedp.Run(tabCtx,
+		chromedp.Evaluate(js, &resultJSON),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: get_dom failed: %v", err))), nil
+	}
+
+	var domData struct {
+		Title    string       `json:"title"`
+		Elements []domElement `json:"elements"`
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &domData); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to parse DOM data: %v", err))), nil
+	}
+
+	return t.formatDOMSummary(domData.Title, domData.Elements), nil
+}
+
+// formatDOMSummary formats the extracted DOM data into a text summary.
+func (t *NativeBrowserTool) formatDOMSummary(title string, elements []domElement) ToolResult {
+	var b strings.Builder
+
+	if title != "" {
+		fmt.Fprintf(&b, "Title: %s\n", title)
+	}
+
+	// Group by type
+	var headings, links, buttons, inputs []domElement
+	for _, el := range elements {
+		switch el.Type {
+		case "heading":
+			headings = append(headings, el)
+		case "link":
+			links = append(links, el)
+		case "button":
+			buttons = append(buttons, el)
+		case "input":
+			inputs = append(inputs, el)
+		}
+	}
+
+	if len(headings) > 0 {
+		b.WriteString("\n--- Headings ---\n")
+		for _, h := range headings {
+			fmt.Fprintf(&b, "  %s: %s\n    Selector: %s\n", h.Level, h.Text, h.Selector)
+		}
+	}
+
+	if len(links) > 0 {
+		b.WriteString("\n--- Links ---\n")
+		for _, l := range links {
+			text := l.Text
+			if text == "" {
+				text = "(no text)"
+			}
+			fmt.Fprintf(&b, "  %s\n    URL: %s\n    Selector: %s\n", text, l.Href, l.Selector)
+		}
+	}
+
+	if len(buttons) > 0 {
+		b.WriteString("\n--- Buttons ---\n")
+		for _, btn := range buttons {
+			text := btn.Text
+			if text == "" {
+				text = "(no text)"
+			}
+			fmt.Fprintf(&b, "  %s\n    Selector: %s\n", text, btn.Selector)
+		}
+	}
+
+	if len(inputs) > 0 {
+		b.WriteString("\n--- Inputs ---\n")
+		for _, inp := range inputs {
+			desc := fmt.Sprintf("<%s>", inp.InputType)
+			if inp.Placeholder != "" {
+				desc = fmt.Sprintf("<%s placeholder=%q>", inp.InputType, inp.Placeholder)
+			}
+			if inp.Value != "" {
+				desc += fmt.Sprintf(" value=%q", inp.Value)
+			}
+			fmt.Fprintf(&b, "  %s\n    Selector: %s\n", desc, inp.Selector)
+		}
+	}
+
+	if b.Len() == 0 {
+		b.WriteString("No significant DOM elements found.")
+	}
+
+	result := b.String()
+
+	// Cap at ~6K tokens (roughly 24K chars)
+	const maxChars = 24000
+	if len(result) > maxChars {
+		result = result[:maxChars] + "\n\n... [output truncated: DOM summary exceeded 6K token limit]"
+	}
+
+	return TextResult(result)
+}
+
+// cleanDOMHTML removes <script>, <style>, HTML comments, and extra whitespace from HTML.
+func cleanDOMHTML(html string) string {
+	// Remove <script>...</script>
+	re := regexp.MustCompile(`(?si)<script[^>]*>.*?</script>`)
+	html = re.ReplaceAllString(html, "")
+	// Remove <style>...</style>
+	re = regexp.MustCompile(`(?si)<style[^>]*>.*?</style>`)
+	html = re.ReplaceAllString(html, "")
+	// Remove HTML comments
+	re = regexp.MustCompile(`(?si)<!--.*?-->`)
+	html = re.ReplaceAllString(html, "")
+	// Collapse whitespace
+	re = regexp.MustCompile(`\s+`)
+	html = re.ReplaceAllString(html, " ")
+	return strings.TrimSpace(html)
 }
 
 // buildDOMSummary produces a concise structural summary of page HTML content.
