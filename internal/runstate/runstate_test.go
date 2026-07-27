@@ -1481,6 +1481,79 @@ func TestFormatErrorMessage_EmptyError(t *testing.T) {
 	}
 }
 
+func TestStripHTMLTags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "simple HTML tags",
+			input: "<b>hello</b> world",
+			want:  "hello world",
+		},
+		{
+			name:  "style tag content stripped",
+			input: "<style>[data-component=\"top\"]{min-height:80px}</style>text",
+			want:  "text",
+		},
+		{
+			name:  "script tag content stripped",
+			input: "<script>window._$HY||function(e){}</script>text",
+			want:  "text",
+		},
+		{
+			name:  "script with src attribute stripped",
+			input: "<script src=\"/bundle.js\"></script>text",
+			want:  "text",
+		},
+		{
+			name:  "Full SolidJS HTML page",
+			input: "<!DOCTYPE html><html><head><style>[data-component=\"top\"]{min-height:80px}</style></head><body><script>window._$HY||function(e){}</script><p>hello</p></body></html>",
+			want:  "hello",
+		},
+		{
+			name:  "empty input",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "no HTML",
+			input: "just plain text",
+			want:  "just plain text",
+		},
+		{
+			name:  "multiline JS",
+			input: "<script>\nwindow._$HY = {};\nconsole.log('test');\n</script>result",
+			want:  "result",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripHTMLTags(tt.input)
+			if got != tt.want {
+				t.Errorf("stripHTMLTags() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatErrorMessage_HTMLError(t *testing.T) {
+	t.Parallel()
+
+	// Simulate an error whose message contains HTML with style/script content.
+	err := fmt.Errorf("<html><head><style>[data-component=\"top\"]{min-height:80px}</style></head><body><script>window._$HY||function(e){}</script></body></html>")
+	msg := FormatErrorMessage(err)
+	want := "LLM error: "
+	if msg != want {
+		t.Errorf("FormatErrorMessage() = %q, want %q", msg, want)
+	}
+}
+
+
 // ---------------------------------------------------------------------------
 // MaxTurnsMessage
 // ---------------------------------------------------------------------------
