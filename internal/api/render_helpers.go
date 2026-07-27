@@ -105,6 +105,11 @@ func renderComponentsToHTML(ctx context.Context, sessionID string, components []
 			code, _ := comp.Data["code"].(string)
 			compTempl := templates.MermaidDiagram(code)
 			_ = compTempl.Render(ctx, &html)
+		case "Screenshot":
+			filename, _ := comp.Data["filename"].(string)
+			timestamp, _ := comp.Data["timestamp"].(string)
+			compTempl := templates.ScreenshotDisplay(sessionID, filename, timestamp)
+			_ = compTempl.Render(ctx, &html)
 		case "QuickReplies":
 			// QuickReplies are now stored inline on the message, not as a component.
 			// Skip rendering here — inserted by AssistantBubble.
@@ -125,6 +130,11 @@ func renderInlineComponentsToHTML(ctx context.Context, sessionID string, compone
 		case "MermaidDiagram":
 			code, _ := comp.Data["code"].(string)
 			compTempl := templates.MermaidDiagram(code)
+			_ = compTempl.Render(ctx, &html)
+		case "Screenshot":
+			filename, _ := comp.Data["filename"].(string)
+			timestamp, _ := comp.Data["timestamp"].(string)
+			compTempl := templates.ScreenshotDisplay(sessionID, filename, timestamp)
 			_ = compTempl.Render(ctx, &html)
 			// QuickReplies is excluded — rendered by AssistantBubble.
 		}

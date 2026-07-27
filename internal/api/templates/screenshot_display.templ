@@ -1,0 +1,17 @@
+package templates
+
+// ScreenshotDisplay renders a captured browser screenshot as an <img> tag.
+// The image is styled with max-width, border, subtle background, and a timestamp caption.
+templ ScreenshotDisplay(sessionID string, filename string, timestamp string) {
+	<div class="screenshot-display" style="margin: 0.5rem 0; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; overflow: hidden;">
+		<div style="max-width: 100%; padding: 8px;">
+			<img src={ templ.URL("/sessions/"+sessionID+"/files/"+filename) }
+				alt="Browser screenshot"
+				style="max-width: 100%; height: auto; display: block; border-radius: 4px;"
+				loading="lazy"/>
+		</div>
+		<div style="padding: 6px 12px; font-size: 0.85em; color: #6c757d; border-top: 1px solid #dee2e6; background: #fff;">
+			{ timestamp }
+		</div>
+	</div>
+}

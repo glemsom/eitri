@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -283,9 +285,57 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/debug", s.handleDebugUmbrella)
 	s.mux.HandleFunc("GET /api/debug/http", s.handleDebugHTTP)
 	s.mux.HandleFunc("GET /api/debug/http/{trace_id}", s.handleDebugHTTPByID)
+
+	// Session file serving for screenshot images and other workspace files (issue #924)
+	s.mux.HandleFunc("GET /sessions/{id}/files/{filename}", s.handleSessionFile)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleSessionFile serves files from a session's workspace directory.
+// Used to serve screenshot images and other workspace files to the browser UI.
+// Security: validates the filename to prevent path traversal and only serves
+// files matching the browser-screenshot-*.png pattern.
+func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	filename := r.PathValue("filename")
+
+	// Security: prevent path traversal
+	if strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	// Look up session workspace
+	cfg := s.config.SessionManager.GetConfig(id)
+	if cfg == nil || cfg.Workspace == "" {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	filePath := filepath.Join(cfg.Workspace, filename)
+
+	// Security: ensure the resolved path is within the workspace directory
+	absWorkspace, _ := filepath.Abs(cfg.Workspace)
+	absFile, _ := filepath.Abs(filePath)
+	if !strings.HasPrefix(absFile, absWorkspace) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	// Verify the file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	// Set content type for PNG screenshots
+	if strings.HasSuffix(filename, ".png") {
+		w.Header().Set("Content-Type", "image/png")
+	}
+
+	http.ServeFile(w, r, filePath)
 }

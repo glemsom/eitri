@@ -493,6 +493,17 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				}
 			}
 
+			// Emit Screenshot component for successful browser screenshot results
+			if !isError {
+				compName, compData, ok := emitScreenshotComponent(spec.SSEWriter, tc.Name, blocks, opts.SessionID)
+				if ok && opts.UISessionMgr != nil {
+					_ = opts.UISessionMgr.AppendComponent(opts.SessionID, message.ComponentData{
+						Name: compName,
+						Data: compData,
+					})
+				}
+			}
+
 			// Add tool result message to conversation history
 			resultContent := resultText
 			if isError && resultContent == "" {

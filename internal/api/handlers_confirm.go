@@ -242,6 +242,21 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 			component := templates.QuickReplies(id, options)
 			component.Render(r.Context(), w)
 
+		case "Screenshot":
+			sessionID := id
+			filename := ""
+			timestamp := ""
+			if req.Data != nil {
+				if f, ok := req.Data["filename"].(string); ok {
+					filename = f
+				}
+				if t, ok := req.Data["timestamp"].(string); ok {
+					timestamp = t
+				}
+			}
+			component := templates.ScreenshotDisplay(sessionID, filename, timestamp)
+			component.Render(r.Context(), w)
+
 		default:
 			http.Error(w, "Unknown component", http.StatusBadRequest)
 		}

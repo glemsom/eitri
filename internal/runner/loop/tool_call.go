@@ -3,7 +3,9 @@ package loop
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/voocel/litellm"
 
@@ -43,6 +45,10 @@ var componentToolMap = map[string]string{
 	"render_mermaid_diagram": "MermaidDiagram",
 	"render_quick_replies":   "QuickReplies",
 }
+
+// screenshotFilenameRE extracts the screenshot filename from the browser tool's result text.
+// The browser tool returns text like "Screenshot saved to browser-screenshot-12345.png".
+var screenshotFilenameRE = regexp.MustCompile(`Screenshot saved to (browser-screenshot-\d+\.png)`)
 
 // emitComponentForTool emits a component event based on the tool name and args.
 // Supported tools: render_mermaid_diagram, render_quick_replies.
@@ -87,6 +93,52 @@ func emitComponentForTool(w *runstate.Writer, toolName string, args json.RawMess
 		"data": data,
 	})
 	return componentName, data, true
+}
+
+// hasImageBlock checks if the result blocks contain an ImageBlock (indicating a screenshot).
+func hasImageBlock(blocks []litellm.Block) bool {
+	for _, block := range blocks {
+		if _, ok := block.(litellm.ImageBlock); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// emitScreenshotComponent checks if the tool result is a successful browser screenshot
+// and emits a Screenshot component event. Returns (componentName, data, ok).
+func emitScreenshotComponent(w *runstate.Writer, toolName string, blocks []litellm.Block, sessionID string) (string, map[string]any, bool) {
+	if toolName != "browser" {
+		return "", nil, false
+	}
+
+	// Only emit if the result contains an ImageBlock (successful screenshot)
+	if !hasImageBlock(blocks) {
+		return "", nil, false
+	}
+
+	// Extract the filename from the result text
+	resultText := blocksToText(blocks)
+	matches := screenshotFilenameRE.FindStringSubmatch(resultText)
+	if len(matches) < 2 {
+		return "", nil, false
+	}
+	filename := matches[1]
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+	data := map[string]any{
+		"session_id": sessionID,
+		"filename":   filename,
+		"timestamp":  timestamp,
+	}
+
+	w.Component(map[string]any{
+		"kind": "component",
+		"name": "Screenshot",
+		"data": data,
+	})
+
+	return "Screenshot", data, true
 }
 
 // addReadToolAllowedPath looks up the ReadTool in the registry and appends a path
