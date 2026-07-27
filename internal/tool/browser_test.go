@@ -11,7 +11,7 @@ import (
 
 func TestBrowser_Schema(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test:9222/devtools/browser/test")
+	tool := NewBrowserTool("ws://test:9222/devtools/browser/test", "/tmp")
 	if tool.Name() != "browser" {
 		t.Errorf("Name = %q, want 'browser'", tool.Name())
 	}
@@ -29,7 +29,7 @@ func TestBrowser_Schema(t *testing.T) {
 
 func TestBrowser_SchemaHasActionParam(t *testing.T) {
 	t.Parallel()
-	schema := NewBrowserTool("ws://test").JSONSchema()
+	schema := NewBrowserTool("ws://test", "/tmp").JSONSchema()
 	var schemaObj map[string]any
 	if err := json.Unmarshal(schema, &schemaObj); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
@@ -67,7 +67,7 @@ func TestBrowser_SchemaHasActionParam(t *testing.T) {
 
 func TestBrowser_InvalidArgs(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
@@ -76,7 +76,7 @@ func TestBrowser_InvalidArgs(t *testing.T) {
 
 func TestBrowser_EmptyAction(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	// Create a context with a session ID
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":""}`))
@@ -90,7 +90,7 @@ func TestBrowser_EmptyAction(t *testing.T) {
 
 func TestBrowser_MissingAction(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{}`))
 	if err != nil {
@@ -103,7 +103,7 @@ func TestBrowser_MissingAction(t *testing.T) {
 
 func TestBrowser_UnknownAction(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"unknown_action"}`))
 	if err != nil {
@@ -116,7 +116,7 @@ func TestBrowser_UnknownAction(t *testing.T) {
 
 func TestBrowser_NoWSURL(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("")
+	tool := NewBrowserTool("", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"list_targets"}`))
 	if err != nil {
@@ -129,7 +129,7 @@ func TestBrowser_NoWSURL(t *testing.T) {
 
 func TestBrowser_NoSessionID(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"list_targets"}`))
 	if err == nil {
 		t.Fatal("expected error when no session ID in context")
@@ -138,7 +138,7 @@ func TestBrowser_NoSessionID(t *testing.T) {
 
 func TestBrowser_EndSession(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 
 	// EndSession on non-existent session should not panic
 	tool.EndSession("non-existent-session")
@@ -146,7 +146,7 @@ func TestBrowser_EndSession(t *testing.T) {
 
 func TestBrowser_GetOrCreateAllocator_New(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test:9222/devtools/browser/test")
+	tool := NewBrowserTool("ws://test:9222/devtools/browser/test", "/tmp")
 
 	// First call creates a new allocator
 	ctx, err := tool.getOrCreateAllocator("session-1")
@@ -178,7 +178,7 @@ func TestBrowser_GetOrCreateAllocator_New(t *testing.T) {
 
 func TestBrowser_EndSession_ClearsConn(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test:9222/devtools/browser/test")
+	tool := NewBrowserTool("ws://test:9222/devtools/browser/test", "/tmp")
 
 	ctx, err := tool.getOrCreateAllocator("session-to-end")
 	if err != nil {
@@ -202,7 +202,7 @@ func TestBrowser_EndSession_ClearsConn(t *testing.T) {
 
 func TestBrowser_TypeAction_MissingTargetID(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"type","args":{"selector":"#input","text":"hello"}}`))
 	if err != nil {
@@ -215,7 +215,7 @@ func TestBrowser_TypeAction_MissingTargetID(t *testing.T) {
 
 func TestBrowser_TypeAction_MissingSelector(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"type","args":{"target_id":"tab-1","text":"hello"}}`))
 	if err != nil {
@@ -228,7 +228,7 @@ func TestBrowser_TypeAction_MissingSelector(t *testing.T) {
 
 func TestBrowser_TypeAction_EmptyText(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"type","args":{"target_id":"tab-1","selector":"#input","text":""}}`))
 	if err != nil {
@@ -241,7 +241,7 @@ func TestBrowser_TypeAction_EmptyText(t *testing.T) {
 
 func TestBrowser_TypeAction_InvalidArgs(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"type","args":"not-an-object"}`))
 	if err != nil {
@@ -254,7 +254,7 @@ func TestBrowser_TypeAction_InvalidArgs(t *testing.T) {
 
 func TestBrowser_TypeAction_NoWSURL(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("")
+	tool := NewBrowserTool("", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"type","args":{"target_id":"tab-1","selector":"#input","text":"hello"}}`))
 	if err != nil {
@@ -267,7 +267,7 @@ func TestBrowser_TypeAction_NoWSURL(t *testing.T) {
 
 func TestBrowser_TypeAction_NoSessionID(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"type","args":{"target_id":"tab-1","selector":"#input","text":"hello"}}`))
 	if err == nil {
 		t.Fatal("expected error when no session ID in context")
@@ -276,7 +276,7 @@ func TestBrowser_TypeAction_NoSessionID(t *testing.T) {
 
 func TestBrowser_TypeAction_ActionNameInDescription(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	desc := tool.Description()
 	if !strings.Contains(desc, "type") {
 		t.Error("Description should mention 'type' action")
@@ -285,7 +285,7 @@ func TestBrowser_TypeAction_ActionNameInDescription(t *testing.T) {
 
 func TestBrowser_NavigateAction_MissingTargetID(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"url":"https://example.com"}}`))
 	if err != nil {
@@ -298,7 +298,7 @@ func TestBrowser_NavigateAction_MissingTargetID(t *testing.T) {
 
 func TestBrowser_NavigateAction_MissingURL(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1"}}`))
 	if err != nil {
@@ -311,7 +311,7 @@ func TestBrowser_NavigateAction_MissingURL(t *testing.T) {
 
 func TestBrowser_NavigateAction_InvalidURL(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"not-a-url"}}`))
 	if err != nil {
@@ -331,7 +331,7 @@ func TestBrowser_NavigateAction_InvalidURL(t *testing.T) {
 
 func TestBrowser_NavigateAction_InvalidArgs(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":"not-an-object"}`))
 	if err != nil {
@@ -344,7 +344,7 @@ func TestBrowser_NavigateAction_InvalidArgs(t *testing.T) {
 
 func TestBrowser_NavigateAction_NoWSURL(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("")
+	tool := NewBrowserTool("", "/tmp")
 	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
 	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"https://example.com"}}`))
 	if err != nil {
@@ -357,7 +357,7 @@ func TestBrowser_NavigateAction_NoWSURL(t *testing.T) {
 
 func TestBrowser_NavigateAction_NoSessionID(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"https://example.com"}}`))
 	if err == nil {
 		t.Fatal("expected error when no session ID in context")
@@ -366,7 +366,7 @@ func TestBrowser_NavigateAction_NoSessionID(t *testing.T) {
 
 func TestBrowser_NavigateAction_ActionNameInDescription(t *testing.T) {
 	t.Parallel()
-	tool := NewBrowserTool("ws://test")
+	tool := NewBrowserTool("ws://test", "/tmp")
 	desc := tool.Description()
 	if !strings.Contains(desc, "navigate") {
 		t.Error("Description should mention 'navigate' action")
@@ -440,5 +440,71 @@ func TestBrowser_StripTags(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("stripTags(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// --- Screenshot action tests ---
+
+func TestBrowser_ScreenshotAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"screenshot","args":{}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+	if len(result.Blocks) > 0 {
+		if text, ok := result.Blocks[0].(litellm.TextBlock); ok {
+			if !strings.Contains(text.Text, "target_id") {
+				t.Errorf("error message should mention target_id, got: %s", text.Text)
+			}
+		}
+	}
+}
+
+func TestBrowser_ScreenshotAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"screenshot","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_ScreenshotAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"screenshot","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_ScreenshotAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"screenshot","args":{"target_id":"tab-1"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_ScreenshotAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "screenshot") {
+		t.Error("Description should mention 'screenshot' action")
 	}
 }
