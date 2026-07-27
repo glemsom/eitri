@@ -97,7 +97,7 @@ var profiles = map[string]profile{
 		Descriptor: Descriptor{
 			ID:                  "opencode_go",
 			DisplayName:         "OpenCode Go",
-			DefaultBaseURL:      "https://opencode.ai/zen/go",
+			DefaultBaseURL:      "https://opencode.ai/zen/go/v1",
 			APIKeyRequired:      true,
 			SupportsPromptCache: true,
 		},

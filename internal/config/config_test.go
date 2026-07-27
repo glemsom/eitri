@@ -29,8 +29,8 @@ func TestLoadDefaultsWhenFileMissing(t *testing.T) {
 	if cfg.Provider != "opencode_go" {
 		t.Errorf("Provider = %q, want %q", cfg.Provider, "opencode_go")
 	}
-	if cfg.BaseURL != "https://opencode.ai/zen/go" {
-		t.Errorf("BaseURL = %q, want %q", cfg.BaseURL, "https://opencode.ai/zen/go")
+	if cfg.BaseURL != "https://opencode.ai/zen/go/v1" {
+		t.Errorf("BaseURL = %q, want %q", cfg.BaseURL, "https://opencode.ai/zen/go/v1")
 	}
 	if cfg.Model != "" {
 		t.Errorf("Model = %q, want empty string", cfg.Model)

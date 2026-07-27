@@ -26,7 +26,7 @@
     var baseUrlInput = document.getElementById('base_url');
     if (!baseUrlInput) return;
     var defaults = {
-      'opencode_go': 'https://opencode.ai/zen/go',
+      'opencode_go': 'https://opencode.ai/zen/go/v1',
       'github_copilot': 'https://api.githubcopilot.com',
       'custom_openai': '',
     };
