@@ -144,8 +144,8 @@ func TestNewLLMService_OpenCodeGoAnthropicRoute(t *testing.T) {
 
 	// Should route to Anthropic adapter — test with a mock server
 	chatSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/messages" {
-			t.Fatalf("path = %q, want /messages", r.URL.Path)
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("path = %q, want /v1/messages", r.URL.Path)
 		}
 		if got := r.Header.Get("x-api-key"); got != "sk-test" {
 			t.Fatalf("x-api-key = %q, want sk-test", got)
@@ -192,7 +192,8 @@ func TestNewAnthropic_BaseURLWithV1Suffix(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	// BaseURL with /v1 suffix — must not double it (Anthropic adapter also strips)
+	// BaseURL with /v1 suffix — must not double it (litellm Anthropic provider
+	// adds /v1/messages, so /v1 in the base is stripped by the factory).
 	svc, err := llm.NewLLMService(llm.AdapterConfig{
 		ProviderID: "opencode_go",
 		Model:      "qwen2.5-72b",
@@ -210,11 +211,13 @@ func TestNewAnthropic_BaseURLWithV1Suffix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
 	}
-	if gotPath == "/v1/messages" {
-		t.Fatal("BUG: baseURL had /v1 suffix, got /v1/messages instead of /messages — need to strip /v1 from baseURL")
+	// litellm Anthropic provider always uses /v1/messages and the factory
+	// strips a trailing /v1 from the base URL to prevent double /v1.
+	if gotPath == "/v1/v1/messages" {
+		t.Fatal("BUG: baseURL had /v1 suffix, got /v1/v1/messages — the factory must strip /v1 from base URL")
 	}
-	if gotPath != "/messages" {
-		t.Fatalf("path = %q, want /messages", gotPath)
+	if gotPath != "/v1/messages" {
+		t.Fatalf("path = %q, want /v1/messages (litellm Anthropic provider uses /v1/messages path)", gotPath)
 	}
 }
 
@@ -314,7 +317,7 @@ func TestNewLLMService_CustomOpenAI(t *testing.T) {
 		ProviderID: "custom_openai",
 		Model:      "my-model",
 		BaseURL:    chatSrv.URL,
-		APIKey:     "",
+		APIKey:     "test-key",
 	})
 	if err != nil {
 		t.Fatalf("NewLLMService error: %v", err)
