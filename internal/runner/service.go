@@ -617,11 +617,14 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 
 	// Manual compaction always runs — no high-water gate.
 	// LowWater=0 means the compactor will compact until no more
-	// tool results remain (or the default low-water logic activates).
+	// messages remain (or the default low-water logic activates).
+	// MessageSizeThreshold=0: for manual compaction, compact all
+	// eligible messages regardless of size — the user explicitly
+	// asked for it.
 	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, flatMsgs, llmSvc, compactor.Thresholds{
 		HighWater:                0,
 		LowWater:                 0,
-		MessageSizeThreshold:     cfg.CompactionMessageSizeThreshold,
+		MessageSizeThreshold:     0, // manual compaction compacts all eligible messages
 		ToolCallRetentionTurns:   cfg.CompactionToolCallRetentionTurns,
 		SalienceEnabled:          cfg.CompactionSalienceEnabled,
 	})

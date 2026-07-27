@@ -76,7 +76,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		// No results found to compact or prune
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		_ = templates.ErrorToast("No tool results found to compact").Render(r.Context(), w)
+		_ = templates.ErrorToast("No messages found to compact").Render(r.Context(), w)
 		return
 	}
 
