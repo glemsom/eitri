@@ -38,7 +38,7 @@
 //
 // This package imports from the following internal packages:
 //
-//   - litellm   — LLM transport abstraction (LLMService, AdapterConfig, Request)
+//   - litellm   — LLM transport abstraction (*litellm.Client, Request)
 //   - tool      — ToolHandler, Registry, built-in tools (bash, read, write, etc.)
 //   - runstate  — SSE event types (SSEEvent, RenderKind), State, Writer
 //   - session   — UI session Manager (uisession)
