@@ -327,7 +327,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
 				// content and any tool calls to conversation history before returning.
-				opts.HistoryMgr.AppendAssistant(content.String(), toolCallsToLLM(toolCalls))
+				opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
 				if opts.HistoryMgr.RequestBased() {
 					trimMessages(spec.Request, spec.MaxHistory)
 				}
@@ -378,7 +378,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Has tool calls — add assistant message to history
-		opts.HistoryMgr.AppendAssistant(content.String(), toolCallsToLLM(toolCalls))
+		opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
 
 		// Execute each tool call sequentially
 		for _, tc := range toolCalls {
@@ -676,13 +676,6 @@ func drainRemaining(
 			return
 		}
 	}
-}
-
-// toolCallsToLLM converts []litellm.ToolUseBlock to []litellm.ToolUseBlock.
-// This is a no-op identity function kept for compatibility; the
-// HistoryManager.AppendAssistant now accepts []litellm.ToolUseBlock directly.
-func toolCallsToLLM(tcs []litellm.ToolUseBlock) []litellm.ToolUseBlock {
-	return tcs
 }
 
 // MaxTurnsExceededError reports that a run hit its configured turn cap.
