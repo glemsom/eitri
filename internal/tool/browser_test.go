@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/voocel/litellm"
 )
 
 func TestBrowser_Schema(t *testing.T) {
@@ -278,5 +280,165 @@ func TestBrowser_TypeAction_ActionNameInDescription(t *testing.T) {
 	desc := tool.Description()
 	if !strings.Contains(desc, "type") {
 		t.Error("Description should mention 'type' action")
+	}
+}
+
+func TestBrowser_NavigateAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"url":"https://example.com"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+}
+
+func TestBrowser_NavigateAction_MissingURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing url")
+	}
+}
+
+func TestBrowser_NavigateAction_InvalidURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"not-a-url"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid url")
+	}
+	if len(result.Blocks) > 0 {
+		if text, ok := result.Blocks[0].(litellm.TextBlock); ok {
+			if !strings.Contains(text.Text, "must start with http:// or https://") {
+				t.Errorf("error message should mention URL format, got: %s", text.Text)
+			}
+		}
+	}
+}
+
+func TestBrowser_NavigateAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_NavigateAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"https://example.com"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_NavigateAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"navigate","args":{"target_id":"tab-1","url":"https://example.com"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_NavigateAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test")
+	desc := tool.Description()
+	if !strings.Contains(desc, "navigate") {
+		t.Error("Description should mention 'navigate' action")
+	}
+}
+
+func TestBrowser_BuildDOMSummary(t *testing.T) {
+	t.Parallel()
+
+	html := `<html><body>
+		<h1>Main Title</h1>
+		<h2>Sub heading</h2>
+		<p>Some text</p>
+		<a href="/link1">Link 1</a>
+		<a href="/link2">Link 2</a>
+		<input type="text" name="q">
+		<button>Submit</button>
+	</body></html>`
+
+	summary := buildDOMSummary(html)
+
+	if !strings.Contains(summary, "h1: Main Title") {
+		t.Error("summary should contain heading h1")
+	}
+	if !strings.Contains(summary, "h2: Sub heading") {
+		t.Error("summary should contain heading h2")
+	}
+	if !strings.Contains(summary, "Links: 2") {
+		t.Error("summary should contain link count 2")
+	}
+	if !strings.Contains(summary, "Inputs: 1") {
+		t.Error("summary should contain input count 1")
+	}
+	if !strings.Contains(summary, "Buttons: 1") {
+		t.Error("summary should contain button count 1")
+	}
+}
+
+func TestBrowser_BuildDOMSummary_Empty(t *testing.T) {
+	t.Parallel()
+	summary := buildDOMSummary("")
+	if summary == "" {
+		t.Error("summary should not be empty even for empty HTML")
+	}
+}
+
+func TestBrowser_BuildDOMSummary_HeadingsWithInnerTags(t *testing.T) {
+	t.Parallel()
+	html := `<h1><span class="highlight">Styled</span> Title</h1>`
+	summary := buildDOMSummary(html)
+	if !strings.Contains(summary, "h1: Styled Title") {
+		t.Errorf("summary should strip inner tags, got: %s", summary)
+	}
+}
+
+func TestBrowser_StripTags(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"<b>bold</b>", "bold"},
+		{"<a href='x'>link</a>", "link"},
+		{"<h1>Title</h1>", "Title"},
+		{"no tags", "no tags"},
+		{"", ""},
+		{"<br/>", ""},
+	}
+	for _, tt := range tests {
+		got := stripTags(tt.input)
+		if got != tt.want {
+			t.Errorf("stripTags(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }
