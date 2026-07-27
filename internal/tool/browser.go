@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -154,6 +157,67 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	}
 }
 
+// resolveWebSocketURL resolves a user-provided WebSocket URL to a form suitable
+// for chromedp.NewRemoteAllocator.
+//
+// It tries two strategies in order:
+//  1. If the URL already contains "/devtools/browser/", it is used as-is.
+//  2. Otherwise, it attempts auto-discovery by fetching http://host:port/json/version
+//     and extracting the webSocketDebuggerUrl from the JSON response.
+//  3. If auto-discovery fails, it falls back to ws://host:port/devtools/browser/,
+//     which works with Chrome instances that serve WebSocket connections directly
+//     at that path without a browser GUID (e.g. sandboxed Chrome).
+func (t *NativeBrowserTool) resolveWebSocketURL(ctx context.Context, rawURL string) (string, error) {
+	// If the URL already points to a browser websocket endpoint, use it directly.
+	if strings.Contains(rawURL, "/devtools/browser/") {
+		return rawURL, nil
+	}
+
+	// Try standard auto-discovery via /json/version (same approach as chromedp's modifyURL).
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("browser: invalid wsURL %q: %w", rawURL, err)
+	}
+	u.Scheme = "http"
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		// If there's no port, assume the host is just a hostname and use default port 9222
+		host = u.Host
+		port = "9222"
+	}
+	u.Host = net.JoinHostPort(host, port)
+	u.Path = "/json/version"
+
+	discCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(discCtx, "GET", u.String(), nil)
+	if err != nil {
+		// Can't even build the request — fall through to fallback
+	}
+	if err == nil {
+		resp, reqErr := http.DefaultClient.Do(req)
+		if reqErr == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var versionInfo map[string]any
+				if decodeErr := json.NewDecoder(resp.Body).Decode(&versionInfo); decodeErr == nil {
+					if wsURL, ok := versionInfo["webSocketDebuggerUrl"].(string); ok && wsURL != "" {
+						return wsURL, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: some Chrome instances (e.g. sandboxed/bwrap) serve WebSocket at
+	// /devtools/browser/ without requiring a browser GUID and without serving
+	// the HTTP /json/version endpoint. Try that.
+	u2, _ := url.Parse(rawURL)
+	u2.Path = "/devtools/browser/"
+	return u2.String(), nil
+}
+
 // getOrCreateAllocator returns the allocator context for the given session ID,
 // creating a new one via chromedp.NewRemoteAllocator if none exists.
 func (t *NativeBrowserTool) getOrCreateAllocator(sessionID string) (context.Context, error) {
@@ -164,7 +228,15 @@ func (t *NativeBrowserTool) getOrCreateAllocator(sessionID string) (context.Cont
 		return conn.ctx, nil
 	}
 
-	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), t.wsURL)
+	// Resolve the WebSocket URL ourselves, then pass it directly with NoModifyURL
+	// to avoid chromedp's own modifyURL, which would also try auto-discovery but
+	// with no fallback.
+	resolvedURL, err := t.resolveWebSocketURL(context.Background(), t.wsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), resolvedURL, chromedp.NoModifyURL)
 	t.conns[sessionID] = remoteConnection{
 		ctx:    allocCtx,
 		cancel: allocCancel,
