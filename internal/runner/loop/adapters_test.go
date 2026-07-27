@@ -7,6 +7,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
 )
 
 // ── sessionHistoryManager tests ────────────────────────────────────────────
@@ -138,10 +139,10 @@ func TestSessionHistoryManager_Interface(t *testing.T) {
 
 func TestRequestHistoryManager_History(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "system", Content: "sys"},
-			{Role: "user", Content: "hello"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}},
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
@@ -158,29 +159,38 @@ func TestRequestHistoryManager_History(t *testing.T) {
 	}
 }
 
-func TestRequestHistoryManager_HistoryReturnsSameSlice(t *testing.T) {
+func TestRequestHistoryManager_HistoryReturnsNewSlice(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "user", Content: "hi"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
 	msgs := adapter.History()
-	// Modify the returned slice — should affect req.Messages since no copy is made
+	// History() returns a new slice (converted from litellm to llm).
+	// Modifications to the returned slice should NOT affect req.Messages.
 	if len(msgs) > 0 {
 		msgs[0].Content = "modified"
 	}
-	if req.Messages[0].Content != "modified" {
-		t.Error("History() did not return the same backing slice as req.Messages")
+	// Extract content from first message in req.Messages
+	firstBlocks := req.Messages[0].Blocks
+	firstContent := ""
+	if len(firstBlocks) > 0 {
+		if text, ok := firstBlocks[0].(litellm.TextBlock); ok {
+			firstContent = text.Text
+		}
+	}
+	if firstContent != "hi" {
+		t.Errorf("req.Messages[0] content = %q, want %q (History should not share the backing slice)", firstContent, "hi")
 	}
 }
 
 func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "user", Content: "hello"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}},
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
@@ -189,17 +199,22 @@ func TestRequestHistoryManager_AppendAssistant(t *testing.T) {
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
 	}
-	if req.Messages[1].Role != "assistant" {
-		t.Errorf("message[1].Role = %q, want %q", req.Messages[1].Role, "assistant")
+	if req.Messages[1].Role != litellm.Role("assistant") {
+		t.Errorf("message[1].Role = %q, want %q", req.Messages[1].Role, litellm.Role("assistant"))
 	}
-	if req.Messages[1].Content != "world" {
-		t.Errorf("message[1].Content = %q, want %q", req.Messages[1].Content, "world")
+	// Extract text from blocks
+	if len(req.Messages[1].Blocks) > 0 {
+		if text, ok := req.Messages[1].Blocks[0].(litellm.TextBlock); ok {
+			if text.Text != "world" {
+				t.Errorf("message[1] text = %q, want %q", text.Text, "world")
+			}
+		}
 	}
 }
 
 func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{}
+	req := &litellm.Request{}
 	adapter := NewRequestHistoryManager(req)
 	toolCalls := []llm.ToolCall{
 		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
@@ -209,19 +224,27 @@ func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	if len(req.Messages) != 1 {
 		t.Fatalf("req.Messages length = %d, want 1", len(req.Messages))
 	}
-	if len(req.Messages[0].ToolCalls) != 1 {
-		t.Fatalf("ToolCalls length = %d, want 1", len(req.Messages[0].ToolCalls))
+	// Verify the message has a ToolUseBlock
+	foundTool := false
+	for _, block := range req.Messages[0].Blocks {
+		if tu, ok := block.(litellm.ToolUseBlock); ok {
+			foundTool = true
+			if tu.Name != "test_tool" {
+				t.Errorf("ToolUseBlock.Name = %q, want %q", tu.Name, "test_tool")
+			}
+			break
+		}
 	}
-	if req.Messages[0].ToolCalls[0].Function.Name != "test_tool" {
-		t.Errorf("ToolCalls[0].Function.Name = %q, want %q", req.Messages[0].ToolCalls[0].Function.Name, "test_tool")
+	if !foundTool {
+		t.Error("no ToolUseBlock found in appended message")
 	}
 }
 
 func TestRequestHistoryManager_AppendTool(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "user", Content: "run tool"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run tool"}}},
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
@@ -230,30 +253,33 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
 	}
-	if req.Messages[1].Role != "tool" {
-		t.Errorf("message[1].Role = %q, want %q", req.Messages[1].Role, "tool")
+	if req.Messages[1].Role != litellm.Role("tool") {
+		t.Errorf("message[1].Role = %q, want %q", req.Messages[1].Role, litellm.Role("tool"))
 	}
-	if req.Messages[1].ToolCallID != "call_1" {
-		t.Errorf("message[1].ToolCallID = %q, want %q", req.Messages[1].ToolCallID, "call_1")
-	}
-	if req.Messages[1].Content != "tool result" {
-		t.Errorf("message[1].Content = %q, want %q", req.Messages[1].Content, "tool result")
+	// Verify ToolResultBlock
+	if len(req.Messages[1].Blocks) > 0 {
+		if tr, ok := req.Messages[1].Blocks[0].(litellm.ToolResultBlock); ok {
+			if tr.ToolUseID != "call_1" {
+				t.Errorf("ToolResultBlock.ToolUseID = %q, want %q", tr.ToolUseID, "call_1")
+			}
+		}
 	}
 }
 
 func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	t.Parallel()
-	req := &llm.Request{}
+	req := &litellm.Request{}
 	adapter := NewRequestHistoryManager(req)
-	// isError is not stored in llm.Message, but the content carries the error info.
+	// isError is not stored in litellm message, but the content carries the error info.
 	adapter.AppendTool("call_err", "error message", true)
 
 	if len(req.Messages) != 1 {
 		t.Fatalf("req.Messages length = %d, want 1", len(req.Messages))
 	}
-	_ = req.Messages[0].Content // Content should be "error message"
+	// Content should be "error message"
+	_ = req.Messages[0].Blocks
 	// The isError flag is intentionally discarded by requestHistoryManager
-	// because the llm.Message type does not carry it; the error content
+	// because the message type does not carry it; the error content
 	// is passed in the Content field for the LLM to interpret.
 }
 

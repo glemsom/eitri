@@ -18,6 +18,46 @@ import (
 	"github.com/voocel/litellm"
 )
 
+// lrFromMessages converts []llm.Message to a *litellm.Request with those
+// messages. Intended for tests that previously constructed *llm.Request directly.
+func lrFromMessages(msgs []llm.Message, opts ...func(*litellm.Request)) *litellm.Request {
+	litMsgs := make([]litellm.Message, len(msgs))
+	for i, m := range msgs {
+		litMsgs[i] = toLitellmMessage(m)
+	}
+	r := &litellm.Request{Messages: litMsgs}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
+}
+
+// lrWithModel sets the Model field on a litellm.Request.
+func lrWithModel(model string) func(*litellm.Request) {
+	return func(r *litellm.Request) { r.Model = model }
+}
+
+// msgContent extracts text content from a litellm.Message by reading its
+// TextBlock blocks. Empty if no text blocks are found.
+func msgContent(msg litellm.Message) string {
+	return litellmMessageToLLM(msg).Content
+}
+
+// msgRole returns the role string of a litellm.Message.
+func msgRole(msg litellm.Message) string {
+	return string(msg.Role)
+}
+
+// msgToolCalls returns the tool calls from a litellm.Message.
+func msgToolCalls(msg litellm.Message) []llm.ToolCall {
+	return litellmMessageToLLM(msg).ToolCalls
+}
+
+// msgToolCallID returns the tool call ID from a litellm.Message.
+func msgToolCallID(msg litellm.Message) string {
+	return litellmMessageToLLM(msg).ToolCallID
+}
+
 // ── Mock LLM provider ──────────────────────────────────────────────────────
 
 // mockProvider simulates an LLM with configurable responses per turn.
@@ -189,22 +229,22 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello! How can I help?"}}},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -266,22 +306,22 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "what is the answer?"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -320,20 +360,20 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	}
 
 	// Check message order: user, assistant, tool, assistant
-	if req.Messages[1].Role != "assistant" {
-		t.Errorf("message[1] role = %q, want %q", req.Messages[1].Role, "assistant")
+	if msgRole(req.Messages[1]) != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", msgRole(req.Messages[1]), "assistant")
 	}
-	if req.Messages[2].Role != "tool" {
-		t.Errorf("message[2] role = %q, want %q", req.Messages[2].Role, "tool")
+	if msgRole(req.Messages[2]) != "tool" {
+		t.Errorf("message[2] role = %q, want %q", msgRole(req.Messages[2]), "tool")
 	}
-	if req.Messages[2].Content != "42" {
-		t.Errorf("message[2] content = %q, want %q", req.Messages[2].Content, "42")
+	if msgContent(req.Messages[2]) != "42" {
+		t.Errorf("message[2] content = %q, want %q", msgContent(req.Messages[2]), "42")
 	}
-	if req.Messages[3].Role != "assistant" {
-		t.Errorf("message[3] role = %q, want %q", req.Messages[3].Role, "assistant")
+	if msgRole(req.Messages[3]) != "assistant" {
+		t.Errorf("message[3] role = %q, want %q", msgRole(req.Messages[3]), "assistant")
 	}
-	if req.Messages[3].Content != "The result is 42." {
-		t.Errorf("message[3] content = %q, want %q", req.Messages[3].Content, "The result is 42.")
+	if msgContent(req.Messages[3]) != "The result is 42." {
+		t.Errorf("message[3] content = %q, want %q", msgContent(req.Messages[3]), "The result is 42.")
 	}
 }
 
@@ -375,22 +415,22 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run both tools"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -434,22 +474,22 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run failing tool"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -467,15 +507,15 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 		t.Fatalf("req.Messages length = %d, want 4 (user + assistant + tool + final assistant)", len(req.Messages))
 	}
 
-	if req.Messages[2].Role != "tool" {
-		t.Errorf("message[2] role = %q, want %q", req.Messages[2].Role, "tool")
+	if msgRole(req.Messages[2]) != "tool" {
+		t.Errorf("message[2] role = %q, want %q", msgRole(req.Messages[2]), "tool")
 	}
-	if req.Messages[2].Content != "command not found" {
-		t.Errorf("message[2] content = %q, want %q", req.Messages[2].Content, "command not found")
+	if msgContent(req.Messages[2]) != "command not found" {
+		t.Errorf("message[2] content = %q, want %q", msgContent(req.Messages[2]), "command not found")
 	}
 	// Final assistant message should reference the error
-	if req.Messages[3].Content != "I see the error, let me handle it." {
-		t.Errorf("message[3] content = %q, want %q", req.Messages[3].Content, "I see the error, let me handle it.")
+	if msgContent(req.Messages[3]) != "I see the error, let me handle it." {
+		t.Errorf("message[3] content = %q, want %q", msgContent(req.Messages[3]), "I see the error, let me handle it.")
 	}
 }
 
@@ -498,22 +538,22 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "loop"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -546,22 +586,22 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(ctx, RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -632,25 +672,25 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	// Start RunAgent in background
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
 			Client:    blockingClient,
-			Request:    &req,
+			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -675,11 +715,11 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2 (user + partial assistant)", len(req.Messages))
 	}
-	if req.Messages[1].Role != "assistant" {
-		t.Errorf("message[1] role = %q, want %q", req.Messages[1].Role, "assistant")
+	if msgRole(req.Messages[1]) != "assistant" {
+		t.Errorf("message[1] role = %q, want %q", msgRole(req.Messages[1]), "assistant")
 	}
-	if !strings.Contains(req.Messages[1].Content, "Partial response") {
-		t.Errorf("message[1] content = %q, want to contain 'Partial response'", req.Messages[1].Content)
+	if !strings.Contains(msgContent(req.Messages[1]), "Partial response") {
+		t.Errorf("message[1] content = %q, want to contain 'Partial response'", msgContent(req.Messages[1]))
 	}
 }
 
@@ -692,22 +732,22 @@ func TestRunAgent_StreamError(t *testing.T) {
 		{err: fmt.Errorf("rate limit exceeded")},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -732,22 +772,22 @@ func TestRunAgent_NoTools(t *testing.T) {
 		{tokens: []tokenEvent{{content: "I am a helpful assistant."}}},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hello"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -817,22 +857,22 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		t.Fatalf("failed to create transient error mock client: %v", err)
 	}
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err = RunAgent(context.Background(), RunSpec{
 		Client:     transientClient,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -869,22 +909,22 @@ if err != nil {
 t.Fatalf("failed to create transient error mock client: %v", err)
 }
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err = RunAgent(context.Background(), RunSpec{
 		Client:     transientClient,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -929,22 +969,22 @@ if err != nil {
 t.Fatalf("failed to create client: %v", err)
 }
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "test"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err = RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -976,22 +1016,22 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1027,22 +1067,22 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   0,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1077,22 +1117,22 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run empty tool"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1107,11 +1147,11 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	// Tool result (message[2]) should have empty content
 	if len(req.Messages) >= 3 {
 		toolMsg := req.Messages[2]
-		if toolMsg.Role != "tool" {
-			t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+		if msgRole(toolMsg) != "tool" {
+			t.Errorf("message[2] role = %q, want %q", msgRole(toolMsg), "tool")
 		}
-		if toolMsg.Content != "" {
-			t.Errorf("tool result content = %q, want empty", toolMsg.Content)
+		if msgContent(toolMsg) != "" {
+			t.Errorf("tool result content = %q, want empty", msgContent(toolMsg))
 		}
 	}
 }
@@ -1142,22 +1182,22 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "edit the file"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1174,18 +1214,18 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 		t.Fatalf("expected at least 3 messages (user + assistant + tool result), got %d", len(req.Messages))
 	}
 	toolMsg := req.Messages[2]
-	if toolMsg.Role != "tool" {
-		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	if msgRole(toolMsg) != "tool" {
+		t.Errorf("message[2] role = %q, want %q", msgRole(toolMsg), "tool")
 	}
-	if !strings.Contains(toolMsg.Content, "Tool error") && !strings.Contains(toolMsg.Content, "unknown tool") {
-		t.Errorf("tool result should contain error about unknown tool, got: %q", toolMsg.Content)
+	if !strings.Contains(msgContent(toolMsg), "Tool error") && !strings.Contains(msgContent(toolMsg), "unknown tool") {
+		t.Errorf("tool result should contain error about unknown tool, got: %q", msgContent(toolMsg))
 	}
 
 	// Final message should be the LLM's self-correction response
 	if len(req.Messages) >= 4 {
 		finalMsg := req.Messages[len(req.Messages)-1]
-		if finalMsg.Role != "assistant" {
-			t.Errorf("final message role = %q, want %q", finalMsg.Role, "assistant")
+		if msgRole(finalMsg) != "assistant" {
+			t.Errorf("final message role = %q, want %q", msgRole(finalMsg), "assistant")
 		}
 	}
 }
@@ -1267,22 +1307,22 @@ func TestRunAgent_Thinking(t *testing.T) {
 				{tokens: tt.tokens},
 			})
 
-			req := llm.Request{
-				Model: "test-model",
-				Messages: []llm.Message{
+			req := lrFromMessages(
+				[]llm.Message{
 					{Role: "user", Content: tt.query},
 				},
-			}
+				lrWithModel("test-model"),
+			)
 
 			err := RunAgent(context.Background(), RunSpec{
 				Client:    client,
-				Request:    &req,
+				Request:    req,
 				MaxTurns:   5,
 				MaxHistory: 0,
 				SSEWriter:  w,
 				Tools:      nil,
 			}, RunOpts{
-				HistoryMgr:    NewRequestHistoryManager(&req),
+				HistoryMgr:    NewRequestHistoryManager(req),
 				Confirmer:     nil,
 				UISessionMgr:  nil,
 				SessionID:     "",
@@ -1322,15 +1362,15 @@ func TestRunAgent_Thinking(t *testing.T) {
 
 			if len(req.Messages) >= 2 {
 				lastAssistant := req.Messages[len(req.Messages)-1]
-				if lastAssistant.Role == "assistant" {
+				if msgRole(lastAssistant) == "assistant" {
 					for _, want := range tt.wantContains {
-						if !strings.Contains(lastAssistant.Content, want) {
-							t.Errorf("assistant content = %q, want to contain %q", lastAssistant.Content, want)
+						if !strings.Contains(msgContent(lastAssistant), want) {
+							t.Errorf("assistant content = %q, want to contain %q", msgContent(lastAssistant), want)
 						}
 					}
 					for _, notWant := range tt.wantNotContains {
-						if strings.Contains(lastAssistant.Content, notWant) {
-							t.Errorf("reasoning content %q leaked into accumulated assistant content: %q", notWant, lastAssistant.Content)
+						if strings.Contains(msgContent(lastAssistant), notWant) {
+							t.Errorf("reasoning content %q leaked into accumulated assistant content: %q", notWant, msgContent(lastAssistant))
 						}
 					}
 				}
@@ -1342,22 +1382,22 @@ func TestRunAgent_Thinking(t *testing.T) {
 // ── Sliding window cap tests ────────────────────────────────────────────────
 
 func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "msg1"},
-			{Role: "assistant", Content: "resp1"},
-			{Role: "user", Content: "msg2"},
-			{Role: "assistant", Content: "resp2"},
-			{Role: "user", Content: "msg3"},
-			{Role: "assistant", Content: "resp3"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "msg1"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "resp1"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "msg2"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "resp2"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "msg3"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "resp3"}}},
 		},
 	}
 
 	trimMessages(req, 4) // cap at 4 non-system messages
 
 	// System prompt must remain
-	if len(req.Messages) < 1 || req.Messages[0].Role != "system" {
+	if len(req.Messages) < 1 || msgRole(req.Messages[0]) != "system" {
 		t.Fatalf("system prompt missing or moved, got %+v", req.Messages)
 	}
 
@@ -1370,8 +1410,8 @@ func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
 	expected := []string{"msg2", "resp2", "msg3", "resp3"}
 	for i, exp := range expected {
 		idx := 1 + i // skip system
-		if req.Messages[idx].Content != exp {
-			t.Errorf("Messages[%d].Content = %q, want %q", idx, req.Messages[idx].Content, exp)
+		if msgContent(req.Messages[idx]) != exp {
+			t.Errorf("Messages[%d].Content = %q, want %q", idx, msgContent(req.Messages[idx]), exp)
 		}
 	}
 }
@@ -1382,7 +1422,7 @@ func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
 		{Role: "user", Content: "u1"},
 		{Role: "assistant", Content: "a1"},
 	}
-	req := &llm.Request{Messages: msgs}
+	req := lrFromMessages(msgs)
 
 	trimMessages(req, 5)
 
@@ -1401,14 +1441,14 @@ func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
 	}
 
 	// maxHistory = 0 (no limit)
-	req0 := &llm.Request{Messages: append([]llm.Message{}, msgs...)}
+	req0 := lrFromMessages(msgs)
 	trimMessages(req0, 0)
 	if len(req0.Messages) != 5 {
 		t.Errorf("maxHistory=0: len = %d, want 5", len(req0.Messages))
 	}
 
 	// maxHistory = -1 (no limit)
-	reqNeg := &llm.Request{Messages: append([]llm.Message{}, msgs...)}
+	reqNeg := lrFromMessages(msgs)
 	trimMessages(reqNeg, -1)
 	if len(reqNeg.Messages) != 5 {
 		t.Errorf("maxHistory=-1: len = %d, want 5", len(reqNeg.Messages))
@@ -1416,13 +1456,13 @@ func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
 }
 
 func TestTrimMessages_NoSystemPromptIsFine(t *testing.T) {
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: "user", Content: "u1"},
-			{Role: "assistant", Content: "a1"},
-			{Role: "user", Content: "u2"},
-			{Role: "assistant", Content: "a2"},
-			{Role: "user", Content: "u3"},
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u1"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "a1"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u2"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "a2"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u3"}}},
 		},
 	}
 
@@ -1432,11 +1472,11 @@ func TestTrimMessages_NoSystemPromptIsFine(t *testing.T) {
 	if len(req.Messages) != 2 {
 		t.Fatalf("len = %d, want 2", len(req.Messages))
 	}
-	if req.Messages[0].Content != "a2" {
-		t.Errorf("Messages[0].Content = %q, want %q", req.Messages[0].Content, "a2")
+	if msgContent(req.Messages[0]) != "a2" {
+		t.Errorf("Messages[0].Content = %q, want %q", msgContent(req.Messages[0]), "a2")
 	}
-	if req.Messages[1].Content != "u3" {
-		t.Errorf("Messages[1].Content = %q, want %q", req.Messages[1].Content, "u3")
+	if msgContent(req.Messages[1]) != "u3" {
+		t.Errorf("Messages[1].Content = %q, want %q", msgContent(req.Messages[1]), "u3")
 	}
 }
 
@@ -1465,9 +1505,8 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	})
 
 	// Start with 5 existing messages + system prompt, cap at 3
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "old1"},
 			{Role: "assistant", Content: "old1r"},
@@ -1477,17 +1516,18 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 			{Role: "assistant", Content: "old3r"},
 			{Role: "user", Content: "run tool"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 3,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1534,23 +1574,23 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "system", Content: "sys"},
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1590,22 +1630,22 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "render a diagram"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1652,22 +1692,22 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "show quick replies"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1708,22 +1748,22 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "render a diagram"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1764,22 +1804,22 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run tool"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -1817,13 +1857,13 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	req := llm.Request{
+	req := &litellm.Request{
 		Model: "test-model",
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
@@ -1899,13 +1939,13 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	req := llm.Request{
+	req := &litellm.Request{
 		Model: "test-model",
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
@@ -1954,13 +1994,13 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "hi")
 
-	req := llm.Request{
+	req := &litellm.Request{
 		Model: "test-model",
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
@@ -2010,13 +2050,13 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
 	sessionMgr.AppendUser(sessionID, "run tool")
 
-	req := llm.Request{
+	req := &litellm.Request{
 		Model: "test-model",
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
 		SSEWriter:  w,
@@ -2063,23 +2103,23 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	// No sessionMgr passed
 	err := RunAgent(context.Background(), RunSpec{
 		Client:     client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2115,13 +2155,13 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
 	sessionMgr.AppendUser(sessionID, "hello")
 
-	req := llm.Request{
+	req := &litellm.Request{
 		Model: "test-model",
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
@@ -2198,13 +2238,13 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	req := llm.Request{Model: "test-model"}
+	req := &litellm.Request{Model: "test-model"}
 
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
 			Client:    blockingClient,
-			Request:    &req,
+			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
 			SSEWriter:  w,
@@ -2305,22 +2345,22 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	// Stub approves
 	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "read file"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2337,11 +2377,11 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 		t.Fatalf("req.Messages length = %d, want >= 3 (user + assistant + tool)", len(req.Messages))
 	}
 	toolMsg := req.Messages[2]
-	if toolMsg.Role != "tool" {
-		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	if msgRole(toolMsg) != "tool" {
+		t.Errorf("message[2] role = %q, want %q", msgRole(toolMsg), "tool")
 	}
-	if toolMsg.Content != "file content" {
-		t.Errorf("tool result content = %q, want %q", toolMsg.Content, "file content")
+	if msgContent(toolMsg) != "file content" {
+		t.Errorf("tool result content = %q, want %q", msgContent(toolMsg), "file content")
 	}
 
 	// Verify SSE events include needs_confirmation
@@ -2384,22 +2424,22 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	// Stub denies
 	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "read secret"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     confirmer,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2416,11 +2456,11 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 		t.Fatalf("req.Messages length = %d, want >= 3 (user + assistant + tool)", len(req.Messages))
 	}
 	toolMsg := req.Messages[2]
-	if toolMsg.Role != "tool" {
-		t.Errorf("message[2] role = %q, want %q", toolMsg.Role, "tool")
+	if msgRole(toolMsg) != "tool" {
+		t.Errorf("message[2] role = %q, want %q", msgRole(toolMsg), "tool")
 	}
-	if !strings.Contains(toolMsg.Content, "Access denied") {
-		t.Errorf("tool result content = %q, want to contain 'Access denied'", toolMsg.Content)
+	if !strings.Contains(msgContent(toolMsg), "Access denied") {
+		t.Errorf("tool result content = %q, want to contain 'Access denied'", msgContent(toolMsg))
 	}
 
 	// Verify SSE events include needs_confirmation
@@ -2501,25 +2541,25 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "run tool"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    newMockClient([]mockTurn{
 			{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`),}},
 			{tokens: []tokenEvent{{content: "done"}}},
 		}),
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, RunOpts{
-		HistoryMgr:    NewRequestHistoryManager(&req),
+		HistoryMgr:    NewRequestHistoryManager(req),
 		Confirmer:     nil,
 		UISessionMgr:  nil,
 		SessionID:     "",
@@ -2539,11 +2579,11 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 		t.Fatalf("expected at least 3 messages (user + assistant + tool), got %d", len(req.Messages))
 	}
 	lastMsg := req.Messages[len(req.Messages)-1]
-	if lastMsg.Role != "assistant" {
-		t.Errorf("last message role = %q, want %q", lastMsg.Role, "assistant")
+	if msgRole(lastMsg) != "assistant" {
+		t.Errorf("last message role = %q, want %q", msgRole(lastMsg), "assistant")
 	}
-	if lastMsg.Content != "done" {
-		t.Errorf("last message content = %q, want %q", lastMsg.Content, "done")
+	if msgContent(lastMsg) != "done" {
+		t.Errorf("last message content = %q, want %q", msgContent(lastMsg), "done")
 	}
 }
 
@@ -2572,23 +2612,23 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	requirePanic(t, func() {
 		_ = RunAgent(context.Background(), RunSpec{
 			Client:     panickingClient,
-			Request:    &req,
+			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -2627,23 +2667,23 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	req := llm.Request{
-		Model: "test-model",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "hi"},
 		},
-	}
+		lrWithModel("test-model"),
+	)
 
 	requirePanic(t, func() {
 		_ = RunAgent(context.Background(), RunSpec{
 			Client:     panickingClient,
-			Request:    &req,
+			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
 			SSEWriter:  w,
 			Tools:      nil,
 		}, RunOpts{
-			HistoryMgr:    NewRequestHistoryManager(&req),
+			HistoryMgr:    NewRequestHistoryManager(req),
 			Confirmer:     nil,
 			UISessionMgr:  nil,
 			SessionID:     "",
@@ -2781,25 +2821,25 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 		},
 	})
 
-	req := llm.Request{
-		Model: "gpt-4",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "Say hello"},
 		},
-	}
+		lrWithModel("gpt-4"),
+	)
 
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
 	err := RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:       NewRequestHistoryManager(&req),
+		HistoryMgr:       NewRequestHistoryManager(req),
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        "",
@@ -2867,25 +2907,25 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 		t.Fatalf("failed to create mock client: %v", err)
 	}
 
-	req := llm.Request{
-		Model: "gpt-4",
-		Messages: []llm.Message{
+	req := lrFromMessages(
+		[]llm.Message{
 			{Role: "user", Content: "Say hello"},
 		},
-	}
+		lrWithModel("gpt-4"),
+	)
 
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
 	err = RunAgent(context.Background(), RunSpec{
 		Client:    client,
-		Request:    &req,
+		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
 		SSEWriter:  w,
 		Tools:      nil,
 	}, RunOpts{
-		HistoryMgr:       NewRequestHistoryManager(&req),
+		HistoryMgr:       NewRequestHistoryManager(req),
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        "",

@@ -99,26 +99,36 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		maxTurnsVal = 10
 	}
 
-	req := &llm.Request{
-		Model:  modelName,
-		Stream: true,
+	req := &litellm.Request{
+		Model: modelName,
 	}
 
 	// Set session-scoped prompt cache key if the provider supports it
 	providerDesc, _ := provider.Describe(cfg.ProviderID)
 	if providerDesc.SupportsPromptCache {
-		req.SessionID = sessionID
+		if req.ProviderOptions == nil {
+			req.ProviderOptions = make(litellm.ProviderOptions)
+		}
+		req.ProviderOptions["prompt_cache_key"] = sessionID
 	}
 
 	if cfg.ThinkingLevel != "" {
 		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, modelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+			slog.Info("model does not support thinking_level, skipping",
 				slog.String("model", modelName),
 				slog.String("provider", cfg.ProviderID),
 				slog.String("thinking_level", cfg.ThinkingLevel),
 			)
+		} else if !loop.IsReasoningModel(modelName) {
+			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
+				slog.String("model", modelName),
+				slog.String("thinking_level", cfg.ThinkingLevel),
+			)
 		} else {
-			req.ReasoningEffort = cfg.ThinkingLevel
+			req.Thinking = &litellm.Thinking{
+				Mode:   litellm.ThinkingEnabled,
+				Effort: cfg.ThinkingLevel,
+			}
 		}
 	}
 

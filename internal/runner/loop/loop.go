@@ -30,8 +30,10 @@ type RunSpec struct {
 	// Client is the litellm client used to generate streaming responses.
 	Client *litellm.Client
 
-	// Request is the LLM request to send (llm.Request for compat with HistoryManager).
-	Request *llm.Request
+	// Request is the base LLM request configuration (model, thinking, provider
+	// options). Each turn the loop copies the base fields and sets the current
+	// conversation history and tool definitions.
+	Request *litellm.Request
 
 	// MaxTurns is the maximum number of assistant turns before the loop exits.
 	MaxTurns int
@@ -109,16 +111,16 @@ func DefaultRunOpts() RunOpts {
 	return RunOpts{}
 }
 
-// buildLitellmRequest converts an llm.Request (with current history and tools)
-// into a litellm.Request for use with litellm.Client.Stream().
-func buildLitellmRequest(req *llm.Request, history []llm.Message, tools []litellm.Tool) *litellm.Request {
+// buildLitellmRequest creates a per-turn litellm.Request from the base request
+// config, current conversation history, and tool definitions.
+func buildLitellmRequest(base *litellm.Request, history []llm.Message, tools []litellm.Tool) *litellm.Request {
 	messages := make([]litellm.Message, 0, len(history))
 	for _, m := range history {
 		messages = append(messages, toLitellmMessage(m))
 	}
 
 	lr := &litellm.Request{
-		Model:    req.Model,
+		Model:    base.Model,
 		Messages: messages,
 		Tools:    tools,
 	}
@@ -127,25 +129,14 @@ func buildLitellmRequest(req *llm.Request, history []llm.Message, tools []litell
 	maxTokens := 4096
 	lr.MaxTokens = &maxTokens
 
-	// Reasoning effort — only set for models known to support thinking/reasoning.
-	if req.ReasoningEffort != "" && isReasoningModel(req.Model) {
-		lr.Thinking = &litellm.Thinking{
-			Mode:   litellm.ThinkingEnabled,
-			Effort: req.ReasoningEffort,
-		}
+	// Copy thinking config from base request
+	if base.Thinking != nil {
+		lr.Thinking = base.Thinking
 	}
 
-	// Prompt cache key via provider options
-	if req.SessionID != "" {
-		if lr.ProviderOptions == nil {
-			lr.ProviderOptions = make(litellm.ProviderOptions)
-		}
-		// Truncate to 64 chars as per existing behavior
-		key := req.SessionID
-		if len(key) > 64 {
-			key = key[:64]
-		}
-		lr.ProviderOptions["prompt_cache_key"] = key
+	// Copy provider options from base request
+	if base.ProviderOptions != nil {
+		lr.ProviderOptions = base.ProviderOptions
 	}
 
 	return lr
@@ -191,10 +182,11 @@ func toLitellmMessage(m llm.Message) litellm.Message {
 	}
 }
 
-// isReasoningModel returns true for models known to support thinking/reasoning.
-func isReasoningModel(model string) bool {
+// IsReasoningModel returns true for models known to support thinking/reasoning
+// via the litellm library's Thinking field. Used by callers to gate whether
+// Thinking.ThinkingEnabled is set on the litellm.Request.
+func IsReasoningModel(model string) bool {
 	lower := strings.ToLower(model)
-	// Strip any provider prefix
 	if _, after, ok := strings.Cut(lower, "/"); ok {
 		lower = after
 	}
