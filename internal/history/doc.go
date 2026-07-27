@@ -19,7 +19,7 @@
 //   - DefaultSystemPrompt — fallback system prompt
 //
 // Dependencies:
-//   - internal/litellm — litellm.Message type for conversation messages
+//   - github.com/voocel/litellm — litellm.Message type for conversation messages
 //
 // Extension points:
 //   - Replace sliding-window eviction with a different strategy
