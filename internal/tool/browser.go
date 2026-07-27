@@ -48,6 +48,12 @@ type getDOMArgs struct {
 	Selector string `json:"selector,omitempty" jsonschema:"Optional CSS selector to get outerHTML of a specific element"`
 }
 
+// clickArgs defines the JSON schema for the click action.
+type clickArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to click in"`
+	Selector string `json:"selector" jsonschema:"CSS selector for the element to click"`
+}
+
 // domElement represents a single DOM element in the structural summary.
 type domElement struct {
 	Type        string `json:"type"`
@@ -141,6 +147,8 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 		return t.screenshot(allocCtx, parsed.Args)
 	case "get_dom":
 		return t.getDOM(allocCtx, parsed.Args)
+	case "click":
+		return t.click(allocCtx, parsed.Args)
 	default:
 		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
 	}
@@ -303,6 +311,42 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawM
 	}
 
 	return TextResult(fmt.Sprintf("Typed text into element matching selector %q", args.Selector)), nil
+}
+
+// click clicks an element identified by CSS selector in the specified target tab.
+// It waits for the element to become visible before clicking.
+func (t *NativeBrowserTool) click(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+	var args clickArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid click action args: %v", err))), nil
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for click action")), nil
+	}
+	if args.Selector == "" {
+		return ToolError(TextBlocks("Error: 'selector' is required for click action")), nil
+	}
+
+	// Attach to the target tab
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
+	defer tabCancel()
+
+	// Wait for the element to be visible (default 10s timeout), then click it
+	clickCtx, clickCancel := context.WithTimeout(tabCtx, 10*time.Second)
+	defer clickCancel()
+
+	if err := chromedp.Run(clickCtx,
+		chromedp.WaitVisible(args.Selector, chromedp.ByQuery),
+		chromedp.Click(args.Selector, chromedp.ByQuery),
+	); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: Element matching selector %q did not become visible within 10s", args.Selector))), nil
+		}
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to click element matching selector %q: %v", args.Selector, err))), nil
+	}
+
+	return TextResult(fmt.Sprintf("Clicked element matching selector %q", args.Selector)), nil
 }
 
 // screenshot captures a screenshot of the specified target tab's viewport.
