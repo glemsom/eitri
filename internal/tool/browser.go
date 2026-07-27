@@ -75,6 +75,14 @@ type remoteConnection struct {
 	cancel context.CancelFunc
 }
 
+// targetContext holds a context attached to a specific browser tab (target).
+// The context is cached so we can send multiple commands to the same tab
+// without closing it between operations.
+type targetContext struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 // NativeBrowserTool implements ToolHandler for controlling a remote Chrome
 // instance via the Chrome DevTools Protocol.
 type NativeBrowserTool struct {
@@ -83,6 +91,9 @@ type NativeBrowserTool struct {
 	wsURL     string                       // remote Chrome WS URL
 	workspace string                       // workspace root for saving files
 	schema    litellm.Schema
+
+	targetsMu sync.Mutex
+	targets   map[string]map[string]*targetContext // sessionID -> targetID -> cached context
 }
 
 // NewBrowserTool creates a new NativeBrowserTool.
@@ -91,10 +102,11 @@ type NativeBrowserTool struct {
 // If wsURL is empty, the tool returns a descriptive error asking the user to configure it.
 func NewBrowserTool(wsURL, workspace string) *NativeBrowserTool {
 	return &NativeBrowserTool{
-		conns:     make(map[string]remoteConnection),
-		wsURL:     wsURL,
+		conns:   make(map[string]remoteConnection),
+		targets: make(map[string]map[string]*targetContext),
+		wsURL:   wsURL,
 		workspace: workspace,
-		schema:    SchemaOf[browserArgs](),
+		schema:  SchemaOf[browserArgs](),
 	}
 }
 
@@ -143,15 +155,15 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	case "list_targets":
 		return t.listTargets(allocCtx)
 	case "navigate":
-		return t.navigate(allocCtx, parsed.Args)
+		return t.navigate(allocCtx, sessionID, parsed.Args)
 	case "type":
-		return t.typeText(allocCtx, parsed.Args)
+		return t.typeText(allocCtx, sessionID, parsed.Args)
 	case "screenshot":
-		return t.screenshot(allocCtx, parsed.Args)
+		return t.screenshot(allocCtx, sessionID, parsed.Args)
 	case "get_dom":
-		return t.getDOM(allocCtx, parsed.Args)
+		return t.getDOM(allocCtx, sessionID, parsed.Args)
 	case "click":
-		return t.click(allocCtx, parsed.Args)
+		return t.click(allocCtx, sessionID, parsed.Args)
 	default:
 		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
 	}
@@ -244,15 +256,66 @@ func (t *NativeBrowserTool) getOrCreateAllocator(sessionID string) (context.Cont
 	return allocCtx, nil
 }
 
-// EndSession closes the allocator connection for the given session ID.
+// EndSession closes the allocator connection for the given session ID,
+// and releases all cached target contexts (without closing the target tabs).
 // Called by the agent loop when a session ends.
 func (t *NativeBrowserTool) EndSession(sessionID string) {
+	// Release all cached target contexts for this session
+	t.targetsMu.Lock()
+	if targets, ok := t.targets[sessionID]; ok {
+		for _, tc := range targets {
+			tc.cancel()
+		}
+		delete(t.targets, sessionID)
+	}
+	t.targetsMu.Unlock()
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if conn, exists := t.conns[sessionID]; exists {
 		conn.cancel()
 		delete(t.conns, sessionID)
+	}
+}
+
+// getOrCreateTargetCtx returns a cached chromedp context for the given target
+// in the given session, creating one if it doesn't exist. This avoids the
+// problem of creating a new context per operation (which would close the target
+// when cancelled).
+func (t *NativeBrowserTool) getOrCreateTargetCtx(allocCtx context.Context, sessionID, targetID string) (context.Context, error) {
+	t.targetsMu.Lock()
+	defer t.targetsMu.Unlock()
+
+	if t.targets[sessionID] == nil {
+		t.targets[sessionID] = make(map[string]*targetContext)
+	}
+
+	if tc, ok := t.targets[sessionID][targetID]; ok {
+		return tc.ctx, nil
+	}
+
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(targetID)))
+	t.targets[sessionID][targetID] = &targetContext{
+		ctx:    ctx,
+		cancel: cancel,
+	}
+	return ctx, nil
+}
+
+// releaseTargetCtx removes and cancels a cached target context for the given
+// target. This is called by actions that want to detach from a target without
+// waiting for session end (e.g. after navigation the target may no longer
+// exist).
+func (t *NativeBrowserTool) releaseTargetCtx(sessionID, targetID string) {
+	t.targetsMu.Lock()
+	defer t.targetsMu.Unlock()
+
+	if targets, ok := t.targets[sessionID]; ok {
+		if tc, ok := targets[targetID]; ok {
+			tc.cancel()
+			delete(targets, targetID)
+		}
 	}
 }
 
@@ -294,7 +357,7 @@ func (t *NativeBrowserTool) listTargets(allocCtx context.Context) (ToolResult, e
 
 // navigate navigates the specified target tab to a URL and returns
 // the final URL, page title, and a brief DOM structural summary.
-func (t *NativeBrowserTool) navigate(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+func (t *NativeBrowserTool) navigate(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
 	var args navigateArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid navigate action args: %v", err))), nil
@@ -317,9 +380,11 @@ func (t *NativeBrowserTool) navigate(allocCtx context.Context, rawArgs json.RawM
 		timeout = 30
 	}
 
-	// Attach to the target tab with a timeout context
-	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
-	defer tabCancel()
+	// Get or create a cached context for this target (avoids closing the tab on cancel)
+	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
 
 	// Apply timeout for navigation
 	navCtx, navCancel := context.WithTimeout(tabCtx, time.Duration(timeout)*time.Second)
@@ -351,7 +416,7 @@ func (t *NativeBrowserTool) navigate(allocCtx context.Context, rawArgs json.RawM
 }
 
 // typeText types text into an element identified by CSS selector.
-func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+func (t *NativeBrowserTool) typeText(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
 	var args typeArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid type action args: %v", err))), nil
@@ -369,9 +434,11 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawM
 		return TextResult("No text provided, skipped typing"), nil
 	}
 
-	// Attach to the target tab
-	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
-	defer tabCancel()
+	// Get or create a cached context for this target (avoids closing the tab on cancel)
+	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
 
 	// Run the type sequence: wait for element, clear existing value, then type
 	if err := chromedp.Run(tabCtx,
@@ -387,7 +454,7 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawM
 
 // click clicks an element identified by CSS selector in the specified target tab.
 // It waits for the element to become visible before clicking.
-func (t *NativeBrowserTool) click(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+func (t *NativeBrowserTool) click(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
 	var args clickArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid click action args: %v", err))), nil
@@ -400,9 +467,11 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, rawArgs json.RawMess
 		return ToolError(TextBlocks("Error: 'selector' is required for click action")), nil
 	}
 
-	// Attach to the target tab
-	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
-	defer tabCancel()
+	// Get or create a cached context for this target (avoids closing the tab on cancel)
+	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
 
 	// Wait for the element to be visible (default 10s timeout), then click it
 	clickCtx, clickCancel := context.WithTimeout(tabCtx, 10*time.Second)
@@ -424,7 +493,7 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, rawArgs json.RawMess
 // screenshot captures a screenshot of the specified target tab's viewport.
 // It saves the PNG to the workspace root with a timestamped filename and
 // returns both a text message and the image data for vision-capable models.
-func (t *NativeBrowserTool) screenshot(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+func (t *NativeBrowserTool) screenshot(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
 	var args screenshotArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid screenshot action args: %v", err))), nil
@@ -434,9 +503,11 @@ func (t *NativeBrowserTool) screenshot(allocCtx context.Context, rawArgs json.Ra
 		return ToolError(TextBlocks("Error: 'target_id' is required for screenshot action")), nil
 	}
 
-	// Attach to the target tab
-	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
-	defer tabCancel()
+	// Get or create a cached context for this target (avoids closing the tab on cancel)
+	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
 
 	// Capture the screenshot (viewport only)
 	var pngData []byte
@@ -469,7 +540,7 @@ func (t *NativeBrowserTool) screenshot(allocCtx context.Context, rawArgs json.Ra
 // getDOM returns the DOM content of a page in two modes:
 // - Without selector: a structural summary with headings, links, buttons, inputs, and their CSS selectors
 // - With selector: the cleaned outerHTML of the matched element
-func (t *NativeBrowserTool) getDOM(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+func (t *NativeBrowserTool) getDOM(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
 	var args getDOMArgs
 	if err := json.Unmarshal(rawArgs, &args); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid get_dom action args: %v", err))), nil
@@ -479,9 +550,11 @@ func (t *NativeBrowserTool) getDOM(allocCtx context.Context, rawArgs json.RawMes
 		return ToolError(TextBlocks("Error: 'target_id' is required for get_dom action")), nil
 	}
 
-	// Attach to the target tab
-	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
-	defer tabCancel()
+	// Get or create a cached context for this target (avoids closing the tab on cancel)
+	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
 
 	if args.Selector != "" {
 		return t.getDOMBySelector(tabCtx, args.Selector)
