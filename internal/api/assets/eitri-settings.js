@@ -17,16 +17,22 @@
     var baseUrlInput = document.getElementById('base_url');
     if (baseUrlInput) {
       baseUrlInput.required = isCustomOpenAI;
-      // Set default base URL based on provider
-      var defaults = {
-        'opencode_go': 'https://opencode.ai/zen/go',
-        'github_copilot': 'https://api.githubcopilot.com',
-        'custom_openai': '',
-      };
-      // Reset to default when switching provider
-      if (defaults[provider.value] !== undefined) {
-        baseUrlInput.value = defaults[provider.value];
-      }
+    }
+  }
+
+  function resetBaseURLToDefault() {
+    var provider = document.getElementById('provider');
+    if (!provider) return;
+    var baseUrlInput = document.getElementById('base_url');
+    if (!baseUrlInput) return;
+    var defaults = {
+      'opencode_go': 'https://opencode.ai/zen/go',
+      'github_copilot': 'https://api.githubcopilot.com',
+      'custom_openai': '',
+    };
+    // Reset to default when switching provider
+    if (defaults[provider.value] !== undefined) {
+      baseUrlInput.value = defaults[provider.value];
     }
   }
 
@@ -35,10 +41,11 @@
     if (!provider) return;
     provider.addEventListener('change', function () {
       updateBaseURLVisibility();
+      resetBaseURLToDefault();
       // Fetch models via API to refresh model dropdown
       refreshModels();
     });
-    // Set initial state
+    // Set initial visibility only (do NOT overwrite server-set value)
     updateBaseURLVisibility();
   }
 
