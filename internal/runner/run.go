@@ -156,8 +156,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			s.subagents.DeleteParentCfg(sessionID)
 		}()
 
-		// Ensure session status is reset and browser subscribers notified when the run completes.
-		defer s.broadcastSessionStatusUpdate(sessionID, uisession.StatusIdle)
+		// snapshotAndBroadcastIdle persists the session with StatusIdle and fires
+		// a browser event so the UI reflects the idle state. Defined below the
+		// goroutine; must be called before snapshotSession on every exit path
+		// that persists the terminal state.
 
 		w := runstate.NewWriter(sseState)
 
@@ -197,7 +199,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				if content != "" {
 					s.appendToSession(sessionID, content, reasoningContent)
 				}
-				s.snapshotSession(sessionID)
+				s.setSessionIdleAndSnapshot(sessionID)
 				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
 					Reason:  runstate.TerminationCancelled,
 					Message: "Run cancelled by user or context deadline exceeded",
@@ -219,7 +221,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				reasoningContent := sseState.ReasoningBufferString()
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content, nil, ""))
 				s.appendToSession(sessionID, content, reasoningContent)
-				s.snapshotSession(sessionID)
+				s.setSessionIdleAndSnapshot(sessionID)
 				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
 					Reason:  runstate.TerminationMaxTurns,
 					Message: limitMsg,
@@ -243,7 +245,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		if content != "" {
 			s.appendToSession(sessionID, content, reasoningContent)
 		}
-		s.snapshotSession(sessionID)
+		s.setSessionIdleAndSnapshot(sessionID)
 		s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
 			Reason:  runstate.TerminationCompleted,
 			Message: "",
@@ -284,6 +286,35 @@ func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseSt
 			slog.Any("error", err),
 		)
 	}
+}
+
+// setSessionIdleAndSnapshot sets the session status to idle, persists
+// a snapshot to disk with the updated status, and broadcasts the status
+// change to browser subscribers. Must be called on every exit path that
+// persists the terminal state.
+//
+// This ensures the on-disk snapshot reflects the idle state (not "running")
+// which would otherwise happen if snapshotSession runs before the deferred
+// broadcastSessionStatusUpdate.
+func (s *RunService) setSessionIdleAndSnapshot(sessionID string) {
+	if s.uiSessionMgr == nil {
+		s.snapshotSession(sessionID)
+		return
+	}
+	s.uiSessionMgr.UpdateStatus(sessionID, uisession.StatusIdle)
+	s.snapshotSession(sessionID)
+
+	meta := s.uiSessionMgr.GetMeta(sessionID)
+	if meta == nil || meta.BrowserID == "" {
+		return
+	}
+	s.broadcast.Broadcast(meta.BrowserID, BrowserEvent{
+		Type: "session_status",
+		Data: map[string]any{
+			"session_id": sessionID,
+			"status":     string(uisession.StatusIdle),
+		},
+	})
 }
 
 // appendToSession persists an assistant message to the UI session.
