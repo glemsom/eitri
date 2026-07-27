@@ -23,7 +23,7 @@ import (
 // browserArgs defines the JSON schema for the browser tool.
 type browserArgs struct {
 	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot)"`
-	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters"`
+	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters. For type: {target_id, selector, text}; navigate: {target_id, url, timeout?}; click: {target_id, selector}; get_dom: {target_id, selector?}; screenshot: {target_id}. The selector field is called 'selector', not 'query'."`
 }
 
 // navigateArgs defines the JSON schema for the navigate action.
@@ -433,6 +433,19 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, sessionID string,
 	if args.TargetID == "" {
 		return ToolError(TextBlocks("Error: 'target_id' is required for type action")), nil
 	}
+
+	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
+	if args.Selector == "" {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(rawArgs, &raw); err == nil {
+			if q, ok := raw["query"]; ok && len(q) > 0 {
+				var qs string
+				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
+					args.Selector = qs
+				}
+			}
+		}
+	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for type action")), nil
 	}
@@ -470,6 +483,19 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, sessionID string, ra
 
 	if args.TargetID == "" {
 		return ToolError(TextBlocks("Error: 'target_id' is required for click action")), nil
+	}
+
+	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
+	if args.Selector == "" {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(rawArgs, &raw); err == nil {
+			if q, ok := raw["query"]; ok && len(q) > 0 {
+				var qs string
+				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
+					args.Selector = qs
+				}
+			}
+		}
 	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for click action")), nil
