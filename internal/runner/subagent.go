@@ -252,27 +252,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}
 
 		// Extract result from last assistant message
-		msgs := req.Messages
-		var result string
-		var turnCount int
-		for i := len(msgs) - 1; i >= 0; i-- {
-			if msgs[i].Role == "assistant" {
-				result = msgs[i].Content
-				// Count assistant messages with content (tool-calling turns + final)
-				if msgs[i].Content != "" {
-					turnCount++
-				}
-			}
-		}
-		// Count tool-calling turns
-		for _, msg := range msgs {
-			if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-				turnCount++
-			}
-		}
-
-		record.Result = result
-		record.TurnCount = turnCount
+		record.Result, record.TurnCount = extractSubAgentResult(req.Messages)
 
 		if runErr != nil {
 			if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
@@ -289,8 +269,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		record.Status = subAgentCompleted
 		slog.Info("sub-agent completed",
 			slog.String("task_id", taskID),
-			slog.Int("turn_count", turnCount),
-			slog.Int("result_len", len(result)),
+			slog.Int("turn_count", record.TurnCount),
+			slog.Int("result_len", len(record.Result)),
 		)
 	}()
 
@@ -355,6 +335,28 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 	}
 
 	return results, nil
+}
+
+// extractSubAgentResult extracts the final result content and turn count
+// from a sub-agent's message history. It picks the content of the LAST
+// assistant message and counts both text-producing and tool-calling turns.
+func extractSubAgentResult(msgs []llm.Message) (result string, turnCount int) {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" {
+			result = msgs[i].Content
+			if msgs[i].Content != "" {
+				turnCount++
+			}
+			break // Use the LAST assistant message; don't overwrite with earlier ones
+		}
+	}
+	// Count tool-calling turns
+	for _, msg := range msgs {
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			turnCount++
+		}
+	}
+	return result, turnCount
 }
 
 // subAgentRecordToResult converts an internal record to the public result type.
