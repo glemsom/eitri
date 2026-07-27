@@ -151,7 +151,7 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 		apiKey = resolvedKey
 	}
 
-	adapterCfg := llm.AdapterConfig{
+	litellmCfg := provider.LitellmConfig{
 		ProviderID:   cfg.ProviderID,
 		Model:        cfg.ModelName,
 		BaseURL:      cfg.BaseURL,
@@ -162,13 +162,14 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 	}
 
 	if debugRecorder != nil && sessionID != "" {
-		adapterCfg.RoundTripper = debug.NewRecordingRoundTripper(nil, debugRecorder, sessionID, cfg.ProviderID)
+		litellmCfg.RoundTripper = debug.NewRecordingRoundTripper(nil, debugRecorder, sessionID, cfg.ProviderID)
 	}
 
-	llmSvc, err := llm.NewLLMService(adapterCfg)
+	client, err := provider.NewLitellmClient(litellmCfg)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to create LLM service: %w", err)
 	}
+	llmSvc := llm.NewBridge(client)
 
 	toolReg := buildBaseToolRegistry(cfg, skillDirs, skillsSvc, uiSessionMgr)
 

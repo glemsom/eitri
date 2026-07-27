@@ -660,7 +660,7 @@ func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth Persis
 		apiKey = resolvedKey
 	}
 
-	adapterCfg := llm.AdapterConfig{
+	litellmCfg := provider.LitellmConfig{
 		ProviderID:   cfg.ProviderID,
 		Model:        cfg.ModelName,
 		BaseURL:      cfg.BaseURL,
@@ -670,5 +670,9 @@ func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth Persis
 		DebugLLMDir:  cfg.DebugLLMDir,
 	}
 
-	return llm.NewLLMService(adapterCfg)
+	client, err := provider.NewLitellmClient(litellmCfg)
+	if err != nil {
+		return nil, err
+	}
+	return llm.NewBridge(client), nil
 }
