@@ -124,11 +124,24 @@ func newOpenCodeGoProvider(cfg LitellmConfig, baseURL string) (litellm.Provider,
 			Transport: cfg.RoundTripper,
 		})
 	}
+	// OpenAI provider does NOT add /v1 unless the URL is a bare origin.
+	// For OpenCode Go the baseURL may be just /zen/go without /v1,
+	// so ensure /v1 is present so the full path becomes /zen/go/v1/chat/completions.
+	apiBase := ensureV1Suffix(baseURL)
 	return openai.New(openai.Config{
 		APIKey:    cfg.APIKey,
-		BaseURL:   baseURL,
+		BaseURL:   apiBase,
 		Transport: cfg.RoundTripper,
 	})
+}
+
+// ensureV1Suffix appends /v1 to baseURL if not already present.
+func ensureV1Suffix(baseURL string) string {
+	base := strings.TrimRight(baseURL, "/")
+	if !strings.HasSuffix(base, "/v1") {
+		base += "/v1"
+	}
+	return base
 }
 
 // isAnthropicModel returns true when the model prefix matches the
