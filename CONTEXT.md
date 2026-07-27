@@ -57,6 +57,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0016](docs/adr/0016-session-persistence-json-snapshots.md) | Session persistence via JSON snapshots | Accepted |
 | [0017](docs/adr/0017-bwrap-sandbox.md) | bwrap sandbox for bash tool | Accepted (amended) |
 | [0018](docs/adr/0018-personas.md) | Personas — named system prompts with skill injection | Accepted |
+| [0019](docs/adr/0019-adopt-litellm-client-for-transport.md) | Adopt litellm.Client for all LLM transport — replace hand-rolled adapters | Accepted |
 
 ## Project structure
 
@@ -71,7 +72,7 @@ eitri/
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history (per-session sliding window)
-│   ├── llm/                   # LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot)
+│   ├── llm/                   # ⚠️ DEPRECATED — being replaced by `litellm.Client` (see ADR-0019). LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot) — will be deleted after migration.
 │   ├── persist/               # Session snapshots, conversation history, HTTP traces on disk
 │   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams
