@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -35,6 +37,11 @@ type typeArgs struct {
 	Text     string `json:"text" jsonschema:"Text to type into the element"`
 }
 
+// screenshotArgs defines the JSON schema for the screenshot action.
+type screenshotArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to capture screenshot of"`
+}
+
 // remoteConnection holds the allocator context and cancel func for one session.
 type remoteConnection struct {
 	ctx    context.Context
@@ -44,20 +51,23 @@ type remoteConnection struct {
 // NativeBrowserTool implements ToolHandler for controlling a remote Chrome
 // instance via the Chrome DevTools Protocol.
 type NativeBrowserTool struct {
-	mu       sync.Mutex
-	conns    map[string]remoteConnection // keyed by session ID
-	wsURL    string                       // remote Chrome WS URL
-	schema   litellm.Schema
+	mu        sync.Mutex
+	conns     map[string]remoteConnection // keyed by session ID
+	wsURL     string                       // remote Chrome WS URL
+	workspace string                       // workspace root for saving files
+	schema    litellm.Schema
 }
 
 // NewBrowserTool creates a new NativeBrowserTool.
 // wsURL is the WebSocket URL of a remote Chrome DevTools Protocol endpoint.
-// If empty, the tool returns a descriptive error asking the user to configure it.
-func NewBrowserTool(wsURL string) *NativeBrowserTool {
+// workspace is the workspace root directory where screenshot files are saved.
+// If wsURL is empty, the tool returns a descriptive error asking the user to configure it.
+func NewBrowserTool(wsURL, workspace string) *NativeBrowserTool {
 	return &NativeBrowserTool{
-		conns:  make(map[string]remoteConnection),
-		wsURL:  wsURL,
-		schema: SchemaOf[browserArgs](),
+		conns:     make(map[string]remoteConnection),
+		wsURL:     wsURL,
+		workspace: workspace,
+		schema:    SchemaOf[browserArgs](),
 	}
 }
 
@@ -109,6 +119,8 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 		return t.navigate(allocCtx, parsed.Args)
 	case "type":
 		return t.typeText(allocCtx, parsed.Args)
+	case "screenshot":
+		return t.screenshot(allocCtx, parsed.Args)
 	default:
 		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
 	}
@@ -271,6 +283,51 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawM
 	}
 
 	return TextResult(fmt.Sprintf("Typed text into element matching selector %q", args.Selector)), nil
+}
+
+// screenshot captures a screenshot of the specified target tab's viewport.
+// It saves the PNG to the workspace root with a timestamped filename and
+// returns both a text message and the image data for vision-capable models.
+func (t *NativeBrowserTool) screenshot(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+	var args screenshotArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid screenshot action args: %v", err))), nil
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for screenshot action")), nil
+	}
+
+	// Attach to the target tab
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
+	defer tabCancel()
+
+	// Capture the screenshot (viewport only)
+	var pngData []byte
+	if err := chromedp.Run(tabCtx,
+		chromedp.CaptureScreenshot(&pngData),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: screenshot failed: %v", err))), nil
+	}
+
+	if len(pngData) == 0 {
+		return ToolError(TextBlocks("Error: screenshot returned empty data")), nil
+	}
+
+	// Save to workspace root
+	timestamp := time.Now().UnixNano()
+	filename := fmt.Sprintf("browser-screenshot-%d.png", timestamp)
+	filePath := filepath.Join(t.workspace, filename)
+
+	if err := os.WriteFile(filePath, pngData, 0644); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to save screenshot to %s: %v", filePath, err))), nil
+	}
+
+	// Return both a text message and the image data
+	return Success([]litellm.Block{
+		litellm.TextBlock{Text: fmt.Sprintf("Screenshot saved to %s", filename)},
+		litellm.ImageBlock{Data: pngData, MIME: "image/png"},
+	}), nil
 }
 
 // buildDOMSummary produces a concise structural summary of page HTML content.
