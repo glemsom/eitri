@@ -65,6 +65,38 @@ func TestBrowser_SchemaHasActionParam(t *testing.T) {
 	}
 }
 
+func TestBrowser_SchemaArgsIsObject(t *testing.T) {
+	t.Parallel()
+	schema := NewBrowserTool("ws://test", "/tmp").JSONSchema()
+	var schemaObj map[string]any
+	if err := json.Unmarshal(schema, &schemaObj); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+	props, ok := schemaObj["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	argsProp, ok := props["args"]
+	if !ok {
+		t.Fatal("schema missing 'args' property")
+	}
+	argsMap, ok := argsProp.(map[string]any)
+	if !ok {
+		t.Fatal("args property is not a map")
+	}
+	if argsMap["type"] != "object" {
+		t.Errorf("args type = %v, want 'object'", argsMap["type"])
+	}
+	// Should NOT have items (json.RawMessage is not an array)
+	if _, hasItems := argsMap["items"]; hasItems {
+		t.Error("args should not have 'items' property (json.RawMessage is not an array)")
+	}
+	// Should have additionalProperties
+	if argsMap["additionalProperties"] != true {
+		t.Error("args should have additionalProperties: true")
+	}
+}
+
 func TestBrowser_InvalidArgs(t *testing.T) {
 	t.Parallel()
 	tool := NewBrowserTool("ws://test", "/tmp")

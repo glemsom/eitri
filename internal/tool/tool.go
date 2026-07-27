@@ -127,30 +127,37 @@ func fieldSchema(t reflect.Type, description string) SchemaProp {
 
 	var sp SchemaProp
 
-	switch t.Kind() {
-	case reflect.String:
-		sp.Type = "string"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		sp.Type = "integer"
-	case reflect.Float32, reflect.Float64:
-		sp.Type = "number"
-	case reflect.Bool:
-		sp.Type = "boolean"
-	case reflect.Slice:
-		sp.Type = "array"
-		elem := t.Elem()
-		if elem.Kind() == reflect.Ptr {
-			elem = elem.Elem()
-		}
-		sp.Items = &SchemaProp{Type: goTypeToJSONType(elem.Kind())}
-	case reflect.Map:
+	// json.RawMessage is []byte but should be represented as an object
+	// in JSON Schema since it holds arbitrary JSON data.
+	if t == reflect.TypeFor[json.RawMessage]() {
 		sp.Type = "object"
 		sp.AdditionalProperties = boolPtr(true)
-	case reflect.Struct:
-		sp.Type = "object"
-	default:
-		sp.Type = "string"
+	} else {
+		switch t.Kind() {
+		case reflect.String:
+			sp.Type = "string"
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			sp.Type = "integer"
+		case reflect.Float32, reflect.Float64:
+			sp.Type = "number"
+		case reflect.Bool:
+			sp.Type = "boolean"
+		case reflect.Slice:
+			sp.Type = "array"
+			elem := t.Elem()
+			if elem.Kind() == reflect.Ptr {
+				elem = elem.Elem()
+			}
+			sp.Items = &SchemaProp{Type: goTypeToJSONType(elem.Kind())}
+		case reflect.Map:
+			sp.Type = "object"
+			sp.AdditionalProperties = boolPtr(true)
+		case reflect.Struct:
+			sp.Type = "object"
+		default:
+			sp.Type = "string"
+		}
 	}
 
 	if description != "" {
