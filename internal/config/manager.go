@@ -67,6 +67,7 @@ func Defaults() Config {
 		CompactionSalienceEnabled:             true,
 		ContextWarningThresholdPercent: 75,
 		Sandbox:                  sandbox.DefaultConfig(),
+		BrowserWsUrl:             "ws://127.0.0.1:9222",
 	}
 }
 
@@ -453,6 +454,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["active_persona"]; ok {
 		if s, ok := v.(string); ok {
 			result.ActivePersona = s
+		}
+	}
+	if v, ok := patch["browser_ws_url"]; ok {
+		if s, ok := v.(string); ok {
+			result.BrowserWsUrl = s
 		}
 	}
 
