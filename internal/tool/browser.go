@@ -385,6 +385,14 @@ func (t *NativeBrowserTool) navigate(allocCtx context.Context, sessionID string,
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
 	}
+	// Initialize the browser on the long-lived tabCtx so chromedp's RemoteAllocator
+	// registers its cancel handler on tabCtx rather than on a short-lived timeout
+	// context. If we let the first Run happen on navCtx, Allocate would watch
+	// navCtx.Done() and Cancel(ctx) would cascade up to cancel tabCtx, closing the
+	// browser tab when navCtx expires.
+	if err := chromedp.Run(tabCtx); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to initialize browser: %v", err))), nil
+	}
 
 	// Apply timeout for navigation
 	navCtx, navCancel := context.WithTimeout(tabCtx, time.Duration(timeout)*time.Second)
@@ -471,6 +479,12 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, sessionID string, ra
 	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
+	// Initialize the browser on the long-lived tabCtx if not yet done, so
+	// chromedp's RemoteAllocator registers its cancel handler on tabCtx rather
+	// than on a short-lived timeout context.
+	if err := chromedp.Run(tabCtx); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to initialize browser: %v", err))), nil
 	}
 
 	// Wait for the element to be visible (default 10s timeout), then click it
