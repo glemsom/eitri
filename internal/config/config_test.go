@@ -60,6 +60,11 @@ func TestLoadDefaultsWhenFileMissing(t *testing.T) {
 	if cfg.ActivePersona != "generic" {
 		t.Errorf("ActivePersona = %q, want %q", cfg.ActivePersona, "generic")
 	}
+
+	// BrowserWsUrl should default to ws://127.0.0.1:9222
+	if cfg.BrowserWsUrl != "ws://127.0.0.1:9222" {
+		t.Errorf("BrowserWsUrl = %q, want %q", cfg.BrowserWsUrl, "ws://127.0.0.1:9222")
+	}
 }
 
 func TestLoad_ActivePersonaPreservedWhenSet(t *testing.T) {
@@ -648,6 +653,26 @@ func TestMerge_ClearsUserEmail(t *testing.T) {
 
 	if result.UserEmail != "" {
 		t.Errorf("UserEmail = %q, want empty", result.UserEmail)
+	}
+}
+
+func TestMerge_OverridesBrowserWsUrl(t *testing.T) {
+	cfg := config.Defaults()
+
+	result := config.Merge(&cfg, map[string]any{"browser_ws_url": "ws://192.168.1.100:9222"})
+
+	if result.BrowserWsUrl != "ws://192.168.1.100:9222" {
+		t.Errorf("BrowserWsUrl = %q, want %q", result.BrowserWsUrl, "ws://192.168.1.100:9222")
+	}
+}
+
+func TestMerge_ClearsBrowserWsUrl(t *testing.T) {
+	cfg := config.Defaults()
+
+	result := config.Merge(&cfg, map[string]any{"browser_ws_url": ""})
+
+	if result.BrowserWsUrl != "" {
+		t.Errorf("BrowserWsUrl = %q, want empty", result.BrowserWsUrl)
 	}
 }
 

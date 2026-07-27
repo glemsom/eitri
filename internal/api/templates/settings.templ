@@ -254,6 +254,16 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 			</details>
 
+			<details class="settings-details">
+				<summary><span>Browser</span></summary>
+
+				<div class="form-group">
+					<label for="browser_ws_url">Browser WebSocket URL</label>
+					<input type="url" id="browser_ws_url" name="browser_ws_url" value={ cfg.BrowserWsUrl } placeholder="ws://127.0.0.1:9222"/>
+					<small class="hint">Start Chrome with <code>google-chrome --remote-debugging-port=9222</code> to enable browser tool access.</small>
+				</div>
+			</details>
+
 			<div class="form-actions form-actions-sticky">
 				<button type="submit">Save</button>
 				<div id="test-connection-wrapper" class="test-connection-wrapper">
