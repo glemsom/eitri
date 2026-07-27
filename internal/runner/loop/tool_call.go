@@ -7,30 +7,9 @@ import (
 
 	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tool"
 )
-
-// toolLister is the interface for listing tool definitions, used by toolDefsFromRegistry.
-// *tool.Registry satisfies this interface.
-type toolLister interface {
-	LitellmTools() []litellm.Tool
-}
-
-// toolDefsFromRegistry converts tool definitions from a tool lister to internal ToolDefs.
-func toolDefsFromRegistry(reg toolLister) []llm.ToolDef {
-	vooTools := reg.LitellmTools()
-	defs := make([]llm.ToolDef, len(vooTools))
-	for i, t := range vooTools {
-		defs[i] = llm.ToolDef{
-			Name:        t.Name,
-			Description: t.Description,
-			Parameters:  json.RawMessage(t.Parameters),
-		}
-	}
-	return defs
-}
 
 // blocksToText extracts text content from a slice of voocel/litellm blocks.
 func blocksToText(blocks []litellm.Block) string {

@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -136,7 +137,7 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 // builds the base tool registry, and assembles the system prompt.
 // If debugRecorder is non-nil and sessionID is non-empty, the service's HTTP
 // transport is wrapped for request/response recording.
-func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (llm.LLMService, *tool.Registry, string, error) {
+func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debugRecorder *debug.Recorder, persistAuth provider.PersistAuthFunc, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager, skillCtx sessionSkillContext) (*litellm.Client, *tool.Registry, string, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,
@@ -169,7 +170,6 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to create LLM service: %w", err)
 	}
-	llmSvc := llm.NewBridge(client)
 
 	toolReg := buildBaseToolRegistry(cfg, skillDirs, skillsSvc, uiSessionMgr)
 
@@ -178,5 +178,5 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 		return nil, nil, "", fmt.Errorf("build system prompt: %w", err)
 	}
 
-	return llmSvc, toolReg, fullSystemPrompt, nil
+	return client, toolReg, fullSystemPrompt, nil
 }

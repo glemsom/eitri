@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
@@ -645,7 +647,7 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 
 // newCompactLLMService creates a bare LLM service for summarization without
 // tool registries, system prompts, or skill context.
-func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth PersistAuthFunc) (llm.LLMService, error) {
+func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth PersistAuthFunc) (*litellm.Client, error) {
 	reqAuth := provider.ResolveAuthRequest{
 		ProviderID:   cfg.ProviderID,
 		APIKey:       cfg.APIKey,
@@ -674,5 +676,5 @@ func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth Persis
 	if err != nil {
 		return nil, err
 	}
-	return llm.NewBridge(client), nil
+	return client, nil
 }

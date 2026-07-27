@@ -224,7 +224,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		historyMgr := loop.NewRequestHistoryManager(req)
 
 		runErr := loop.RunAgent(subCtx, loop.RunSpec{
-			Service:    llmSvc,
+			Client:     llmSvc,
 			Request:    req,
 			MaxTurns:   maxTurns,
 			MaxHistory: 0,

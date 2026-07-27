@@ -9,9 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	runtimeDebug "runtime/debug"
+	"strings"
 	"time"
+
+	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -23,10 +27,10 @@ import (
 // RunSpec holds the transport/config fields for RunAgent.
 // These are the LLM service, request, tools, SSE writer, and turn/history caps.
 type RunSpec struct {
-	// Service is the LLM service used to generate responses.
-	Service llm.LLMService
+	// Client is the litellm client used to generate streaming responses.
+	Client *litellm.Client
 
-	// Request is the LLM request to send.
+	// Request is the LLM request to send (llm.Request for compat with HistoryManager).
 	Request *llm.Request
 
 	// MaxTurns is the maximum number of assistant turns before the loop exits.
@@ -105,6 +109,98 @@ func DefaultRunOpts() RunOpts {
 	return RunOpts{}
 }
 
+// buildLitellmRequest converts an llm.Request (with current history and tools)
+// into a litellm.Request for use with litellm.Client.Stream().
+func buildLitellmRequest(req *llm.Request, history []llm.Message, tools []litellm.Tool) *litellm.Request {
+	messages := make([]litellm.Message, 0, len(history))
+	for _, m := range history {
+		messages = append(messages, toLitellmMessage(m))
+	}
+
+	lr := &litellm.Request{
+		Model:    req.Model,
+		Messages: messages,
+		Tools:    tools,
+	}
+
+	// Default max_tokens (required by some providers like Anthropic)
+	maxTokens := 4096
+	lr.MaxTokens = &maxTokens
+
+	// Reasoning effort — only set for models known to support thinking/reasoning.
+	if req.ReasoningEffort != "" && isReasoningModel(req.Model) {
+		lr.Thinking = &litellm.Thinking{
+			Mode:   litellm.ThinkingEnabled,
+			Effort: req.ReasoningEffort,
+		}
+	}
+
+	// Prompt cache key via provider options
+	if req.SessionID != "" {
+		if lr.ProviderOptions == nil {
+			lr.ProviderOptions = make(litellm.ProviderOptions)
+		}
+		// Truncate to 64 chars as per existing behavior
+		key := req.SessionID
+		if len(key) > 64 {
+			key = key[:64]
+		}
+		lr.ProviderOptions["prompt_cache_key"] = key
+	}
+
+	return lr
+}
+
+// toLitellmMessage converts an llm.Message to a litellm.Message.
+func toLitellmMessage(m llm.Message) litellm.Message {
+	var blocks []litellm.Block
+
+	// Assistant messages with tool calls get structured blocks
+	if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+		if m.Content != "" {
+			blocks = append(blocks, litellm.TextBlock{Text: m.Content})
+		}
+		for _, tc := range m.ToolCalls {
+			args := json.RawMessage(tc.Function.Arguments)
+			if !json.Valid(args) {
+				args = json.RawMessage("{}")
+			}
+			blocks = append(blocks, litellm.ToolUseBlock{
+				ID:        tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: args,
+			})
+		}
+	} else if m.Role == "tool" {
+		blocks = append(blocks, litellm.ToolResultBlock{
+			ToolUseID: m.ToolCallID,
+			Content:   []litellm.Block{litellm.TextBlock{Text: m.Content}},
+		})
+	} else {
+		// System, user, or simple assistant messages
+		content := m.Content
+		if m.ReasoningContent != "" {
+			content = m.ReasoningContent + "\n" + content
+		}
+		blocks = append(blocks, litellm.TextBlock{Text: content})
+	}
+
+	return litellm.Message{
+		Role:   litellm.Role(m.Role),
+		Blocks: blocks,
+	}
+}
+
+// isReasoningModel returns true for models known to support thinking/reasoning.
+func isReasoningModel(model string) bool {
+	lower := strings.ToLower(model)
+	// Strip any provider prefix
+	if _, after, ok := strings.Cut(lower, "/"); ok {
+		lower = after
+	}
+	return strings.HasPrefix(lower, "gpt-5")
+}
+
 // RunAgent drives the synchronous agent turn loop.
 //
 // It sends the request to the LLM, processes tool calls via the registry,
@@ -147,7 +243,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	// Helper to broadcast context_update if enabled and historyMgr is available.
 	// actualUsage may be nil; if set, its prompt/completion tokens are included
 	// in the ContextUpdate as actual provider usage for the current LLM call.
-	broadcastContextUpdate := func(actualUsage *llm.Usage) {
+	broadcastContextUpdate := func(actualUsage *litellm.Usage) {
 		if opts.ContextWindow <= 0 {
 			return
 		}
@@ -160,19 +256,17 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 		update := runstate.ComputeContext(history, opts.ContextWindow, nil, "")
 		if actualUsage != nil {
-			update.ActualPromptTokens = actualUsage.PromptTokens
-			update.ActualCompletionTokens = actualUsage.CompletionTokens
+			update.ActualPromptTokens = actualUsage.InputTokens
+			update.ActualCompletionTokens = actualUsage.OutputTokens
 		}
 		spec.SSEWriter.ContextUpdate(update)
 	}
 
-	spec.Request.Stream = true
-
 	// Compute tool definitions once before the loop, then reuse on every turn.
 	// This avoids re-iterating the registry and allocating new slices per turn.
-	var toolDefs []llm.ToolDef
+	var toolDefs []litellm.Tool
 	if spec.Tools != nil {
-		toolDefs = toolDefsFromRegistry(spec.Tools)
+		toolDefs = spec.Tools.LitellmTools()
 	}
 
 	for turn := 0; turn < maxTurns; turn++ {
@@ -184,52 +278,80 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		spec.SSEWriter.SetTurn(turn + 1)
 
 		// Load conversation history via adapter
-		spec.Request.Messages = opts.HistoryMgr.History()
+		history := opts.HistoryMgr.History()
 
-		// Attach tool definitions (computed once before the loop)
-		if toolDefs != nil {
-			spec.Request.Tools = toolDefs
-		}
+		// Build litellm request from llm request + current history + tools
+		litellmReq := buildLitellmRequest(spec.Request, history, toolDefs)
 
-		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(spec.Request.Tools)), slog.Int("messages", len(spec.Request.Messages)))
+		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(litellmReq.Tools)), slog.Int("messages", len(litellmReq.Messages)))
 
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
 		var (
-			stream <-chan llm.StreamEvent
-			err    error
+			content    strings.Builder
+			toolCalls  []litellm.ToolUseBlock
+			usage      *litellm.Usage
+			streamErr  error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			stream, err = spec.Service.ChatStream(ctx, *spec.Request)
+			stream, err := spec.Client.Stream(ctx, *litellmReq)
 			if err == nil {
+				// Process stream events inline
+				content.Reset()
+				toolCalls = nil
+				usage = nil
+				content, toolCalls, usage, streamErr = processStream(ctx, stream, spec.SSEWriter)
+				if streamErr == nil {
+					break
+				}
+				// Context cancellation: preserve partial result, exit retry loop
+				if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
+					break
+				}
+				// If stream processing returned an error, check if it's retryable
+				if attempt < maxRetries && litellm.IsRetryableError(streamErr) {
+					slog.Warn("llm stream transient error, retrying",
+						slog.Int("attempt", attempt+1),
+						slog.Int("max", maxRetries),
+						slog.Any("error", streamErr),
+					)
+					dumpRequestOnError(litellmReq, streamErr, attempt+1, opts.DebugLLMDir)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				// Non-retryable stream error
+				dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
+				msg := fmt.Sprintf("LLM error: %v", streamErr)
+				spec.SSEWriter.Error(msg)
+				return fmt.Errorf("chat stream: %w", streamErr)
+			}
+
+			// Error starting the stream
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				streamErr = err
 				break
 			}
-			if attempt < maxRetries && isRetryableLLMError(err) {
+			if attempt < maxRetries && litellm.IsRetryableError(err) {
 				slog.Warn("llm chat stream transient error, retrying",
 					slog.Int("attempt", attempt+1),
 					slog.Int("max", maxRetries),
 					slog.Any("error", err),
 				)
-				dumpRequestOnError(spec.Request, err, attempt+1, opts.DebugLLMDir)
+				dumpRequestOnError(litellmReq, err, attempt+1, opts.DebugLLMDir)
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			dumpRequestOnError(spec.Request, err, maxRetries+1, opts.DebugLLMDir)
+			dumpRequestOnError(litellmReq, err, maxRetries+1, opts.DebugLLMDir)
 			msg := fmt.Sprintf("LLM error: %v", err)
 			spec.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
 		}
 
-		// Process stream events
-		content, toolCalls, usage, streamErr := drainStream(ctx, stream, spec.SSEWriter)
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated
 				// content and any tool calls to conversation history before returning.
-				// Always save even when empty (e.g. thinking-only stream) to maintain
-				// user→assistant→user alternation — otherwise next user message creates
-				// consecutive user messages which some providers reject as malformed.
-				opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
+				opts.HistoryMgr.AppendAssistant(content.String(), toolCallsToLLM(toolCalls))
 				if opts.HistoryMgr.RequestBased() {
 					trimMessages(spec.Request, spec.MaxHistory)
 				}
@@ -240,12 +362,12 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Feed provider usage data into CalibrationStore.
-		updateCalibration(opts.CalibrationStore, opts.ModelName, spec.Request.Messages, usage)
+		updateCalibration(opts.CalibrationStore, opts.ModelName, history, usage)
 
 		if len(toolCalls) > 0 {
 			slog.Debug("tool calls received", slog.Int("count", len(toolCalls)))
 			for _, tc := range toolCalls {
-				slog.Debug("tool call", slog.String("id", tc.ID), slog.String("tool", tc.Function.Name), slog.String("args", tc.Function.Arguments))
+				slog.Debug("tool call", slog.String("id", tc.ID), slog.String("tool", tc.Name), slog.String("args", string(tc.Arguments)))
 			}
 		}
 
@@ -259,7 +381,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			usage := runstate.EstimateUsage(contentStr, nil, "")
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
-			if contentStr != "" || len(spec.Request.Messages) > 0 {
+			if contentStr != "" || len(history) > 0 {
 				opts.HistoryMgr.AppendAssistant(contentStr, nil)
 			}
 			// Trim conversation history if cap is set (only when not using session manager)
@@ -280,10 +402,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		}
 
 		// Has tool calls — add assistant message to history
-		opts.HistoryMgr.AppendAssistant(content.String(), toolCalls)
+		opts.HistoryMgr.AppendAssistant(content.String(), toolCallsToLLM(toolCalls))
 
 		// Execute each tool call sequentially
-
 		for _, tc := range toolCalls {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -291,33 +412,28 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 
 			// Parse arguments
 			var args json.RawMessage
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				args = json.RawMessage(tc.Function.Arguments)
+			if len(tc.Arguments) > 0 {
+				if err := json.Unmarshal(tc.Arguments, &args); err != nil {
+					args = tc.Arguments
+				} else {
+					args = tc.Arguments
+				}
 			}
 
 			// Broadcast tool call event
-			// Sanitize args: json.RawMessage with empty content breaks marshaling.
-			// LLMs sometimes produce empty arguments (e.g. for hallucinated tools).
 			argsForDisplay := args
 			if len(argsForDisplay) == 0 {
 				argsForDisplay = json.RawMessage("{}")
 			}
-			spec.SSEWriter.ToolCall(tc.Function.Name, argsForDisplay)
+			spec.SSEWriter.ToolCall(tc.Name, argsForDisplay)
 
 			// Dispatch tool via registry
-			dispResult, dispErr := spec.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+			dispResult, dispErr := spec.Tools.Dispatch(ctx, tc.ID, tc.Name, args)
 			if dispErr != nil {
-				// Feed unknown tool / dispatch errors back to the LLM as tool
-				// result instead of terminating the loop. LLMs commonly hallucinate
-				// tool names (e.g. "replace" instead of "edit") — this gives them
-				// a chance to self-correct on the next turn.
 				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
-				// Broadcast tool result so the error shows in the tool card
-				// (not as a separate error toast that closes the stream).
-				spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
-				// Record the error as a tool result so the LLM can see it
+				spec.SSEWriter.ToolResult(tc.Name, errMsg)
 				opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
-				slog.Warn("tool dispatch error", slog.String("tool", tc.Function.Name), slog.String("error", errMsg))
+				slog.Warn("tool dispatch error", slog.String("tool", tc.Name), slog.String("error", errMsg))
 				continue
 			}
 
@@ -327,41 +443,35 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				confMsg := dispResult.ConfirmMessage
 				slog.Debug("tool needs confirmation", slog.String("path", confPath), slog.String("message", confMsg))
 
-				// Send needs_confirmation SSE event
 				spec.SSEWriter.State().Broadcast(runstate.SSEEvent{
 					Type:    "needs_confirmation",
 					Content: confMsg,
 					Data:    map[string]any{"path": confPath, "message": confMsg},
 				})
 
-				// Wait for user response
 				confirmResult, confirmErr := opts.Confirmer.Confirm(ctx, opts.SessionID, confPath, confMsg)
 				if confirmErr != nil {
 					if errors.Is(confirmErr, context.Canceled) || errors.Is(confirmErr, context.DeadlineExceeded) {
 						return confirmErr
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
-					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					spec.SSEWriter.ToolResult(tc.Name, errMsg)
 					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 					continue
 				}
 
 				if confirmResult.Approved {
-					// Temporarily add the path to ReadTool's allowedPaths
-					// and re-dispatch
 					addReadToolAllowedPath(spec.Tools, confPath)
-					dispResult, dispErr = spec.Tools.Dispatch(ctx, tc.ID, tc.Function.Name, args)
+					dispResult, dispErr = spec.Tools.Dispatch(ctx, tc.ID, tc.Name, args)
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
-						spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+						spec.SSEWriter.ToolResult(tc.Name, errMsg)
 						opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 						continue
 					}
-					// Continue to process blocks below (resultText, Broadcast, etc.)
 				} else {
-					// Denial — return error to LLM
 					errMsg := "Access denied to path: " + confPath
-					spec.SSEWriter.ToolResult(tc.Function.Name, errMsg)
+					spec.SSEWriter.ToolResult(tc.Name, errMsg)
 					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
 					continue
 				}
@@ -371,14 +481,13 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			blocks := dispResult.Blocks
 			resultText := blocksToText(blocks)
 			isError := toolResultHasError(blocks)
-			slog.Debug("tool result", slog.String("tool", tc.Function.Name), slog.String("result", TruncateText(resultText, 200)), slog.Bool("error", isError))
+			slog.Debug("tool result", slog.String("tool", tc.Name), slog.String("result", TruncateText(resultText, 200)), slog.Bool("error", isError))
 
 			// Broadcast tool result event
-			spec.SSEWriter.ToolResult(tc.Function.Name, resultText)
+			spec.SSEWriter.ToolResult(tc.Name, resultText)
 
 			// Broadcast skill_activated if this was a successful skill load
-			if tc.Function.Name == "skill" && !isError {
-				// Extract the skill name from the tool call arguments
+			if tc.Name == "skill" && !isError {
 				var skillArgs struct {
 					Name string `json:"name"`
 				}
@@ -388,11 +497,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			}
 
 			// Emit component event for compatible tools (except QuickReplies which stores inline)
-			if !isError || tc.Function.Name == "render_quick_replies" {
-				compName, compData, ok := emitComponentForTool(spec.SSEWriter, tc.Function.Name, args, blocks)
+			if !isError || tc.Name == "render_quick_replies" {
+				compName, compData, ok := emitComponentForTool(spec.SSEWriter, tc.Name, args, blocks)
 				if ok && opts.UISessionMgr != nil {
-					if tc.Function.Name == "render_quick_replies" {
-						// QuickReplies stores inline on the assistant message, not as a component event
+					if tc.Name == "render_quick_replies" {
 						if rawOpts, ok := compData["options"]; ok {
 							if optStrs, ok := rawOpts.([]string); ok {
 								_ = opts.UISessionMgr.SetQuickReplies(opts.SessionID, optStrs)
@@ -410,13 +518,12 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// Add tool result message to conversation history
 			resultContent := resultText
 			if isError && resultContent == "" {
-				resultContent = fmt.Sprintf("Error executing %q", tc.Function.Name)
+				resultContent = fmt.Sprintf("Error executing %q", tc.Name)
 			}
 			opts.HistoryMgr.AppendTool(tc.ID, resultContent, isError)
 		}
 
-		// Broadcast context_update after tool results appended to history,
-		// including actual provider usage from this turn's LLM call.
+		// Broadcast context_update after tool results appended to history
 		broadcastContextUpdate(usage)
 
 		// Update turn count for external consumers
@@ -431,11 +538,149 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 	}
 
 	// Max turns exceeded
-	// Broadcast final context_update before error (no actual usage available)
 	broadcastContextUpdate(nil)
 	msg := runstate.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
+}
+
+// processStream consumes a litellm.Stream using Next() and a type-switch,
+// accumulating content, tool calls, and usage until DoneEvent or ErrorEvent.
+func processStream(
+	ctx context.Context,
+	stream litellm.Stream,
+	sseWriter *runstate.Writer,
+) (strings.Builder, []litellm.ToolUseBlock, *litellm.Usage, error) {
+	defer stream.Close()
+
+	// Close the stream when the context is cancelled so Next() unblocks.
+	go func() {
+		<-ctx.Done()
+		stream.Close()
+	}()
+
+	var content strings.Builder
+	var toolCalls []litellm.ToolUseBlock
+	var usage *litellm.Usage
+	toolAcc := litellm.NewToolUseAccumulator()
+
+	for {
+		// Check context before each event
+		if err := ctx.Err(); err != nil {
+			// Drain any remaining buffered events before returning cancellation
+			drainRemaining(stream, &content, &toolCalls, &usage, toolAcc, sseWriter)
+			return content, toolCalls, usage, err
+		}
+
+		event, err := stream.Next()
+		if err != nil {
+			// If the context was cancelled, return context error instead of stream error
+			if errors.Is(err, io.EOF) {
+				if cerr := ctx.Err(); cerr != nil {
+					return content, toolCalls, usage, cerr
+				}
+				// Premature EOF — stream ended without DoneEvent
+				return content, toolCalls, usage, fmt.Errorf("premature EOF: %w", io.ErrUnexpectedEOF)
+			}
+			return content, toolCalls, usage, err
+		}
+
+		switch e := event.(type) {
+		case litellm.ContentDelta:
+			content.WriteString(e.Text)
+			sseWriter.Token(e.Text)
+
+		case litellm.ReasoningDelta:
+			sseWriter.ThinkingDelta(e.Text)
+
+		case litellm.ToolUseStart:
+			toolAcc.Start(e)
+
+		case litellm.ToolUseDelta:
+			toolAcc.Delta(e)
+
+		case litellm.ToolUseDone:
+			_, block, _ := toolAcc.Done(e)
+			if block != nil {
+				toolCalls = append(toolCalls, *block)
+			}
+
+		case litellm.UsageEvent:
+			usage = &e.Usage
+
+		case litellm.DoneEvent:
+			// Flush any remaining tool calls from the accumulator
+			return content, toolCalls, usage, nil
+
+		case litellm.ErrorEvent:
+			return content, toolCalls, usage, e.Err
+		}
+	}
+}
+
+// drainRemaining reads any buffered events from the stream when the context
+// has been cancelled. This mirrors the previous drainStream buffered-event
+// drain behaviour.
+func drainRemaining(
+	stream litellm.Stream,
+	content *strings.Builder,
+	toolCalls *[]litellm.ToolUseBlock,
+	usage **litellm.Usage,
+	toolAcc *litellm.ToolUseAccumulator,
+	sseWriter *runstate.Writer,
+) {
+	for {
+		event, err := stream.Next()
+		if err != nil {
+			return
+		}
+		switch e := event.(type) {
+		case litellm.ContentDelta:
+			content.WriteString(e.Text)
+			sseWriter.Token(e.Text)
+		case litellm.ReasoningDelta:
+			sseWriter.ThinkingDelta(e.Text)
+		case litellm.ToolUseStart:
+			toolAcc.Start(e)
+		case litellm.ToolUseDelta:
+			toolAcc.Delta(e)
+		case litellm.ToolUseDone:
+			_, block, _ := toolAcc.Done(e)
+			if block != nil {
+				*toolCalls = append(*toolCalls, *block)
+			}
+		case litellm.UsageEvent:
+			*usage = &e.Usage
+		case litellm.DoneEvent:
+			return
+		case litellm.ErrorEvent:
+			return
+		}
+	}
+}
+
+// toolCallsToLLM converts []litellm.ToolUseBlock to []llm.ToolCall for
+// storage in HistoryManager.
+func toolCallsToLLM(tcs []litellm.ToolUseBlock) []llm.ToolCall {
+	if len(tcs) == 0 {
+		return nil
+	}
+	out := make([]llm.ToolCall, len(tcs))
+	for i, tc := range tcs {
+		args := ""
+		if len(tc.Arguments) > 0 {
+			args = string(tc.Arguments)
+		}
+		out[i] = llm.ToolCall{
+			ID:   tc.ID,
+			Type: "function",
+			Function: llm.FunctionCall{
+				Name:      tc.Name,
+				Arguments: args,
+			},
+		}
+	}
+	return out
 }
 
 // MaxTurnsExceededError reports that a run hit its configured turn cap.
@@ -450,16 +695,8 @@ func (e *MaxTurnsExceededError) Error() string {
 // updateCalibration feeds provider usage data from a completed LLM response
 // into the CalibrationStore. It computes chars_per_token = inputLen / promptTokens
 // and calls store.Update(model, cpt).
-//
-// Edge cases handled:
-//   - store is nil → skip
-//   - model name is empty → skip
-//   - usage is nil or PromptTokens == 0 → skip
-//   - first turn uses default CPT if no calibration data exists yet
-//
-// Calibration changes are logged at Debug level.
-func updateCalibration(store *tokenizer.CalibrationStore, model string, messages []llm.Message, usage *llm.Usage) {
-	if store == nil || model == "" || usage == nil || usage.PromptTokens <= 0 {
+func updateCalibration(store *tokenizer.CalibrationStore, model string, messages []llm.Message, usage *litellm.Usage) {
+	if store == nil || model == "" || usage == nil || usage.InputTokens <= 0 {
 		return
 	}
 
@@ -472,7 +709,7 @@ func updateCalibration(store *tokenizer.CalibrationStore, model string, messages
 		return
 	}
 
-	cpt := float64(inputLen) / float64(usage.PromptTokens)
+	cpt := float64(inputLen) / float64(usage.InputTokens)
 
 	oldCPT := store.Lookup(model)
 	store.Update(model, cpt)
@@ -483,7 +720,7 @@ func updateCalibration(store *tokenizer.CalibrationStore, model string, messages
 		slog.Float64("old_cpt", oldCPT),
 		slog.Float64("new_cpt", newCPT),
 		slog.Float64("observed_cpt", cpt),
-		slog.Int("prompt_tokens", usage.PromptTokens),
+		slog.Int("prompt_tokens", usage.InputTokens),
 		slog.Int("input_chars", inputLen),
 	)
 }
