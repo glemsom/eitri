@@ -15,6 +15,8 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
+
+	"github.com/glemsom/eitri/internal/tool"
 )
 
 // BatchRun runs a single prompt in headless batch mode.
@@ -40,6 +42,10 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	if err != nil {
 		return "", err
 	}
+
+	// Register delegate/collect tools for batch mode (parent agent needs sub-agent support)
+	toolReg.Register(tool.NewDelegate(s))
+	toolReg.Register(tool.NewCollect(s))
 
 	// Create request (streaming only — history is managed by sessionHistoryManager)
 	req := &litellm.Request{
@@ -77,6 +83,10 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	sessionMgr.SetSystemPrompt(batchID, fullSystemPrompt)
 	sessionMgr.AppendUser(batchID, prompt)
 	defer sessionMgr.Close(batchID)
+
+	// Store parent config so sub-agents can look up provider/model settings
+	s.subagents.StoreParentCfg(batchID, cfg)
+	defer s.subagents.DeleteParentCfg(batchID)
 
 	// Wrap in a sessionHistoryManager (same adapter the UI path uses)
 	historyAdapter := loop.NewSessionHistoryManager(sessionMgr, batchID)
