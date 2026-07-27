@@ -232,11 +232,7 @@ func (b *Bridge) readStream(ctx context.Context, stream litellm.Stream, ch chan<
 func toLitellmRequest(req Request) (*litellm.Request, error) {
 	messages := make([]litellm.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		lm, err := toLitellmMessage(m)
-		if err != nil {
-			return nil, err
-		}
-		messages = append(messages, lm)
+		messages = append(messages, ToLitellmMessage(m))
 	}
 
 	tools := make([]litellm.Tool, 0, len(req.Tools))
@@ -287,8 +283,8 @@ func toLitellmRequest(req Request) (*litellm.Request, error) {
 	return lr, nil
 }
 
-// toLitellmMessage converts an llm.Message to a litellm.Message.
-func toLitellmMessage(m Message) (litellm.Message, error) {
+// ToLitellmMessage converts an llm.Message to a litellm.Message.
+func ToLitellmMessage(m Message) litellm.Message {
 	var blocks []litellm.Block
 
 	// Assistant messages with tool calls get structured blocks
@@ -324,7 +320,53 @@ func toLitellmMessage(m Message) (litellm.Message, error) {
 	return litellm.Message{
 		Role:   litellm.Role(m.Role),
 		Blocks: blocks,
-	}, nil
+	}
+}
+
+// FromLitellmMessage converts a litellm.Message to an llm.Message.
+// UI-only fields (CreatedAt, Components, QuickReplies) are zero-valued
+// and should be populated by the caller if needed.
+func FromLitellmMessage(msg litellm.Message) Message {
+	var content, reasoningContent string
+	var toolCalls []ToolCall
+	var toolCallID string
+
+	for _, block := range msg.Blocks {
+		switch b := block.(type) {
+		case litellm.TextBlock:
+			content += b.Text
+		case litellm.ReasoningBlock:
+			reasoningContent += b.Text
+		case litellm.ToolUseBlock:
+			args := ""
+			if len(b.Arguments) > 0 {
+				args = string(b.Arguments)
+			}
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   b.ID,
+				Type: "function",
+				Function: FunctionCall{
+					Name:      b.Name,
+					Arguments: args,
+				},
+			})
+		case litellm.ToolResultBlock:
+			toolCallID = b.ToolUseID
+			for _, sub := range b.Content {
+				if txt, ok := sub.(litellm.TextBlock); ok {
+					content += txt.Text
+				}
+			}
+		}
+	}
+
+	return Message{
+		Role:             string(msg.Role),
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		ToolCallID:       toolCallID,
+		ToolCalls:        toolCalls,
+	}
 }
 
 // fromLitellmResponse converts a litellm.Response to an llm.Response.
