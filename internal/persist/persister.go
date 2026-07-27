@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -33,14 +33,14 @@ const iso8601Dashes = "2006-01-02T15-04-05"
 type HistorySchema struct {
 	Version      int           `json:"version"`
 	SystemPrompt string        `json:"system_prompt"`
-	Messages     []llm.Message `json:"messages"`
+	Messages     []message.Message `json:"messages"`
 }
 
 // RestoredState holds all data recovered from disk on startup.
 type RestoredState struct {
 	Sessions map[string]*session.UISession
 	// Histories are derived directly from session snapshot messages (canonical type).
-	Histories map[string][]llm.Message // sessionID → conversation history with system prompt prepended
+	Histories map[string][]message.Message // sessionID → conversation history with system prompt prepended
 	Traces    []*debug.HTTPTrace
 }
 
@@ -566,7 +566,7 @@ func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
 // All restored sessions have Status set to StatusIdle regardless of what the snapshot says.
 //
 // The restored Histories are derived directly from the session snapshots' Messages
-// field (canonical llm.Message type). No conversion is needed since all consumers
+// field (canonical message.Message type). No conversion is needed since all consumers
 // use the canonical type.
 //
 // For backward compatibility, if old-format history data exists under history/
@@ -574,7 +574,7 @@ func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
 func (p *Persister) Restore() (*RestoredState, error) {
 	state := &RestoredState{
 		Sessions:  make(map[string]*session.UISession),
-		Histories: make(map[string][]llm.Message),
+		Histories: make(map[string][]message.Message),
 		Traces:    make([]*debug.HTTPTrace, 0),
 	}
 
@@ -678,9 +678,9 @@ func (state *RestoredState) loadOldFormatHistory(sessionID, historyDir string) {
 		return
 	}
 
-	var messages []llm.Message
+	var messages []message.Message
 	if histSchema.SystemPrompt != "" {
-		messages = append(messages, llm.Message{Role: "system", Content: histSchema.SystemPrompt})
+		messages = append(messages, message.Message{Role: "system", Content: histSchema.SystemPrompt})
 	}
 	messages = append(messages, histSchema.Messages...)
 	state.Histories[sessionID] = messages

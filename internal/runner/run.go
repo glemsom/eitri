@@ -10,7 +10,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 
 	"github.com/glemsom/eitri/internal/compactor"
@@ -304,7 +304,7 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 			return
 		}
 	}
-	s.uiSessionMgr.AppendMessage(sessionID, llm.Message{
+	s.uiSessionMgr.AppendMessage(sessionID, message.Message{
 		Role:             "assistant",
 		Content:          content,
 		ReasoningContent: reasoningContent,
@@ -397,7 +397,13 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		return
 	}
 
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, historyMsgs, client, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled)
+	// Convert to flat messages for the compactor
+	flatMsgs := make([]message.Message, len(historyMsgs))
+	for i, em := range historyMsgs {
+		flatMsgs[i] = em.ToMessage()
+	}
+
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -456,7 +462,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // provided LLM service, gated by high-water and low-water thresholds.
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []llm.Message, client *litellm.Client, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool) ([]llm.Message, int, int, int, error) {
+func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool) ([]message.Message, int, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages, nil, "")
 	if totalEst <= highWater {
 		return nil, 0, 0, 0, nil

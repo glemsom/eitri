@@ -11,7 +11,7 @@ import (
 
 	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -70,7 +70,7 @@ func tokenEstimate(s string, store *tokenizer.CalibrationStore, model string) in
 }
 
 // messagesTokenEstimate returns the sum of estimated tokens across all messages.
-func messagesTokenEstimate(msgs []llm.Message, store *tokenizer.CalibrationStore, model string) int {
+func messagesTokenEstimate(msgs []message.Message, store *tokenizer.CalibrationStore, model string) int {
 	var total int
 	for _, m := range msgs {
 		total += tokenEstimate(m.Content, store, model)
@@ -85,7 +85,7 @@ func messagesTokenEstimate(msgs []llm.Message, store *tokenizer.CalibrationStore
 
 // MessagesTokenEstimate is the public equivalent of messagesTokenEstimate.
 // It estimates the total token count for a slice of messages using the same chars-per-token heuristic.
-func MessagesTokenEstimate(msgs []llm.Message, store *tokenizer.CalibrationStore, model string) int {
+func MessagesTokenEstimate(msgs []message.Message, store *tokenizer.CalibrationStore, model string) int {
 	return messagesTokenEstimate(msgs, store, model)
 }
 
@@ -263,7 +263,7 @@ type compactableMessage struct {
 // compactedCount and freedTokens report the number of messages compacted
 // and the approximate token count saved.
 // prunedToolCalls reports how many tool call argument blocks were pruned.
-func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
+func (c *Compactor) Compact(ctx context.Context, messages []message.Message, client *litellm.Client, thresholds Thresholds) (compacted []message.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
 	if thresholds.HighWater <= 0 {
 		thresholds.HighWater = 90 // sensible default
 	}
@@ -275,7 +275,7 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, client 
 	}
 
 	// Work on a copy so the original is never mutated.
-	result := make([]llm.Message, len(messages))
+	result := make([]message.Message, len(messages))
 	copy(result, messages)
 
 	compactedCount = 0
@@ -341,8 +341,8 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, client 
 // least important message upwards. Messages with a salience score above
 // thresholds.HighSalienceSkipThreshold are skipped entirely. The low-water stop
 // condition is checked after each compaction.
-func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) ([]llm.Message, int, int) {
-	result := make([]llm.Message, len(messages))
+func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Message, client *litellm.Client, thresholds Thresholds) ([]message.Message, int, int) {
+	result := make([]message.Message, len(messages))
 	copy(result, messages)
 
 	compactedCount := 0
@@ -409,6 +409,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Messag
 		// Call LLM to summarise.
 		prompt := summarizationPrompt(result[cand.index].Role, originalContent)
 		litellmReq := &litellm.Request{
+			Model: "compactor",
 			Messages: []litellm.Message{
 				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},
@@ -442,8 +443,8 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Messag
 
 // compactOldestFirst implements the original greedy oldest-first scan:
 // iterate from oldest to newest and compact the first eligible message found.
-func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) ([]llm.Message, int, int) {
-	result := make([]llm.Message, len(messages))
+func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.Message, client *litellm.Client, thresholds Thresholds) ([]message.Message, int, int) {
+	result := make([]message.Message, len(messages))
 	copy(result, messages)
 
 	compactedCount := 0
@@ -480,6 +481,7 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Messa
 
 		prompt := summarizationPrompt(result[i].Role, originalContent)
 		litellmReq := &litellm.Request{
+			Model: "compactor",
 			Messages: []litellm.Message{
 				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},

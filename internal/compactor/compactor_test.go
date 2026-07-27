@@ -6,35 +6,74 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
+
+	"github.com/glemsom/eitri/internal/message"
 )
 
-// mockLLMService implements llm.LLMService for testing.
+// mockCompactorProvider implements litellm.Provider for testing.
 // It returns a canned summary for any summarization request.
-type mockLLMService struct {
+type mockCompactorProvider struct {
 	summary    string
 	failOnCall bool // when true, Chat returns an error
 }
 
-func (m *mockLLMService) Chat(_ context.Context, req llm.Request) (*llm.Response, error) {
+func (m *mockCompactorProvider) Name() string { return "mock-compactor" }
+
+func (m *mockCompactorProvider) Chat(_ context.Context, req *litellm.Request) (*litellm.Response, error) {
 	if m.failOnCall {
 		return nil, assertAnError
 	}
 	// Verify the prompt looks like a summarization request.
 	if len(req.Messages) == 0 {
-		return &llm.Response{Content: m.summary}, nil
+		return &litellm.Response{
+			Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
+			Provider: "mock-compactor",
+			Model:    "mock-model",
+		}, nil
 	}
 	msg := req.Messages[len(req.Messages)-1]
-	if !strings.Contains(msg.Content, "Summarize the following tool result") {
-		return &llm.Response{Content: m.summary}, nil
+	content := extractText(msg)
+	if !strings.Contains(content, "Summarize the following tool result") {
+		return &litellm.Response{
+			Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
+			Provider: "mock-compactor",
+			Model:    "mock-model",
+		}, nil
 	}
-	return &llm.Response{Content: m.summary}, nil
+	return &litellm.Response{
+		Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
+		Provider: "mock-compactor",
+		Model:    "mock-model",
+	}, nil
 }
 
-func (m *mockLLMService) ChatStream(_ context.Context, _ llm.Request) (<-chan llm.StreamEvent, error) {
-	ch := make(chan llm.StreamEvent)
-	close(ch)
-	return ch, nil
+func (m *mockCompactorProvider) Stream(_ context.Context, _ *litellm.Request) (litellm.Stream, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+// extractText returns the concatenated text from a litellm.Message.
+func extractText(msg litellm.Message) string {
+	var text string
+	for _, block := range msg.Blocks {
+		if tb, ok := block.(litellm.TextBlock); ok {
+			text += tb.Text
+		}
+	}
+	return text
+}
+
+// newMockClient creates a *litellm.Client backed by mockCompactorProvider.
+func newMockClient(summary string, failOnCall ...bool) *litellm.Client {
+	mock := &mockCompactorProvider{summary: summary}
+	if len(failOnCall) > 0 {
+		mock.failOnCall = failOnCall[0]
+	}
+	client, err := litellm.New(mock)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create mock client: %v", err))
+	}
+	return client
 }
 
 // errorSentinel is used as a distinguishable error in tests.
@@ -46,13 +85,13 @@ func (e testError) Error() string { return string(e) }
 
 func TestCompact_AlwaysRunsRegardlessOfThresholds(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "hi there"},
 		{Role: "user", Content: "list files"},
 		{Role: "tool", Content: strings.Repeat("data payload line\n", 20)}, // large enough to save tokens
 	}
-	llmSvc := &mockLLMService{summary: "listed files"}
+	llmSvc := newMockClient("listed files")
 	// HighWater far above total — with the old gate this returned nil.
 	// Now Compact always scans for tool results regardless.
 	thresholds := Thresholds{HighWater: 999_999, LowWater: 100}
@@ -74,13 +113,13 @@ func TestCompact_AlwaysRunsRegardlessOfThresholds(t *testing.T) {
 
 func TestCompact_CompactsToolMessages(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "run build"},
 		{Role: "tool", Content: "Build succeeded.\nAll 42 tests passed.\nOutput: ./bin/app\n" + strings.Repeat("log line\n", 50)},
 		{Role: "user", Content: "run tests"},
 		{Role: "tool", Content: "Test results: 142 passed, 0 failed, coverage 87.5%\n" + strings.Repeat("detail\n", 50)},
 	}
-	llmSvc := &mockLLMService{summary: "build completed successfully with 42 tests passing."}
+	llmSvc := newMockClient("build completed successfully with 42 tests passing.")
 
 	// Low threshold to trigger compaction.
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
@@ -126,15 +165,15 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 	// Create many tool messages so that after compacting one, we're below low-water.
 	largeContent := strings.Repeat("data payload with important information ", 200) // ~8400 chars → ~2100 tokens
 
-	msgs := make([]llm.Message, 20)
+	msgs := make([]message.Message, 20)
 	for i := 0; i < 20; i++ {
-		msgs[i] = llm.Message{
+		msgs[i] = message.Message{
 			Role:    "tool",
 			Content: largeContent,
 		}
 	}
 
-	llmSvc := &mockLLMService{summary: "compacted summary result."}
+	llmSvc := newMockClient("compacted summary result.")
 
 	// Set low water so that after one compaction we stop.
 	// Each large message is ~2100 tokens, summary is ~3 tokens.
@@ -177,13 +216,13 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 
 func TestCompact_SkipsOnLLMError(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "do something"},
 		{Role: "tool", Content: "result with important data"},
 		{Role: "user", Content: "do another thing"},
 		{Role: "tool", Content: "another result to summarize"},
 	}
-	llmSvc := &mockLLMService{summary: "fallback", failOnCall: true}
+	llmSvc := newMockClient("fallback", true)
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -199,12 +238,15 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 
 	// Ensure that when at least one succeeds and others fail, partial compaction occurs.
 	callCount := 0
-	llmSvc3 := &callTrackingMock{
+	llmSvc3, err := litellm.New(&callTrackingMock{
 		summary:       "successful summary",
 		failOnCallNum: 2, // first call succeeds, second fails
+	})
+	if err != nil {
+		t.Fatalf("failed to create mock client: %v", err)
 	}
 
-	msgs2 := []llm.Message{
+	msgs2 := []message.Message{
 		{Role: "user", Content: "first"},
 		{Role: "tool", Content: "first large result with lots of data " + strings.Repeat("x", 200)},
 		{Role: "user", Content: "second"},
@@ -250,36 +292,40 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 	}
 }
 
-// callTrackingMock is an LLM service that fails on a specific call number.
+// callTrackingMock is a litellm.Provider that fails on a specific call number.
 type callTrackingMock struct {
 	summary       string
 	failOnCallNum int
 	callCount     int
 }
 
-func (m *callTrackingMock) Chat(_ context.Context, req llm.Request) (*llm.Response, error) {
+func (m *callTrackingMock) Name() string { return "call-tracking-mock" }
+
+func (m *callTrackingMock) Chat(_ context.Context, req *litellm.Request) (*litellm.Response, error) {
 	m.callCount++
 	if m.callCount == m.failOnCallNum {
 		return nil, assertAnError
 	}
-	return &llm.Response{Content: m.summary}, nil
+	return &litellm.Response{
+		Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
+		Provider: "call-tracking-mock",
+		Model:    "mock-model",
+	}, nil
 }
 
-func (m *callTrackingMock) ChatStream(_ context.Context, _ llm.Request) (<-chan llm.StreamEvent, error) {
-	ch := make(chan llm.StreamEvent)
-	close(ch)
-	return ch, nil
+func (m *callTrackingMock) Stream(_ context.Context, _ *litellm.Request) (litellm.Stream, error) {
+	return nil, fmt.Errorf("unimplemented")
 }
 
 func TestCompact_AlreadyCompactedSkipped(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "first"},
 		{Role: "tool", Content: "[TOOL RESULT COMPACTED - originally 100 tokens] some summary here"},
 		{Role: "user", Content: "second"},
 		{Role: "tool", Content: "fresh tool result to compact with lots of data " + strings.Repeat("z", 200)},
 	}
-	llmSvc := &mockLLMService{summary: "new summary"}
+	llmSvc := newMockClient("new summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -308,7 +354,7 @@ func TestCompact_AlreadyCompactedSkipped(t *testing.T) {
 
 func TestCompact_ReturnsNilOnEmptyMessages(t *testing.T) {
 	c := New()
-	result, count, freed, _, err := c.Compact(context.Background(), nil, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
+	result, count, freed, _, err := c.Compact(context.Background(), nil, newMockClient("x"), Thresholds{HighWater: 1, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -319,7 +365,7 @@ func TestCompact_ReturnsNilOnEmptyMessages(t *testing.T) {
 		t.Fatalf("expected count=0, freed=0; got count=%d, freed=%d", count, freed)
 	}
 
-	result, count, freed, _, err = c.Compact(context.Background(), []llm.Message{}, &mockLLMService{summary: "x"}, Thresholds{HighWater: 1, LowWater: 0})
+	result, count, freed, _, err = c.Compact(context.Background(), []message.Message{}, newMockClient("x"), Thresholds{HighWater: 1, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -333,16 +379,16 @@ func TestCompact_ReturnsNilOnEmptyMessages(t *testing.T) {
 
 func TestCompact_CompactsAllRoles(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "system", Content: "You are Eitri."},
 		{Role: "user", Content: strings.Repeat("hello ", 500)}, // large user message
-		{Role: "assistant", Content: strings.Repeat("hi ", 500), ToolCalls: []llm.ToolCall{
-			{ID: "call1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
+		{Role: "assistant", Content: strings.Repeat("hi ", 500), ToolCalls: []message.ToolCall{
+			{ID: "call1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
 		{Role: "tool", Content: "file1.txt\nfile2.txt\n" + strings.Repeat("data\n", 200), ToolCallID: "call1"},
 		{Role: "user", Content: "good"},
 	}
-	llmSvc := &mockLLMService{summary: "summarized content"}
+	llmSvc := newMockClient("summarized content")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -386,7 +432,7 @@ func TestCompact_CompactsAllRoles(t *testing.T) {
 
 func TestCompact_MessageSizeThreshold_SkipsSmallMessages(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "small"},                                          // ~1 token
 		{Role: "user", Content: strings.Repeat("large payload ", 800)},            // ~10400 chars → ~2600 tokens
 		{Role: "assistant", Content: "tiny"},                                      // ~1 token
@@ -394,7 +440,7 @@ func TestCompact_MessageSizeThreshold_SkipsSmallMessages(t *testing.T) {
 		{Role: "tool", Content: "tiny tool"},                                      // ~1 token
 		{Role: "tool", Content: strings.Repeat("massive tool output\n", 400)},     // ~10400 chars → ~2600 tokens
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, MessageSizeThreshold: 2000}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -444,13 +490,13 @@ func TestCompact_MessageSizeThreshold_SkipsSmallMessages(t *testing.T) {
 
 func TestCompact_AlreadyCompactedDifferentPrefixes(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "[MESSAGE COMPACTED - originally 50 tokens] user summary here"},
 		{Role: "tool", Content: "[TOOL RESULT COMPACTED - originally 100 tokens] tool summary here"},
 		{Role: "user", Content: strings.Repeat("fresh user content ", 400)},
 		{Role: "tool", Content: strings.Repeat("fresh tool content ", 400)},
 	}
-	llmSvc := &mockLLMService{summary: "new summary"}
+	llmSvc := newMockClient("new summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -482,12 +528,12 @@ func TestCompact_AlreadyCompactedDifferentPrefixes(t *testing.T) {
 
 func TestCompact_EmptyToolContentSkipped(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "do it"},
 		{Role: "tool", Content: ""},
 		{Role: "tool", Content: "real content here with lots of data " + strings.Repeat("w", 200)},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -535,11 +581,11 @@ func TestTokenEstimate(t *testing.T) {
 }
 
 func TestMessagesTokenEstimate(t *testing.T) {
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Content: "hello world"},                    // 11/4=2
 		{Content: "a"},                              // 1
-		{ToolCalls: []llm.ToolCall{                  // name="bash" (4/4=1) + args={"cmd":"ls"} (13/4=3)
-			{Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
+		{ToolCalls: []message.ToolCall{                  // name="bash" (4/4=1) + args={"cmd":"ls"} (13/4=3)
+			{Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
 	}
 	total := messagesTokenEstimate(msgs, nil, "")
@@ -553,13 +599,13 @@ func TestCompact_NegativeOrZeroThresholds(t *testing.T) {
 	c := New()
 	// Use large messages so that the default thresholds (HighWater=90) are exceeded.
 	largeContent := strings.Repeat("data payload with important information ", 10) // ~420 chars → ~105 tokens
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "hi"},
 		{Role: "tool", Content: largeContent},
 	}
 
 	// Zero thresholds should trigger compaction with sensible defaults.
-	llmSvc := &mockLLMService{summary: "summary result."}
+	llmSvc := newMockClient("summary result.")
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, Thresholds{HighWater: 0, LowWater: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -577,11 +623,11 @@ func TestCompact_NegativeOrZeroThresholds(t *testing.T) {
 
 func TestCompact_EmptySummarySkipped(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "run command"},
 		{Role: "tool", Content: "command output with important data"},
 	}
-	llmSvc := &mockLLMService{summary: ""} // empty summary
+	llmSvc := newMockClient("") // empty summary
 	thresholds := Thresholds{HighWater: 1, LowWater: 0}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -600,22 +646,22 @@ func TestCompact_PrunesToolCallArgsBeyondRetention(t *testing.T) {
 	c := New()
 	// 10 assistant messages, 5 with tool calls.
 	// RetentionTurns=3 means the last 3 should retain their arguments.
-	msgs := make([]llm.Message, 0, 10)
+	msgs := make([]message.Message, 0, 10)
 	for i := 0; i < 10; i++ {
-		tc := []llm.ToolCall{}
+		tc := []message.ToolCall{}
 		if i < 5 { // first 5 have tool calls
-			tc = []llm.ToolCall{
-				{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
-				{ID: "call_2", Function: llm.FunctionCall{Name: "read", Arguments: `{"path":"file.txt"}`}},
+			tc = []message.ToolCall{
+				{ID: "call_1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
+				{ID: "call_2", Function: message.FunctionCall{Name: "read", Arguments: `{"path":"file.txt"}`}},
 			}
 		}
-		msgs = append(msgs, llm.Message{
+		msgs = append(msgs, message.Message{
 			Role:      "assistant",
 			Content:   "response " + fmt.Sprint(i),
 			ToolCalls: tc,
 		})
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 3}
 
 	result, count, freed, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -675,17 +721,17 @@ func TestCompact_KeepsToolCallArgsWithinRetention(t *testing.T) {
 	c := New()
 	// 5 assistant messages, all with tool calls.
 	// RetentionTurns=5 means all are within window → nothing pruned.
-	msgs := make([]llm.Message, 5)
+	msgs := make([]message.Message, 5)
 	for i := 0; i < 5; i++ {
-		msgs[i] = llm.Message{
+		msgs[i] = message.Message{
 			Role:    "assistant",
 			Content: strings.Repeat("response ", 50),
-			ToolCalls: []llm.ToolCall{
-				{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
+			ToolCalls: []message.ToolCall{
+				{ID: "call_1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
 			},
 		}
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 5}
 
 	result, count, freed, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -716,18 +762,18 @@ func TestCompact_PruneOnlyAssistantMessages(t *testing.T) {
 	c := New()
 	// Mix of user, assistant, and tool messages.
 	// Only assistant messages with tool calls should be pruned.
-	msgs := []llm.Message{
-		{Role: "user", Content: "hello", ToolCalls: []llm.ToolCall{ // user with tool calls (unusual but test)
-			{ID: "u1", Function: llm.FunctionCall{Name: "test", Arguments: `{"x":"y"}`}},
+	msgs := []message.Message{
+		{Role: "user", Content: "hello", ToolCalls: []message.ToolCall{ // user with tool calls (unusual but test)
+			{ID: "u1", Function: message.FunctionCall{Name: "test", Arguments: `{"x":"y"}`}},
 		}},
-		{Role: "assistant", Content: "let me check", ToolCalls: []llm.ToolCall{
-			{ID: "a1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
+		{Role: "assistant", Content: "let me check", ToolCalls: []message.ToolCall{
+			{ID: "a1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
-		{Role: "tool", Content: "file list", ToolCallID: "a1", ToolCalls: []llm.ToolCall{ // tool with tool calls (unusual)
-			{ID: "t1", Function: llm.FunctionCall{Name: "other", Arguments: `{"data":"lots"}`}},
+		{Role: "tool", Content: "file list", ToolCallID: "a1", ToolCalls: []message.ToolCall{ // tool with tool calls (unusual)
+			{ID: "t1", Function: message.FunctionCall{Name: "other", Arguments: `{"data":"lots"}`}},
 		}},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 0} // 0 retention = prune all
 
 	result, _, _, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -758,15 +804,15 @@ func TestCompact_PruneOnlyAssistantMessages(t *testing.T) {
 
 func TestCompact_AlreadyPrunedToolCallsSkipped(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
-		{Role: "assistant", Content: "first", ToolCalls: []llm.ToolCall{
-			{ID: "c1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"pruned": "~42 chars"}`}},
+	msgs := []message.Message{
+		{Role: "assistant", Content: "first", ToolCalls: []message.ToolCall{
+			{ID: "c1", Function: message.FunctionCall{Name: "bash", Arguments: `{"pruned": "~42 chars"}`}},
 		}},
-		{Role: "assistant", Content: "second", ToolCalls: []llm.ToolCall{
-			{ID: "c2", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"real data"}`}},
+		{Role: "assistant", Content: "second", ToolCalls: []message.ToolCall{
+			{ID: "c2", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"real data"}`}},
 		}},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 0}
 
 	result, count, freed, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -794,15 +840,15 @@ func TestCompact_AlreadyPrunedToolCallsSkipped(t *testing.T) {
 
 func TestCompact_ZeroRetentionTurnsPrunesAll(t *testing.T) {
 	c := New()
-	msgs := []llm.Message{
-		{Role: "assistant", Content: "first", ToolCalls: []llm.ToolCall{
-			{ID: "c1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"first"}`}},
+	msgs := []message.Message{
+		{Role: "assistant", Content: "first", ToolCalls: []message.ToolCall{
+			{ID: "c1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"first"}`}},
 		}},
-		{Role: "assistant", Content: "second", ToolCalls: []llm.ToolCall{
-			{ID: "c2", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"second"}`}},
+		{Role: "assistant", Content: "second", ToolCalls: []message.ToolCall{
+			{ID: "c2", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"second"}`}},
 		}},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	// ToolCallRetentionTurns=0 means no retention → all get pruned.
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 0}
 
@@ -818,14 +864,14 @@ func TestCompact_ZeroRetentionTurnsPrunesAll(t *testing.T) {
 func TestCompact_NoToolCallsUnaffected(t *testing.T) {
 	c := New()
 	// Assistant messages with no tool calls should not cause any pruning.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "hi there"},
 		{Role: "user", Content: "run build"},
 		{Role: "assistant", Content: "building..."},
 		{Role: "tool", Content: "build output here"},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 2}
 
 	result, _, _, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -843,14 +889,14 @@ func TestCompact_NoToolCallsUnaffected(t *testing.T) {
 func TestCompact_FreedTokensIncludesPrunedArgs(t *testing.T) {
 	c := New()
 	largeArgs := `{"cmd":"` + strings.Repeat("x", 1000) + `"}`
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "user", Content: "hello"},
-		{Role: "assistant", Content: "running command", ToolCalls: []llm.ToolCall{
-			{ID: "c1", Function: llm.FunctionCall{Name: "bash", Arguments: largeArgs}},
+		{Role: "assistant", Content: "running command", ToolCalls: []message.ToolCall{
+			{ID: "c1", Function: message.FunctionCall{Name: "bash", Arguments: largeArgs}},
 		}},
 		{Role: "tool", Content: "output here with lots of data " + strings.Repeat("y", 500)},
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, ToolCallRetentionTurns: 0, MessageSizeThreshold: 0}
 
 	result, count, freed, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -876,19 +922,19 @@ func TestCompact_RetentionWithCompactOnly(t *testing.T) {
 	c := New()
 	// Test that ToolCallRetentionTurns works even when no content compaction occurs
 	// (no LLM summarization needed — just tool call pruning).
-	msgs := []llm.Message{
-		{Role: "assistant", Content: "small", ToolCalls: []llm.ToolCall{
-			{ID: "c1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
+	msgs := []message.Message{
+		{Role: "assistant", Content: "small", ToolCalls: []message.ToolCall{
+			{ID: "c1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"echo hello"}`}},
 		}},
-		{Role: "assistant", Content: "small", ToolCalls: []llm.ToolCall{
-			{ID: "c2", Function: llm.FunctionCall{Name: "read", Arguments: `{"path":"/etc/hosts"}`}},
+		{Role: "assistant", Content: "small", ToolCalls: []message.ToolCall{
+			{ID: "c2", Function: message.FunctionCall{Name: "read", Arguments: `{"path":"/etc/hosts"}`}},
 		}},
 	}
 	// Set MessageSizeThreshold high so content summarization is skipped.
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, MessageSizeThreshold: 999_999, ToolCallRetentionTurns: 1}
 
 	// Use a mock that would fail if called (shouldn't be called since messages are too small).
-	llmSvc := &mockLLMService{summary: "summary", failOnCall: true}
+	llmSvc := newMockClient("summary", true)
 
 	result, count, freed, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
@@ -920,19 +966,19 @@ func TestCompact_RetentionExactBoundary(t *testing.T) {
 	c := New()
 	// Exactly at the boundary: totalAssistantMsgs - retentionTurns should keep the last N.
 	// 3 assistant messages, retention=1 → only the last (index 2) retains args.
-	msgs := []llm.Message{
-		{Role: "assistant", Content: "a1", ToolCalls: []llm.ToolCall{
-			{ID: "c1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"a"}`}},
+	msgs := []message.Message{
+		{Role: "assistant", Content: "a1", ToolCalls: []message.ToolCall{
+			{ID: "c1", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"a"}`}},
 		}},
-		{Role: "assistant", Content: "a2", ToolCalls: []llm.ToolCall{
-			{ID: "c2", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"b"}`}},
+		{Role: "assistant", Content: "a2", ToolCalls: []message.ToolCall{
+			{ID: "c2", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"b"}`}},
 		}},
-		{Role: "assistant", Content: "a3", ToolCalls: []llm.ToolCall{
-			{ID: "c3", Function: llm.FunctionCall{Name: "bash", Arguments: `{"cmd":"c"}`}},
+		{Role: "assistant", Content: "a3", ToolCalls: []message.ToolCall{
+			{ID: "c3", Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"c"}`}},
 		}},
 	}
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, MessageSizeThreshold: 999_999, ToolCallRetentionTurns: 1}
-	llmSvc := &mockLLMService{summary: "summary", failOnCall: true}
+	llmSvc := newMockClient("summary", true)
 
 	result, _, _, pruned, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
 	if err != nil {
@@ -1033,13 +1079,13 @@ func TestCompact_SalienceScoredOrdering(t *testing.T) {
 	c := New()
 	// Create messages with varying salience levels.
 	// The compactor should compact low-salience messages first.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "tool", Content: "ls output: file1.txt file2.txt file3.txt"},                                       // low salience (~40-60)
 		{Role: "tool", Content: "Error: build failed with exit code 1 at /home/user/project/src/main.go:42"},         // high salience (error + file path)
 		{Role: "tool", Content: "Build succeeded. All tests passed."},                                               // low salience (~35-50)
 		{Role: "tool", Content: "Exception: NullPointerException\n\tat com.example.App.main(App.java:15)"},           // very high salience (exception + stack trace)
 	}
-	llmSvc := &mockLLMService{summary: "compacted summary"}
+	llmSvc := newMockClient("compacted summary")
 
 	// Use a low threshold that compacts only a few messages.
 	thresholds := Thresholds{
@@ -1072,13 +1118,13 @@ func TestCompact_SaliencePreservesHighValueMessages(t *testing.T) {
 	c := New()
 	// This test verifies that when lowWater stops compaction early,
 	// high-salience messages are preserved and low-salience ones are compacted first.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "tool", Content: strings.Repeat("low value debug log line\n", 200)},    // ~5600 chars, ~1400 tokens - low salience
 		{Role: "tool", Content: "Error: critical failure in module\nat /src/main.go:42\n" + strings.Repeat("stack data\n", 100)},  // high salience
 		{Role: "tool", Content: strings.Repeat("verbose build output\n", 200)},        // low salience
 		{Role: "tool", Content: "Exception: NullReference at /src/handler.go:15\n" + strings.Repeat("trace\n", 100)},  // very high salience
 	}
-	llmSvc := &mockLLMService{summary: "compacted"}
+	llmSvc := newMockClient("compacted")
 
 	// Estimate total tokens.
 	totalEst := messagesTokenEstimate(msgs, nil, "")
@@ -1133,11 +1179,11 @@ func TestCompact_SaliencePreservesHighValueMessages(t *testing.T) {
 func TestCompact_SalienceSkipHighSalience(t *testing.T) {
 	c := New()
 	// Test that messages with salience score above HighSalienceSkipThreshold are skipped.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "tool", Content: "simple output"},  // low salience
 		{Role: "tool", Content: "Error: critical failure at /path/to/file.go:42"},  // high salience
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 
 	thresholds := Thresholds{
 		HighWater:                  1,
@@ -1172,11 +1218,11 @@ func TestCompact_SalienceDisabledFallsBack(t *testing.T) {
 	c := New()
 	// When SalienceEnabled is false, the original oldest-first behaviour should be used.
 	// Create messages with high salience first (oldest) and low salience later.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "tool", Content: "Error: initial failure with stack trace at /src/main.go:42"},  // high salience, oldest
 		{Role: "tool", Content: "ls output: files"},                                            // low salience, newer
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 
 	thresholds := Thresholds{
 		HighWater:            1,
@@ -1205,12 +1251,12 @@ func TestCompact_SalienceDisabledFallsBack(t *testing.T) {
 func TestCompact_SalienceWithMessageSizeThreshold(t *testing.T) {
 	c := New()
 	// Test that both salience and message size threshold work together.
-	msgs := []llm.Message{
+	msgs := []message.Message{
 		{Role: "tool", Content: "small output"},                                                                    // below size threshold
 		{Role: "tool", Content: strings.Repeat("large debug output line\n", 200)},                                  // large, low salience
 		{Role: "tool", Content: "Error: critical issue at /path/to/file.go:42\n" + strings.Repeat("trace\n", 100)}, // large, high salience
 	}
-	llmSvc := &mockLLMService{summary: "summary"}
+	llmSvc := newMockClient("summary")
 
 	thresholds := Thresholds{
 		HighWater:            1,

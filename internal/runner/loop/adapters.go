@@ -13,7 +13,7 @@ import (
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 // ── Value types ─────────────────────────────────────────────────────────────
@@ -34,20 +34,20 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // HistoryManager abstracts conversation history storage for the agent loop.
 // Two adapters exist: sessionHistoryManager (browser UI path via
 // *history.SessionManager) and requestHistoryManager (headless/direct-messages
-// path via *llm.Request).
+// path via *litellm.Request).
 type HistoryManager interface {
 	// History returns the full conversation history with system prompt prepended.
-	History() []llm.Message
+	History() []message.EitriMessage
 
 	// AppendAssistant appends an assistant message with text content and
-	// optional tool calls.
-	AppendAssistant(content string, toolCalls []llm.ToolCall)
+	// optional tool calls (as litellm.ToolUseBlock).
+	AppendAssistant(content string, toolCalls []litellm.ToolUseBlock)
 
 	// AppendTool appends a tool result message.
 	AppendTool(toolCallID, content string, isError bool)
 
 	// RequestBased returns true when history is stored directly on the
-	// *llm.Request (requestHistoryManager) rather than in a session manager.
+	// *litellm.Request (requestHistoryManager) rather than in a session manager.
 	// When true, the caller must trim req.Messages directly when caps are set.
 	RequestBased() bool
 }
@@ -83,7 +83,7 @@ func NewSessionHistoryManager(sessionMgr *history.SessionManager, sessionID stri
 }
 
 // History returns the conversation history from the session manager.
-func (m *sessionHistoryManager) History() []llm.Message {
+func (m *sessionHistoryManager) History() []message.EitriMessage {
 	if m.sessionMgr == nil {
 		return nil
 	}
@@ -91,11 +91,11 @@ func (m *sessionHistoryManager) History() []llm.Message {
 }
 
 // AppendAssistant appends an assistant message to the session manager.
-func (m *sessionHistoryManager) AppendAssistant(content string, toolCalls []llm.ToolCall) {
+func (m *sessionHistoryManager) AppendAssistant(content string, toolCalls []litellm.ToolUseBlock) {
 	if m.sessionMgr == nil {
 		return
 	}
-	m.sessionMgr.AppendAssistant(m.sessionID, content, toolCalls)
+	m.sessionMgr.AppendAssistant(m.sessionID, content, toMessageToolCalls(toolCalls))
 }
 
 // AppendTool appends a tool result message to the session manager.
@@ -116,8 +116,8 @@ func (m *sessionHistoryManager) RequestBased() bool {
 // requestHistoryManager implements HistoryManager for the headless/direct-
 // messages path. It wraps *litellm.Request and appends messages directly
 // to req.Messages. The caller must ensure the request already has its
-// initial messages set (system + user). History() converts the stored
-// litellm.Message values back to llm.Message for interface compliance.
+// initial messages set (system + user). History() returns stored messages
+// as EitriMessage values via FromLitellm.
 type requestHistoryManager struct {
 	req *litellm.Request
 }
@@ -127,18 +127,18 @@ func NewRequestHistoryManager(req *litellm.Request) *requestHistoryManager {
 	return &requestHistoryManager{req: req}
 }
 
-// History returns req.Messages converted to []llm.Message.
-func (m *requestHistoryManager) History() []llm.Message {
-	out := make([]llm.Message, 0, len(m.req.Messages))
+// History returns req.Messages as []message.EitriMessage.
+func (m *requestHistoryManager) History() []message.EitriMessage {
+	out := make([]message.EitriMessage, 0, len(m.req.Messages))
 	for _, msg := range m.req.Messages {
-		out = append(out, litellmMessageToLLM(msg))
+		out = append(out, message.FromLitellm(msg))
 	}
 	return out
 }
 
 // AppendAssistant appends an assistant message to req.Messages.
-func (m *requestHistoryManager) AppendAssistant(content string, toolCalls []llm.ToolCall) {
-	m.req.Messages = append(m.req.Messages, assistantToLitellm(content, toolCalls))
+func (m *requestHistoryManager) AppendAssistant(content string, toolCalls []litellm.ToolUseBlock) {
+	m.req.Messages = append(m.req.Messages, assistantToLitellmMsg(content, toolCalls))
 }
 
 // AppendTool appends a tool result message to req.Messages.
@@ -152,61 +152,22 @@ func (m *requestHistoryManager) RequestBased() bool {
 	return true
 }
 
-// ── Conversion helpers (litellm ↔ llm) ────────────────────────────────────
+// ── Conversion helpers ────────────────────────────────────────────────────
 
-// litellmMessageToLLM converts a litellm.Message back to llm.Message.
-// It extracts text content from TextBlock, tool calls from ToolUseBlock,
-// and tool results from ToolResultBlock.
-func litellmMessageToLLM(msg litellm.Message) llm.Message {
-	out := llm.Message{
-		Role: string(msg.Role),
-	}
-	for _, block := range msg.Blocks {
-		switch b := block.(type) {
-		case litellm.TextBlock:
-			out.Content += b.Text
-		case litellm.ToolUseBlock:
-			if out.ToolCalls == nil {
-				out.ToolCalls = make([]llm.ToolCall, 0)
-			}
-			args := ""
-			if len(b.Arguments) > 0 {
-				args = string(b.Arguments)
-			}
-			out.ToolCalls = append(out.ToolCalls, llm.ToolCall{
-				ID:   b.ID,
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      b.Name,
-					Arguments: args,
-				},
-			})
-		case litellm.ToolResultBlock:
-			out.ToolCallID = b.ToolUseID
-			for _, content := range b.Content {
-				if text, ok := content.(litellm.TextBlock); ok {
-					out.Content += text.Text
-				}
-			}
-		}
-	}
-	return out
-}
-
-// assistantToLitellm converts an assistant message fields to a litellm.Message.
-func assistantToLitellm(content string, toolCalls []llm.ToolCall) litellm.Message {
+// assistantToLitellmMsg converts assistant message fields to a litellm.Message.
+func assistantToLitellmMsg(content string, toolCalls []litellm.ToolUseBlock) litellm.Message {
 	var blocks []litellm.Block
 	if content != "" {
 		blocks = append(blocks, litellm.TextBlock{Text: content})
 	}
 	for _, tc := range toolCalls {
-		args := json.RawMessage(tc.Function.Arguments)
+		args := tc.Arguments
 		if !json.Valid(args) {
 			args = json.RawMessage("{}")
 		}
 		blocks = append(blocks, litellm.ToolUseBlock{
 			ID:        tc.ID,
-			Name:      tc.Function.Name,
+			Name:      tc.Name,
 			Arguments: args,
 		})
 	}
@@ -219,7 +180,7 @@ func assistantToLitellm(content string, toolCalls []llm.ToolCall) litellm.Messag
 	}
 }
 
-// toolResultToLitellm converts a tool result message fields to a litellm.Message.
+// toolResultToLitellm converts tool result fields to a litellm.Message.
 func toolResultToLitellm(toolCallID, content string) litellm.Message {
 	return litellm.Message{
 		Role: litellm.Role("tool"),
@@ -230,6 +191,29 @@ func toolResultToLitellm(toolCallID, content string) litellm.Message {
 			},
 		},
 	}
+}
+
+// toMessageToolCalls converts []litellm.ToolUseBlock to []message.ToolCall.
+func toMessageToolCalls(tcs []litellm.ToolUseBlock) []message.ToolCall {
+	if len(tcs) == 0 {
+		return nil
+	}
+	out := make([]message.ToolCall, len(tcs))
+	for i, tc := range tcs {
+		args := ""
+		if len(tc.Arguments) > 0 {
+			args = string(tc.Arguments)
+		}
+		out[i] = message.ToolCall{
+			ID:   tc.ID,
+			Type: "function",
+			Function: message.FunctionCall{
+				Name:      tc.Name,
+				Arguments: args,
+			},
+		}
+	}
+	return out
 }
 
 // ── testConfirmerStub ─────────────────────────────────────────────────────

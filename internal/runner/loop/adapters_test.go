@@ -2,11 +2,12 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/voocel/litellm"
 )
 
@@ -61,8 +62,8 @@ func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 	if last.Role != "assistant" {
 		t.Errorf("last message role = %q, want %q", last.Role, "assistant")
 	}
-	if last.Content != "Hello!" {
-		t.Errorf("last message content = %q, want %q", last.Content, "Hello!")
+	if last.Content() != "Hello!" {
+		t.Errorf("last message content = %q, want %q", last.Content(), "Hello!")
 	}
 }
 
@@ -81,8 +82,8 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "run tool")
 
 	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
-	toolCalls := []llm.ToolCall{
-		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
+	toolCalls := []litellm.ToolUseBlock{
+		{ID: "call_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)},
 	}
 	adapter.AppendAssistant("", toolCalls)
 
@@ -91,11 +92,11 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	if last.Role != "assistant" {
 		t.Errorf("last message role = %q, want %q", last.Role, "assistant")
 	}
-	if len(last.ToolCalls) != 1 {
-		t.Fatalf("last message has %d tool calls, want 1", len(last.ToolCalls))
+	if len(last.ToolCalls()) != 1 {
+		t.Fatalf("last message has %d tool calls, want 1", len(last.ToolCalls()))
 	}
-	if last.ToolCalls[0].Function.Name != "test_tool" {
-		t.Errorf("tool call name = %q, want %q", last.ToolCalls[0].Function.Name, "test_tool")
+	if last.ToolCalls()[0].Function.Name != "test_tool" {
+		t.Errorf("tool call name = %q, want %q", last.ToolCalls()[0].Function.Name, "test_tool")
 	}
 }
 
@@ -114,11 +115,11 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	if last.Role != "tool" {
 		t.Errorf("last message role = %q, want %q", last.Role, "tool")
 	}
-	if last.Content != "result content" {
-		t.Errorf("last message content = %q, want %q", last.Content, "result content")
+	if last.Content() != "result content" {
+		t.Errorf("last message content = %q, want %q", last.Content(), "result content")
 	}
-	if last.ToolCallID != "call_1" {
-		t.Errorf("last message ToolCallID = %q, want %q", last.ToolCallID, "call_1")
+	if last.ToolCallID() != "call_1" {
+		t.Errorf("last message ToolCallID = %q, want %q", last.ToolCallID(), "call_1")
 	}
 }
 
@@ -151,11 +152,11 @@ func TestRequestHistoryManager_History(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("History() returned %d messages, want 2", len(msgs))
 	}
-	if msgs[0].Content != "sys" {
-		t.Errorf("message[0].Content = %q, want %q", msgs[0].Content, "sys")
+	if msgs[0].Content() != "sys" {
+		t.Errorf("message[0].Content() = %q, want %q", msgs[0].Content(), "sys")
 	}
-	if msgs[1].Content != "hello" {
-		t.Errorf("message[1].Content = %q, want %q", msgs[1].Content, "hello")
+	if msgs[1].Content() != "hello" {
+		t.Errorf("message[1].Content() = %q, want %q", msgs[1].Content(), "hello")
 	}
 }
 
@@ -168,10 +169,15 @@ func TestRequestHistoryManager_HistoryReturnsNewSlice(t *testing.T) {
 	}
 	adapter := NewRequestHistoryManager(req)
 	msgs := adapter.History()
-	// History() returns a new slice (converted from litellm to llm).
+	// History() returns a new slice of EitriMessage values (converted from litellm).
 	// Modifications to the returned slice should NOT affect req.Messages.
 	if len(msgs) > 0 {
-		msgs[0].Content = "modified"
+		msgs[0] = message.EitriMessage{
+			Message: litellm.Message{
+				Role:   litellm.Role("user"),
+				Blocks: []litellm.Block{litellm.TextBlock{Text: "modified"}},
+			},
+		}
 	}
 	// Extract content from first message in req.Messages
 	firstBlocks := req.Messages[0].Blocks
@@ -216,8 +222,8 @@ func TestRequestHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	t.Parallel()
 	req := &litellm.Request{}
 	adapter := NewRequestHistoryManager(req)
-	toolCalls := []llm.ToolCall{
-		{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "test_tool", Arguments: `{}`}},
+	toolCalls := []litellm.ToolUseBlock{
+		{ID: "call_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)},
 	}
 	adapter.AppendAssistant("", toolCalls)
 

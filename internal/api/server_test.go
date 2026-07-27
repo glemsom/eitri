@@ -20,7 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
@@ -1581,8 +1581,8 @@ func TestSessionPageRendersAssistantMarkdownAndRichAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "user", Content: "show rich output"})
-	sessionMgr.AppendMessage(sess.ID, llm.Message{Role: "assistant", Content: strings.Join([]string{
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "show rich output"})
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: strings.Join([]string{
 		"**bold** answer",
 		"",
 		"```go",
@@ -4210,7 +4210,7 @@ func TestDebugSessionByID(t *testing.T) {
 	}
 
 	// Add a message to the session
-	sessionMgr.AppendMessage(sess.ID, llm.Message{
+	sessionMgr.AppendMessage(sess.ID, message.Message{
 		Role:      "user",
 		Content:   "Hello",
 		CreatedAt: time.Now(),
@@ -4277,7 +4277,7 @@ func TestDebugSessionByIDLimitMessages(t *testing.T) {
 
 	// Add multiple messages
 	for i := 0; i < 5; i++ {
-		sessionMgr.AppendMessage(sess.ID, llm.Message{
+		sessionMgr.AppendMessage(sess.ID, message.Message{
 			Role:      "user",
 			Content:   fmt.Sprintf("Message %d", i),
 			CreatedAt: time.Now(),

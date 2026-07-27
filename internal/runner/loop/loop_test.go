@@ -11,20 +11,18 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
 )
 
-// lrFromMessages converts []llm.Message to a *litellm.Request with those
-// messages. Intended for tests that previously constructed *llm.Request directly.
-func lrFromMessages(msgs []llm.Message, opts ...func(*litellm.Request)) *litellm.Request {
+// lrFromMessages converts []litellm.Message to a *litellm.Request with those
+// messages.
+func lrFromMessages(msgs []litellm.Message, opts ...func(*litellm.Request)) *litellm.Request {
 	litMsgs := make([]litellm.Message, len(msgs))
-	for i, m := range msgs {
-		litMsgs[i] = toLitellmMessage(m)
-	}
+	copy(litMsgs, msgs)
 	r := &litellm.Request{Messages: litMsgs}
 	for _, o := range opts {
 		o(r)
@@ -40,7 +38,7 @@ func lrWithModel(model string) func(*litellm.Request) {
 // msgContent extracts text content from a litellm.Message by reading its
 // TextBlock blocks. Empty if no text blocks are found.
 func msgContent(msg litellm.Message) string {
-	return litellmMessageToLLM(msg).Content
+	return message.FromLitellmMessage(msg).Content
 }
 
 // msgRole returns the role string of a litellm.Message.
@@ -49,13 +47,13 @@ func msgRole(msg litellm.Message) string {
 }
 
 // msgToolCalls returns the tool calls from a litellm.Message.
-func msgToolCalls(msg litellm.Message) []llm.ToolCall {
-	return litellmMessageToLLM(msg).ToolCalls
+func msgToolCalls(msg litellm.Message) []message.ToolCall {
+	return message.FromLitellmMessage(msg).ToolCalls
 }
 
 // msgToolCallID returns the tool call ID from a litellm.Message.
 func msgToolCallID(msg litellm.Message) string {
-	return litellmMessageToLLM(msg).ToolCallID
+	return message.FromLitellmMessage(msg).ToolCallID
 }
 
 // ── Mock LLM provider ──────────────────────────────────────────────────────
@@ -176,6 +174,16 @@ func buildMockToolCall(id, name, argsJSON string) litellm.ToolUseBlock {
 	}
 }
 
+// emsg creates an EitriMessage with the given role and text content.
+func emsg(role, content string) message.EitriMessage {
+	return message.EitriMessage{
+		Message: litellm.Message{
+			Role:   litellm.Role(role),
+			Blocks: []litellm.Block{litellm.TextBlock{Text: content}},
+		},
+	}
+}
+
 // ── Simple mock tool ────────────────────────────────────────────────────────
 
 type simpleMockTool struct {
@@ -230,8 +238,8 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -307,8 +315,8 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "what is the answer?"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "what is the answer?"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -416,8 +424,8 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run both tools"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run both tools"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -475,8 +483,8 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run failing tool"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run failing tool"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -539,8 +547,8 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "loop"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "loop"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -587,8 +595,8 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	cancel() // Cancel immediately
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -673,8 +681,8 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -733,8 +741,8 @@ func TestRunAgent_StreamError(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -773,8 +781,8 @@ func TestRunAgent_NoTools(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hello"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -858,8 +866,8 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 	}
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -910,8 +918,8 @@ t.Fatalf("failed to create transient error mock client: %v", err)
 }
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -970,8 +978,8 @@ t.Fatalf("failed to create client: %v", err)
 }
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "test"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1017,8 +1025,8 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1068,8 +1076,8 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1118,8 +1126,8 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run empty tool"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run empty tool"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1183,8 +1191,8 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "edit the file"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "edit the file"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1308,8 +1316,8 @@ func TestRunAgent_Thinking(t *testing.T) {
 			})
 
 			req := lrFromMessages(
-				[]llm.Message{
-					{Role: "user", Content: tt.query},
+				[]litellm.Message{
+					{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: tt.query}}},
 				},
 				lrWithModel("test-model"),
 			)
@@ -1417,10 +1425,10 @@ func TestTrimMessages_RemovesOldestWhenOverCap(t *testing.T) {
 }
 
 func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "u1"},
-		{Role: "assistant", Content: "a1"},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u1"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "a1"}}},
 	}
 	req := lrFromMessages(msgs)
 
@@ -1432,12 +1440,12 @@ func TestTrimMessages_WithinCapUnchanged(t *testing.T) {
 }
 
 func TestTrimMessages_ZeroOrNegativeIsNoop(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "sys"},
-		{Role: "user", Content: "u1"},
-		{Role: "assistant", Content: "a1"},
-		{Role: "user", Content: "u2"},
-		{Role: "assistant", Content: "a2"},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u1"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "a1"}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "u2"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "a2"}}},
 	}
 
 	// maxHistory = 0 (no limit)
@@ -1506,15 +1514,15 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 
 	// Start with 5 existing messages + system prompt, cap at 3
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "system", Content: "sys"},
-			{Role: "user", Content: "old1"},
-			{Role: "assistant", Content: "old1r"},
-			{Role: "user", Content: "old2"},
-			{Role: "assistant", Content: "old2r"},
-			{Role: "user", Content: "old3"},
-			{Role: "assistant", Content: "old3r"},
-			{Role: "user", Content: "run tool"},
+		[]litellm.Message{
+			{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old1"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old1r"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old2"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old2r"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old3"}}},
+			{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "old3r"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run tool"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1575,9 +1583,9 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "system", Content: "sys"},
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1631,8 +1639,8 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "render a diagram"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "render a diagram"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1693,8 +1701,8 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "show quick replies"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "show quick replies"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1749,8 +1757,8 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "render a diagram"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "render a diagram"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -1805,8 +1813,8 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run tool"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run tool"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2104,8 +2112,8 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2282,7 +2290,7 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 	hist2 := sessionMgr.History(sessionID)
 
 	// Verify no consecutive user messages — would cause 400 errors with some providers
-	lastRole := ""
+	lastRole := litellm.Role("")
 	for _, msg := range hist2 {
 		if msg.Role == "user" && lastRole == "user" {
 			t.Errorf("Consecutive user messages found — provider would reject as malformed")
@@ -2346,8 +2354,8 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/test.txt", Approved: true}, nil)
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "read file"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "read file"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2425,8 +2433,8 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	confirmer := NewTestConfirmerStub(&ConfirmationResult{Path: "/tmp/secret.txt", Approved: false}, nil)
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "read secret"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "read secret"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2542,8 +2550,8 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "run tool"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run tool"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2613,8 +2621,8 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2668,8 +2676,8 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "hi"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
 		},
 		lrWithModel("test-model"),
 	)
@@ -2724,13 +2732,13 @@ func requirePanic(t *testing.T, fn func()) {
 
 func TestUpdateCalibration_NilStore(t *testing.T) {
 	t.Parallel()
-	updateCalibration(nil, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 10})
+	updateCalibration(nil, "gpt-4", []litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}}}, &litellm.Usage{InputTokens: 10})
 }
 
 func TestUpdateCalibration_EmptyModel(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 10})
+	updateCalibration(store, "", []litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}}}, &litellm.Usage{InputTokens: 10})
 	if cpt := store.Lookup(""); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2739,7 +2747,7 @@ func TestUpdateCalibration_EmptyModel(t *testing.T) {
 func TestUpdateCalibration_NilUsage(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, nil)
+	updateCalibration(store, "gpt-4", []litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}}}, nil)
 	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2748,7 +2756,7 @@ func TestUpdateCalibration_NilUsage(t *testing.T) {
 func TestUpdateCalibration_ZeroPromptTokens(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 0})
+	updateCalibration(store, "gpt-4", []litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}}}, &litellm.Usage{InputTokens: 0})
 	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2766,10 +2774,10 @@ func TestUpdateCalibration_EmptyMessages(t *testing.T) {
 func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	messages := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},          // 28 chars
-		{Role: "user", Content: "What is the weather?"},                    // 20 chars
-		{Role: "assistant", Content: "Let me check."},                      // 13 chars
+	messages := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},          // 28 chars
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "What is the weather?"}}},                    // 20 chars
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Let me check."}}},                      // 13 chars
 	}
 	// Input text length = 28 + 20 + 13 = 61 chars
 	// InputTokens = 10
@@ -2789,8 +2797,8 @@ func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
 func TestUpdateCalibration_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	messages := []llm.Message{
-		{Role: "user", Content: "Hello, world!"},
+	messages := []litellm.Message{
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Hello, world!"}}},
 	}
 
 	// First update: len=13, tokens=3 → CPT≈4.33
@@ -2822,8 +2830,8 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 	})
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "Say hello"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Say hello"}}},
 		},
 		lrWithModel("gpt-4"),
 	)
@@ -2908,8 +2916,8 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 	}
 
 	req := lrFromMessages(
-		[]llm.Message{
-			{Role: "user", Content: "Say hello"},
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Say hello"}}},
 		},
 		lrWithModel("gpt-4"),
 	)

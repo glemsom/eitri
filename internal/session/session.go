@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 // Status represents the current state of a session.
@@ -43,7 +43,7 @@ type UISession struct {
 	ParentID     string    `json:"parent_id,omitempty"`
 	Title        string    `json:"title"`
 	Status       Status    `json:"status"`
-	Messages     []llm.Message `json:"messages"`
+	Messages     []message.Message `json:"messages"`
 	ActiveSkills []string  `json:"active_skills"` // names of activated skills
 	Workspace    string    `json:"workspace"`     // filesystem root directory for this session
 	CreatedAt    time.Time `json:"created_at"`
@@ -80,7 +80,7 @@ type SessionMeta struct {
 // Conversation holds the chat data of a session.
 // Used as the conversation sub-store in Manager.
 type Conversation struct {
-	Messages     []llm.Message
+	Messages     []message.Message
 	SystemPrompt string
 	ActiveSkills []string
 }
@@ -150,7 +150,7 @@ func (m *Manager) assembleSession(id string) *UISession {
 	copy(s.RenderedMessageIDs, meta.RenderedMessageIDs)
 
 	if convo != nil {
-		s.Messages = make([]llm.Message, len(convo.Messages))
+		s.Messages = make([]message.Message, len(convo.Messages))
 		copy(s.Messages, convo.Messages)
 		s.SystemPrompt = convo.SystemPrompt
 		s.ActiveSkills = make([]string, len(convo.ActiveSkills))
@@ -182,7 +182,7 @@ func (m *Manager) splitSession(s *UISession) {
 	copy(m.metaStore[s.ID].RenderedMessageIDs, s.RenderedMessageIDs)
 
 	m.convoStore[s.ID] = &Conversation{
-		Messages:     make([]llm.Message, len(s.Messages)),
+		Messages:     make([]message.Message, len(s.Messages)),
 		SystemPrompt: s.SystemPrompt,
 		ActiveSkills: make([]string, len(s.ActiveSkills)),
 	}
@@ -241,7 +241,7 @@ func (m *Manager) Create(browserID string) (*UISession, error) {
 		UpdatedAt: now,
 	}
 	m.convoStore[id] = &Conversation{
-		Messages: make([]llm.Message, 0),
+		Messages: make([]message.Message, 0),
 	}
 	m.configStore[id] = &SessionConfig{
 		Workspace: m.defaultWorkspace,
@@ -361,7 +361,7 @@ func (m *Manager) CreateChild(parentID, browserID, title string) (*UISession, er
 		UpdatedAt: now,
 	}
 	m.convoStore[id] = &Conversation{
-		Messages: make([]llm.Message, 0),
+		Messages: make([]message.Message, 0),
 	}
 	m.configStore[id] = &SessionConfig{
 		Workspace: m.configStore[parentID].Workspace,
@@ -572,7 +572,7 @@ func (m *Manager) SetWorkspace(id, workspace string) {
 
 // AppendMessage appends a message to a session. No-op if session not found.
 // Title is updated to the latest user message's preview.
-func (m *Manager) AppendMessage(id string, msg llm.Message) {
+func (m *Manager) AppendMessage(id string, msg message.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if convo := m.convoStore[id]; convo != nil {
@@ -592,7 +592,7 @@ func (m *Manager) AppendMessage(id string, msg llm.Message) {
 
 // AppendComponent appends component data to a session.
 // Creates an empty assistant message if no assistant message exists yet.
-func (m *Manager) AppendComponent(id string, comp llm.ComponentData) error {
+func (m *Manager) AppendComponent(id string, comp message.ComponentData) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	convo := m.convoStore[id]
@@ -606,7 +606,7 @@ func (m *Manager) AppendComponent(id string, comp llm.ComponentData) error {
 	if last.Role != "assistant" {
 		// Create an assistant message so components have a target to attach to.
 		// Content will be filled when the run completes.
-		convo.Messages = append(convo.Messages, llm.Message{
+		convo.Messages = append(convo.Messages, message.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
@@ -630,7 +630,7 @@ func (m *Manager) SetQuickReplies(id string, options []string) error {
 		return nil
 	}
 	if len(convo.Messages) == 0 || convo.Messages[len(convo.Messages)-1].Role != "assistant" {
-		convo.Messages = append(convo.Messages, llm.Message{
+		convo.Messages = append(convo.Messages, message.Message{
 			Role:      "assistant",
 			Content:   "",
 			CreatedAt: time.Now(),
@@ -842,7 +842,7 @@ func (m *Manager) GetConversation(id string) *Conversation {
 	if convo == nil {
 		return nil
 	}
-	msgs := make([]llm.Message, len(convo.Messages))
+	msgs := make([]message.Message, len(convo.Messages))
 	copy(msgs, convo.Messages)
 	skills := make([]string, len(convo.ActiveSkills))
 	copy(skills, convo.ActiveSkills)
@@ -892,7 +892,7 @@ func (m *Manager) UpdateMeta(id string, meta *SessionMeta) {
 
 // AppendToConversation appends a message to the session's conversation.
 // No-op if the session does not exist.
-func (m *Manager) AppendToConversation(id string, msg llm.Message) {
+func (m *Manager) AppendToConversation(id string, msg message.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	convo := m.convoStore[id]

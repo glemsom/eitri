@@ -180,11 +180,11 @@ func extractLastMessages(sessionMgr *history.SessionManager, sessionID string) (
 		switch msg.Role {
 		case "user":
 			if lastUser == "" {
-				lastUser = msg.Content
+				lastUser = msg.Content()
 			}
 		case "assistant":
 			if lastAssistant == "" {
-				lastAssistant = msg.Content
+				lastAssistant = msg.Content()
 			}
 		}
 		if lastUser != "" && lastAssistant != "" {

@@ -3,7 +3,7 @@ package history
 import (
 	"testing"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 func TestSessionManager_CreateAndGet(t *testing.T) {
@@ -39,8 +39,8 @@ func TestSessionManager_AppendUser(t *testing.T) {
 	if history[1].Role != "user" {
 		t.Errorf("Second message role = %q, want %q", history[1].Role, "user")
 	}
-	if history[1].Content != "hello" {
-		t.Errorf("User content = %q, want %q", history[1].Content, "hello")
+	if history[1].Content() != "hello" {
+		t.Errorf("User content = %q, want %q", history[1].Content(), "hello")
 	}
 }
 
@@ -48,8 +48,8 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	toolCalls := []llm.ToolCall{
-		{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "file_viewer", Arguments: `{"path":"test.txt"}`}},
+	toolCalls := []message.ToolCall{
+		{ID: "call-1", Type: "function", Function: message.FunctionCall{Name: "file_viewer", Arguments: `{"path":"test.txt"}`}},
 	}
 
 	m.AppendAssistant("sess-1", "Hi there!", toolCalls)
@@ -57,7 +57,7 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 
 	history := m.History("sess-1")
 	// Find the assistant message
-	var assistantMsg *llm.Message
+	var assistantMsg *message.EitriMessage
 	for i := range history {
 		if history[i].Role == "assistant" {
 			assistantMsg = &history[i]
@@ -67,14 +67,14 @@ func TestSessionManager_AppendAssistant(t *testing.T) {
 	if assistantMsg == nil {
 		t.Fatal("No assistant message found in history")
 	}
-	if assistantMsg.Content != "Hi there!" {
-		t.Errorf("Assistant content = %q, want %q", assistantMsg.Content, "Hi there!")
+	if assistantMsg.Content() != "Hi there!" {
+		t.Errorf("Assistant content = %q, want %q", assistantMsg.Content(), "Hi there!")
 	}
-	if len(assistantMsg.ToolCalls) != 1 {
-		t.Fatalf("Assistant tool calls count = %d, want 1", len(assistantMsg.ToolCalls))
+	if len(assistantMsg.ToolCalls()) != 1 {
+		t.Fatalf("Assistant tool calls count = %d, want 1", len(assistantMsg.ToolCalls()))
 	}
-	if assistantMsg.ToolCalls[0].ID != "call-1" {
-		t.Errorf("Tool call ID = %q, want %q", assistantMsg.ToolCalls[0].ID, "call-1")
+	if assistantMsg.ToolCalls()[0].ID != "call-1" {
+		t.Errorf("Tool call ID = %q, want %q", assistantMsg.ToolCalls()[0].ID, "call-1")
 	}
 }
 
@@ -87,7 +87,7 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	m.AppendUser("sess-1", "hello") // push a user to trigger history read
 
 	history := m.History("sess-1")
-	var toolMsg *llm.Message
+	var toolMsg *message.EitriMessage
 	for i := range history {
 		if history[i].Role == "tool" {
 			toolMsg = &history[i]
@@ -97,11 +97,11 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	if toolMsg == nil {
 		t.Fatal("No tool message found in history")
 	}
-	if toolMsg.ToolCallID != "call-1" {
-		t.Errorf("ToolCallID = %q, want %q", toolMsg.ToolCallID, "call-1")
+	if toolMsg.ToolCallID() != "call-1" {
+		t.Errorf("ToolCallID = %q, want %q", toolMsg.ToolCallID(), "call-1")
 	}
-	if toolMsg.Content != "file contents" {
-		t.Errorf("Tool content = %q, want %q", toolMsg.Content, "file contents")
+	if toolMsg.Content() != "file contents" {
+		t.Errorf("Tool content = %q, want %q", toolMsg.Content(), "file contents")
 	}
 }
 
@@ -116,8 +116,8 @@ func TestSessionManager_AppendTool_IsError(t *testing.T) {
 	history := m.History("sess-1")
 	for i := range history {
 		if history[i].Role == "tool" {
-			if history[i].Content != "command not found" {
-				t.Errorf("Tool content = %q, want %q", history[i].Content, "command not found")
+			if history[i].Content() != "command not found" {
+				t.Errorf("Tool content = %q, want %q", history[i].Content(), "command not found")
 			}
 			return
 		}
@@ -138,7 +138,7 @@ func TestSessionManager_HistoryPrependsSystemPrompt(t *testing.T) {
 	if history[0].Role != "system" {
 		t.Errorf("First message role = %q, want system", history[0].Role)
 	}
-	if history[0].Content == "" {
+	if history[0].Content() == "" {
 		t.Error("System prompt text should not be empty")
 	}
 }
@@ -220,7 +220,7 @@ func TestSessionManager_HistoryDeepCopy(t *testing.T) {
 
 	// Modify history1 — should not affect history2
 	if len(history1) > 0 {
-		history1[0] = llm.Message{} // zero out
+		history1[0] = message.EitriMessage{} // zero out
 	}
 	if len(history2) > 0 && history2[0].Role == "" {
 		t.Error("History() returned shared reference, not a copy")
@@ -265,7 +265,7 @@ func TestSessionManager_WindowCapTrimsOldestFirst(t *testing.T) {
 
 	// Check that "first" is gone
 	for _, msg := range history {
-		if msg.Content == "first" {
+		if msg.Content() == "first" {
 			t.Error("Found trimmed message 'first' in history")
 		}
 	}
@@ -274,10 +274,10 @@ func TestSessionManager_WindowCapTrimsOldestFirst(t *testing.T) {
 	foundFourth := false
 	foundResp4 := false
 	for _, msg := range history {
-		if msg.Content == "fourth" {
+		if msg.Content() == "fourth" {
 			foundFourth = true
 		}
-		if msg.Content == "resp4" {
+		if msg.Content() == "resp4" {
 			foundResp4 = true
 		}
 	}
@@ -295,16 +295,16 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 
 	// Exchange 1: user -> assistant (with tool call) -> tool result -> assistant (final)
 	m.AppendUser("sess-1", "first")
-	m.AppendAssistant("sess-1", "", []llm.ToolCall{
-		{ID: "call-1", Type: "function", Function: llm.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
+	m.AppendAssistant("sess-1", "", []message.ToolCall{
+		{ID: "call-1", Type: "function", Function: message.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
 	})
 	m.AppendTool("sess-1", "call-1", "content", false)
 	m.AppendAssistant("sess-1", "resp1", nil)
 
 	// Exchange 2: user -> assistant (with tool call) -> tool result
 	m.AppendUser("sess-1", "second")
-	m.AppendAssistant("sess-1", "", []llm.ToolCall{
-		{ID: "call-2", Type: "function", Function: llm.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
+	m.AppendAssistant("sess-1", "", []message.ToolCall{
+		{ID: "call-2", Type: "function", Function: message.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
 	})
 	m.AppendTool("sess-1", "call-2", "output", false)
 
@@ -321,7 +321,7 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 
 	// "first" should be gone
 	for _, msg := range history {
-		if msg.Content == "first" {
+		if msg.Content() == "first" {
 			t.Error("Found trimmed user message 'first' in history")
 		}
 	}
@@ -334,7 +334,7 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 	m.AppendUser("sess-1", "multi\nline\nmessage")
 
 	history := m.History("sess-1")
-	var userMsg *llm.Message
+	var userMsg *message.EitriMessage
 	for i := range history {
 		if history[i].Role == "user" {
 			userMsg = &history[i]
@@ -344,14 +344,14 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 	if userMsg == nil {
 		t.Fatal("No user message found")
 	}
-	if userMsg.Content != "multi\nline\nmessage" {
-		t.Errorf("Content = %q, want %q", userMsg.Content, "multi\nline\nmessage")
+	if userMsg.Content() != "multi\nline\nmessage" {
+		t.Errorf("Content = %q, want %q", userMsg.Content(), "multi\nline\nmessage")
 	}
 }
 
 // helpers
 
-func countUserMessages(history []llm.Message) int {
+func countUserMessages(history []message.EitriMessage) int {
 	count := 0
 	for _, m := range history {
 		if m.Role == "user" {
