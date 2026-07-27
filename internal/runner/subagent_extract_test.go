@@ -1,10 +1,11 @@
 package runner
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
 )
 
 // TestSubAgentResultExtraction_PicksLastAssistantMessage verifies that
@@ -17,12 +18,16 @@ func TestSubAgentResultExtraction_PicksLastAssistantMessage(t *testing.T) {
 	// 3. Assistant (with tool calls, empty content — common pattern)
 	// 4. Tool result
 	// 5. Assistant (final answer with content)
-	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},
-		{Role: "user", Content: "list files"},
-		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"command":"ls"}`}}}},
-		{Role: "tool", ToolCallID: "call_1", Content: "file1.txt\nfile2.txt"},
-		{Role: "assistant", Content: "I found file1.txt and file2.txt."},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "list files"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{
+			litellm.ToolUseBlock{ID: "call_1", Name: "bash", Arguments: json.RawMessage(`{"command":"ls"}`)},
+		}},
+		{Role: litellm.Role("tool"), Blocks: []litellm.Block{
+			litellm.ToolResultBlock{ToolUseID: "call_1", Content: []litellm.Block{litellm.TextBlock{Text: "file1.txt\nfile2.txt"}}},
+		}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "I found file1.txt and file2.txt."}}},
 	}
 
 	result, _ := extractSubAgentResult(msgs)
@@ -39,10 +44,10 @@ func TestSubAgentResultExtraction_PicksLastAssistantMessage(t *testing.T) {
 // TestSubAgentResultExtraction_NoToolCalls verifies extraction works when
 // the sub-agent completes in a single turn (no tool calls needed).
 func TestSubAgentResultExtraction_NoToolCalls(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},
-		{Role: "user", Content: "what is 2+2?"},
-		{Role: "assistant", Content: "4"},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "what is 2+2?"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "4"}}},
 	}
 
 	result, _ := extractSubAgentResult(msgs)
@@ -56,12 +61,17 @@ func TestSubAgentResultExtraction_NoToolCalls(t *testing.T) {
 // the first assistant message also has text content (e.g. "I'll help you"),
 // the extraction still returns the LAST assistant message's content.
 func TestSubAgentResultExtraction_FirstAssistantHasContent(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},
-		{Role: "user", Content: "list files"},
-		{Role: "assistant", Content: "I'll list the files for you.", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"command":"ls"}`}}}},
-		{Role: "tool", ToolCallID: "call_1", Content: "file1.txt\nfile2.txt"},
-		{Role: "assistant", Content: "Here are the files: file1.txt, file2.txt."},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "list files"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{
+			litellm.TextBlock{Text: "I'll list the files for you."},
+			litellm.ToolUseBlock{ID: "call_1", Name: "bash", Arguments: json.RawMessage(`{"command":"ls"}`)},
+		}},
+		{Role: litellm.Role("tool"), Blocks: []litellm.Block{
+			litellm.ToolResultBlock{ToolUseID: "call_1", Content: []litellm.Block{litellm.TextBlock{Text: "file1.txt\nfile2.txt"}}},
+		}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Here are the files: file1.txt, file2.txt."}}},
 	}
 
 	result, _ := extractSubAgentResult(msgs)
@@ -75,14 +85,23 @@ func TestSubAgentResultExtraction_FirstAssistantHasContent(t *testing.T) {
 // TestSubAgentResultExtraction_TurnCounting verifies turn count is computed
 // correctly: text-producing assistant messages + tool-calling turns.
 func TestSubAgentResultExtraction_TurnCounting(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},
-		{Role: "user", Content: "list files and read one"},
-		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.FunctionCall{Name: "bash", Arguments: `{"command":"ls"}`}}}},
-		{Role: "tool", ToolCallID: "call_1", Content: "file1.txt\nfile2.txt"},
-		{Role: "assistant", Content: "I see file1.txt and file2.txt.", ToolCalls: []llm.ToolCall{{ID: "call_2", Function: llm.FunctionCall{Name: "read", Arguments: `{"file":"file1.txt"}`}}}},
-		{Role: "tool", ToolCallID: "call_2", Content: "contents of file1.txt"},
-		{Role: "assistant", Content: "The file contains: contents of file1.txt"},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "list files and read one"}}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{
+			litellm.ToolUseBlock{ID: "call_1", Name: "bash", Arguments: json.RawMessage(`{"command":"ls"}`)},
+		}},
+		{Role: litellm.Role("tool"), Blocks: []litellm.Block{
+			litellm.ToolResultBlock{ToolUseID: "call_1", Content: []litellm.Block{litellm.TextBlock{Text: "file1.txt\nfile2.txt"}}},
+		}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{
+			litellm.TextBlock{Text: "I see file1.txt and file2.txt."},
+			litellm.ToolUseBlock{ID: "call_2", Name: "read", Arguments: json.RawMessage(`{"file":"file1.txt"}`)},
+		}},
+		{Role: litellm.Role("tool"), Blocks: []litellm.Block{
+			litellm.ToolResultBlock{ToolUseID: "call_2", Content: []litellm.Block{litellm.TextBlock{Text: "contents of file1.txt"}}},
+		}},
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "The file contains: contents of file1.txt"}}},
 	}
 
 	result, turnCount := extractSubAgentResult(msgs)
@@ -113,7 +132,7 @@ func TestSubAgentResultExtraction_EmptyMessages(t *testing.T) {
 		t.Errorf("turnCount = %d, want 0", turnCount)
 	}
 
-	result, turnCount = extractSubAgentResult([]llm.Message{})
+	result, turnCount = extractSubAgentResult([]litellm.Message{})
 	if result != "" {
 		t.Errorf("result = %q, want empty", result)
 	}
@@ -124,9 +143,9 @@ func TestSubAgentResultExtraction_EmptyMessages(t *testing.T) {
 
 // TestSubAgentResultExtraction_OnlySystemAndUser verifies no assistant = empty.
 func TestSubAgentResultExtraction_OnlySystemAndUser(t *testing.T) {
-	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful assistant."},
-		{Role: "user", Content: "hello"},
+	msgs := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}},
 	}
 	result, turnCount := extractSubAgentResult(msgs)
 	if result != "" {

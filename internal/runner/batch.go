@@ -8,9 +8,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -41,19 +42,26 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	}
 
 	// Create request (streaming only — history is managed by sessionHistoryManager)
-	req := &llm.Request{
-		Model:  cfg.ModelName,
-		Stream: true,
+	req := &litellm.Request{
+		Model: cfg.ModelName,
 	}
 	if cfg.ThinkingLevel != "" {
 		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, cfg.ModelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+			slog.Info("model does not support thinking_level, skipping",
 				slog.String("model", cfg.ModelName),
 				slog.String("provider", cfg.ProviderID),
 				slog.String("thinking_level", cfg.ThinkingLevel),
 			)
+		} else if !loop.IsReasoningModel(cfg.ModelName) {
+			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
+				slog.String("model", cfg.ModelName),
+				slog.String("thinking_level", cfg.ThinkingLevel),
+			)
 		} else {
-			req.ReasoningEffort = cfg.ThinkingLevel
+			req.Thinking = &litellm.Thinking{
+				Mode:   litellm.ThinkingEnabled,
+				Effort: cfg.ThinkingLevel,
+			}
 		}
 	}
 

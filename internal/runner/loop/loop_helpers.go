@@ -1,13 +1,13 @@
 package loop
 
 import (
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
 )
 
 // trimMessages removes the oldest message pairs when total non-system messages
 // exceed maxHistory. System prompt is always preserved.
 // maxHistory of 0 means no limit.
-func trimMessages(req *llm.Request, maxHistory int) {
+func trimMessages(req *litellm.Request, maxHistory int) {
 	if maxHistory <= 0 {
 		return
 	}
@@ -15,7 +15,7 @@ func trimMessages(req *llm.Request, maxHistory int) {
 	// Count non-system messages
 	nonSysCount := 0
 	for _, msg := range req.Messages {
-		if msg.Role != "system" {
+		if string(msg.Role) != "system" {
 			nonSysCount++
 		}
 	}
@@ -27,10 +27,10 @@ func trimMessages(req *llm.Request, maxHistory int) {
 	toRemove := nonSysCount - maxHistory
 
 	// Build new slice preserving system prompt(s) and the most recent messages
-	var kept []llm.Message
+	var kept []litellm.Message
 	var removed int
 	for _, msg := range req.Messages {
-		if msg.Role == "system" {
+		if string(msg.Role) == "system" {
 			kept = append(kept, msg)
 			continue
 		}

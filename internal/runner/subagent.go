@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
-	"github.com/glemsom/eitri/internal/llm"
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -114,30 +116,40 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	systemPrompt := basePrompt + "\n\nYou are performing the following task: " + task
 
 	// Create request and set up messages
-	req := &llm.Request{
-		Model:  parentCfg.ModelName,
-		Stream: true,
+	req := &litellm.Request{
+		Model: parentCfg.ModelName,
 	}
 	// Set task ID as prompt cache key if the provider supports it
 	providerDesc, _ := provider.Describe(parentCfg.ProviderID)
 	if providerDesc.SupportsPromptCache {
-		req.SessionID = taskID
+		if req.ProviderOptions == nil {
+			req.ProviderOptions = make(litellm.ProviderOptions)
+		}
+		req.ProviderOptions["prompt_cache_key"] = taskID
 	}
 
 	if parentCfg.ThinkingLevel != "" {
 		if levels := provider.SupportedThinkingLevels(parentCfg.ProviderID, parentCfg.ModelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping reasoning_effort",
+			slog.Info("model does not support thinking_level, skipping",
 				slog.String("model", parentCfg.ModelName),
 				slog.String("provider", parentCfg.ProviderID),
 				slog.String("thinking_level", parentCfg.ThinkingLevel),
 			)
+		} else if !loop.IsReasoningModel(parentCfg.ModelName) {
+			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
+				slog.String("model", parentCfg.ModelName),
+				slog.String("thinking_level", parentCfg.ThinkingLevel),
+			)
 		} else {
-			req.ReasoningEffort = parentCfg.ThinkingLevel
+			req.Thinking = &litellm.Thinking{
+				Mode:   litellm.ThinkingEnabled,
+				Effort: parentCfg.ThinkingLevel,
+			}
 		}
 	}
-	req.Messages = []llm.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: task},
+	req.Messages = []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: systemPrompt}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: task}}},
 	}
 
 	sseState := runstate.New()
@@ -338,13 +350,16 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 }
 
 // extractSubAgentResult extracts the final result content and turn count
-// from a sub-agent's message history. It picks the content of the LAST
-// assistant message and counts both text-producing and tool-calling turns.
-func extractSubAgentResult(msgs []llm.Message) (result string, turnCount int) {
+// from a sub-agent's message history (litellm format). It picks the content
+// of the LAST assistant message and counts both text-producing and
+// tool-calling turns.
+func extractSubAgentResult(msgs []litellm.Message) (result string, turnCount int) {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == "assistant" {
-			result = msgs[i].Content
-			if msgs[i].Content != "" {
+		if msgs[i].Role == litellm.Role("assistant") {
+			// Extract text content from blocks
+			textContent := extractTextFromBlocks(msgs[i].Blocks)
+			result = textContent
+			if textContent != "" {
 				turnCount++
 			}
 			break // Use the LAST assistant message; don't overwrite with earlier ones
@@ -352,11 +367,35 @@ func extractSubAgentResult(msgs []llm.Message) (result string, turnCount int) {
 	}
 	// Count tool-calling turns
 	for _, msg := range msgs {
-		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+		if msg.Role == litellm.Role("assistant") && hasToolUseBlocks(msg.Blocks) {
 			turnCount++
 		}
 	}
 	return result, turnCount
+}
+
+// extractTextFromBlocks concatenates all TextBlock content from a block slice.
+func extractTextFromBlocks(blocks []litellm.Block) string {
+	var b strings.Builder
+	for _, block := range blocks {
+		if text, ok := block.(litellm.TextBlock); ok {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(text.Text)
+		}
+	}
+	return b.String()
+}
+
+// hasToolUseBlocks returns true if the block slice contains any ToolUseBlock.
+func hasToolUseBlocks(blocks []litellm.Block) bool {
+	for _, block := range blocks {
+		if _, ok := block.(litellm.ToolUseBlock); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // subAgentRecordToResult converts an internal record to the public result type.
