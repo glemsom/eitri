@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
@@ -164,15 +165,33 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		var content string
 		var components []message.ComponentData
 		var quickReplies []string
+		var lastAssistantCreatedAt time.Time
 		convo := s.config.SessionManager.GetConversation(id)
 		if convo != nil {
+			// Find the last user message time so we can detect stale assistant content.
+			// A run that produced no text output (e.g. tool-only run) still fires a
+			// "done" SSE event. The render handler must NOT render the previous run's
+			// assistant bubble just because no new assistant message exists.
+			var lastUserCreatedAt time.Time
 			for i := len(convo.Messages) - 1; i >= 0; i-- {
-				if convo.Messages[i].Role == "assistant" {
+				if convo.Messages[i].Role == "user" && lastUserCreatedAt.IsZero() {
+					lastUserCreatedAt = convo.Messages[i].CreatedAt
+				}
+				if convo.Messages[i].Role == "assistant" && lastAssistantCreatedAt.IsZero() {
+					lastAssistantCreatedAt = convo.Messages[i].CreatedAt
 					content = convo.Messages[i].Content
 					components = convo.Messages[i].Components
 					quickReplies = convo.Messages[i].QuickReplies
+				}
+				if !lastUserCreatedAt.IsZero() && !lastAssistantCreatedAt.IsZero() {
 					break
 				}
+			}
+			// If the last assistant message was created before the last user message,
+			// it is stale content from a previous run — skip rendering.
+			if !lastAssistantCreatedAt.IsZero() && !lastUserCreatedAt.IsZero() && lastAssistantCreatedAt.Before(lastUserCreatedAt) {
+				w.WriteHeader(http.StatusOK)
+				return
 			}
 		}
 		if hasMermaidComponent(components) {
