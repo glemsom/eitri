@@ -17,6 +17,13 @@ type browserArgs struct {
 	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters"`
 }
 
+// typeArgs defines the JSON schema for the type action.
+type typeArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to operate on"`
+	Selector string `json:"selector" jsonschema:"CSS selector for the element to type into"`
+	Text     string `json:"text" jsonschema:"Text to type into the element"`
+}
+
 // remoteConnection holds the allocator context and cancel func for one session.
 type remoteConnection struct {
 	ctx    context.Context
@@ -87,6 +94,8 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	switch parsed.Action {
 	case "list_targets":
 		return t.listTargets(allocCtx)
+	case "type":
+		return t.typeText(allocCtx, parsed.Args)
 	default:
 		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
 	}
@@ -156,4 +165,39 @@ func (t *NativeBrowserTool) listTargets(allocCtx context.Context) (ToolResult, e
 	}
 
 	return TextResult(string(data)), nil
+}
+
+// typeText types text into an element identified by CSS selector.
+func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+	var args typeArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid type action args: %v", err))), nil
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for type action")), nil
+	}
+	if args.Selector == "" {
+		return ToolError(TextBlocks("Error: 'selector' is required for type action")), nil
+	}
+
+	// Empty text is a no-op
+	if args.Text == "" {
+		return TextResult("No text provided, skipped typing"), nil
+	}
+
+	// Attach to the target tab
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
+	defer tabCancel()
+
+	// Run the type sequence: wait for element, clear existing value, then type
+	if err := chromedp.Run(tabCtx,
+		chromedp.WaitVisible(args.Selector, chromedp.ByQuery),
+		chromedp.Clear(args.Selector, chromedp.ByQuery),
+		chromedp.SendKeys(args.Selector, args.Text, chromedp.ByQuery),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to type into element matching selector %q: %v", args.Selector, err))), nil
+	}
+
+	return TextResult(fmt.Sprintf("Typed text into element matching selector %q", args.Selector)), nil
 }
