@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/voocel/litellm"
+
 	"github.com/glemsom/eitri/internal/llm"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
@@ -261,7 +263,7 @@ type compactableMessage struct {
 // compactedCount and freedTokens report the number of messages compacted
 // and the approximate token count saved.
 // prunedToolCalls reports how many tool call argument blocks were pruned.
-func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
+func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) (compacted []llm.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
 	if thresholds.HighWater <= 0 {
 		thresholds.HighWater = 90 // sensible default
 	}
@@ -321,10 +323,10 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 	// --- Pass 2: Content summarization ---
 	if thresholds.SalienceEnabled {
 		// Salience-scored ordering: collect eligible messages, score, sort, compact.
-		result, compactedCount, freedTokens = c.compactBySalience(ctx, result, llmSvc, thresholds)
+		result, compactedCount, freedTokens = c.compactBySalience(ctx, result, client, thresholds)
 	} else {
 		// Legacy oldest-first greedy behaviour.
-		result, compactedCount, freedTokens = c.compactOldestFirst(ctx, result, llmSvc, thresholds)
+		result, compactedCount, freedTokens = c.compactOldestFirst(ctx, result, client, thresholds)
 	}
 
 	if compactedCount == 0 && prunedToolCalls == 0 {
@@ -339,7 +341,7 @@ func (c *Compactor) Compact(ctx context.Context, messages []llm.Message, llmSvc 
 // least important message upwards. Messages with a salience score above
 // thresholds.HighSalienceSkipThreshold are skipped entirely. The low-water stop
 // condition is checked after each compaction.
-func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) ([]llm.Message, int, int) {
+func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) ([]llm.Message, int, int) {
 	result := make([]llm.Message, len(messages))
 	copy(result, messages)
 
@@ -406,17 +408,18 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Messag
 
 		// Call LLM to summarise.
 		prompt := summarizationPrompt(result[cand.index].Role, originalContent)
-		summaries, err := llmSvc.Chat(ctx, llm.Request{
-			Messages: []llm.Message{
-				{Role: "user", Content: prompt},
+		litellmReq := &litellm.Request{
+			Messages: []litellm.Message{
+				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},
-		})
+		}
+		resp, err := client.Chat(ctx, *litellmReq)
 		if err != nil {
 			// Skip this one, continue with the next.
 			continue
 		}
 
-		summary := strings.TrimSpace(summaries.Content)
+		summary := strings.TrimSpace(resp.Text())
 		if summary == "" {
 			continue
 		}
@@ -439,7 +442,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []llm.Messag
 
 // compactOldestFirst implements the original greedy oldest-first scan:
 // iterate from oldest to newest and compact the first eligible message found.
-func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Message, llmSvc llm.LLMService, thresholds Thresholds) ([]llm.Message, int, int) {
+func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Message, client *litellm.Client, thresholds Thresholds) ([]llm.Message, int, int) {
 	result := make([]llm.Message, len(messages))
 	copy(result, messages)
 
@@ -476,16 +479,17 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []llm.Messa
 		originalTokens := tokenEstimate(originalContent, nil, "")
 
 		prompt := summarizationPrompt(result[i].Role, originalContent)
-		summaries, err := llmSvc.Chat(ctx, llm.Request{
-			Messages: []llm.Message{
-				{Role: "user", Content: prompt},
+		litellmReq := &litellm.Request{
+			Messages: []litellm.Message{
+				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},
-		})
+		}
+		resp, err := client.Chat(ctx, *litellmReq)
 		if err != nil {
 			continue
 		}
 
-		summary := strings.TrimSpace(summaries.Content)
+		summary := strings.TrimSpace(resp.Text())
 		if summary == "" {
 			continue
 		}

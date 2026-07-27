@@ -104,7 +104,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// Track turns for conversation context
 	var turns int
 	runErr := loop.RunAgent(runCtx, loop.RunSpec{
-		Service:    llmSvc,
+		Client:     llmSvc,
 		Request:    req,
 		MaxTurns:   maxTurns,
 		MaxHistory: cfg.MaxHistory,

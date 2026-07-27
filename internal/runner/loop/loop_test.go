@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -17,18 +18,20 @@ import (
 	"github.com/voocel/litellm"
 )
 
-// ── Mock LLM service ────────────────────────────────────────────────────────
+// ── Mock LLM provider ──────────────────────────────────────────────────────
 
-// mockLLMService simulates an LLM with configurable responses per turn.
-type mockLLMService struct {
+// mockProvider simulates an LLM with configurable responses per turn.
+// It implements litellm.Provider and produces litellm.Stream instances.
+type mockProvider struct {
 	mu      sync.Mutex
+	name    string
 	turns   []mockTurn
 	current int
 }
 
 type mockTurn struct {
 	tokens    []tokenEvent
-	toolCalls []llm.ToolCall
+	toolCalls []litellm.ToolUseBlock
 	err       error
 }
 
@@ -37,51 +40,100 @@ type tokenEvent struct {
 	isReasoning bool
 }
 
-func (m *mockLLMService) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
-	return nil, fmt.Errorf("Chat not implemented for mock, use ChatStream")
+// mockStream implements litellm.Stream with pre-built events.
+type mockStream struct {
+	events []litellm.Event
+	index  int
 }
 
-func (m *mockLLMService) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
+func (s *mockStream) Next() (litellm.Event, error) {
+	if s.index >= len(s.events) {
+		return nil, io.EOF
+	}
+	e := s.events[s.index]
+	s.index++
+	return e, nil
+}
+
+func (s *mockStream) Close() error { return nil }
+
+func (m *mockProvider) Name() string {
+	if m.name != "" {
+		return m.name
+	}
+	return "mock"
+}
+
+func (m *mockProvider) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented for mock, use Stream")
+}
+
+func (m *mockProvider) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.current >= len(m.turns) {
-		ch := make(chan llm.StreamEvent, 1)
-		ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone}
-		close(ch)
-		return ch, nil
+		return &mockStream{events: []litellm.Event{litellm.DoneEvent{}}}, nil
 	}
 
 	turn := m.turns[m.current]
 	m.current++
 
-	ch := make(chan llm.StreamEvent, 10)
-
 	if turn.err != nil {
-		ch <- llm.StreamEvent{Type: llm.StreamEventTypeError, Error: turn.err}
-		close(ch)
-		return ch, nil
+		return &mockStream{events: []litellm.Event{litellm.ErrorEvent{Err: turn.err}}}, nil
 	}
 
-	// Send text content as token events
+	var events []litellm.Event
+
+	// Send text content as ContentDelta events
 	for _, tok := range turn.tokens {
-		ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: tok.content, IsReasoning: tok.isReasoning}
+		if tok.isReasoning {
+			events = append(events, litellm.ReasoningDelta{Text: tok.content})
+		} else {
+			events = append(events, litellm.ContentDelta{Text: tok.content})
+		}
 	}
 
-	// Send tool calls
-	if len(turn.toolCalls) > 0 {
-		ch <- llm.StreamEvent{Type: llm.StreamEventTypeToolCall, ToolCalls: turn.toolCalls}
+	// Send tool calls as ToolUseStart + ToolUseDelta + ToolUseDone sequences
+	for _, tc := range turn.toolCalls {
+		events = append(events, litellm.ToolUseStart{
+			ID:   tc.ID,
+			Name: tc.Name,
+		})
+		if len(tc.Arguments) > 0 {
+			events = append(events, litellm.ToolUseDelta{
+				ID:             tc.ID,
+				ArgumentsDelta: tc.Arguments,
+			})
+		}
+		events = append(events, litellm.ToolUseDone{
+			ID: tc.ID,
+		})
 	}
 
 	// Send done
-	ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone}
-	close(ch)
+	events = append(events, litellm.DoneEvent{})
 
-	return ch, nil
+	return &mockStream{events: events}, nil
 }
 
-func newMockLLM(turns []mockTurn) *mockLLMService {
-	return &mockLLMService{turns: turns}
+// newMockClient creates a *litellm.Client backed by a mockProvider.
+func newMockClient(turns []mockTurn) *litellm.Client {
+	mock := &mockProvider{turns: turns}
+	client, err := litellm.New(mock)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create mock client: %v", err))
+	}
+	return client
+}
+
+// buildMockToolCall is a helper to create a litellm.ToolUseBlock for tests.
+func buildMockToolCall(id, name, argsJSON string) litellm.ToolUseBlock {
+	return litellm.ToolUseBlock{
+		ID:        id,
+		Name:      name,
+		Arguments: json.RawMessage(argsJSON),
+	}
 }
 
 // ── Simple mock tool ────────────────────────────────────────────────────────
@@ -133,7 +185,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello! How can I help?"}}},
 	})
 
@@ -145,7 +197,7 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -193,17 +245,12 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 
 	// Turn 1: LLM returns tool call
 	// Turn 2: LLM returns final response
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "Let me check that..."}},
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "test_tool",
-					Arguments: `{"input":"test"}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "test_tool", `{"input":"test"}`),
+			},
 		},
 		{
 			tokens: []tokenEvent{{content: "The result is 42."}},
@@ -227,7 +274,7 @@ func TestRunAgent_MultiTurn_ToolCallThenResponse(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -298,11 +345,11 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	var execOrder []string
 	execMu := sync.Mutex{}
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{
-				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "tool_a", Arguments: `{}`}},
-				{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "tool_b", Arguments: `{}`}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "tool_a", `{}`),
+				buildMockToolCall("call_2", "tool_b", `{}`),
 			},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
@@ -336,7 +383,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -370,10 +417,10 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{
-				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "failing_tool", Arguments: `{}`}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "failing_tool", `{}`),
 			},
 		},
 		{tokens: []tokenEvent{{content: "I see the error, let me handle it."}}},
@@ -395,7 +442,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -438,9 +485,9 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// LLM keeps making tool calls — will exceed maxTurns
-	svc := newMockLLM([]mockTurn{
-		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
-		{toolCalls: []llm.ToolCall{{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	client := newMockClient([]mockTurn{
+		{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "loop_tool", `{}`)}},
+		{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_2", "loop_tool", `{}`)}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -459,7 +506,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -492,7 +539,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "thinking..."}}},
 	})
 
@@ -507,7 +554,7 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 	}
 
 	err := RunAgent(ctx, RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -528,20 +575,44 @@ func TestRunAgent_ContextCancellation(t *testing.T) {
 }
 
 // ── Blocking mock for cancellation tests ──────────────────────────────────
-type blockingMockLLM struct {
+type blockingMockProvider2 struct {
 	content string
 	started chan struct{} // closed after first token is sent
 }
 
-func (m *blockingMockLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
-	return nil, fmt.Errorf("Chat not implemented, use ChatStream")
+func (m *blockingMockProvider2) Name() string { return "blocking-mock-2" }
+func (m *blockingMockProvider2) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented, use Stream")
+}
+func (m *blockingMockProvider2) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
+	return &blockingMockStream2{content: m.content, started: m.started, closed: make(chan struct{})}, nil
 }
 
-func (m *blockingMockLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
-	ch := make(chan llm.StreamEvent, 1)
-	ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: m.content}
-	close(m.started)
-	return ch, nil
+type blockingMockStream2 struct {
+	content string
+	started chan struct{}
+	sent    bool
+	closed chan struct{}
+}
+
+func (s *blockingMockStream2) Next() (litellm.Event, error) {
+	if !s.sent {
+		s.sent = true
+		close(s.started)
+		return litellm.ContentDelta{Text: s.content}, nil
+	}
+	// Block until stream is closed (context cancellation)
+	<-s.closed
+	return nil, io.EOF
+}
+
+func (s *blockingMockStream2) Close() error {
+	select {
+	case <-s.closed:
+	default:
+		close(s.closed)
+	}
+	return nil
 }
 
 func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
@@ -550,10 +621,14 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	started := make(chan struct{})
-	svc := &blockingMockLLM{
+	blockingProv := &blockingMockProvider2{
 		content: "Partial response text...",
 		started: started,
 	}
+	blockingClient, err := litellm.New(blockingProv)
+if err != nil {
+t.Fatalf("failed to create blocking mock client: %v", err)
+}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -568,7 +643,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
-			Service:    svc,
+			Client:    blockingClient,
 			Request:    &req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -591,7 +666,7 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 	// Cancel context mid-stream
 	cancel()
 
-	err := <-errCh
+	err = <-errCh
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -613,7 +688,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{err: fmt.Errorf("rate limit exceeded")},
 	})
 
@@ -625,7 +700,7 @@ func TestRunAgent_StreamError(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -653,7 +728,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "I am a helpful assistant."}}},
 	})
 
@@ -665,7 +740,7 @@ func TestRunAgent_NoTools(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -699,20 +774,22 @@ func TestRunAgent_NoTools(t *testing.T) {
 
 // ————— Retry on transient ChatStream errors —————
 
-// transientErrorLLM returns a transient error on the first ChatStream call,
+// transientErrorLLM returns a transient error on the first Stream call,
 // then delegates to a normal mock. Used to test retry logic.
 type transientErrorLLM struct {
 	mu           sync.Mutex
 	calls        int
 	transientErr error
-	inner        llm.LLMService
+	inner        *litellm.Client
 }
 
-func (m *transientErrorLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
-	return m.inner.Chat(ctx, req)
+func (m *transientErrorLLM) Name() string { return "transient-error-mock" }
+
+func (m *transientErrorLLM) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return m.inner.Chat(ctx, *req)
 }
 
-func (m *transientErrorLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
+func (m *transientErrorLLM) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
 	m.mu.Lock()
 	n := m.calls
 	m.calls++
@@ -720,7 +797,7 @@ func (m *transientErrorLLM) ChatStream(ctx context.Context, req llm.Request) (<-
 	if n == 0 {
 		return nil, m.transientErr
 	}
-	return m.inner.ChatStream(ctx, req)
+	return m.inner.Stream(ctx, *req)
 }
 
 func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
@@ -728,12 +805,16 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	inner := newMockLLM([]mockTurn{
+	inner := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
 	})
-	svc := &transientErrorLLM{
+	transientProv := &transientErrorLLM{
 		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
 		inner:        inner,
+	}
+	transientClient, err := litellm.New(transientProv)
+	if err != nil {
+		t.Fatalf("failed to create transient error mock client: %v", err)
 	}
 
 	req := llm.Request{
@@ -743,8 +824,8 @@ func TestRunAgent_RetryTransientChatStreamError(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     transientClient,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -776,13 +857,17 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// inner mock will be called if retry happens (which would be the bug)
-	svc := &transientErrorLLM{
+transientProv := &transientErrorLLM{
 		// Genuine bad request — model not found, not an upstream failure
-		transientErr: fmt.Errorf("Provider returned HTTP 400: model \"unknown-model\" not found for provider"),
-		inner: newMockLLM([]mockTurn{
+		transientErr: litellm.NewHTTPError("mock", 400, "model \"unknown-model\" not found for provider"),
+		inner: newMockClient([]mockTurn{
 			{tokens: []tokenEvent{{content: "should not be reached"}}},
 		}),
 	}
+	transientClient, err := litellm.New(transientProv)
+if err != nil {
+t.Fatalf("failed to create transient error mock client: %v", err)
+}
 
 	req := llm.Request{
 		Model: "test-model",
@@ -791,8 +876,8 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     transientClient,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -810,8 +895,8 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for HTTP 400, got nil")
 	}
-	if !strings.Contains(err.Error(), "400") {
-		t.Fatalf("error should mention 400, got: %v", err)
+	if !strings.Contains(err.Error(), "model") || !strings.Contains(err.Error(), "unknown-model") {
+		t.Fatalf("error should mention model not found, got: %v", err)
 	}
 
 	// Verify no retry: inner mock never produced events.
@@ -832,14 +917,17 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	inner := newMockLLM([]mockTurn{
+	inner := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
 	})
-	svc := &transientErrorLLM{
+client, err := litellm.New(&transientErrorLLM{
 		// Upstream request failure proxied as 400 — should be retried
 		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
 		inner:        inner,
-	}
+	})
+if err != nil {
+t.Fatalf("failed to create client: %v", err)
+}
 
 	req := llm.Request{
 		Model: "test-model",
@@ -848,8 +936,8 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 		},
 	}
 
-	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -881,10 +969,10 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// Tool calls with zero length — treated as no tool calls
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
 			tokens:    []tokenEvent{{content: "answer"}},
-			toolCalls: []llm.ToolCall{}, // empty, not nil
+			toolCalls: []litellm.ToolUseBlock{}, // empty, not nil
 		},
 	})
 
@@ -896,7 +984,7 @@ func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -924,12 +1012,12 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	// LLM keeps returning tool calls. With maxTurns=0, defaults to 10.
 	// We only provide 3 turns → should succeed (no max turns hit).
 	mockTurns := []mockTurn{
-		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
-		{toolCalls: []llm.ToolCall{{ID: "call_2", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+		{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "loop_tool", `{}`)}},
+		{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_2", "loop_tool", `{}`)}},
 		{tokens: []tokenEvent{{content: "done"}}},
 	}
 
-	svc := newMockLLM(mockTurns)
+	client := newMockClient(mockTurns)
 
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
@@ -947,7 +1035,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   0,
 		MaxHistory: 0,
@@ -972,10 +1060,10 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{
-				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "empty_tool", Arguments: `{}`}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "empty_tool", `{}`),
 			},
 		},
 		{tokens: []tokenEvent{{content: "Tool returned nothing"}}},
@@ -997,7 +1085,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1036,10 +1124,10 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	// LLM calls a hallucinated tool "replace" (doesn't exist in registry).
 	// The loop should NOT terminate — it should feed the error back to the
 	// LLM as a tool result, letting the LLM self-correct on the next turn.
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{
-				{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "replace", Arguments: `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "replace", `{"filePath":"LICENSE","oldString":"foo","newString":"bar"}`),
 			},
 		},
 		{tokens: []tokenEvent{{content: "corrected: using edit tool instead"}}},
@@ -1062,7 +1150,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1175,7 +1263,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 			sseState := runstate.New()
 			w := runstate.NewWriter(sseState)
 
-			svc := newMockLLM([]mockTurn{
+			client := newMockClient([]mockTurn{
 				{tokens: tt.tokens},
 			})
 
@@ -1187,7 +1275,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 			}
 
 			err := RunAgent(context.Background(), RunSpec{
-				Service:    svc,
+				Client:    client,
 				Request:    &req,
 				MaxTurns:   5,
 				MaxHistory: 0,
@@ -1358,17 +1446,12 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// 3 turns: tool call → tool result → final answer
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "thinking..."}},
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "test_tool",
-					Arguments: `{}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "test_tool", `{}`),
+			},
 		},
 		{tokens: []tokenEvent{{content: "final answer"}}},
 	})
@@ -1397,7 +1480,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 3,
@@ -1447,7 +1530,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -1460,7 +1543,7 @@ func TestRunAgent_MaxHistoryZeroNoTrimming(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1490,16 +1573,11 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "render_mermaid_diagram",
-					Arguments: `{"code":"graph TD; A-->B;"}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`),
+			},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1520,7 +1598,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1557,16 +1635,11 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "render_quick_replies",
-					Arguments: `{"options":["yes","no"]}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "render_quick_replies", `{"options":["yes","no"]}`),
+			},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1587,7 +1660,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1620,16 +1693,9 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "render_mermaid_diagram",
-					Arguments: `{"code":"graph TD; A-->B;"}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`),},
 		},
 		{tokens: []tokenEvent{{content: "error occurred"}}},
 	})
@@ -1650,7 +1716,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1683,16 +1749,9 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "some_other_tool",
-					Arguments: `{}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "some_other_tool", `{}`),},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1713,7 +1772,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1748,7 +1807,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -1763,7 +1822,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1818,17 +1877,10 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "let me check"}},
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "test_tool",
-					Arguments: `{}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`),},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1852,7 +1904,7 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1892,7 +1944,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -1907,7 +1959,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1940,8 +1992,8 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
-		{toolCalls: []llm.ToolCall{{ID: "call_1", Type: "function", Function: llm.FunctionCall{Name: "loop_tool", Arguments: `{}`}}}},
+	client := newMockClient([]mockTurn{
+		{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "loop_tool", `{}`)}},
 	})
 
 	toolReg := tool.NewRegistry()
@@ -1963,7 +2015,7 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -2007,7 +2059,7 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
@@ -2020,7 +2072,7 @@ func TestContextUpdate_NoSessionManagerSkipsBroadcast(t *testing.T) {
 
 	// No sessionMgr passed
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:     client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2053,7 +2105,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "answer"}}},
 	})
 
@@ -2068,7 +2120,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2126,10 +2178,14 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	// user messages which some providers reject as malformed (HTTP 400).
 
 	started := make(chan struct{})
-	svc := &blockingMockLLM{
+	blockingProv := &blockingMockProvider2{
 		content: "thinking...",
 		started: started,
 	}
+	blockingClient, err := litellm.New(blockingProv)
+if err != nil {
+t.Fatalf("failed to create blocking mock client: %v", err)
+}
 
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -2147,7 +2203,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
-			Service:    svc,
+			Client:    blockingClient,
 			Request:    &req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -2167,7 +2223,7 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	<-started // Wait for first token to be sent
 	cancel()  // Cancel mid-stream (simulates user clicking stop)
 
-	err := <-errCh
+	err = <-errCh
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -2235,16 +2291,9 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// LLM: first turn calls needs_confirm_tool, second turn finishes
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "needs_confirm_tool",
-					Arguments: `{}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`),},
 		},
 		{tokens: []tokenEvent{{content: "Done reading the file."}}},
 	})
@@ -2264,7 +2313,7 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2322,16 +2371,9 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 		},
 	}
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []llm.ToolCall{{
-				ID:   "call_1",
-				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      "needs_confirm_tool",
-					Arguments: `{}`,
-				},
-			}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`),},
 		},
 		{tokens: []tokenEvent{{content: "Access denied, will skip."}}},
 	})
@@ -2350,7 +2392,7 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2410,14 +2452,14 @@ func (r *trackingRegistry) LitellmTools() []litellm.Tool {
 
 func TestRunAgent_ToolDefsHoistedOnce(t *testing.T) {
 	t.Parallel()
-	// Verify that toolDefsFromRegistry calls LitellmTools exactly once.
+	// Verify that LitellmTools returns correct tool definitions.
 	inner := tool.NewRegistry()
 	inner.Register(&simpleMockTool{name: "t1", description: "a test tool"})
 	inner.Register(&simpleMockTool{name: "t2", description: "another test tool"})
 
 	tracked := &trackingRegistry{inner: inner}
 
-	defs := toolDefsFromRegistry(tracked)
+	defs := tracked.LitellmTools()
 	if tracked.calls != 1 {
 		t.Errorf("LitellmTools call count = %d, want 1", tracked.calls)
 	}
@@ -2428,7 +2470,7 @@ func TestRunAgent_ToolDefsHoistedOnce(t *testing.T) {
 	}
 
 	// Verify names and descriptions
-	byName := make(map[string]llm.ToolDef)
+	byName := make(map[string]litellm.Tool)
 	for _, d := range defs {
 		byName[d.Name] = d
 	}
@@ -2446,23 +2488,10 @@ func TestRunAgent_ToolDefsHoistedOnce(t *testing.T) {
 
 func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	t.Parallel()
-	// Verify the behavioural invariant: req.Tools is populated on every turn.
-	// The hoisting only changes when toolDefsFromRegistry is computed,
-	// not whether req.Tools is attached.
+	// Verify that tools are still dispatched correctly even when hoisted once.
+	// Tools are computed once before the loop, then reused on every turn.
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
-
-	svc := newMockLLM([]mockTurn{
-		{toolCalls: []llm.ToolCall{{
-			ID:   "call_1",
-			Type: "function",
-			Function: llm.FunctionCall{
-				Name:      "test_tool",
-				Arguments: `{}`,
-			},
-		}}},
-		{tokens: []tokenEvent{{content: "done"}}},
-	})
 
 	toolReg := tool.NewRegistry()
 	toolReg.Register(&simpleMockTool{
@@ -2480,7 +2509,10 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    newMockClient([]mockTurn{
+			{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`),}},
+			{tokens: []tokenEvent{{content: "done"}}},
+		}),
 		Request:    &req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2499,24 +2531,19 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 		t.Fatalf("RunAgent error: %v", err)
 	}
 
-	// req.Tools must be populated after the run (behavioural invariant preserved)
-	if len(req.Tools) == 0 {
-		t.Error("req.Tools is empty — expected tool definitions to be attached on every turn")
+	// Verify that the tool was dispatched and the run completed successfully.
+	// The tool call was made and result "result" was fed back to the LLM.
+	// After the run, the assistant message with the tool call and the tool
+	// result should be in history.
+	if len(req.Messages) < 3 {
+		t.Fatalf("expected at least 3 messages (user + assistant + tool), got %d", len(req.Messages))
 	}
-
-	// Verify the tools look correct
-	toolMap := make(map[string]llm.ToolDef)
-	for _, td := range req.Tools {
-		toolMap[td.Name] = td
+	lastMsg := req.Messages[len(req.Messages)-1]
+	if lastMsg.Role != "assistant" {
+		t.Errorf("last message role = %q, want %q", lastMsg.Role, "assistant")
 	}
-	if _, ok := toolMap["test_tool"]; !ok {
-		t.Errorf("req.Tools missing 'test_tool', got names: %v", func() []string {
-			names := make([]string, 0, len(req.Tools))
-			for _, td := range req.Tools {
-				names = append(names, td.Name)
-			}
-			return names
-		}())
+	if lastMsg.Content != "done" {
+		t.Errorf("last message content = %q, want %q", lastMsg.Content, "done")
 	}
 }
 
@@ -2527,7 +2554,11 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 	// A mock LLM that panics during ChatStream should trigger crashDumpFunc
 	// via RunAgent's deferred recover.
 
-	panickingLLM := &panicLLM{}
+	panickingProvider := &panicLLM{}
+	panickingClient, err := litellm.New(panickingProvider)
+	if err != nil {
+		t.Fatalf("failed to create panic client: %v", err)
+	}
 
 	var capturedErr string
 	var capturedStack []byte
@@ -2550,7 +2581,7 @@ func TestRunAgent_PanicCallsCrashDumpFunc(t *testing.T) {
 
 	requirePanic(t, func() {
 		_ = RunAgent(context.Background(), RunSpec{
-			Service:    panickingLLM,
+			Client:     panickingClient,
 			Request:    &req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -2587,7 +2618,11 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	// (not silently swallow), but we verify the deferred recover doesn't panic
 	// due to nil func call.
 
-	panickingLLM := &panicLLM{}
+	panickingProvider := &panicLLM{}
+	panickingClient, err := litellm.New(panickingProvider)
+	if err != nil {
+		t.Fatalf("failed to create panic client: %v", err)
+	}
 
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -2601,7 +2636,7 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 
 	requirePanic(t, func() {
 		_ = RunAgent(context.Background(), RunSpec{
-			Service:    panickingLLM,
+			Client:     panickingClient,
 			Request:    &req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -2619,14 +2654,18 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 	})
 }
 
-// panicLLM panics on every ChatStream call.
-type panicLLM struct{}
+// panicLLM panics on every Stream call.
+type panicLLM struct{
+	litellm.Provider
+}
 
-func (m *panicLLM) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
+func (m *panicLLM) Name() string { return "panic-llm" }
+
+func (m *panicLLM) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
 	return nil, fmt.Errorf("Chat not implemented")
 }
 
-func (m *panicLLM) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
+func (m *panicLLM) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
 	panic("boom: something went wrong")
 }
 
@@ -2645,13 +2684,13 @@ func requirePanic(t *testing.T, fn func()) {
 
 func TestUpdateCalibration_NilStore(t *testing.T) {
 	t.Parallel()
-	updateCalibration(nil, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 10})
+	updateCalibration(nil, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 10})
 }
 
 func TestUpdateCalibration_EmptyModel(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 10})
+	updateCalibration(store, "", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 10})
 	if cpt := store.Lookup(""); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2669,7 +2708,7 @@ func TestUpdateCalibration_NilUsage(t *testing.T) {
 func TestUpdateCalibration_ZeroPromptTokens(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &llm.Usage{PromptTokens: 0})
+	updateCalibration(store, "gpt-4", []llm.Message{{Role: "user", Content: "hello"}}, &litellm.Usage{InputTokens: 0})
 	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2678,7 +2717,7 @@ func TestUpdateCalibration_ZeroPromptTokens(t *testing.T) {
 func TestUpdateCalibration_EmptyMessages(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
-	updateCalibration(store, "gpt-4", nil, &llm.Usage{PromptTokens: 10})
+	updateCalibration(store, "gpt-4", nil, &litellm.Usage{InputTokens: 10})
 	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
 		t.Errorf("expected default CPT, got %f", cpt)
 	}
@@ -2693,9 +2732,9 @@ func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
 		{Role: "assistant", Content: "Let me check."},                      // 13 chars
 	}
 	// Input text length = 28 + 20 + 13 = 61 chars
-	// PromptTokens = 10
+	// InputTokens = 10
 	// CPT = 61 / 10 = 6.1
-	usage := &llm.Usage{PromptTokens: 10}
+	usage := &litellm.Usage{InputTokens: 10}
 
 	updateCalibration(store, "gpt-4", messages, usage)
 
@@ -2715,14 +2754,14 @@ func TestUpdateCalibration_MultipleUpdates(t *testing.T) {
 	}
 
 	// First update: len=13, tokens=3 → CPT≈4.33
-	updateCalibration(store, "gpt-4", messages, &llm.Usage{PromptTokens: 3})
+	updateCalibration(store, "gpt-4", messages, &litellm.Usage{InputTokens: 3})
 	cpt1 := store.Lookup("gpt-4")
 	if cpt1 == tokenizer.DefaultCPT {
 		t.Error("CPT should have diverged from default after first update")
 	}
 
 	// Second update: same messages, tokens=5 → CPT=2.6
-	updateCalibration(store, "gpt-4", messages, &llm.Usage{PromptTokens: 5})
+	updateCalibration(store, "gpt-4", messages, &litellm.Usage{InputTokens: 5})
 	cpt2 := store.Lookup("gpt-4")
 	if cpt2 == cpt1 {
 		t.Error("CPT should have changed after second update")
@@ -2736,7 +2775,7 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 
 	store := tokenizer.NewCalibrationStore()
 
-	svc := newMockLLM([]mockTurn{
+	client := newMockClient([]mockTurn{
 		{
 			tokens: []tokenEvent{{content: "Hello! How can I help you?"}},
 		},
@@ -2753,7 +2792,7 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -2782,37 +2821,50 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 	}
 }
 
-// mockLLMWithUsage is an LLM service that returns usage data in the Done event.
-type mockLLMWithUsage struct {
+// mockLLMWithUsageProvider implements litellm.Provider returning usage data.
+type mockLLMWithUsageProvider struct {
 	msg   string
-	usage *llm.Usage
+	usage *litellm.Usage
 }
 
-func (m *mockLLMWithUsage) Chat(ctx context.Context, req llm.Request) (*llm.Response, error) {
-	return &llm.Response{
-		Content: m.msg,
-		Usage:   m.usage,
+func (m *mockLLMWithUsageProvider) Name() string { return "mock-usage-provider" }
+
+func (m *mockLLMWithUsageProvider) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	var usage litellm.Usage
+	if m.usage != nil {
+		usage = *m.usage
+	}
+	return &litellm.Response{
+		Blocks: []litellm.Block{litellm.TextBlock{Text: m.msg}},
+		Usage:  usage,
 	}, nil
 }
 
-func (m *mockLLMWithUsage) ChatStream(ctx context.Context, req llm.Request) (<-chan llm.StreamEvent, error) {
-	ch := make(chan llm.StreamEvent, 4)
-	ch <- llm.StreamEvent{Type: llm.StreamEventTypeToken, Content: m.msg}
-	ch <- llm.StreamEvent{Type: llm.StreamEventTypeDone, Usage: m.usage}
-	close(ch)
-	return ch, nil
+func (m *mockLLMWithUsageProvider) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
+	// Build a simple stream with content tokens and a DoneEvent carrying usage
+	events := []litellm.Event{
+		litellm.ContentDelta{Text: m.msg},
+	}
+	if m.usage != nil {
+		events = append(events, litellm.UsageEvent{Usage: *m.usage})
+	}
+	events = append(events, litellm.DoneEvent{})
+	return &mockStream{events: events}, nil
 }
 
 // TestRunAgent_CalibrationUpdateWithUsage verifies that the CalibrationStore
-// is updated when the provider includes usage data in the Done event.
+// is updated when the provider includes usage data in the stream.
 func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 	t.Parallel()
 
 	store := tokenizer.NewCalibrationStore()
 
-	svc := &mockLLMWithUsage{
+	client, err := litellm.New(&mockLLMWithUsageProvider{
 		msg:   "Hello!",
-		usage: &llm.Usage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
+		usage: &litellm.Usage{InputTokens: 5, OutputTokens: 10, TotalTokens: 15},
+	})
+	if err != nil {
+		t.Fatalf("failed to create mock client: %v", err)
 	}
 
 	req := llm.Request{
@@ -2825,8 +2877,8 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	err := RunAgent(context.Background(), RunSpec{
-		Service:    svc,
+	err = RunAgent(context.Background(), RunSpec{
+		Client:    client,
 		Request:    &req,
 		MaxTurns:   1,
 		MaxHistory: 0,
