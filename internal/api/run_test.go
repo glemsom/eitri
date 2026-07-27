@@ -1074,7 +1074,7 @@ func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/chat/completions":
+		case "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {
@@ -1130,7 +1130,7 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/chat/completions":
+		case "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {
@@ -1178,10 +1178,12 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10, t.TempDir())
+	historySessionMgr := history.NewSessionManager(50)
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:  sessionMgr,
-		SkillsService: skillsSvc,
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historySessionMgr,
+		SkillsService:     skillsSvc,
 	})
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
@@ -1194,7 +1196,7 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/chat/completions":
+		case "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {
@@ -1270,9 +1272,26 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 
 	sessionID, browserCookie := createSessionAndCookie(t, server.URL)
 	startChatRun(t, server.URL, sessionID, browserCookie)
+	var sawModelsAuth, sawChatAuth string
 
-	sawModelsAuth := <-modelsAuthCh
-	sawChatAuth := <-chatAuthCh
+	// Wait briefly for model discovery auth
+	select {
+	case sawModelsAuth = <-modelsAuthCh:
+		if sawModelsAuth != "Bearer gho-refreshed" {
+			t.Fatalf("model discovery Authorization = %q, want Bearer gho-refreshed", sawModelsAuth)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for models auth — model discovery failed")
+	}
+
+	// Check if run is still active before waiting for chat auth
+	waitForRunToFinish(t, runSvc, sessionID)
+
+	select {
+	case sawChatAuth = <-chatAuthCh:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for chat auth — run may have completed without making a chat request")
+	}
 	if sawModelsAuth != "Bearer gho-refreshed" {
 		t.Fatalf("model discovery Authorization = %q, want Bearer gho-refreshed", sawModelsAuth)
 	}
