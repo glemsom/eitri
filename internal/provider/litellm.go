@@ -20,8 +20,7 @@ import (
 )
 
 // LitellmConfig carries the configuration needed to create a litellm provider
-// and client. It mirrors the relevant fields of llm.AdapterConfig without
-// importing that package, avoiding a circular dependency.
+// and client. It mirrors the relevant provider configuration fields.
 type LitellmConfig struct {
 	ProviderID          string
 	Model               string
