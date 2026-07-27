@@ -22,6 +22,9 @@ func NewLLMService(cfg AdapterConfig) (LLMService, error) {
 		OpenRouterRef:   cfg.OpenRouterRef,
 		OpenRouterTitle: cfg.OpenRouterTitle,
 		RoundTripper:    cfg.RoundTripper,
+		DebugPrompt:     cfg.DebugPrompt,
+		DebugRequest:    cfg.DebugRequest,
+		DebugLLMDir:     cfg.DebugLLMDir,
 	})
 	if err != nil {
 		return nil, err
