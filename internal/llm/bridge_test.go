@@ -30,6 +30,26 @@ func newBridgeService(cfg llm.AdapterConfig) (llm.LLMService, error) {
 	return llm.NewBridge(client), nil
 }
 
+// ————— helper —————
+
+func collectStreamEvents(ctx context.Context, stream <-chan llm.StreamEvent) ([]llm.StreamEvent, error) {
+	var events []llm.StreamEvent
+	for {
+		select {
+		case evt, ok := <-stream:
+			if !ok {
+				return events, nil
+			}
+			if evt.Error != nil {
+				return events, evt.Error
+			}
+			events = append(events, evt)
+		case <-ctx.Done():
+			return events, ctx.Err()
+		}
+	}
+}
+
 // ————— Factory routing tests —————
 
 func TestBridge_OpenCodeGoOpenAIRoute(t *testing.T) {
