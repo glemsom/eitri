@@ -695,7 +695,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "> Debug prompt logging</label> <small class=\"hint\">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_request\" name=\"debug_request\" value=\"true\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "> <input type=\"hidden\" name=\"debug_prompt\" value=\"false\"> Debug prompt logging</label> <small class=\"hint\">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_request\" name=\"debug_request\" value=\"true\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -705,14 +705,14 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "> Debug request logging</label> <small class=\"hint\">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small></div><div class=\"form-group\"><label for=\"debug_llm_dir\">LLM debug output directory</label> <input type=\"text\" id=\"debug_llm_dir\" name=\"debug_llm_dir\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "> <input type=\"hidden\" name=\"debug_request\" value=\"false\"> Debug request logging</label> <small class=\"hint\">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small></div><div class=\"form-group\"><label for=\"debug_llm_dir\">LLM debug output directory</label> <input type=\"text\" id=\"debug_llm_dir\" name=\"debug_llm_dir\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.DebugLLMDir)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 250, Col: 87}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 252, Col: 87}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -755,7 +755,7 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 293, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 295, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -773,7 +773,7 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 295, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 297, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {

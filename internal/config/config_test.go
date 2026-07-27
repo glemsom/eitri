@@ -851,6 +851,20 @@ func TestMerge_DebugPrompt(t *testing.T) {
 	if result2.DebugPrompt {
 		t.Error("DebugPrompt = true, want false when not in patch")
 	}
+
+	// Set to false via bool
+	cfgOn := config.Merge(&cfg, map[string]any{"debug_prompt": true})
+	result3 := config.Merge(cfgOn, map[string]any{"debug_prompt": false})
+	if result3.DebugPrompt {
+		t.Error("DebugPrompt = true, want false after setting false")
+	}
+
+	// Set to false via form string
+	cfgOn2 := config.Merge(&cfg, map[string]any{"debug_prompt": true})
+	result4 := config.Merge(cfgOn2, map[string]any{"debug_prompt": "false"})
+	if result4.DebugPrompt {
+		t.Error("DebugPrompt = true, want false after setting \"false\"")
+	}
 }
 
 func TestMerge_DebugRequest(t *testing.T) {
@@ -860,6 +874,20 @@ func TestMerge_DebugRequest(t *testing.T) {
 	result := config.Merge(&cfg, map[string]any{"debug_request": true})
 	if !result.DebugRequest {
 		t.Error("DebugRequest = false, want true after merge")
+	}
+
+	// Set to false via bool
+	cfgOn := config.Merge(&cfg, map[string]any{"debug_request": true})
+	result3 := config.Merge(cfgOn, map[string]any{"debug_request": false})
+	if result3.DebugRequest {
+		t.Error("DebugRequest = true, want false after setting false")
+	}
+
+	// Set to false via form string
+	cfgOn2 := config.Merge(&cfg, map[string]any{"debug_request": true})
+	result4 := config.Merge(cfgOn2, map[string]any{"debug_request": "false"})
+	if result4.DebugRequest {
+		t.Error("DebugRequest = true, want false after setting \"false\"")
 	}
 }
 

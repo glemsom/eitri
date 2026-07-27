@@ -232,6 +232,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<div class="form-group">
 					<label class="checkbox-label">
 						<input type="checkbox" id="debug_prompt" name="debug_prompt" value="true" if cfg.DebugPrompt { checked }/>
+						<input type="hidden" name="debug_prompt" value="false"/>
 						Debug prompt logging
 					</label>
 					<small class="hint">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small>
@@ -240,6 +241,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<div class="form-group">
 					<label class="checkbox-label">
 						<input type="checkbox" id="debug_request" name="debug_request" value="true" if cfg.DebugRequest { checked }/>
+						<input type="hidden" name="debug_request" value="false"/>
 						Debug request logging
 					</label>
 					<small class="hint">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small>

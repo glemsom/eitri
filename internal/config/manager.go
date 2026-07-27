@@ -383,14 +383,10 @@ func Merge(base *Config, patch map[string]any) *Config {
 		}
 	}
 	if v, ok := patch["debug_prompt"]; ok {
-		if parseBool(v) {
-			result.DebugPrompt = true
-		}
+		result.DebugPrompt = parseBool(v)
 	}
 	if v, ok := patch["debug_request"]; ok {
-		if parseBool(v) {
-			result.DebugRequest = true
-		}
+		result.DebugRequest = parseBool(v)
 	}
 	if v, ok := patch["debug_llm_dir"]; ok {
 		if s, ok := v.(string); ok {
