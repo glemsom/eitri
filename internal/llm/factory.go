@@ -1,46 +1,30 @@
 package llm
 
 import (
-	"fmt"
-	"strings"
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // NewLLMService creates an LLMService adapter based on provider routing rules.
 //
 // Routing:
-//   - opencode_go + qwen*/minimax* prefix → Anthropic adapter
-//   - opencode_go + any other model       → OpenAI adapter
-//   - openrouter                           → OpenRouter adapter
-//   - github_copilot                       → GitHub Copilot adapter
-//   - custom_openai                        → OpenAI adapter with user BaseURL
+//   - opencode_go + qwen*/minimax* prefix → Anthropic adapter (via litellm)
+//   - opencode_go + any other model       → OpenAI adapter (via litellm)
+//   - openrouter                           → OpenRouter adapter (via litellm)
+//   - github_copilot                       → GitHub Copilot adapter (via litellm)
+//   - custom_openai                        → OpenAI adapter with user BaseURL (via litellm)
 //   - unknown                              → error
 func NewLLMService(cfg AdapterConfig) (LLMService, error) {
-	baseURL := strings.TrimRight(cfg.BaseURL, "/")
-
-	switch cfg.ProviderID {
-	case "opencode_go":
-		if isAnthropicModel(cfg.Model) {
-			return NewAnthropic(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper, cfg.DebugPrompt, cfg.DebugRequest, cfg.DebugLLMDir), nil
-		}
-		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper, cfg.DebugPrompt, cfg.DebugRequest, cfg.DebugLLMDir), nil
-
-	case "custom_openai":
-		return NewOpenAI(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper, cfg.DebugPrompt, cfg.DebugRequest, cfg.DebugLLMDir), nil
-
-	case "openrouter":
-		return NewOpenRouter(cfg.Model, baseURL, cfg.APIKey, cfg.OpenRouterRef, cfg.OpenRouterTitle, cfg.RoundTripper, cfg.DebugPrompt, cfg.DebugRequest, cfg.DebugLLMDir), nil
-
-	case "github_copilot":
-		return NewGitHubCopilot(cfg.Model, baseURL, cfg.APIKey, cfg.RoundTripper, cfg.DebugPrompt, cfg.DebugRequest, cfg.DebugLLMDir), nil
-
-	default:
-		return nil, fmt.Errorf("unsupported provider %q", cfg.ProviderID)
+	client, err := provider.NewLitellmClient(provider.LitellmConfig{
+		ProviderID:      cfg.ProviderID,
+		Model:           cfg.Model,
+		BaseURL:         cfg.BaseURL,
+		APIKey:          cfg.APIKey,
+		OpenRouterRef:   cfg.OpenRouterRef,
+		OpenRouterTitle: cfg.OpenRouterTitle,
+		RoundTripper:    cfg.RoundTripper,
+	})
+	if err != nil {
+		return nil, err
 	}
-}
-
-// isAnthropicModel returns true when the model prefix matches the
-// OpenCode Go Anthropic-compatible route (qwen*, minimax*).
-func isAnthropicModel(model string) bool {
-	lower := strings.ToLower(model)
-	return strings.HasPrefix(lower, "qwen") || strings.HasPrefix(lower, "minimax")
+	return NewBridge(client), nil
 }
