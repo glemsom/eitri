@@ -1,6 +1,15 @@
 package llm
 
-import "time"
+import (
+	"time"
+
+	"github.com/glemsom/eitri/internal/message"
+)
+
+// ComponentData holds a rendered UI component attached to a message.
+// Defined in the internal/message package; this type alias preserves
+// compatibility for existing consumers that reference llm.ComponentData.
+type ComponentData = message.ComponentData
 
 // Message is the canonical message type used throughout the application.
 // It combines all fields from the previous llm.Message (wire-format) and
@@ -17,12 +26,6 @@ type Message struct {
 	CreatedAt        time.Time       `json:"created_at"`
 	Components       []ComponentData `json:"components,omitempty"`
 	QuickReplies     []string        `json:"quick_replies,omitempty"`
-}
-
-// ComponentData holds a rendered UI component attached to an assistant message.
-type ComponentData struct {
-	Name string         `json:"name"`
-	Data map[string]any `json:"data"`
 }
 
 

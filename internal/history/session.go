@@ -4,8 +4,10 @@ package history
 
 import (
 	"sync"
+	"time"
 
 	"github.com/glemsom/eitri/internal/llm"
+	"github.com/glemsom/eitri/internal/message"
 )
 
 const (
@@ -40,7 +42,7 @@ type SessionManager struct {
 }
 
 type llmSession struct {
-	messages     []llm.Message
+	messages     []message.EitriMessage
 	systemPrompt string
 }
 
@@ -65,7 +67,7 @@ func (m *SessionManager) Create(id string) {
 		return
 	}
 	m.sessions[id] = &llmSession{
-		messages:     make([]llm.Message, 0, 16),
+		messages:     make([]message.EitriMessage, 0, 16),
 		systemPrompt: DefaultSystemPrompt,
 	}
 }
@@ -81,7 +83,7 @@ func (m *SessionManager) RestoreHistory(id string, messages []llm.Message) {
 	s, exists := m.sessions[id]
 	if !exists {
 		s = &llmSession{
-			messages:     make([]llm.Message, 0, len(messages)),
+			messages:     make([]message.EitriMessage, 0, len(messages)),
 			systemPrompt: DefaultSystemPrompt,
 		}
 		m.sessions[id] = s
@@ -90,12 +92,40 @@ func (m *SessionManager) RestoreHistory(id string, messages []llm.Message) {
 	// Extract system prompt if present
 	if len(messages) > 0 && messages[0].Role == "system" {
 		s.systemPrompt = messages[0].Content
-		s.messages = make([]llm.Message, len(messages)-1)
-		copy(s.messages, messages[1:])
+		s.messages = toEitriMessages(messages[1:])
 	} else {
-		s.messages = make([]llm.Message, len(messages))
-		copy(s.messages, messages)
+		s.messages = toEitriMessages(messages)
 	}
+}
+
+// toEitriMessages converts a slice of llm.Message to a slice of EitriMessage,
+// preserving CreatedAt, Components, and QuickReplies.
+func toEitriMessages(msgs []llm.Message) []message.EitriMessage {
+	out := make([]message.EitriMessage, len(msgs))
+	for i, m := range msgs {
+		litellmMsg := llm.ToLitellmMessage(m)
+		out[i] = message.EitriMessage{
+			Message:      litellmMsg,
+			CreatedAt:    m.CreatedAt,
+			Components:   m.Components,
+			QuickReplies: m.QuickReplies,
+		}
+	}
+	return out
+}
+
+// toLlmMessages converts a slice of EitriMessage to a slice of llm.Message,
+// preserving CreatedAt, Components, and QuickReplies.
+func toLlmMessages(msgs []message.EitriMessage) []llm.Message {
+	out := make([]llm.Message, len(msgs))
+	for i, em := range msgs {
+		m := llm.FromLitellmMessage(em.Message)
+		m.CreatedAt = em.CreatedAt
+		m.Components = em.Components
+		m.QuickReplies = em.QuickReplies
+		out[i] = m
+	}
+	return out
 }
 
 // SetSystemPrompt updates the system prompt for a session.
@@ -127,9 +157,10 @@ func (m *SessionManager) AppendUser(id, text string) {
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, llm.Message{
-		Role:    "user",
-		Content: text,
+	msg := llm.Message{Role: "user", Content: text}
+	s.messages = append(s.messages, message.EitriMessage{
+		Message:   llm.ToLitellmMessage(msg),
+		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
@@ -143,10 +174,14 @@ func (m *SessionManager) AppendAssistant(id, content string, toolCalls []llm.Too
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, llm.Message{
+	msg := llm.Message{
 		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
+	}
+	s.messages = append(s.messages, message.EitriMessage{
+		Message:   llm.ToLitellmMessage(msg),
+		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
@@ -159,10 +194,14 @@ func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool)
 	if s == nil {
 		return
 	}
-	s.messages = append(s.messages, llm.Message{
+	msg := llm.Message{
 		Role:       "tool",
 		ToolCallID: toolUseID,
 		Content:    content,
+	}
+	s.messages = append(s.messages, message.EitriMessage{
+		Message:   llm.ToLitellmMessage(msg),
+		CreatedAt: time.Now(),
 	})
 	s.messages = m.trimExchangesLocked(s.messages)
 }
@@ -187,10 +226,10 @@ func (m *SessionManager) History(id string) []llm.Message {
 		Content: sysPrompt,
 	}
 
-	// Deep copy messages
+	// Convert stored EitriMessages to llm.Message and prepend system prompt
 	messages := make([]llm.Message, 0, 1+len(s.messages))
 	messages = append(messages, sysMsg)
-	messages = append(messages, s.messages...)
+	messages = append(messages, toLlmMessages(s.messages)...)
 
 	return messages
 }
@@ -204,7 +243,7 @@ func (m *SessionManager) Close(id string) {
 
 // trimExchangesLocked removes oldest exchanges when the user message count
 // exceeds maxExchanges. Must be called with m.mu held.
-func (m *SessionManager) trimExchangesLocked(messages []llm.Message) []llm.Message {
+func (m *SessionManager) trimExchangesLocked(messages []message.EitriMessage) []message.EitriMessage {
 	if m.maxExchanges <= 0 {
 		return messages
 	}
