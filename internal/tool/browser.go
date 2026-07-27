@@ -3,8 +3,12 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
@@ -15,6 +19,13 @@ import (
 type browserArgs struct {
 	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot)"`
 	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters"`
+}
+
+// navigateArgs defines the JSON schema for the navigate action.
+type navigateArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to navigate"`
+	URL      string `json:"url" jsonschema:"Full URL to navigate to"`
+	Timeout  int    `json:"timeout,omitempty" jsonschema:"Navigation timeout in seconds, default 30"`
 }
 
 // typeArgs defines the JSON schema for the type action.
@@ -94,6 +105,8 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	switch parsed.Action {
 	case "list_targets":
 		return t.listTargets(allocCtx)
+	case "navigate":
+		return t.navigate(allocCtx, parsed.Args)
 	case "type":
 		return t.typeText(allocCtx, parsed.Args)
 	default:
@@ -167,6 +180,64 @@ func (t *NativeBrowserTool) listTargets(allocCtx context.Context) (ToolResult, e
 	return TextResult(string(data)), nil
 }
 
+// navigate navigates the specified target tab to a URL and returns
+// the final URL, page title, and a brief DOM structural summary.
+func (t *NativeBrowserTool) navigate(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
+	var args navigateArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid navigate action args: %v", err))), nil
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for navigate action")), nil
+	}
+	if args.URL == "" {
+		return ToolError(TextBlocks("Error: 'url' is required for navigate action")), nil
+	}
+
+	// Basic URL validation: must have a scheme
+	if !strings.HasPrefix(args.URL, "http://") && !strings.HasPrefix(args.URL, "https://") {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid URL %q. URL must start with http:// or https://", args.URL))), nil
+	}
+
+	timeout := args.Timeout
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	// Attach to the target tab with a timeout context
+	tabCtx, tabCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(args.TargetID)))
+	defer tabCancel()
+
+	// Apply timeout for navigation
+	navCtx, navCancel := context.WithTimeout(tabCtx, time.Duration(timeout)*time.Second)
+	defer navCancel()
+
+	// Navigate and wait for DOMContentLoaded
+	var finalURL string
+	var pageTitle string
+	var bodyHTML string
+
+	if err := chromedp.Run(navCtx,
+		chromedp.Navigate(args.URL),
+		chromedp.WaitReady("body"),
+		chromedp.Location(&finalURL),
+		chromedp.Title(&pageTitle),
+		chromedp.OuterHTML("body", &bodyHTML),
+	); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: page did not finish loading within %ds", timeout))), nil
+		}
+		return ToolError(TextBlocks(fmt.Sprintf("Error: navigation failed: %v", err))), nil
+	}
+
+	// Build a brief DOM structural summary
+	summary := buildDOMSummary(bodyHTML)
+
+	result := fmt.Sprintf("Navigation successful\n\nFinal URL: %s\nTitle: %s\n\n%s", finalURL, pageTitle, summary)
+	return TextResult(result), nil
+}
+
 // typeText types text into an element identified by CSS selector.
 func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawMessage) (ToolResult, error) {
 	var args typeArgs
@@ -200,4 +271,53 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, rawArgs json.RawM
 	}
 
 	return TextResult(fmt.Sprintf("Typed text into element matching selector %q", args.Selector)), nil
+}
+
+// buildDOMSummary produces a concise structural summary of page HTML content.
+// It returns headings (h1-h6), link count, input/button count, and paragraph text snippets.
+func buildDOMSummary(bodyHTML string) string {
+	var summary strings.Builder
+
+	// Extract and count headings using separate regexps for each level
+	for level := 1; level <= 6; level++ {
+		re := regexp.MustCompile(fmt.Sprintf(`<h%d[^>]*>(.*?)</h%d>`, level, level))
+		matches := re.FindAllStringSubmatch(bodyHTML, -1)
+		for _, m := range matches {
+			text := stripTags(m[1])
+			if text != "" {
+				if summary.Len() == 0 {
+					summary.WriteString("Page structure:\n")
+				}
+				summary.WriteString(fmt.Sprintf("  h%d: %s\n", level, text))
+			}
+		}
+	}
+
+	// Count links
+	linkCount := strings.Count(bodyHTML, "<a ")
+	if linkCount > 0 {
+		summary.WriteString(fmt.Sprintf("\nLinks: %d\n", linkCount))
+	}
+
+	// Count inputs and buttons
+	inputCount := strings.Count(bodyHTML, "<input ")
+	buttonCount := strings.Count(bodyHTML, "<button")
+	if inputCount > 0 {
+		summary.WriteString(fmt.Sprintf("Inputs: %d\n", inputCount))
+	}
+	if buttonCount > 0 {
+		summary.WriteString(fmt.Sprintf("Buttons: %d\n", buttonCount))
+	}
+
+	if summary.Len() == 0 {
+		summary.WriteString("No significant DOM elements found.")
+	}
+
+	return summary.String()
+}
+
+// stripTags removes HTML tags from a string.
+func stripTags(s string) string {
+	re := regexp.MustCompile(`<[^>]*>`)
+	return strings.TrimSpace(re.ReplaceAllString(s, ""))
 }
