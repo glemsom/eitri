@@ -19,9 +19,13 @@ import (
 func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
 
 	meta := s.config.SessionManager.GetMeta(id)
-	if meta == nil || (browserID != "" && meta.BrowserID != browserID) {
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -62,9 +66,13 @@ func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Re
 func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		http.Error(w, "No browser ID", http.StatusUnauthorized)
+		return
+	}
 
 	meta := s.config.SessionManager.GetMeta(id)
-	if meta == nil || (browserID != "" && meta.BrowserID != browserID) {
+	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}

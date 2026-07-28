@@ -9,8 +9,24 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
+func newWorkspaceUpdateRequest(t *testing.T, serverURL, sessionID, browserID, body, contentType string) *http.Request {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/sessions/"+sessionID+"/workspace", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("HX-Request", "true")
+	if browserID != "" {
+		req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	}
+	return req
+}
+
 // TestHandleUpdateWorkspace_FormEncoded verifies that the workspace update
-// handler accepts URL-encoded form data (as sent by HTMX hx-vals).
+// handler accepts URL-encoded form data (as sent by HTMX hx-vals) from the
+// session owner.
 // See: hx-vals sends URL-encoded form data, not JSON.
 func TestHandleUpdateWorkspace_FormEncoded(t *testing.T) {
 	workspace := t.TempDir()
@@ -36,13 +52,7 @@ func TestHandleUpdateWorkspace_FormEncoded(t *testing.T) {
 	// POST with URL-encoded form data (simulating HTMX hx-vals)
 	formData := url.Values{}
 	formData.Set("path", newWorkspace)
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+sess.ID+"/workspace", strings.NewReader(formData.Encode()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// Simulate HTMX request
-	req.Header.Set("HX-Request", "true")
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, browserID, formData.Encode(), "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -84,12 +94,7 @@ func TestHandleUpdateWorkspace_JSON(t *testing.T) {
 
 	// POST with JSON body (API client style)
 	jsonBody := `{"path":"` + newWorkspace + `"}`
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+sess.ID+"/workspace", strings.NewReader(jsonBody))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HX-Request", "true")
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, browserID, jsonBody, "application/json")
 
 	// Use a client that doesn't follow redirects so we can inspect the response
 	client := &http.Client{
@@ -122,6 +127,72 @@ func TestHandleUpdateWorkspace_JSON(t *testing.T) {
 	}
 }
 
+// TestHandleUpdateWorkspace_MissingBrowserID rejects workspace updates without
+// a browser ownership cookie.
+func TestHandleUpdateWorkspace_MissingBrowserID(t *testing.T) {
+	workspace := t.TempDir()
+	newWorkspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	sess, err := sessionMgr.Create("test-browser-missing-update")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	formData := url.Values{}
+	formData.Set("path", newWorkspace)
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, "", formData.Encode(), "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST without browser_id status = %d, want 401", resp.StatusCode)
+	}
+
+	sessCheck := sessionMgr.Get(sess.ID)
+	if sessCheck.Workspace != workspace {
+		t.Errorf("workspace after rejected update = %q, want %q", sessCheck.Workspace, workspace)
+	}
+}
+
+// TestHandleUpdateWorkspace_WrongBrowserID returns 404 when browser ownership
+// does not match the session.
+func TestHandleUpdateWorkspace_WrongBrowserID(t *testing.T) {
+	workspace := t.TempDir()
+	newWorkspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	sess, err := sessionMgr.Create("test-browser-update-owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	formData := url.Values{}
+	formData.Set("path", newWorkspace)
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, "different-browser", formData.Encode(), "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("POST with wrong browser_id status = %d, want 404", resp.StatusCode)
+	}
+
+	sessCheck := sessionMgr.Get(sess.ID)
+	if sessCheck.Workspace != workspace {
+		t.Errorf("workspace after rejected update = %q, want %q", sessCheck.Workspace, workspace)
+	}
+}
+
 // TestHandleUpdateWorkspace_EmptyPath verifies validation rejects empty path.
 func TestHandleUpdateWorkspace_EmptyPath(t *testing.T) {
 	workspace := t.TempDir()
@@ -137,12 +208,7 @@ func TestHandleUpdateWorkspace_EmptyPath(t *testing.T) {
 	// POST with empty path
 	formData := url.Values{}
 	formData.Set("path", "")
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+sess.ID+"/workspace", strings.NewReader(formData.Encode()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, browserID, formData.Encode(), "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -169,12 +235,7 @@ func TestHandleUpdateWorkspace_NonexistentPath(t *testing.T) {
 
 	formData := url.Values{}
 	formData.Set("path", "/nonexistent/path/that/does/not/exist")
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/sessions/"+sess.ID+"/workspace", strings.NewReader(formData.Encode()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req := newWorkspaceUpdateRequest(t, server.URL, sess.ID, browserID, formData.Encode(), "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

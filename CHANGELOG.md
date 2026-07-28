@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Workspace directory browser and workspace update endpoints now require the owning `browser_id` cookie, returning 401 when missing and 404 when mismatched.
+
 - Fatal agent run errors now move sessions to `error`, persist that status in snapshots, and notify the browser sidebar.
 
 - LLM stream close helper now exits after normal stream completion instead of leaking a goroutine until process exit.

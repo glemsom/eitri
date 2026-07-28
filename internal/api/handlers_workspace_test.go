@@ -11,8 +11,26 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
+func getWorkspaceBrowser(t *testing.T, rawURL, browserID string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if browserID != "" {
+		req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
+	}
+	return resp
+}
+
 // TestHandleSessionDirectoryBrowser_SessionFound verifies that the directory
-// browser overlay renders for a valid session.
+// browser overlay renders for a valid session owner.
 func TestHandleSessionDirectoryBrowser_SessionFound(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
@@ -30,10 +48,7 @@ func TestHandleSessionDirectoryBrowser_SessionFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp, err := http.Get(server.URL + "/api/sessions/" + sess.ID + "/directory-browser?path=" + url.QueryEscape(workspace))
-	if err != nil {
-		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
-	}
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser?path="+url.QueryEscape(workspace), browserID)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -77,10 +92,7 @@ func TestHandleSessionDirectoryBrowser_DefaultPath(t *testing.T) {
 	}
 
 	// No path parameter — should default to session's workspace
-	resp, err := http.Get(server.URL + "/api/sessions/" + sess.ID + "/directory-browser")
-	if err != nil {
-		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
-	}
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser", browserID)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -96,17 +108,54 @@ func TestHandleSessionDirectoryBrowser_DefaultPath(t *testing.T) {
 	}
 }
 
+// TestHandleSessionDirectoryBrowser_MissingBrowserID returns 401 when an
+// existing session is requested without a browser ownership cookie.
+func TestHandleSessionDirectoryBrowser_MissingBrowserID(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	sess, err := sessionMgr.Create("test-browser-missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser", "")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleSessionDirectoryBrowser_WrongBrowserID returns 404 when browser
+// ownership does not match the session.
+func TestHandleSessionDirectoryBrowser_WrongBrowserID(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	sess, err := sessionMgr.Create("test-browser-owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser", "different-browser")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+}
+
 // TestHandleSessionDirectoryBrowser_SessionNotFound returns 404 for
-// non-existent session.
+// non-existent session when request has browser ownership cookie.
 func TestHandleSessionDirectoryBrowser_SessionNotFound(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
 
-	resp, err := http.Get(server.URL + "/api/sessions/nonexistent/directory-browser")
-	if err != nil {
-		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
-	}
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/nonexistent/directory-browser", "test-browser-notfound")
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNotFound {
@@ -127,10 +176,7 @@ func TestHandleSessionDirectoryBrowser_InvalidPath(t *testing.T) {
 	}
 
 	// Relative path should be rejected
-	resp, err := http.Get(server.URL + "/api/sessions/" + sess.ID + "/directory-browser?path=relative/path")
-	if err != nil {
-		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
-	}
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser?path=relative/path", browserID)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest {
@@ -151,10 +197,7 @@ func TestHandleSessionDirectoryBrowser_Breadcrumbs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp, err := http.Get(server.URL + "/api/sessions/" + sess.ID + "/directory-browser?path=" + url.QueryEscape(workspace))
-	if err != nil {
-		t.Fatalf("GET /api/sessions/{id}/directory-browser failed: %v", err)
-	}
+	resp := getWorkspaceBrowser(t, server.URL+"/api/sessions/"+sess.ID+"/directory-browser?path="+url.QueryEscape(workspace), browserID)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
