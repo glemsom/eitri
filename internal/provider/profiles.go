@@ -24,8 +24,12 @@ type Descriptor struct {
 // Most reasoning models (deepseek*, o1, o3, etc.) support "low", "medium", "high".
 func SupportedThinkingLevels(providerID, modelName string) []string {
 	model := strings.ToLower(modelName)
+	if _, after, ok := strings.Cut(model, "/"); ok {
+		model = after
+	}
 	// OpenAI-compatible reasoning models
-	if strings.HasPrefix(model, "deepseek") ||
+	if strings.HasPrefix(model, "gpt-5") ||
+		strings.HasPrefix(model, "deepseek") ||
 		strings.HasPrefix(model, "o1") ||
 		strings.HasPrefix(model, "o3") ||
 		strings.Contains(model, "reasoning") {

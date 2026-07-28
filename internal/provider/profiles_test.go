@@ -310,6 +310,9 @@ func TestSupportedThinkingLevels_ReturnsLevelsForReasoningModels(t *testing.T) {
 	}{
 		{"opencode_go", "deepseek-chat"},
 		{"opencode_go", "deepseek-reasoner"},
+		{"custom_openai", "gpt-5"},
+		{"github_copilot", "gpt-5.5"},
+		{"github_copilot", "github_copilot/gpt-5.5"},
 		{"custom_openai", "o1-preview"},
 		{"custom_openai", "o3-mini"},
 		{"custom_openai", "something-reasoning-v1"},

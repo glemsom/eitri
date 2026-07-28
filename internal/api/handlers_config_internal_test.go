@@ -80,9 +80,9 @@ func TestMaskedConfig_ShortAPIKey(t *testing.T) {
 
 func TestMaskedConfig_StripsProviderAuth(t *testing.T) {
 	cfg := &config.Config{
-		Provider:      "github_copilot",
-		ProviderAuth:  json.RawMessage(`{"token":"secret"}`),
-		APIKey:        "ghu-token",
+		Provider:     "github_copilot",
+		ProviderAuth: json.RawMessage(`{"token":"secret"}`),
+		APIKey:       "ghu-token",
 	}
 	result := maskedConfig(cfg)
 	if result == nil {
@@ -294,45 +294,68 @@ func TestWriteSettingsForm_ThinkingLevelDropdown_NonReasoningModel(t *testing.T)
 }
 
 func TestWriteSettingsForm_ThinkingLevelDropdown_ReasoningModel(t *testing.T) {
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	tests := []struct {
+		name     string
+		provider string
+		model    string
+		models   []string
+	}{
+		{
+			name:     "deepseek",
+			provider: "custom_openai",
+			model:    "deepseek-r1",
+			models:   []string{"deepseek-r1", "gpt-4o"},
+		},
+		{
+			name:     "github_copilot_gpt_5_5",
+			provider: "github_copilot",
+			model:    "gpt-5.5",
+			models:   []string{"gpt-5.5", "gpt-4.1"},
+		},
+	}
 
-	cfg := &config.Config{
-		Provider: "custom_openai",
-		Model:    "deepseek-r1", // reasoning model
-		BaseURL:  "http://example.com",
-		APIKey:   "sk-test",
-	}
-	models := []string{"deepseek-r1", "gpt-4o"}
-	writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, "/settings", nil)
 
-	resp := w.Result()
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	html := string(body)
+			cfg := &config.Config{
+				Provider: tc.provider,
+				Model:    tc.model,
+				BaseURL:  "http://example.com",
+				APIKey:   "sk-test",
+			}
+			writeSettingsForm(w, r, http.StatusOK, cfg, tc.models, "")
 
-	// Reasoning model should show "Default (off)" plus reasoning options
-	if !strings.Contains(html, "Default (off)") {
-		t.Error("expected 'Default (off)' option for reasoning model")
-	}
-	if !strings.Contains(html, "value=\"low\"") {
-		t.Error("expected 'low' option for reasoning model")
-	}
-	if !strings.Contains(html, "value=\"medium\"") {
-		t.Error("expected 'medium' option for reasoning model")
-	}
-	if !strings.Contains(html, "value=\"high\"") {
-		t.Error("expected 'high' option for reasoning model")
-	}
-	// Check that the display text is capitalized
-	if !strings.Contains(html, ">Low</option>") {
-		t.Error("expected 'Low' display text for reasoning model")
-	}
-	if !strings.Contains(html, ">Medium</option>") {
-		t.Error("expected 'Medium' display text for reasoning model")
-	}
-	if !strings.Contains(html, ">High</option>") {
-		t.Error("expected 'High' display text for reasoning model")
+			resp := w.Result()
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			html := string(body)
+
+			// Reasoning model should show "Default (off)" plus reasoning options
+			if !strings.Contains(html, "Default (off)") {
+				t.Error("expected 'Default (off)' option for reasoning model")
+			}
+			if !strings.Contains(html, "value=\"low\"") {
+				t.Error("expected 'low' option for reasoning model")
+			}
+			if !strings.Contains(html, "value=\"medium\"") {
+				t.Error("expected 'medium' option for reasoning model")
+			}
+			if !strings.Contains(html, "value=\"high\"") {
+				t.Error("expected 'high' option for reasoning model")
+			}
+			// Check that the display text is capitalized
+			if !strings.Contains(html, ">Low</option>") {
+				t.Error("expected 'Low' display text for reasoning model")
+			}
+			if !strings.Contains(html, ">Medium</option>") {
+				t.Error("expected 'Medium' display text for reasoning model")
+			}
+			if !strings.Contains(html, ">High</option>") {
+				t.Error("expected 'High' display text for reasoning model")
+			}
+		})
 	}
 }
 
@@ -643,4 +666,3 @@ func TestHandlePutConfig_ClearsThinkingLevelForUnsupportedModel(t *testing.T) {
 		t.Errorf("response body should contain notice about clearing, got: %s", bodyStr)
 	}
 }
-
