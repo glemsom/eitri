@@ -255,10 +255,10 @@
     init();
   }
 
-  // Re-init after HTMX swaps (form re-render)
+  // Re-init after HTMX swaps (form re-render or page navigation)
   document.addEventListener('htmx:afterSwap', function (evt) {
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
-    if (targetId === 'settings-form') {
+    if (targetId === 'settings-form' || (targetId === 'app' && document.getElementById('settings-form'))) {
       initBaseURLToggle();
       initSaveButtonLoading();
       initSaveSuccessFade();
