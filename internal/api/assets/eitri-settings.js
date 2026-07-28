@@ -54,8 +54,17 @@
     var spinner = document.getElementById('model-refresh-spinner');
     if (spinner) spinner.style.visibility = 'visible';
 
+    // Read current form values so server discovers models for the selected provider.
+    // NOTE: api_key is NOT sent because the form may contain the masked value.
+    // The server falls back to the saved key from disk config.
+    var provider = document.getElementById('provider');
+    var baseUrl = document.getElementById('base_url');
+    var params = new URLSearchParams();
+    if (provider && provider.value) params.set('provider', provider.value);
+    if (baseUrl && baseUrl.value) params.set('base_url', baseUrl.value);
+
     // Fetch models via fetch API (not HTMX) to get JSON, then update select
-    fetch('/api/models')
+    fetch('/api/models?' + params.toString())
       .then(function (res) {
         if (!res.ok) throw new Error('Failed to fetch models');
         return res.json();
@@ -63,7 +72,7 @@
       .then(function (data) {
         if (data.data && Array.isArray(data.data)) {
           updateModelSelect(data.data);
-          showToast('✓ Models refreshed');
+          showToast('\u2713 Models refreshed');
         }
       })
       .catch(function () {

@@ -283,6 +283,16 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Allow query-param overrides so JS refreshModels() can pass the
+	// in-form (not-yet-saved) provider / base_url.
+	// api_key is NOT overridden — the form may contain a masked value.
+	if v := r.URL.Query().Get("provider"); v != "" {
+		cfg.Provider = v
+	}
+	if v := r.URL.Query().Get("base_url"); v != "" {
+		cfg.BaseURL = v
+	}
+
 	models, _, _, err := s.fetchModelList(r.Context(), cfg)
 	if err != nil {
 		if isHTMXRequest(r) {
