@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/voocel/litellm"
@@ -105,17 +105,15 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		for lineNum, line := range allLines {
 			lineNum++ // 1-indexed
 			if re.MatchString(line) {
-				prefix := ""
-				if contextN > 0 {
-					prefix = ">"
-				}
-				lineSize := len(prefix) + len(relPath) + 1 + len(strconv.Itoa(lineNum)) + 1 + len(line) + 1
-				if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
-					truncated = true
-					return &fileutil.WalkStop{}
+				if contextN == 0 {
+					lineSize := len(relPath) + 1 + len(strconv.Itoa(lineNum)) + 1 + len(line) + 1
+					if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
+						truncated = true
+						return &fileutil.WalkStop{}
+					}
+					outputSize += lineSize
 				}
 				matches = append(matches, match{path: relPath, lineNum: lineNum, content: line})
-				outputSize += lineSize
 			}
 		}
 

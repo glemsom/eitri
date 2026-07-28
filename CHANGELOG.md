@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `grep` with context now applies the 2 KiB cap to final rendered output instead of double-counting match bytes and truncating early.
+
 - Settings model refresh and Test Connection now use current unsaved form values while preserving masked saved API keys.
 
 - `write` tool now accepts empty `content` values, enabling empty file creation and truncation while still rejecting omitted content.

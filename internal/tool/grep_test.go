@@ -415,6 +415,43 @@ func TestGrep_ContextLines(t *testing.T) {
 		}
 	})
 
+	t.Run("context cap counts final rendered bytes only", func(t *testing.T) {
+		dir2 := t.TempDir()
+		var bigLines []string
+		for i := 1; i <= 200; i++ {
+			if i%4 == 2 {
+				bigLines = append(bigLines, fmt.Sprintf("needle line %03d %s", i, strings.Repeat("x", 40)))
+			} else {
+				bigLines = append(bigLines, fmt.Sprintf("filler line %03d %s", i, strings.Repeat("x", 40)))
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir2, "big.txt"), []byte(strings.Join(bigLines, "\n")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		tool := NewGrepTool(dir2)
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"needle","context":1}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
+		}
+		block, ok := result.Blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+		}
+		if !strings.Contains(block.Text, "truncated at 2 KiB") {
+			t.Fatalf("expected truncation marker in output, got length %d", len(block.Text))
+		}
+		if len(strings.TrimSuffix(block.Text, "... (output truncated at 2 KiB)")) < 1800 {
+			t.Errorf("context output truncated too early; got %d bytes before marker", len(strings.TrimSuffix(block.Text, "... (output truncated at 2 KiB)")))
+		}
+		if !strings.Contains(block.Text, ">big.txt:34:needle line 034") {
+			t.Errorf("expected rendered output to reach line 34 before truncation, got:\n%s", block.Text)
+		}
+	})
+
 	t.Run("context with file_pattern filter", func(t *testing.T) {
 		dir3 := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir3, "a.go"), []byte("line1\nline2 match\nline3\n"), 0o644); err != nil {
