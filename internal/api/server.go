@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,9 +31,9 @@ type ServerConfig struct {
 	SkillsService  *skills.Service
 	Logger         *slog.Logger
 	CopilotOAuth   GitHubCopilotOAuthConfig
-	Version        string          // injected at build time
-	StartTime      time.Time       // server start timestamp
-	DebugRecorder  *debug.Recorder // optional HTTP trace recorder
+	Version        string             // injected at build time
+	StartTime      time.Time          // server start timestamp
+	DebugRecorder  *debug.Recorder    // optional HTTP trace recorder
 	Persister      *persist.Persister // optional; deletes session data from disk on session delete
 }
 
@@ -295,21 +296,26 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// handleSessionFile serves files from a session's workspace directory.
-// Used to serve screenshot images and other workspace files to the browser UI.
-// Security: validates the filename to prevent path traversal and only serves
-// files matching the browser-screenshot-*.png pattern.
+var sessionScreenshotFilenamePattern = regexp.MustCompile(`^browser-screenshot-[0-9]+\.png$`)
+
+// handleSessionFile serves screenshot files from a session's workspace directory.
+// Security: validates browser ownership and only serves files matching the
+// browser-screenshot-*.png pattern.
 func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	filename := r.PathValue("filename")
 
-	// Security: prevent path traversal
-	if strings.Contains(filename, "/") || strings.Contains(filename, "\\") || strings.Contains(filename, "..") {
+	browserID := s.browserIDFromRequest(r)
+	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	if !sessionScreenshotFilenamePattern.MatchString(filename) {
 		http.Error(w, "Invalid filename", http.StatusBadRequest)
 		return
 	}
 
-	// Look up session workspace
 	cfg := s.config.SessionManager.GetConfig(id)
 	if cfg == nil || cfg.Workspace == "" {
 		http.Error(w, "Session not found", http.StatusNotFound)
@@ -318,24 +324,28 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
 
 	filePath := filepath.Join(cfg.Workspace, filename)
 
-	// Security: ensure the resolved path is within the workspace directory
-	absWorkspace, _ := filepath.Abs(cfg.Workspace)
-	absFile, _ := filepath.Abs(filePath)
-	if !strings.HasPrefix(absFile, absWorkspace) {
+	// Security: ensure the resolved path is within the workspace directory.
+	absWorkspace, err := filepath.Abs(cfg.Workspace)
+	if err != nil {
+		http.Error(w, "Invalid workspace", http.StatusInternalServerError)
+		return
+	}
+	absFile, err := filepath.Abs(filePath)
+	if err != nil {
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+	rel, err := filepath.Rel(absWorkspace, absFile)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
-	// Verify the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	// Set content type for PNG screenshots
-	if strings.HasSuffix(filename, ".png") {
-		w.Header().Set("Content-Type", "image/png")
-	}
-
+	w.Header().Set("Content-Type", "image/png")
 	http.ServeFile(w, r, filePath)
 }

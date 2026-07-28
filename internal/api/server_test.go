@@ -1176,6 +1176,99 @@ func TestPutConfigExistingProvidersUseProfileModelDiscovery(t *testing.T) {
 	}
 }
 
+func TestSessionFileServingRequiresOwningBrowserAndScreenshotName(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "browser-screenshot-1700000000.png"), []byte("png"), 0644); err != nil {
+		t.Fatalf("write screenshot: %v", err)
+	}
+	for _, name := range []string{".env", "notes.txt", "browser-screenshot-x.png"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("secret"), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	sessionMgr := session.NewManager(10, workspace)
+	sess, err := sessionMgr.Create("owner-browser")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	tests := []struct {
+		name       string
+		filename   string
+		browserID  string
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "missing cookie rejected",
+			filename:   "browser-screenshot-1700000000.png",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "wrong browser rejected",
+			filename:   "browser-screenshot-1700000000.png",
+			browserID:  "other-browser",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "env file rejected",
+			filename:   ".env",
+			browserID:  "owner-browser",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "notes file rejected",
+			filename:   "notes.txt",
+			browserID:  "owner-browser",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "non-numeric screenshot rejected",
+			filename:   "browser-screenshot-x.png",
+			browserID:  "owner-browser",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "owner can fetch valid screenshot",
+			filename:   "browser-screenshot-1700000000.png",
+			browserID:  "owner-browser",
+			wantStatus: http.StatusOK,
+			wantBody:   "png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, server.URL+"/sessions/"+sess.ID+"/files/"+url.PathEscape(tt.filename), nil)
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			if tt.browserID != "" {
+				req.AddCookie(&http.Cookie{Name: "browser_id", Value: tt.browserID})
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("GET session file: %v", err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if resp.StatusCode != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", resp.StatusCode, tt.wantStatus, string(body))
+			}
+			if tt.wantBody != "" && string(body) != tt.wantBody {
+				t.Fatalf("body = %q, want %q", string(body), tt.wantBody)
+			}
+		})
+	}
+}
+
 func TestHealthEndpoint(t *testing.T) {
 	server := newTestServer(t)
 
