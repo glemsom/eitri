@@ -185,12 +185,26 @@ func parseOpenAIModelList(r io.Reader) ([]string, map[string]int, error) {
 	return modelIDs, nil, nil
 }
 
+const (
+	gitHubCopilotUserAgent     = "GithubCopilot/1.100.0"
+	gitHubCopilotEditorVersion = "vscode/1.80.0"
+)
+
+func gitHubCopilotExtraHeaders() map[string]string {
+	return map[string]string{
+		"Editor-Version":       gitHubCopilotEditorVersion,
+		"X-GitHub-Api-Version": "2026-06-01",
+		"Openai-Intent":        "conversation-panel",
+		"x-initiator":          "user",
+	}
+}
+
 func applyGitHubCopilotHeaders(req *http.Request, _ string) {
 	// Copilot API expects headers matching the official VSCode extension.
-	req.Header.Set("User-Agent", "GithubCopilot/1.100.0")
-	req.Header.Set("X-GitHub-Api-Version", "2026-06-01")
-	req.Header.Set("Openai-Intent", "conversation-panel")
-	req.Header.Set("x-initiator", "user")
+	req.Header.Set("User-Agent", gitHubCopilotUserAgent)
+	for name, value := range gitHubCopilotExtraHeaders() {
+		req.Header.Set(name, value)
+	}
 }
 
 type githubCopilotModel struct {

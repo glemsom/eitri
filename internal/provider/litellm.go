@@ -15,6 +15,7 @@ import (
 
 	"github.com/voocel/litellm"
 	"github.com/voocel/litellm/provider/anthropic"
+	"github.com/voocel/litellm/provider/compat"
 	"github.com/voocel/litellm/provider/openai"
 	"github.com/voocel/litellm/provider/openrouter"
 )
@@ -79,14 +80,19 @@ func NewLitellmClient(cfg LitellmConfig) (*litellm.Client, error) {
 		})
 
 	case "github_copilot":
-		prov, err = openai.New(openai.Config{
+		prov, err = compat.New(compat.Config{
 			APIKey:    cfg.APIKey,
 			BaseURL:   baseURL,
 			Transport: cfg.RoundTripper,
-			Headers: map[string]string{
-				"Editor-Version": "vscode/1.80.0",
-				"User-Agent":     "GithubCopilot/1.100.0",
+			UserAgent: gitHubCopilotUserAgent,
+			Headers:   gitHubCopilotExtraHeaders(),
+		}, compat.Spec{
+			Name: "github_copilot",
+			Endpoint: compat.EndpointSpec{
+				ChatPath:   "/chat/completions",
+				ModelsPath: "/models",
 			},
+			Auth: compat.AuthSpec{APIKeyRequired: true},
 		})
 
 	default:
