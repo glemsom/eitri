@@ -180,17 +180,17 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			SSEWriter:  w,
 			Tools:      toolReg,
 		}, loop.RunOpts{
-			HistoryMgr:      historyMgr,
-			Confirmer:       confirmer,
-			UISessionMgr:    s.uiSessionMgr,
-			SessionID:       sessionID,
-			ContextWindow:   contextWindowTokens,
-			CrashDumpFunc:   s.crashDumpFunc,
-			Turns:           &state.Turns,
-			DebugLLMDir:     cfg.DebugLLMDir,
-			TurnCompleter:   s,
+			HistoryMgr:       historyMgr,
+			Confirmer:        confirmer,
+			UISessionMgr:     s.uiSessionMgr,
+			SessionID:        sessionID,
+			ContextWindow:    contextWindowTokens,
+			CrashDumpFunc:    s.crashDumpFunc,
+			Turns:            &state.Turns,
+			DebugLLMDir:      cfg.DebugLLMDir,
+			TurnCompleter:    s,
 			CalibrationStore: s.calibrationStore,
-			ModelName:       cfg.ModelName,
+			ModelName:        cfg.ModelName,
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -229,7 +229,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				return
 			}
 
-			// Fatal error not covered above — trigger crash dump
+			// Fatal error not covered above — mark the session failed before
+			// persisting diagnostics so UI and disk snapshots do not stay running.
+			s.setSessionErrorAndSnapshot(sessionID)
 			s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
 				Reason:  runstate.TerminationError,
 				Message: err.Error(),
@@ -297,11 +299,22 @@ func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseSt
 // which would otherwise happen if snapshotSession runs before the deferred
 // broadcastSessionStatusUpdate.
 func (s *RunService) setSessionIdleAndSnapshot(sessionID string) {
+	s.setSessionStatusAndSnapshot(sessionID, uisession.StatusIdle)
+}
+
+// setSessionErrorAndSnapshot sets the session status to error, persists
+// a snapshot to disk with the updated status, and broadcasts the status
+// change to browser subscribers.
+func (s *RunService) setSessionErrorAndSnapshot(sessionID string) {
+	s.setSessionStatusAndSnapshot(sessionID, uisession.StatusError)
+}
+
+func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisession.Status) {
 	if s.uiSessionMgr == nil {
 		s.snapshotSession(sessionID)
 		return
 	}
-	s.uiSessionMgr.UpdateStatus(sessionID, uisession.StatusIdle)
+	s.uiSessionMgr.UpdateStatus(sessionID, status)
 	s.snapshotSession(sessionID)
 
 	meta := s.uiSessionMgr.GetMeta(sessionID)
@@ -312,7 +325,7 @@ func (s *RunService) setSessionIdleAndSnapshot(sessionID string) {
 		Type: "session_status",
 		Data: map[string]any{
 			"session_id": sessionID,
-			"status":     string(uisession.StatusIdle),
+			"status":     string(status),
 		},
 	})
 }
@@ -499,10 +512,10 @@ func compactSessionHistory(ctx context.Context, messages []message.Message, clie
 		return nil, 0, 0, 0, nil
 	}
 	return compactor.New().Compact(ctx, messages, client, compactor.Thresholds{
-		HighWater:                highWater,
-		LowWater:                 lowWater,
-		MessageSizeThreshold:     messageSizeThreshold,
-		ToolCallRetentionTurns:   toolCallRetentionTurns,
-		SalienceEnabled:          salienceEnabled,
+		HighWater:              highWater,
+		LowWater:               lowWater,
+		MessageSizeThreshold:   messageSizeThreshold,
+		ToolCallRetentionTurns: toolCallRetentionTurns,
+		SalienceEnabled:        salienceEnabled,
 	})
 }

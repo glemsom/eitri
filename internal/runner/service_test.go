@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +14,11 @@ import (
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
-
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/message"
 )
 
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
@@ -378,7 +379,6 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 	}
 	svc.subagents.StoreParentCfg("session-1", cfg)
 
-
 	taskID1, err := svc.SpawnSubAgent(context.Background(), "session-1", "task 1", 5, "")
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
@@ -403,7 +403,7 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 	}
 	if rec2 == nil {
 		t.Fatal("taskID2 not found in subAgents")
-}
+	}
 }
 
 func TestRunService_CollectSubAgents_Empty(t *testing.T) {
@@ -449,7 +449,6 @@ func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 		Workspace:  t.TempDir(),
 	}
 	svc.subagents.StoreParentCfg("session-1", cfg)
-
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5, "")
 	if err != nil {
@@ -536,7 +535,6 @@ func TestRunService_ParentConfig_StoredOnStartRun(t *testing.T) {
 
 	stored, exists := svc.subagents.GetParentCfg("session-1")
 
-
 	if !exists {
 		t.Fatal("parent config not stored")
 	}
@@ -563,7 +561,6 @@ func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
 		Workspace:  t.TempDir(),
 	}
 	svc.subagents.StoreParentCfg(parent.ID, cfg)
-
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), parent.ID, "research X", 5, "")
 	if err != nil {
@@ -607,7 +604,6 @@ func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 		Workspace:  t.TempDir(),
 	}
 	svc.subagents.StoreParentCfg("session-1", cfg)
-
 
 	taskID, err := svc.SpawnSubAgent(context.Background(), "session-1", "test task", 5, "")
 	if err != nil {
@@ -1420,6 +1416,89 @@ func TestRunService_NotifyAllClosed(t *testing.T) {
 	}
 }
 
+func TestRunService_FatalRunErrorSetsErrorStatusSnapshotsAndBroadcasts(t *testing.T) {
+	uiMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	persister, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiMgr,
+		HistorySessionMgr: historyMgr,
+		Persister:         persister,
+		CrashDumpFunc:     func(error, []byte) {},
+	})
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+	uiMgr.UpdateStatus(sess.ID, uisession.StatusRunning)
+
+	id, ch := svc.SubscribeBrowser("browser-1")
+	defer svc.UnsubscribeBrowser("browser-1", id)
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "fatal test error", http.StatusBadRequest)
+	}))
+	defer llmServer.Close()
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llmServer.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+	}
+
+	if _, err := svc.StartRun(context.Background(), sess.ID, "hello", cfg); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	select {
+	case evt := <-ch:
+		if evt.Type != "session_status" {
+			t.Fatalf("event type = %q, want %q", evt.Type, "session_status")
+		}
+		data, ok := evt.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("Data type = %T, want map[string]any", evt.Data)
+		}
+		if data["session_id"] != sess.ID {
+			t.Errorf("session_id = %v, want %s", data["session_id"], sess.ID)
+		}
+		if data["status"] != string(uisession.StatusError) {
+			t.Errorf("status = %v, want %s", data["status"], uisession.StatusError)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for error status event")
+	}
+
+	got := uiMgr.Get(sess.ID)
+	if got == nil {
+		t.Fatal("session missing from manager")
+	}
+	if got.Status != uisession.StatusError {
+		t.Fatalf("in-memory status = %q, want %q", got.Status, uisession.StatusError)
+	}
+
+	data, err := persister.LoadSession(sess.ID)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	if data == nil {
+		t.Fatal("snapshot missing")
+	}
+	var snap uisession.UISession
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+	if snap.Status != uisession.StatusError {
+		t.Fatalf("snapshot status = %q, want %q", snap.Status, uisession.StatusError)
+	}
+}
+
 func TestRunService_BroadcastStatusUpdate(t *testing.T) {
 	svc := NewRunService(RunServiceDeps{})
 	bb := New()
@@ -1646,4 +1725,3 @@ func TestRunService_LoadSessionFromDisk_SessionNotFound(t *testing.T) {
 		t.Errorf("expected 'not found on disk' error, got: %v", err)
 	}
 }
-
