@@ -230,7 +230,11 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 // automatically via PersistAuth when configured, or manually when not.
 // Returns discovered model IDs, per-model context windows, per-model API modes,
 // and any error.
-func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, map[string]int, map[string]string, error) {
+//
+// When noPersist is true, auth updates are NOT saved to disk. This should be
+// set when the cfg has been temporarily overridden (e.g., query-param overrides
+// in handleGetModels) to avoid corrupting the saved config.
+func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config, noPersist ...bool) ([]string, map[string]int, map[string]string, error) {
 	result, err := s.discoverModelList(ctx, cfg)
 	if err != nil {
 		return nil, nil, nil, err
@@ -238,13 +242,16 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	if result == nil {
 		return nil, nil, nil, nil
 	}
-	if result.AuthUpdate != nil {
+
+	skipPersist := len(noPersist) > 0 && noPersist[0]
+
+	if result.AuthUpdate != nil && !skipPersist {
 		// PersistAuth was not set — save the auth update manually.
 		applyAuthUpdate(cfg, result.AuthUpdate)
 		if err := s.saveProviderConfig(cfg); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
 		}
-	} else if s.persistAuth() != nil {
+	} else if s.persistAuth() != nil && !skipPersist {
 		// PersistAuth handled persistence; reload only ProviderAuth (refreshed by
 		// auth handler). Do NOT overwrite APIKey — caller may have set a new key.
 		loaded, loadErr := config.Load(s.config.ConfigPath)
@@ -286,15 +293,37 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	// Allow query-param overrides so JS refreshModels() can pass the
 	// in-form (not-yet-saved) provider / base_url.
 	// api_key is NOT overridden — the form may contain a masked value.
+	providerOverridden := false
 	if v := r.URL.Query().Get("provider"); v != "" {
 		cfg.Provider = v
+		providerOverridden = true
 	}
 	if v := r.URL.Query().Get("base_url"); v != "" {
 		cfg.BaseURL = v
 	}
 
-	models, _, _, err := s.fetchModelList(r.Context(), cfg)
+	models, _, _, err := s.fetchModelList(r.Context(), cfg, providerOverridden)
 	if err != nil {
+		// When provider is overridden by query params, auth likely doesn't match
+		// the saved credentials. Return empty models instead of an error so the
+		// JS refreshModels() can update the select without showing a confusing
+		// error toast. The user will see an empty dropdown and complete auth on save.
+		if providerOverridden {
+			if isHTMXRequest(r) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				_ = templates.TestConnectionResult(false, "Provide credentials and save to discover models.").Render(r.Context(), w)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"object": "list",
+				"data":   []string{},
+			})
+			return
+		}
+
 		if isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)

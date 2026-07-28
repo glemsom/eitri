@@ -72,7 +72,10 @@
       .then(function (data) {
         if (data.data && Array.isArray(data.data)) {
           updateModelSelect(data.data);
-          showToast('\u2713 Models refreshed');
+          // Only show success toast when models are returned
+          if (data.data.length > 0) {
+            showToast('\u2713 Models refreshed');
+          }
         }
       })
       .catch(function () {

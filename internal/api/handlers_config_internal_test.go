@@ -666,3 +666,133 @@ func TestHandlePutConfig_ClearsThinkingLevelForUnsupportedModel(t *testing.T) {
 		t.Errorf("response body should contain notice about clearing, got: %s", bodyStr)
 	}
 }
+
+func TestHandleGetModels_ReturnsEmptyModelsOnProviderOverride(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate auth failure for the "wrong" provider
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"unauthorized"}`))
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:       "custom_openai",
+		BaseURL:        providerSrv.URL,
+		APIKey:         "sk-old-provider",
+		SessionTimeout: 30 * 60_000_000_000,
+		CommandTimeout: 60 * 1_000_000_000,
+		MaxTurns:       25,
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// GET /api/models with provider override — should return empty models, not error
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=opencode_go&base_url="+providerSrv.URL, nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	data, ok := body["data"]
+	if !ok {
+		t.Fatal("response missing 'data' field")
+	}
+	models, ok := data.([]any)
+	if !ok {
+		t.Fatalf("data is %T, want []any", data)
+	}
+	if len(models) != 0 {
+		t.Errorf("expected 0 models on auth failure with overridden provider, got %d", len(models))
+	}
+
+	// Verify saved config was NOT corrupted
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Provider != "custom_openai" {
+		t.Errorf("saved provider was corrupted: got %q, want %q", loaded.Provider, "custom_openai")
+	}
+	if loaded.BaseURL != providerSrv.URL {
+		t.Errorf("saved base_url was corrupted: got %q, want %q", loaded.BaseURL, providerSrv.URL)
+	}
+	if loaded.APIKey != "sk-old-provider" {
+		t.Errorf("saved api_key was corrupted: got %q, want %q", loaded.APIKey, "sk-old-provider")
+	}
+}
+
+func TestHandleGetModels_ReturnsModelsForSameProvider(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	cfg := &config.Config{
+		Provider:       "custom_openai",
+		BaseURL:        providerSrv.URL,
+		APIKey:         "sk-test",
+		SessionTimeout: 30 * 60_000_000_000,
+		CommandTimeout: 60 * 1_000_000_000,
+		MaxTurns:       25,
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// GET /api/models without provider override — should return models
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	data, ok := body["data"]
+	if !ok {
+		t.Fatal("response missing 'data' field")
+	}
+	models, ok := data.([]any)
+	if !ok {
+		t.Fatalf("data is %T, want []any", data)
+	}
+	if len(models) != 2 {
+		t.Errorf("expected 2 models, got %d", len(models))
+	}
+
+	// Verify saved config was not corrupted
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Provider != "custom_openai" {
+		t.Errorf("saved provider was corrupted: got %q, want %q", loaded.Provider, "custom_openai")
+	}
+}
