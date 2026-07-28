@@ -1,0 +1,63 @@
+// Package compress applies deterministic pattern compression to bash tool
+// output. Patterns are matched by command name (ls, find, grep, rg) and
+// produce regrouped, summarized output that fits more useful information
+// into fewer tokens.
+//
+// Every compressor guarantees it never inflates: if the compressed result
+// would use more estimated tokens than the original, the original is returned
+// unchanged.
+package compress
+
+import "strings"
+
+// Compress applies deterministic pattern compression to bash tool output.
+// Returns the compressed text when a pattern matches and compression is
+// beneficial (fewer estimated tokens), or the original output unchanged.
+func Compress(command, output string) string {
+	if output == "" {
+		return output
+	}
+
+	cmd := strings.TrimSpace(strings.ToLower(command))
+
+	// Strip leading $ if present (LeanCTX convention for command hints).
+	cmd = strings.TrimPrefix(cmd, "$ ")
+
+	var fn func(string) *string
+	switch {
+	case cmd == "ls" || strings.HasPrefix(cmd, "ls "):
+		fn = compressLs
+	case cmd == "find" || strings.HasPrefix(cmd, "find "):
+		fn = compressFind
+	case cmd == "grep" || strings.HasPrefix(cmd, "grep "):
+		fn = compressGrep
+	case cmd == "rg" || strings.HasPrefix(cmd, "rg "):
+		fn = compressGrep
+	case cmd == "ripgrep" || strings.HasPrefix(cmd, "ripgrep "):
+		fn = compressGrep
+	}
+
+	if fn == nil {
+		return output
+	}
+
+	compressed := fn(output)
+	if compressed == nil {
+		return output
+	}
+
+	// Anti-inflation guard: only use compressed output if it actually
+	// reduces estimated tokens (chars/4 heuristic).
+	origTokens := len(output) / 4
+	compTokens := len(*compressed) / 4
+	if compTokens >= origTokens {
+		return output
+	}
+
+	return *compressed
+}
+
+// tokenEstimate returns a rough token count using 4 chars per token.
+func tokenEstimate(s string) int {
+	return len(s) / 4
+}
