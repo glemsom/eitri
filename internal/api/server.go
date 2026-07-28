@@ -192,6 +192,31 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.Files)))
 
+	// PWA: manifest.json served directly from embedded assets
+	s.mux.HandleFunc("GET /manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		data, err := assets.Files.ReadFile("manifest.json")
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	})
+
+	// PWA: sw.js with required Service-Worker-Allowed header
+	s.mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
+		data, err := assets.Files.ReadFile("sw.js")
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	})
+
 	// Root serves the base HTML page — redirects to session if browser known
 	s.mux.HandleFunc("GET /{$}", s.handleRoot)
 
