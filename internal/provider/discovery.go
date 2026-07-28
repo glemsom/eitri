@@ -30,7 +30,8 @@ type AuthUpdate struct {
 type DiscoveryResult struct {
 	Models              []string
 	AuthUpdate          *AuthUpdate
-	ModelContextWindows map[string]int // model ID → context window token limit (optional)
+	ModelContextWindows map[string]int    // model ID → context window token limit (optional)
+	ModelAPIs           map[string]string // model ID → API mode, provider-specific (optional)
 }
 
 // DiscoveryOptions configures discovery transport and refresh-aware auth behavior.
@@ -86,10 +87,13 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 		return nil, errors.New(providerValidationErrorMessage(req.ProviderID, resp.StatusCode))
 	}
 
-	modelIDs, contextWindows, err := prof.ParseModelList(resp.Body)
+	parsed, err := prof.ParseModelList(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Model discovery failed: %v", err)
 	}
+	modelIDs := parsed.IDs
+	contextWindows := parsed.ContextWindows
+	modelAPIs := parsed.ModelAPIs
 	if len(modelIDs) == 0 {
 		return nil, fmt.Errorf("Model discovery failed: no selectable models returned")
 	}
@@ -111,6 +115,7 @@ func DiscoverModels(ctx context.Context, req DiscoveryRequest, opts DiscoveryOpt
 		Models:              modelIDs,
 		AuthUpdate:          authUpdate,
 		ModelContextWindows: contextWindows,
+		ModelAPIs:           modelAPIs,
 	}, nil
 }
 

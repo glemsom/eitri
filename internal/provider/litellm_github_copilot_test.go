@@ -61,6 +61,55 @@ func TestGitHubCopilotClientUsesRootChatCompletionsPath(t *testing.T) {
 	}
 }
 
+func TestGitHubCopilotClientUsesRootResponsesPath(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewLitellmClient(LitellmConfig{
+		ProviderID: "github_copilot",
+		Model:      "gpt-5.5",
+		ModelAPI:   GitHubCopilotAPIResponses,
+		BaseURL:    "https://api.githubcopilot.com",
+		APIKey:     "gho-test",
+		RoundTripper: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/responses" {
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("404 page not found")),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+					"id":"resp_123",
+					"model":"gpt-5.5",
+					"status":"completed",
+					"output_text":"hi",
+					"output":[],
+					"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}
+				}`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewLitellmClient error: %v", err)
+	}
+
+	resp, err := client.Chat(context.Background(), litellm.Request{
+		Model:    "gpt-5.5",
+		Messages: []litellm.Message{litellm.UserText("Respond with hi")},
+	})
+	if err != nil {
+		t.Fatalf("Chat error = %v", err)
+	}
+	if got := resp.Text(); got != "hi" {
+		t.Fatalf("response text = %q, want %q", got, "hi")
+	}
+}
+
 func TestGitHubCopilotClientSetsCopilotHeaders(t *testing.T) {
 	t.Parallel()
 

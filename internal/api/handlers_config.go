@@ -31,7 +31,7 @@ func (s *Server) loadConfigState(ctx context.Context) configState {
 	if err := config.Validate(cfg); err != nil {
 		return configState{cfg: cfg, err: err}
 	}
-	models, _, err := s.fetchModelList(ctx, cfg)
+	models, _, _, err := s.fetchModelList(ctx, cfg)
 	if err != nil {
 		return configState{cfg: cfg, err: err}
 	}
@@ -155,7 +155,7 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate provider credentials by calling the profile's model discovery path.
-	models, contextWindows, err := s.fetchModelList(r.Context(), newCfg)
+	models, contextWindows, modelAPIs, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
 		if isHTMXRequest(r) {
 			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
@@ -182,6 +182,12 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		} else if cw := provider.ContextWindowForModel(newCfg.Model); cw > 0 {
 			newCfg.ContextWindowTokens = cw
 		}
+	}
+
+	if newCfg.Provider == "github_copilot" && newCfg.Model != "" {
+		newCfg.ModelAPI = modelAPIs[newCfg.Model]
+	} else {
+		newCfg.ModelAPI = ""
 	}
 
 	// Save
@@ -213,20 +219,21 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 
 // fetchModelList calls Provider discovery seam. Auth refresh is persisted
 // automatically via PersistAuth when configured, or manually when not.
-// Returns discovered model IDs, per-model context windows, and any error.
-func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, map[string]int, error) {
+// Returns discovered model IDs, per-model context windows, per-model API modes,
+// and any error.
+func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, map[string]int, map[string]string, error) {
 	result, err := s.discoverModelList(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if result == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if result.AuthUpdate != nil {
 		// PersistAuth was not set — save the auth update manually.
 		applyAuthUpdate(cfg, result.AuthUpdate)
 		if err := s.saveProviderConfig(cfg); err != nil {
-			return nil, nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
 		}
 	} else if s.persistAuth() != nil {
 		// PersistAuth handled persistence; reload only ProviderAuth (refreshed by
@@ -236,7 +243,7 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 			cfg.ProviderAuth = append(json.RawMessage(nil), loaded.ProviderAuth...)
 		}
 	}
-	return result.Models, result.ModelContextWindows, nil
+	return result.Models, result.ModelContextWindows, result.ModelAPIs, nil
 }
 
 func applyAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) {
@@ -267,7 +274,7 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, _, err := s.fetchModelList(r.Context(), cfg)
+	models, _, _, err := s.fetchModelList(r.Context(), cfg)
 	if err != nil {
 		if isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")

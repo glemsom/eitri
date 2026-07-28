@@ -16,58 +16,59 @@ import (
 
 // Config represents the Eitri configuration schema.
 type Config struct {
-	Provider                    string          `json:"provider"`
-	APIKey                      string          `json:"api_key"`
-	ProviderAuth                json.RawMessage `json:"provider_auth,omitempty"`
-	AllowedReadPaths            []string        `json:"allowed_read_paths,omitempty"`
-	DisabledSkills              []string        `json:"disabled_skills,omitempty"`
-	UserEmail                   string          `json:"user_email,omitempty"`
-	BaseURL                     string          `json:"base_url"`
-	Model                       string          `json:"model"`
-	ThinkingLevel               string          `json:"thinking_level"`
-	SystemPrompt                string          `json:"system_prompt"`
-	SessionTimeout              int64           `json:"session_timeout"`
-	CommandTimeout              int64           `json:"command_timeout"`
-	MaxTurns                    int             `json:"max_turns"`
-	ContextWindowTokens         int             `json:"context_window_tokens"`
-	ContextWindowOverridden     bool            `json:"context_window_overridden,omitempty"`
-	MaxHistory                  int             `json:"max_history"`
-	DebugPrompt              bool            `json:"debug_prompt,omitempty"`                // was EITRI_DEBUG_PROMPT=1
-	DebugRequest             bool            `json:"debug_request,omitempty"`               // was EITRI_DEBUG_REQUEST=1
-	DebugLLMDir              string          `json:"debug_llm_dir,omitempty"`               // was EITRI_DEBUG_LLM_DIR
-	CompactionEnabled              bool  `json:"compaction_enabled"`
-	CompactionThresholdPercent     int   `json:"compaction_threshold_percent,omitempty"`
-	CompactionLowWaterPercent      int   `json:"compaction_low_water_percent,omitempty"`
-	CompactionMessageSizeThreshold int   `json:"compaction_message_size_threshold,omitempty"`
-	CompactionToolCallRetentionTurns int   `json:"compaction_tool_call_retention_turns,omitempty"`
-	CompactionSalienceEnabled        bool  `json:"compaction_salience_enabled,omitempty"`
-	ContextWarningThresholdPercent int          `json:"context_warning_threshold_percent,omitempty"`
-	Sandbox                     sandbox.Config  `json:"sandbox,omitempty"`
-	ActivePersona               string          `json:"active_persona,omitempty"`
-	PersonaCatalog              map[string]string `json:"persona_catalog,omitempty"`
-	BrowserWsUrl                string          `json:"browser_ws_url,omitempty"`
+	Provider                         string            `json:"provider"`
+	APIKey                           string            `json:"api_key"`
+	ProviderAuth                     json.RawMessage   `json:"provider_auth,omitempty"`
+	AllowedReadPaths                 []string          `json:"allowed_read_paths,omitempty"`
+	DisabledSkills                   []string          `json:"disabled_skills,omitempty"`
+	UserEmail                        string            `json:"user_email,omitempty"`
+	BaseURL                          string            `json:"base_url"`
+	Model                            string            `json:"model"`
+	ModelAPI                         string            `json:"model_api,omitempty"`
+	ThinkingLevel                    string            `json:"thinking_level"`
+	SystemPrompt                     string            `json:"system_prompt"`
+	SessionTimeout                   int64             `json:"session_timeout"`
+	CommandTimeout                   int64             `json:"command_timeout"`
+	MaxTurns                         int               `json:"max_turns"`
+	ContextWindowTokens              int               `json:"context_window_tokens"`
+	ContextWindowOverridden          bool              `json:"context_window_overridden,omitempty"`
+	MaxHistory                       int               `json:"max_history"`
+	DebugPrompt                      bool              `json:"debug_prompt,omitempty"`  // was EITRI_DEBUG_PROMPT=1
+	DebugRequest                     bool              `json:"debug_request,omitempty"` // was EITRI_DEBUG_REQUEST=1
+	DebugLLMDir                      string            `json:"debug_llm_dir,omitempty"` // was EITRI_DEBUG_LLM_DIR
+	CompactionEnabled                bool              `json:"compaction_enabled"`
+	CompactionThresholdPercent       int               `json:"compaction_threshold_percent,omitempty"`
+	CompactionLowWaterPercent        int               `json:"compaction_low_water_percent,omitempty"`
+	CompactionMessageSizeThreshold   int               `json:"compaction_message_size_threshold,omitempty"`
+	CompactionToolCallRetentionTurns int               `json:"compaction_tool_call_retention_turns,omitempty"`
+	CompactionSalienceEnabled        bool              `json:"compaction_salience_enabled,omitempty"`
+	ContextWarningThresholdPercent   int               `json:"context_warning_threshold_percent,omitempty"`
+	Sandbox                          sandbox.Config    `json:"sandbox,omitempty"`
+	ActivePersona                    string            `json:"active_persona,omitempty"`
+	PersonaCatalog                   map[string]string `json:"persona_catalog,omitempty"`
+	BrowserWsUrl                     string            `json:"browser_ws_url,omitempty"`
 }
 
 // Defaults returns a Config with default values.
 func Defaults() Config {
 	prof := provider.MustDescribe("opencode_go")
 	return Config{
-		Provider:                 prof.ID,
-		BaseURL:                  prof.DefaultBaseURL,
-		SessionTimeout:           30 * 60_000_000_000, // 30 minutes in ns
-		CommandTimeout:           60 * 1_000_000_000,  // 60 seconds in ns
-		MaxTurns:                 75,
-		ContextWindowTokens:      256000,
-		MaxHistory:               50,
-		CompactionEnabled:              true,
-		CompactionThresholdPercent:     90,
-		CompactionLowWaterPercent:      30,
-		CompactionMessageSizeThreshold: 2000,
+		Provider:                         prof.ID,
+		BaseURL:                          prof.DefaultBaseURL,
+		SessionTimeout:                   30 * 60_000_000_000, // 30 minutes in ns
+		CommandTimeout:                   60 * 1_000_000_000,  // 60 seconds in ns
+		MaxTurns:                         75,
+		ContextWindowTokens:              256000,
+		MaxHistory:                       50,
+		CompactionEnabled:                true,
+		CompactionThresholdPercent:       90,
+		CompactionLowWaterPercent:        30,
+		CompactionMessageSizeThreshold:   2000,
 		CompactionToolCallRetentionTurns: 5,
-		CompactionSalienceEnabled:             true,
-		ContextWarningThresholdPercent: 75,
-		Sandbox:                  sandbox.DefaultConfig(),
-		BrowserWsUrl:             "ws://127.0.0.1:9222",
+		CompactionSalienceEnabled:        true,
+		ContextWarningThresholdPercent:   75,
+		Sandbox:                          sandbox.DefaultConfig(),
+		BrowserWsUrl:                     "ws://127.0.0.1:9222",
 	}
 }
 
@@ -466,6 +467,7 @@ func Merge(base *Config, patch map[string]any) *Config {
 		if _, ok := patch["model"]; !ok {
 			result.Model = ""
 		}
+		result.ModelAPI = ""
 		if shouldResetBaseURLOnProviderSwitch(base.Provider, result.Provider, base.BaseURL, baseURLPatched, baseURLPatch) {
 			if prof, err := provider.Describe(result.Provider); err == nil {
 				result.BaseURL = prof.DefaultBaseURL

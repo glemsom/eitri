@@ -37,18 +37,18 @@ func TestOpenAICompatibleProfilesParseOpenAIModelList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	models, _, err := prof.ParseModelList(strings.NewReader(`{"object":"list","data":[{"id":"gpt-4"},{"id":""},{"id":"gpt-3.5-turbo"}]}`))
+	parsed, err := prof.ParseModelList(strings.NewReader(`{"object":"list","data":[{"id":"gpt-4"},{"id":""},{"id":"gpt-3.5-turbo"}]}`))
 	if err != nil {
 		t.Fatalf("ParseModelList error: %v", err)
 	}
 
 	want := []string{"gpt-4", "gpt-3.5-turbo"}
-	if len(models) != len(want) {
-		t.Fatalf("models = %#v, want %#v", models, want)
+	if len(parsed.IDs) != len(want) {
+		t.Fatalf("models = %#v, want %#v", parsed.IDs, want)
 	}
 	for i := range want {
-		if models[i] != want[i] {
-			t.Errorf("models[%d] = %q, want %q", i, models[i], want[i])
+		if parsed.IDs[i] != want[i] {
+			t.Errorf("models[%d] = %q, want %q", i, parsed.IDs[i], want[i])
 		}
 	}
 }
@@ -186,7 +186,7 @@ func TestValidateCredentials_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	}
 }
 
-func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
+func TestGitHubCopilotProfileFiltersPickerEnabledSupportedModels(t *testing.T) {
 	t.Parallel()
 
 	prof, err := getProfile("github_copilot")
@@ -194,7 +194,7 @@ func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	models, _, err := prof.ParseModelList(strings.NewReader(`{
+	parsed, err := prof.ParseModelList(strings.NewReader(`{
 		"data": [
 			{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},
 			{"id":"disabled","policy":{"state":"disabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]},
@@ -207,14 +207,20 @@ func TestGitHubCopilotProfileFiltersPickerEnabledChatModels(t *testing.T) {
 		t.Fatalf("ParseModelList error: %v", err)
 	}
 
-	want := []string{"gpt-4.1"}
-	if len(models) != len(want) {
-		t.Fatalf("models = %#v, want %#v", models, want)
+	want := []string{"gpt-4.1", "responses-only"}
+	if len(parsed.IDs) != len(want) {
+		t.Fatalf("models = %#v, want %#v", parsed.IDs, want)
 	}
 	for i := range want {
-		if models[i] != want[i] {
-			t.Errorf("models[%d] = %q, want %q", i, models[i], want[i])
+		if parsed.IDs[i] != want[i] {
+			t.Errorf("models[%d] = %q, want %q", i, parsed.IDs[i], want[i])
 		}
+	}
+	if parsed.ModelAPIs["gpt-4.1"] != GitHubCopilotAPIChat {
+		t.Errorf("ModelAPIs[gpt-4.1] = %q, want %q", parsed.ModelAPIs["gpt-4.1"], GitHubCopilotAPIChat)
+	}
+	if parsed.ModelAPIs["responses-only"] != GitHubCopilotAPIResponses {
+		t.Errorf("ModelAPIs[responses-only] = %q, want %q", parsed.ModelAPIs["responses-only"], GitHubCopilotAPIResponses)
 	}
 }
 
@@ -523,7 +529,7 @@ func TestGitHubCopilotProfile_ParsesMaxInputTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	models, contextWindows, err := prof.ParseModelList(strings.NewReader(`{
+	parsed, err := prof.ParseModelList(strings.NewReader(`{
 		"data": [
 			{"id":"gpt-4o","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000},
 			{"id":"gpt-4o-mini","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000},
@@ -534,8 +540,8 @@ func TestGitHubCopilotProfile_ParsesMaxInputTokens(t *testing.T) {
 		t.Fatalf("ParseModelList error: %v", err)
 	}
 
-	if len(models) != 3 {
-		t.Fatalf("got %d models, want 3", len(models))
+	if len(parsed.IDs) != 3 {
+		t.Fatalf("got %d models, want 3", len(parsed.IDs))
 	}
 
 	tests := []struct {
@@ -547,7 +553,7 @@ func TestGitHubCopilotProfile_ParsesMaxInputTokens(t *testing.T) {
 		{"no-tokens", 0},
 	}
 	for _, tc := range tests {
-		got := contextWindows[tc.model]
+		got := parsed.ContextWindows[tc.model]
 		if got != tc.want {
 			t.Errorf("contextWindows[%q] = %d, want %d", tc.model, got, tc.want)
 		}

@@ -255,7 +255,7 @@ func fakeProviderServer(t *testing.T, status int, body string) *httptest.Server 
 	return srv
 }
 
-func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
+func TestPutConfigGitHubCopilotDiscoversPickerEnabledSupportedModels(t *testing.T) {
 	var gotPath string
 	gotHeaders := http.Header{}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -308,10 +308,13 @@ func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
 	if !strings.Contains(content, "gpt-4.1") {
 		t.Errorf("response HTML missing discovered Copilot model")
 	}
-	for _, filtered := range []string{"bad-policy-model", "picker-off-model", "responses-only-model"} {
+	for _, filtered := range []string{"bad-policy-model", "picker-off-model"} {
 		if strings.Contains(content, filtered) {
 			t.Errorf("response HTML contains filtered model %q", filtered)
 		}
+	}
+	if !strings.Contains(content, "responses-only-model") {
+		t.Errorf("response HTML missing discovered Copilot responses-only model")
 	}
 
 	modelsResp, err := http.Get(server.URL + "/api/models")
@@ -325,8 +328,8 @@ func TestPutConfigGitHubCopilotDiscoversPickerEnabledChatModels(t *testing.T) {
 	if err := json.NewDecoder(modelsResp.Body).Decode(&modelsBody); err != nil {
 		t.Fatal(err)
 	}
-	if len(modelsBody.Data) != 1 || modelsBody.Data[0] != "gpt-4.1" {
-		t.Errorf("/api/models data = %#v, want [gpt-4.1]", modelsBody.Data)
+	if len(modelsBody.Data) != 2 || modelsBody.Data[0] != "gpt-4.1" || modelsBody.Data[1] != "responses-only-model" {
+		t.Errorf("/api/models data = %#v, want [gpt-4.1 responses-only-model]", modelsBody.Data)
 	}
 }
 

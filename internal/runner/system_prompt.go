@@ -155,6 +155,7 @@ func buildLLMService(ctx context.Context, cfg RunConfig, sessionID string, debug
 	litellmCfg := provider.LitellmConfig{
 		ProviderID:   cfg.ProviderID,
 		Model:        cfg.ModelName,
+		ModelAPI:     resolveModelAPI(ctx, cfg, persistAuth),
 		BaseURL:      cfg.BaseURL,
 		APIKey:       apiKey,
 		DebugPrompt:  cfg.DebugPrompt,

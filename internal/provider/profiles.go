@@ -40,13 +40,19 @@ func SupportedThinkingLevels(providerID, modelName string) []string {
 
 // profile captures provider-internal URLs, credential policy, model discovery,
 // and request headers used by Eitri's OpenAI-style transport.
+type modelListResult struct {
+	IDs            []string
+	ContextWindows map[string]int
+	ModelAPIs      map[string]string
+}
+
 type profile struct {
 	Descriptor
 	modelListPath  string
 	chatPath       string
 	stripV1Suffix  bool
 	applyHeaders   func(*http.Request, string)
-	parseModelList func(io.Reader) ([]string, map[string]int, error)
+	parseModelList func(io.Reader) (modelListResult, error)
 	authHandler    authHandler
 }
 
@@ -78,9 +84,9 @@ func (p profile) RequiredCredentialName() string {
 	return "api_key"
 }
 
-// ParseModelList parses provider model discovery response into selectable IDs
-// and optionally per-model context window token limits.
-func (p profile) ParseModelList(r io.Reader) ([]string, map[string]int, error) {
+// ParseModelList parses provider model discovery response into selectable IDs,
+// optional per-model context windows, and optional per-model API selection.
+func (p profile) ParseModelList(r io.Reader) (modelListResult, error) {
 	return p.parseModelList(r)
 }
 
@@ -166,14 +172,14 @@ func IDs() []string {
 	return []string{"opencode_go", "custom_openai", "github_copilot"}
 }
 
-func parseOpenAIModelList(r io.Reader) ([]string, map[string]int, error) {
+func parseOpenAIModelList(r io.Reader) (modelListResult, error) {
 	var modelsResp struct {
 		Data []struct {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(r).Decode(&modelsResp); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse model list: %w", err)
+		return modelListResult{}, fmt.Errorf("failed to parse model list: %w", err)
 	}
 
 	modelIDs := make([]string, 0, len(modelsResp.Data))
@@ -182,7 +188,7 @@ func parseOpenAIModelList(r io.Reader) ([]string, map[string]int, error) {
 			modelIDs = append(modelIDs, m.ID)
 		}
 	}
-	return modelIDs, nil, nil
+	return modelListResult{IDs: modelIDs}, nil
 }
 
 const (
@@ -217,13 +223,18 @@ type githubCopilotModel struct {
 	MaxInputTokens     int      `json:"max_input_tokens,omitempty"`
 }
 
-func parseGitHubCopilotModelList(r io.Reader) ([]string, map[string]int, error) {
+const (
+	GitHubCopilotAPIChat      = "chat"
+	GitHubCopilotAPIResponses = "responses"
+)
+
+func parseGitHubCopilotModelList(r io.Reader) (modelListResult, error) {
 	var modelsResp struct {
 		Data   []githubCopilotModel `json:"data"`
 		Models []githubCopilotModel `json:"models"`
 	}
 	if err := json.NewDecoder(r).Decode(&modelsResp); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse model list: %w", err)
+		return modelListResult{}, fmt.Errorf("failed to parse model list: %w", err)
 	}
 
 	models := modelsResp.Data
@@ -233,16 +244,29 @@ func parseGitHubCopilotModelList(r io.Reader) ([]string, map[string]int, error) 
 
 	modelIDs := make([]string, 0, len(models))
 	contextWindows := make(map[string]int, len(models))
+	modelAPIs := make(map[string]string, len(models))
 	for _, m := range models {
-		if m.ID == "" || m.Policy.State == "disabled" || !m.ModelPickerEnabled || !supportsEndpoint(m.SupportedEndpoints, "/chat/completions") {
+		api, ok := gitHubCopilotModelAPI(m.SupportedEndpoints)
+		if m.ID == "" || m.Policy.State == "disabled" || !m.ModelPickerEnabled || !ok {
 			continue
 		}
 		modelIDs = append(modelIDs, m.ID)
+		modelAPIs[m.ID] = api
 		if m.MaxInputTokens > 0 {
 			contextWindows[m.ID] = m.MaxInputTokens
 		}
 	}
-	return modelIDs, contextWindows, nil
+	return modelListResult{IDs: modelIDs, ContextWindows: contextWindows, ModelAPIs: modelAPIs}, nil
+}
+
+func gitHubCopilotModelAPI(endpoints []string) (string, bool) {
+	if supportsEndpoint(endpoints, "/chat/completions") {
+		return GitHubCopilotAPIChat, true
+	}
+	if supportsEndpoint(endpoints, "/responses") {
+		return GitHubCopilotAPIResponses, true
+	}
+	return "", false
 }
 
 func supportsEndpoint(endpoints []string, want string) bool {

@@ -126,6 +126,9 @@ func TestDiscoverModels_GitHubCopilotRefreshesExpiredAuthAndReturnsUpdate(t *tes
 			t.Errorf("Models[%d] = %q, want %q", i, result.Models[i], want[i])
 		}
 	}
+	if result.ModelAPIs["gpt-4.1"] != provider.GitHubCopilotAPIChat {
+		t.Fatalf("ModelAPIs[gpt-4.1] = %q, want %q", result.ModelAPIs["gpt-4.1"], provider.GitHubCopilotAPIChat)
+	}
 	if result.AuthUpdate == nil {
 		t.Fatal("AuthUpdate = nil, want refreshed auth state")
 	}
@@ -477,7 +480,8 @@ func TestDiscoverModels_GitHubCopilotReturnsContextWindows(t *testing.T) {
 		fmt.Fprint(w, `{
 			"data": [
 				{"id":"gpt-4o","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000},
-				{"id":"gpt-4o-mini","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000}
+				{"id":"gpt-4o-mini","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"],"max_input_tokens":128000},
+				{"id":"gpt-5.5","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/responses"],"max_input_tokens":922000}
 			]
 		}`)
 	}))
@@ -505,5 +509,11 @@ func TestDiscoverModels_GitHubCopilotReturnsContextWindows(t *testing.T) {
 	}
 	if cw, ok := result.ModelContextWindows["gpt-4o-mini"]; !ok || cw != 128000 {
 		t.Errorf("ModelContextWindows[gpt-4o-mini] = %d, want 128000", cw)
+	}
+	if cw, ok := result.ModelContextWindows["gpt-5.5"]; !ok || cw != 922000 {
+		t.Errorf("ModelContextWindows[gpt-5.5] = %d, want 922000", cw)
+	}
+	if got := result.ModelAPIs["gpt-5.5"]; got != provider.GitHubCopilotAPIResponses {
+		t.Errorf("ModelAPIs[gpt-5.5] = %q, want %q", got, provider.GitHubCopilotAPIResponses)
 	}
 }

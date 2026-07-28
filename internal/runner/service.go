@@ -83,7 +83,7 @@ type RunService struct {
 	debugRecorder     *debug.Recorder
 	persistAuth       PersistAuthFunc
 	crashDumpFunc     func(err error, stack []byte)
-	persister         *persist.Persister // optional; writes session snapshots & traces to disk
+	persister         *persist.Persister          // optional; writes session snapshots & traces to disk
 	calibrationStore  *tokenizer.CalibrationStore // optional; per-model CPT calibration
 }
 
@@ -622,11 +622,11 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 	// eligible messages regardless of size — the user explicitly
 	// asked for it.
 	compactedMsgs, count, freed, prunedCount, compErr := compactor.New().Compact(ctx, flatMsgs, llmSvc, compactor.Thresholds{
-		HighWater:                0,
-		LowWater:                 0,
-		MessageSizeThreshold:     0, // manual compaction compacts all eligible messages
-		ToolCallRetentionTurns:   cfg.CompactionToolCallRetentionTurns,
-		SalienceEnabled:          cfg.CompactionSalienceEnabled,
+		HighWater:              0,
+		LowWater:               0,
+		MessageSizeThreshold:   0, // manual compaction compacts all eligible messages
+		ToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
+		SalienceEnabled:        cfg.CompactionSalienceEnabled,
 	})
 	if compErr != nil {
 		return 0, 0, 0, fmt.Errorf("compaction failed: %w", compErr)
@@ -674,6 +674,7 @@ func newCompactLLMService(ctx context.Context, cfg RunConfig, persistAuth Persis
 	litellmCfg := provider.LitellmConfig{
 		ProviderID:   cfg.ProviderID,
 		Model:        cfg.ModelName,
+		ModelAPI:     resolveModelAPI(ctx, cfg, persistAuth),
 		BaseURL:      cfg.BaseURL,
 		APIKey:       apiKey,
 		DebugPrompt:  cfg.DebugPrompt,

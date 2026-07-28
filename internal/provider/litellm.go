@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/voocel/litellm"
 	"github.com/voocel/litellm/provider/anthropic"
-	"github.com/voocel/litellm/provider/compat"
 	"github.com/voocel/litellm/provider/openai"
 	"github.com/voocel/litellm/provider/openrouter"
 )
@@ -25,6 +25,7 @@ import (
 type LitellmConfig struct {
 	ProviderID          string
 	Model               string
+	ModelAPI            string
 	BaseURL             string
 	APIKey              string
 	OpenRouterRef       string
@@ -80,20 +81,7 @@ func NewLitellmClient(cfg LitellmConfig) (*litellm.Client, error) {
 		})
 
 	case "github_copilot":
-		prov, err = compat.New(compat.Config{
-			APIKey:    cfg.APIKey,
-			BaseURL:   baseURL,
-			Transport: cfg.RoundTripper,
-			UserAgent: gitHubCopilotUserAgent,
-			Headers:   gitHubCopilotExtraHeaders(),
-		}, compat.Spec{
-			Name: "github_copilot",
-			Endpoint: compat.EndpointSpec{
-				ChatPath:   "/chat/completions",
-				ModelsPath: "/models",
-			},
-			Auth: compat.AuthSpec{APIKeyRequired: true},
-		})
+		prov, err = newGitHubCopilotProvider(cfg, baseURL)
 
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", cfg.ProviderID)
@@ -154,6 +142,53 @@ func ensureV1Suffix(baseURL string) string {
 func isAnthropicModel(model string) bool {
 	lower := strings.ToLower(model)
 	return strings.HasPrefix(lower, "qwen") || strings.HasPrefix(lower, "minimax")
+}
+
+func newGitHubCopilotProvider(cfg LitellmConfig, baseURL string) (litellm.Provider, error) {
+	api := openai.APIChat
+	if cfg.ModelAPI == GitHubCopilotAPIResponses {
+		api = openai.APIResponses
+	}
+	return openai.New(openai.Config{
+		API:       api,
+		APIKey:    cfg.APIKey,
+		BaseURL:   baseURL,
+		Transport: newGitHubCopilotRootTransport(cfg.RoundTripper),
+		UserAgent: gitHubCopilotUserAgent,
+		Headers:   gitHubCopilotExtraHeaders(),
+	})
+}
+
+type gitHubCopilotRootTransport struct {
+	base http.RoundTripper
+}
+
+func newGitHubCopilotRootTransport(base http.RoundTripper) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return &gitHubCopilotRootTransport{base: base}
+}
+
+func (t *gitHubCopilotRootTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL = cloneURL(req.URL)
+	clone.URL.Path = strings.TrimPrefix(clone.URL.Path, "/v1")
+	if clone.URL.Path == "" {
+		clone.URL.Path = "/"
+		clone.URL.RawPath = "/"
+		return t.base.RoundTrip(clone)
+	}
+	clone.URL.RawPath = strings.TrimPrefix(clone.URL.RawPath, "/v1")
+	return t.base.RoundTrip(clone)
+}
+
+func cloneURL(u *url.URL) *url.URL {
+	if u == nil {
+		return nil
+	}
+	clone := *u
+	return &clone
 }
 
 // DebugHook implements litellm.Hook to provide debug logging and error dump
