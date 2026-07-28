@@ -44,7 +44,8 @@ type HistoryManager interface {
 	AppendAssistant(content string, toolCalls []litellm.ToolUseBlock)
 
 	// AppendTool appends a tool result message.
-	AppendTool(toolCallID, content string, isError bool)
+	// rawContent is the pre-compression output (empty when compression did not apply).
+	AppendTool(toolCallID, content, rawContent string, isError bool)
 
 	// RequestBased returns true when history is stored directly on the
 	// *litellm.Request (requestHistoryManager) rather than in a session manager.
@@ -99,11 +100,11 @@ func (m *sessionHistoryManager) AppendAssistant(content string, toolCalls []lite
 }
 
 // AppendTool appends a tool result message to the session manager.
-func (m *sessionHistoryManager) AppendTool(toolCallID, content string, isError bool) {
+func (m *sessionHistoryManager) AppendTool(toolCallID, content, rawContent string, isError bool) {
 	if m.sessionMgr == nil {
 		return
 	}
-	m.sessionMgr.AppendTool(m.sessionID, toolCallID, content, isError)
+	m.sessionMgr.AppendTool(m.sessionID, toolCallID, content, rawContent, isError)
 }
 
 // RequestBased returns false since this implementation uses a session manager.
@@ -142,8 +143,9 @@ func (m *requestHistoryManager) AppendAssistant(content string, toolCalls []lite
 }
 
 // AppendTool appends a tool result message to req.Messages.
-func (m *requestHistoryManager) AppendTool(toolCallID, content string, isError bool) {
-	_ = isError // The error flag is not stored; content conveys it.
+func (m *requestHistoryManager) AppendTool(toolCallID, content, rawContent string, isError bool) {
+	_ = isError    // The error flag is not stored; content conveys it.
+	_ = rawContent // Not stored on the request (only used for snapshots).
 	m.req.Messages = append(m.req.Messages, toolResultToLitellm(toolCallID, content))
 }
 

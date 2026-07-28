@@ -82,7 +82,7 @@ func TestSessionManager_AppendTool(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	m.AppendTool("sess-1", "call-1", "file contents", false)
+	m.AppendTool("sess-1", "call-1", "file contents", "", false)
 
 	m.AppendUser("sess-1", "hello") // push a user to trigger history read
 
@@ -109,7 +109,7 @@ func TestSessionManager_AppendTool_IsError(t *testing.T) {
 	m := NewSessionManager(50)
 	m.Create("sess-1")
 
-	m.AppendTool("sess-1", "call-2", "command not found", true)
+	m.AppendTool("sess-1", "call-2", "command not found", "", true)
 
 	m.AppendUser("sess-1", "hello")
 
@@ -189,7 +189,7 @@ func TestSessionManager_AppendAssistantUnknownSession(t *testing.T) {
 
 func TestSessionManager_AppendToolUnknownSession(t *testing.T) {
 	m := NewSessionManager(50)
-	m.AppendTool("nonexistent", "call-1", "", false) // should not panic
+	m.AppendTool("nonexistent", "call-1", "", "", false) // should not panic
 }
 
 func TestSessionManager_CreateTwiceIsNoop(t *testing.T) {
@@ -298,7 +298,7 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 	m.AppendAssistant("sess-1", "", []message.ToolCall{
 		{ID: "call-1", Type: "function", Function: message.FunctionCall{Name: "file_viewer", Arguments: `{}`}},
 	})
-	m.AppendTool("sess-1", "call-1", "content", false)
+	m.AppendTool("sess-1", "call-1", "content", "", false)
 	m.AppendAssistant("sess-1", "resp1", nil)
 
 	// Exchange 2: user -> assistant (with tool call) -> tool result
@@ -306,7 +306,7 @@ func TestSessionManager_WindowCapWithToolMessages(t *testing.T) {
 	m.AppendAssistant("sess-1", "", []message.ToolCall{
 		{ID: "call-2", Type: "function", Function: message.FunctionCall{Name: "terminal_execute", Arguments: `{}`}},
 	})
-	m.AppendTool("sess-1", "call-2", "output", false)
+	m.AppendTool("sess-1", "call-2", "output", "", false)
 
 	// Exchange 3: user -> assistant (triggers trim)
 	m.AppendUser("sess-1", "third")

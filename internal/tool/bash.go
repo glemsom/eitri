@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/sandbox"
 	"github.com/voocel/litellm"
 )
 
-const maxBashOutputBytes = 4 * 1024
+const maxBashOutputBytes = 8 * 1024
 
 type bashArgs struct {
 	Command string `json:"command" jsonschema:"Shell command to run in the workspace directory"`
@@ -45,7 +46,7 @@ func (t *BashTool) Name() string {
 }
 
 func (t *BashTool) Description() string {
-	return "Run a shell command in the workspace. Each call is a fresh shell — chain with && or use env vars to persist state. For commands, tests, builds, or shell operations. Capped at 4 KiB of output."
+	return "Run a shell command in the workspace. Each call is a fresh shell — chain with && or use env vars to persist state. For commands, tests, builds, or shell operations. Capped at 8 KiB of output."
 }
 
 func (t *BashTool) JSONSchema() litellm.Schema {
@@ -137,8 +138,8 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		output += "[command timed out]"
 	}
 
-	// Truncate if output exceeds limit
-	const truncationMarker = "... (output truncated at 4 KiB)"
+	// Cap raw output at 8 KiB before compression.
+	const truncationMarker = "... (output truncated at 8 KiB)"
 	if len(output) > maxBashOutputBytes {
 		truncLen := maxBashOutputBytes - len(truncationMarker)
 		if truncLen < 0 {
@@ -147,9 +148,24 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		output = output[:truncLen] + truncationMarker
 	}
 
-	blocks := TextBlocks(output)
-	if exitCode != 0 || timedOut {
-		return ToolError(blocks), nil
+	// Apply pattern compression.
+	// compress.Compress returns the original unchanged when no compressor
+	// matches or anti-inflation would kick in.
+	compressed := compress.Compress(parsed.Command, output)
+
+	// Determine which version to send to the LLM and whether to preserve raw.
+	var blocks []litellm.Block
+	var rawBlocks []litellm.Block
+	if compressed != output {
+		blocks = TextBlocks(compressed)
+		rawBlocks = TextBlocks(output)
+	} else {
+		blocks = TextBlocks(output)
+		rawBlocks = nil
 	}
-	return Success(blocks), nil
+
+	if exitCode != 0 || timedOut {
+		return ToolResult{Blocks: blocks, RawBlocks: rawBlocks, IsError: true}, nil
+	}
+	return ToolResult{Blocks: blocks, RawBlocks: rawBlocks}, nil
 }

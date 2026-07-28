@@ -194,7 +194,8 @@ func (m *SessionManager) AppendAssistant(id, content string, toolCalls []message
 }
 
 // AppendTool appends a tool result message. No-op if session does not exist.
-func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool) {
+// rawContent is the pre-compression output for debugging snapshots.
+func (m *SessionManager) AppendTool(id, toolUseID, content, rawContent string, isError bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[id]
@@ -205,6 +206,7 @@ func (m *SessionManager) AppendTool(id, toolUseID, content string, isError bool)
 		Role:       "tool",
 		ToolCallID: toolUseID,
 		Content:    content,
+		RawContent: rawContent,
 	}
 	s.messages = append(s.messages, message.EitriMessage{
 		Message:   message.ToLitellmMessage(msg),

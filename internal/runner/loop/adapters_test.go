@@ -108,7 +108,7 @@ func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	sessionMgr.AppendUser(sessionID, "run tool")
 
 	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
-	adapter.AppendTool("call_1", "result content", false)
+	adapter.AppendTool("call_1", "result content", "", false)
 
 	msgs := adapter.History()
 	last := msgs[len(msgs)-1]
@@ -127,7 +127,7 @@ func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 	t.Parallel()
 	adapter := NewSessionHistoryManager(nil, "test-session")
 	// Should not panic
-	adapter.AppendTool("call_1", "result", false)
+	adapter.AppendTool("call_1", "result", "", false)
 }
 
 func TestSessionHistoryManager_Interface(t *testing.T) {
@@ -254,7 +254,7 @@ func TestRequestHistoryManager_AppendTool(t *testing.T) {
 		},
 	}
 	adapter := NewRequestHistoryManager(req)
-	adapter.AppendTool("call_1", "tool result", false)
+	adapter.AppendTool("call_1", "tool result", "", false)
 
 	if len(req.Messages) != 2 {
 		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
@@ -277,7 +277,7 @@ func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	req := &litellm.Request{}
 	adapter := NewRequestHistoryManager(req)
 	// isError is not stored in litellm message, but the content carries the error info.
-	adapter.AppendTool("call_err", "error message", true)
+	adapter.AppendTool("call_err", "error message", "", true)
 
 	if len(req.Messages) != 1 {
 		t.Fatalf("req.Messages length = %d, want 1", len(req.Messages))
