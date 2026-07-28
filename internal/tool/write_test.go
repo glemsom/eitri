@@ -207,7 +207,7 @@ func TestWrite_OverwriteExistingFile(t *testing.T) {
 func TestWrite_MissingContent(t *testing.T) {
 	dir := t.TempDir()
 	tool := NewWriteTool(dir)
-	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","content":""}`))
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,6 +223,64 @@ func TestWrite_MissingContent(t *testing.T) {
 	}
 	if !strings.Contains(block.Text, "content is required") {
 		t.Errorf("expected 'content is required' error, got %q", block.Text)
+	}
+}
+
+func TestWrite_EmptyContentCreatesZeroByteFile(t *testing.T) {
+	dir := t.TempDir()
+	tool := NewWriteTool(dir)
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"empty.txt","content":""}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "empty.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Errorf("file length = %d, want 0", len(data))
+	}
+	if len(result.Blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(block.Text, "Wrote 0 bytes") {
+		t.Errorf("expected zero-byte success message, got %q", block.Text)
+	}
+}
+
+func TestWrite_EmptyContentTruncatesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("old content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewWriteTool(dir)
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"existing.txt","content":""}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+	info, err := os.Stat(filepath.Join(dir, "existing.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != 0 {
+		t.Errorf("file size = %d, want 0", info.Size())
+	}
+	block, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(block.Text, "Wrote 0 bytes") || !strings.Contains(block.Text, "overwrite") {
+		t.Errorf("expected zero-byte overwrite success message, got %q", block.Text)
 	}
 }
 

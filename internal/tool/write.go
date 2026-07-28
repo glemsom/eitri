@@ -13,8 +13,8 @@ import (
 )
 
 type writeArgs struct {
-	Path    string `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace."`
-	Content string `json:"content" jsonschema:"File content as UTF-8 text. For new files, parent directories are created automatically."`
+	Path    string  `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace."`
+	Content *string `json:"content" jsonschema:"File content as UTF-8 text. For new files, parent directories are created automatically."`
 }
 
 // WriteTool implements ToolHandler for creating and overwriting files.
@@ -53,7 +53,7 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) (ToolResult,
 		return ToolError(TextBlocks("Error: path is required")), nil
 	}
 
-	if parsed.Content == "" {
+	if parsed.Content == nil {
 		return ToolError(TextBlocks("Error: content is required")), nil
 	}
 
@@ -76,11 +76,12 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) (ToolResult,
 	}
 
 	// Write file
-	if err := os.WriteFile(absPath, []byte(parsed.Content), 0o644); err != nil {
+	content := *parsed.Content
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: writing file: %v", err))), nil
 	}
 
-	bytesWritten := len(parsed.Content)
+	bytesWritten := len(content)
 
 	var output string
 	if exists {

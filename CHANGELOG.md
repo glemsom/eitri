@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `write` tool now accepts empty `content` values, enabling empty file creation and truncation while still rejecting omitted content.
+
 - Session screenshot file serving now requires the owning `browser_id` cookie and rejects non-screenshot filenames.
 
 - Workspace directory browser and workspace update endpoints now require the owning `browser_id` cookie, returning 401 when missing and 404 when mismatched.
