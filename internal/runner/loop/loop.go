@@ -410,7 +410,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if dispErr != nil {
 				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
 				spec.SSEWriter.ToolResult(tc.Name, errMsg)
-				opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+				opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 				slog.Warn("tool dispatch error", slog.String("tool", tc.Name), slog.String("error", errMsg))
 				continue
 			}
@@ -434,7 +434,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
 					spec.SSEWriter.ToolResult(tc.Name, errMsg)
-					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 					continue
 				}
 
@@ -444,13 +444,13 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
 						spec.SSEWriter.ToolResult(tc.Name, errMsg)
-						opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+						opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 						continue
 					}
 				} else {
 					errMsg := "Access denied to path: " + confPath
 					spec.SSEWriter.ToolResult(tc.Name, errMsg)
-					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 					continue
 				}
 			}
@@ -509,7 +509,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Name)
 			}
-			opts.HistoryMgr.AppendTool(tc.ID, resultContent, isError)
+			resultRawContent := blocksToText(dispResult.RawBlocks)
+			opts.HistoryMgr.AppendTool(tc.ID, resultContent, resultRawContent, isError)
 		}
 
 		// Broadcast context_update after tool results appended to history

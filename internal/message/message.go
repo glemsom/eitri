@@ -45,10 +45,15 @@ type FunctionCall struct {
 //
 // All data paths (LLM API → persistence → UI) can use this type or convert
 // from EitriMessage as needed.
+//
+// RawContent holds the pre-compression output for tool messages. It is set
+// when pattern compression changed the output; nil/empty when compression did
+// not apply or left output unchanged.
 type Message struct {
 	Role             string          `json:"role"`
 	Content          string          `json:"content"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
+	RawContent       string          `json:"raw_content,omitempty"`     // pre-compression output for debugging
 	ToolCallID       string          `json:"tool_call_id,omitempty"`
 	ToolCalls        []ToolCall      `json:"tool_calls,omitempty"`
 	CreatedAt        time.Time       `json:"created_at"`
