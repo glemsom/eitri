@@ -23,6 +23,7 @@ func TestJsFiles(t *testing.T) {
 		"prism.min.css",
 		"katex.min.css",
 		"eitri-context.js",
+		"sw.js",
 	}
 	for _, name := range files {
 		f, err := Files.Open(name)
@@ -482,6 +483,113 @@ extractBody:
 			got := fn(tc.input)
 			if !strings.Contains(got, tc.wantHTML) {
 				t.Errorf("lightweightMarkdown(%q)\n  got:  %q\n  want substring: %q", tc.input, got, tc.wantHTML)
+			}
+		})
+	}
+}
+
+func TestServiceWorker(t *testing.T) {
+	f, err := Files.Open("sw.js")
+	if err != nil {
+		t.Fatalf("failed to open sw.js: %v", err)
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("failed to read sw.js: %v", err)
+	}
+	content := string(data)
+
+	tests := []struct {
+		name    string
+		want    string
+		missing string
+	}{
+		{
+			name: "install event precaches all static assets",
+			want: `cache.addAll([`,
+		},
+		{
+			name: "precaches root path",
+			want: `"/"`,
+		},
+		{
+			name: "precaches eitri.css",
+			want: `"/static/eitri.css"`,
+		},
+		{
+			name: "precaches JS files",
+			want: `"/static/htmx.min.js"`,
+		},
+		{
+			name: "precaches favicon",
+			want: `"/static/favicon-32.png"`,
+		},
+		{
+			name: "precaches manifest",
+			want: `"/manifest.json"`,
+		},
+		{
+			name: "activate event cleans old caches",
+			want: `caches.keys`,
+		},
+		{
+			name: "activate event deletes non-current caches",
+			want: `caches.delete(key)`,
+		},
+		{
+			name:    "network-only for /api/ endpoints",
+			want:    `url.pathname.startsWith("/api/")`,
+		},
+		{
+			name:    "network-only for /stream endpoints",
+			want:    `url.pathname.startsWith("/stream")`,
+		},
+		{
+			name: "cache-first for /static/ assets",
+			want: `url.pathname.startsWith("/static/")`,
+		},
+		{
+			name: "cache-first uses cache.match then fetch fallback",
+			want: `cache.match(event.request)`,
+		},
+		{
+			name: "network-first for Google Fonts",
+			want: `"fonts.googleapis.com"`,
+		},
+		{
+			name: "network-first for fonts.gstatic.com",
+			want: `"fonts.gstatic.com"`,
+		},
+		{
+			name: "navigation fallback to cached shell",
+			want: `event.request.mode === "navigate"`,
+		},
+		{
+			name: "navigation fetch with cache fallback",
+			want: `caches.match("/")`,
+		},
+		{
+			name: "skipWaiting on install",
+			want: `self.skipWaiting()`,
+		},
+		{
+			name: "clients.claim on activate",
+			want: `self.clients.claim()`,
+		},
+		{
+			name: "cache version constant",
+			want: `CACHE`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(content, tc.want) {
+				t.Errorf("sw.js should contain %q", tc.want)
+			}
+			if tc.missing != "" && strings.Contains(content, tc.missing) {
+				t.Errorf("sw.js should not contain %q (wrong section)", tc.missing)
 			}
 		})
 	}
