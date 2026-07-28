@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,12 +19,12 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/skills"
 )
 
@@ -1066,15 +1066,15 @@ func TestChatRun_SkipsDisappearedActiveSkillAndShowsWarning(t *testing.T) {
 
 func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)
-	modelsAuthCh := make(chan string, 1)
-	chatAuthCh := make(chan string, 1)
+	modelsAuthCh := make(chan string, 8)
+	chatAuthCh := make(chan string, 8)
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/models":
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/v1/chat/completions":
+		case "/chat/completions", "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {
@@ -1122,15 +1122,15 @@ func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 
 func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 	h := newManagedTestServerWithRuns(t)
-	modelsAuthCh := make(chan string, 1)
-	chatAuthCh := make(chan string, 1)
+	modelsAuthCh := make(chan string, 8)
+	chatAuthCh := make(chan string, 8)
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/models":
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/v1/chat/completions":
+		case "/chat/completions", "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {
@@ -1188,15 +1188,15 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
 
-	modelsAuthCh := make(chan string, 1)
-	chatAuthCh := make(chan string, 1)
+	modelsAuthCh := make(chan string, 8)
+	chatAuthCh := make(chan string, 8)
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/models":
 			modelsAuthCh <- r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"data":[{"id":"gpt-4.1","policy":{"state":"enabled"},"model_picker_enabled":true,"supported_endpoints":["/chat/completions"]}]}`)
-		case "/v1/chat/completions":
+		case "/chat/completions", "/v1/chat/completions":
 			chatAuthCh <- r.Header.Get("Authorization")
 			flusher, ok := w.(http.Flusher)
 			if !ok {

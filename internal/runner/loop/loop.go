@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	runtimeDebug "runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -264,10 +265,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
 		var (
-			content    strings.Builder
-			toolCalls  []litellm.ToolUseBlock
-			usage      *litellm.Usage
-			streamErr  error
+			content   strings.Builder
+			toolCalls []litellm.ToolUseBlock
+			usage     *litellm.Usage
+			streamErr error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			stream, err := spec.Client.Stream(ctx, *litellmReq)
@@ -546,12 +547,26 @@ func processStream(
 	stream litellm.Stream,
 	sseWriter *runstate.Writer,
 ) (strings.Builder, []litellm.ToolUseBlock, *litellm.Usage, error) {
-	defer stream.Close()
+	var closeOnce sync.Once
+	closeStream := func() {
+		closeOnce.Do(func() { _ = stream.Close() })
+	}
+
+	done := make(chan struct{})
+	defer func() {
+		close(done)
+		closeStream()
+	}()
 
 	// Close the stream when the context is cancelled so Next() unblocks.
+	// Stop the helper when processStream returns normally; successful runs do
+	// not cancel the parent run context.
 	go func() {
-		<-ctx.Done()
-		stream.Close()
+		select {
+		case <-ctx.Done():
+			closeStream()
+		case <-done:
+		}
 	}()
 
 	var content strings.Builder
@@ -631,6 +646,7 @@ func processStream(
 		}
 	}
 }
+
 // drainRemaining reads any buffered events from the stream when the context
 // has been cancelled. This mirrors the previous drainStream buffered-event
 // drain behaviour.
