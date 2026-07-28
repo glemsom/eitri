@@ -72,14 +72,15 @@
       .then(function (data) {
         if (data.data && Array.isArray(data.data)) {
           updateModelSelect(data.data);
-          // Only show success toast when models are returned
           if (data.data.length > 0) {
             showToast('\u2713 Models refreshed');
+          } else {
+            showToast('\u26a0 No models discovered. Check credentials and save.');
           }
         }
       })
-      .catch(function () {
-        showToast('Model refresh failed');
+      .catch(function (err) {
+        showToast('Failed to refresh models: ' + err.message);
       })
       .finally(function () {
         if (spinner) spinner.style.visibility = 'hidden';

@@ -157,6 +157,28 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Validate provider credentials by calling the profile's model discovery path.
 	models, contextWindows, modelAPIs, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
+		providerChanged := newCfg.Provider != cfg.Provider
+		if providerChanged && isHTMXRequest(r) {
+			// Provider changed but model discovery failed — save the provider change
+			// anyway (with empty model) and surface a warning so the user can fix
+			// credentials. Reload disk config first to capture any auth refresh that
+			// may have been persisted by PersistAuth inside DiscoverModels.
+			newCfg.Model = ""
+			newCfg.ModelAPI = ""
+			newCfg.ThinkingLevel = ""
+			if diskCfg, loadErr := config.Load(s.config.ConfigPath); loadErr == nil {
+				newCfg.APIKey = diskCfg.APIKey
+				newCfg.ProviderAuth = append(json.RawMessage(nil), diskCfg.ProviderAuth...)
+			}
+			if saveErr := s.saveProviderConfig(newCfg); saveErr != nil {
+				http.Error(w, "Failed to save config: "+saveErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			warning := fmt.Sprintf("Provider changed to %q, but model discovery failed: %s. Enter valid credentials and Save again to enable a model.", s.providerDisplayName(newCfg.Provider), err.Error())
+			component := templates.SettingsForm(maskedConfig(newCfg), nil, "", warning, nil, "", sandbox.BwrapAvailable(), nil)
+			component.Render(r.Context(), w)
+			return
+		}
 		if isHTMXRequest(r) {
 			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
 			return
