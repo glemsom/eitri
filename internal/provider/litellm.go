@@ -137,11 +137,19 @@ func ensureV1Suffix(baseURL string) string {
 	return base
 }
 
-// isAnthropicModel returns true when the model prefix matches the
+// IsAnthropicRoutedModel returns true when the model prefix matches the
 // OpenCode Go Anthropic-compatible route (qwen*, minimax*).
-func isAnthropicModel(model string) bool {
+// These models are routed through the Anthropic provider by newOpenCodeGoProvider,
+// which rejects provider options like prompt_cache_key.
+func IsAnthropicRoutedModel(model string) bool {
 	lower := strings.ToLower(model)
 	return strings.HasPrefix(lower, "qwen") || strings.HasPrefix(lower, "minimax")
+}
+
+// isAnthropicModel is a package-internal alias for IsAnthropicRoutedModel,
+// kept for readability inside this package.
+func isAnthropicModel(model string) bool {
+	return IsAnthropicRoutedModel(model)
 }
 
 func newGitHubCopilotProvider(cfg LitellmConfig, baseURL string) (litellm.Provider, error) {

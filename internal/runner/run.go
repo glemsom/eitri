@@ -103,9 +103,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Model: modelName,
 	}
 
-	// Set session-scoped prompt cache key if the provider supports it
+	// Set session-scoped prompt cache key if the provider supports it.
+	// Skip for Anthropic-routed models (qwen*, minimax*) because the
+	// Anthropic provider rejects unknown provider options like prompt_cache_key.
 	providerDesc, _ := provider.Describe(cfg.ProviderID)
-	if providerDesc.SupportsPromptCache {
+	if providerDesc.SupportsPromptCache && !provider.IsAnthropicRoutedModel(modelName) {
 		if req.ProviderOptions == nil {
 			req.ProviderOptions = make(litellm.ProviderOptions)
 		}

@@ -134,9 +134,13 @@ func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, 
 		lr.Thinking = base.Thinking
 	}
 
-	// Copy provider options from base request
+	// Copy provider options from base request (defensive copy to avoid
+	// shared-mutation issues if the map is ever modified downstream).
 	if base.ProviderOptions != nil {
-		lr.ProviderOptions = base.ProviderOptions
+		lr.ProviderOptions = make(litellm.ProviderOptions, len(base.ProviderOptions))
+		for k, v := range base.ProviderOptions {
+			lr.ProviderOptions[k] = v
+		}
 	}
 
 	return lr
