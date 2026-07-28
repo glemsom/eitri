@@ -54,8 +54,14 @@
     var spinner = document.getElementById('model-refresh-spinner');
     if (spinner) spinner.style.visibility = 'visible';
 
-    // Fetch models via fetch API (not HTMX) to get JSON, then update select
-    fetch('/api/models')
+    // Fetch models via fetch API (not HTMX) to get JSON, using current unsaved form values.
+    var form = document.querySelector('#settings-form form');
+    var params = form ? new URLSearchParams(new FormData(form)) : new URLSearchParams();
+    var url = '/api/models';
+    var query = params.toString();
+    if (query) url += '?' + query;
+
+    fetch(url)
       .then(function (res) {
         if (!res.ok) throw new Error('Failed to fetch models');
         return res.json();

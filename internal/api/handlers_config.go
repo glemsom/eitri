@@ -274,7 +274,7 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, _, _, err := s.fetchModelList(r.Context(), cfg)
+	models, err := s.modelListForRequest(r.Context(), r, cfg)
 	if err != nil {
 		if isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -300,4 +300,44 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		"object": "list",
 		"data":   models,
 	})
+}
+
+func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved *config.Config) ([]string, error) {
+	patch, err := parseConfigPatch(r)
+	if err != nil {
+		return nil, err
+	}
+	if !hasModelConfigPatch(patch) {
+		models, _, _, err := s.fetchModelList(ctx, saved)
+		return models, err
+	}
+
+	current := normalizePatchedConfig(saved, patch)
+	result, err := provider.DiscoverModels(ctx, provider.DiscoveryRequest{
+		ProviderID:    current.Provider,
+		BaseURL:       current.BaseURL,
+		APIKey:        current.APIKey,
+		ProviderAuth:  current.ProviderAuth,
+		SelectedModel: current.Model,
+	}, provider.DiscoveryOptions{
+		HTTPClient:         s.httpClient,
+		GitHubCopilotOAuth: s.copilotOAuth,
+		// No PersistAuth here: refresh/test must not save unsaved form values.
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+	return result.Models, nil
+}
+
+func hasModelConfigPatch(patch map[string]any) bool {
+	for _, key := range []string{"provider", "base_url", "api_key", "clear_api_key", "model"} {
+		if _, ok := patch[key]; ok {
+			return true
+		}
+	}
+	return false
 }

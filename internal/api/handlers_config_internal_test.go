@@ -462,6 +462,123 @@ func TestBuildBreadcrumbs_TrailingSlash(t *testing.T) {
 	}
 }
 
+func TestHandleGetModels_UsesSubmittedFormValues(t *testing.T) {
+	oldProviderSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("old saved base URL was queried: %s", r.URL.Path)
+	}))
+	defer oldProviderSrv.Close()
+
+	newProviderSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer submitted-key" {
+			t.Errorf("Authorization = %q, want Bearer submitted-key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"submitted-model"}]}`))
+	}))
+	defer newProviderSrv.Close()
+
+	srv := newInternalTestServer(t)
+	saved := &config.Config{
+		Provider: "custom_openai",
+		BaseURL:  oldProviderSrv.URL,
+		APIKey:   "saved-key",
+		Model:    "saved-model",
+	}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+newProviderSrv.URL+"&api_key=submitted-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	var body struct {
+		Data []string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data) != 1 || body.Data[0] != "submitted-model" {
+		t.Fatalf("data = %#v, want [submitted-model]", body.Data)
+	}
+
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BaseURL != oldProviderSrv.URL || loaded.APIKey != "saved-key" {
+		t.Fatalf("saved config mutated: base_url=%q api_key=%q", loaded.BaseURL, loaded.APIKey)
+	}
+}
+
+func TestHandleGetModels_SubmittedMaskedAPIKeyKeepsSavedSecret(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-saved-secret-value" {
+			t.Errorf("Authorization = %q, want Bearer sk-saved-secret-value", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"masked-ok"}]}`))
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	saved := &config.Config{
+		Provider: "custom_openai",
+		BaseURL:  providerSrv.URL,
+		APIKey:   "sk-saved-secret-value",
+	}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+providerSrv.URL+"&api_key="+config.MaskAPIKey(saved.APIKey), nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+}
+
+func TestSettingsForm_TestConnectionIncludesCurrentFormValues(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	cfg := &config.Config{Provider: "custom_openai", BaseURL: "http://example.com", APIKey: "sk-test"}
+
+	writeSettingsForm(w, r, http.StatusOK, cfg, []string{"gpt-4o"}, "")
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(body)
+	if !strings.Contains(html, `id="test-connection-btn"`) {
+		t.Fatal("settings form missing Test Connection button")
+	}
+	if !strings.Contains(html, `hx-include="closest form"`) {
+		t.Fatalf("Test Connection button missing hx-include closest form: %s", html)
+	}
+}
+
 func TestHandlePutConfig_AutoPopulatesContextWindowFromDiscovery(t *testing.T) {
 	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models/gpt-4o" {

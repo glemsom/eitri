@@ -218,6 +218,27 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-composer.js should set --composer-height on parent element")
 	}
 
+	// Verify settings model refresh includes current unsaved form values.
+	fSettings, err := Files.Open("eitri-settings.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-settings.js: %v", err)
+	}
+	dataSettings, err := io.ReadAll(fSettings)
+	fSettings.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-settings.js: %v", err)
+	}
+	contentSettings := string(dataSettings)
+	if !strings.Contains(contentSettings, "new FormData(form)") {
+		t.Error("eitri-settings.js model refresh should read current settings form values")
+	}
+	if !strings.Contains(contentSettings, "URLSearchParams") {
+		t.Error("eitri-settings.js model refresh should send form values as query params")
+	}
+	if strings.Contains(contentSettings, "fetch('/api/models')") {
+		t.Error("eitri-settings.js model refresh must not fetch /api/models without form values")
+	}
+
 	// Verify context JS exports
 	f5, err := Files.Open("eitri-context.js")
 	if err != nil {
