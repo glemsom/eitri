@@ -166,12 +166,21 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(newCfg.Model) != "" {
 		if err := config.ValidateSelectedModel(newCfg, models); err != nil {
-			if isHTMXRequest(r) {
-				writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
+			// HTMX form submissions always include the model field (echoed from current
+			// config). When the provider changes, the old model is likely invalid for the
+			// new provider — silently clear it instead of blocking the save.
+			providerChanged := newCfg.Provider != cfg.Provider
+			if providerChanged && isHTMXRequest(r) {
+				newCfg.Model = ""
+				levels = nil
+			} else {
+				if isHTMXRequest(r) {
+					writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
+					return
+				}
+				writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 				return
 			}
-			writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
-			return
 		}
 	}
 
