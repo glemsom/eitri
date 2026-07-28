@@ -283,6 +283,14 @@ func (s *Server) saveProviderConfig(cfg *config.Config) error {
 	return config.Save(s.config.ConfigPath, cfg)
 }
 
+// providerDisplayName returns the human-readable name for a provider ID.
+func (s *Server) providerDisplayName(id string) string {
+	if d, err := provider.Describe(id); err == nil {
+		return d.DisplayName
+	}
+	return id
+}
+
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(s.config.ConfigPath)
 	if err != nil {
@@ -312,7 +320,7 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 			if isHTMXRequest(r) {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				w.WriteHeader(http.StatusOK)
-				_ = templates.TestConnectionResult(false, "Provide credentials and save to discover models.").Render(r.Context(), w)
+				_ = templates.TestConnectionResult(false, fmt.Sprintf("Enter credentials for %s and click Save to discover models.", s.providerDisplayName(cfg.Provider))).Render(r.Context(), w)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
