@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -299,75 +300,83 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, providerOverridden, err := s.modelListForRequest(r.Context(), r, cfg)
+	result, err := s.modelListForRequest(r.Context(), r, cfg)
 	if err != nil {
+		message := testConnectionErrorMessage(result.providerID, err)
 		// When provider is overridden by query params, auth likely doesn't match
 		// the saved credentials. Return empty models instead of an error so the
 		// JS refreshModels() can update the select without showing a confusing
 		// error toast. The user will see an empty dropdown and complete auth on save.
-		if providerOverridden {
-			if isHTMXRequest(r) {
-				providerName := r.URL.Query().Get("provider")
-				if providerName == "" {
-					providerName = cfg.Provider
-				}
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusOK)
-				_ = templates.TestConnectionResult(false, fmt.Sprintf("Enter credentials for %s and click Save to discover models.", s.providerDisplayName(providerName))).Render(r.Context(), w)
-				return
-			}
+		if result.providerOverridden && !isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{
-				"object": "list",
-				"data":   []string{},
-			})
+			json.NewEncoder(w).Encode(testConnectionJSON(result.withModels(nil)))
 			return
 		}
 
 		if isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			_ = templates.TestConnectionResult(false, "Connection failed: "+err.Error()).Render(r.Context(), w)
+			writeTestConnectionHTML(w, false, "Connection failed: "+message, nil, result.selectedModel)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{"error": message})
 		return
 	}
 
 	if isHTMXRequest(r) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_ = templates.TestConnectionResult(true, "Connection OK").Render(r.Context(), w)
+		writeTestConnectionHTML(w, true, result.message, result.models, result.selectedModel)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"object": "list",
-		"data":   models,
-	})
+	json.NewEncoder(w).Encode(testConnectionJSON(result))
 }
 
-func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved *config.Config) ([]string, bool, error) {
+type modelListRequestResult struct {
+	models                   []string
+	providerID               string
+	providerOverridden       bool
+	selectedModel            string
+	selectedModelVerified    bool
+	selectedModelUnavailable bool
+	message                  string
+}
+
+func (r modelListRequestResult) withModels(models []string) modelListRequestResult {
+	r.models = models
+	r.selectedModelVerified = false
+	r.selectedModelUnavailable = false
+	r.message = testConnectionMessage(r.models, r.selectedModel, false, false)
+	return r
+}
+
+func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved *config.Config) (modelListRequestResult, error) {
 	patch, err := parseConfigPatch(r)
 	if err != nil {
-		return nil, false, err
+		return modelListRequestResult{}, err
 	}
+	providerID := saved.Provider
 	providerOverridden := false
-	if v, ok := patch["provider"].(string); ok && v != "" && v != saved.Provider {
-		providerOverridden = true
+	if v, ok := patch["provider"].(string); ok && v != "" {
+		providerID = v
+		providerOverridden = v != saved.Provider
 	}
+	base := modelListRequestResult{providerID: providerID, providerOverridden: providerOverridden, selectedModel: saved.Model}
 	if !hasModelConfigPatch(patch) {
 		models, _, _, err := s.fetchModelList(ctx, saved)
-		return models, false, err
+		return modelListResult(models, saved.Model, providerID, providerOverridden), err
 	}
 
 	current := normalizePatchedConfig(saved, patch)
+	base.providerID = current.Provider
+	base.selectedModel = current.Model
 	if err := validateModelDiscoveryDraft(current); err != nil {
-		return nil, providerOverridden, err
+		return base, err
 	}
 	result, err := provider.DiscoverModels(ctx, provider.DiscoveryRequest{
 		ProviderID:    current.Provider,
@@ -381,12 +390,108 @@ func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved
 		// No PersistAuth here: refresh/test must not save unsaved form values.
 	})
 	if err != nil {
-		return nil, providerOverridden, err
+		return base, err
 	}
 	if result == nil {
-		return nil, providerOverridden, nil
+		return modelListResult(nil, current.Model, current.Provider, providerOverridden), nil
 	}
-	return result.Models, providerOverridden, nil
+	return modelListResult(result.Models, current.Model, current.Provider, providerOverridden), nil
+}
+
+func modelListResult(models []string, selectedModel, providerID string, providerOverridden bool) modelListRequestResult {
+	verified := false
+	if strings.TrimSpace(selectedModel) != "" {
+		for _, model := range models {
+			if model == selectedModel {
+				verified = true
+				break
+			}
+		}
+	}
+	unavailable := strings.TrimSpace(selectedModel) != "" && !verified
+	return modelListRequestResult{
+		models:                   models,
+		providerID:               providerID,
+		providerOverridden:       providerOverridden,
+		selectedModel:            selectedModel,
+		selectedModelVerified:    verified,
+		selectedModelUnavailable: unavailable,
+		message:                  testConnectionMessage(models, selectedModel, verified, unavailable),
+	}
+}
+
+func testConnectionMessage(models []string, selectedModel string, verified, unavailable bool) string {
+	count := len(models)
+	modelWord := "models"
+	if count == 1 {
+		modelWord = "model"
+	}
+	message := fmt.Sprintf("Connection OK — discovered %d %s", count, modelWord)
+	if verified {
+		message += fmt.Sprintf("; %s verified", selectedModel)
+	} else if unavailable {
+		message += fmt.Sprintf("; %s unavailable", selectedModel)
+	}
+	return message
+}
+
+func testConnectionErrorMessage(providerID string, err error) string {
+	if providerID == "github_copilot" && strings.Contains(err.Error(), "token is required") {
+		return "Authenticate with GitHub or enter a token, then test connection again."
+	}
+	return err.Error()
+}
+
+func testConnectionJSON(result modelListRequestResult) map[string]any {
+	models := result.models
+	if models == nil {
+		models = []string{}
+	}
+	return map[string]any{
+		"object":                     "list",
+		"data":                       models,
+		"count":                      len(models),
+		"selected_model":             result.selectedModel,
+		"selected_model_verified":    result.selectedModelVerified,
+		"selected_model_unavailable": result.selectedModelUnavailable,
+		"message":                    result.message,
+	}
+}
+
+func writeTestConnectionHTML(w http.ResponseWriter, success bool, message string, models []string, selectedModel string) {
+	className := "connection-err"
+	prefix := ""
+	if success {
+		className = "connection-ok"
+		prefix = "✓ "
+	}
+	fmt.Fprintf(w, `<span class="%s">%s%s</span>`, className, prefix, html.EscapeString(message))
+	if models == nil {
+		return
+	}
+	fmt.Fprint(w, `<select id="model" name="model" hx-swap-oob="outerHTML">`)
+	fmt.Fprint(w, `<option value="" disabled`)
+	if selectedModel == "" {
+		fmt.Fprint(w, ` selected`)
+	}
+	fmt.Fprint(w, `>Select a model...</option>`)
+	selectedFound := false
+	for _, model := range models {
+		if model == selectedModel {
+			selectedFound = true
+		}
+		selectedAttr := ""
+		if model == selectedModel {
+			selectedAttr = ` selected`
+		}
+		escaped := html.EscapeString(model)
+		fmt.Fprintf(w, `<option value="%s"%s>%s</option>`, escaped, selectedAttr, escaped)
+	}
+	if selectedModel != "" && !selectedFound {
+		escaped := html.EscapeString(selectedModel)
+		fmt.Fprintf(w, `<option value="%s" selected>%s (unavailable)</option>`, escaped, escaped)
+	}
+	fmt.Fprint(w, `</select>`)
 }
 
 func validateModelDiscoveryDraft(cfg *config.Config) error {

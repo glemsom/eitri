@@ -523,6 +523,256 @@ func TestHandleGetModels_UsesSubmittedFormValues(t *testing.T) {
 	}
 }
 
+func TestHandleGetModels_TestConnectionReportsSuccessCountAndVerifiedSelectedModel(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"draft-model"},{"id":"other-model"}]}`))
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	saved := &config.Config{
+		Provider: "custom_openai",
+		BaseURL:  "http://saved.invalid",
+		APIKey:   "saved-key",
+		Model:    "saved-model",
+	}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+providerSrv.URL+"&api_key=draft-key&model=draft-model", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var body struct {
+		Data                     []string `json:"data"`
+		Count                    int      `json:"count"`
+		SelectedModel            string   `json:"selected_model"`
+		SelectedModelVerified    bool     `json:"selected_model_verified"`
+		SelectedModelUnavailable bool     `json:"selected_model_unavailable"`
+		Message                  string   `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Count != 2 || !body.SelectedModelVerified || body.SelectedModelUnavailable || body.SelectedModel != "draft-model" {
+		t.Fatalf("body = %+v, want count=2 verified draft-model", body)
+	}
+	if !strings.Contains(body.Message, "Connection OK") || !strings.Contains(body.Message, "2 models") || !strings.Contains(body.Message, "draft-model verified") {
+		t.Fatalf("message = %q, want success count and verification", body.Message)
+	}
+
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BaseURL != saved.BaseURL || loaded.APIKey != saved.APIKey || loaded.Model != saved.Model {
+		t.Fatalf("saved config mutated: %+v", loaded)
+	}
+}
+
+func TestHandleGetModels_TestConnectionReportsUnavailableSelectedModelWithoutSaving(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"available-model"}]}`))
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	saved := &config.Config{Provider: "custom_openai", BaseURL: providerSrv.URL, APIKey: "saved-key", Model: "saved-model"}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+providerSrv.URL+"&api_key=draft-key&model=missing-model", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var body struct {
+		SelectedModelUnavailable bool   `json:"selected_model_unavailable"`
+		SelectedModelVerified    bool   `json:"selected_model_verified"`
+		Message                  string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.SelectedModelUnavailable || body.SelectedModelVerified || !strings.Contains(body.Message, "missing-model unavailable") {
+		t.Fatalf("body = %+v, want selected model unavailable", body)
+	}
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Model != saved.Model || loaded.APIKey != saved.APIKey {
+		t.Fatalf("saved config mutated: %+v", loaded)
+	}
+}
+
+func TestHandleGetModels_TestConnectionBadCredentialAndEndpointDoNotSave(t *testing.T) {
+	t.Run("bad credential", func(t *testing.T) {
+		providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer bad-key" {
+				t.Errorf("Authorization = %q, want Bearer bad-key", got)
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		}))
+		defer providerSrv.Close()
+
+		srv := newInternalTestServer(t)
+		saved := &config.Config{Provider: "custom_openai", BaseURL: providerSrv.URL, APIKey: "saved-key", Model: "saved-model"}
+		if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+providerSrv.URL+"&api_key=bad-key", nil)
+		w := httptest.NewRecorder()
+		srv.handleGetModels(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want 502; body=%s", resp.StatusCode, body)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.ToLower(body["error"]), "authentication failed") {
+			t.Fatalf("error = %q, want actionable authentication failure", body["error"])
+		}
+		loaded, err := config.Load(srv.config.ConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.APIKey != saved.APIKey || loaded.Model != saved.Model {
+			t.Fatalf("saved config mutated: %+v", loaded)
+		}
+	})
+
+	t.Run("bad endpoint", func(t *testing.T) {
+		providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		badURL := providerSrv.URL
+		providerSrv.Close()
+
+		srv := newInternalTestServer(t)
+		saved := &config.Config{Provider: "custom_openai", BaseURL: "http://saved.invalid", APIKey: "saved-key", Model: "saved-model"}
+		if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+badURL+"&api_key=draft-key", nil)
+		w := httptest.NewRecorder()
+		srv.handleGetModels(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadGateway {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want 502; body=%s", resp.StatusCode, body)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(body["error"], "Provider unreachable") {
+			t.Fatalf("error = %q, want actionable endpoint failure", body["error"])
+		}
+		loaded, err := config.Load(srv.config.ConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.BaseURL != saved.BaseURL || loaded.APIKey != saved.APIKey || loaded.Model != saved.Model {
+			t.Fatalf("saved config mutated: %+v", loaded)
+		}
+	})
+}
+
+func TestHandleGetModels_TestConnectionUsesNewDraftAPIKey(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-new-draft-key" {
+			t.Errorf("Authorization = %q, want Bearer sk-new-draft-key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"object":"list","data":[{"id":"new-key-ok"}]}`))
+	}))
+	defer providerSrv.Close()
+
+	srv := newInternalTestServer(t)
+	saved := &config.Config{Provider: "custom_openai", BaseURL: providerSrv.URL, APIKey: "sk-saved-secret-value"}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=custom_openai&base_url="+providerSrv.URL+"&api_key=sk-new-draft-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.APIKey != saved.APIKey {
+		t.Fatalf("saved APIKey = %q, want %q", loaded.APIKey, saved.APIKey)
+	}
+}
+
+func TestHandleGetModels_GitHubCopilotMissingAuthDoesNotStartDeviceFlow(t *testing.T) {
+	srv := newInternalTestServer(t)
+	saved := &config.Config{Provider: "github_copilot", BaseURL: "http://saved.invalid", APIKey: "", Model: ""}
+	if err := config.Save(srv.config.ConfigPath, saved); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/models?provider=github_copilot&base_url=http://example.invalid&api_key=", nil)
+	w := httptest.NewRecorder()
+	srv.handleGetModels(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 502; body=%s", resp.StatusCode, body)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body["error"], "Authenticate with GitHub") && !strings.Contains(body["error"], "enter a token") {
+		t.Fatalf("error = %q, want auth guidance without device flow", body["error"])
+	}
+}
+
 func TestHandleGetModels_SubmittedMaskedAPIKeyKeepsSavedSecret(t *testing.T) {
 	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {

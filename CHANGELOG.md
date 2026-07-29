@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Settings Test Connection now validates the unsaved draft, reports discovered model count and selected-model availability, refreshes the model picker, and never writes the saved config.
 - Provider switch in Settings now gracefully returns empty model list instead of
   error toast when saved credentials don't match the new provider. Model refresh
   saves the credentials first, then discovers models. (#948)
