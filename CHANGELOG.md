@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- (new entries here)
+
+## [0.1.6] — 2026-07-29
+
+### Added
+
 - Settings now uses save-only config drafts with dirty-state Save/Revert controls and navigation/unload warnings for unsaved changes.
 - Settings now always shows editable Provider endpoint controls with provider-default indicators and reset-to-default support.
 
