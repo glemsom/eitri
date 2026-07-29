@@ -16,7 +16,6 @@ flowchart LR
         RunSvc["runner/ (RunService + loop/)"]
         UISess["session/ (UI sessions + messages)"]
         LLMHist["history/ (LLM history)"]
-        LLMTrp["llm/ (LLM transport)"]
         RunSt["runstate/ (SSE broadcast)"]
         FileUtil["fileutil/ (file operations)"]
         Skills["skills/ (Agent Skills registry)"]
@@ -27,6 +26,7 @@ flowchart LR
         Debug["debug/ (crash dumps, HTTP traces)"]
         Persist["persist/ (session snapshots, traces)"]
         Compactor["compactor/ (message compaction)"]
+        Compress["compress/ (pattern compression)"]
         Persona["persona/ (named system prompts)"]
         Report["report/ (session reports)"]
         Tokenizer["tokenizer/ (token estimation + calibration)"]
@@ -37,7 +37,6 @@ flowchart LR
     API --> UISess
     API --> Skills
     API --> Provider
-    RunSvc --> LLMTrp
     RunSvc --> LLMHist
     RunSvc --> RunSt
     RunSvc --> FileUtil
@@ -46,6 +45,7 @@ flowchart LR
     RunSvc --> Provider
     RunSvc --> Tools
     Tools --> Sandbox
+    Tools --> Compress
 ```
 
 ## Module map
@@ -63,25 +63,6 @@ Orchestrates startup:
 8. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `config.Manager`, and `skills.Service`
 
 Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, then shuts down HTTP. On crash, `RunService` writes a crash dump via `debug.WriteCrashDump` capturing config summary, sessions, HTTP traces, logs, and system diagnostics.
-
-### `internal/llm/` — LLM transport abstraction
-
-| File | Responsibility |
-|------|---------------|
-| `types.go` | Core types: `Request`, `Message`, `Response`, `StreamEvent`, `ToolDef`, `AdapterConfig` |
-| `service.go` | `LLMService` interface — `Chat()` and `ChatStream()` |
-| `factory.go` | `NewLLMService()` — route provider ID to adapter |
-| `openai.go` | `OpenAI` — OpenAI-compatible adapter |
-| `anthropic.go` | `Anthropic` — Anthropic Messages API adapter (used for qwen*/minimax* models via opencode_go) |
-| `openrouter.go` | `OpenRouter` — OpenRouter adapter with optional ref/title headers |
-| `github_copilot.go` | `GitHubCopilot` — GitHub Copilot adapter with token refresh |
-| `wire_types.go` | Wire-format types for OpenAI and Anthropic JSON APIs |
-| `sse_scanner.go` | SSE stream scanner for parsing `data:` lines from streaming responses |
-| `common.go` | Shared helpers |
-
-**Layer isolation**: `llm` is the sole package that speaks to LLM wire protocols. Callers (`runner`) construct adapters via `llm.NewLLMService()`. New backends add an adapter file + factory route.
-
-Note: a third-party package `github.com/voocel/litellm` provides the `litellm.Schema`, `litellm.Block`, and `litellm.Tool` types used by the `tool/` package. The internal `llm` package and the external `litellm` package are distinct.
 
 ### `internal/history/` — LLM conversation history
 
@@ -113,7 +94,7 @@ Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path 
 | `profiles.go` | Provider-internal profile table + caller-safe metadata descriptors (`Describe`, `MustDescribe`). |
 | `auth.go` | Auth helpers: config-auth validation/normalization, GitHub Copilot device-flow start/poll status mapping, token-to-auth-state conversion, refresh. |
 
-**Role**: thin package — profile metadata, auth, discovery only. LLM transport lives in `internal/llm/`. Callers use `llm.NewLLMService()`, not raw provider internals.
+**Role**: thin package — profile metadata, auth, discovery, and LLM client construction. The `litellm.go` file maps adapter configs to `litellm.Client` provider configs. Callers (runner) use `buildLLMService()`, not raw provider internals.
 
 ### `internal/sandbox/` — bwrap sandbox wrapper
 
@@ -184,7 +165,7 @@ Replaces inline `UISession` map in early `api.Server`. Server-owned canonical se
 | `templates/` | Templ source files (`.templ` → Go via `templ generate`) |
 | `assets/` | Pinned frontend assets served from `embed.FS` (HTMX, Prism, KaTeX, Mermaid, and stylesheet assets) |
 
-Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets are JSON-enveloped events with `event`, `data`, and optional `id` fields. Settings page load/save and `/api/models` cross model-discovery seam: `provider.DiscoverModels()`, then persist returned auth refresh. GitHub Copilot device-flow UI polls through provider-owned `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`. `RunService.StartRun()` builds LLM service via `llm.NewLLMService()` and persists auth refresh via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership. Active runs own `runstate.State` subscriber set, making multiple EventSource clients and reconnects fan-out safe. Run start snapshots user-configured runtime limits (e.g., `max_turns`) — later Settings changes affect only later runs. Completion endpoints under `/api/sessions/{id}/complete/*` validate `browser_id` ownership and return JSON for the composer island. The top-level HTTP handler owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
+Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets are JSON-enveloped events with `event`, `data`, and optional `id` fields. Settings page load/save and `/api/models` cross model-discovery seam: `provider.DiscoverModels()`, then persist returned auth refresh. GitHub Copilot device-flow UI polls through provider-owned `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`. `RunService.StartRun()` builds LLM service via `buildLLMService()` in `runner/system_prompt.go` (creates a `litellm.Client` through provider config) and persists auth refresh via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership. Active runs own `runstate.State` subscriber set, making multiple EventSource clients and reconnects fan-out safe. Run start snapshots user-configured runtime limits (e.g., `max_turns`) — later Settings changes affect only later runs. Completion endpoints under `/api/sessions/{id}/complete/*` validate `browser_id` ownership and return JSON for the composer island. The top-level HTTP handler owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
 
 **Templ templates** colocated at `internal/api/templates/`:
 
@@ -259,7 +240,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 |------|---------------|
 | `tool.go` | `ToolHandler` interface, `SchemaOf[T]()` helper for JSON Schema generation |
 | `dispatch.go` | `NewRegistry()` — registry of tool handlers registered by name |
-| `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 128 KiB output cap |
+| `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 8 KiB output cap (before pattern compression) |
 | ~~`glob.go`~~ | ~~`GlobTool` — workspace-scoped glob pattern matching~~ (removed) |
 | `grep.go` | `GrepTool` — workspace-scoped grep with context lines |
 | `read.go` | `ReadTool` — read file with line info and hashes |
@@ -282,7 +263,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 - Captures stdout and stderr separately via pipes
 - Exit code from `cmd.ProcessState.ExitCode()`
 - Per-command timeout via `context.WithTimeout` (default 60s from `command_timeout` config)
-- Output capped at 128 KiB
+- Output capped at 8 KiB (before pattern compression)
 - No cross-turn shell state — agent must use `&&` chains or explicit env vars
 
 **Tool registration** happens in two places:
@@ -350,7 +331,7 @@ sequenceDiagram
     Skills-->>API: effective catalog + active skills
     API->>API: Re-resolve session active skills via skill_context.go, warn/drop stale ones
     API->>RunSvc: StartRun(sessionID, message)
-    RunSvc->>RunSvc: Build LLM via llm.NewLLMService(), build tool registry, resolve skills
+    RunSvc->>RunSvc: Build LLM via buildLLMService() (litellm.Client), build tool registry, resolve skills
     RunSvc->>RunSvc: RunAgent() — synchronous agent turn loop
     API-->>Browser: User bubble HTML + HX-Trigger: eitri:connectRunStream
     Browser->>API: GET /api/sessions/{id}/stream (browser_id cookie)
@@ -430,10 +411,11 @@ sequenceDiagram
 
 ### Supporting a non-OpenAI backend
 
-1. Study existing adapters in `internal/llm/` — `openai.go`, `anthropic.go`, `openrouter.go`, `github_copilot.go`
-2. Create a new adapter file implementing `LLMService` interface (`Chat()` + `ChatStream()`)
-3. Add wire types in `wire_types.go` if the API uses a different JSON shape
-4. Register in `factory.go` `NewLLMService()` by provider ID
+With the litellm transport layer, most OpenAI-compatible providers work without code changes — just configure them via Settings with the correct base URL and API key. For providers that need a custom adapter:
+
+1. Add a new provider config in `internal/provider/litellm.go` — map `AdapterConfig` to the appropriate `litellm` provider config (OpenAI, Anthropic, Gemini, etc.)
+2. If the provider has a non-standard auth flow, extend `internal/provider/auth.go`
+3. Register the provider in `internal/provider/profiles.go` with its metadata, model discovery path, and default settings
 
 ## Target repository layout
 
@@ -442,12 +424,12 @@ eitri/
 ├── cmd/eitri/                 # Entry point
 ├── internal/
 │   ├── api/                   # HTTP/SSE server, assets, Templ templates
+│   ├── compress/              # Pattern compression for bash output (ls, find, grep)
 │   ├── compactor/             # Message compaction
 │   ├── config/                # Config loading, validation, atomic writes
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history
-│   ├── llm/                   # LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot)
 │   ├── persist/               # Session snapshots, history, traces on disk
 │   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams

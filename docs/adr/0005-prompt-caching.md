@@ -1,4 +1,4 @@
-# Session-scoped prompt caching via prompt_cache_key
+# 0005 — Session-scoped prompt caching via prompt_cache_key
 
 Use `prompt_cache_key` (a session-scoped cache tag on OpenAI-compatible chat-completions requests) to reduce repeated prefix processing in multi-turn agent workflows, gated behind a `SupportsPromptCache` profile flag.
 

@@ -1,4 +1,4 @@
-# ADR-0017: bwrap sandbox for bash tool
+# 0017 — bwrap sandbox for bash tool
 
 **Status**: Accepted (amended ADR-0017a — startup detection and caching added)
 

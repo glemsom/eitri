@@ -69,13 +69,20 @@ streaming, chat submit, and other DOM-level behaviors.
 3. Tests navigate, inspect DOM, type, click — HTMX state lives in the DOM.
 4. SSE events are simulated via chunked `text/event-stream` responses.
 
-All browser tests live in a single file:
+All browser tests live across multiple files in `internal/api/`:
 
-    internal/api/browser_test.go
+| File | Tests |
+|------|-------|
+| `browser_test.go` | Foundational tests (page load, HTMX init) |
+| `browser_chat_test.go` | Send message, SSE streaming, tool cards |
+| `browser_confirmation_test.go` | Confirmation prompts (approve/deny) |
+| `browser_sessions_test.go` | Session CRUD, sidebar, load from disk |
+| `browser_settings_test.go` | Settings page, provider config, model discovery |
+| `browser_skills_test.go` | Skills UI, activation, diagnostics |
+| `browser_workspace_test.go` | Workspace directory browser |
 
 Browser tests are **not** gated behind a build tag. Chrome-not-found skips at
-runtime with `t.Skip`. All tests are listed in `browser_test.go` — the file is
-the source of truth.
+runtime with `t.Skip`.
 
 ### Running
 
@@ -92,7 +99,7 @@ make test-race
 
 ### Adding a new browser test
 
-1. Add `func TestBrowser_YourFeature(t *testing.T)` to `browser_test.go`.
+1. Add `func TestBrowser_YourFeature(t *testing.T)` to the appropriate `internal/api/browser_*.go` file (or create a new one if it tests a new feature area).
 2. Use `newTestServer` / `newTestServerWithRuns` + `newBrowserCtx` helpers.
 3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions.
 4. Prefer `chromedp.SendKeys` over `SetValue` (triggers HTMX events).

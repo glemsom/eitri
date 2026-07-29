@@ -75,11 +75,11 @@ eitri/
 │   ├── api/                   # HTTP server, SSE, HTMX/Templ render endpoints
 │   │   └── templates/         # Templ source files and generated Go
 │   ├── compactor/             # Message compaction (summarization of oversized messages)
+│   ├── compress/              # Pattern compression for bash output (ls, find, grep, rg)
 │   ├── config/                # ~/.eitri config management
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history (per-session sliding window)
-│   ├── llm/                   # ⚠️ DEPRECATED — being replaced by `litellm.Client` (see ADR-0019). LLM transport abstraction (OpenAI, Anthropic, OpenRouter, GitHub Copilot) — will be deleted after migration.
 │   ├── persist/               # Session snapshots, conversation history, HTTP traces on disk
 │   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams

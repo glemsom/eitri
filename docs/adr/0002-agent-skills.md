@@ -1,4 +1,4 @@
-# ADR 0002: Agent Skills support
+# 0002 — Agent Skills support
 
 ## Status
 

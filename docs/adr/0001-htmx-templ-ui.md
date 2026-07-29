@@ -1,4 +1,4 @@
-# HTMX + Templ shell with browser islands
+# 0001 — HTMX + Templ shell with browser islands
 
 **Status**: Accepted
 

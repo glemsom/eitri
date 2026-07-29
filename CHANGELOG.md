@@ -180,6 +180,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash dumps: agent loop panic recovery writes crash dump then re-panics (#560)
 - doc.go files for the provider, litellm, skills, and tool packages
 
+## [0.1.2] — 2026-07-23
+
+### Added
+
+- `prompt_cache_key` support for OpenAI-compatible providers (opencode_go, custom_openai) — sends session-scoped cache key to reduce repeated prefix processing on multi-turn conversations. (#553)
+- Tool definitions are now hoisted out of the agent turn loop and computed once per run instead of every turn. (#551)
+
+### Fixed
+
+- SessionID prompt cache key no longer incorrectly gated by `ThinkingLevel`.
+
+### Changed
+
+- Pre-release version — superseded by v0.1.3 the following day with additional debug API, crash dump, and doc.go changes.
+
 ## [0.1.1] — 2026-07-22
 
 ### Fixed
@@ -215,9 +230,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture Decision Records (docs/adr/).
 - Install script for Linux (scripts/install.sh).
 
-[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/glemsom/eitri/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/glemsom/eitri/releases/tag/v0.1.6
 [0.1.5]: https://github.com/glemsom/eitri/releases/tag/v0.1.5
 [0.1.4]: https://github.com/glemsom/eitri/releases/tag/v0.1.4
 [0.1.3]: https://github.com/glemsom/eitri/releases/tag/v0.1.3
+[0.1.2]: https://github.com/glemsom/eitri/releases/tag/v0.1.2
 [0.1.1]: https://github.com/glemsom/eitri/releases/tag/v0.1.1
 [0.1.0]: https://github.com/glemsom/eitri/releases/tag/v0.1.0

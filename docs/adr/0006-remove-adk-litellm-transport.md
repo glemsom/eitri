@@ -1,4 +1,4 @@
-# Remove Google ADK, adopt litellm transport + custom agent loop
+# 0006 — Remove Google ADK, adopt litellm transport + custom agent loop
 
 Replace Google ADK SDK with a lightweight, self-owned agent loop built on `github.com/voocel/litellm` for LLM transport, keeping Eitri's existing provider auth/discovery/profile layer as the outer shell.
 

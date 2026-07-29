@@ -1,4 +1,4 @@
-# ADR-0018: Personas — named system prompts with skill injection
+# 0018 — Personas: named system prompts with skill injection
 
 **Status**: Accepted
 

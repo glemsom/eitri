@@ -1,4 +1,4 @@
-# ADR 0004: Merge tool activity into inline tool cards
+# 0004 — Merge tool activity into inline tool cards
 
 Replace the separate activity panel with live tool cards in the message stream. Tool cards appear immediately on `tool_call` (running state) and morph to done on `tool_result`, eliminating the duplicate parallel representation of tool execution.
 

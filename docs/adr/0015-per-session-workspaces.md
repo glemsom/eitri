@@ -1,4 +1,4 @@
-# Per-session workspaces with directory browser
+# 0015 — Per-session workspaces with directory browser
 
 **Status**: Accepted
 

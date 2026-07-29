@@ -1,4 +1,4 @@
-# Split `render_component` into per-component tools (render_mermaid_diagram, render_quick_replies, render_diff_card)
+# 0007 — Split `render_component` into per-component tools
 
 ## Status
 

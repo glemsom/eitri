@@ -1,4 +1,4 @@
-# Add context lines parameter to the `grep` tool
+# 0008 — Add context lines to the `grep` tool
 
 ## Status
 

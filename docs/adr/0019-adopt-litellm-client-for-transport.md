@@ -1,4 +1,4 @@
-# Adopt `litellm.Client` for all LLM transport — replace hand-rolled adapters
+# 0019 — Adopt litellm.Client for all LLM transport — replace hand-rolled adapters
 
 **Status**: Accepted
 

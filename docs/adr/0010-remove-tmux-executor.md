@@ -1,4 +1,4 @@
-# Replace tmux-backed `bash` tool with direct `exec.Command` execution
+# 0010 — Replace tmux-backed bash tool with direct exec.Command execution
 
 ## Status
 
