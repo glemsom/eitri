@@ -206,6 +206,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					Reason:  runstate.TerminationCancelled,
 					Message: "Run cancelled by user or context deadline exceeded",
 				})
+				w.Error("Run cancelled")
 				return
 			}
 
@@ -234,6 +235,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			// Fatal error not covered above — mark the session failed before
 			// persisting diagnostics so UI and disk snapshots do not stay running.
 			s.setSessionErrorAndSnapshot(sessionID)
+			w.Error(err.Error())
 			s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
 				Reason:  runstate.TerminationError,
 				Message: err.Error(),

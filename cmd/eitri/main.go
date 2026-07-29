@@ -141,7 +141,7 @@ func main() {
 		debugRecorder := debug.NewRecorder(0) // default capacity 20
 
 		// Create persister for trace persistence in batch mode
-		persister, pErr := persist.New("")
+		persister, pErr := persist.New(os.Getenv("EITRI_DIR"))
 		if pErr != nil {
 			slog.Warn("failed to create persister for batch mode", slog.Any("error", pErr))
 			persister = nil
@@ -207,7 +207,7 @@ func main() {
 	debugRecorder := debug.NewRecorder(0) // default capacity 20
 
 	// Create persister for session snapshot and trace persistence
-	persister, pErr := persist.New("")
+	persister, pErr := persist.New(os.Getenv("EITRI_DIR"))
 	if pErr != nil {
 		slog.Warn("failed to create persister", slog.Any("error", pErr))
 		persister = nil
