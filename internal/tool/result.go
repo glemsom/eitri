@@ -1,6 +1,10 @@
 package tool
 
-import "github.com/voocel/litellm"
+import (
+	"strings"
+
+	"github.com/voocel/litellm"
+)
 
 // ToolResult replaces the 3-value return from ToolHandler.Call().
 //
@@ -45,18 +49,20 @@ func NeedsConfirmPath(blocks []litellm.Block, path, message string) ToolResult {
 
 // TextResult is a convenience constructor that creates a Success ToolResult
 // containing a single TextBlock. If text is empty, Blocks is nil.
+// Non-UTF-8 bytes are replaced with U+FFFD to avoid LLM provider validation errors.
 func TextResult(text string) ToolResult {
 	if text == "" {
 		return Success(nil)
 	}
-	return Success([]litellm.Block{litellm.TextBlock{Text: text}})
+	return Success([]litellm.Block{litellm.TextBlock{Text: strings.ToValidUTF8(text, "\ufffd")}})
 }
 
 // TextBlocks creates a []litellm.Block containing a single TextBlock.
 // These are plain content blocks; dispatch wraps them in ToolResultBlock.
+// Non-UTF-8 bytes are replaced with U+FFFD to avoid LLM provider validation errors.
 func TextBlocks(text string) []litellm.Block {
 	if text == "" {
 		return nil
 	}
-	return []litellm.Block{litellm.TextBlock{Text: text}}
+	return []litellm.Block{litellm.TextBlock{Text: strings.ToValidUTF8(text, "\ufffd")}}
 }
