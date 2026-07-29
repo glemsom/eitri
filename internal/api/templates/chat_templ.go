@@ -10,9 +10,15 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "github.com/glemsom/eitri/internal/session"
 
-// ChatView is the main chat page for a single session.
-// Workspace and stream indicators are in header (see Base template).
-func ChatView(sess *session.UISession, configValid bool, userEmail string, contextFiles []session.ContextFile) templ.Component {
+// ChatMessages renders the messages container for a session.
+// Used both in ChatView (full page) and for OOB swaps after compaction.
+// The content fields must be pre-rendered Markdown HTML (see renderSessionForPage).
+// The configValid banner is NOT included — callers that need it should wrap it
+// outside this component (compaction implies valid config, so it's not needed).
+//
+// hx-swap-oob="true" is safe here: HTMX only processes this attribute in AJAX
+// responses (compact handler), not during initial page loads (ChatView).
+func ChatMessages(sess *session.UISession, userEmail string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -33,7 +39,55 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string, conte
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"chat-view\"><div id=\"error-toasts\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"messages\" class=\"messages\" hx-swap-oob=\"true\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for _, msg := range sess.Messages {
+			if msg.Role == "assistant" {
+				templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = UserBubble(msg.Content, userEmail).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// ChatView is the main chat page for a single session.
+// Workspace and stream indicators are in header (see Base template).
+func ChatView(sess *session.UISession, configValid bool, userEmail string, contextFiles []session.ContextFile) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var2 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var2 == nil {
+			templ_7745c5c3_Var2 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div id=\"chat-view\"><div id=\"error-toasts\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -41,12 +95,12 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string, conte
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"messages\" class=\"messages\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"messages\" class=\"messages\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !configValid {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div id=\"setup-banner\" class=\"message message-system\"><div class=\"message-avatar\">⚠</div><div class=\"message-content\"><p>Provider setup required. <a href=\"/settings\">Open Settings</a> to configure your LLM provider.</p></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div id=\"setup-banner\" class=\"message message-system\"><div class=\"message-avatar\">⚠</div><div class=\"message-content\"><p>Provider setup required. <a href=\"/settings\">Open Settings</a> to configure your LLM provider.</p></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -64,7 +118,7 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string, conte
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div id=\"streaming\" class=\"streaming\"></div><div id=\"scroll-sentinel\" aria-hidden=\"true\"></div></div><button id=\"scroll-to-bottom-btn\" class=\"scroll-to-bottom-btn\" aria-label=\"Scroll to latest messages\" title=\"New messages\">↓ New messages</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -72,7 +126,7 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string, conte
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

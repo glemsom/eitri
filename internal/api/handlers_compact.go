@@ -98,8 +98,27 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	if prunedToolCalls > 0 {
 		toastMsg += fmt.Sprintf(". %d tool calls pruned", prunedToolCalls)
 	}
+
+	// Re-render the messages list so the UI reflects the compaction immediately.
+	// We render two elements in the response:
+	//   1. The toast (main target, goes to #error-toasts)
+	//   2. The messages container via OOB swap (replaces #messages in-place)
+	sess := s.config.SessionManager.Get(id)
+	if sess != nil {
+		renderedSess := renderSessionForPage(sess)
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		// Toast as the primary target (HX-Retarget ensures it lands in #error-toasts).
+		_ = templates.ErrorToast(toastMsg).Render(r.Context(), w)
+		// Messages container via OOB swap — HTMX processes this regardless of the
+		// hx-target because the element has id="messages" and the fragment carries
+		// hx-swap-oob="true" (rendered by the template).
+		_ = templates.ChatMessages(renderedSess, cfg.UserEmail).Render(r.Context(), w)
+		return
+	}
+
+	// Fallback: session not found (shouldn't happen), just show the toast.
 	w.Header().Set("Content-Type", "text/html")
-	w.Header().Set("HX-Retarget", "#error-toasts")
 	w.WriteHeader(http.StatusOK)
 	_ = templates.ErrorToast(toastMsg).Render(r.Context(), w)
 }

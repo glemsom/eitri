@@ -2,6 +2,28 @@ package templates
 
 import "github.com/glemsom/eitri/internal/session"
 
+// ChatMessages renders the messages container for a session.
+// Used both in ChatView (full page) and for OOB swaps after compaction.
+// The content fields must be pre-rendered Markdown HTML (see renderSessionForPage).
+// The configValid banner is NOT included — callers that need it should wrap it
+// outside this component (compaction implies valid config, so it's not needed).
+//
+// hx-swap-oob="true" is safe here: HTMX only processes this attribute in AJAX
+// responses (compact handler), not during initial page loads (ChatView).
+templ ChatMessages(sess *session.UISession, userEmail string) {
+	<div id="messages" class="messages" hx-swap-oob="true">
+		for _, msg := range sess.Messages {
+			if msg.Role == "assistant" {
+				@AssistantBubble(sess.ID, msg.Content, msg.QuickReplies)
+			} else {
+				@UserBubble(msg.Content, userEmail)
+			}
+		}
+		<div id="streaming" class="streaming"></div>
+		<div id="scroll-sentinel" aria-hidden="true"></div>
+	</div>
+}
+
 // ChatView is the main chat page for a single session.
 // Workspace and stream indicators are in header (see Base template).
 templ ChatView(sess *session.UISession, configValid bool, userEmail string, contextFiles []session.ContextFile) {
