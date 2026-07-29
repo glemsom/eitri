@@ -157,7 +157,9 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate provider credentials by calling the profile's model discovery path.
-	models, contextWindows, modelAPIs, err := s.fetchModelList(r.Context(), newCfg)
+	// Save must be atomic: discovery uses the draft endpoint/credentials but does
+	// not persist refreshed auth until the whole draft has passed validation.
+	discoveryResult, err := s.discoverModelListNoPersist(r.Context(), newCfg)
 	if err != nil {
 		if isHTMXRequest(r) {
 			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
@@ -166,23 +168,18 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	models, contextWindows, modelAPIs := discoveryData(discoveryResult)
+	if discoveryResult != nil {
+		applyAuthUpdate(newCfg, discoveryResult.AuthUpdate)
+	}
 	if strings.TrimSpace(newCfg.Model) != "" {
 		if err := config.ValidateSelectedModel(newCfg, models); err != nil {
-			// HTMX form submissions always include the model field (echoed from current
-			// config). When the provider changes, the old model is likely invalid for the
-			// new provider — silently clear it instead of blocking the save.
-			providerChanged := newCfg.Provider != cfg.Provider
-			if providerChanged && isHTMXRequest(r) {
-				newCfg.Model = ""
-				levels = nil
-			} else {
-				if isHTMXRequest(r) {
-					writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
-					return
-				}
-				writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
+			if isHTMXRequest(r) {
+				writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
 				return
 			}
+			writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
+			return
 		}
 	}
 
@@ -208,13 +205,27 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render form with success indicator (and notice if thinking_level was cleared)
-	component := templates.SettingsForm(maskedConfig(newCfg), models, "", notice, nil, "✓ Saved", sandbox.BwrapAvailable(), levels)
+	successMessage := "✓ Saved"
+	if s.hasActiveRunForRequest(r) {
+		successMessage = "✓ Saved. Active runs continue with previous settings; next run uses new settings."
+	}
+	component := templates.SettingsForm(maskedConfig(newCfg), models, "", notice, nil, successMessage, sandbox.BwrapAvailable(), levels)
 	component.Render(r.Context(), w)
 }
 
 // discoverModelList calls Provider discovery seam. It passes PersistAuth if
 // available so that refreshed auth state is persisted automatically.
 func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*provider.DiscoveryResult, error) {
+	return s.discoverModelListWithPersist(ctx, cfg, s.persistAuth())
+}
+
+// discoverModelListNoPersist validates a draft without writing any refreshed
+// auth state. Callers must apply AuthUpdate only after the full draft is valid.
+func (s *Server) discoverModelListNoPersist(ctx context.Context, cfg *config.Config) (*provider.DiscoveryResult, error) {
+	return s.discoverModelListWithPersist(ctx, cfg, nil)
+}
+
+func (s *Server) discoverModelListWithPersist(ctx context.Context, cfg *config.Config, persist provider.PersistAuthFunc) (*provider.DiscoveryResult, error) {
 	return provider.DiscoverModels(ctx, provider.DiscoveryRequest{
 		ProviderID:    cfg.Provider,
 		BaseURL:       cfg.BaseURL,
@@ -224,8 +235,15 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 	}, provider.DiscoveryOptions{
 		HTTPClient:         s.httpClient,
 		GitHubCopilotOAuth: s.copilotOAuth,
-		PersistAuth:        s.persistAuth(),
+		PersistAuth:        persist,
 	})
+}
+
+func discoveryData(result *provider.DiscoveryResult) ([]string, map[string]int, map[string]string) {
+	if result == nil {
+		return nil, nil, nil
+	}
+	return result.Models, result.ModelContextWindows, result.ModelAPIs
 }
 
 // fetchModelList calls Provider discovery seam. Auth refresh is persisted
@@ -237,15 +255,20 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 // set when the cfg has been temporarily overridden (e.g., query-param overrides
 // in handleGetModels) to avoid corrupting the saved config.
 func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config, noPersist ...bool) ([]string, map[string]int, map[string]string, error) {
-	result, err := s.discoverModelList(ctx, cfg)
+	skipPersist := len(noPersist) > 0 && noPersist[0]
+	var result *provider.DiscoveryResult
+	var err error
+	if skipPersist {
+		result, err = s.discoverModelListNoPersist(ctx, cfg)
+	} else {
+		result, err = s.discoverModelList(ctx, cfg)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if result == nil {
 		return nil, nil, nil, nil
 	}
-
-	skipPersist := len(noPersist) > 0 && noPersist[0]
 
 	if result.AuthUpdate != nil && !skipPersist {
 		// PersistAuth was not set — save the auth update manually.
@@ -274,6 +297,22 @@ func applyAuthUpdate(cfg *config.Config, update *provider.AuthUpdate) {
 		return
 	}
 	cfg.ProviderAuth = append(json.RawMessage(nil), update.ProviderAuth...)
+}
+
+func (s *Server) hasActiveRunForRequest(r *http.Request) bool {
+	if s.config.SessionManager == nil {
+		return false
+	}
+	browserID := s.browserIDFromRequest(r)
+	if browserID == "" {
+		return false
+	}
+	for _, sess := range s.config.SessionManager.ListByBrowser(browserID) {
+		if sess.Status == "running" {
+			return true
+		}
+	}
+	return false
 }
 
 // persistAuth returns the PersistAuth callback, or nil if none is configured.

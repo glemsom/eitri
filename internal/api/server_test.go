@@ -2028,6 +2028,136 @@ func TestPutConfigDiscoveryFailure(t *testing.T) {
 	}
 }
 
+func TestPutConfigDiscoveryFailureLeavesSavedConfigUnchanged(t *testing.T) {
+	failingProvider := fakeProviderServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	original := config.Defaults()
+	original.Provider = "custom_openai"
+	original.BaseURL = "https://saved.example/v1"
+	original.APIKey = "sk-saved"
+	original.Model = "saved-model"
+	if err := config.Save(configPath, &original); err != nil {
+		t.Fatal(err)
+	}
+	server := newTestServerWithConfigPath(t, t.TempDir(), configPath)
+
+	body := `{"provider":"custom_openai","base_url":"` + failingProvider.URL + `","api_key":"sk-bad","model":"draft-model"}`
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		content, _ := io.ReadAll(resp.Body)
+		t.Fatalf("PUT /api/config status = %d, want %d; body=%s", resp.StatusCode, http.StatusUnprocessableEntity, content)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BaseURL != original.BaseURL || loaded.APIKey != original.APIKey || loaded.Model != original.Model {
+		t.Fatalf("saved config mutated on failed Save: base_url=%q api_key=%q model=%q", loaded.BaseURL, loaded.APIKey, loaded.Model)
+	}
+}
+
+func TestPutConfigUnavailableModelKeepsSavedConfigAndDraftVisible(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	original := config.Defaults()
+	original.Provider = "opencode_go"
+	original.BaseURL = "https://saved.example/v1"
+	original.APIKey = "sk-saved"
+	original.Model = "saved-model"
+	if err := config.Save(configPath, &original); err != nil {
+		t.Fatal(err)
+	}
+	server := newTestServerWithConfigPath(t, t.TempDir(), configPath)
+
+	form := url.Values{}
+	form.Set("provider", "custom_openai")
+	form.Set("base_url", provider.URL)
+	form.Set("api_key", "sk-draft")
+	form.Set("model", "missing-model")
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config HTMX status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	contentBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(contentBytes)
+	if !strings.Contains(content, provider.URL) || !strings.Contains(content, "missing-model") {
+		t.Fatalf("response did not keep draft values visible: %s", content)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BaseURL != original.BaseURL || loaded.APIKey != original.APIKey || loaded.Model != original.Model {
+		t.Fatalf("saved config mutated on unavailable model: base_url=%q api_key=%q model=%q", loaded.BaseURL, loaded.APIKey, loaded.Model)
+	}
+}
+
+func TestPutConfigActiveRunSaveFeedback(t *testing.T) {
+	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	workspace := t.TempDir()
+	browserID := "test-browser-active-save-feedback"
+	sessionMgr := session.NewManager(10, workspace)
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionMgr.UpdateStatus(sess.ID, session.StatusRunning)
+	server := newTestServerWithOptions(t, workspace, testServerOptions{sessionManager: sessionMgr})
+
+	form := url.Values{}
+	form.Set("provider", "custom_openai")
+	form.Set("base_url", provider.URL)
+	form.Set("api_key", "sk-test")
+	form.Set("model", "gpt-4")
+	req, err := http.NewRequest("PUT", server.URL+"/api/config", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT /api/config status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	contentBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contentBytes), "Active runs continue with previous settings") {
+		t.Fatalf("save feedback missing active-run note: %s", string(contentBytes))
+	}
+}
+
 func TestPutConfig_ClearAPIKey(t *testing.T) {
 	provider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
 	server := newTestServer(t)
