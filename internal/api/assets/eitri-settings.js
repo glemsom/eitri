@@ -1,5 +1,5 @@
 // eitri-settings — Settings page interactivity.
-// Handles save-only Settings drafts, provider-aware Base URL show/hide,
+// Handles save-only Settings drafts, provider-aware Base URL defaults,
 // model refresh spinner, Test Connection, and dirty navigation guards.
 
 (function () {
@@ -61,48 +61,86 @@
     form.addEventListener('change', updateDirtyState);
   }
 
-  // — Provider-aware Base URL show/hide —
-  function updateBaseURLVisibility() {
+  // — Provider-aware Base URL defaults —
+  var providerBaseURLDefaults = {
+    'opencode_go': 'https://opencode.ai/zen/go/v1',
+    'github_copilot': 'https://api.githubcopilot.com',
+    'custom_openai': '',
+  };
+
+  function updateBaseURLState() {
     var provider = document.getElementById('provider');
-    var baseUrlGroup = document.querySelector('.base-url-group');
-    if (!provider || !baseUrlGroup) return;
-
-    var isCustomOpenAI = provider.value === 'custom_openai';
-    baseUrlGroup.classList.toggle('base-url-hidden', !isCustomOpenAI);
-
     var baseUrlInput = document.getElementById('base_url');
-    if (baseUrlInput) {
-      baseUrlInput.required = isCustomOpenAI;
+    if (!provider || !baseUrlInput) return;
+
+    var value = baseUrlInput.value.trim();
+    var defaultURL = providerBaseURLDefaults[provider.value] || '';
+    var isCustomOpenAI = provider.value === 'custom_openai';
+
+    baseUrlInput.required = true;
+
+    var resetBtn = document.getElementById('base-url-reset');
+    if (resetBtn) {
+      resetBtn.hidden = defaultURL === '';
+      resetBtn.disabled = defaultURL === '' || value === defaultURL;
+    }
+
+    var requiredHint = document.getElementById('base-url-required-hint');
+    if (requiredHint) {
+      requiredHint.hidden = !(isCustomOpenAI && value === '');
+    }
+
+    var status = document.getElementById('base-url-status');
+    if (status) {
+      status.classList.remove('endpoint-default', 'endpoint-override', 'endpoint-required', 'endpoint-custom');
+      if (value === '') {
+        status.textContent = isCustomOpenAI ? 'Endpoint required for Custom OpenAI' : 'Endpoint required';
+        status.classList.add('endpoint-required');
+      } else if (defaultURL !== '' && value === defaultURL) {
+        status.textContent = 'Using provider default endpoint';
+        status.classList.add('endpoint-default');
+      } else if (defaultURL !== '') {
+        status.textContent = 'Using endpoint override';
+        status.classList.add('endpoint-override');
+      } else {
+        status.textContent = 'Using custom endpoint';
+        status.classList.add('endpoint-custom');
+      }
     }
   }
 
   function resetBaseURLToDefault() {
     var provider = document.getElementById('provider');
-    if (!provider) return;
     var baseUrlInput = document.getElementById('base_url');
-    if (!baseUrlInput) return;
-    var defaults = {
-      'opencode_go': 'https://opencode.ai/zen/go/v1',
-      'github_copilot': 'https://api.githubcopilot.com',
-      'custom_openai': '',
-    };
-    if (defaults[provider.value] !== undefined) {
-      baseUrlInput.value = defaults[provider.value];
+    if (!provider || !baseUrlInput) return;
+    if (providerBaseURLDefaults[provider.value] !== undefined) {
+      baseUrlInput.value = providerBaseURLDefaults[provider.value];
       baseUrlInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    updateBaseURLState();
   }
 
   function initBaseURLToggle() {
     var provider = document.getElementById('provider');
-    if (!provider || provider.dataset.baseUrlToggleInstalled === 'true') return;
+    var baseUrlInput = document.getElementById('base_url');
+    if (!provider || !baseUrlInput || provider.dataset.baseUrlToggleInstalled === 'true') return;
     provider.dataset.baseUrlToggleInstalled = 'true';
     provider.addEventListener('change', function () {
-      updateBaseURLVisibility();
       resetBaseURLToDefault();
-      refreshModels();
+      if (baseUrlInput.value.trim() !== '') {
+        refreshModels();
+      }
       updateDirtyState();
     });
-    updateBaseURLVisibility();
+    baseUrlInput.addEventListener('input', updateBaseURLState);
+    var resetBtn = document.getElementById('base-url-reset');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        resetBaseURLToDefault();
+        updateDirtyState();
+      });
+    }
+    updateBaseURLState();
   }
 
   // — Model refresh spinner and fetch —

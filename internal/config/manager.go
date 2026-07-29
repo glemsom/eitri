@@ -198,10 +198,11 @@ func Validate(cfg *Config) error {
 		return err
 	}
 
-	if cfg.BaseURL != "" {
-		if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
-			return fmt.Errorf("base_url is not a valid URL: %v", err)
-		}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return fmt.Errorf("base_url is required")
+	}
+	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
+		return fmt.Errorf("base_url is not a valid URL: %v", err)
 	}
 
 	if cfg.SessionTimeout < 60_000_000_000 { // 1 minute in ns

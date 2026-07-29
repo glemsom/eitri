@@ -1769,6 +1769,66 @@ func TestGetConfigJSON(t *testing.T) {
 	}
 }
 
+func TestPutConfigRequiresBaseURL(t *testing.T) {
+	server := newTestServer(t)
+
+	body := `{"provider":"custom_openai","base_url":"","api_key":"sk-test","model":"gpt-4"}`
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/config", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("PUT /api/config empty base_url status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	var payload map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload["error"], "base_url is required") {
+		t.Fatalf("error = %q, want base_url required", payload["error"])
+	}
+}
+
+func TestGetModelsValidatesDraftBaseURLWithoutSaving(t *testing.T) {
+	providerSrv := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putJSONConfig(t, server, `{"provider":"custom_openai","base_url":"`+providerSrv.URL+`","api_key":"sk-test","model":"gpt-4"}`)
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/models?provider=custom_openai&base_url=&api_key=sk-test&model=gpt-4", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("HX-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/models empty draft base_url status = %d, want 200 HTMX fragment", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "base_url is required") {
+		t.Fatalf("test connection body = %q, want base_url required", string(body))
+	}
+
+	cfg := getConfigJSON(t, server)
+	if cfg["base_url"] != providerSrv.URL {
+		t.Fatalf("saved base_url = %q, want unchanged %q", cfg["base_url"], providerSrv.URL)
+	}
+}
+
 func TestGetConfigHTMLFragment(t *testing.T) {
 	server := newTestServer(t)
 

@@ -294,6 +294,15 @@ func TestValidate_ContextWindowMin(t *testing.T) {
 	}
 }
 
+func TestValidate_MissingBaseURL(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.APIKey = "sk-test"
+	cfg.BaseURL = ""
+	if err := config.Validate(&cfg); err == nil || !strings.Contains(err.Error(), "base_url is required") {
+		t.Fatalf("Validate(empty base_url) = %v, want required error", err)
+	}
+}
+
 func TestValidate_InvalidBaseURL(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.BaseURL = "not-a-url"
@@ -996,13 +1005,13 @@ func TestValidate_CompactionDefaultsAppliedWhenZero(t *testing.T) {
 
 func TestValidate_CompactionThresholdOutOfRange(t *testing.T) {
 	cfg := &config.Config{
-		Provider:                 "custom_openai",
-		APIKey:                   "sk-test",
-		BaseURL:                  "https://api.example.com",
-		SessionTimeout:           30 * 60_000_000_000,
-		CommandTimeout:           60_000_000_000,
-		MaxTurns:                 25,
-		ContextWindowTokens:      128000,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
 		CompactionThresholdPercent: 110,
 		CompactionLowWaterPercent:  30,
 	}
@@ -1014,13 +1023,13 @@ func TestValidate_CompactionThresholdOutOfRange(t *testing.T) {
 
 func TestValidate_CompactionLowWaterOutOfRange(t *testing.T) {
 	cfg := &config.Config{
-		Provider:                 "custom_openai",
-		APIKey:                   "sk-test",
-		BaseURL:                  "https://api.example.com",
-		SessionTimeout:           30 * 60_000_000_000,
-		CommandTimeout:           60_000_000_000,
-		MaxTurns:                 25,
-		ContextWindowTokens:      128000,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
 		CompactionThresholdPercent: 90,
 		CompactionLowWaterPercent:  5,
 	}
@@ -1032,13 +1041,13 @@ func TestValidate_CompactionLowWaterOutOfRange(t *testing.T) {
 
 func TestValidate_CompactionLowWaterMustBeLessThanHigh(t *testing.T) {
 	cfg := &config.Config{
-		Provider:                 "custom_openai",
-		APIKey:                   "sk-test",
-		BaseURL:                  "https://api.example.com",
-		SessionTimeout:           30 * 60_000_000_000,
-		CommandTimeout:           60_000_000_000,
-		MaxTurns:                 25,
-		ContextWindowTokens:      128000,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
 		CompactionThresholdPercent: 50,
 		CompactionLowWaterPercent:  55,
 	}
@@ -1050,13 +1059,13 @@ func TestValidate_CompactionLowWaterMustBeLessThanHigh(t *testing.T) {
 
 func TestValidate_CompactionLowWaterEqualToHigh(t *testing.T) {
 	cfg := &config.Config{
-		Provider:                 "custom_openai",
-		APIKey:                   "sk-test",
-		BaseURL:                  "https://api.example.com",
-		SessionTimeout:           30 * 60_000_000_000,
-		CommandTimeout:           60_000_000_000,
-		MaxTurns:                 25,
-		ContextWindowTokens:      128000,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
 		CompactionThresholdPercent: 60,
 		CompactionLowWaterPercent:  60,
 	}
@@ -1094,13 +1103,13 @@ func TestValidate_ContextWarningThresholdDefaultsAppliedWhenZero(t *testing.T) {
 
 func TestValidate_ContextWarningThresholdOutOfRange(t *testing.T) {
 	cfg := &config.Config{
-		Provider:                      "custom_openai",
-		APIKey:                        "sk-test",
-		BaseURL:                       "https://api.example.com",
-		SessionTimeout:                30 * 60_000_000_000,
-		CommandTimeout:                60_000_000_000,
-		MaxTurns:                      25,
-		ContextWindowTokens:           128000,
+		Provider:                       "custom_openai",
+		APIKey:                         "sk-test",
+		BaseURL:                        "https://api.example.com",
+		SessionTimeout:                 30 * 60_000_000_000,
+		CommandTimeout:                 60_000_000_000,
+		MaxTurns:                       25,
+		ContextWindowTokens:            128000,
 		ContextWarningThresholdPercent: 200,
 	}
 	err := config.Validate(cfg)
@@ -1196,14 +1205,14 @@ func TestLoad_RoundTripsCompactionFields(t *testing.T) {
 
 	// Save with all compaction fields explicitly set
 	if err := config.Save(cfgPath, &config.Config{
-		Provider:                  "custom_openai",
-		APIKey:                    "sk-test",
-		BaseURL:                   "https://api.example.com",
-		SessionTimeout:            30 * 60_000_000_000,
-		CommandTimeout:            60_000_000_000,
-		MaxTurns:                  25,
-		ContextWindowTokens:       128000,
-		CompactionEnabled:         false,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
+		CompactionEnabled:          false,
 		CompactionThresholdPercent: 75,
 		CompactionLowWaterPercent:  20,
 	}); err != nil {
@@ -1232,14 +1241,14 @@ func TestLoad_PromotesCompactionEnabledEnvVar(t *testing.T) {
 
 	// Save config with compaction disabled
 	if err := config.Save(cfgPath, &config.Config{
-		Provider:                  "custom_openai",
-		APIKey:                    "sk-test",
-		BaseURL:                   "https://api.example.com",
-		SessionTimeout:            30 * 60_000_000_000,
-		CommandTimeout:            60_000_000_000,
-		MaxTurns:                  25,
-		ContextWindowTokens:       128000,
-		CompactionEnabled:         false,
+		Provider:                   "custom_openai",
+		APIKey:                     "sk-test",
+		BaseURL:                    "https://api.example.com",
+		SessionTimeout:             30 * 60_000_000_000,
+		CommandTimeout:             60_000_000_000,
+		MaxTurns:                   25,
+		ContextWindowTokens:        128000,
+		CompactionEnabled:          false,
 		CompactionThresholdPercent: 90,
 		CompactionLowWaterPercent:  30,
 	}); err != nil {
@@ -1350,5 +1359,3 @@ func TestContextWindowForModel_ReturnsValue(t *testing.T) {
 		t.Errorf("ContextWindowForModel(unknown-model) = %d, want 0", got)
 	}
 }
-
-

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Settings now uses save-only config drafts with dirty-state Save/Revert controls and navigation/unload warnings for unsaved changes.
+- Settings now always shows editable Provider endpoint controls with provider-default indicators and reset-to-default support.
 
 ### Fixed
 
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `grep` with context now applies the 2 KiB cap to final rendered output instead of double-counting match bytes and truncating early.
 
 - Settings model refresh and Test Connection now use current unsaved form values while preserving masked saved API keys.
+- Settings Save now leaves saved provider config untouched when draft provider validation fails.
 
 - `write` tool now accepts empty `content` values, enabling empty file creation and truncation while still rejecting omitted content.
 

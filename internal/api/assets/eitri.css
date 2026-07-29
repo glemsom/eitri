@@ -1838,9 +1838,32 @@ eitri-composer {
    Provider-aware Base URL, model refresh, Test Connection
    ============================================ */
 
-/* Base URL show/hide */
-.base-url-hidden {
-  display: none !important;
+/* Provider endpoint */
+.base-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.base-url-row input {
+  flex: 1;
+}
+
+#base-url-reset {
+  white-space: nowrap;
+}
+
+.endpoint-default {
+  color: var(--success);
+}
+
+.endpoint-override,
+.endpoint-custom {
+  color: var(--warning);
+}
+
+.endpoint-required {
+  color: var(--danger);
 }
 
 .required-marker {

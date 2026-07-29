@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/api/templates"
@@ -157,23 +158,6 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Validate provider credentials by calling the profile's model discovery path.
 	models, contextWindows, modelAPIs, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
-		providerChanged := newCfg.Provider != cfg.Provider
-		if providerChanged && isHTMXRequest(r) {
-			// Provider changed but model discovery failed — save the provider change
-			// anyway (with empty model) and surface an error so the user can fix
-			// credentials without losing the attempted token from the form.
-			newCfg.Model = ""
-			newCfg.ModelAPI = ""
-			newCfg.ThinkingLevel = ""
-			if saveErr := s.saveProviderConfig(newCfg); saveErr != nil {
-				http.Error(w, "Failed to save config: "+saveErr.Error(), http.StatusInternalServerError)
-				return
-			}
-			message := fmt.Sprintf("Provider changed to %q, but model discovery failed: %s. Enter valid credentials and Save again to enable a model.", s.providerDisplayName(newCfg.Provider), err.Error())
-			component := templates.SettingsForm(newCfg, nil, message, "", nil, "", sandbox.BwrapAvailable(), nil)
-			component.Render(r.Context(), w)
-			return
-		}
 		if isHTMXRequest(r) {
 			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
 			return
@@ -382,6 +366,9 @@ func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved
 	}
 
 	current := normalizePatchedConfig(saved, patch)
+	if err := validateModelDiscoveryDraft(current); err != nil {
+		return nil, providerOverridden, err
+	}
 	result, err := provider.DiscoverModels(ctx, provider.DiscoveryRequest{
 		ProviderID:    current.Provider,
 		BaseURL:       current.BaseURL,
@@ -400,6 +387,22 @@ func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved
 		return nil, providerOverridden, nil
 	}
 	return result.Models, providerOverridden, nil
+}
+
+func validateModelDiscoveryDraft(cfg *config.Config) error {
+	if _, err := provider.Describe(cfg.Provider); err != nil {
+		return err
+	}
+	if err := provider.ValidateCredentials(cfg.Provider, cfg.APIKey, cfg.ProviderAuth); err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return fmt.Errorf("base_url is required")
+	}
+	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
+		return fmt.Errorf("base_url is not a valid URL: %v", err)
+	}
+	return nil
 }
 
 func hasModelConfigPatch(patch map[string]any) bool {

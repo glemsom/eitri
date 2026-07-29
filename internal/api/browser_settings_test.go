@@ -276,6 +276,131 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 	}
 }
 
+func TestBrowser_SettingsProviderEndpointDraftBehavior(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var endpointVisible bool
+	var endpointEditable bool
+	var endpointValue string
+	var statusText string
+	var saveDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#base_url", chromedp.ByQuery),
+		chromedp.Evaluate(`
+			(function() {
+				var provider = document.querySelector('#provider');
+				provider.value = 'opencode_go';
+				provider.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.Sleep(200*time.Millisecond),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#base_url').offsetParent !== null`, &endpointVisible),
+		chromedp.EvaluateAsDevTools(`!document.querySelector('#base_url').disabled && !document.querySelector('#base_url').readOnly`, &endpointEditable),
+		chromedp.Value("#base_url", &endpointValue, chromedp.ByQuery),
+		chromedp.Text("#base-url-status", &statusText, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#settings-save-btn').disabled`, &saveDisabled),
+	)
+	if err != nil {
+		t.Fatalf("provider endpoint draft setup failed: %v", err)
+	}
+	if !endpointVisible {
+		t.Fatal("Base URL should remain visible for built-in providers")
+	}
+	if !endpointEditable {
+		t.Fatal("Base URL should remain editable for built-in providers")
+	}
+	if endpointValue != "https://opencode.ai/zen/go/v1" {
+		t.Fatalf("OpenCode Go endpoint = %q, want provider default", endpointValue)
+	}
+	if !strings.Contains(statusText, "provider default") {
+		t.Fatalf("endpoint status = %q, want provider default indicator", statusText)
+	}
+	if saveDisabled {
+		t.Fatal("provider endpoint change should mark Settings draft dirty")
+	}
+
+	cfg := getBrowserConfig(t, server)
+	if cfg["provider"] != "custom_openai" || cfg["base_url"] != fakeProvider.URL {
+		t.Fatalf("saved config changed before Save: provider=%q base_url=%q", cfg["provider"], cfg["base_url"])
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Clear("#base_url", chromedp.ByQuery),
+		chromedp.SendKeys("#base_url", "https://override.example.com/v1", chromedp.ByQuery),
+		chromedp.Text("#base-url-status", &statusText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("endpoint override edit failed: %v", err)
+	}
+	if !strings.Contains(statusText, "override") {
+		t.Fatalf("endpoint status after edit = %q, want override indicator", statusText)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Click("#base-url-reset", chromedp.ByQuery),
+		chromedp.Value("#base_url", &endpointValue, chromedp.ByQuery),
+		chromedp.Text("#base-url-status", &statusText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("endpoint reset failed: %v", err)
+	}
+	if endpointValue != "https://opencode.ai/zen/go/v1" || !strings.Contains(statusText, "provider default") {
+		t.Fatalf("endpoint after reset = %q status %q, want default", endpointValue, statusText)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			(function() {
+				var provider = document.querySelector('#provider');
+				provider.value = 'github_copilot';
+				provider.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.Sleep(200*time.Millisecond),
+		chromedp.Value("#base_url", &endpointValue, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("github provider switch failed: %v", err)
+	}
+	if endpointValue != "https://api.githubcopilot.com" {
+		t.Fatalf("GitHub Copilot endpoint = %q, want provider default", endpointValue)
+	}
+
+	var requiredHintVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			(function() {
+				var provider = document.querySelector('#provider');
+				provider.value = 'custom_openai';
+				provider.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.Sleep(200*time.Millisecond),
+		chromedp.Value("#base_url", &endpointValue, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('#base-url-required-hint').offsetParent !== null`, &requiredHintVisible),
+	)
+	if err != nil {
+		t.Fatalf("custom provider switch failed: %v", err)
+	}
+	if endpointValue != "" {
+		t.Fatalf("Custom OpenAI endpoint = %q, want cleared draft", endpointValue)
+	}
+	if !requiredHintVisible {
+		t.Fatal("Custom OpenAI should indicate endpoint is required")
+	}
+
+	cfg = getBrowserConfig(t, server)
+	if cfg["provider"] != "custom_openai" || cfg["base_url"] != fakeProvider.URL {
+		t.Fatalf("saved config changed before Save after custom switch: provider=%q base_url=%q", cfg["provider"], cfg["base_url"])
+	}
+}
+
 func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
 	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
 	server := newTestServer(t)
