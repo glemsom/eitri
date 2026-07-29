@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-
 )
 
 func TestNewSubagentStore(t *testing.T) {
@@ -244,10 +243,8 @@ func TestSubagentStore_ConcurrentAccess(t *testing.T) {
 	ss := newSubagentStore()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			id := ss.nextID()
 			rec := &subAgentRecord{
 				TaskID:    id,
@@ -260,29 +257,25 @@ func TestSubagentStore_ConcurrentAccess(t *testing.T) {
 			ss.getRecord(id)
 			ss.CancelForSession("sess-1")
 			ss.reapAfterTTL(id)
-		}()
+		})
 	}
 	wg.Wait()
 
 	// Store and read a parent config concurrently
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
+	wg.Go(func() {
+		for range 10 {
 			ss.StoreParentCfg("sess-concurrent", RunConfig{ModelName: "test"})
 			ss.GetParentCfg("sess-concurrent")
 			ss.DeleteParentCfg("sess-concurrent")
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
+	wg.Go(func() {
+		for range 10 {
 			ss.StoreParentCfg("sess-concurrent", RunConfig{ModelName: "test2"})
 			ss.GetParentCfg("sess-concurrent")
 		}
-	}()
+	})
 
 	wg.Wait()
 }

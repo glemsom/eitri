@@ -60,20 +60,21 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 		}
 	}
 
-	fullSystemPrompt := systemPrompt
+	var fullSystemPrompt strings.Builder
+	fullSystemPrompt.WriteString(systemPrompt)
 
 	repoInstructions, err := readRepositoryInstructions(cfg.Workspace)
 	if err != nil {
 		return "", fmt.Errorf("read repository instructions: %w", err)
 	}
 	if repoInstructions != "" {
-		fullSystemPrompt += "\n\n" + repoInstructions
+		fullSystemPrompt.WriteString("\n\n" + repoInstructions)
 	}
 
 	if skillsSvc != nil {
 		catalog := skillsSvc.SkillsCatalogXML()
 		if catalog != "" {
-			fullSystemPrompt += "\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context. After loading a skill, check its instructions for references to other skills — if any are mentioned, load them too."
+			fullSystemPrompt.WriteString("\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context. After loading a skill, check its instructions for references to other skills — if any are mentioned, load them too.")
 		}
 	}
 
@@ -119,7 +120,7 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 
 	// Add manually activated skill content.
 	for _, activation := range manuallyActivated {
-		fullSystemPrompt += "\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content
+		fullSystemPrompt.WriteString("\n\nActivated skill \"" + activation.Name + "\":\n" + activation.Content)
 	}
 
 	// Add directive for persona-required skills so the agent loads them.
@@ -127,10 +128,10 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 	// giving the directive strong visual separation and making it harder for the
 	// agent to overlook.
 	if len(personaRequired) > 0 {
-		fullSystemPrompt += "\n\n<required_skills>\nRequired skills for this persona: " + strings.Join(personaRequired, ", ") + ".\nOn your first turn, call skill(\"name\") for each required skill above to load its instructions, references, and scripts into context.\n</required_skills>"
+		fullSystemPrompt.WriteString("\n\n<required_skills>\nRequired skills for this persona: " + strings.Join(personaRequired, ", ") + ".\nOn your first turn, call skill(\"name\") for each required skill above to load its instructions, references, and scripts into context.\n</required_skills>")
 	}
 
-	return fullSystemPrompt, nil
+	return fullSystemPrompt.String(), nil
 }
 
 // buildLLMService resolves provider authentication, constructs an LLM service,

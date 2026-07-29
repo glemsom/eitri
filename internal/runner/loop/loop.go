@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	runtimeDebug "runtime/debug"
 	"strings"
 	"sync"
@@ -139,9 +140,7 @@ func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, 
 	// shared-mutation issues if the map is ever modified downstream).
 	if base.ProviderOptions != nil {
 		lr.ProviderOptions = make(litellm.ProviderOptions, len(base.ProviderOptions))
-		for k, v := range base.ProviderOptions {
-			lr.ProviderOptions[k] = v
-		}
+		maps.Copy(lr.ProviderOptions, base.ProviderOptions)
 	}
 
 	return lr
@@ -154,13 +153,13 @@ func toLitellmMessage(m message.EitriMessage) litellm.Message {
 
 // litellmMsgText returns the concatenated text from all TextBlocks in a litellm.Message.
 func litellmMsgText(msg litellm.Message) string {
-	var text string
+	var text strings.Builder
 	for _, block := range msg.Blocks {
 		if tb, ok := block.(litellm.TextBlock); ok {
-			text += tb.Text
+			text.WriteString(tb.Text)
 		}
 	}
-	return text
+	return text.String()
 }
 
 // toFlatMessages converts []message.EitriMessage to []message.Message for

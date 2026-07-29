@@ -431,7 +431,7 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -490,7 +490,7 @@ func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -554,7 +554,7 @@ func TestRunAgent_MaxTurnsExceeded(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -640,7 +640,7 @@ type blockingMockStream2 struct {
 	content string
 	started chan struct{}
 	sent    bool
-	closed chan struct{}
+	closed  chan struct{}
 }
 
 func (s *blockingMockStream2) Next() (litellm.Event, error) {
@@ -674,9 +674,9 @@ func TestRunAgent_PreservesPartialResultOnStreamCancellation(t *testing.T) {
 		started: started,
 	}
 	blockingClient, err := litellm.New(blockingProv)
-if err != nil {
-t.Fatalf("failed to create blocking mock client: %v", err)
-}
+	if err != nil {
+		t.Fatalf("failed to create blocking mock client: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -691,7 +691,7 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
-			Client:    blockingClient,
+			Client:     blockingClient,
 			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -905,7 +905,7 @@ func TestRunAgent_DoesNotRetryHTTP400(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	// inner mock will be called if retry happens (which would be the bug)
-transientProv := &transientErrorLLM{
+	transientProv := &transientErrorLLM{
 		// Genuine bad request — model not found, not an upstream failure
 		transientErr: litellm.NewHTTPError("mock", 400, "model \"unknown-model\" not found for provider"),
 		inner: newMockClient([]mockTurn{
@@ -913,9 +913,9 @@ transientProv := &transientErrorLLM{
 		}),
 	}
 	transientClient, err := litellm.New(transientProv)
-if err != nil {
-t.Fatalf("failed to create transient error mock client: %v", err)
-}
+	if err != nil {
+		t.Fatalf("failed to create transient error mock client: %v", err)
+	}
 
 	req := lrFromMessages(
 		[]litellm.Message{
@@ -968,14 +968,14 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 	inner := newMockClient([]mockTurn{
 		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
 	})
-client, err := litellm.New(&transientErrorLLM{
+	client, err := litellm.New(&transientErrorLLM{
 		// Upstream request failure proxied as 400 — should be retried
 		transientErr: fmt.Errorf("Provider returned HTTP 400: Error from provider (Console Go): Upstream request failed"),
 		inner:        inner,
 	})
-if err != nil {
-t.Fatalf("failed to create client: %v", err)
-}
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
 
 	req := lrFromMessages(
 		[]litellm.Message{
@@ -1083,7 +1083,7 @@ func TestRunAgent_ZeroMaxTurnsDefaultsToTen(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   0,
 		MaxHistory: 0,
@@ -1133,7 +1133,7 @@ func TestRunAgent_ToolReturnsNoContent(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1198,7 +1198,7 @@ func TestRunAgent_UnknownTool_ContinuesLoop(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1305,7 +1305,6 @@ func TestRunAgent_Thinking(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			sseState := runstate.New()
@@ -1323,7 +1322,7 @@ func TestRunAgent_Thinking(t *testing.T) {
 			)
 
 			err := RunAgent(context.Background(), RunSpec{
-				Client:    client,
+				Client:     client,
 				Request:    req,
 				MaxTurns:   5,
 				MaxHistory: 0,
@@ -1528,7 +1527,7 @@ func TestRunAgent_SlidingWindowTrimDuringMultiTurn(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 3,
@@ -1646,7 +1645,7 @@ func TestRunAgent_RenderMermaidDiagramEmitsComponent(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1708,7 +1707,7 @@ func TestRunAgent_RenderQuickRepliesDoesNotEmitComponent(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1743,7 +1742,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 
 	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`),},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`)},
 		},
 		{tokens: []tokenEvent{{content: "error occurred"}}},
 	})
@@ -1764,7 +1763,7 @@ func TestRunAgent_RenderToolErrorSkipsComponent(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1799,7 +1798,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 
 	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "some_other_tool", `{}`),},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "some_other_tool", `{}`)},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1820,7 +1819,7 @@ func TestRunAgent_UnknownToolSkipsComponent(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1870,7 +1869,7 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -1927,8 +1926,8 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 
 	client := newMockClient([]mockTurn{
 		{
-			tokens: []tokenEvent{{content: "let me check"}},
-			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`),},
+			tokens:    []tokenEvent{{content: "let me check"}},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`)},
 		},
 		{tokens: []tokenEvent{{content: "done"}}},
 	})
@@ -1952,7 +1951,7 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2007,7 +2006,7 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2063,7 +2062,7 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -2168,7 +2167,7 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	}
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2231,9 +2230,9 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 		started: started,
 	}
 	blockingClient, err := litellm.New(blockingProv)
-if err != nil {
-t.Fatalf("failed to create blocking mock client: %v", err)
-}
+	if err != nil {
+		t.Fatalf("failed to create blocking mock client: %v", err)
+	}
 
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
@@ -2251,7 +2250,7 @@ t.Fatalf("failed to create blocking mock client: %v", err)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- RunAgent(ctx, RunSpec{
-			Client:    blockingClient,
+			Client:     blockingClient,
 			Request:    req,
 			MaxTurns:   5,
 			MaxHistory: 0,
@@ -2341,7 +2340,7 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	// LLM: first turn calls needs_confirm_tool, second turn finishes
 	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`),},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`)},
 		},
 		{tokens: []tokenEvent{{content: "Done reading the file."}}},
 	})
@@ -2361,7 +2360,7 @@ func TestRunAgent_ConfirmationApprovePath(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2421,7 +2420,7 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 
 	client := newMockClient([]mockTurn{
 		{
-			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`),},
+			toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "needs_confirm_tool", `{}`)},
 		},
 		{tokens: []tokenEvent{{content: "Access denied, will skip."}}},
 	})
@@ -2440,7 +2439,7 @@ func TestRunAgent_ConfirmationDenyPath(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -2557,8 +2556,8 @@ func TestRunAgent_ToolDefsAttachedEachTurn(t *testing.T) {
 	)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    newMockClient([]mockTurn{
-			{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`),}},
+		Client: newMockClient([]mockTurn{
+			{toolCalls: []litellm.ToolUseBlock{buildMockToolCall("call_1", "test_tool", `{}`)}},
 			{tokens: []tokenEvent{{content: "done"}}},
 		}),
 		Request:    req,
@@ -2703,7 +2702,7 @@ func TestRunAgent_PanicNilCrashDumpFuncDoesNotPanic(t *testing.T) {
 }
 
 // panicLLM panics on every Stream call.
-type panicLLM struct{
+type panicLLM struct {
 	litellm.Provider
 }
 
@@ -2775,9 +2774,9 @@ func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
 	messages := []litellm.Message{
-		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}},          // 28 chars
-		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "What is the weather?"}}},                    // 20 chars
-		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Let me check."}}},                      // 13 chars
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a helpful assistant."}}}, // 28 chars
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "What is the weather?"}}},           // 20 chars
+		{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "Let me check."}}},             // 13 chars
 	}
 	// Input text length = 28 + 20 + 13 = 61 chars
 	// InputTokens = 10
@@ -2840,7 +2839,7 @@ func TestRunAgent_CalibrationUpdate(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	err := RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,
@@ -2926,7 +2925,7 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 	w := runstate.NewWriter(sseState)
 
 	err = RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   1,
 		MaxHistory: 0,

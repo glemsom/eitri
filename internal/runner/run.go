@@ -449,7 +449,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		flatMsgs[i] = em.ToMessage()
 	}
 
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled, cfg.ModelName)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -508,7 +508,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // provided LLM service, gated by high-water and low-water thresholds.
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool) ([]message.Message, int, int, int, error) {
+func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool, model string) ([]message.Message, int, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages, nil, "")
 	if totalEst <= highWater {
 		return nil, 0, 0, 0, nil
@@ -519,5 +519,6 @@ func compactSessionHistory(ctx context.Context, messages []message.Message, clie
 		MessageSizeThreshold:   messageSizeThreshold,
 		ToolCallRetentionTurns: toolCallRetentionTurns,
 		SalienceEnabled:        salienceEnabled,
+		Model:                  model,
 	})
 }

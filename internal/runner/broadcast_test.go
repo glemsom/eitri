@@ -186,7 +186,7 @@ func TestBrowserBroadcaster_Broadcast_SlowSubscriberDrops(t *testing.T) {
 
 	// Fill the channel buffer (capacity 64)
 	// Broadcast should not block even though the subscriber isn't reading
-	for i := 0; i < 128; i++ {
+	for range 128 {
 		bb.Broadcast("browser-1", BrowserEvent{Type: "spam"})
 	}
 
@@ -211,15 +211,13 @@ func TestBrowserBroadcaster_ConcurrentAccess(t *testing.T) {
 	bb := New()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			id, ch := bb.Subscribe("browser-1")
 			bb.Broadcast("browser-1", BrowserEvent{Type: "ping"})
 			<-ch
 			bb.Unsubscribe("browser-1", id)
-		}()
+		})
 	}
 	wg.Wait()
 

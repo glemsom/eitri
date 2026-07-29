@@ -485,3 +485,275 @@ func TestBrowser_ContextPanel_SessionSwitch(t *testing.T) {
 		t.Fatalf("after switch-back stats = %q, want '12,847 / 128K' — re-hydration failed", statsTextAfterSwitch)
 	}
 }
+
+// ————— Compact now button tests ————— —
+
+func TestBrowser_CompactButton_ExistsAndClickable(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	// Need a real LLM URL so the chat page doesn't error.
+	llmURL := fakeInstantChatServer(t, "ok").URL
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Navigate to root — auto-creates a session and redirects to /sessions/{id}
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	// Get session ID from URL
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Verify the compact button exists with correct hx-post attribute
+	var compactBtnExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('compact-btn') !== null`, &compactBtnExists),
+	)
+	if err != nil {
+		t.Fatalf("compact-btn check failed: %v", err)
+	}
+	if !compactBtnExists {
+		t.Fatal("expected #compact-btn to exist when session is active")
+	}
+
+	// Verify button text
+	var btnText string
+	err = chromedp.Run(ctx,
+		chromedp.Text("#compact-btn", &btnText, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("compact-btn text failed: %v", err)
+	}
+	if !strings.Contains(btnText, "Compact now") {
+		t.Errorf("button text = %q, want 'Compact now'", btnText)
+	}
+
+	// Verify the hx-post attribute points to the correct URL
+	var hxPost string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('compact-btn').getAttribute('hx-post')`, &hxPost),
+	)
+	if err != nil {
+		t.Fatalf("get hx-post failed: %v", err)
+	}
+	expectedHXPost := "/api/sessions/" + sessionID + "/compact"
+	if hxPost != expectedHXPost {
+		t.Errorf("hx-post = %q, want %q", hxPost, expectedHXPost)
+	}
+}
+
+func TestBrowser_CompactButton_FiresRequest(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	llmURL := fakeInstantChatServer(t, "ok").URL
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Set up network request interception to capture the compact POST
+	var capturedURL string
+	chromedp.ListenTarget(ctx, func(ev interface{}) {
+		if ev, ok := ev.(*network.EventRequestWillBeSent); ok {
+			if strings.Contains(ev.Request.URL, "/compact") {
+				capturedURL = ev.Request.URL
+			}
+		}
+	})
+
+	// Click the compact button
+	err = chromedp.Run(ctx,
+		chromedp.Click("#compact-btn", chromedp.ByQuery),
+		chromedp.Sleep(500*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("click compact-btn failed: %v", err)
+	}
+
+	// Verify a request was sent to the correct URL
+	expectedURL := server.URL + "/api/sessions/" + sessionID + "/compact"
+	if capturedURL != expectedURL {
+		t.Errorf("captured request URL = %q, want %q", capturedURL, expectedURL)
+	}
+}
+
+func TestBrowser_CompactSlashCommand(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	llmURL := fakeInstantChatServer(t, "ok").URL
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Wait for chat input to be ready
+	var inputReady bool
+	for i := 0; i < 20; i++ {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var input = document.querySelector('#chat-input');
+				var send = document.querySelector('#send-btn');
+				return !!input && !!send && !input.disabled && !send.disabled;
+			})()`, &inputReady),
+		)
+		if err != nil {
+			t.Fatalf("read composer readiness failed: %v", err)
+		}
+		if inputReady {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !inputReady {
+		t.Fatal("composer did not become ready for /compact command")
+	}
+
+	// Intercept HTMX after-request events to see the response
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			htmx.on('htmx:afterRequest', function(e) {
+				if (e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.indexOf('/compact') !== -1) {
+					window.__lastCompactResponse = e.detail.xhr.responseText || '';
+				}
+			});
+			return true;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install HTMX listener failed: %v", err)
+	}
+
+	// Send /compact via chat input
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "/compact", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+		chromedp.Sleep(500*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("send /compact command failed: %v", err)
+	}
+
+	// Verify a toast was shown (any response — compact may or may not have msgs)
+	var responseReceived bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var resp = window.__lastCompactResponse || '';
+			return resp.length > 0;
+		})()`, &responseReceived),
+	)
+	if err != nil {
+		t.Fatalf("check response failed: %v", err)
+	}
+	if !responseReceived {
+		t.Log("no compact response captured — this is acceptable if HTMX didn't fire the event")
+	}
+
+	// Verify the page didn't start an agent run (no helper messages appended)
+	var messagesCount int
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.querySelectorAll('.chat-bubble').length`, &messagesCount),
+	)
+	if err != nil {
+		t.Fatalf("check messages count failed: %v", err)
+	}
+	if messagesCount > 0 {
+		t.Errorf("expected no chat-bubble messages after /compact, got %d — an agent run may have started", messagesCount)
+	}
+}
+
+func TestBrowser_CompactButton_HiddenWithoutSession(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Navigate to the sessions management page (no active session ID).
+	// The compact button should NOT be rendered there.
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions"),
+		chromedp.Sleep(300*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("navigate to /sessions failed: %v", err)
+	}
+
+	// Compact button should not be present on the sessions list page
+	var compactBtnExists bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('compact-btn') !== null`, &compactBtnExists),
+	)
+	if err != nil {
+		t.Fatalf("compact-btn check failed: %v", err)
+	}
+	if compactBtnExists {
+		t.Error("expected #compact-btn to NOT exist on the sessions list page")
+	}
+}

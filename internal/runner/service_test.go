@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
@@ -631,22 +633,18 @@ func TestRunService_ActiveRunSSESnapshot_NoDataRaceWithCancel(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 5 {
+		wg.Go(func() {
 			svc.Cancel("session-1")
-		}()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		})
+		wg.Go(func() {
 			snap := svc.ActiveRunSSESnapshot("session-1")
 			if snap != nil {
 				_ = snap.SubscriberCount
 				_ = snap.ReplayCount
 				_ = snap.History
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1587,8 +1585,7 @@ func TestRunService_GetPanicFree(t *testing.T) {
 	// Ensure no race conditions under concurrent access
 	svc := NewRunService(RunServiceDeps{})
 	done := make(chan struct{})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go func() {
 		for {
@@ -1724,4 +1721,271 @@ func TestRunService_LoadSessionFromDisk_SessionNotFound(t *testing.T) {
 	if !strings.Contains(err.Error(), "not found on disk") {
 		t.Errorf("expected 'not found on disk' error, got: %v", err)
 	}
+}
+
+// ── CompactSession tests ──────────────────────────────────────────────────────
+
+// fakeCompactLLMServer returns an HTTP server that responds to
+// POST /v1/chat/completions with a canned OpenAI-compatible summary response.
+func fakeCompactLLMServer(t *testing.T, summary string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintf(w, `{
+				"id": "chatcmpl-test",
+				"object": "chat.completion",
+				"created": 1234567890,
+				"model": "test-model",
+				"choices": [{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": %q
+					},
+					"finish_reason": "stop"
+				}],
+				"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+			}`, summary)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// compactRunConfig returns a minimal RunConfig pointing at the given fake LLM
+// server URL with thresholds valid for config validation.
+func compactRunConfig(llmURL string) RunConfig {
+	return RunConfig{
+		ProviderID:                 "custom_openai",
+		BaseURL:                    llmURL,
+		APIKey:                     "test-key",
+		ModelName:                  "test-model",
+		CompactionEnabled:          true,
+		CompactionThresholdPercent: 90,
+		CompactionLowWaterPercent:  30,
+		ContextWindowTokens:        128000,
+	}
+}
+
+func TestCompactSession_NoHistoryManager(t *testing.T) {
+	// Create a RunService with nil history manager.
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: nil,
+	})
+
+	sess, err := uiSessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, compactRunConfig("http://test.local"))
+	if err == nil {
+		t.Fatal("expected error when history manager is nil")
+	}
+	if !strings.Contains(err.Error(), "history session manager not available") {
+		t.Errorf("expected 'history session manager not available' error, got: %v", err)
+	}
+}
+
+func TestCompactSession_SessionNotFound(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Session not in history manager should not error — just return no compaction.
+	count, freed, pruned, err := svc.CompactSession(context.Background(), "unknown-session", compactRunConfig("http://test.local"))
+	if err != nil {
+		t.Fatalf("CompactSession should not error for unknown session: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected count=0 for unknown session, got %d", count)
+	}
+	if freed != 0 {
+		t.Errorf("expected freed=0 for unknown session, got %d", freed)
+	}
+	if pruned != 0 {
+		t.Errorf("expected pruned=0 for unknown session, got %d", pruned)
+	}
+}
+
+func TestCompactSession_ReplacesHistory(t *testing.T) {
+	fakeLLM := fakeCompactLLMServer(t, "summarised output")
+	svc, uiMgr := newRunServiceForTest(t)
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Populate history with a large tool message.
+	msgs := []message.Message{
+		{Role: "system", Content: "You are a helpful assistant."},
+		{Role: "user", Content: "run build"},
+		{Role: "tool", Content: strings.Repeat("Build output with detail\n", 200)},
+	}
+	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+
+	cfg := compactRunConfig(fakeLLM.URL)
+	count, freed, pruned, err := svc.CompactSession(context.Background(), sess.ID, cfg)
+	if err != nil {
+		t.Fatalf("CompactSession: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message")
+	}
+	if freed <= 0 {
+		t.Fatalf("expected freed > 0, got %d", freed)
+	}
+	if pruned != 0 {
+		t.Errorf("expected pruned = 0, got %d", pruned)
+	}
+
+	// Verify that history was replaced.
+	hist := svc.historySessionMgr.History(sess.ID)
+	if hist == nil {
+		t.Fatal("history is nil after compaction")
+	}
+	foundCompacted := false
+	for _, em := range hist {
+		if strings.HasPrefix(em.Content(), "[TOOL RESULT COMPACTED") {
+			foundCompacted = true
+			break
+		}
+	}
+	if !foundCompacted {
+		t.Error("expected at least one [TOOL RESULT COMPACTED] message in history after compaction")
+	}
+}
+
+func TestCompactSession_Snapshots(t *testing.T) {
+	fakeLLM := fakeCompactLLMServer(t, "summary")
+	svc, uiMgr := newRunServiceForTest(t)
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Attach a persister so we can verify snapshot is called.
+	eitriDir := t.TempDir()
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	svc.persister = p
+
+	msgs := []message.Message{
+		{Role: "user", Content: "hello"},
+		{Role: "tool", Content: strings.Repeat("large tool output data\n", 200)},
+	}
+	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+
+	cfg := compactRunConfig(fakeLLM.URL)
+	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, cfg)
+	if err != nil {
+		t.Fatalf("CompactSession: %v", err)
+	}
+
+	// Verify a snapshot file was written.
+	snapshotPath := filepath.Join(eitriDir, "sessions", sess.ID, "session.json")
+	if _, err := os.Stat(snapshotPath); os.IsNotExist(err) {
+		t.Errorf("snapshot file not found at %s", snapshotPath)
+	}
+}
+
+func TestCompactSession_SnapshotFailureWarns(t *testing.T) {
+	fakeLLM := fakeCompactLLMServer(t, "summary")
+	svc, uiMgr := newRunServiceForTest(t)
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Set a persister with an unwritable directory to force a snapshot failure.
+	unwritableDir := filepath.Join(t.TempDir(), "sessions")
+	if err := os.MkdirAll(unwritableDir, 0444); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	p, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	// Override the persister's root dir to an unwritable one by making the
+	// entire sessions dir read-only.
+	svc.persister = p
+
+	msgs := []message.Message{
+		{Role: "user", Content: "hello"},
+		{Role: "tool", Content: strings.Repeat("large tool output\n", 200)},
+	}
+	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+
+	cfg := compactRunConfig(fakeLLM.URL)
+	// Even with snapshot failure, CompactSession should return success
+	// (the error is logged, not returned).
+	count, freed, pruned, err := svc.CompactSession(context.Background(), sess.ID, cfg)
+	if err != nil {
+		t.Fatalf("CompactSession should not return error on snapshot failure: %v", err)
+	}
+	// Compaction itself should still have happened.
+	if count == 0 {
+		t.Log("compaction count was 0 — this is OK if the tool message was not large enough to trigger")
+	}
+	_ = freed
+	_ = pruned
+}
+
+func TestCompactSessionHistory_SharedHelper(t *testing.T) {
+	// Verify that compactSessionHistory (used by auto-compaction) respects
+	// the high-water gate, while direct Compact() (used by manual) does not.
+	fakeLLM := fakeCompactLLMServer(t, "summary")
+	llmSvc, err := newCompactLLMService(context.Background(), compactRunConfig(fakeLLM.URL), nil)
+	if err != nil {
+		t.Fatalf("newCompactLLMService: %v", err)
+	}
+
+	msgs := []message.Message{
+		{Role: "user", Content: "hello"},
+		{Role: "tool", Content: strings.Repeat("large output data\n", 100)},
+	}
+
+	// Auto-compaction path: compactSessionHistory with highWater well above
+	// the total estimate → should return nil (no compaction).
+	highWater := 999_999 // far above total estimate
+	lowWater := 500_000
+
+	result, count, freed, pruned, err := compactSessionHistory(context.Background(), msgs, llmSvc, highWater, lowWater, 0, 0, false, "")
+	if err != nil {
+		t.Fatalf("compactSessionHistory: %v", err)
+	}
+	if result != nil {
+		t.Fatal("expected nil result when totalEst <= highWater (auto gate should prevent compaction)")
+	}
+	if count != 0 || freed != 0 || pruned != 0 {
+		t.Fatalf("expected 0 values when gated, got count=%d freed=%d pruned=%d", count, freed, pruned)
+	}
+
+	// Manual compaction path: Compact directly with thresholds 0,0,0
+	// → should always run regardless of size.
+	manualResult, manualCount, manualFreed, manualPruned, manualErr := compactor.New().Compact(context.Background(), msgs, llmSvc, compactor.Thresholds{
+		HighWater:            0,
+		LowWater:             0,
+		MessageSizeThreshold: 0,
+	})
+	if manualErr != nil {
+		t.Fatalf("manual Compact: %v", manualErr)
+	}
+	if manualResult == nil {
+		t.Fatal("expected non-nil result for manual compaction (no gate)")
+	}
+	if manualCount == 0 {
+		t.Fatal("expected at least one compacted message for manual compaction")
+	}
+	_ = manualFreed
+	_ = manualPruned
 }

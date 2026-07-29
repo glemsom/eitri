@@ -49,6 +49,11 @@ type Thresholds struct {
 	// it exceeds the size threshold). A value of 0 means no messages are skipped
 	// based on salience (only the scoring order is used). Default 0.
 	HighSalienceSkipThreshold int
+
+	// Model is the LLM model name to use for summarization requests.
+	// If empty, "compactor" is used as a fallback (for backward compatibility
+	// with tests that use mock providers accepting any model name).
+	Model string
 }
 
 // tokenEstimate returns a rough estimate of the number of tokens in s.
@@ -350,7 +355,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 
 	// Collect all compactable messages with their scores.
 	var candidates []compactableMessage
-	for i := 0; i < len(result); i++ {
+	for i := range result {
 		// Skip messages that don't have compactable content.
 		if result[i].Content == "" {
 			continue
@@ -408,8 +413,12 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 
 		// Call LLM to summarise.
 		prompt := summarizationPrompt(result[cand.index].Role, originalContent)
+		modelName := thresholds.Model
+		if modelName == "" {
+			modelName = "compactor" // fallback for tests
+		}
 		litellmReq := &litellm.Request{
-			Model: "compactor",
+			Model: modelName,
 			Messages: []litellm.Message{
 				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},
@@ -451,7 +460,7 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 	freedTokens := 0
 	totalEst := messagesTokenEstimate(result, nil, "")
 
-	for i := 0; i < len(result); i++ {
+	for i := range result {
 		// --- Content summarization ---
 		if result[i].Content == "" {
 			continue
@@ -480,8 +489,12 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 		originalTokens := tokenEstimate(originalContent, nil, "")
 
 		prompt := summarizationPrompt(result[i].Role, originalContent)
+		modelName := thresholds.Model
+		if modelName == "" {
+			modelName = "compactor" // fallback for tests
+		}
 		litellmReq := &litellm.Request{
-			Model: "compactor",
+			Model: modelName,
 			Messages: []litellm.Message{
 				{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
 			},

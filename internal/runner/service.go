@@ -606,7 +606,8 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 
 	historyMsgs := s.historySessionMgr.History(sessionID)
 	if historyMsgs == nil {
-		return 0, 0, 0, fmt.Errorf("session %q not found in history manager", sessionID)
+		// Session not known to history manager — no history to compact.
+		return 0, 0, 0, nil
 	}
 
 	// Convert to flat messages for the compactor
@@ -627,6 +628,7 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 		MessageSizeThreshold:   0, // manual compaction compacts all eligible messages
 		ToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
 		SalienceEnabled:        cfg.CompactionSalienceEnabled,
+		Model:                  cfg.ModelName,
 	})
 	if compErr != nil {
 		return 0, 0, 0, fmt.Errorf("compaction failed: %w", compErr)

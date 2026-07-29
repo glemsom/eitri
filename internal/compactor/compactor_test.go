@@ -54,13 +54,13 @@ func (m *mockCompactorProvider) Stream(_ context.Context, _ *litellm.Request) (l
 
 // extractText returns the concatenated text from a litellm.Message.
 func extractText(msg litellm.Message) string {
-	var text string
+	var text strings.Builder
 	for _, block := range msg.Blocks {
 		if tb, ok := block.(litellm.TextBlock); ok {
-			text += tb.Text
+			text.WriteString(tb.Text)
 		}
 	}
-	return text
+	return text.String()
 }
 
 // newMockClient creates a *litellm.Client backed by mockCompactorProvider.
@@ -166,7 +166,7 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 	largeContent := strings.Repeat("data payload with important information ", 200) // ~8400 chars → ~2100 tokens
 
 	msgs := make([]message.Message, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		msgs[i] = message.Message{
 			Role:    "tool",
 			Content: largeContent,
@@ -181,8 +181,8 @@ func TestCompact_LowWaterStopsEarly(t *testing.T) {
 	// Set LowWater to 40000 so after first compaction we stop.
 	totalEst := messagesTokenEstimate(msgs, nil, "")
 	thresholds := Thresholds{
-		HighWater: totalEst - 1,       // trigger compaction
-		LowWater:  totalEst - 1000,    // stop after freeing ~1000 tokens (one message)
+		HighWater: totalEst - 1,    // trigger compaction
+		LowWater:  totalEst - 1000, // stop after freeing ~1000 tokens (one message)
 	}
 
 	result, count, freed, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -433,12 +433,12 @@ func TestCompact_CompactsAllRoles(t *testing.T) {
 func TestCompact_MessageSizeThreshold_SkipsSmallMessages(t *testing.T) {
 	c := New()
 	msgs := []message.Message{
-		{Role: "user", Content: "small"},                                          // ~1 token
-		{Role: "user", Content: strings.Repeat("large payload ", 800)},            // ~10400 chars → ~2600 tokens
-		{Role: "assistant", Content: "tiny"},                                      // ~1 token
-		{Role: "assistant", Content: strings.Repeat("big response data ", 800)},   // ~10400 chars → ~2600 tokens
-		{Role: "tool", Content: "tiny tool"},                                      // ~1 token
-		{Role: "tool", Content: strings.Repeat("massive tool output\n", 400)},     // ~10400 chars → ~2600 tokens
+		{Role: "user", Content: "small"},                                        // ~1 token
+		{Role: "user", Content: strings.Repeat("large payload ", 800)},          // ~10400 chars → ~2600 tokens
+		{Role: "assistant", Content: "tiny"},                                    // ~1 token
+		{Role: "assistant", Content: strings.Repeat("big response data ", 800)}, // ~10400 chars → ~2600 tokens
+		{Role: "tool", Content: "tiny tool"},                                    // ~1 token
+		{Role: "tool", Content: strings.Repeat("massive tool output\n", 400)},   // ~10400 chars → ~2600 tokens
 	}
 	llmSvc := newMockClient("summary")
 	thresholds := Thresholds{HighWater: 1, LowWater: 0, MessageSizeThreshold: 2000}
@@ -567,10 +567,10 @@ func TestTokenEstimate(t *testing.T) {
 	}{
 		{"", 0},
 		{"a", 1},
-		{"hello", 1},  // 5 chars / 4 = 1
-		{"hello world", 2},  // 11 chars / 4 = 2
+		{"hello", 1},               // 5 chars / 4 = 1
+		{"hello world", 2},         // 11 chars / 4 = 2
 		{"a b c d e f g h i j", 4}, // 19 chars / 4 = 4
-		{"1234567890", 2}, // 10/4=2
+		{"1234567890", 2},          // 10/4=2
 	}
 	for _, tt := range tests {
 		got := tokenEstimate(tt.input, nil, "")
@@ -582,9 +582,9 @@ func TestTokenEstimate(t *testing.T) {
 
 func TestMessagesTokenEstimate(t *testing.T) {
 	msgs := []message.Message{
-		{Content: "hello world"},                    // 11/4=2
-		{Content: "a"},                              // 1
-		{ToolCalls: []message.ToolCall{                  // name="bash" (4/4=1) + args={"cmd":"ls"} (13/4=3)
+		{Content: "hello world"}, // 11/4=2
+		{Content: "a"},           // 1
+		{ToolCalls: []message.ToolCall{ // name="bash" (4/4=1) + args={"cmd":"ls"} (13/4=3)
 			{Function: message.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		}},
 	}
@@ -647,7 +647,7 @@ func TestCompact_PrunesToolCallArgsBeyondRetention(t *testing.T) {
 	// 10 assistant messages, 5 with tool calls.
 	// RetentionTurns=3 means the last 3 should retain their arguments.
 	msgs := make([]message.Message, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tc := []message.ToolCall{}
 		if i < 5 { // first 5 have tool calls
 			tc = []message.ToolCall{
@@ -695,7 +695,7 @@ func TestCompact_PrunesToolCallArgsBeyondRetention(t *testing.T) {
 		// These are within retention, but they have no tool calls (indices 7-9 are assistant msgs 7-9, which have no tool calls).
 	}
 	// Check only the first 5 have tool calls (indices 0-4)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if len(result[i].ToolCalls) == 0 {
 			t.Errorf("message %d should still have tool calls", i)
 		}
@@ -722,7 +722,7 @@ func TestCompact_KeepsToolCallArgsWithinRetention(t *testing.T) {
 	// 5 assistant messages, all with tool calls.
 	// RetentionTurns=5 means all are within window → nothing pruned.
 	msgs := make([]message.Message, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		msgs[i] = message.Message{
 			Role:    "assistant",
 			Content: strings.Repeat("response ", 50),
@@ -991,7 +991,7 @@ func TestCompact_RetentionExactBoundary(t *testing.T) {
 		t.Errorf("expected 2 pruned (first 2 beyond retention), got %d", pruned)
 	}
 	// First two should be pruned.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if !strings.HasPrefix(result[i].ToolCalls[0].Function.Arguments, `{"pruned": "~`) {
 			t.Errorf("message %d tool call should be pruned", i)
 		}
@@ -1080,19 +1080,19 @@ func TestCompact_SalienceScoredOrdering(t *testing.T) {
 	// Create messages with varying salience levels.
 	// The compactor should compact low-salience messages first.
 	msgs := []message.Message{
-		{Role: "tool", Content: "ls output: file1.txt file2.txt file3.txt"},                                       // low salience (~40-60)
-		{Role: "tool", Content: "Error: build failed with exit code 1 at /home/user/project/src/main.go:42"},         // high salience (error + file path)
-		{Role: "tool", Content: "Build succeeded. All tests passed."},                                               // low salience (~35-50)
-		{Role: "tool", Content: "Exception: NullPointerException\n\tat com.example.App.main(App.java:15)"},           // very high salience (exception + stack trace)
+		{Role: "tool", Content: "ls output: file1.txt file2.txt file3.txt"},                                  // low salience (~40-60)
+		{Role: "tool", Content: "Error: build failed with exit code 1 at /home/user/project/src/main.go:42"}, // high salience (error + file path)
+		{Role: "tool", Content: "Build succeeded. All tests passed."},                                        // low salience (~35-50)
+		{Role: "tool", Content: "Exception: NullPointerException\n\tat com.example.App.main(App.java:15)"},   // very high salience (exception + stack trace)
 	}
 	llmSvc := newMockClient("compacted summary")
 
 	// Use a low threshold that compacts only a few messages.
 	thresholds := Thresholds{
-		HighWater:              1,
-		LowWater:               0,
-		MessageSizeThreshold:   0,
-		SalienceEnabled:        true,
+		HighWater:            1,
+		LowWater:             0,
+		MessageSizeThreshold: 0,
+		SalienceEnabled:      true,
 	}
 
 	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -1119,10 +1119,10 @@ func TestCompact_SaliencePreservesHighValueMessages(t *testing.T) {
 	// This test verifies that when lowWater stops compaction early,
 	// high-salience messages are preserved and low-salience ones are compacted first.
 	msgs := []message.Message{
-		{Role: "tool", Content: strings.Repeat("low value debug log line\n", 200)},    // ~5600 chars, ~1400 tokens - low salience
-		{Role: "tool", Content: "Error: critical failure in module\nat /src/main.go:42\n" + strings.Repeat("stack data\n", 100)},  // high salience
-		{Role: "tool", Content: strings.Repeat("verbose build output\n", 200)},        // low salience
-		{Role: "tool", Content: "Exception: NullReference at /src/handler.go:15\n" + strings.Repeat("trace\n", 100)},  // very high salience
+		{Role: "tool", Content: strings.Repeat("low value debug log line\n", 200)},                                               // ~5600 chars, ~1400 tokens - low salience
+		{Role: "tool", Content: "Error: critical failure in module\nat /src/main.go:42\n" + strings.Repeat("stack data\n", 100)}, // high salience
+		{Role: "tool", Content: strings.Repeat("verbose build output\n", 200)},                                                   // low salience
+		{Role: "tool", Content: "Exception: NullReference at /src/handler.go:15\n" + strings.Repeat("trace\n", 100)},             // very high salience
 	}
 	llmSvc := newMockClient("compacted")
 
@@ -1180,17 +1180,17 @@ func TestCompact_SalienceSkipHighSalience(t *testing.T) {
 	c := New()
 	// Test that messages with salience score above HighSalienceSkipThreshold are skipped.
 	msgs := []message.Message{
-		{Role: "tool", Content: "simple output"},  // low salience
-		{Role: "tool", Content: "Error: critical failure at /path/to/file.go:42"},  // high salience
+		{Role: "tool", Content: "simple output"},                                  // low salience
+		{Role: "tool", Content: "Error: critical failure at /path/to/file.go:42"}, // high salience
 	}
 	llmSvc := newMockClient("summary")
 
 	thresholds := Thresholds{
-		HighWater:                  1,
-		LowWater:                   0,
-		MessageSizeThreshold:       0,
-		SalienceEnabled:            true,
-		HighSalienceSkipThreshold:  80, // skip messages with score >= 80
+		HighWater:                 1,
+		LowWater:                  0,
+		MessageSizeThreshold:      0,
+		SalienceEnabled:           true,
+		HighSalienceSkipThreshold: 80, // skip messages with score >= 80
 	}
 
 	result, count, _, _, err := c.Compact(context.Background(), msgs, llmSvc, thresholds)
@@ -1219,8 +1219,8 @@ func TestCompact_SalienceDisabledFallsBack(t *testing.T) {
 	// When SalienceEnabled is false, the original oldest-first behaviour should be used.
 	// Create messages with high salience first (oldest) and low salience later.
 	msgs := []message.Message{
-		{Role: "tool", Content: "Error: initial failure with stack trace at /src/main.go:42"},  // high salience, oldest
-		{Role: "tool", Content: "ls output: files"},                                            // low salience, newer
+		{Role: "tool", Content: "Error: initial failure with stack trace at /src/main.go:42"}, // high salience, oldest
+		{Role: "tool", Content: "ls output: files"},                                           // low salience, newer
 	}
 	llmSvc := newMockClient("summary")
 
