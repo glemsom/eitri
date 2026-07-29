@@ -13,6 +13,8 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Render component** | A browser-visible UI element (tool card, DiffCard, Mermaid diagram, QuickReplies chips) rendered by the server as a Templ fragment and swapped into the DOM via HTMX. Each component is triggered by an SSE `component` event, not by tool return text. |
 | **Tool card** | A `<details>` element showing tool progress (running with timer) and final result (collapsible output). Emitted by `tool_call` and `tool_result` SSE events. |
 | **Provider** | External LLM service integration that owns authentication, model discovery, endpoint selection, and chat transport. Eitri's auth/discovery/profile layer configures litellm Provider adapters underneath. A Provider exposes one or more Models. |
+| **Provider endpoint** | Base URL used to reach a Provider for model discovery and chat. Built-in Providers have default endpoints; Custom OpenAI requires a user-entered endpoint. |
+| **Settings draft** | Unsaved Settings form state. User edits, provider-driven endpoint changes, and model selections live in the draft until Save validates and persists them. |
 | **Sub-agent** | A subordinate agent loop spawned by a parent agent via the `delegate` tool. Runs with its own turn loop, tool registry, and system prompt; reports back via `collect`. Cannot spawn further sub-agents in v1. |
 | **Child session** | A `UISession` with a `ParentID` field, created when a browser-visible parent delegates to a sub-agent. Appears nested under the parent in the sidebar tree. |
 | **Skill** | Agent Skills-compatible directory containing `SKILL.md` instructions and optional `scripts/`, `references/`, and `assets/`. Discovered from fixed project/user roots and activated per session. |
@@ -20,6 +22,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Compactor** | The `internal/compactor/` package that scans conversation history for oversized messages and replaces them with LLM-generated summaries. Controlled by `compaction_size_threshold` config (default 2000 estimated tokens). Compacted non-tool messages are tagged with `[MESSAGE COMPACTED]` prefix to prevent re-compaction. Runs automatically after each turn and on demand via `CompactSession`. |
 | **Pattern compression** | Deterministic, zero-LLM compression of bash tool output by matching the command name (`ls`, `find`, `grep`, `rg`) against command-specific pattern compressors. Outputs are regrouped and summarized (group by directory, truncate per-group entries, add counts). Guaranteed to never inflate tokens. The raw original is preserved in `RawBlocks` for snapshots and debugging. |
 | **Model** | LLM accessible via a litellm-backed Provider adapter. OpenCode Go models route by prefix (qwen*/minimax* → Anthropic /v1/messages, rest → OpenAI /chat/completions). GitHub Copilot and OpenRouter use dedicated adapters. Configured via Settings or `~/.eitri/config.json`. |
+| **Unverified model** | Model selected in Settings whose availability has not yet been checked against the current draft Provider endpoint and credentials. Save or Test Connection must verify it before use. |
 | **HTML-over-wire shell** | Go/Templ/HTMX-rendered application frame and fragments. Server owns canonical UI state and rendering. |
 | **Browser island** | Isolated client-side behavior attached to server-rendered markup; owns only local ephemeral UI state. |
 | **Stream island** | Browser island managing `EventSource` lifecycle and token display for one assistant run. |
@@ -59,6 +62,9 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0017](docs/adr/0017-bwrap-sandbox.md) | bwrap sandbox for bash tool | Accepted (amended) |
 | [0018](docs/adr/0018-personas.md) | Personas — named system prompts with skill injection | Accepted |
 | [0019](docs/adr/0019-adopt-litellm-client-for-transport.md) | Adopt litellm.Client for all LLM transport — replace hand-rolled adapters | Accepted |
+| [0020](docs/adr/0020-browser-tool-newremoteallocator.md) | `browser` tool via chromedp NewRemoteAllocator | Accepted |
+| [0021](docs/adr/0021-pattern-compression-for-bash-output.md) | Deterministic pattern compression for bash tool output | Accepted |
+| [0022](docs/adr/0022-save-only-settings-drafts.md) | Save-only settings drafts | Accepted |
 
 ## Project structure
 
