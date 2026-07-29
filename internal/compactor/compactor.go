@@ -169,21 +169,33 @@ func batchSummarizationPrompt(candidates []compactableMessage, roles []string, c
 
 // parseBatchSummaries parses the LLM response from a batch summarisation request.
 // It extracts summaries in the format "MESSAGE N: <summary>" and returns them
-// indexed by message number (1-based). Malformed lines are silently skipped.
+// indexed by message number (1-based). Multi-line summaries are captured in full.
+// Malformed lines are silently skipped.
 func parseBatchSummaries(response string) map[int]string {
 	summaries := make(map[int]string)
-	re := regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*([^\n]*)?`)
-	matches := re.FindAllStringSubmatch(response, -1)
-	for _, m := range matches {
-		if len(m) < 3 {
-			continue
-		}
+	// Locate all "MESSAGE N:" markers and their positions.
+	re := regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*`)
+	locs := re.FindAllStringSubmatchIndex(response, -1)
+	if len(locs) == 0 {
+		return summaries
+	}
+	for i, loc := range locs {
 		num := 0
-		fmt.Sscanf(m[1], "%d", &num)
+		fmt.Sscanf(response[loc[2]:loc[3]], "%d", &num)
 		if num < 1 {
 			continue
 		}
-		summary := strings.TrimSpace(m[2])
+		// Content starts after the matched prefix (group 1 end = loc[1]).
+		start := loc[1]
+		end := len(response)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+			// Strip the trailing newline before the next marker.
+			if end > start && response[end-1] == '\n' {
+				end--
+			}
+		}
+		summary := strings.TrimSpace(response[start:end])
 		if summary == "" {
 			continue
 		}
