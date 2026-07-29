@@ -476,6 +476,16 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 	// Replace in-memory history with compacted version.
 	s.historySessionMgr.RestoreHistory(sessionID, compactedMsgs)
 
+	// Sync compacted messages to the UI session manager so snapshots reflect
+	// the compacted state. Strip the system prompt (stored separately in UI session).
+	if s.uiSessionMgr != nil {
+		uiMsgs := compactedMsgs
+		if len(uiMsgs) > 0 && uiMsgs[0].Role == "system" {
+			uiMsgs = uiMsgs[1:]
+		}
+		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
+	}
+
 	// Snapshot the compacted history.
 	sessAfter := s.uiSessionMgr.Get(sessionID)
 	if sessAfter != nil {

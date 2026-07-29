@@ -905,6 +905,22 @@ func (m *Manager) AppendToConversation(id string, msg message.Message) {
 	}
 }
 
+// ReplaceConversationMessages replaces all messages in the session's conversation.
+// The system prompt is NOT affected — only the message list is replaced.
+// No-op if the session does not exist.
+func (m *Manager) ReplaceConversationMessages(id string, msgs []message.Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	convo := m.convoStore[id]
+	if convo == nil {
+		return
+	}
+	convo.Messages = msgs
+	if meta := m.metaStore[id]; meta != nil {
+		meta.UpdatedAt = time.Now()
+	}
+}
+
 // UpdateConfig updates the configuration fields of a session from the given SessionConfig.
 // Only non-zero-value fields are applied. No-op if the session does not exist.
 func (m *Manager) UpdateConfig(id string, config *SessionConfig) {
