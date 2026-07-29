@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -592,11 +593,16 @@ func TestBrowser_CompactButton_FiresRequest(t *testing.T) {
 	}
 
 	// Set up network request interception to capture the compact POST
-	var capturedURL string
+	var (
+		mu          sync.Mutex
+		capturedURL string
+	)
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if ev, ok := ev.(*network.EventRequestWillBeSent); ok {
 			if strings.Contains(ev.Request.URL, "/compact") {
+				mu.Lock()
 				capturedURL = ev.Request.URL
+				mu.Unlock()
 			}
 		}
 	})
@@ -612,8 +618,11 @@ func TestBrowser_CompactButton_FiresRequest(t *testing.T) {
 
 	// Verify a request was sent to the correct URL
 	expectedURL := server.URL + "/api/sessions/" + sessionID + "/compact"
-	if capturedURL != expectedURL {
-		t.Errorf("captured request URL = %q, want %q", capturedURL, expectedURL)
+	mu.Lock()
+	got := capturedURL
+	mu.Unlock()
+	if got != expectedURL {
+		t.Errorf("captured request URL = %q, want %q", got, expectedURL)
 	}
 }
 
