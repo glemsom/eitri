@@ -137,6 +137,61 @@ Summary:`, truncated)
 	}
 }
 
+// batchSummarizationPrompt builds a single prompt that asks the LLM to summarise
+// multiple messages at once. This reduces N sequential LLM calls to a single call,
+// dramatically speeding up compaction for conversations with many messages.
+//
+// The response is parsed by parseBatchSummaries to extract per-message summaries.
+func batchSummarizationPrompt(candidates []compactableMessage, roles []string, contents []string) string {
+	const maxContentLen = 8000
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Below are %d messages from a conversation with an AI coding agent. For each message, write a 1-3 sentence summary preserving key facts, file paths, error messages, function names, and numerical values. Omit boilerplate and verbose logs.\n\n", len(candidates)))
+	sb.WriteString("Respond with numbered summaries in EXACTLY this format:\n")
+	for i := 1; i <= len(candidates); i++ {
+		sb.WriteString(fmt.Sprintf("MESSAGE %d: <summary>\n", i))
+	}
+	sb.WriteString("\n")
+
+	for i, content := range contents {
+		truncated := content
+		if len(truncated) > maxContentLen {
+			truncated = truncated[:maxContentLen] + "\n... [truncated]"
+		}
+		sb.WriteString(fmt.Sprintf("--- Message %d (role: %s) ---\n", i+1, roles[i]))
+		sb.WriteString(truncated)
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\nNow write the numbered summaries:\n")
+	return sb.String()
+}
+
+// parseBatchSummaries parses the LLM response from a batch summarisation request.
+// It extracts summaries in the format "MESSAGE N: <summary>" and returns them
+// indexed by message number (1-based). Malformed lines are silently skipped.
+func parseBatchSummaries(response string) map[int]string {
+	summaries := make(map[int]string)
+	re := regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*([^\n]*)?`)
+	matches := re.FindAllStringSubmatch(response, -1)
+	for _, m := range matches {
+		if len(m) < 3 {
+			continue
+		}
+		num := 0
+		fmt.Sscanf(m[1], "%d", &num)
+		if num < 1 {
+			continue
+		}
+		summary := strings.TrimSpace(m[2])
+		if summary == "" {
+			continue
+		}
+		summaries[num] = summary
+	}
+	return summaries
+}
+
 // salienceScore returns a heuristic importance score for a message's content.
 // Higher scores indicate more important content that should be preserved longer.
 // The score considers:
@@ -269,6 +324,10 @@ type compactableMessage struct {
 // and the approximate token count saved.
 // prunedToolCalls reports how many tool call argument blocks were pruned.
 func (c *Compactor) Compact(ctx context.Context, messages []message.Message, client *litellm.Client, thresholds Thresholds) (compacted []message.Message, compactedCount int, freedTokens int, prunedToolCalls int, err error) {
+	// Capture batch intent BEFORE defaulting LowWater.
+	// Manual compaction passes LowWater=0 to signal "compact everything".
+	wantsBatch := thresholds.LowWater == 0
+
 	if thresholds.HighWater <= 0 {
 		thresholds.HighWater = 90 // sensible default
 	}
@@ -326,7 +385,12 @@ func (c *Compactor) Compact(ctx context.Context, messages []message.Message, cli
 	}
 
 	// --- Pass 2: Content summarization ---
-	if thresholds.SalienceEnabled {
+	if wantsBatch {
+		// Batch summarization: all candidates in a single LLM call.
+		// Used by manual compaction (LowWater=0) which wants to compact everything.
+		// This avoids N sequential non-streaming LLM calls.
+		result, compactedCount, freedTokens = c.compactBatch(ctx, result, client, thresholds)
+	} else if thresholds.SalienceEnabled {
 		// Salience-scored ordering: collect eligible messages, score, sort, compact.
 		result, compactedCount, freedTokens = c.compactBySalience(ctx, result, client, thresholds)
 	} else {
@@ -521,6 +585,104 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 		if totalEst <= thresholds.LowWater {
 			break
 		}
+	}
+
+	return result, compactedCount, freedTokens
+}
+
+// compactBatch collects all compactable messages and summarises them in a
+// single LLM call. This avoids N sequential non-streaming calls.
+// Used for manual compaction (when LowWater == 0, indicating "compact everything").
+// Does not check the LowWater stop condition since the caller intends to
+// compact all eligible messages.
+func (c *Compactor) compactBatch(ctx context.Context, messages []message.Message, client *litellm.Client, thresholds Thresholds) ([]message.Message, int, int) {
+	result := make([]message.Message, len(messages))
+	copy(result, messages)
+
+	compactedCount := 0
+	freedTokens := 0
+
+	// Collect all compactable messages with their scores.
+	var candidates []compactableMessage
+	for i := range result {
+		if result[i].Content == "" {
+			continue
+		}
+		if strings.HasPrefix(result[i].Content, "[TOOL RESULT COMPACTED") ||
+			strings.HasPrefix(result[i].Content, "[MESSAGE COMPACTED") {
+			continue
+		}
+		if result[i].Role != "tool" && result[i].Role != "user" && result[i].Role != "assistant" {
+			continue
+		}
+		if thresholds.MessageSizeThreshold > 0 {
+			est := tokenEstimate(result[i].Content, nil, "")
+			for _, tc := range result[i].ToolCalls {
+				est += tokenEstimate(tc.Function.Arguments, nil, "")
+			}
+			if est < thresholds.MessageSizeThreshold {
+				continue
+			}
+		}
+		candidates = append(candidates, compactableMessage{
+			index:           i,
+			score:           0,
+			originalContent: result[i].Content,
+			originalTokens:  tokenEstimate(result[i].Content, nil, ""),
+		})
+	}
+
+	if len(candidates) == 0 {
+		return result, 0, 0
+	}
+
+	// Build batch prompt with all candidates.
+	roles := make([]string, len(candidates))
+	contents := make([]string, len(candidates))
+	for i, cand := range candidates {
+		roles[i] = result[cand.index].Role
+		contents[i] = result[cand.index].Content
+	}
+
+	prompt := batchSummarizationPrompt(candidates, roles, contents)
+	modelName := thresholds.Model
+	if modelName == "" {
+		modelName = "compactor"
+	}
+	litellmReq := &litellm.Request{
+		Model: modelName,
+		Messages: []litellm.Message{
+			{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: prompt}}},
+		},
+	}
+	resp, err := client.Chat(ctx, *litellmReq)
+	if err != nil {
+		// Batch failed — nothing compacted.
+		return result, 0, 0
+	}
+
+	summaries := parseBatchSummaries(resp.Text())
+	if len(summaries) == 0 {
+		// Batch response couldn't be parsed (unexpected format).
+		// Return nothing compacted rather than falling through to
+		// individual calls, which would be slow and offset any
+		// caller-level call tracking.
+		return result, 0, 0
+	}
+
+	for i, cand := range candidates {
+		summary, ok := summaries[i+1]
+		if !ok || summary == "" {
+			continue
+		}
+		originalTokens := tokenEstimate(cand.originalContent, nil, "")
+		if result[cand.index].Role == "tool" {
+			result[cand.index].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		} else {
+			result[cand.index].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
+		}
+		compactedCount++
+		freedTokens += originalTokens - tokenEstimate(result[cand.index].Content, nil, "")
 	}
 
 	return result, compactedCount, freedTokens

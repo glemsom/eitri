@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1733,6 +1734,33 @@ func fakeCompactLLMServer(t *testing.T, summary string) *httptest.Server {
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
+
+			// Check if this is a batch summarization request.
+			bodyBytes, _ := io.ReadAll(r.Body)
+			bodyStr := string(bodyBytes)
+			isBatch := strings.Contains(bodyStr, "Below are") && strings.Contains(bodyStr, "MESSAGE")
+
+			var content string
+			if isBatch {
+				lines := strings.Split(bodyStr, "\n")
+				msgCount := 0
+				for _, line := range lines {
+					if strings.HasPrefix(line, "--- Message ") {
+						msgCount++
+					}
+				}
+				if msgCount == 0 {
+					msgCount = 2
+				}
+				var sb strings.Builder
+				for i := 1; i <= msgCount; i++ {
+					sb.WriteString(fmt.Sprintf("MESSAGE %d: %s\n", i, summary))
+				}
+				content = sb.String()
+			} else {
+				content = summary
+			}
+
 			fmt.Fprintf(w, `{
 				"id": "chatcmpl-test",
 				"object": "chat.completion",
@@ -1747,7 +1775,7 @@ func fakeCompactLLMServer(t *testing.T, summary string) *httptest.Server {
 					"finish_reason": "stop"
 				}],
 				"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-			}`, summary)
+			}`, content)
 			return
 		}
 		http.NotFound(w, r)

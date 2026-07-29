@@ -84,7 +84,7 @@ api() {
     local cookie="${4:-}"
     local content_type="${5:-}"
 
-    local args=(-sS -X "$method" "${BASE_URL}${path}")
+    local args=(-sS --max-time 120 -X "$method" "${BASE_URL}${path}")
     if [ -n "$data" ]; then
         if [ -z "$content_type" ]; then
             # Default: application/x-www-form-urlencoded

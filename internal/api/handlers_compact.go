@@ -1,13 +1,22 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/runner"
 )
+
+// compactTimeout is the maximum time allowed for a single manual compaction
+// request. Compaction runs N sequential LLM calls (one per candidate message
+// before the batching change), so we give it a generous budget to complete.
+// If the timeout is exceeded, a user-visible error toast is returned and
+// no history is modified.
+const compactTimeout = 120 * time.Second
 
 // handleCompact manually triggers compaction for a session's conversation history.
 // It is invoked by the "Compact now" button in the sidebar context panel or by the
@@ -23,6 +32,10 @@ import (
 //  6. Snapshots the compacted history to disk (if persister is available)
 //  7. Returns a toast message with compaction stats
 func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
+	// Apply a timeout to prevent the handler from hanging indefinitely.
+	ctx, cancel := context.WithTimeout(r.Context(), compactTimeout)
+	defer cancel()
+
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
@@ -64,7 +77,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	}
 	runCfg := runner.FromConfig(cfg, workspace, 0)
 
-	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(r.Context(), id, runCfg)
+	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(ctx, id, runCfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusInternalServerError)

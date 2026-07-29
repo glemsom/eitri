@@ -24,7 +24,6 @@ func (m *mockCompactorProvider) Chat(_ context.Context, req *litellm.Request) (*
 	if m.failOnCall {
 		return nil, assertAnError
 	}
-	// Verify the prompt looks like a summarization request.
 	if len(req.Messages) == 0 {
 		return &litellm.Response{
 			Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
@@ -34,7 +33,34 @@ func (m *mockCompactorProvider) Chat(_ context.Context, req *litellm.Request) (*
 	}
 	msg := req.Messages[len(req.Messages)-1]
 	content := extractText(msg)
-	if !strings.Contains(content, "Summarize the following tool result") {
+
+	// Detect batch summarization prompts (multiple messages in one call).
+	if strings.Contains(content, "Below are") && strings.Contains(content, "MESSAGE") {
+		// Assume 3 messages by default; count them from the prompt.
+		count := 3
+		// Count lines matching "--- Message N"
+		lines := strings.Split(content, "\n")
+		msgCount := 0
+		for _, line := range lines {
+			if strings.HasPrefix(line, "--- Message ") {
+				msgCount++
+			}
+		}
+		if msgCount > 0 {
+			count = msgCount
+		}
+		var sb strings.Builder
+		for i := 1; i <= count; i++ {
+			sb.WriteString(fmt.Sprintf("MESSAGE %d: %s\n", i, m.summary))
+		}
+		return &litellm.Response{
+			Blocks:   []litellm.Block{litellm.TextBlock{Text: sb.String()}},
+			Provider: "mock-compactor",
+			Model:    "mock-model",
+		}, nil
+	}
+
+	if strings.Contains(content, "Summarize the following tool result") {
 		return &litellm.Response{
 			Blocks:   []litellm.Block{litellm.TextBlock{Text: m.summary}},
 			Provider: "mock-compactor",
@@ -252,7 +278,7 @@ func TestCompact_SkipsOnLLMError(t *testing.T) {
 		{Role: "user", Content: "second"},
 		{Role: "tool", Content: "second large result with lots of data " + strings.Repeat("y", 200)},
 	}
-	thresholds2 := Thresholds{HighWater: 1, LowWater: 0}
+	thresholds2 := Thresholds{HighWater: 1, LowWater: 1}
 
 	result2, count2, freed2, _, err := c.Compact(context.Background(), msgs2, llmSvc3, thresholds2)
 	if err != nil {
@@ -1187,7 +1213,7 @@ func TestCompact_SalienceSkipHighSalience(t *testing.T) {
 
 	thresholds := Thresholds{
 		HighWater:                 1,
-		LowWater:                  0,
+		LowWater:                  1,
 		MessageSizeThreshold:      0,
 		SalienceEnabled:           true,
 		HighSalienceSkipThreshold: 80, // skip messages with score >= 80
