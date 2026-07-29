@@ -135,9 +135,13 @@ func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, 
 		lr.Thinking = base.Thinking
 	}
 
-	// Copy provider options from base request
+	// Copy provider options from base request (defensive copy to avoid
+	// shared-mutation issues if the map is ever modified downstream).
 	if base.ProviderOptions != nil {
-		lr.ProviderOptions = base.ProviderOptions
+		lr.ProviderOptions = make(litellm.ProviderOptions, len(base.ProviderOptions))
+		for k, v := range base.ProviderOptions {
+			lr.ProviderOptions[k] = v
+		}
 	}
 
 	return lr
@@ -411,7 +415,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if dispErr != nil {
 				errMsg := fmt.Sprintf("Tool error: %v", dispErr)
 				spec.SSEWriter.ToolResult(tc.Name, errMsg)
-				opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+				opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 				slog.Warn("tool dispatch error", slog.String("tool", tc.Name), slog.String("error", errMsg))
 				continue
 			}
@@ -435,7 +439,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					}
 					errMsg := fmt.Sprintf("Confirmation error: %v", confirmErr)
 					spec.SSEWriter.ToolResult(tc.Name, errMsg)
-					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 					continue
 				}
 
@@ -445,13 +449,13 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					if dispErr != nil {
 						errMsg := fmt.Sprintf("Tool error after approval: %v", dispErr)
 						spec.SSEWriter.ToolResult(tc.Name, errMsg)
-						opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+						opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 						continue
 					}
 				} else {
 					errMsg := "Access denied to path: " + confPath
 					spec.SSEWriter.ToolResult(tc.Name, errMsg)
-					opts.HistoryMgr.AppendTool(tc.ID, errMsg, true)
+					opts.HistoryMgr.AppendTool(tc.ID, errMsg, "", true)
 					continue
 				}
 			}
@@ -510,7 +514,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if isError && resultContent == "" {
 				resultContent = fmt.Sprintf("Error executing %q", tc.Name)
 			}
-			opts.HistoryMgr.AppendTool(tc.ID, resultContent, isError)
+			resultRawContent := blocksToText(dispResult.RawBlocks)
+			opts.HistoryMgr.AppendTool(tc.ID, resultContent, resultRawContent, isError)
 		}
 
 		// Broadcast context_update after tool results appended to history

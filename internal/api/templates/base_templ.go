@@ -44,7 +44,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"stylesheet\" href=\"/static/prism.min.css\"><link rel=\"stylesheet\" href=\"/static/katex.min.css\"><link rel=\"stylesheet\" href=\"/static/eitri.css\"><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap\" rel=\"stylesheet\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/prism-core.min.js\"></script><script src=\"/static/prism-go.min.js\"></script><script src=\"/static/katex.min.js\"></script><script src=\"/static/katex-auto-render.min.js\"></script><script src=\"/static/mermaid.min.js\"></script><script src=\"/static/eitri-stream.js\"></script><script src=\"/static/eitri-composer.js\"></script><script src=\"/static/eitri-renderers.js\"></script><script src=\"/static/eitri-mermaid.js\"></script><script src=\"/static/eitri-persona-selector.js\"></script><script src=\"/static/eitri-session-rename.js\"></script><script src=\"/static/eitri-settings.js\"></script><script src=\"/static/eitri-context.js\"></script><script src=\"/static/eitri-resize.js\"></script><script src=\"/static/eitri-events.js\"></script><link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/static/favicon-32.png\"><link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/static/favicon-16.png\"></head><body hx-ext=\"head-support\"><div id=\"app\"><header><h1><span class=\"header-face-container\" data-stream-status=\"idle\"><img src=\"/static/face.webp\" alt=\"\" class=\"header-face\" width=\"28\" height=\"28\"></span><span class=\"typing-dots\" hidden><span>.</span><span>.</span><span>.</span></span> Eitri<span class=\"stream-status-text idle\">Idle</span></h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><link rel=\"stylesheet\" href=\"/static/prism.min.css\"><link rel=\"stylesheet\" href=\"/static/katex.min.css\"><link rel=\"stylesheet\" href=\"/static/eitri.css\"><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap\" rel=\"stylesheet\"><script src=\"/static/htmx.min.js\"></script><script src=\"/static/prism-core.min.js\"></script><script src=\"/static/prism-go.min.js\"></script><script src=\"/static/katex.min.js\"></script><script src=\"/static/katex-auto-render.min.js\"></script><script src=\"/static/mermaid.min.js\"></script><script src=\"/static/eitri-stream.js\"></script><script src=\"/static/eitri-composer.js\"></script><script src=\"/static/eitri-renderers.js\"></script><script src=\"/static/eitri-mermaid.js\"></script><script src=\"/static/eitri-persona-selector.js\"></script><script src=\"/static/eitri-session-rename.js\"></script><script src=\"/static/eitri-settings.js\"></script><script src=\"/static/eitri-context.js\"></script><script src=\"/static/eitri-resize.js\"></script><script src=\"/static/eitri-events.js\"></script><link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/static/favicon-32.png\"><link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/static/favicon-16.png\"><!-- PWA meta tags --><meta name=\"theme-color\" content=\"#1a1a2e\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-title\" content=\"Eitri\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" sizes=\"192x192\" href=\"/static/pwa-icon-192.png\"><link rel=\"apple-touch-icon\" sizes=\"512x512\" href=\"/static/pwa-icon-512.png\"><link rel=\"manifest\" href=\"/manifest.json\"><script>\n\t\t\t\tif ('serviceWorker' in navigator) {\n\t\t\t\t\tnavigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(err) {\n\t\t\t\t\t\tconsole.error('Service worker registration failed:', err);\n\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t</script></head><body hx-ext=\"head-support\"><div id=\"app\"><header><h1><span class=\"header-face-container\" data-stream-status=\"idle\"><img src=\"/static/face.webp\" alt=\"\" class=\"header-face\" width=\"28\" height=\"28\"></span><span class=\"typing-dots\" hidden><span>.</span><span>.</span><span>.</span></span> Eitri<span class=\"stream-status-text idle\">Idle</span></h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -56,7 +56,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(workspace)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 42, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 57, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -69,7 +69,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue("/api/sessions/" + activeID + "/directory-browser")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 43, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 58, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -82,7 +82,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(pathBase(workspace))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 47, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 62, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -100,7 +100,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(workspace)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 50, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 65, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 			if templ_7745c5c3_Err != nil {
@@ -113,7 +113,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(pathBase(workspace))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 51, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 66, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -164,7 +164,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL("/api/sessions/" + activeID + "/compact"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 91, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 106, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -177,7 +177,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(reasoningContent)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 101, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 116, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(reasoningContent)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 105, Col: 644}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 120, Col: 644}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -255,7 +255,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var13 templ.SafeURL
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 120, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 135, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.URL(path))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 121, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 136, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -294,7 +294,7 @@ func NavLink(path string, label string, currentPath string) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 127, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 142, Col: 9}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {

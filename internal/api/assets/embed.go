@@ -27,4 +27,8 @@ import (
 //go:embed face.webp
 //go:embed favicon-32.png
 //go:embed favicon-16.png
+//go:embed pwa-icon-192.png
+//go:embed pwa-icon-512.png
+//go:embed manifest.json
+//go:embed sw.js
 var Files embed.FS

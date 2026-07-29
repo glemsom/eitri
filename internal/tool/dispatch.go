@@ -80,6 +80,7 @@ func (r *Registry) Dispatch(ctx context.Context, toolUseID, name string, args js
 				IsError:   result.IsError,
 			},
 		},
+		RawBlocks: result.RawBlocks,
 	}
 	return wrapped, nil
 }

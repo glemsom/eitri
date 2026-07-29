@@ -55,6 +55,7 @@
     if (spinner) spinner.style.visibility = 'visible';
 
     // Fetch models via fetch API (not HTMX) to get JSON, using current unsaved form values.
+    // The server ignores masked api_key values and avoids persisting refresh/test overrides.
     var form = document.querySelector('#settings-form form');
     var params = form ? new URLSearchParams(new FormData(form)) : new URLSearchParams();
     var url = '/api/models';
@@ -69,11 +70,15 @@
       .then(function (data) {
         if (data.data && Array.isArray(data.data)) {
           updateModelSelect(data.data);
-          showToast('✓ Models refreshed');
+          if (data.data.length > 0) {
+            showToast('\u2713 Models refreshed');
+          } else {
+            showToast('\u26a0 No models discovered. Check credentials and save.');
+          }
         }
       })
-      .catch(function () {
-        showToast('Model refresh failed');
+      .catch(function (err) {
+        showToast('Failed to refresh models: ' + err.message);
       })
       .finally(function () {
         if (spinner) spinner.style.visibility = 'hidden';
@@ -261,10 +266,10 @@
     init();
   }
 
-  // Re-init after HTMX swaps (form re-render)
+  // Re-init after HTMX swaps (form re-render or page navigation)
   document.addEventListener('htmx:afterSwap', function (evt) {
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
-    if (targetId === 'settings-form') {
+    if (targetId === 'settings-form' || (targetId === 'app' && document.getElementById('settings-form'))) {
       initBaseURLToggle();
       initSaveButtonLoading();
       initSaveSuccessFade();

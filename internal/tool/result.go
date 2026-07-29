@@ -7,12 +7,18 @@ import "github.com/voocel/litellm"
 // The error return from Call() is now only for Go-level failures (cancel,
 // JSON parse, unknown tool). The IsError and NeedsConfirm fields on
 // ToolResult signal LLM-facing error vs confirmation-needed vs success.
+//
+// RawBlocks holds the raw/original output before pattern compression.
+// It is nil when compression did not change the output (no pattern matched,
+// or anti-inflation kicked in). RawBlocks is stored in session snapshots
+// for debugging; it is never sent to the LLM.
 type ToolResult struct {
-	Blocks         []litellm.Block
-	IsError        bool   // when true, Blocks are wrapped as ToolResultBlock with IsError=true
-	NeedsConfirm   bool   // when true, tool needs user approval before proceeding
-	ConfirmPath    string // path requiring confirmation (set when NeedsConfirm=true)
-	ConfirmMessage string // message to show to the user (set when NeedsConfirm=true)
+	Blocks         []litellm.Block  // compressed output sent to the LLM
+	RawBlocks      []litellm.Block  // raw/original output for snapshots; nil when identical to Blocks
+	IsError        bool             // when true, Blocks are wrapped as ToolResultBlock with IsError=true
+	NeedsConfirm   bool             // when true, tool needs user approval before proceeding
+	ConfirmPath    string           // path requiring confirmation (set when NeedsConfirm=true)
+	ConfirmMessage string           // message to show to the user (set when NeedsConfirm=true)
 }
 
 // Success returns a ToolResult with no error or confirmation flags.

@@ -9,8 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Fixed
+
+- Provider switch in Settings now gracefully returns empty model list instead of
+  error toast when saved credentials don't match the new provider. Model refresh
+  saves the credentials first, then discovers models. (#948)
+
+
 - Config + Settings UI for `browser_ws_url`: new config field with default `ws://127.0.0.1:9222`, merge handler, and text input in the Settings page with help text. (#918)
 - Browser tool: implement `type` action — types text into an element identified by CSS selector. Clears existing value first, handles empty text as no-op, and returns clear error messages for invalid/missing selectors. (#919)
+- PWA enablement: Eitri is now installable as a standalone desktop app. Adds `manifest.json`, service worker (`sw.js`), PWA icons derived from `face.webp`, and meta/apple-touch-icon tags in `<head>`. (#945)
+- App shell caching: service worker precaches all static assets (`/static/*`) on install, uses cache-first strategy for static assets, network-first for Google Fonts, network-only for `/api/*` and SSE `/stream` endpoints, and falls back to cached app shell for navigation requests when offline. Provides instant loads on repeat visits and offline resilience. (#946)
 
 ### Fixed
 
@@ -29,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LLM stream close helper now exits after normal stream completion instead of leaking a goroutine until process exit.
 
 - GitHub Copilot `gpt-5*` models now expose Thinking Level choices in Settings and preserve selected reasoning effort.
+
+- Provider-switch model refresh now passes the selected provider to the server so models are discovered for the correct provider, not the previously saved one.
 
 - Duplicate assistant bubbles when a run produces no text output (e.g., tool-only run) — the render handler now checks that the last assistant message was created after the triggering user message before rendering it.
 

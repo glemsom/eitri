@@ -119,9 +119,11 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	req := &litellm.Request{
 		Model: parentCfg.ModelName,
 	}
-	// Set task ID as prompt cache key if the provider supports it
+	// Set task ID as prompt cache key if the provider supports it.
+	// Skip for Anthropic-routed models (qwen*, minimax*) because the
+	// Anthropic provider rejects unknown provider options like prompt_cache_key.
 	providerDesc, _ := provider.Describe(parentCfg.ProviderID)
-	if providerDesc.SupportsPromptCache {
+	if providerDesc.SupportsPromptCache && !provider.IsAnthropicRoutedModel(parentCfg.ModelName) {
 		if req.ProviderOptions == nil {
 			req.ProviderOptions = make(litellm.ProviderOptions)
 		}

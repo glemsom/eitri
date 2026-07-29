@@ -1110,9 +1110,27 @@ func TestChatRun_GitHubCopilotUsesProviderAuthState(t *testing.T) {
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 
-	sawModelsAuth := <-modelsAuthCh
-	sawChatAuth := <-chatAuthCh
+	var sawModelsAuth, sawChatAuth string
+
+	// Wait briefly for model discovery auth
+	select {
+	case sawModelsAuth = <-modelsAuthCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for models auth — model discovery failed")
+	}
 	if sawModelsAuth != "Bearer gho-provider-state" {
+		t.Fatalf("model discovery Authorization = %q, want Bearer gho-provider-state", sawModelsAuth)
+	}
+
+	// Check if run is still active before waiting for chat auth
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	select {
+	case sawChatAuth = <-chatAuthCh:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for chat auth — run may have completed without making a chat request")
+	}
+	if sawChatAuth != "Bearer gho-provider-state" {
 		t.Fatalf("model discovery Authorization = %q, want Bearer gho-provider-state", sawModelsAuth)
 	}
 	if sawChatAuth != "Bearer gho-provider-state" {
@@ -1166,10 +1184,25 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
 
-	sawModelsAuth := <-modelsAuthCh
-	sawChatAuth := <-chatAuthCh
+	var sawModelsAuth, sawChatAuth string
+
+	// Wait briefly for model discovery auth
+	select {
+	case sawModelsAuth = <-modelsAuthCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for models auth — model discovery failed")
+	}
 	if sawModelsAuth != "Bearer gho-provider-state" {
 		t.Fatalf("model discovery Authorization = %q, want Bearer gho-provider-state", sawModelsAuth)
+	}
+
+	// Check if run is still active before waiting for chat auth
+	waitForRunToFinish(t, h.runSvc, sessionID)
+
+	select {
+	case sawChatAuth = <-chatAuthCh:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for chat auth — run may have completed without making a chat request")
 	}
 	if sawChatAuth != "Bearer gho-provider-state" {
 		t.Fatalf("chat Authorization = %q, want Bearer gho-provider-state", sawChatAuth)

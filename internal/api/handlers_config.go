@@ -157,6 +157,28 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	// Validate provider credentials by calling the profile's model discovery path.
 	models, contextWindows, modelAPIs, err := s.fetchModelList(r.Context(), newCfg)
 	if err != nil {
+		providerChanged := newCfg.Provider != cfg.Provider
+		if providerChanged && isHTMXRequest(r) {
+			// Provider changed but model discovery failed — save the provider change
+			// anyway (with empty model) and surface a warning so the user can fix
+			// credentials. Reload disk config first to capture any auth refresh that
+			// may have been persisted by PersistAuth inside DiscoverModels.
+			newCfg.Model = ""
+			newCfg.ModelAPI = ""
+			newCfg.ThinkingLevel = ""
+			if diskCfg, loadErr := config.Load(s.config.ConfigPath); loadErr == nil {
+				newCfg.APIKey = diskCfg.APIKey
+				newCfg.ProviderAuth = append(json.RawMessage(nil), diskCfg.ProviderAuth...)
+			}
+			if saveErr := s.saveProviderConfig(newCfg); saveErr != nil {
+				http.Error(w, "Failed to save config: "+saveErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			warning := fmt.Sprintf("Provider changed to %q, but model discovery failed: %s. Enter valid credentials and Save again to enable a model.", s.providerDisplayName(newCfg.Provider), err.Error())
+			component := templates.SettingsForm(maskedConfig(newCfg), nil, "", warning, nil, "", sandbox.BwrapAvailable(), nil)
+			component.Render(r.Context(), w)
+			return
+		}
 		if isHTMXRequest(r) {
 			writeSettingsForm(w, r, http.StatusOK, newCfg, nil, err.Error())
 			return
@@ -166,12 +188,21 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(newCfg.Model) != "" {
 		if err := config.ValidateSelectedModel(newCfg, models); err != nil {
-			if isHTMXRequest(r) {
-				writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
+			// HTMX form submissions always include the model field (echoed from current
+			// config). When the provider changes, the old model is likely invalid for the
+			// new provider — silently clear it instead of blocking the save.
+			providerChanged := newCfg.Provider != cfg.Provider
+			if providerChanged && isHTMXRequest(r) {
+				newCfg.Model = ""
+				levels = nil
+			} else {
+				if isHTMXRequest(r) {
+					writeSettingsForm(w, r, http.StatusOK, newCfg, models, err.Error())
+					return
+				}
+				writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
 				return
 			}
-			writeConfigError(w, r, http.StatusUnprocessableEntity, err.Error())
-			return
 		}
 	}
 
@@ -221,7 +252,11 @@ func (s *Server) discoverModelList(ctx context.Context, cfg *config.Config) (*pr
 // automatically via PersistAuth when configured, or manually when not.
 // Returns discovered model IDs, per-model context windows, per-model API modes,
 // and any error.
-func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]string, map[string]int, map[string]string, error) {
+//
+// When noPersist is true, auth updates are NOT saved to disk. This should be
+// set when the cfg has been temporarily overridden (e.g., query-param overrides
+// in handleGetModels) to avoid corrupting the saved config.
+func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config, noPersist ...bool) ([]string, map[string]int, map[string]string, error) {
 	result, err := s.discoverModelList(ctx, cfg)
 	if err != nil {
 		return nil, nil, nil, err
@@ -229,13 +264,16 @@ func (s *Server) fetchModelList(ctx context.Context, cfg *config.Config) ([]stri
 	if result == nil {
 		return nil, nil, nil, nil
 	}
-	if result.AuthUpdate != nil {
+
+	skipPersist := len(noPersist) > 0 && noPersist[0]
+
+	if result.AuthUpdate != nil && !skipPersist {
 		// PersistAuth was not set — save the auth update manually.
 		applyAuthUpdate(cfg, result.AuthUpdate)
 		if err := s.saveProviderConfig(cfg); err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to save refreshed provider auth: %w", err)
 		}
-	} else if s.persistAuth() != nil {
+	} else if s.persistAuth() != nil && !skipPersist {
 		// PersistAuth handled persistence; reload only ProviderAuth (refreshed by
 		// auth handler). Do NOT overwrite APIKey — caller may have set a new key.
 		loaded, loadErr := config.Load(s.config.ConfigPath)
@@ -267,6 +305,14 @@ func (s *Server) saveProviderConfig(cfg *config.Config) error {
 	return config.Save(s.config.ConfigPath, cfg)
 }
 
+// providerDisplayName returns the human-readable name for a provider ID.
+func (s *Server) providerDisplayName(id string) string {
+	if d, err := provider.Describe(id); err == nil {
+		return d.DisplayName
+	}
+	return id
+}
+
 func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(s.config.ConfigPath)
 	if err != nil {
@@ -274,8 +320,32 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	models, err := s.modelListForRequest(r.Context(), r, cfg)
+	models, providerOverridden, err := s.modelListForRequest(r.Context(), r, cfg)
 	if err != nil {
+		// When provider is overridden by query params, auth likely doesn't match
+		// the saved credentials. Return empty models instead of an error so the
+		// JS refreshModels() can update the select without showing a confusing
+		// error toast. The user will see an empty dropdown and complete auth on save.
+		if providerOverridden {
+			if isHTMXRequest(r) {
+				providerName := r.URL.Query().Get("provider")
+				if providerName == "" {
+					providerName = cfg.Provider
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				_ = templates.TestConnectionResult(false, fmt.Sprintf("Enter credentials for %s and click Save to discover models.", s.providerDisplayName(providerName))).Render(r.Context(), w)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"object": "list",
+				"data":   []string{},
+			})
+			return
+		}
+
 		if isHTMXRequest(r) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
@@ -302,14 +372,18 @@ func (s *Server) handleGetModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved *config.Config) ([]string, error) {
+func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved *config.Config) ([]string, bool, error) {
 	patch, err := parseConfigPatch(r)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	providerOverridden := false
+	if v, ok := patch["provider"].(string); ok && v != "" && v != saved.Provider {
+		providerOverridden = true
 	}
 	if !hasModelConfigPatch(patch) {
 		models, _, _, err := s.fetchModelList(ctx, saved)
-		return models, err
+		return models, false, err
 	}
 
 	current := normalizePatchedConfig(saved, patch)
@@ -325,12 +399,12 @@ func (s *Server) modelListForRequest(ctx context.Context, r *http.Request, saved
 		// No PersistAuth here: refresh/test must not save unsaved form values.
 	})
 	if err != nil {
-		return nil, err
+		return nil, providerOverridden, err
 	}
 	if result == nil {
-		return nil, nil
+		return nil, providerOverridden, nil
 	}
-	return result.Models, nil
+	return result.Models, providerOverridden, nil
 }
 
 func hasModelConfigPatch(patch map[string]any) bool {

@@ -200,7 +200,10 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
-		chromedp.SetValue("#model", "gpt-3.5-turbo", chromedp.ByQuery),
+		// Use Evaluate to set the value without dispatching 'change' (avoids the
+		// model select's hx-trigger="change" firing a concurrent HTMX PUT that
+		// races with the form-submit PUT).
+		chromedp.Evaluate(`document.querySelector('#model').value = 'gpt-3.5-turbo'`, nil),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
 	)
 	if err != nil {
