@@ -1976,6 +1976,12 @@ eitri-composer {
   margin-left: 0.5rem;
 }
 
+.settings-dirty-indicator {
+  font-size: 0.85rem;
+  color: var(--warning);
+  font-weight: 600;
+}
+
 /* Settings collapsible sections */
 .settings-details {
   background: var(--surface-raised);

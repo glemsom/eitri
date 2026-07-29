@@ -126,7 +126,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<form hx-put=\"/api/config\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><details class=\"settings-details\"><summary><span>Profile</span></summary><div class=\"form-group\"><label for=\"user_email\">Email (used for Gravatar avatar lookup only)</label> <input type=\"email\" id=\"user_email\" name=\"user_email\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<form id=\"settings-config-form\" hx-put=\"/api/config\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><details class=\"settings-details\"><summary><span>Profile</span></summary><div class=\"form-group\"><label for=\"user_email\">Email (used for Gravatar avatar lookup only)</label> <input type=\"email\" id=\"user_email\" name=\"user_email\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -333,7 +333,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div></details> <details class=\"settings-details\"><summary><span>Model <span id=\"model-refresh-spinner\" class=\"model-refresh-spinner\" style=\"visibility:hidden;\">&#9696;</span></span></summary><div class=\"form-group\"><select id=\"model\" name=\"model\" hx-put=\"/api/config\" hx-trigger=\"change\" hx-target=\"#settings-form\" hx-swap=\"outerHTML\"><option value=\"\" disabled selected=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div></details> <details class=\"settings-details\"><summary><span>Model <span id=\"model-refresh-spinner\" class=\"model-refresh-spinner\" style=\"visibility:hidden;\">&#9696;</span></span></summary><div class=\"form-group\"><select id=\"model\" name=\"model\"><option value=\"\" disabled selected=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -731,7 +731,7 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" placeholder=\"ws://127.0.0.1:9222\"> <small class=\"hint\">Start Chrome with <code>google-chrome --remote-debugging-port=9222</code> to enable browser tool access.</small></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\">Save</button><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-include=\"closest form\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form><!-- Personas section — outside the config form to avoid nested forms --><details class=\"settings-details\"><summary><span>Personas</span></summary><div id=\"persona-section\"><p class=\"text-muted\">Personas define the system prompt and skills for the agent.</p><div id=\"persona-list\" hx-get=\"/api/personas\" hx-trigger=\"load\" hx-swap=\"innerHTML\"><p class=\"text-muted\">Loading personas…</p></div><div class=\"form-actions\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/api/personas/add-form\" hx-target=\"#persona-add-area\" hx-swap=\"innerHTML\">+ Add Persona</button></div><div id=\"persona-add-area\"></div><div id=\"persona-form-errors\" class=\"form-error\"></div></div></details></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" placeholder=\"ws://127.0.0.1:9222\"> <small class=\"hint\">Start Chrome with <code>google-chrome --remote-debugging-port=9222</code> to enable browser tool access.</small></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\" id=\"settings-save-btn\" disabled>Save</button> <button type=\"button\" id=\"settings-revert-btn\" disabled>Revert</button> <span id=\"settings-dirty-indicator\" class=\"settings-dirty-indicator\" hidden>Unsaved changes</span><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-include=\"closest form\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form><!-- Personas section — outside the config form to avoid nested forms --><details class=\"settings-details\"><summary><span>Personas</span></summary><div id=\"persona-section\"><p class=\"text-muted\">Personas define the system prompt and skills for the agent.</p><div id=\"persona-list\" hx-get=\"/api/personas\" hx-trigger=\"load\" hx-swap=\"innerHTML\"><p class=\"text-muted\">Loading personas…</p></div><div class=\"form-actions\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/api/personas/add-form\" hx-target=\"#persona-add-area\" hx-swap=\"innerHTML\">+ Add Persona</button></div><div id=\"persona-add-area\"></div><div id=\"persona-form-errors\" class=\"form-error\"></div></div></details></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -768,7 +768,7 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 305, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 307, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -786,7 +786,7 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 307, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 309, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {

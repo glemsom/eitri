@@ -19,7 +19,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 		if noticeMessage != "" {
 			<p class="hint">{ noticeMessage }</p>
 		}
-		<form hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
+		<form id="settings-config-form" hx-put="/api/config" hx-target="#settings-form" hx-swap="outerHTML">
 			<details class="settings-details">
 				<summary><span>Profile</span></summary>
 
@@ -86,7 +86,7 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				<summary><span>Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="visibility:hidden;">&#9696;</span></span></summary>
 
 				<div class="form-group">
-					<select id="model" name="model" hx-put="/api/config" hx-trigger="change" hx-target="#settings-form" hx-swap="outerHTML">
+					<select id="model" name="model">
 						<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
 						for _, m := range models {
 							<option value={ m } if cfg.Model == m { selected }>{ m }</option>
@@ -265,7 +265,9 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 			</details>
 
 			<div class="form-actions form-actions-sticky">
-				<button type="submit">Save</button>
+				<button type="submit" id="settings-save-btn" disabled>Save</button>
+				<button type="button" id="settings-revert-btn" disabled>Revert</button>
+				<span id="settings-dirty-indicator" class="settings-dirty-indicator" hidden>Unsaved changes</span>
 				<div id="test-connection-wrapper" class="test-connection-wrapper">
 					<button type="button" id="test-connection-btn" hx-get="/api/models" hx-include="closest form" hx-target="#test-connection-result" hx-swap="innerHTML">Test Connection</button>
 					<div id="test-connection-result" class="test-connection-result"></div>

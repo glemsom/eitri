@@ -2,9 +2,11 @@ package runner
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
-
 )
 
 func TestRunService_CrashDumpOnFatalError(t *testing.T) {
@@ -60,18 +62,23 @@ func TestRunService_CrashDumpOnFatalError(t *testing.T) {
 func TestRunService_CrashDumpNotCalledOnCancel(t *testing.T) {
 	// Verify that cancellation does NOT trigger crashDumpFunc.
 
-	crashCalled := false
+	var crashCalled atomic.Bool
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer llm.Close()
+
 	svc := NewRunService(RunServiceDeps{
 		UISessionMgr:      nil,
 		HistorySessionMgr: nil,
 		CrashDumpFunc: func(err error, stack []byte) {
-			crashCalled = true
+			crashCalled.Store(true)
 		},
 	})
 
 	cfg := RunConfig{
-		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		ProviderID: "custom_openai",
+		BaseURL:    llm.URL,
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 	}
@@ -87,7 +94,7 @@ func TestRunService_CrashDumpNotCalledOnCancel(t *testing.T) {
 	// Give time for the goroutine to process cancellation
 	time.Sleep(500 * time.Millisecond)
 
-	if crashCalled {
+	if crashCalled.Load() {
 		t.Error("crashDumpFunc should NOT be called on cancellation")
 	}
 }

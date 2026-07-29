@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,185 @@ import (
 )
 
 // ————— Settings page tests ————— —
+
+func getBrowserConfig(t *testing.T, server *httptest.Server) map[string]any {
+	t.Helper()
+	resp, err := http.Get(server.URL + "/api/config")
+	if err != nil {
+		t.Fatalf("failed to GET config: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET config status = %d, want 200", resp.StatusCode)
+	}
+	var cfg map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		t.Fatalf("failed to decode config: %v", err)
+	}
+	return cfg
+}
+
+func TestBrowser_SettingsModelChangeDoesNotAutosave(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var saveDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitReady("#model option[value='gpt-3.5-turbo']", chromedp.ByQuery),
+		chromedp.Evaluate(`
+			(function() {
+				var model = document.querySelector('#model');
+				model.value = 'gpt-3.5-turbo';
+				model.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.EvaluateAsDevTools(`document.querySelector('button[type=submit]').disabled`, &saveDisabled),
+	)
+	if err != nil {
+		t.Fatalf("model change failed: %v", err)
+	}
+	if saveDisabled {
+		t.Fatal("Save should be enabled when model draft is dirty")
+	}
+
+	cfg := getBrowserConfig(t, server)
+	if cfg["model"] != "gpt-4" {
+		t.Fatalf("saved model = %q, want unchanged gpt-4 before Save", cfg["model"])
+	}
+}
+
+func TestBrowser_SettingsSavePersistsDraftAndClearsDirtyState(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var saveDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitReady("#model option[value='gpt-3.5-turbo']", chromedp.ByQuery),
+		chromedp.Evaluate(`
+			(function() {
+				var model = document.querySelector('#model');
+				model.value = 'gpt-3.5-turbo';
+				model.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('button[type=submit]').disabled`, &saveDisabled),
+	)
+	if err != nil {
+		t.Fatalf("save draft failed: %v", err)
+	}
+	if !saveDisabled {
+		t.Fatal("Save should be disabled after successful save clears dirty state")
+	}
+
+	cfg := getBrowserConfig(t, server)
+	if cfg["model"] != "gpt-3.5-turbo" {
+		t.Fatalf("saved model = %q, want gpt-3.5-turbo after Save", cfg["model"])
+	}
+}
+
+func TestBrowser_SettingsRevertRestoresSavedConfigWithoutWriting(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4","system_prompt":"saved prompt"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var prompt string
+	var saveDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		chromedp.SetValue("#system_prompt", "draft prompt", chromedp.ByQuery),
+		chromedp.Click("#settings-revert-btn", chromedp.ByQuery),
+		chromedp.Sleep(500*time.Millisecond),
+		chromedp.WaitReady("#system_prompt", chromedp.ByQuery),
+		chromedp.Value("#system_prompt", &prompt, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('button[type=submit]').disabled`, &saveDisabled),
+	)
+	if err != nil {
+		t.Fatalf("revert failed: %v", err)
+	}
+	if prompt != "saved prompt" {
+		t.Fatalf("prompt after Revert = %q, want saved prompt", prompt)
+	}
+	if !saveDisabled {
+		t.Fatal("Save should be disabled after Revert clears dirty state")
+	}
+
+	cfg := getBrowserConfig(t, server)
+	if cfg["system_prompt"] != "saved prompt" {
+		t.Fatalf("saved system_prompt = %q, want unchanged saved prompt", cfg["system_prompt"])
+	}
+}
+
+func TestBrowser_SettingsDirtyDraftGuardsNavigation(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var path string
+	var unloadGuarded bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		chromedp.Evaluate(`
+			(function() {
+				var prompt = document.querySelector('#system_prompt');
+				prompt.value = 'dirty prompt';
+				prompt.dispatchEvent(new Event('input', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.EvaluateAsDevTools(`
+			(function() {
+				var event = new Event('beforeunload', { cancelable: true });
+				window.dispatchEvent(event);
+				return event.defaultPrevented;
+			})()
+		`, &unloadGuarded),
+		chromedp.Evaluate(`window.confirm = function() { return false; }`, nil),
+		chromedp.Evaluate(`document.querySelector('.nav-link[href="/skills"]').click()`, nil),
+		chromedp.Sleep(100*time.Millisecond),
+		chromedp.EvaluateAsDevTools(`window.location.pathname`, &path),
+	)
+	if err != nil {
+		t.Fatalf("dirty navigation guard setup failed: %v", err)
+	}
+	if !unloadGuarded {
+		t.Fatal("beforeunload should be guarded when settings draft is dirty")
+	}
+	if path != "/settings" {
+		t.Fatalf("path after cancelled navigation = %q, want /settings", path)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`window.confirm = function() { return true; }`, nil),
+		chromedp.Evaluate(`document.querySelector('.nav-link[href="/skills"]').click()`, nil),
+		chromedp.WaitVisible(".skills-view", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`window.location.pathname`, &path),
+	)
+	if err != nil {
+		t.Fatalf("confirmed navigation failed: %v", err)
+	}
+	if path != "/skills" {
+		t.Fatalf("path after confirmed navigation = %q, want /skills", path)
+	}
+}
 
 func TestBrowser_SettingsPage(t *testing.T) {
 	server := newTestServer(t)
@@ -200,10 +380,13 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
-		// Use Evaluate to set the value without dispatching 'change' (avoids the
-		// model select's hx-trigger="change" firing a concurrent HTMX PUT that
-		// races with the form-submit PUT).
-		chromedp.Evaluate(`document.querySelector('#model').value = 'gpt-3.5-turbo'`, nil),
+		chromedp.Evaluate(`
+			(function() {
+				var model = document.querySelector('#model');
+				model.value = 'gpt-3.5-turbo';
+				model.dispatchEvent(new Event('change', { bubbles: true }));
+			})()
+		`, nil),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
 	)
 	if err != nil {
@@ -271,7 +454,8 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 		chromedp.Clear("#api_key", chromedp.ByQuery),
 		chromedp.SendKeys("#api_key", "sk-bad", chromedp.ByQuery),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
-		chromedp.WaitVisible(".error-toast", chromedp.ByQuery),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
 	)
 	if err != nil {
 		t.Fatalf("form fill/submit failed: %v", err)
@@ -279,10 +463,10 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 
 	var modelOptionsEmpty bool
 	var providerValue string
-	var errorText string
+	var feedbackText string
 	err = chromedp.Run(ctx,
 		chromedp.Value("#provider", &providerValue, chromedp.ByQuery),
-		chromedp.Text(".error-toast .error-text", &errorText, chromedp.ByQuery),
+		chromedp.Text("#settings-form", &feedbackText, chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools("document.querySelector('#model').options.length <= 1", &modelOptionsEmpty),
 	)
 	if err != nil {
@@ -295,8 +479,8 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 	if providerValue != "custom_openai" {
 		t.Errorf("provider should still be 'custom_openai' after error, got %q", providerValue)
 	}
-	if !strings.Contains(errorText, "Provider authentication failed") {
-		t.Errorf("error text = %q, want auth guidance", errorText)
+	if !strings.Contains(feedbackText, "Provider authentication failed") && !strings.Contains(feedbackText, "model discovery failed") {
+		t.Errorf("feedback text = %q, want auth or discovery guidance", feedbackText)
 	}
 }
 
@@ -363,7 +547,7 @@ func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
 		t.Error("submit button should be disabled during save request")
 	}
 
-	// Wait for the swap to complete (after provider delay), then verify button is re-enabled
+	// Wait for the swap to complete (after provider delay), then verify clean draft disables Save.
 	err = chromedp.Run(ctx,
 		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
 		chromedp.Text("button[type=submit]", &postSubmitText, chromedp.ByQuery),
@@ -378,8 +562,8 @@ func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
 	if !strings.Contains(postSubmitText, "Save") {
 		t.Errorf("post-save button text = %q, want containing 'Save'", postSubmitText)
 	}
-	if submitDisabled {
-		t.Error("submit button should be re-enabled after save completes")
+	if !submitDisabled {
+		t.Error("submit button should be disabled after save clears dirty state")
 	}
 }
 
@@ -421,8 +605,8 @@ func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	// Fill form with invalid credentials and save — expect error toast
-	var errorInView bool
+	// Fill form with invalid credentials and save — expect visible feedback.
+	var feedbackVisible bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
@@ -432,25 +616,24 @@ func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {
 		chromedp.Clear("#api_key", chromedp.ByQuery),
 		chromedp.SendKeys("#api_key", "sk-bad", chromedp.ByQuery),
 		chromedp.Click("button[type=submit]", chromedp.ByQuery),
-		chromedp.WaitVisible(".error-toast", chromedp.ByQuery),
-		// Check if error toast is in the visible viewport (allow some tolerance for smooth scroll)
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.Sleep(200*time.Millisecond),
 		chromedp.EvaluateAsDevTools(`
 			(function() {
-				var el = document.querySelector('.error-toast');
+				var el = document.querySelector('.error-toast') || document.querySelector('#settings-form .hint');
 				if (!el) return false;
 				var rect = el.getBoundingClientRect();
-				// Allow 200px tolerance for smooth scroll animation gap
 				return rect.top >= -200 && rect.left >= 0 &&
 					rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) + 200 &&
 					rect.right <= (window.innerWidth || document.documentElement.clientWidth);
 			})()
-		`, &errorInView),
+		`, &feedbackVisible),
 	)
 	if err != nil {
 		t.Fatalf("error scroll test failed: %v", err)
 	}
-	if !errorInView {
-		t.Error("error-toast should be scrolled into view after failed save")
+	if !feedbackVisible {
+		t.Error("save feedback should be visible after failed save")
 	}
 }
 

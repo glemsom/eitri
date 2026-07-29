@@ -195,7 +195,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			ModelName:        cfg.ModelName,
 		})
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if runCtx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				content := sseState.BufferString()
 				reasoningContent := sseState.ReasoningBufferString()
 				if content != "" {
