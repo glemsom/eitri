@@ -1,8 +1,48 @@
 package loop
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+
 	"github.com/voocel/litellm"
 )
+
+// normalizeToolCallIDs rewrites provider-emitted tool IDs that are unsafe to
+// replay in later requests. Some OpenAI Responses-compatible gateways emit
+// opaque output item IDs (long base64 strings with '/' and '+') when no call_id
+// is present; replaying those as function_call.call_id is rejected on the next
+// turn. The assistant tool call and matching tool result only need a stable
+// conversation-local ID, so replace unsafe IDs with deterministic call_* IDs.
+func normalizeToolCallIDs(toolCalls []litellm.ToolUseBlock) []litellm.ToolUseBlock {
+	if len(toolCalls) == 0 {
+		return toolCalls
+	}
+	out := make([]litellm.ToolUseBlock, len(toolCalls))
+	copy(out, toolCalls)
+	for i := range out {
+		if isSafeReplayToolID(out[i].ID) {
+			continue
+		}
+		seed := fmt.Sprintf("%d\x00%s\x00%s\x00%s", i, out[i].ID, out[i].Name, string(out[i].Arguments))
+		sum := sha256.Sum256([]byte(seed))
+		out[i].ID = "call_eitri_" + hex.EncodeToString(sum[:8])
+	}
+	return out
+}
+
+func isSafeReplayToolID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
 
 // trimMessages removes the oldest message pairs when total non-system messages
 // exceed maxHistory. System prompt is always preserved.

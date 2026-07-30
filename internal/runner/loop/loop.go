@@ -327,6 +327,8 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			return fmt.Errorf("chat stream: %w", err)
 		}
 
+		toolCalls = normalizeToolCallIDs(toolCalls)
+
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 				// Preserve partial result: append assistant message with accumulated

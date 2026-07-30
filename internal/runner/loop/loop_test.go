@@ -61,10 +61,11 @@ func msgToolCallID(msg litellm.Message) string {
 // mockProvider simulates an LLM with configurable responses per turn.
 // It implements litellm.Provider and produces litellm.Stream instances.
 type mockProvider struct {
-	mu      sync.Mutex
-	name    string
-	turns   []mockTurn
-	current int
+	mu        sync.Mutex
+	name      string
+	turns     []mockTurn
+	current   int
+	onRequest func(turn int, req *litellm.Request) error
 }
 
 type mockTurn struct {
@@ -109,6 +110,13 @@ func (m *mockProvider) Chat(ctx context.Context, req *litellm.Request) (*litellm
 func (m *mockProvider) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	turnIndex := m.current
+	if m.onRequest != nil {
+		if err := m.onRequest(turnIndex, req); err != nil {
+			return nil, err
+		}
+	}
 
 	if m.current >= len(m.turns) {
 		return &mockStream{events: []litellm.Event{litellm.DoneEvent{}}}, nil
@@ -157,7 +165,11 @@ func (m *mockProvider) Stream(ctx context.Context, req *litellm.Request) (litell
 
 // newMockClient creates a *litellm.Client backed by a mockProvider.
 func newMockClient(turns []mockTurn) *litellm.Client {
-	mock := &mockProvider{turns: turns}
+	return newMockClientWithRequestHook(turns, nil)
+}
+
+func newMockClientWithRequestHook(turns []mockTurn, onRequest func(turn int, req *litellm.Request) error) *litellm.Client {
+	mock := &mockProvider{turns: turns, onRequest: onRequest}
 	client, err := litellm.New(mock)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create mock client: %v", err))
@@ -283,6 +295,77 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	}
 	if !hasDone {
 		t.Errorf("expected done event, got %v", types)
+	}
+}
+
+func TestRunAgent_SanitizesProviderToolUseIDsBeforeReplay(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	invalidProviderID := "IriJ27r12vncb2n073VHiHu6JKAfIlJO6Pcpi6FBXeXH2E/Gp5gt8hpfKcJ4w9JAISj1Lr9n9EKuvqjoB8wNR76fj/Jajk2fMED79a/yaPfPALHrQf0srtlb8awnKCwAznP9/XkTunRNk6SzBSlyAmHaOWUVXcfEO/c0Nh/UhhGnDy"
+
+	client := newMockClientWithRequestHook([]mockTurn{
+		{
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall(invalidProviderID, "test_tool", `{"input":"test"}`),
+			},
+		},
+		{tokens: []tokenEvent{{content: "ok"}}},
+	}, func(turn int, req *litellm.Request) error {
+		if turn != 1 {
+			return nil
+		}
+		for i, msg := range req.Messages {
+			for _, block := range msg.Blocks {
+				switch b := block.(type) {
+				case litellm.ToolUseBlock:
+					if b.ID == invalidProviderID {
+						return fmt.Errorf("messages[%d]: tool use id %q is invalid", i, b.ID)
+					}
+				case litellm.ToolResultBlock:
+					if b.ToolUseID == invalidProviderID {
+						return fmt.Errorf("messages[%d]: tool use id %q is invalid", i, b.ToolUseID)
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{name: "test_tool", description: "A test tool"})
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "use tool"}}}},
+		lrWithModel("test-model"),
+	)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, RunOpts{
+		HistoryMgr:    NewRequestHistoryManager(req),
+		ContextWindow: 128000,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	if len(req.Messages) < 3 {
+		t.Fatalf("messages = %d, want at least 3", len(req.Messages))
+	}
+	assistantID := msgToolCalls(req.Messages[1])[0].ID
+	toolID := msgToolCallID(req.Messages[2])
+	if assistantID == invalidProviderID || toolID == invalidProviderID {
+		t.Fatalf("invalid provider tool ID replayed: assistant=%q tool=%q", assistantID, toolID)
+	}
+	if assistantID == "" || assistantID != toolID {
+		t.Fatalf("sanitized IDs must be non-empty and matched: assistant=%q tool=%q", assistantID, toolID)
 	}
 }
 
