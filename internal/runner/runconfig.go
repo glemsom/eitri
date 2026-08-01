@@ -24,6 +24,7 @@ type RunConfig struct {
 	ModelAPI            string
 	SystemPrompt        string
 	MaxTurns            int
+	MaxOutputTokens     int
 	MaxHistory          int
 	AllowedReadPaths    []string
 	ProviderAuth        json.RawMessage
@@ -69,6 +70,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		ThinkingLevel:                    cfg.ThinkingLevel,
 		SystemPrompt:                     cfg.SystemPrompt,
 		MaxTurns:                         cfg.MaxTurns,
+		MaxOutputTokens:                  cfg.MaxOutputTokens,
 		MaxHistory:                       cfg.MaxHistory,
 		AllowedReadPaths:                 cfg.AllowedReadPaths,
 		ProviderAuth:                     cfg.ProviderAuth,

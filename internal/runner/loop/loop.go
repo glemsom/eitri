@@ -127,8 +127,14 @@ func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, 
 		Tools:    tools,
 	}
 
-	// Default max_tokens (required by some providers like Anthropic)
-	maxTokens := 4096
+	// Max output tokens per assistant turn. Some providers (Anthropic) require
+	// the field. Fall back to a generous 16000 if the base request did not set
+	// one (configurable via config.MaxOutputTokens); a small cap lets reasoning
+	// models exhaust their budget on thinking and never emit a tool call.
+	maxTokens := 16000
+	if base.MaxTokens != nil && *base.MaxTokens > 0 {
+		maxTokens = *base.MaxTokens
+	}
 	lr.MaxTokens = &maxTokens
 
 	// Copy thinking config from base request

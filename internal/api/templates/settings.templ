@@ -146,6 +146,12 @@ templ SettingsForm(cfg *config.Config, models []string, errorMessage string, not
 				</div>
 
 				<div class="form-group">
+					<label for="max_output_tokens">Max Output Tokens (per turn)</label>
+					<input type="number" id="max_output_tokens" name="max_output_tokens" value={ cfg.MaxOutputTokens } min="1" required/>
+					<small class="hint">Cap on tokens a reasoning model can emit per turn (including thinking). Too low can leave a model stuck on reasoning with no tool call.</small>
+				</div>
+
+				<div class="form-group">
 					<label for="context_window_tokens">Context Window Tokens</label>
 					<div class="context-window-row">
 						<input type="number" id="context_window_tokens" name="context_window_tokens" value={ cfg.ContextWindowTokens } min="1024" required/>

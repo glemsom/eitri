@@ -103,6 +103,14 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		Model: modelName,
 	}
 
+	// Max output tokens per assistant turn. If a provider override exists,
+	// keep it. Config default is 16000 (generous headroom for reasoning models
+	// whose thinking can otherwise exhaust a small cap before emitting any
+	// tool call or answer). Zero means "no explicit cap".
+	if cfg.MaxOutputTokens > 0 {
+		req.MaxTokens = &cfg.MaxOutputTokens
+	}
+
 	// Set session-scoped prompt cache key if the provider supports it.
 	// Skip for Anthropic-routed models (qwen*, minimax*) because the
 	// Anthropic provider rejects unknown provider options like prompt_cache_key.

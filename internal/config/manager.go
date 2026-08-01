@@ -30,6 +30,7 @@ type Config struct {
 	SessionTimeout                   int64             `json:"session_timeout"`
 	CommandTimeout                   int64             `json:"command_timeout"`
 	MaxTurns                         int               `json:"max_turns"`
+	MaxOutputTokens                  int               `json:"max_output_tokens"`
 	ContextWindowTokens              int               `json:"context_window_tokens"`
 	ContextWindowOverridden          bool              `json:"context_window_overridden,omitempty"`
 	MaxHistory                       int               `json:"max_history"`
@@ -58,6 +59,7 @@ func Defaults() Config {
 		SessionTimeout:                   30 * 60_000_000_000, // 30 minutes in ns
 		CommandTimeout:                   60 * 1_000_000_000,  // 60 seconds in ns
 		MaxTurns:                         75,
+		MaxOutputTokens:                  16000,
 		ContextWindowTokens:              256000,
 		MaxHistory:                       50,
 		CompactionEnabled:                true,
@@ -118,6 +120,9 @@ func Load(path string) (*Config, error) {
 func applyDefaults(cfg *Config) {
 	if cfg.ActivePersona == "" {
 		cfg.ActivePersona = persona.GenericName
+	}
+	if cfg.MaxOutputTokens == 0 {
+		cfg.MaxOutputTokens = Defaults().MaxOutputTokens
 	}
 }
 
@@ -215,6 +220,10 @@ func Validate(cfg *Config) error {
 
 	if cfg.MaxTurns < 1 {
 		return fmt.Errorf("max_turns must be at least 1, got %d", cfg.MaxTurns)
+	}
+
+	if cfg.MaxOutputTokens < 0 {
+		return fmt.Errorf("max_output_tokens must be non-negative, got %d", cfg.MaxOutputTokens)
 	}
 
 	if cfg.ContextWindowTokens < 1024 {
@@ -368,6 +377,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["max_turns"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.MaxTurns = int(f)
+		}
+	}
+	if v, ok := patch["max_output_tokens"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.MaxOutputTokens = int(f)
 		}
 	}
 	if v, ok := patch["context_window_tokens"]; ok {

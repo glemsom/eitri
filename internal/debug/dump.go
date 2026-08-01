@@ -94,6 +94,7 @@ func SanitizeConfig(cfg *config.Config) map[string]any {
 	m["thinking_level"] = cfg.ThinkingLevel
 	m["context_window_tokens"] = cfg.ContextWindowTokens
 	m["max_turns"] = cfg.MaxTurns
+	m["max_output_tokens"] = cfg.MaxOutputTokens
 	m["max_history"] = cfg.MaxHistory
 	m["command_timeout_ns"] = cfg.CommandTimeout
 	m["session_timeout_ns"] = cfg.SessionTimeout

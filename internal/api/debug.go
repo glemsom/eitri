@@ -67,6 +67,7 @@ type sanitizedConfig struct {
 	BaseURL             string `json:"base_url"`
 	ContextWindowTokens int    `json:"context_window_tokens"`
 	MaxTurns            int    `json:"max_turns"`
+	MaxOutputTokens     int    `json:"max_output_tokens"`
 	CommandTimeout      int64  `json:"command_timeout"`
 	HasAPIKey           bool   `json:"has_api_key"`
 }
@@ -291,6 +292,7 @@ func sanitizeConfig(cfg *config.Config) *sanitizedConfig {
 		BaseURL:             cfg.BaseURL,
 		ContextWindowTokens: cfg.ContextWindowTokens,
 		MaxTurns:            cfg.MaxTurns,
+		MaxOutputTokens:     cfg.MaxOutputTokens,
 		CommandTimeout:      cfg.CommandTimeout,
 		HasAPIKey:           cfg.APIKey != "" || len(cfg.ProviderAuth) > 0,
 	}
