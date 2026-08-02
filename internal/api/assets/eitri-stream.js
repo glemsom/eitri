@@ -1006,13 +1006,32 @@
   // O(total) DOM serialise+replace per event and freezes the main thread on
   // long reasoning streams). Scroll is batched to a rAF — forcing
   // el.scrollTop = el.scrollHeight sync-layouts the whole growing sidebar
-  // tree on every delta, also O(n²). See issue: UI unresponsive while
-  // streaming long reasoning output.
+  // tree on every delta, also O(n²).
+  //
+  // The transcript is also BOUNDED: reasoning models (e.g. deepseek) can emit
+  // hundreds of KB of reasoning as a single growing block. Even with per-
+  // delta text-node appends, holding the entire transcript as one live text
+  // node forces the browser to re-wrap/re-layout the whole thing on every
+  // frame during streaming — O(n²) main-thread layout that freezes the page
+  // (gear/nav unclickable, Chrome "kill page"). We keep only the trailing
+  // `thinkingPanelMaxText` characters (dropping oldest leading text), which
+  // is exactly what a live auto-scrolled transcript needs to show.
   var thinkingScrollPending = false;
+  var thinkingPanelMaxText = 20000;
   function appendThinkingDelta(content) {
     var el = document.querySelector('#thinking-panel .thinking-content');
     if (!el) return;
     el.appendChild(document.createTextNode(content));
+
+    // Trim the oldest reasoning once the accumulated transcript exceeds the
+    // budget so each frame's re-layout stays cheap. Budget-bounded scans are
+    // O(cap) per append, not O(total).
+    if (el.textContent.length > thinkingPanelMaxText) {
+      while (el.textContent.length > thinkingPanelMaxText && el.firstChild) {
+        el.removeChild(el.firstChild);
+      }
+    }
+
     // Auto-scroll to bottom as content arrives, coalesced to one per frame.
     if (!thinkingScrollPending) {
       thinkingScrollPending = true;
@@ -1376,10 +1395,10 @@
       autoScrollPending = false;
       var messages = document.getElementById('messages');
       if (!messages) return;
-      // Don't fight the user: if they scrolled up to read, hold position.
       if (!isNearBottom()) return;
       var lastChild = messages.lastElementChild;
       if (!lastChild) return;
+      // Don't fight the user: if they scrolled up to read, hold position.
       // Instant (not smooth) during active streaming: queuing dozens of smooth
       // scroll animations on a large history is main-thread churn and freezes
       // the page. The final settled message and the manual button stay smooth.
