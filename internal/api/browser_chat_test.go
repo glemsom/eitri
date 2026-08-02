@@ -2381,3 +2381,109 @@ func TestBrowser_AssistantBubbleMaxWidth(t *testing.T) {
 	t.Logf("assistant bubble: msg=%.1fpx body=%.1fpx content=%.1fpx container=%.1fpx ratio=%.4f",
 		result.MsgW, result.BodyW, result.ContentW, result.ContainerW, result.MsgRatio)
 }
+
+// TestBrowser_StreamingKeepsMainThreadResponsive is a regression test for the
+// streaming jank reported as "browser page becomes unresponsive during
+// streaming" (gear button unclickable). Previously flushStreamBuffer
+// re-rendered the ENTIRE accumulated markdown via innerHTML on every flush,
+// which is O(total) per flush and O(n²) over a long stream — freezing the main
+// thread to the point where frame gaps exceeded 3.5 seconds. The fix renders
+// completed blocks once and re-renders only the trailing growing block.
+// This test streams a large response and asserts the main thread keeps
+// producing frames within a generous gap instead of freezing.
+func TestBrowser_StreamingKeepsMainThreadResponsive(t *testing.T) {
+	// Build a long stream: many sizeable paragraphs so total accumulated text
+	// grows large and the old full-re-render cost is significant.
+	big := strings.Repeat("word soup **bold text** and `inline code` with linking!", 120)
+	parts := make([]string, 150)
+	for i := range parts {
+		parts[i] = big + "\n\n"
+	}
+	delays := make([]time.Duration, len(parts))
+	for i := range delays {
+		delays[i] = 10 * time.Millisecond
+	}
+
+	llmURL := fakePhasedChatServer(t, delays, parts).URL
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("navigate: %v", err)
+	}
+	waitForComposerReady(t, ctx)
+
+	if err := chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Write lots", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+
+	// Wait for stream to begin.
+	deadline := time.Now().Add(800 * time.Millisecond)
+	for {
+		var s bool
+		chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`!!document.getElementById('streaming')`, &s))
+		if s {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stream did not start")
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	// Let the flush loop reach steady state, then measure frame gaps mid-stream.
+	time.Sleep(250 * time.Millisecond)
+	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+		window.__jankRec = { maxGap: 0, count: 0, last: 0 };
+		window.__jankDone = false;
+		(function raf(ts) {
+			if (window.__jankRec.last) {
+				var gap = ts - window.__jankRec.last;
+				if (gap > window.__jankRec.maxGap) window.__jankRec.maxGap = gap;
+			}
+			window.__jankRec.last = ts; window.__jankRec.count++;
+			if (window.__jankRec.count < 120 && !window.__jankDone) requestAnimationFrame(raf);
+		})(0);
+	})()`, nil))
+
+	time.Sleep(900 * time.Millisecond)
+	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`window.__jankDone = true`, nil))
+
+	var report string
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			return JSON.stringify({ maxGap: window.__jankRec.maxGap, count: window.__jankRec.count });
+		})()`, &report),
+	); err != nil {
+		t.Fatalf("read measurement: %v", err)
+	}
+
+	var res struct {
+		MaxGap float64
+		Count  int
+	}
+	if err := json.Unmarshal([]byte(report), &res); err != nil {
+		t.Fatalf("parse measurement %q: %v", report, err)
+	}
+	t.Logf("streaming frame gap: maxGap=%.1fms frames=%d", res.MaxGap, res.Count)
+
+	// Baseline (full re-render per flush) produced maxGap > 3500ms and only 3
+	// frames. We require a healthy main thread: sub-150ms frame gaps and a
+	// reasonable number of frames actually elapsing during the window.
+	if res.MaxGap > 150 {
+		t.Errorf("main thread froze during streaming: max frame gap %.0fms (> 150ms); "+
+			"streaming must not re-render the whole message each flush", res.MaxGap)
+	}
+	if res.Count < 20 {
+		t.Errorf("main thread starved: only %d rAF frames in measurement window", res.Count)
+	}
+}

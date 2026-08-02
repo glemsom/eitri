@@ -167,6 +167,7 @@
       firstEventSeen: false,
       awaitingResume: false,
       streamBuf: '',
+      renderedBase: '', // length-matched prefix of streamBuf already committed to DOM as stable blocks
       streamTimer: null,
       deadAirTimer: null,
       needsSectionBreak: false,
@@ -591,18 +592,52 @@
     clearStreamTimer(state);
     if (!state.streamBuf) return;
 
-    // Don't clear streamBuf — appendToken accumulates all text since
-    // the last time it was cleared, and we need the full accumulated
-    // text to re-render the complete markdown. If we cleared it here,
-    // each flush would only have the partial content since the last
-    // flush, overwriting the previous rendered DOM.
     const text = state.streamBuf;
-
     const el = document.getElementById('streaming');
     if (!el) return;
 
     const contentEl = el.querySelector('.message-content') || el;
-    contentEl.innerHTML = lightweightMarkdown(text);
+
+    // Render incrementally instead of re-rendering the ENTIRE accumulated text
+    // on every flush (which is O(total) per flush → O(n²) over a long stream and
+    // freezes the main thread). Markdown blocks are delimited by '\n\n', each
+    // block is independent, so commit completed blocks to the DOM once and only
+    // re-render the trailing *still-growing* block on each flush.
+    const BP = '\n\n';
+    const lastBoundary = text.lastIndexOf(BP);
+    const base = lastBoundary >= 0 ? text.substring(0, lastBoundary + BP.length) : '';
+    const tail = lastBoundary >= 0 ? text.substring(lastBoundary + BP.length) : text;
+
+    if (base.length > state.renderedBase.length) {
+      // Commit newly-completed block(s) into stable DOM nodes, once.
+      const newRaw = base.substring(state.renderedBase.length);
+      const holder = document.createElement('div');
+      holder.innerHTML = lightweightMarkdown(newRaw);
+      const tailEl = contentEl.querySelector('.stream-tail');
+      while (holder.firstChild) {
+        if (tailEl) contentEl.insertBefore(holder.firstChild, tailEl);
+        else contentEl.appendChild(holder.firstChild);
+      }
+      state.renderedBase = base;
+    }
+
+    // Re-render only the trailing growing block.
+    if (base === '') {
+      // No \n\n boundary yet — everything is one in-progress block.
+      contentEl.innerHTML = lightweightMarkdown(tail);
+      return;
+    }
+    let tailEl = contentEl.querySelector('.stream-tail');
+    if (tail) {
+      if (!tailEl) {
+        tailEl = document.createElement('div');
+        tailEl.className = 'stream-tail';
+        contentEl.appendChild(tailEl);
+      }
+      tailEl.innerHTML = lightweightMarkdown(tail);
+    } else if (tailEl) {
+      tailEl.remove();
+    }
   }
 
   function showStreamingBubble() {
