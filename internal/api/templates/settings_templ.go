@@ -509,159 +509,172 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"turn_timeout\">Turn Timeout (seconds)</label> <input type=\"number\" id=\"turn_timeout\" name=\"turn_timeout\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var28 string
-		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.TurnTimeout / 1_000_000_000)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 145, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 145, Col: 103}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_output_tokens\">Max Output Tokens (per turn)</label> <input type=\"number\" id=\"max_output_tokens\" name=\"max_output_tokens\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" min=\"0\" required> <small>Per-LLM-turn wall clock limit. 0 disables. Guards against a provider streaming reasoning forever without yielding content or a tool call.</small></div><div class=\"form-group\"><label for=\"max_turns\">Max Turns</label> <input type=\"number\" id=\"max_turns\" name=\"max_turns\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var29 string
-		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxOutputTokens)
+		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxTurns)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 150, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 151, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" min=\"1\" required> <small class=\"hint\">Cap on tokens a reasoning model can emit per turn (including thinking). Too low can leave a model stuck on reasoning with no tool call.</small></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label><div class=\"context-window-row\"><input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" min=\"1\" required></div><div class=\"form-group\"><label for=\"max_output_tokens\">Max Output Tokens (per turn)</label> <input type=\"number\" id=\"max_output_tokens\" name=\"max_output_tokens\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var30 string
-		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
+		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.MaxOutputTokens)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 157, Col: 114}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 156, Col: 101}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" min=\"1024\" required> <span class=\"context-window-source\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.ContextWindowOverridden {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "&#128295; manual")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "&#128200; auto")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span></div></div></details> <details class=\"settings-details\"><summary><span>Compaction</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"compaction_enabled\" name=\"compaction_enabled\" value=\"true\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.CompactionEnabled {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, " checked")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "> Enable auto-compaction</label> <input type=\"hidden\" name=\"compaction_enabled\" value=\"false\"> <small class=\"hint\">Automatically compact session history when context window usage exceeds the high-water threshold. Reduces history to the low-water mark.</small></div><div class=\"form-group\"><label for=\"compaction_threshold_percent\">High-water threshold (%)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_threshold_percent\" name=\"compaction_threshold_percent\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" min=\"1\" required> <small class=\"hint\">Cap on tokens a reasoning model can emit per turn (including thinking). Too low can leave a model stuck on reasoning with no tool call.</small></div><div class=\"form-group\"><label for=\"context_window_tokens\">Context Window Tokens</label><div class=\"context-window-row\"><input type=\"number\" id=\"context_window_tokens\" name=\"context_window_tokens\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var31 string
-		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionThresholdPercent)
+		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ContextWindowTokens)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 184, Col: 134}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 163, Col: 114}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" min=\"50\" max=\"100\" class=\"range-input\" oninput=\"document.getElementById('compaction_threshold_display').textContent = this.value\"> <span id=\"compaction_threshold_display\" class=\"range-value\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" min=\"1024\" required> <span class=\"context-window-source\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var32 string
-		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionThresholdPercent)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 185, Col: 98}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "%</span></div><small class=\"hint\">When context window usage reaches this percentage, compaction triggers (50–100).</small></div><div class=\"form-group\"><label for=\"compaction_low_water_percent\">Low-water mark (%)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_low_water_percent\" name=\"compaction_low_water_percent\" value=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var33 string
-		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionLowWaterPercent)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 193, Col: 133}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" min=\"10\" max=\"60\" class=\"range-input\" oninput=\"document.getElementById('compaction_low_water_display').textContent = this.value\"> <span id=\"compaction_low_water_display\" class=\"range-value\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var34 string
-		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionLowWaterPercent)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 194, Col: 97}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "%</span></div><small class=\"hint\">History is compacted down to this percentage of the context window (10–60). Must be less than the high-water threshold.</small></div><div class=\"form-group\"><label for=\"compaction_tool_call_retention_turns\">Tool call retention (turns)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_tool_call_retention_turns\" name=\"compaction_tool_call_retention_turns\" value=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var35 string
-		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionToolCallRetentionTurns)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 202, Col: 156}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" min=\"0\" max=\"50\" class=\"range-input\" oninput=\"document.getElementById('compaction_tool_call_retention_display').textContent = this.value\"> <span id=\"compaction_tool_call_retention_display\" class=\"range-value\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionToolCallRetentionTurns)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 203, Col: 114}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</span></div><small class=\"hint\">Number of recent assistant messages whose tool-call arguments are preserved. Older messages have arguments pruned to save tokens (0 = disable pruning).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"compaction_salience_enabled\" name=\"compaction_salience_enabled\" value=\"true\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.CompactionSalienceEnabled {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " checked")
+		if cfg.ContextWindowOverridden {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "&#128295; manual")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "&#128200; auto")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "> Enable salience-based compaction ordering</label> <input type=\"hidden\" name=\"compaction_salience_enabled\" value=\"false\"> <small class=\"hint\">When enabled, important messages (errors, stack traces) are preserved longer during compaction. When disabled, the oldest messages are compacted first regardless of importance.</small></div></details> <details class=\"settings-details\"><summary><span>Sandbox</span> <span class=\"sandbox-badge\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span></div></div></details> <details class=\"settings-details\"><summary><span>Compaction</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"compaction_enabled\" name=\"compaction_enabled\" value=\"true\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if cfg.CompactionEnabled {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, " checked")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "> Enable auto-compaction</label> <input type=\"hidden\" name=\"compaction_enabled\" value=\"false\"> <small class=\"hint\">Automatically compact session history when context window usage exceeds the high-water threshold. Reduces history to the low-water mark.</small></div><div class=\"form-group\"><label for=\"compaction_threshold_percent\">High-water threshold (%)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_threshold_percent\" name=\"compaction_threshold_percent\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var32 string
+		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionThresholdPercent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 190, Col: 134}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" min=\"50\" max=\"100\" class=\"range-input\" oninput=\"document.getElementById('compaction_threshold_display').textContent = this.value\"> <span id=\"compaction_threshold_display\" class=\"range-value\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var33 string
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionThresholdPercent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 191, Col: 98}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "%</span></div><small class=\"hint\">When context window usage reaches this percentage, compaction triggers (50–100).</small></div><div class=\"form-group\"><label for=\"compaction_low_water_percent\">Low-water mark (%)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_low_water_percent\" name=\"compaction_low_water_percent\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var34 string
+		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionLowWaterPercent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 199, Col: 133}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" min=\"10\" max=\"60\" class=\"range-input\" oninput=\"document.getElementById('compaction_low_water_display').textContent = this.value\"> <span id=\"compaction_low_water_display\" class=\"range-value\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var35 string
+		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionLowWaterPercent)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 200, Col: 97}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "%</span></div><small class=\"hint\">History is compacted down to this percentage of the context window (10–60). Must be less than the high-water threshold.</small></div><div class=\"form-group\"><label for=\"compaction_tool_call_retention_turns\">Tool call retention (turns)</label><div class=\"range-wrapper\"><input type=\"range\" id=\"compaction_tool_call_retention_turns\" name=\"compaction_tool_call_retention_turns\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var36 string
+		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.CompactionToolCallRetentionTurns)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 208, Col: 156}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\" min=\"0\" max=\"50\" class=\"range-input\" oninput=\"document.getElementById('compaction_tool_call_retention_display').textContent = this.value\"> <span id=\"compaction_tool_call_retention_display\" class=\"range-value\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var37 string
+		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(cfg.CompactionToolCallRetentionTurns)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 209, Col: 114}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span></div><small class=\"hint\">Number of recent assistant messages whose tool-call arguments are preserved. Older messages have arguments pruned to save tokens (0 = disable pruning).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"compaction_salience_enabled\" name=\"compaction_salience_enabled\" value=\"true\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if cfg.CompactionSalienceEnabled {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, " checked")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "> Enable salience-based compaction ordering</label> <input type=\"hidden\" name=\"compaction_salience_enabled\" value=\"false\"> <small class=\"hint\">When enabled, important messages (errors, stack traces) are preserved longer during compaction. When disabled, the oldest messages are compacted first regardless of importance.</small></div></details> <details class=\"settings-details\"><summary><span>Sandbox</span> <span class=\"sandbox-badge\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -669,76 +682,76 @@ func SettingsForm(cfg *config.Config, models []string, errorMessage string, noti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"sandbox_enabled\" name=\"sandbox_enabled\" value=\"true\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"sandbox_enabled\" name=\"sandbox_enabled\" value=\"true\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if cfg.Sandbox.Profile == "default" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, " checked")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, " checked")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "> Enable sandbox (requires bwrap)</label> <input type=\"hidden\" name=\"sandbox_enabled\" value=\"false\"> <small class=\"hint\">Wraps shell commands in a bubblewrap sandbox. Disable if you experience compatibility issues.</small></div><div class=\"form-group\"><label for=\"sandbox_extra_writable_paths\">Extra writable paths</label> <textarea id=\"sandbox_extra_writable_paths\" name=\"sandbox_extra_writable_paths\" class=\"monospace-textarea\" rows=\"3\" placeholder=\"/opt/toolchain&#10;/var/cache/build\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var37 string
-		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(joinSandboxPaths(cfg.Sandbox.ExtraWritablePaths))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 235, Col: 221}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</textarea> <small class=\"hint\">Additional directories to make read-write inside the sandbox (one per line).</small></div></details> <details class=\"settings-details\"><summary><span>Debug &amp; Diagnostics</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_prompt\" name=\"debug_prompt\" value=\"true\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.DebugPrompt {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, " checked")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "> <input type=\"hidden\" name=\"debug_prompt\" value=\"false\"> Debug prompt logging</label> <small class=\"hint\">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_request\" name=\"debug_request\" value=\"true\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if cfg.DebugRequest {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, " checked")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "> <input type=\"hidden\" name=\"debug_request\" value=\"false\"> Debug request logging</label> <small class=\"hint\">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small></div><div class=\"form-group\"><label for=\"debug_llm_dir\">LLM debug output directory</label> <input type=\"text\" id=\"debug_llm_dir\" name=\"debug_llm_dir\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "> Enable sandbox (requires bwrap)</label> <input type=\"hidden\" name=\"sandbox_enabled\" value=\"false\"> <small class=\"hint\">Wraps shell commands in a bubblewrap sandbox. Disable if you experience compatibility issues.</small></div><div class=\"form-group\"><label for=\"sandbox_extra_writable_paths\">Extra writable paths</label> <textarea id=\"sandbox_extra_writable_paths\" name=\"sandbox_extra_writable_paths\" class=\"monospace-textarea\" rows=\"3\" placeholder=\"/opt/toolchain&#10;/var/cache/build\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 string
-		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.DebugLLMDir)
+		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(joinSandboxPaths(cfg.Sandbox.ExtraWritablePaths))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 263, Col: 87}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 241, Col: 221}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\" placeholder=\"/tmp/eitri-llm-debug\"> <small class=\"hint\">Directory to write debug logs on LLM errors (was <code>EITRI_DEBUG_LLM_DIR</code>).</small></div></details> <details class=\"settings-details\"><summary><span>Browser</span></summary><div class=\"form-group\"><label for=\"browser_ws_url\">Browser WebSocket URL</label> <input type=\"url\" id=\"browser_ws_url\" name=\"browser_ws_url\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</textarea> <small class=\"hint\">Additional directories to make read-write inside the sandbox (one per line).</small></div></details> <details class=\"settings-details\"><summary><span>Debug &amp; Diagnostics</span></summary><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_prompt\" name=\"debug_prompt\" value=\"true\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if cfg.DebugPrompt {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, " checked")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "> <input type=\"hidden\" name=\"debug_prompt\" value=\"false\"> Debug prompt logging</label> <small class=\"hint\">Log full LLM request payloads (was <code>EITRI_DEBUG_PROMPT=1</code>).</small></div><div class=\"form-group\"><label class=\"checkbox-label\"><input type=\"checkbox\" id=\"debug_request\" name=\"debug_request\" value=\"true\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if cfg.DebugRequest {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, " checked")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "> <input type=\"hidden\" name=\"debug_request\" value=\"false\"> Debug request logging</label> <small class=\"hint\">Log full LLM request/response payloads (was <code>EITRI_DEBUG_REQUEST=1</code>).</small></div><div class=\"form-group\"><label for=\"debug_llm_dir\">LLM debug output directory</label> <input type=\"text\" id=\"debug_llm_dir\" name=\"debug_llm_dir\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var39 string
-		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.BrowserWsUrl)
+		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.DebugLLMDir)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 273, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 269, Col: 87}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "\" placeholder=\"ws://127.0.0.1:9222\"> <small class=\"hint\">Start Chrome with <code>google-chrome --remote-debugging-port=9222</code> to enable browser tool access.</small></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\" id=\"settings-save-btn\" disabled>Save</button> <button type=\"button\" id=\"settings-revert-btn\" disabled>Revert</button> <span id=\"settings-dirty-indicator\" class=\"settings-dirty-indicator\" hidden>Unsaved changes</span><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-include=\"closest form\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form><!-- Personas section — outside the config form to avoid nested forms --><details class=\"settings-details\"><summary><span>Personas</span></summary><div id=\"persona-section\"><p class=\"text-muted\">Personas define the system prompt and skills for the agent.</p><div id=\"persona-list\" hx-get=\"/api/personas\" hx-trigger=\"load\" hx-swap=\"innerHTML\"><p class=\"text-muted\">Loading personas…</p></div><div class=\"form-actions\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/api/personas/add-form\" hx-target=\"#persona-add-area\" hx-swap=\"innerHTML\">+ Add Persona</button></div><div id=\"persona-add-area\"></div><div id=\"persona-form-errors\" class=\"form-error\"></div></div></details></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "\" placeholder=\"/tmp/eitri-llm-debug\"> <small class=\"hint\">Directory to write debug logs on LLM errors (was <code>EITRI_DEBUG_LLM_DIR</code>).</small></div></details> <details class=\"settings-details\"><summary><span>Browser</span></summary><div class=\"form-group\"><label for=\"browser_ws_url\">Browser WebSocket URL</label> <input type=\"url\" id=\"browser_ws_url\" name=\"browser_ws_url\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var40 string
+		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.BrowserWsUrl)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 279, Col: 89}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" placeholder=\"ws://127.0.0.1:9222\"> <small class=\"hint\">Start Chrome with <code>google-chrome --remote-debugging-port=9222</code> to enable browser tool access.</small></div></details><div class=\"form-actions form-actions-sticky\"><button type=\"submit\" id=\"settings-save-btn\" disabled>Save</button> <button type=\"button\" id=\"settings-revert-btn\" disabled>Revert</button> <span id=\"settings-dirty-indicator\" class=\"settings-dirty-indicator\" hidden>Unsaved changes</span><div id=\"test-connection-wrapper\" class=\"test-connection-wrapper\"><button type=\"button\" id=\"test-connection-btn\" hx-get=\"/api/models\" hx-include=\"closest form\" hx-target=\"#test-connection-result\" hx-swap=\"innerHTML\">Test Connection</button><div id=\"test-connection-result\" class=\"test-connection-result\"></div></div><span class=\"save-hint\">(Ctrl+Enter to save)</span></div></form><!-- Personas section — outside the config form to avoid nested forms --><details class=\"settings-details\"><summary><span>Personas</span></summary><div id=\"persona-section\"><p class=\"text-muted\">Personas define the system prompt and skills for the agent.</p><div id=\"persona-list\" hx-get=\"/api/personas\" hx-trigger=\"load\" hx-swap=\"innerHTML\"><p class=\"text-muted\">Loading personas…</p></div><div class=\"form-actions\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/api/personas/add-form\" hx-target=\"#persona-add-area\" hx-swap=\"innerHTML\">+ Add Persona</button></div><div id=\"persona-add-area\"></div><div id=\"persona-form-errors\" class=\"form-error\"></div></div></details></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -762,44 +775,44 @@ func TestConnectionResult(success bool, message string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var40 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var40 == nil {
-			templ_7745c5c3_Var40 = templ.NopComponent
+		templ_7745c5c3_Var41 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var41 == nil {
+			templ_7745c5c3_Var41 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if success {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<span class=\"connection-ok\">&#10003; ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var41 string
-			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(message)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 318, Col: 48}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<span class=\"connection-err\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<span class=\"connection-ok\">&#10003; ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 320, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 324, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<span class=\"connection-err\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var43 string
+			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/settings.templ`, Line: 326, Col: 40}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

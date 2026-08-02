@@ -106,11 +106,17 @@ type RunOpts struct {
 	// ModelName is the current model identifier, used as the key for
 	// calibration lookups and updates. When empty, calibration is skipped.
 	ModelName string
+
+	// TurnTimeout caps the wall-clock duration of a single LLM turn (streaming
+	// request + response). It guards against a provider streaming reasoning
+	// forever without emitting content or a tool call. When <= 0 the turn is
+	// not bounded. Defaults to 5 minutes.
+	TurnTimeout time.Duration
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
 func DefaultRunOpts() RunOpts {
-	return RunOpts{}
+	return RunOpts{TurnTimeout: 5 * time.Minute}
 }
 
 // buildLitellmRequest creates a per-turn litellm.Request from the base request
@@ -179,8 +185,15 @@ func toFlatMessages(msgs []message.EitriMessage) []message.Message {
 }
 
 // IsReasoningModel returns true for models known to support thinking/reasoning
-// via the litellm library's Thinking field. Used by callers to gate whether
-// Thinking.ThinkingEnabled is set on the litellm.Request.
+// control via the litellm library's Thinking field. Used by callers to gate
+// whether Thinking.ThinkingEnabled is set on the litellm.Request.
+//
+// DELIBERATELY keep this in sync with the underlying litellm openai provider's
+// own isReasoningModel (gpt-5*). Sending Thinking for a model litellm's openai
+// provider doesn't classify as a reasoning chat model (e.g. deepseek-reasoner)
+// is rejected with "thinking is only supported for reasoning chat models".
+// DeepSeek reasoning is a server-side default and NOT a client-side budget
+// knob — cap it with RunOpts.TurnTimeout instead.
 func IsReasoningModel(model string) bool {
 	lower := strings.ToLower(model)
 	if _, after, ok := strings.Cut(lower, "/"); ok {
@@ -281,13 +294,25 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			streamErr    error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
-			stream, err := spec.Client.Stream(ctx, *litellmReq)
+			// Bound each attempt with the per-turn timeout. This caps a stalled
+			// turn (e.g. a provider streaming reasoning/thinking tokens forever
+			// without yielding content or a tool call). A fresh deadline per
+			// attempt keeps the whole turn bounded even across retries.
+			turnCtx := ctx
+			var turnCancel context.CancelFunc
+			if opts.TurnTimeout > 0 {
+				turnCtx, turnCancel = context.WithTimeout(ctx, opts.TurnTimeout)
+			}
+			stream, err := spec.Client.Stream(turnCtx, *litellmReq)
 			if err == nil {
 				// Process stream events inline
 				content.Reset()
 				toolCalls = nil
 				usage = nil
-				content, toolCalls, usage, finishReason, streamErr = processStream(ctx, stream, spec.SSEWriter)
+				content, toolCalls, usage, finishReason, streamErr = processStream(turnCtx, stream, spec.SSEWriter)
+				if turnCancel != nil {
+					turnCancel()
+				}
 				if streamErr == nil {
 					// A "length" finish means the model hit the max output token
 					// cap mid-generation; the turn was truncated by the provider,
@@ -303,6 +328,17 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 						streamErr = &MaxOutputTokensExceededError{Limit: limit}
 					}
 					break
+				}
+				// Turn timeout: the stream exceeded the per-turn deadline (e.g. the
+				// provider streamed reasoning for the whole window without yielding
+				// content or a tool call). Surface it loudly and do not retry — a
+				// retry would just burn another timeout window on the same stalled
+				// reasoning. Mirrors the FinishReasonLength handling above.
+				if opts.TurnTimeout > 0 && ctx.Err() == nil && errors.Is(streamErr, context.DeadlineExceeded) {
+					streamErr = &TurnTimeoutError{Timeout: opts.TurnTimeout}
+					spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+					dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
+					return fmt.Errorf("chat stream: %w", streamErr)
 				}
 				// Context cancellation: preserve partial result, exit retry loop
 				if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
@@ -326,7 +362,18 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				return fmt.Errorf("chat stream: %w", streamErr)
 			}
 
-			// Error starting the stream
+			if turnCancel != nil {
+				turnCancel()
+			}
+			// Error starting the stream — treat a turn-timeout here identically
+			// to the in-stream case (non-retryable stall), unless the parent run
+			// context was also cancelled.
+			if opts.TurnTimeout > 0 && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+				streamErr = &TurnTimeoutError{Timeout: opts.TurnTimeout}
+				spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+				dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
+				return fmt.Errorf("chat stream: %w", streamErr)
+			}
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				streamErr = err
 				break
@@ -768,6 +815,19 @@ type MaxOutputTokensExceededError struct {
 
 func (e *MaxOutputTokensExceededError) Error() string {
 	return fmt.Sprintf("max output tokens limit reached: %d (truncated response)", e.Limit)
+}
+
+// TurnTimeoutError reports that a single LLM turn exceeded its per-turn wall-clock
+// deadline (e.g. the provider streamed reasoning/thinking tokens for the whole
+// window without ever emitting content or a tool call). Surfaced as an error so
+// a stalled turn is never silently swallowed as a clean completion, and is not
+// retried (a retry would just burn another timeout window on the same stall).
+type TurnTimeoutError struct {
+	Timeout time.Duration
+}
+
+func (e *TurnTimeoutError) Error() string {
+	return fmt.Sprintf("turn timed out after %s (no content or tool call received)", e.Timeout)
 }
 
 // updateCalibration feeds provider usage data from a completed LLM response

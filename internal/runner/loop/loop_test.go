@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
@@ -3100,3 +3101,110 @@ func TestRunAgent_CalibrationUpdateWithUsage(t *testing.T) {
 
 // ensure tokenizer import is used
 var _ = tokenizer.NewCalibrationStore
+
+// blockingStream is a litellm.Stream that blocks in Next() until the context
+// is cancelled — simulating a provider that streams reasoning forever without
+// ever yielding a content delta, tool call, or done event (the turn-stall case).
+type blockingStream struct {
+	ctx context.Context
+}
+
+func (s *blockingStream) Next() (litellm.Event, error) {
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+
+func (s *blockingStream) Close() error { return nil }
+
+// stallProvider returns a Stream that blocks on the context passed to Stream().
+type stallProvider struct{}
+
+func (p *stallProvider) Name() string { return "stall" }
+
+func (p *stallProvider) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented for stallProvider")
+}
+
+func (p *stallProvider) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
+	return &blockingStream{ctx: ctx}, nil
+}
+
+// TestIsReasoningModel documents the gate that keeps Eitri aligned with litellm's
+// openai provider isReasoningModel (gpt-5*). Only those models accept a client-.
+// side Thinking budget; deepseek/o1/qwen reasoning is server-side default and
+// must NOT have Thinking set (litellm rejects it with
+// "thinking is only supported for reasoning chat models").
+func TestIsReasoningModel(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"gpt-5", true},
+		{"gpt-5.1", true},
+		{"deepseek-v4-flash", false},
+		{"deepseek-reasoner", false},
+		{"o1", false},
+		{"o3-mini", false},
+		{"qwen3", false},
+		{"minimax", false},
+		{"gpt-4o", false},
+		{"claude-3", false},
+	}
+	for _, tc := range cases {
+		if got := IsReasoningModel(tc.model); got != tc.want {
+			t.Errorf("IsReasoningModel(%q) = %v, want %v", tc.model, got, tc.want)
+		}
+	}
+}
+
+// TestRunAgent_TurnTimeout verifies that a turn that stalls (streams reasoning
+// forever without content/tool/done) is cut off by the per-turn timeout and
+// surfaces a TurnTimeoutError instead of hanging.
+func TestRunAgent_TurnTimeout(t *testing.T) {
+	t.Parallel()
+
+	client, err := litellm.New(&stallProvider{})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}}},
+		lrWithModel("deepseek-v4-flash"),
+	)
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   3,
+		MaxHistory: 0,
+		SSEWriter:  w,
+	}, RunOpts{
+		HistoryMgr:  NewRequestHistoryManager(req),
+		TurnTimeout: 200 * time.Millisecond,
+	})
+
+	var toErr *TurnTimeoutError
+	if !errors.As(err, &toErr) {
+		t.Fatalf("RunAgent error = %v, want TurnTimeoutError", err)
+	}
+	if toErr.Timeout != 200*time.Millisecond {
+		t.Errorf("TurnTimeoutError.Timeout = %v, want 200ms", toErr.Timeout)
+	}
+
+	// A stall error must be surfaced via SSE as an error event.
+	events := sseEventTypes(collectSSE(sseState))
+	found := false
+	for _, e := range events {
+		if e == "error" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected an SSE error event, got %v", events)
+	}
+}

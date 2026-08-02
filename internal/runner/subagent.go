@@ -253,6 +253,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			CrashDumpFunc:    nil,
 			Turns:            nil,
 			CalibrationStore: s.calibrationStore,
+			TurnTimeout:      parentCfg.TurnTimeout,
 			ModelName:        parentCfg.ModelName,
 		})
 

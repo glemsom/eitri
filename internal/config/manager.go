@@ -29,6 +29,7 @@ type Config struct {
 	SystemPrompt                     string            `json:"system_prompt"`
 	SessionTimeout                   int64             `json:"session_timeout"`
 	CommandTimeout                   int64             `json:"command_timeout"`
+	TurnTimeout                      int64             `json:"turn_timeout"`
 	MaxTurns                         int               `json:"max_turns"`
 	MaxOutputTokens                  int               `json:"max_output_tokens"`
 	ContextWindowTokens              int               `json:"context_window_tokens"`
@@ -58,6 +59,7 @@ func Defaults() Config {
 		BaseURL:                          prof.DefaultBaseURL,
 		SessionTimeout:                   30 * 60_000_000_000, // 30 minutes in ns
 		CommandTimeout:                   60 * 1_000_000_000,  // 60 seconds in ns
+		TurnTimeout:                      5 * 60_000_000_000,  // 5 minutes in ns
 		MaxTurns:                         75,
 		MaxOutputTokens:                  32000,
 		ContextWindowTokens:              256000,
@@ -217,6 +219,9 @@ func Validate(cfg *Config) error {
 	if cfg.CommandTimeout < 1_000_000_000 { // 1 second in ns
 		return fmt.Errorf("command_timeout must be at least 1 second (1000000000 ns), got %d", cfg.CommandTimeout)
 	}
+	if cfg.TurnTimeout < 0 {
+		return fmt.Errorf("turn_timeout must be non-negative (0 disables per-turn timeout), got %d", cfg.TurnTimeout)
+	}
 
 	if cfg.MaxTurns < 1 {
 		return fmt.Errorf("max_turns must be at least 1, got %d", cfg.MaxTurns)
@@ -372,6 +377,11 @@ func Merge(base *Config, patch map[string]any) *Config {
 	if v, ok := patch["command_timeout"]; ok {
 		if f, ok := parseNumeric(v); ok {
 			result.CommandTimeout = int64(f)
+		}
+	}
+	if v, ok := patch["turn_timeout"]; ok {
+		if f, ok := parseNumeric(v); ok {
+			result.TurnTimeout = int64(f)
 		}
 	}
 	if v, ok := patch["max_turns"]; ok {

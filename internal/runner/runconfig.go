@@ -30,6 +30,7 @@ type RunConfig struct {
 	ProviderAuth        json.RawMessage
 	Workspace           string
 	CmdTimeout          time.Duration
+	TurnTimeout         time.Duration
 	ContextWindowTokens int
 	ThinkingLevel       string
 	DebugPrompt         bool
@@ -76,6 +77,7 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		ProviderAuth:                     cfg.ProviderAuth,
 		Workspace:                        workspace,
 		CmdTimeout:                       cmdTimeout,
+		TurnTimeout:                      time.Duration(cfg.TurnTimeout),
 		ContextWindowTokens:              cfg.ContextWindowTokens,
 		DebugPrompt:                      cfg.DebugPrompt,
 		DebugRequest:                     cfg.DebugRequest,

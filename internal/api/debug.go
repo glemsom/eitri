@@ -37,7 +37,7 @@ type runInfo struct {
 // debugSessionDetail is the shape returned by GET /api/debug/sessions/{id}.
 type debugSessionDetail struct {
 	Session      debugSessionSummary `json:"session"`
-	Messages     []message.Message       `json:"messages"`
+	Messages     []message.Message   `json:"messages"`
 	ActiveSkills []string            `json:"active_skills"`
 	Run          *runInfo            `json:"run,omitempty"`
 	SSEHistory   []runstate.SSEEvent `json:"sse_history,omitempty"`
@@ -69,6 +69,7 @@ type sanitizedConfig struct {
 	MaxTurns            int    `json:"max_turns"`
 	MaxOutputTokens     int    `json:"max_output_tokens"`
 	CommandTimeout      int64  `json:"command_timeout"`
+	TurnTimeout         int64  `json:"turn_timeout"`
 	HasAPIKey           bool   `json:"has_api_key"`
 }
 
@@ -294,6 +295,7 @@ func sanitizeConfig(cfg *config.Config) *sanitizedConfig {
 		MaxTurns:            cfg.MaxTurns,
 		MaxOutputTokens:     cfg.MaxOutputTokens,
 		CommandTimeout:      cfg.CommandTimeout,
+		TurnTimeout:         cfg.TurnTimeout,
 		HasAPIKey:           cfg.APIKey != "" || len(cfg.ProviderAuth) > 0,
 	}
 }

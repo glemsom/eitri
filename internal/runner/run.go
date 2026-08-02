@@ -203,6 +203,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			CrashDumpFunc:    s.crashDumpFunc,
 			Turns:            &state.Turns,
 			DebugLLMDir:      cfg.DebugLLMDir,
+			TurnTimeout:      cfg.TurnTimeout,
 			TurnCompleter:    s,
 			CalibrationStore: s.calibrationStore,
 			ModelName:        cfg.ModelName,
