@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -203,8 +204,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Send initial connecting event
 	if initData := mustJSON(runstate.SSEEvent{Type: "connecting"}); initData != nil {
-		fmt.Fprintf(w, "data: %s\n\n", string(initData))
-		flusher.Flush()
+		if !writeSSE(w, flusher, initData) {
+			return
+		}
 	}
 
 	ctx := r.Context()
@@ -221,21 +223,38 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if data == nil {
 				continue
 			}
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-			flusher.Flush()
+			// Abort on write/flush failure (stalled or disconnected client) so the
+			// deferred Unsubscribe runs promptly and the subscriber/socket is
+			// released instead of leaking on a connection whose buffer backed up.
+			if !writeSSE(w, flusher, data) {
+				return
+			}
 			if evt.Type == "done" || evt.Type == "error" || evt.Type == "closed" {
 				return
 			}
 
 		case <-keepAlive.C:
 			// SSE keep-alive comment
-			fmt.Fprintf(w, ":keepalive\n\n")
+			if _, err := fmt.Fprint(w, ":keepalive\n\n"); err != nil {
+				return
+			}
 			flusher.Flush()
 
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+// writeSSE writes a single SSE "data: ..." frame and flushes. Returns false
+// if the write or flush fails (e.g. the client disconnected or stopped reading),
+// signalling the caller to tear down the stream and its subscriber.
+func writeSSE(w io.Writer, flusher http.Flusher, data []byte) bool {
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", string(data)); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 // notifyNoActiveRun sends a valid SSE response indicating no active run exists.

@@ -364,6 +364,15 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 			}
 			return
 		}
+		// The final assistant message may already have been synced into the UI
+		// session by OnTurnComplete's live-history sync. Avoid appending a
+		// duplicate of the same content at run completion.
+		if last.Role == "assistant" && last.Content == content {
+			if reasoningContent != "" && last.ReasoningContent == "" {
+				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
+			}
+			return
+		}
 	}
 	s.uiSessionMgr.AppendMessage(sessionID, message.Message{
 		Role:             "assistant",
@@ -422,6 +431,30 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		return
 	}
 
+	historyMsgs := s.historySessionMgr.History(sessionID)
+	if historyMsgs == nil {
+		return
+	}
+
+	// Sync the run's live conversation (history manager) into the UI session
+	// so the browser UI and snapshots show incremental progress during long
+	// runs instead of appearing frozen on the original user message until the
+	// run completes. Without this, a multi-turn run burns turns and writes
+	// traces while the UI session stays at a single message. The system prompt
+	// is stored separately on the UI session (SetSystemPrompt), so strip it
+	// from the history copy below. If compaction later replaces the history
+	// with a compacted version, its own sync below overrides this one.
+	if s.historySessionMgr != nil {
+		uiMsgs := make([]message.Message, 0, len(historyMsgs))
+		for _, em := range historyMsgs {
+			uiMsgs = append(uiMsgs, em.ToMessage())
+		}
+		if len(uiMsgs) > 0 && uiMsgs[0].Role == "system" {
+			uiMsgs = uiMsgs[1:]
+		}
+		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
+	}
+
 	// Always snapshot after each turn.
 	if err := s.persister.SnapshotSession(sessionID, sess); err != nil {
 		slog.Warn("failed to snapshot session",
@@ -429,12 +462,6 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 			slog.Any("error", err),
 		)
 	}
-
-	historyMsgs := s.historySessionMgr.History(sessionID)
-	if historyMsgs == nil {
-		return
-	}
-
 	// Auto-compaction: retrieve the run config from the active RunState.
 	state := s.get(sessionID)
 	if state == nil {

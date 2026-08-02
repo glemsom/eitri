@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -2016,4 +2017,53 @@ func TestCompactSessionHistory_SharedHelper(t *testing.T) {
 	}
 	_ = manualFreed
 	_ = manualPruned
+}
+
+func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {
+	uiMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	persister, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiMgr,
+		HistorySessionMgr: historyMgr,
+		Persister:         persister,
+	})
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+
+	// Populate the run's live history as the agent loop would across turns.
+	historyMgr.Create(sess.ID)
+	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
+	historyMgr.AppendUser(sess.ID, "Do the work")
+	historyMgr.AppendAssistant(sess.ID, "First, let me look around.", []message.ToolCall{
+		{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}},
+	})
+	historyMgr.AppendTool(sess.ID, "call_1", "file contents...", "", false)
+	historyMgr.AppendAssistant(sess.ID, "Here is a mid-run update.", nil)
+
+	svc.OnTurnComplete(context.Background(), sess.ID)
+
+	convo := uiMgr.GetConversation(sess.ID)
+	if convo == nil {
+		t.Fatal("expected a conversation in the UI session")
+	}
+
+	// The UI session should reflect the full live conversation, not just the
+	// original user message — this is what makes long runs visible during
+	// execution instead of appearing frozen until completion.
+	roles := make([]string, 0, len(convo.Messages))
+	for i := range convo.Messages {
+		roles = append(roles, string(convo.Messages[i].Role))
+	}
+	want := []string{"user", "assistant", "tool", "assistant"}
+	if !reflect.DeepEqual(roles, want) {
+		t.Errorf("UI session roles = %v, want %v", roles, want)
+	}
 }
