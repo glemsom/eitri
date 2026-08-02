@@ -107,6 +107,8 @@ a:hover {
 
 header {
   grid-area: header;
+  position: relative;
+  z-index: 100;
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
