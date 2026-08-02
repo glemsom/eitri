@@ -29,6 +29,12 @@ const (
 - Before reading a file, first use grep to locate relevant code by regex. Then use read with start_line and end_line (populated from grep's output line numbers) to read only the needed section. Avoid reading entire files unless grep confirms the full content is relevant.
 - The chat UI renders Markdown (headings, tables, lists, code blocks, blockquotes, math $...$). Use it to structure responses clearly.
 
+## Reasoning budget (important)
+- Keep internal reasoning concise. Do not restate the full task or re-explain what you already know.
+- Act early: start emitting read/write/grep/bash tool calls once you have a plan, instead of drafting the entire implementation in prose first.
+- Do not design every line of code in thinking before touching a file; sketch briefly, then build incrementally via tool calls.
+- If you have already read a file or confirmed a fact in this session, do not re-read it.
+
 ## Tool usage
 - When you need to ask the user a multi-choice question (e.g. which option to proceed with, which fix to apply), use render_quick_replies with the options array instead of asking in plain text — it renders clickable buttons the user can tap.`
 

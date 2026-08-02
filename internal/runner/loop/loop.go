@@ -128,10 +128,10 @@ func buildLitellmRequest(base *litellm.Request, history []message.EitriMessage, 
 	}
 
 	// Max output tokens per assistant turn. Some providers (Anthropic) require
-	// the field. Fall back to a generous 16000 if the base request did not set
+	// the field. Fall back to a generous 32000 if the base request did not set
 	// one (configurable via config.MaxOutputTokens); a small cap lets reasoning
 	// models exhaust their budget on thinking and never emit a tool call.
-	maxTokens := 16000
+	maxTokens := 32000
 	if base.MaxTokens != nil && *base.MaxTokens > 0 {
 		maxTokens = *base.MaxTokens
 	}
@@ -274,10 +274,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		// Call LLM streaming with retry on transient errors
 		const maxRetries = 5
 		var (
-			content   strings.Builder
-			toolCalls []litellm.ToolUseBlock
-			usage     *litellm.Usage
-			streamErr error
+			content      strings.Builder
+			toolCalls    []litellm.ToolUseBlock
+			usage        *litellm.Usage
+			finishReason litellm.FinishReason
+			streamErr    error
 		)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			stream, err := spec.Client.Stream(ctx, *litellmReq)
@@ -286,8 +287,21 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				content.Reset()
 				toolCalls = nil
 				usage = nil
-				content, toolCalls, usage, streamErr = processStream(ctx, stream, spec.SSEWriter)
+				content, toolCalls, usage, finishReason, streamErr = processStream(ctx, stream, spec.SSEWriter)
 				if streamErr == nil {
+					// A "length" finish means the model hit the max output token
+					// cap mid-generation; the turn was truncated by the provider,
+					// not by the model choosing to stop. Retrying a truncated
+					// reasoning turn is futile (the budget is already spent on
+					// thinking), so surface it as a non-retryable error instead
+					// of silently swallowing it as a clean completion.
+					if finishReason == litellm.FinishReasonLength {
+						limit := 32000
+						if litellmReq.MaxTokens != nil && *litellmReq.MaxTokens > 0 {
+							limit = *litellmReq.MaxTokens
+						}
+						streamErr = &MaxOutputTokensExceededError{Limit: limit}
+					}
 					break
 				}
 				// Context cancellation: preserve partial result, exit retry loop
@@ -343,6 +357,21 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				if opts.HistoryMgr.RequestBased() {
 					trimMessages(spec.Request, spec.MaxHistory)
 				}
+				return streamErr
+			}
+			var maxOutErr *MaxOutputTokensExceededError
+			if errors.As(streamErr, &maxOutErr) {
+				// The model exhausted its output-token budget before emitting a
+				// tool call or final answer (reasoning burn). Preserve whatever
+				// partial content arrived, then surface the truncation loudly so
+				// it is never recorded as a silent clean completion.
+				if content.Len() > 0 {
+					opts.HistoryMgr.AppendAssistant(content.String(), nil)
+					if opts.HistoryMgr.RequestBased() {
+						trimMessages(spec.Request, spec.MaxHistory)
+					}
+				}
+				spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
 				return streamErr
 			}
 			spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
@@ -558,7 +587,7 @@ func processStream(
 	ctx context.Context,
 	stream litellm.Stream,
 	sseWriter *runstate.Writer,
-) (strings.Builder, []litellm.ToolUseBlock, *litellm.Usage, error) {
+) (strings.Builder, []litellm.ToolUseBlock, *litellm.Usage, litellm.FinishReason, error) {
 	var closeOnce sync.Once
 	closeStream := func() {
 		closeOnce.Do(func() { _ = stream.Close() })
@@ -596,7 +625,7 @@ func processStream(
 		if err := ctx.Err(); err != nil {
 			// Drain any remaining buffered events before returning cancellation
 			drainRemaining(stream, &content, &toolCalls, &usage, toolAcc, sseWriter)
-			return content, toolCalls, usage, err
+			return content, toolCalls, usage, litellm.FinishReason(""), err
 		}
 
 		event, err := stream.Next()
@@ -604,12 +633,12 @@ func processStream(
 			// If the context was cancelled, return context error instead of stream error
 			if errors.Is(err, io.EOF) {
 				if cerr := ctx.Err(); cerr != nil {
-					return content, toolCalls, usage, cerr
+					return content, toolCalls, usage, litellm.FinishReason(""), cerr
 				}
 				// Premature EOF — stream ended without DoneEvent
-				return content, toolCalls, usage, fmt.Errorf("premature EOF: %w", io.ErrUnexpectedEOF)
+				return content, toolCalls, usage, litellm.FinishReason(""), fmt.Errorf("premature EOF: %w", io.ErrUnexpectedEOF)
 			}
-			return content, toolCalls, usage, err
+			return content, toolCalls, usage, litellm.FinishReason(""), err
 		}
 
 		switch e := event.(type) {
@@ -651,10 +680,10 @@ func processStream(
 				}
 			}
 			startedToolIDs = nil
-			return content, toolCalls, usage, nil
+			return content, toolCalls, usage, e.FinishReason, nil
 
 		case litellm.ErrorEvent:
-			return content, toolCalls, usage, e.Err
+			return content, toolCalls, usage, litellm.FinishReason(""), e.Err
 		}
 	}
 }
@@ -726,6 +755,19 @@ type MaxTurnsExceededError struct {
 
 func (e *MaxTurnsExceededError) Error() string {
 	return fmt.Sprintf("max turns limit reached: %d", e.Limit)
+}
+
+// MaxOutputTokensExceededError reports that the model exhausted its per-turn
+// output-token budget (finish_reason="length") before emitting a tool call or
+// final answer. The turn was truncated by the provider. This is surfaced as an
+// error rather than a clean completion so a truncated reasoning turn is never
+// silently swallowed as "done".
+type MaxOutputTokensExceededError struct {
+	Limit int
+}
+
+func (e *MaxOutputTokensExceededError) Error() string {
+	return fmt.Sprintf("max output tokens limit reached: %d (truncated response)", e.Limit)
 }
 
 // updateCalibration feeds provider usage data from a completed LLM response

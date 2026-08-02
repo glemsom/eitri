@@ -109,7 +109,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 
 	// Max output tokens per assistant turn. If a provider override exists,
-	// keep it. Config default is 16000 (generous headroom for reasoning models
+	// keep it. Config default is 32000 (generous headroom for reasoning models
 	// whose thinking can otherwise exhaust a small cap before emitting any
 	// tool call or answer). Zero means "no explicit cap".
 	if cfg.MaxOutputTokens > 0 {

@@ -69,9 +69,10 @@ type mockProvider struct {
 }
 
 type mockTurn struct {
-	tokens    []tokenEvent
-	toolCalls []litellm.ToolUseBlock
-	err       error
+	tokens       []tokenEvent
+	toolCalls    []litellm.ToolUseBlock
+	finishReason litellm.FinishReason
+	err          error
 }
 
 type tokenEvent struct {
@@ -158,7 +159,11 @@ func (m *mockProvider) Stream(ctx context.Context, req *litellm.Request) (litell
 	}
 
 	// Send done
-	events = append(events, litellm.DoneEvent{})
+	finishReason := turn.finishReason
+	if finishReason == "" {
+		finishReason = litellm.FinishReasonStop
+	}
+	events = append(events, litellm.DoneEvent{FinishReason: finishReason})
 
 	return &mockStream{events: events}, nil
 }
@@ -295,6 +300,59 @@ func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	}
 	if !hasDone {
 		t.Errorf("expected done event, got %v", types)
+	}
+}
+
+func TestRunAgent_OutputTokenCapExceeded_NoToolCallsFails(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// Reasoning model burns its max_output_tokens budget on thinking and ends
+	// with finish_reason="length", no content and no tool calls. This is the
+	// "went nowhere" failure: the loop must NOT swallow it as a clean
+	// completion.
+	client := newMockClient([]mockTurn{
+		{finishReason: litellm.FinishReasonLength},
+	})
+
+	req := lrFromMessages(
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "implement the next issue"}}},
+		},
+		lrWithModel("test-model"),
+	)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:    NewRequestHistoryManager(req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+	})
+	if err == nil {
+		t.Fatal("expected output-token-cap error, got nil (turn silently swallowed as completion)")
+	}
+
+	var lenErr *MaxOutputTokensExceededError
+	if !errors.As(err, &lenErr) {
+		t.Fatalf("error type = %T, want *MaxOutputTokensExceededError", err)
+	}
+
+	// The UI must signal the truncation, not a done event.
+	events := collectSSE(sseState)
+	types := sseEventTypes(events)
+	for _, evType := range types {
+		if evType == "done" {
+			t.Errorf("unexpected done event for truncated turn: %v", types)
+		}
 	}
 }
 

@@ -39,7 +39,7 @@ func TestProcessStream_NormalCompletionStopsCloseWatcher(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &closeCountingDoneStream{closed: make(chan struct{}, 4)}
 
-	_, _, _, err := processStream(ctx, stream, runstate.NewWriter(runstate.New()))
+	_, _, _, _, err := processStream(ctx, stream, runstate.NewWriter(runstate.New()))
 	if err != nil {
 		t.Fatalf("processStream returned error: %v", err)
 	}

@@ -59,7 +59,7 @@ func Defaults() Config {
 		SessionTimeout:                   30 * 60_000_000_000, // 30 minutes in ns
 		CommandTimeout:                   60 * 1_000_000_000,  // 60 seconds in ns
 		MaxTurns:                         75,
-		MaxOutputTokens:                  16000,
+		MaxOutputTokens:                  32000,
 		ContextWindowTokens:              256000,
 		MaxHistory:                       50,
 		CompactionEnabled:                true,
