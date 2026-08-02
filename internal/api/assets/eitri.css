@@ -108,7 +108,10 @@ a:hover {
 header {
   grid-area: header;
   position: relative;
-  z-index: 100;
+  /* Above the confirmation overlay (z-index:1000) so the global nav / gear
+     stays clickable while a blocked-read confirmation is pending mid-run.
+     Also keeps the gear dropdown above chat content (stacking-context fix). */
+  z-index: 1100;
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

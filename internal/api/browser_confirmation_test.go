@@ -922,3 +922,92 @@ func TestBrowser_ConfirmationOverlayClearedOnRunDone(t *testing.T) {
 		t.Fatalf("confirmation overlay still visible after run done — blocks entire UI (gear icon unclickable)")
 	}
 }
+
+// Regression: the user reports the gear icon (header) becoming unclickable
+// "sometimes when streaming". root cause: the needs_confirmation modal is a
+// full-screen overlay at z-index:1000 covering the header (z-index:100). While a
+// confirmation is pending mid-run (the agent loop blocks awaiting the answer),
+// the gear (and whole header/nav) is blocked, so the UI feels frozen until the
+// user finds the modal. The header must stay interactive while a confirmation
+// is pending.
+func TestBrowser_ConfirmationModalDoesNotBlockGear(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("navigate/get session failed: %v (sid=%q)", err, sessionID)
+	}
+	waitForComposerReady(t, ctx)
+
+	// Install a fake EventSource so the stream doesn't need a real transport.
+	err = chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+		class FakeEventSource {
+			constructor(url) { this.url = url; window.__fs = this; }
+			close() { this.closed = true; }
+			emitOpen() { if (this.onopen) this.onopen({}); }
+			emit(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+		}
+		window.EventSource = FakeEventSource;
+		document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+		return !!window.__fs;
+	})()`, nil))
+	if err != nil {
+		t.Fatalf("install fake EventSource: %v", err)
+	}
+
+	// Ensure the header gear is present and clickable (topmost element at its
+	// center) BEFORE any confirmation.
+	var gearBefore bool
+	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+		var gear = document.querySelector('.gear-btn');
+		if (!gear) return false;
+		var r = gear.getBoundingClientRect();
+		var hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+		return !!(hit && (hit === gear || hit.closest('.gear-btn')));
+	})()`, &gearBefore))
+
+	// Emit open + needs_confirmation → overlay shows (blocks the page today).
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fs.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fs.emit({type: 'needs_confirmation', data: {path: '/tmp/f', message: 'This path requires confirmation'}})`, nil),
+	); err != nil {
+		t.Fatalf("emit needs_confirmation: %v", err)
+	}
+
+	var overlayVisible bool
+	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') !== null`, &overlayVisible))
+	if !overlayVisible {
+		t.Fatalf("precondition failed: confirmation overlay did not appear")
+	}
+
+	// Hit-test the gear again while the modal is pending.
+	var gearAfter bool
+	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+		var gear = document.querySelector('.gear-btn');
+		if (!gear) return false;
+		var r = gear.getBoundingClientRect();
+		var hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
+		return !!(hit && (hit === gear || hit.closest('.gear-btn')));
+	})()`, &gearAfter))
+
+	if !gearBefore {
+		t.Logf("gear hit-test before modal: unclickable (precondition check — page may not be laid out yet)")
+	}
+	if !gearAfter {
+		t.Errorf("gear is NOT clickable while a confirmation is pending: the full-screen confirmation overlay (z-index 1000) covers the header (z-index 100), making the UI appear frozen during a streaming run")
+	}
+}
