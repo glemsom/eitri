@@ -1001,12 +1001,26 @@
     }
   }
 
+  // Live reasoning/thinking content. Appends incrementally as a text node
+  // instead of rewriting the whole accumulated text (el.textContent += is
+  // O(total) DOM serialise+replace per event and freezes the main thread on
+  // long reasoning streams). Scroll is batched to a rAF — forcing
+  // el.scrollTop = el.scrollHeight sync-layouts the whole growing sidebar
+  // tree on every delta, also O(n²). See issue: UI unresponsive while
+  // streaming long reasoning output.
+  var thinkingScrollPending = false;
   function appendThinkingDelta(content) {
     var el = document.querySelector('#thinking-panel .thinking-content');
     if (!el) return;
-    el.textContent += content;
-    // Auto-scroll to bottom as content arrives
-    el.scrollTop = el.scrollHeight;
+    el.appendChild(document.createTextNode(content));
+    // Auto-scroll to bottom as content arrives, coalesced to one per frame.
+    if (!thinkingScrollPending) {
+      thinkingScrollPending = true;
+      requestAnimationFrame(function () {
+        thinkingScrollPending = false;
+        if (el.isConnected) el.scrollTop = el.scrollHeight;
+      });
+    }
   }
 
   // ---- Live elapsed timer for tool cards (issue #134) ----

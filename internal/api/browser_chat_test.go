@@ -1935,6 +1935,88 @@ func TestBrowser_ThinkingRendering(t *testing.T) {
 	}
 }
 
+// TestBrowser_LiveThinkingPanelStreaming verifies that a long stream of
+// reasoning_content deltas is applied to the live sidebar thinking panel
+// (#thinking-panel .thinking-content) via thinking_delta events without
+// regressing to the O(n²) full-text rewrite.
+//
+// The bug: appendThinkingDelta did `el.textContent += content` + forced
+// `el.scrollTop = el.scrollHeight` (synchronous layout) on every delta, which
+// serialises+replaces the whole accumulated reasoning DOM each event — freezing
+// the main thread (Chrome "kill page or wait") on long reasoning streams.
+//
+// Regression guard: for a many-chunk stream the panel must be built from
+// multiple incremental text nodes (old code produced exactly one giant
+// text-node rewrite regardless of chunk count).
+func TestBrowser_LiveThinkingPanelStreaming(t *testing.T) {
+	const nDeltas = 300
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, fakeReasoningStreamChatServer(t, nDeltas).URL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+		chromedp.SendKeys("#chat-input", "Show reasoning", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigation/send failed: %v", err)
+	}
+
+	// Wait until the live thinking panel has accumulated all reasoning deltas
+	// (format "tok0 tok1 ... tok<N-1> ").
+	tokenByIndex := func(i int) string { return fmt.Sprintf("tok%d", i) }
+	want := ""
+	for i := 0; i < nDeltas; i++ {
+		want += tokenByIndex(i) + " "
+	}
+
+	deadline := time.Now().Add(15 * time.Second)
+	var gotText string
+	var childCount int
+	found := false
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`(document.querySelector('#thinking-panel .thinking-content'))?.textContent || ''`,
+				&gotText,
+			),
+		)
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		if gotText == want {
+			found = true
+			// Sample the DOM structure once content is complete.
+			_ = chromedp.Run(ctx,
+				chromedp.EvaluateAsDevTools(
+					`(document.querySelector('#thinking-panel .thinking-content'))?.childNodes.length ?? 0`,
+					&childCount,
+				),
+			)
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !found {
+		t.Fatalf("live thinking panel did not accumulate all %d reasoning deltas; got %d chars (want %d)", nDeltas, len(gotText), len(want))
+	}
+
+	// The panel must be composed of incremental text nodes (one per append),
+	// not a single full-text rewrite. Old code produced exactly one child.
+	if childCount < 2 {
+		t.Errorf("thinking panel used a single text-node rewrite (childNodes=%d); want many incremental text nodes", childCount)
+	}
+	if !strings.Contains(gotText, "tok0") || !strings.Contains(gotText, fmt.Sprintf("tok%d", nDeltas-1)) {
+		t.Errorf("reasoning content incomplete: missing start/end tokens")
+	}
+}
+
 // TestBrowser_MermaidComponentHeight verifies MermaidDiagram components
 // appended via the real render endpoint have correct height after mermaid processes them.
 func TestBrowser_MermaidComponentHeight(t *testing.T) {

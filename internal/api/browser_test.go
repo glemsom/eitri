@@ -457,6 +457,49 @@ func fakeThinkingChatServer(t *testing.T) *httptest.Server {
 	return fakeInstantChatServer(t, "Before <think>hidden reasoning</think> After")
 }
 
+// fakeReasoningStreamChatServer streams a long sequence of reasoning_content
+// deltas (no visible content), then a short final answer. Exercises the live
+// sidebar thinking panel (#thinking-panel .thinking-content) via thinking_delta
+// SSE events — the path that used to do a full textContent rewrite + scroll
+// reflow per delta (O(n²), freezing the main thread on long reasoning).
+func fakeReasoningStreamChatServer(t *testing.T, nDeltas int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":""},"finish_reason":null}]}`+"\n\n", now)
+			for i := 0; i < nDeltas; i++ {
+				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"reasoning_content":"tok%d "},"finish_reason":null}]}`+"\n\n", now, i)
+				if i%50 == 49 {
+					flusher.Flush()
+				}
+			}
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // streamingMarkdownLinkTest describes one link-rendering test case.
 type streamingMarkdownLinkTest struct {
 	// Name is the test case name (used for subtest naming).
