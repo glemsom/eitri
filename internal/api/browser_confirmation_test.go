@@ -831,3 +831,94 @@ func TestBrowser_ConfirmationKeydownRemovedOnClose(t *testing.T) {
 		t.Errorf("keydown listener not removed: Escape on document triggered action after modal close")
 	}
 }
+
+// Regression: if a run ends (done/error/cancel) while a confirmation modal is
+// open, the full-screen confirmation overlay (z-index:1000) must be removed.
+// Otherwise it stays overlaying the page and blocks ALL clicks — the header
+// gear icon included — making the UI appear unresponsive.
+func TestBrowser_ConfirmationOverlayClearedOnRunDone(t *testing.T) {
+	chrome := findChrome()
+	if chrome == "" {
+		t.Skip("Chrome not found, skipping browser test")
+	}
+
+	server := newTestServerWithRuns(t)
+	defer server.Close()
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sessionID string
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &sessionID),
+	)
+	if err != nil || sessionID == "" {
+		t.Fatalf("get session ID failed: %v", err)
+	}
+
+	// Install fake EventSource and connect
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			class FakeEventSource {
+				constructor(url) { this.url = url; window.__fakeEventSource = this; }
+				close() { this.closed = true; }
+				emitOpen() { if (this.onopen) this.onopen({}); }
+				emitMessage(packet) { if (this.onmessage) this.onmessage({ data: JSON.stringify(packet) }); }
+			}
+			window.EventSource = FakeEventSource;
+			document.dispatchEvent(new CustomEvent('eitri:connectRunStream', { detail: { value: '`+sessionID+`' } }));
+			return !!window.__fakeEventSource;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("install fake EventSource failed: %v", err)
+	}
+
+	// Emit open + needs_confirmation → overlay shows
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitOpen()`, nil),
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'needs_confirmation', data: {path: '/proc/1/root/etc/passwd', message: 'This path requires confirmation'}})`, nil),
+	); err != nil {
+		t.Fatalf("emit needs_confirmation failed: %v", err)
+	}
+
+	var overlayVisible bool
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') !== null`, &overlayVisible),
+	)
+	if err != nil || !overlayVisible {
+		t.Fatalf("confirmation overlay not visible after needs_confirmation")
+	}
+
+	// Run terminates with 'done' without the user answering the modal.
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`window.__fakeEventSource.emitMessage({type: 'done', message_id: 'm-overlay-clear', usage: {}})`, nil),
+	); err != nil {
+		t.Fatalf("emit done failed: %v", err)
+	}
+
+	// finalizeMessage tears down the stream via a 500ms fallback timer (or
+	// faster on afterSwap); the fix closes the modal on disconnectStream.
+	var overlayGone bool
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		err = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') === null`, &overlayGone),
+		)
+		if err == nil && overlayGone {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !overlayGone {
+		t.Fatalf("confirmation overlay still visible after run done — blocks entire UI (gear icon unclickable)")
+	}
+}

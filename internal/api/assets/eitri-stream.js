@@ -387,6 +387,11 @@
   }
 
   function disconnectStream(sessionId) {
+    // If a run ends (done/error/closed/cancel) while a confirmation modal is
+    // open, the modal's full-screen overlay (z-index:1000) would otherwise stay
+    // and block ALL clicks — including the header, making the whole UI
+    // unresponsive. Close it on any stream teardown. Idempotent.
+    closeConfirmationModal();
     const entry = streams.get(sessionId);
     if (!entry) return;
     clearDeadAirTimer(entry.state);
