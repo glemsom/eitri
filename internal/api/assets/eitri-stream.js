@@ -19,6 +19,16 @@
 
   const FLUSH_INTERVAL = 80;
   const NO_DEAD_AIR_MS = 650;
+  // Armed the moment an HTMX swap touches #messages, so showStreamingBubble knows
+  // there may be elements past the scroll-sentinel to relocate. The relocation
+  // walk is O(history) and ran on every streaming flush before; gating it on this
+  // flag keeps it to once per actual swap instead of once per token.
+  var relocatePending = false;
+  // A single growing block longer than this many chars is streamed append-only
+  // as raw (escaped) text instead of re-rendered as markdown each flush — see
+  // flushStreamBuffer. Re-rendering a huge in-progress block from scratch is
+  // O(total) per flush → O(n²) over the stream and freezes the main thread.
+  const STREAM_TAIL_RAW_LIMIT = 16384;
 
   function extractSessionId(detail, target) {
     if (typeof detail === 'string') return detail;
@@ -614,34 +624,51 @@
     const tail = lastBoundary >= 0 ? text.substring(lastBoundary + BP.length) : text;
 
     if (base.length > state.renderedBase.length) {
-      // Commit newly-completed block(s) into stable DOM nodes, once.
+      // Commit newly-completed block(s) into stable DOM nodes, once. A new
+      // still-growing block follows, so drop any stale tail element first.
       const newRaw = base.substring(state.renderedBase.length);
       const holder = document.createElement('div');
       holder.innerHTML = lightweightMarkdown(newRaw);
-      const tailEl = contentEl.querySelector('.stream-tail');
-      while (holder.firstChild) {
-        if (tailEl) contentEl.insertBefore(holder.firstChild, tailEl);
-        else contentEl.appendChild(holder.firstChild);
-      }
+      const staleTail = contentEl.querySelector('.stream-tail');
+      if (staleTail) staleTail.remove();
+      while (holder.firstChild) contentEl.appendChild(holder.firstChild);
       state.renderedBase = base;
     }
 
-    // Re-render only the trailing growing block.
-    if (base === '') {
-      // No \n\n boundary yet — everything is one in-progress block.
-      contentEl.innerHTML = lightweightMarkdown(tail);
+    if (!tail) return;
+
+    let tailEl = contentEl.querySelector('.stream-tail');
+    if (!tailEl) {
+      tailEl = document.createElement('div');
+      tailEl.className = 'stream-tail';
+      contentEl.appendChild(tailEl);
+    }
+
+    if (tail.length <= STREAM_TAIL_RAW_LIMIT) {
+      // Small live block: keep inline markdown formatting (current behaviour).
+      tailEl.innerHTML = lightweightMarkdown(tail);
+      tailEl.dataset.rawMode = '';
+      tailEl.dataset.rawLen = '';
       return;
     }
-    let tailEl = contentEl.querySelector('.stream-tail');
-    if (tail) {
-      if (!tailEl) {
-        tailEl = document.createElement('div');
-        tailEl.className = 'stream-tail';
-        contentEl.appendChild(tailEl);
-      }
-      tailEl.innerHTML = lightweightMarkdown(tail);
-    } else if (tailEl) {
-      tailEl.remove();
+
+    // Large single block (e.g. a big streamed code block): append-only so each
+    // flush is O(delta) instead of O(total). The first flush past the limit
+    // seeds the element with the (small, ≤limit) escaped text so far; every
+    // later flush appends only the new substring as a text node. Exact markdown
+    // is produced by the server render on 'done', so the final message is
+    // correctly formatted here too.
+    if (!tailEl.dataset.rawMode) {
+      tailEl.dataset.rawMode = '1';
+      tailEl.classList.add('stream-tail-raw');
+      tailEl.innerHTML = escapeHtml(tail);
+      tailEl.dataset.rawLen = String(tail.length);
+      return;
+    }
+    const prev = parseInt(tailEl.dataset.rawLen || '0', 10) || 0;
+    if (tail.length > prev) {
+      tailEl.appendChild(document.createTextNode(tail.substring(prev)));
+      tailEl.dataset.rawLen = String(tail.length);
     }
   }
 
@@ -651,11 +678,12 @@
 
     var sentinel = document.getElementById('scroll-sentinel');
 
-    // If HTMX appended elements after sentinel (beforeend swap puts them
-    // past the scroll-sentinel), relocate them before sentinel while
-    // preserving correct chat ordering: user bubbles go before streaming,
-    // assistant/tool elements stay after streaming.
-    if (sentinel && sentinel.parentNode === messages) {
+    // Relocate any elements an HTMX swap left past the scroll-sentinel back to
+    // their correct position (user bubbles before streaming, assistant/tool
+    // elements after). This walk is O(history), so it only runs when an actual
+    // swap was observed (relocatePending armed), never on every streaming flush.
+    if (relocatePending && sentinel && sentinel.parentNode === messages) {
+      relocatePending = false;
       var after = sentinel.nextElementSibling;
       while (after) {
         var next = after.nextElementSibling;
@@ -1305,13 +1333,48 @@
     }
   }
 
-  function scrollToLatest() {
+  // ---- Auto-scroll (issue #95) ----
+
+  // Is the user currently at (or within a small margin of) the bottom of the
+  // message list? We only auto-scroll when they are, so streaming content never
+  // yanks the viewport away from an earlier read. Being at the bottom is the
+  // default state, so this keeps normal behaviour while protecting the case
+  // where the user scrolled up to read earlier output.
+  function isNearBottom() {
     var messages = document.getElementById('messages');
-    if (!messages) return;
-    var lastChild = messages.lastElementChild;
-    if (lastChild) {
-      lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
+    if (!messages) return true;
+    return messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120;
+  }
+
+  var autoScrollPending = false; // rAF coalescing flag
+
+  function smoothScrollToBottom() {
+    var messages = document.getElementById('messages');
+    var lastChild = messages && messages.lastElementChild;
+    if (!lastChild) return;
+    lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+
+  function autoScroll() {
+    if (autoScrollPending) return;
+    autoScrollPending = true;
+    requestAnimationFrame(function () {
+      autoScrollPending = false;
+      var messages = document.getElementById('messages');
+      if (!messages) return;
+      // Don't fight the user: if they scrolled up to read, hold position.
+      if (!isNearBottom()) return;
+      var lastChild = messages.lastElementChild;
+      if (!lastChild) return;
+      // Instant (not smooth) during active streaming: queuing dozens of smooth
+      // scroll animations on a large history is main-thread churn and freezes
+      // the page. The final settled message and the manual button stay smooth.
+      lastChild.scrollIntoView({ behavior: 'auto', block: 'end' });
+    });
+  }
+
+  function scrollToLatest() {
+    smoothScrollToBottom();
   }
 
   // Insert optimistic user bubble when chat form is about to submit
@@ -1329,8 +1392,9 @@
   document.addEventListener('htmx:afterSwap', function (evt) {
     var targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'messages' || targetId === 'streaming') {
+      relocatePending = true;
       removeOptimisticBubbles();
-      setTimeout(scrollToLatest, 50);
+      autoScroll();
     }
   });
 
@@ -1338,14 +1402,14 @@
   var _origAppendToken = appendToken;
   appendToken = function (state, content) {
     _origAppendToken(state, content);
-    setTimeout(scrollToLatest, 20);
+    autoScroll();
   };
 
   // Wrap showStreamingBubble for auto-scroll
   var _origShowStreamingBubble = showStreamingBubble;
   showStreamingBubble = function () {
     _origShowStreamingBubble();
-    setTimeout(scrollToLatest, 20);
+    autoScroll();
   };
 
   // Wrap finalizeMessage for auto-scroll

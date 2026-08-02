@@ -112,9 +112,10 @@ header {
      stays clickable while a blocked-read confirmation is pending mid-run.
      Also keeps the gear dropdown above chat content (stacking-context fix). */
   z-index: 1100;
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Solid (near-opaque) bar rather than backdrop-filter blur: the header spans
+     the full width and backdrop-filtered repaints on every scroll/animation
+     during streaming, which contributes to main-thread jank on long sessions. */
+  background: rgba(22, 33, 62, 0.97);
   border-bottom: 1px solid var(--glass-border);
   padding: 0.5rem 1rem;
   display: flex;
@@ -764,6 +765,17 @@ noscript {
 
 .message-content {
   word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Growing streaming block. The .stream-tail-raw variant is used for very large
+   in-progress blocks; it renders as preformatted, wrap-at-width text so appends
+   (text-node insertion) cost O(delta) to lay out instead of reflowing a giant
+   single block on every 80ms flush. */
+.message-content .stream-tail {
+  min-height: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
   overflow-wrap: break-word;
 }
 

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - LLM tool-call replay now replaces provider-generated opaque tool IDs with stable safe IDs, preventing GitHub Copilot Responses errors like `tool use id ... is invalid` on the next turn.
 - Fix browser page becoming unresponsive during long streams by rendering streaming markdown incrementally instead of re-rendering the whole message on every flush.
+- Reduce main-thread jank during streaming: very large single growing blocks (e.g. big code blocks) are now streamed append-only instead of re-rendered from scratch on every 80ms flush; the full-width header no longer uses expensive `backdrop-filter` blur that repainted on every scroll; auto-scroll is debounced, instant (not smooth-animation-stacked) while streaming, and holds position when the user has scrolled up; and the streaming-bubble relocation walk now runs only after an actual HTMX swap rather than on every token.
 
 - Fix the gear/header (global nav) becoming unclickable while a blocked-read confirmation is pending mid-run: the full-screen confirmation overlay (z-index:1000) covered the header (z-index:100), freezing the UI during a running/streaming session. The header now stacks above the overlay so nav stays usable while a confirmation waits.
 
