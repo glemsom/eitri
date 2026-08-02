@@ -91,6 +91,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	if s.historySessionMgr != nil {
 		s.historySessionMgr.Create(sessionID)
 		s.historySessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
+		// Repair a history left with a dangling assistant tool call from an
+		// interrupted run. Appending a user message after an unresolved tool use
+		// makes an invalid sequence ("user message follows unresolved tool use")
+		// that the provider rejects. See RepairPendingToolUse.
+		s.historySessionMgr.RepairPendingToolUse(sessionID)
 		s.historySessionMgr.AppendUser(sessionID, userMessage)
 	}
 

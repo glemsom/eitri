@@ -248,6 +248,61 @@ func (m *SessionManager) History(id string) []message.EitriMessage {
 	return messages
 }
 
+// RepairPendingToolUse returns a copy of messages with any trailing
+// unresolved assistant tool call closed by a synthetic tool error result.
+//
+// A run that is cancelled while a tool is executing can leave the history
+// ending in an assistant message with a tool call but no matching tool result.
+// Appending a user message directly after that produces an invalid
+// OpenAI-style sequence ("user message follows unresolved tool use") which the
+// provider hard-rejects. This repairs the dangling tool use so a resume is
+// valid. History that does not end in an unresolved assistant tool call is
+// returned unchanged.
+func RepairPendingToolUse(messages []message.EitriMessage) []message.EitriMessage {
+	if len(messages) == 0 {
+		return messages
+	}
+	last := messages[len(messages)-1]
+	if last.Role != litellm.Role("assistant") {
+		return messages
+	}
+	toolCalls := last.ToolCalls()
+	if len(toolCalls) == 0 {
+		return messages
+	}
+
+	out := make([]message.EitriMessage, len(messages), len(messages)+len(toolCalls))
+	copy(out, messages)
+
+	// A single canceled-out error result is enough to close the pending tool
+	// use(s); the LLM sees the agent's own unexecuted call and replies.
+	result := message.Message{
+		Role:       "tool",
+		ToolCallID: toolCalls[0].ID,
+		Content:    "Tool execution was cancelled before it produced a result.",
+	}
+	out = append(out, message.EitriMessage{
+		Message:   message.ToLitellmMessage(result),
+		CreatedAt: time.Now(),
+	})
+	return out
+}
+
+// RepairPendingToolUse repairs this session's conversation history if it ends
+// in an unresolved assistant tool call (see the package-level
+// RepairPendingToolUse). No-op if the session does not exist. Should be called
+// before appending a fresh user message on resume.
+func (m *SessionManager) RepairPendingToolUse(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[id]
+	if s == nil {
+		return
+	}
+	repaired := RepairPendingToolUse(s.messages)
+	s.messages = repaired
+}
+
 // Close removes a session. No-op if session does not exist.
 func (m *SessionManager) Close(id string) {
 	m.mu.Lock()

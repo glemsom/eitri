@@ -1,7 +1,10 @@
 package history
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/message"
 )
@@ -232,7 +235,7 @@ func TestSessionManager_DefaultExchangeLimit(t *testing.T) {
 	m.Create("sess-1")
 
 	// Add more than the default 150 exchanges
-	for i := 0; i < 160; i++ {
+	for range 160 {
 		m.AppendUser("sess-1", "message")
 		m.AppendAssistant("sess-1", "response", nil)
 	}
@@ -350,6 +353,73 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 }
 
 // helpers
+
+func TestRepairPendingToolUse_ClosesTrailingAssistantToolCall(t *testing.T) {
+	msgs := []message.EitriMessage{
+		{Message: litellm.Message{
+			Role:   litellm.Role("user"),
+			Blocks: []litellm.Block{litellm.TextBlock{Text: "do it"}},
+		}},
+		{Message: litellm.Message{
+			Role: litellm.Role("assistant"),
+			Blocks: []litellm.Block{
+				litellm.ToolUseBlock{ID: "call_123", Name: "browser", Arguments: json.RawMessage(`{"action":"navigate"}`)},
+			},
+		}},
+	}
+
+	fixed := RepairPendingToolUse(msgs)
+
+	// A following user message must be valid, so the trailing tool use must be
+	// closed by a synthetic tool error result (not dropped).
+	if len(fixed) != len(msgs)+1 {
+		t.Fatalf("RepairPendingToolUse length = %d, want %d (synth error appended)", len(fixed), len(msgs)+1)
+	}
+	last := fixed[len(fixed)-1]
+	if last.Role != litellm.Role("tool") {
+		t.Fatalf("last message role = %q, want \"tool\"", last.Role)
+	}
+	if got := last.ToolCallID(); got != "call_123" {
+		t.Errorf("last tool_call_id = %q, want \"call_123\"", got)
+	}
+}
+
+func TestRepairPendingToolUse_NoToolCallLeavesUnchanged(t *testing.T) {
+	msgs := []message.EitriMessage{
+		{Message: litellm.Message{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}}},
+		{Message: litellm.Message{Role: litellm.Role("assistant"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}}},
+	}
+
+	fixed := RepairPendingToolUse(msgs)
+	if len(fixed) != len(msgs) {
+		t.Fatalf("RepairPendingToolUse changed history without a pending tool call: %d -> %d", len(msgs), len(fixed))
+	}
+}
+
+func TestRepairPendingToolUse_ResolvedToolCallLeavesUnchanged(t *testing.T) {
+	msgs := []message.EitriMessage{
+		{Message: litellm.Message{
+			Role:   litellm.Role("assistant"),
+			Blocks: []litellm.Block{litellm.ToolUseBlock{ID: "call_1", Name: "bash", Arguments: json.RawMessage(`{"cmd":"echo hi"}`)}},
+		}},
+		{Message: litellm.Message{
+			Role:   litellm.Role("tool"),
+			Blocks: []litellm.Block{litellm.ToolResultBlock{ToolUseID: "call_1", Content: []litellm.Block{litellm.TextBlock{Text: "hi"}}}},
+		}},
+	}
+
+	fixed := RepairPendingToolUse(msgs)
+	if len(fixed) != len(msgs) {
+		t.Fatalf("RepairPendingToolUse changed a resolved tool call: %d -> %d", len(msgs), len(fixed))
+	}
+}
+
+func TestRepairPendingToolUse_EmptyIsNoop(t *testing.T) {
+	fixed := RepairPendingToolUse(nil)
+	if len(fixed) != 0 {
+		t.Fatalf("RepairPendingToolUse(nil) = %d messages, want 0", len(fixed))
+	}
+}
 
 func countUserMessages(history []message.EitriMessage) int {
 	count := 0
