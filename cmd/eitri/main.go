@@ -414,6 +414,9 @@ func shouldOpenBrowser(getenv func(string) string) bool {
 
 func openBrowserURL(url string) error {
 	cmd := exec.Command("xdg-open", url)
+	// Detach xdg-open into its own process group so a SIGINT/SIGTERM to the
+	// foreground group (e.g. Ctrl+C) doesn't kill the freshly-spawned browser.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
