@@ -50,6 +50,99 @@ func (t *GrepTool) JSONSchema() litellm.Schema {
 	return t.schema
 }
 
+// grepLine is one rendered output line: "path:line:content" (with a ">" prefix
+// on match lines when context is enabled).
+type grepLine struct {
+	path    string
+	lineNum int
+	content string
+	isMatch bool
+}
+
+// lineRange is an inclusive, 0-indexed line range within a file.
+type lineRange struct{ start, end int }
+
+// contextWindows returns the merged, non-overlapping line ranges within
+// contextN lines of any match. matchNums are 1-indexed match line numbers in
+// ascending order; numLines is the total number of lines in the file.
+// Overlapping or adjacent windows are merged into a single contiguous range so
+// every line within reach of a match is rendered exactly once.
+func contextWindows(matchNums []int, numLines, contextN int) []lineRange {
+	if len(matchNums) == 0 {
+		return nil
+	}
+	lastIdx := numLines - 1
+	var windows []lineRange
+	for _, matchNum := range matchNums {
+		start := matchNum - 1 - contextN
+		if start < 0 {
+			start = 0
+		}
+		end := matchNum - 1 + contextN
+		if end > lastIdx {
+			end = lastIdx
+		}
+		if n := len(windows); n > 0 && start <= windows[n-1].end {
+			if end > windows[n-1].end {
+				windows[n-1].end = end
+			}
+		} else {
+			windows = append(windows, lineRange{start: start, end: end})
+		}
+	}
+	return windows
+}
+
+// collectGrepLines scans fileLines (the result of strings.Split on '\n') for
+// regex matches and returns the output lines to render, or nil when the file
+// has no matches. With contextN > 0 only lines within contextN of a match are
+// retained (merged across matches); otherwise only the matching lines are
+// returned. Files with no matches yield nil so callers retain nothing for them.
+func collectGrepLines(fileLines []string, re *regexp.Regexp, contextN int) []grepLine {
+	var matchNums []int
+	for i, line := range fileLines {
+		if re.MatchString(line) {
+			matchNums = append(matchNums, i+1)
+		}
+	}
+	if len(matchNums) == 0 {
+		return nil
+	}
+
+	if contextN == 0 {
+		lines := make([]grepLine, 0, len(matchNums))
+		for _, matchNum := range matchNums {
+			// No ">" prefix in context=0 mode, so isMatch stays false.
+			lines = append(lines, grepLine{lineNum: matchNum, content: fileLines[matchNum-1]})
+		}
+		return lines
+	}
+
+	var lines []grepLine
+	matchIdx := 0
+	for _, w := range contextWindows(matchNums, len(fileLines), contextN) {
+		for i := w.start; i <= w.end; i++ {
+			lineNum := i + 1
+			isMatch := matchIdx < len(matchNums) && matchNums[matchIdx] == lineNum
+			if isMatch {
+				matchIdx++
+			}
+			lines = append(lines, grepLine{lineNum: lineNum, content: fileLines[i], isMatch: isMatch})
+		}
+	}
+	return lines
+}
+
+// grepLineSize returns the number of bytes a rendered line occupies in the
+// "path:line:content\n" format (plus the ">" match prefix in context mode).
+func grepLineSize(l grepLine) int {
+	size := len(l.path) + 1 + len(strconv.Itoa(l.lineNum)) + 1 + len(l.content) + 1
+	if l.isMatch {
+		size++
+	}
+	return size
+}
+
 func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	var parsed grepArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
@@ -65,26 +158,16 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		return ToolError(TextBlocks(fmt.Sprintf("Error: invalid regex %q: %v", parsed.Pattern, err))), nil
 	}
 
-	type match struct {
-		path    string
-		lineNum int
-		content string
-	}
-
-	var matches []match
-	outputSize := 0
-	truncated := false
 	contextN := parsed.Context
 	if contextN < 0 {
 		contextN = 0
 	}
 
-	// fileCache stores all lines per file for context extraction
-	type fileLines struct {
-		relPath string
-		lines   []string
-	}
-	var fileCache []fileLines
+	var (
+		out        []grepLine
+		outputSize int
+		truncated  bool
+	)
 
 	err = fileutil.WalkWorkspace(t.workspace, func(path, relPath string, d os.DirEntry) error {
 		var data []byte
@@ -96,25 +179,23 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 			return nil
 		}
 
-		allLines := strings.Split(string(data), "\n")
-
-		if contextN > 0 {
-			fileCache = append(fileCache, fileLines{relPath: relPath, lines: allLines})
+		fileLines := collectGrepLines(strings.Split(string(data), "\n"), re, contextN)
+		if fileLines == nil {
+			// No matches: nothing about this file is retained.
+			return nil
 		}
 
-		for lineNum, line := range allLines {
-			lineNum++ // 1-indexed
-			if re.MatchString(line) {
-				if contextN == 0 {
-					lineSize := len(relPath) + 1 + len(strconv.Itoa(lineNum)) + 1 + len(line) + 1
-					if outputSize+lineSize > maxGrepOutputBytes && len(matches) > 0 {
-						truncated = true
-						return &fileutil.WalkStop{}
-					}
-					outputSize += lineSize
-				}
-				matches = append(matches, match{path: relPath, lineNum: lineNum, content: line})
+		for _, l := range fileLines {
+			l.path = relPath
+			lineSize := grepLineSize(l)
+			// Byte accounting happens here, in the walk, for both context=0
+			// and context>0 modes so the walk stops as soon as the cap is hit.
+			if outputSize+lineSize > maxGrepOutputBytes && len(out) > 0 {
+				truncated = true
+				return &fileutil.WalkStop{}
 			}
+			outputSize += lineSize
+			out = append(out, l)
 		}
 
 		return nil
@@ -123,64 +204,30 @@ func (t *GrepTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		return ToolError(TextBlocks(fmt.Sprintf("Error: grep walk failed: %v", err))), nil
 	}
 
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].path != matches[j].path {
-			return matches[i].path < matches[j].path
+	// Render in deterministic order: sorted by path, then line number.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].path != out[j].path {
+			return out[i].path < out[j].path
 		}
-		return matches[i].lineNum < matches[j].lineNum
+		return out[i].lineNum < out[j].lineNum
 	})
 
 	var sb strings.Builder
-
-	if contextN == 0 || len(matches) == 0 {
-		for _, m := range matches {
-			sb.WriteString(fmt.Sprintf("%s:%d:%s\n", m.path, m.lineNum, m.content))
+	renderedSize := 0
+	for _, l := range out {
+		prefix := ""
+		if l.isMatch {
+			prefix = ">"
 		}
-	} else {
-		cacheMap := make(map[string][]string)
-		for _, fl := range fileCache {
-			cacheMap[fl.relPath] = fl.lines
+		lineOut := fmt.Sprintf("%s%s:%d:%s\n", prefix, l.path, l.lineNum, l.content)
+		// Defensive re-check on the final (sorted) output order so the cap
+		// holds regardless of walk order.
+		if renderedSize+len(lineOut) > maxGrepOutputBytes && sb.Len() > 0 {
+			truncated = true
+			break
 		}
-
-		var lastPath string
-		var lastLine int
-		for _, m := range matches {
-			lines, ok := cacheMap[m.path]
-			if !ok {
-				sb.WriteString(fmt.Sprintf(">%s:%d:%s\n", m.path, m.lineNum, m.content))
-				continue
-			}
-
-			start := m.lineNum - 1 - contextN
-			end := m.lineNum - 1 + contextN
-			if start < 0 {
-				start = 0
-			}
-			if end >= len(lines) {
-				end = len(lines) - 1
-			}
-			if m.path == lastPath && start < lastLine {
-				start = lastLine
-			}
-
-			for i := start; i <= end; i++ {
-				lineNum := i + 1
-				var lineOut string
-				if i == m.lineNum-1 {
-					lineOut = fmt.Sprintf(">%s:%d:%s\n", m.path, lineNum, lines[i])
-				} else {
-					lineOut = fmt.Sprintf("%s:%d:%s\n", m.path, lineNum, lines[i])
-				}
-				if outputSize+len(lineOut) > maxGrepOutputBytes {
-					truncated = true
-					goto done
-				}
-				sb.WriteString(lineOut)
-				outputSize += len(lineOut)
-				lastLine = lineNum
-			}
-		}
-	done:
+		renderedSize += len(lineOut)
+		sb.WriteString(lineOut)
 	}
 
 	if contextN > 0 {
