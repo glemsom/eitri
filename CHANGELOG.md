@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `browser.click` now initializes through the deadline-bounded `prepareTarget` path like the other browser actions, so a hung CDP connection during `click` returns within the browser action timeout instead of blocking the agent loop indefinitely. The per-element wait/click timeout (10s) is applied as a child of the prepared operation context. (#951)
 - LLM tool-call replay now replaces provider-generated opaque tool IDs with stable safe IDs, preventing GitHub Copilot Responses errors like `tool use id ... is invalid` on the next turn.
 - LLM tool-call replay now repairs repeated streamed JSON argument chunks and collapses duplicate tool IDs before dispatch, preventing GitHub Copilot tool calls from failing with `invalid character '{' after top-level value`.
 - Fix browser page becoming unresponsive during long streams by rendering streaming markdown incrementally instead of re-rendering the whole message on every flush.
