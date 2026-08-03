@@ -2,9 +2,14 @@ package tool
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/voocel/litellm"
 )
@@ -749,10 +754,10 @@ func TestBrowser_FormatDOMSummary(t *testing.T) {
 		notWant  []string // substrings that must NOT be present
 	}{
 		{
-			name:  "empty",
-			title: "",
+			name:     "empty",
+			title:    "",
 			elements: nil,
-			wantSub: []string{"No significant DOM elements found."},
+			wantSub:  []string{"No significant DOM elements found."},
 		},
 		{
 			name:  "with title and headings",
@@ -845,5 +850,93 @@ func TestBrowser_FormatDOMSummary_Truncation(t *testing.T) {
 	}
 	if !strings.Contains(text.Text, "output truncated") {
 		t.Error("expected truncation message in output")
+	}
+}
+
+// startHungCDPServer starts a fake CDP endpoint that completes the WebSocket
+// handshake but then never responds to any command, simulating a browser whose
+// CDP connection is established but hung. It returns a wsURL suitable for
+// NewBrowserTool.
+func startHungCDPServer(t *testing.T) string {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Complete the RFC 6455 handshake, then hold the connection open and
+		// silently drain any frames without ever replying.
+		if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			http.Error(w, "expected websocket upgrade", http.StatusBadRequest)
+			return
+		}
+		key := r.Header.Get("Sec-WebSocket-Key")
+		h := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+		accept := base64.StdEncoding.EncodeToString(h[:])
+
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+			return
+		}
+		conn, rw, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		if _, err := rw.WriteString("HTTP/1.1 101 Switching Protocols\r\n" +
+			"Upgrade: websocket\r\n" +
+			"Connection: Upgrade\r\n" +
+			"Sec-WebSocket-Accept: " + accept + "\r\n\r\n"); err != nil {
+			return
+		}
+		if err := rw.Flush(); err != nil {
+			return
+		}
+
+		buf := make([]byte, 4096)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	return "ws://" + strings.TrimPrefix(srv.URL, "http://") + "/devtools/browser/test"
+}
+
+// TestBrowser_ClickAction_HungConnectionTimesOut verifies that a click on a
+// target whose CDP connection never responds returns within the browser action
+// timeout instead of blocking the agent loop indefinitely (issue #951). It
+// drives a real chromedp dial against a hung endpoint with a shortened
+// actionTimeout so the regression is caught quickly.
+func TestBrowser_ClickAction_HungConnectionTimesOut(t *testing.T) {
+	tool := NewBrowserTool(startHungCDPServer(t), t.TempDir())
+	tool.actionTimeout = 150 * time.Millisecond
+
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	defer tool.EndSession("test-session")
+
+	start := time.Now()
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"click","args":{"target_id":"tab-1","selector":"#btn"}}`))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("result.IsError = false, want error when the CDP connection hangs")
+	}
+	if elapsed > 10*time.Second {
+		t.Fatalf("click blocked the agent loop: took %v, want return within the action timeout", elapsed)
+	}
+	text, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatal("result block is not a TextBlock")
+	}
+	if !strings.Contains(text.Text, "failed to attach to target") {
+		t.Errorf("error should report the attachment failure, got: %s", text.Text)
+	}
+	if !strings.Contains(text.Text, "did not initialize") {
+		t.Errorf("error should report the init deadline, got: %s", text.Text)
 	}
 }

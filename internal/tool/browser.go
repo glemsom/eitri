@@ -93,6 +93,13 @@ type NativeBrowserTool struct {
 	workspace string                      // workspace root for saving files
 	schema    litellm.Schema
 
+	// actionTimeout bounds browser target operations that have no other
+	// explicit timeout (type, get_dom, screenshot, and the click init
+	// handshake). It prevents a hung CDP connection from blocking the agent
+	// loop indefinitely — the reported failure mode where a browser tool call
+	// ran for many minutes without returning.
+	actionTimeout time.Duration
+
 	targetsMu sync.Mutex
 	targets   map[string]map[string]*targetContext // sessionID -> targetID -> cached context
 }
@@ -103,11 +110,12 @@ type NativeBrowserTool struct {
 // If wsURL is empty, the tool returns a descriptive error asking the user to configure it.
 func NewBrowserTool(wsURL, workspace string) *NativeBrowserTool {
 	return &NativeBrowserTool{
-		conns:     make(map[string]remoteConnection),
-		targets:   make(map[string]map[string]*targetContext),
-		wsURL:     wsURL,
-		workspace: workspace,
-		schema:    SchemaOf[browserArgs](),
+		conns:         make(map[string]remoteConnection),
+		targets:       make(map[string]map[string]*targetContext),
+		wsURL:         wsURL,
+		workspace:     workspace,
+		actionTimeout: 30 * time.Second,
+		schema:        SchemaOf[browserArgs](),
 	}
 }
 
@@ -320,16 +328,10 @@ func (t *NativeBrowserTool) releaseTargetCtx(sessionID, targetID string) {
 	}
 }
 
-// browserActionTimeout bounds browser target operations that have no other
-// explicit timeout (type, get_dom, screenshot). It prevents a hung CDP
-// connection from blocking the agent loop indefinitely — the reported failure
-// mode where a browser tool call ran for many minutes without returning.
-const browserActionTimeout = 30 * time.Second
-
 // prepareTarget ensures the browser is initialized for the given target and
 // returns a deadline-bounded context suited to a single target operation.
 //
-// Initialization runs under browserActionTimeout; a connection that cannot
+// Initialization runs under the tool's actionTimeout; a connection that cannot
 // attach within that window is treated as unhealthy: the cached target context
 // is torn down (released) and an error is returned so the browser tool call
 // cannot block the agent loop indefinitely. On success a deadline child of the
@@ -352,12 +354,12 @@ func (t *NativeBrowserTool) prepareTarget(allocCtx context.Context, sessionID, t
 		if err != nil {
 			return nil, nil, err
 		}
-	case <-time.After(browserActionTimeout):
+	case <-time.After(t.actionTimeout):
 		t.releaseTargetCtx(sessionID, targetID)
-		return nil, nil, fmt.Errorf("browser did not initialize within %s", browserActionTimeout)
+		return nil, nil, fmt.Errorf("browser did not initialize within %s", t.actionTimeout)
 	}
 
-	opCtx, cancel := context.WithTimeout(tabCtx, browserActionTimeout)
+	opCtx, cancel := context.WithTimeout(tabCtx, t.actionTimeout)
 	return opCtx, cancel, nil
 }
 
@@ -546,20 +548,19 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, sessionID string, ra
 		return ToolError(TextBlocks("Error: 'selector' is required for click action")), nil
 	}
 
-	// Get or create a cached context for this target (avoids closing the tab on cancel)
-	tabCtx, err := t.getOrCreateTargetCtx(allocCtx, sessionID, args.TargetID)
+	// Get or create a cached context for this target, initialize the browser on
+	// the long-lived context, and bound the operation by a deadline so a hung
+	// CDP connection cannot block the agent loop indefinitely.
+	opCtx, opCancel, err := t.prepareTarget(allocCtx, sessionID, args.TargetID)
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
 	}
-	// Initialize the browser on the long-lived tabCtx if not yet done, so
-	// chromedp's RemoteAllocator registers its cancel handler on tabCtx rather
-	// than on a short-lived timeout context.
-	if err := chromedp.Run(tabCtx); err != nil {
-		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to initialize browser: %v", err))), nil
-	}
+	defer opCancel()
 
-	// Wait for the element to be visible (default 10s timeout), then click it
-	clickCtx, clickCancel := context.WithTimeout(tabCtx, 10*time.Second)
+	// Wait for the element to be visible (default 10s timeout), then click it.
+	// The per-element timeout is a child of the prepared op context so both the
+	// init handshake (op deadline) and the element interaction stay bounded.
+	clickCtx, clickCancel := context.WithTimeout(opCtx, 10*time.Second)
 	defer clickCancel()
 
 	if err := chromedp.Run(clickCtx,
