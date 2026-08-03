@@ -41,5 +41,9 @@
 //   - Add a new result renderer: add a render_*.go file and wire it into the SSE
 //     component event stream alongside the existing renderers.
 //   - Use SchemaOf[T] in any tool's JSONSchema() method to derive the schema
-//     from a Go struct with json: and jsonschema: tags.
+//     from a Go struct with json: and jsonschema: tags. Optional companion
+//     tags (jsonschema_enum, jsonschema_minimum, jsonschema_maximum,
+//     jsonschema_min_items, jsonschema_max_items, jsonschema_item_description)
+//     add JSON Schema constraints such as enum, minimum/maximum, and array
+//     length bounds.
 package tool

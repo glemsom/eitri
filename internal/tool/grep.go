@@ -21,7 +21,7 @@ type grepArgs struct {
 	Pattern     string `json:"pattern" jsonschema:"Go regex (RE2 syntax) pattern to search for in file contents."`
 	FilePattern string `json:"file_pattern,omitempty" jsonschema:"Optional glob pattern to filter files by path relative to workspace root (e.g. '*.go' to search only Go files)."`
 
-	Context int `json:"context,omitempty" jsonschema:"Number of surrounding context lines to include before and after each match (default 0)."`
+	Context int `json:"context,omitempty" jsonschema:"Number of surrounding context lines to include before and after each match (default 0)." jsonschema_minimum:"0"`
 }
 
 // GrepTool implements ToolHandler for searching file contents with regex.

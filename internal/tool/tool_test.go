@@ -18,6 +18,20 @@ type testWithOptional struct {
 	Optional string `json:"optional,omitempty"`
 }
 
+type testEnumArgs struct {
+	Action string `json:"action" jsonschema:"An action" jsonschema_enum:"list_targets|navigate|click"`
+}
+
+type testNumericArgs struct {
+	Count int     `json:"count" jsonschema_minimum:"0" jsonschema_maximum:"10"`
+	Ratio float64 `json:"ratio" jsonschema:"A ratio" jsonschema_minimum:"0" jsonschema_maximum:"1"`
+}
+
+type testArrayArgs struct {
+	TaskIDs []string `json:"task_ids" jsonschema:"List of task IDs" jsonschema_min_items:"1" jsonschema_max_items:"5" jsonschema_item_description:"A task ID"`
+	Names   []string `json:"names" jsonschema_min_items:"1"`
+}
+
 type testMixed struct {
 	ID       string         `json:"id" jsonschema:"Unique identifier"`
 	Label    string         `json:"label,omitempty"`
@@ -80,6 +94,132 @@ func TestSchemaOf_SimpleStruct(t *testing.T) {
 	}
 	if len(required) != 2 {
 		t.Errorf("len(required) = %d, want 2", len(required))
+	}
+}
+
+func TestSchemaOf_EnumTag(t *testing.T) {
+	schema := SchemaOf[testEnumArgs]()
+	var parsed map[string]any
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	props, _ := parsed["properties"].(map[string]any)
+	actionProp, ok := props["action"].(map[string]any)
+	if !ok {
+		t.Fatal("action property not found")
+	}
+	if actionProp["type"] != "string" {
+		t.Errorf("action.type = %v, want 'string'", actionProp["type"])
+	}
+	enum, ok := actionProp["enum"].([]any)
+	if !ok {
+		t.Fatal("enum not found")
+	}
+	want := []any{"list_targets", "navigate", "click"}
+	if !reflect.DeepEqual(enum, want) {
+		t.Errorf("enum = %v, want %v", enum, want)
+	}
+}
+
+func TestSchemaOf_MinMaxTags(t *testing.T) {
+	schema := SchemaOf[testNumericArgs]()
+	var parsed map[string]any
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	props, _ := parsed["properties"].(map[string]any)
+
+	countProp := props["count"].(map[string]any)
+	if countProp["type"] != "integer" {
+		t.Errorf("count.type = %v, want 'integer'", countProp["type"])
+	}
+	if countProp["minimum"] != float64(0) {
+		t.Errorf("count.minimum = %v, want 0", countProp["minimum"])
+	}
+	if countProp["maximum"] != float64(10) {
+		t.Errorf("count.maximum = %v, want 10", countProp["maximum"])
+	}
+
+	ratioProp := props["ratio"].(map[string]any)
+	if ratioProp["type"] != "number" {
+		t.Errorf("ratio.type = %v, want 'number'", ratioProp["type"])
+	}
+	if ratioProp["minimum"] != float64(0) {
+		t.Errorf("ratio.minimum = %v, want 0", ratioProp["minimum"])
+	}
+	if ratioProp["maximum"] != float64(1) {
+		t.Errorf("ratio.maximum = %v, want 1", ratioProp["maximum"])
+	}
+}
+
+func TestSchemaOf_ArrayConstraints(t *testing.T) {
+	schema := SchemaOf[testArrayArgs]()
+	var parsed map[string]any
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	props, _ := parsed["properties"].(map[string]any)
+
+	taskIDsProp := props["task_ids"].(map[string]any)
+	if taskIDsProp["type"] != "array" {
+		t.Errorf("task_ids.type = %v, want 'array'", taskIDsProp["type"])
+	}
+	if taskIDsProp["minItems"] != float64(1) {
+		t.Errorf("task_ids.minItems = %v, want 1", taskIDsProp["minItems"])
+	}
+	if taskIDsProp["maxItems"] != float64(5) {
+		t.Errorf("task_ids.maxItems = %v, want 5", taskIDsProp["maxItems"])
+	}
+	itemsProp, ok := taskIDsProp["items"].(map[string]any)
+	if !ok {
+		t.Fatal("task_ids.items not found")
+	}
+	if itemsProp["type"] != "string" {
+		t.Errorf("task_ids.items.type = %v, want 'string'", itemsProp["type"])
+	}
+	if itemsProp["description"] != "A task ID" {
+		t.Errorf("task_ids.items.description = %v, want 'A task ID'", itemsProp["description"])
+	}
+
+	namesProp := props["names"].(map[string]any)
+	if namesProp["minItems"] != float64(1) {
+		t.Errorf("names.minItems = %v, want 1", namesProp["minItems"])
+	}
+	if _, hasMax := namesProp["maxItems"]; hasMax {
+		t.Error("names should not have maxItems")
+	}
+}
+
+func TestSchemaOf_NoConstraintTagsUnchanged(t *testing.T) {
+	schema := SchemaOf[testSimpleArgs]()
+	var parsed map[string]any
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	props, _ := parsed["properties"].(map[string]any)
+	for name, prop := range props {
+		m, ok := prop.(map[string]any)
+		if !ok {
+			t.Fatalf("%s property is not a map", name)
+		}
+		for _, key := range []string{"enum", "minimum", "maximum", "minItems", "maxItems"} {
+			if _, present := m[key]; present {
+				t.Errorf("%s should not contain %q when no constraint tag is present", name, key)
+			}
+		}
+	}
+}
+
+func TestSchemaOf_InvalidConstraintTagErrors(t *testing.T) {
+	type test struct {
+		Count int `json:"count" jsonschema_minimum:"not-a-number"`
+	}
+	if _, err := schemaOf(reflect.TypeOf(test{})); err == nil {
+		t.Error("expected error for invalid jsonschema_minimum value")
 	}
 }
 
@@ -334,7 +474,7 @@ func TestGoTypeToJSONType(t *testing.T) {
 // ── fieldSchema tests ──────────────────────────────────────────────────────
 
 func TestFieldSchema_WithDescription(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf(""), "a description")
+	sp := fieldSchema(reflect.TypeOf(""), fieldOptions{Description: "a description"})
 	if sp.Type != "string" {
 		t.Errorf("Type = %q, want 'string'", sp.Type)
 	}
@@ -344,7 +484,7 @@ func TestFieldSchema_WithDescription(t *testing.T) {
 }
 
 func TestFieldSchema_WithoutDescription(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf(42), "")
+	sp := fieldSchema(reflect.TypeOf(42), fieldOptions{})
 	if sp.Type != "integer" {
 		t.Errorf("Type = %q, want 'integer'", sp.Type)
 	}
@@ -355,14 +495,14 @@ func TestFieldSchema_WithoutDescription(t *testing.T) {
 
 func TestFieldSchema_PointerType(t *testing.T) {
 	var x *int
-	sp := fieldSchema(reflect.TypeOf(x), "")
+	sp := fieldSchema(reflect.TypeOf(x), fieldOptions{})
 	if sp.Type != "integer" {
 		t.Errorf("Type = %q, want 'integer'", sp.Type)
 	}
 }
 
 func TestFieldSchema_SliceOfStrings(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf([]string{}), "")
+	sp := fieldSchema(reflect.TypeOf([]string{}), fieldOptions{})
 	if sp.Type != "array" {
 		t.Errorf("Type = %q, want 'array'", sp.Type)
 	}
@@ -375,7 +515,7 @@ func TestFieldSchema_SliceOfStrings(t *testing.T) {
 }
 
 func TestFieldSchema_MapType(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf(map[string]any{}), "")
+	sp := fieldSchema(reflect.TypeOf(map[string]any{}), fieldOptions{})
 	if sp.Type != "object" {
 		t.Errorf("Type = %q, want 'object'", sp.Type)
 	}
@@ -386,22 +526,63 @@ func TestFieldSchema_MapType(t *testing.T) {
 
 func TestFieldSchema_StructType(t *testing.T) {
 	type nested struct{}
-	sp := fieldSchema(reflect.TypeOf(nested{}), "")
+	sp := fieldSchema(reflect.TypeOf(nested{}), fieldOptions{})
 	if sp.Type != "object" {
 		t.Errorf("Type = %q, want 'object'", sp.Type)
 	}
 }
 
 func TestFieldSchema_BoolType(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf(true), "")
+	sp := fieldSchema(reflect.TypeOf(true), fieldOptions{})
 	if sp.Type != "boolean" {
 		t.Errorf("Type = %q, want 'boolean'", sp.Type)
 	}
 }
 
 func TestFieldSchema_FloatType(t *testing.T) {
-	sp := fieldSchema(reflect.TypeOf(3.14), "")
+	sp := fieldSchema(reflect.TypeOf(3.14), fieldOptions{})
 	if sp.Type != "number" {
 		t.Errorf("Type = %q, want 'number'", sp.Type)
+	}
+}
+
+func TestFieldSchema_WithEnum(t *testing.T) {
+	sp := fieldSchema(reflect.TypeOf(""), fieldOptions{Enum: []string{"a", "b", "c"}})
+	if !reflect.DeepEqual(sp.Enum, []string{"a", "b", "c"}) {
+		t.Errorf("Enum = %v, want [a b c]", sp.Enum)
+	}
+}
+
+func TestFieldSchema_WithMinMax(t *testing.T) {
+	min := 0.0
+	max := 10.0
+	sp := fieldSchema(reflect.TypeOf(42), fieldOptions{Minimum: &min, Maximum: &max})
+	if sp.Minimum == nil || *sp.Minimum != min {
+		t.Errorf("Minimum = %v, want %v", sp.Minimum, min)
+	}
+	if sp.Maximum == nil || *sp.Maximum != max {
+		t.Errorf("Maximum = %v, want %v", sp.Maximum, max)
+	}
+}
+
+func TestFieldSchema_ArrayConstraints(t *testing.T) {
+	minItems := 1
+	maxItems := 5
+	sp := fieldSchema(reflect.TypeOf([]string{}), fieldOptions{
+		MinItems: &minItems,
+		MaxItems: &maxItems,
+		ItemDesc: "an item description",
+	})
+	if sp.MinItems == nil || *sp.MinItems != minItems {
+		t.Errorf("MinItems = %v, want %v", sp.MinItems, minItems)
+	}
+	if sp.MaxItems == nil || *sp.MaxItems != maxItems {
+		t.Errorf("MaxItems = %v, want %v", sp.MaxItems, maxItems)
+	}
+	if sp.Items == nil {
+		t.Fatal("Items is nil")
+	}
+	if sp.Items.Description != "an item description" {
+		t.Errorf("Items.Description = %q, want 'an item description'", sp.Items.Description)
 	}
 }

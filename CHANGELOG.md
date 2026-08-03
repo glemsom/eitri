@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- (new entries here)
+- Tool schema generator (`SchemaOf`) now supports `jsonschema_enum`, `jsonschema_minimum`/`jsonschema_maximum`, `jsonschema_min_items`/`jsonschema_max_items`, and `jsonschema_item_description` struct tags, so tool schemas can carry `enum`, numeric bounds, and array-length constraints for the LLM. `browser.action` now exposes its valid actions as an `enum`. (#950)
 
 ### Fixed
 

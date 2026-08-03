@@ -9,7 +9,7 @@ import (
 )
 
 type collectArgs struct {
-	TaskIDs []string `json:"task_ids" jsonschema:"List of task IDs to collect results from (required)"`
+	TaskIDs []string `json:"task_ids" jsonschema:"List of task IDs to collect results from (required)" jsonschema_min_items:"1" jsonschema_item_description:"A task ID returned by delegate()"`
 }
 
 // CollectTool implements ToolHandler for the collect tool.

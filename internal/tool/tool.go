@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/voocel/litellm"
@@ -42,6 +43,23 @@ type SchemaProp struct {
 	Description          string      `json:"description,omitempty"`
 	Items                *SchemaProp `json:"items,omitempty"`
 	AdditionalProperties *bool       `json:"additionalProperties,omitempty"`
+	Enum                 []string    `json:"enum,omitempty"`
+	Minimum              *float64    `json:"minimum,omitempty"`
+	Maximum              *float64    `json:"maximum,omitempty"`
+	MinItems             *int        `json:"minItems,omitempty"`
+	MaxItems             *int        `json:"maxItems,omitempty"`
+}
+
+// fieldOptions carries the constraints derived from a field's jsonschema tag
+// family for schema generation.
+type fieldOptions struct {
+	Description string
+	Enum        []string
+	Minimum     *float64
+	Maximum     *float64
+	MinItems    *int
+	MaxItems    *int
+	ItemDesc    string
 }
 
 // SchemaOf generates a litellm.Schema (JSON Schema object) from a Go struct
@@ -50,6 +68,16 @@ type SchemaProp struct {
 // Fields without a json tag are ignored. The "omitempty" json option makes the
 // corresponding property not required. The jsonschema tag value becomes the
 // property description.
+//
+// Optional constraint tags extend the schema so the LLM receives precise
+// validation rules without hand-coded checks:
+//
+//	jsonschema_enum:"value1|value2"      allowed values (pipe-separated)
+//	jsonschema_minimum:"0"               numeric lower bound
+//	jsonschema_maximum:"100"             numeric upper bound
+//	jsonschema_min_items:"1"             minimum array length (slice fields)
+//	jsonschema_max_items:"5"             maximum array length (slice fields)
+//	jsonschema_item_description:"..."    description for each slice element
 func SchemaOf[T any]() litellm.Schema {
 	s, err := schemaOf(reflect.TypeFor[T]())
 	if err != nil {
@@ -100,8 +128,15 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 		// Read jsonschema tag for description
 		description := f.Tag.Get("jsonschema")
 
+		// Parse the jsonschema tag family for constraints (enum, min/max, items).
+		fopts, err := parseFieldTags(f.Name, f.Tag)
+		if err != nil {
+			return nil, err
+		}
+		fopts.Description = description
+
 		// Build property schema
-		propSchema := fieldSchema(f.Type, description)
+		propSchema := fieldSchema(f.Type, fopts)
 		props[name] = propSchema
 
 		if !hasOmitempty {
@@ -118,8 +153,9 @@ func schemaOf(t reflect.Type) (litellm.Schema, error) {
 	return litellm.Schema(raw), nil
 }
 
-// fieldSchema returns the SchemaProp for a field type.
-func fieldSchema(t reflect.Type, description string) SchemaProp {
+// fieldSchema returns the SchemaProp for a field type, applying any
+// constraints declared in the field's jsonschema tag family.
+func fieldSchema(t reflect.Type, o fieldOptions) SchemaProp {
 	// Dereference pointer
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -149,7 +185,13 @@ func fieldSchema(t reflect.Type, description string) SchemaProp {
 			if elem.Kind() == reflect.Ptr {
 				elem = elem.Elem()
 			}
-			sp.Items = &SchemaProp{Type: goTypeToJSONType(elem.Kind())}
+			item := SchemaProp{Type: goTypeToJSONType(elem.Kind())}
+			if o.ItemDesc != "" {
+				item.Description = o.ItemDesc
+			}
+			sp.Items = &item
+			sp.MinItems = o.MinItems
+			sp.MaxItems = o.MaxItems
 		case reflect.Map:
 			sp.Type = "object"
 			sp.AdditionalProperties = boolPtr(true)
@@ -160,11 +202,89 @@ func fieldSchema(t reflect.Type, description string) SchemaProp {
 		}
 	}
 
-	if description != "" {
-		sp.Description = description
+	// enum applies to any type; min/max only make sense for numbers.
+	if len(o.Enum) > 0 {
+		sp.Enum = o.Enum
+	}
+	if o.Minimum != nil && (sp.Type == "integer" || sp.Type == "number") {
+		sp.Minimum = o.Minimum
+	}
+	if o.Maximum != nil && (sp.Type == "integer" || sp.Type == "number") {
+		sp.Maximum = o.Maximum
+	}
+
+	if o.Description != "" {
+		sp.Description = o.Description
 	}
 
 	return sp
+}
+
+// parseFieldTags reads the jsonschema tag family from a struct field:
+//
+//	jsonschema:"description"
+//	jsonschema_enum:"value1|value2|value3"
+//	jsonschema_minimum:"0"
+//	jsonschema_maximum:"100"
+//	jsonschema_min_items:"1"
+//	jsonschema_max_items:"5"
+//	jsonschema_item_description:"per-item description"
+//
+// The description lives in the plain jsonschema tag (unchanged from before);
+// every other tag is optional and only present when a constraint is desired.
+// Enum values are pipe-separated so descriptions may keep using commas.
+func parseFieldTags(fieldName string, tags reflect.StructTag) (fieldOptions, error) {
+	var opts fieldOptions
+
+	if v := tags.Get("jsonschema_enum"); v != "" {
+		opts.Enum = strings.Split(v, "|")
+		for i := range opts.Enum {
+			opts.Enum[i] = strings.TrimSpace(opts.Enum[i])
+		}
+	}
+
+	var err error
+	if opts.Minimum, err = parseFloatTag(fieldName, "jsonschema_minimum", tags.Get("jsonschema_minimum")); err != nil {
+		return opts, err
+	}
+	if opts.Maximum, err = parseFloatTag(fieldName, "jsonschema_maximum", tags.Get("jsonschema_maximum")); err != nil {
+		return opts, err
+	}
+	if opts.MinItems, err = parseIntTag(fieldName, "jsonschema_min_items", tags.Get("jsonschema_min_items")); err != nil {
+		return opts, err
+	}
+	if opts.MaxItems, err = parseIntTag(fieldName, "jsonschema_max_items", tags.Get("jsonschema_max_items")); err != nil {
+		return opts, err
+	}
+
+	opts.ItemDesc = tags.Get("jsonschema_item_description")
+	return opts, nil
+}
+
+// parseFloatTag parses a decimal value from a jsonschema tag, returning nil
+// when the tag is absent.
+func parseFloatTag(fieldName, tagName, value string) (*float64, error) {
+	if value == "" {
+		return nil, nil
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil, fmt.Errorf("tool schema for %s: invalid %s value %q: %w", fieldName, tagName, value, err)
+	}
+	return &f, nil
+}
+
+// parseIntTag parses an integer value from a jsonschema tag, returning nil
+// when the tag is absent.
+func parseIntTag(fieldName, tagName, value string) (*int, error) {
+	if value == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return nil, fmt.Errorf("tool schema for %s: invalid %s value %q: %w", fieldName, tagName, value, err)
+	}
+	return &n, nil
 }
 
 func goTypeToJSONType(t reflect.Kind) string {
