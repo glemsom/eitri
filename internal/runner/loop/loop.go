@@ -394,7 +394,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			return fmt.Errorf("chat stream: %w", err)
 		}
 
-		toolCalls = normalizeToolCallIDs(toolCalls)
+		toolCalls = normalizeToolCalls(toolCalls)
 
 		if streamErr != nil {
 			if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {

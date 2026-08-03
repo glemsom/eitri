@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/sandbox"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
@@ -97,6 +98,41 @@ func (s *mockStream) Next() (litellm.Event, error) {
 }
 
 func (s *mockStream) Close() error { return nil }
+
+// repeatedArgsProvider emits repeated full JSON tool-argument chunks on first
+// turn, then a final answer on second turn.
+type repeatedArgsProvider struct {
+	mu   sync.Mutex
+	turn int
+}
+
+func (p *repeatedArgsProvider) Name() string { return "repeated-args" }
+
+func (p *repeatedArgsProvider) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return nil, fmt.Errorf("Chat not implemented for repeatedArgsProvider")
+}
+
+func (p *repeatedArgsProvider) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	turn := p.turn
+	p.turn++
+	if turn == 0 {
+		return &mockStream{events: []litellm.Event{
+			litellm.ToolUseStart{ID: "call_1", Name: "bash"},
+			litellm.ToolUseDelta{ID: "call_1", ArgumentsDelta: []byte(`{"command":"echo hi"}`)},
+			litellm.ToolUseDelta{ID: "call_1", ArgumentsDelta: []byte(`{"command":"echo hi"}`)},
+			litellm.ToolUseDone{ID: "call_1"},
+			litellm.DoneEvent{FinishReason: litellm.FinishReasonStop},
+		}}, nil
+	}
+
+	return &mockStream{events: []litellm.Event{
+		litellm.ContentDelta{Text: "done"},
+		litellm.DoneEvent{FinishReason: litellm.FinishReasonStop},
+	}}, nil
+}
 
 func (m *mockProvider) Name() string {
 	if m.name != "" {
@@ -425,6 +461,58 @@ func TestRunAgent_SanitizesProviderToolUseIDsBeforeReplay(t *testing.T) {
 	}
 	if assistantID == "" || assistantID != toolID {
 		t.Fatalf("sanitized IDs must be non-empty and matched: assistant=%q tool=%q", assistantID, toolID)
+	}
+}
+
+func TestRunAgent_NormalizesRepeatedToolArgumentChunks(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	client, err := litellm.New(&repeatedArgsProvider{})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	req := lrFromMessages(
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "run bash"}}},
+		},
+		lrWithModel("gpt-5.4"),
+	)
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(tool.NewBashTool(workspace, time.Second, sandbox.Config{Profile: sandbox.ProfileNone}))
+
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, RunOpts{
+		HistoryMgr:    NewRequestHistoryManager(req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	if len(req.Messages) != 4 {
+		t.Fatalf("req.Messages length = %d, want 4 (user + assistant + tool + final assistant)", len(req.Messages))
+	}
+	if got := msgContent(req.Messages[2]); got != "<stdout>\nhi\n</stdout>" {
+		t.Fatalf("tool result content = %q, want %q", got, "<stdout>\nhi\n</stdout>")
+	}
+	if strings.Contains(msgContent(req.Messages[2]), "Tool error") {
+		t.Fatalf("tool result unexpectedly contains error: %q", msgContent(req.Messages[2]))
 	}
 }
 

@@ -1,8 +1,10 @@
 package loop
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	"github.com/voocel/litellm"
@@ -27,6 +29,75 @@ func normalizeToolCallIDs(toolCalls []litellm.ToolUseBlock) []litellm.ToolUseBlo
 		seed := fmt.Sprintf("%d\x00%s\x00%s\x00%s", i, out[i].ID, out[i].Name, string(out[i].Arguments))
 		sum := sha256.Sum256([]byte(seed))
 		out[i].ID = "call_eitri_" + hex.EncodeToString(sum[:8])
+	}
+	return out
+}
+
+// normalizeToolCallArguments repairs streamed tool arguments that arrive as
+// concatenated JSON values instead of a single JSON object.
+func normalizeToolCallArguments(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	if json.Valid(raw) {
+		return append(json.RawMessage(nil), raw...)
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+
+	var last any
+	seen := false
+	for {
+		var v any
+		if err := dec.Decode(&v); err != nil {
+			break
+		}
+		last = v
+		seen = true
+	}
+	if !seen {
+		return append(json.RawMessage(nil), raw...)
+	}
+
+	normalized, err := json.Marshal(last)
+	if err != nil || !json.Valid(normalized) {
+		return append(json.RawMessage(nil), raw...)
+	}
+	return normalized
+}
+
+// normalizeToolCalls prepares provider-emitted tool calls for replay.
+// It fixes unsafe IDs, repairs malformed streamed arguments, and collapses
+// duplicate IDs so litellm request validation accepts the assistant message.
+func normalizeToolCalls(toolCalls []litellm.ToolUseBlock) []litellm.ToolUseBlock {
+	if len(toolCalls) == 0 {
+		return toolCalls
+	}
+
+	collapsed := make([]litellm.ToolUseBlock, 0, len(toolCalls))
+	rawSeen := make(map[string]int, len(toolCalls))
+	for _, tc := range toolCalls {
+		if tc.ID != "" {
+			if idx, ok := rawSeen[tc.ID]; ok {
+				collapsed[idx] = tc
+				continue
+			}
+			rawSeen[tc.ID] = len(collapsed)
+		}
+		collapsed = append(collapsed, tc)
+	}
+
+	out := make([]litellm.ToolUseBlock, 0, len(collapsed))
+	seen := make(map[string]int, len(collapsed))
+	for _, tc := range normalizeToolCallIDs(collapsed) {
+		tc.Arguments = normalizeToolCallArguments(tc.Arguments)
+		if idx, ok := seen[tc.ID]; ok {
+			out[idx] = tc
+			continue
+		}
+		seen[tc.ID] = len(out)
+		out = append(out, tc)
 	}
 	return out
 }
