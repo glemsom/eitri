@@ -3,12 +3,12 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
-
-	"fmt"
 
 	"github.com/voocel/litellm"
 )
@@ -499,5 +499,217 @@ func TestGrep_ArgsUnmarshal(t *testing.T) {
 	}
 	if parsed.FilePattern != "*.go" {
 		t.Errorf("FilePattern = %q, want '*.go'", parsed.FilePattern)
+	}
+}
+
+func TestGrep_ContextWindows(t *testing.T) {
+	tests := []struct {
+		name      string
+		matchNums []int
+		numLines  int
+		contextN  int
+		want      []lineRange
+	}{
+		{"no matches", nil, 10, 2, nil},
+		{"single match mid-file", []int{5}, 10, 2, []lineRange{{2, 6}}},
+		{"clamp at file start", []int{1}, 10, 2, []lineRange{{0, 2}}},
+		{"clamp at file end", []int{10}, 10, 2, []lineRange{{7, 9}}},
+		{"adjacent windows merge", []int{3, 4}, 10, 1, []lineRange{{1, 4}}},
+		{"overlapping windows merge", []int{2, 5}, 10, 2, []lineRange{{0, 6}}},
+		{"gap keeps windows separate", []int{2, 8}, 10, 1, []lineRange{{0, 2}, {6, 8}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := contextWindows(tt.matchNums, tt.numLines, tt.contextN)
+			if len(got) != len(tt.want) {
+				t.Fatalf("contextWindows(%v, %d, %d) = %v, want %v", tt.matchNums, tt.numLines, tt.contextN, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("contextWindows(%v, %d, %d) = %v, want %v", tt.matchNums, tt.numLines, tt.contextN, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestGrep_CollectGrepLines(t *testing.T) {
+	fileLines := []string{"aaa", "bbb", "aaa", "ccc", "aaa", "ddd", "eee"}
+	re := regexp.MustCompile("aaa")
+
+	t.Run("no matches yields nil (nothing retained)", func(t *testing.T) {
+		if got := collectGrepLines([]string{"x", "y", "z"}, re, 2); got != nil {
+			t.Errorf("collectGrepLines with no matches = %v, want nil", got)
+		}
+	})
+
+	t.Run("context zero returns only match lines", func(t *testing.T) {
+		got := collectGrepLines(fileLines, re, 0)
+		wantLines := []int{1, 3, 5}
+		if len(got) != len(wantLines) {
+			t.Fatalf("len = %d, want %d", len(got), len(wantLines))
+		}
+		for i, ln := range wantLines {
+			// context=0 lines have no ">" prefix, so isMatch stays false.
+			if got[i].lineNum != ln || got[i].isMatch || got[i].content != "aaa" {
+				t.Errorf("line %d = %+v, want lineNum=%d isMatch=false content=aaa", i, got[i], ln)
+			}
+		}
+	})
+
+	t.Run("context keeps only lines within range of a match", func(t *testing.T) {
+		got := collectGrepLines(fileLines, re, 1)
+		// matches at 1,3,5 merge into one window covering lines 1-6; line 7
+		// ("eee") is outside every match's context and must not be retained.
+		if len(got) != 6 {
+			t.Fatalf("len = %d, want 6: %v", len(got), got)
+		}
+		for i, l := range got {
+			if l.lineNum != i+1 {
+				t.Errorf("line %d = %d, want %d", i, l.lineNum, i+1)
+			}
+		}
+		for _, i := range []int{0, 2, 4} {
+			if !got[i].isMatch {
+				t.Errorf("line %d should be a match", got[i].lineNum)
+			}
+		}
+		for _, i := range []int{1, 3, 5} {
+			if got[i].isMatch {
+				t.Errorf("line %d should be context, not a match", got[i].lineNum)
+			}
+		}
+	})
+
+	t.Run("context large file does not dump whole file", func(t *testing.T) {
+		var manyLines []string
+		for i := 0; i < 1000; i++ {
+			manyLines = append(manyLines, "filler")
+		}
+		manyLines[0] = "needle here"
+		manyLines[999] = "needle at the end"
+		got := collectGrepLines(manyLines, regexp.MustCompile("needle"), 1)
+		if len(got) != 4 {
+			t.Fatalf("len = %d, want 4 (two lines around each of two matches)", len(got))
+		}
+		if got[0].lineNum != 1 || got[1].lineNum != 2 || got[2].lineNum != 999 || got[3].lineNum != 1000 {
+			t.Errorf("unexpected retained lines: %+v", got)
+		}
+	})
+}
+
+func TestGrep_ContextCapBoundary(t *testing.T) {
+	marker := "... (output truncated at 2 KiB)"
+
+	t.Run("rendered output stays within the cap", func(t *testing.T) {
+		dir := t.TempDir()
+		var bigLines []string
+		for i := 0; i < 5000; i++ {
+			bigLines = append(bigLines, fmt.Sprintf("needle-%05d-%s", i, strings.Repeat("x", 60)))
+		}
+		if err := os.WriteFile(filepath.Join(dir, "big.txt"), []byte(strings.Join(bigLines, "\n")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		tool := NewGrepTool(dir)
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"needle","context":2}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Error("result.IsError = true, want false")
+		}
+		block, ok := result.Blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+		}
+		if !strings.HasSuffix(block.Text, marker) {
+			t.Fatalf("expected truncation marker, got length %d", len(block.Text))
+		}
+		body := strings.TrimSuffix(block.Text, marker)
+		if len(body) > maxGrepOutputBytes {
+			t.Errorf("context output exceeds 2 KiB cap: %d bytes", len(body))
+		}
+		if len(body) < 1800 {
+			t.Errorf("context output truncated too early: %d bytes", len(body))
+		}
+	})
+
+	t.Run("first match line always included, consistent with context zero", func(t *testing.T) {
+		dir := t.TempDir()
+		huge := strings.Repeat("z", 5*1024)
+		if err := os.WriteFile(filepath.Join(dir, "huge.txt"), []byte(huge+"\ntail line\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		tool := NewGrepTool(dir)
+		result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"z{100}","context":1}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		block, ok := result.Blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+		}
+		if !strings.HasSuffix(block.Text, marker) {
+			t.Errorf("expected truncation marker in context output")
+		}
+		ctxBody := strings.TrimSuffix(block.Text, marker)
+		if !strings.Contains(ctxBody, ">huge.txt:1:") {
+			t.Errorf("expected first (oversized) match line to be included, got %q", ctxBody)
+		}
+
+		// context=0 keeps the same single oversized match line.
+		result0, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"z{100}","context":0}`))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		block0, ok := result0.Blocks[0].(litellm.TextBlock)
+		if !ok {
+			t.Fatalf("block is %T, want TextBlock", result0.Blocks[0])
+		}
+		if strings.HasSuffix(block0.Text, marker) {
+			t.Errorf("context=0 single match should not be marked truncated")
+		}
+		if ctxBody != ">"+block0.Text {
+			t.Errorf("context output should be the match line prefixed with '>', got %q vs %q", ctxBody, block0.Text)
+		}
+	})
+}
+
+func TestGrep_ContextIgnoresFilesWithoutMatches(t *testing.T) {
+	dir := t.TempDir()
+	// A huge file with no matches must not be retained (or dumped) by the walk.
+	huge := strings.Repeat("x", 2*1024*1024)
+	if err := os.WriteFile(filepath.Join(dir, "huge-nomatch.txt"), []byte(huge), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "match.txt"), []byte("line1\nneedle here\nline3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewGrepTool(dir)
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"pattern":"needle","context":1}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Error("result.IsError = true, want false")
+	}
+	block, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(block.Text, "match.txt:1:line1") {
+		t.Errorf("expected context line match.txt:1:line1, got:\n%s", block.Text)
+	}
+	if !strings.Contains(block.Text, ">match.txt:2:needle here") {
+		t.Errorf("expected match line match.txt:2:needle here, got:\n%s", block.Text)
+	}
+	if !strings.Contains(block.Text, "match.txt:3:line3") {
+		t.Errorf("expected context line match.txt:3:line3, got:\n%s", block.Text)
+	}
+	if strings.Contains(block.Text, "huge-nomatch.txt") {
+		t.Errorf("output should not contain the no-match file")
 	}
 }
