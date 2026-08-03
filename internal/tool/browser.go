@@ -22,7 +22,7 @@ import (
 
 // browserArgs defines the JSON schema for the browser tool.
 type browserArgs struct {
-	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot)"`
+	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot)" jsonschema_enum:"list_targets|navigate|get_dom|click|type|screenshot"`
 	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters. For type: {target_id, selector, text}; navigate: {target_id, url, timeout?}; click: {target_id, selector}; get_dom: {target_id, selector?}; screenshot: {target_id}. The selector field is called 'selector', not 'query'."`
 }
 

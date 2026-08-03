@@ -49,6 +49,27 @@ func TestBrowser_SchemaHasActionParam(t *testing.T) {
 	if actionMap["type"] != "string" {
 		t.Errorf("action type = %v, want 'string'", actionMap["type"])
 	}
+	// The action field should declare an enum of valid browser actions.
+	enum, ok := actionMap["enum"].([]any)
+	if !ok {
+		t.Fatal("action should have an 'enum' of valid actions")
+	}
+	wantActions := []any{"list_targets", "navigate", "get_dom", "click", "type", "screenshot"}
+	if len(enum) != len(wantActions) {
+		t.Errorf("len(action enum) = %d, want %d", len(enum), len(wantActions))
+	}
+	for _, want := range wantActions {
+		found := false
+		for _, got := range enum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("action enum missing %v (got %v)", want, enum)
+		}
+	}
 	required, ok := schemaObj["required"].([]any)
 	if !ok {
 		t.Fatal("schema missing required array")
