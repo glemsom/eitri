@@ -373,7 +373,7 @@ sequenceDiagram
 
 ### Adding a new built-in tool
 
-1. Define tool in `internal/tool/` implementing the `ToolHandler` interface (`Name()`, `Description()`, `JSONSchema()`, `Call()`) with a struct that embeds `SchemaOf[T]()` for parameter schemas
+1. Define tool in `internal/tool/` implementing the `ToolHandler` interface (`Name()`, `Description()`, `JSONSchema()`, `Call()`) with a struct that embeds `SchemaOf[T]()` for parameter schemas. Multi-action tools (e.g. `browser`) build a discriminated union instead: `SchemaProp.OneOf` holds one typed object schema per action and the action selector is an `enum`, so the model sees per-action required parameters rather than a free-form args blob.
 2. Register with `tool.NewRegistry().Register(...)` in `buildBaseToolRegistry()` (base tools) or `startRunWithConfig()` (parent-only tools)
 3. Tool receives `context.Context` with `tool.SessionIDKey` for session-scoped state
 
