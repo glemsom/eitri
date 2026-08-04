@@ -42,4 +42,11 @@
   document.addEventListener('htmx:afterSettle', function () {
     setTimeout(initMermaid, 50);
   });
+
+  // Run once the lazy loader has fetched mermaid.min.js on demand
+  // (issue #968). On a page with no diagrams the library never loads, so this
+  // event never fires and initMermaid simply returns early.
+  document.addEventListener('eitri:mermaid-loaded', function () {
+    setTimeout(initMermaid, 100);
+  });
 })();

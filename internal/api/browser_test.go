@@ -140,6 +140,41 @@ func pollForCondition(t testing.TB, timeout, interval time.Duration, check func(
 	}
 }
 
+// waitForLazyLibraries waits until the given JS globals are defined in the
+// browser. The heavy rendering libraries (mermaid, katex, Prism) are now loaded
+// on demand by eitri-lazy-load.js, so browser tests must wait for them to
+// arrive before asserting rendering behaviour. (issue #968)
+func waitForLazyLibraries(t testing.TB, ctx context.Context, globals ...string) {
+	t.Helper()
+
+	want := make([]string, 0, len(globals))
+	for _, g := range globals {
+		want = append(want, `typeof `+g+` !== 'undefined'`)
+	}
+	expr := strings.Join(want, " && ")
+
+	pollForCondition(t, 20*time.Second, 100*time.Millisecond, func() bool {
+		var ready bool
+		_ = chromedp.Run(ctx, chromedp.EvaluateAsDevTools(expr, &ready))
+		return ready
+	})
+
+	// Verify every global actually became defined.
+	var check string
+	for _, g := range globals {
+		var defined bool
+		if err := chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`typeof `+g+` !== 'undefined'`, &defined)); err != nil {
+			t.Fatalf("evaluating %s presence: %v", g, err)
+		}
+		if !defined {
+			check += " " + g
+		}
+	}
+	if check != "" {
+		t.Fatalf("lazy libraries never loaded:%s", check)
+	}
+}
+
 // fakeChatServer returns an httptest.Server that acts as an OpenAI-compatible
 // LLM provider for chat tests. It handles:
 //   - GET /v1/models — returns a model list for config validation

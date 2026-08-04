@@ -14,6 +14,7 @@ func TestJsFiles(t *testing.T) {
 		"eitri-stream.js",
 		"eitri-renderers.js",
 		"eitri-mermaid.js",
+		"eitri-lazy-load.js",
 		"htmx.min.js",
 		"prism-core.min.js",
 		"prism-go.min.js",
@@ -170,6 +171,38 @@ func TestJsFiles(t *testing.T) {
 	}
 	if !strings.Contains(content3, "initKatex") {
 		t.Error("eitri-renderers.js missing KaTeX initialization")
+	}
+
+	// Verify the lazy loader fetches the heavy libraries on demand and signals
+	// the islands to render once they arrive (issue #968).
+	fLazy, err := Files.Open("eitri-lazy-load.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-lazy-load.js: %v", err)
+	}
+	lazyData, err := io.ReadAll(fLazy)
+	fLazy.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-lazy-load.js: %v", err)
+	}
+	contentLazy := string(lazyData)
+	for _, want := range []string{
+		"mermaid.min.js",
+		"katex.min.js",
+		"prism-core.min.js",
+		"prism-go.min.js",
+		"katex.min.css",
+		"prism.min.css",
+		"eitri:mermaid-loaded",
+		"eitri:katex-loaded",
+		"eitri:prism-loaded",
+		"htmx:afterSwap",
+	} {
+		if !strings.Contains(contentLazy, want) {
+			t.Errorf("eitri-lazy-load.js missing %q", want)
+		}
+	}
+	if strings.Contains(contentLazy, "mermaid.initialize") {
+		t.Error("eitri-lazy-load.js must only load libraries, not initialise them")
 	}
 
 	// Verify CSS has scroll-to-bottom button with --composer-height variable

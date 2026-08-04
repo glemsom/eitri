@@ -123,3 +123,23 @@ Or use the `chrome-cdp` skill for scripted inspection (test helper, not an Eitri
 scripts/cdp.mjs shot <target>
 scripts/cdp.mjs html <target>
 ```
+
+## Verifying the deferred/lazy-load script strategy
+
+All page scripts are non-render-blocking (`defer`), and the heavy rendering
+libraries (mermaid ~2.7MB, KaTeX, Prism) are loaded on demand by
+`eitri-lazy-load.js` only when content needs them (issue #968). To check the
+improvement manually:
+
+1. Open Chrome DevTools → **Network** (with "Disable cache" off) and reload the
+   chat page.
+2. A plain chat page must request **no** `mermaid.min.js`, `katex.min.js`, or
+   `prism-*.js` — the only scripts in the document `<head>` are `htmx.min.js`
+   and the small `eitri-*.js` islands, all marked `defer`.
+3. Send a message containing a ```mermaid block, a code block, or a `$$...$$`
+   equation: the corresponding library is fetched on that swap and the content
+   renders identically to before.
+4. In DevTools → **Performance**, record a page load and compare
+   `DOMContentLoaded`/`First Contentful Paint` against the same page with the
+   old build: first-interactive should be measurably faster on pages without
+   rich content because ~4.7MB of JavaScript is no longer parsed up front.

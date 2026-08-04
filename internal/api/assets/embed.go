@@ -18,6 +18,7 @@ import (
 //go:embed eitri-composer.js
 //go:embed eitri-renderers.js
 //go:embed eitri-mermaid.js
+//go:embed eitri-lazy-load.js
 //go:embed eitri-persona-selector.js
 //go:embed eitri-session-rename.js
 //go:embed eitri-settings.js
