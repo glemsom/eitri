@@ -5,8 +5,12 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +63,7 @@ func TestBrowser_SchemaHasActionParam(t *testing.T) {
 	if !ok {
 		t.Fatal("action should have an 'enum' of valid actions")
 	}
-	wantActions := []any{"list_targets", "navigate", "get_dom", "click", "type", "screenshot"}
+	wantActions := []any{"list_targets", "navigate", "get_dom", "click", "type", "screenshot", "new_tab", "close_tab", "select", "get_value"}
 	if len(enum) != len(wantActions) {
 		t.Errorf("len(action enum) = %d, want %d", len(enum), len(wantActions))
 	}
@@ -850,6 +854,576 @@ func TestBrowser_FormatDOMSummary_Truncation(t *testing.T) {
 	}
 	if !strings.Contains(text.Text, "output truncated") {
 		t.Error("expected truncation message in output")
+	}
+}
+
+// browserResultText extracts the first text block from a ToolResult.
+func browserResultText(t *testing.T, res ToolResult) string {
+	t.Helper()
+	if len(res.Blocks) == 0 {
+		return ""
+	}
+	block, ok := res.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		return ""
+	}
+	return block.Text
+}
+
+// browserTargetID extracts the trailing target_id from a new_tab result text.
+func browserTargetID(t *testing.T, text string) string {
+	t.Helper()
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+// browserTargets parses a list_targets result into its target entries.
+func browserTargets(t *testing.T, res ToolResult) []testTargetInfo {
+	t.Helper()
+	text := browserResultText(t, res)
+	var targets []testTargetInfo
+	if err := json.Unmarshal([]byte(text), &targets); err != nil {
+		t.Fatalf("failed to parse list_targets result %q: %v", text, err)
+	}
+	return targets
+}
+
+type testTargetInfo struct {
+	TargetID string `json:"target_id"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+}
+
+func TestBrowser_NewTabAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"new_tab"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_NewTabAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"new_tab"}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_NewTabAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"new_tab","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_NewTabAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "new_tab") {
+		t.Error("Description should mention 'new_tab' action")
+	}
+}
+
+func TestBrowser_CloseTabAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"close_tab"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+	text := browserResultText(t, result)
+	if !strings.Contains(text, "target_id") {
+		t.Errorf("error should mention target_id, got: %s", text)
+	}
+}
+
+func TestBrowser_CloseTabAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"close_tab","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_CloseTabAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"close_tab","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_CloseTabAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"close_tab","args":{"target_id":"tab-1"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_CloseTabAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "close_tab") {
+		t.Error("Description should mention 'close_tab' action")
+	}
+}
+
+func TestBrowser_SelectAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"select","args":{"selector":"#color","value":"red"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+}
+
+func TestBrowser_SelectAction_MissingSelector(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"select","args":{"target_id":"tab-1","value":"red"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing selector")
+	}
+}
+
+func TestBrowser_SelectAction_MissingValue(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"select","args":{"target_id":"tab-1","selector":"#color"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing value")
+	}
+}
+
+func TestBrowser_SelectAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"select","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_SelectAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"select","args":{"target_id":"tab-1","selector":"#color","value":"red"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_SelectAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"select","args":{"target_id":"tab-1","selector":"#color","value":"red"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_SelectAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "select") {
+		t.Error("Description should mention 'select' action")
+	}
+}
+
+func TestBrowser_GetValueAction_MissingTargetID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_value","args":{"selector":"#name"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing target_id")
+	}
+}
+
+func TestBrowser_GetValueAction_MissingSelector(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_value","args":{"target_id":"tab-1"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for missing selector")
+	}
+}
+
+func TestBrowser_GetValueAction_InvalidArgs(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_value","args":"not-an-object"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true for invalid args")
+	}
+}
+
+func TestBrowser_GetValueAction_NoWSURL(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("", "/tmp")
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"get_value","args":{"target_id":"tab-1","selector":"#name"}}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true when WS URL is empty")
+	}
+}
+
+func TestBrowser_GetValueAction_NoSessionID(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	_, err := tool.Call(context.Background(), json.RawMessage(`{"action":"get_value","args":{"target_id":"tab-1","selector":"#name"}}`))
+	if err == nil {
+		t.Fatal("expected error when no session ID in context")
+	}
+}
+
+func TestBrowser_GetValueAction_ActionNameInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "get_value") {
+		t.Error("Description should mention 'get_value' action")
+	}
+}
+
+// findChromePath searches common locations for a Chrome/Chromium binary.
+func findChromePath() string {
+	candidates := []string{
+		"google-chrome-stable",
+		"google-chrome",
+		"chromium-browser",
+		"chromium",
+		"/usr/bin/google-chrome-stable",
+		"/usr/bin/chromium-browser",
+	}
+	for _, path := range candidates {
+		if _, err := exec.LookPath(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// startRemoteChrome launches a headless Chrome with a remote debugging port and
+// returns its browser WebSocket URL plus a cleanup function. Tests skip if
+// Chrome/Chromium is not installed.
+func startRemoteChrome(t *testing.T) (string, func()) {
+	t.Helper()
+	chromePath := findChromePath()
+	if chromePath == "" {
+		t.Skip("Chrome/Chromium not found — skipping browser test")
+	}
+
+	// Reserve a free port for the remote debugging endpoint.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to find a free port: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+
+	userDataDir, err := os.MkdirTemp("", "eitri-browser-test-*")
+	if err != nil {
+		t.Fatalf("failed to create Chrome user data dir: %v", err)
+	}
+
+	cmd := exec.Command(chromePath,
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-gpu",
+		fmt.Sprintf("--remote-debugging-port=%d", port),
+		fmt.Sprintf("--user-data-dir=%s", userDataDir),
+		"about:blank",
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start Chrome: %v", err)
+	}
+
+	var wsURL string
+	deadline := time.Now().Add(30 * time.Second)
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(baseURL + "/json/version")
+		if err == nil {
+			var v struct {
+				WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
+			}
+			decodeErr := json.NewDecoder(resp.Body).Decode(&v)
+			resp.Body.Close()
+			if decodeErr == nil && v.WebSocketDebuggerURL != "" {
+				wsURL = v.WebSocketDebuggerURL
+				break
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if wsURL == "" {
+		cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = os.RemoveAll(userDataDir)
+		t.Fatal("Chrome did not expose the DevTools endpoint in time")
+	}
+
+	cleanup := func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = os.RemoveAll(userDataDir)
+	}
+	return wsURL, cleanup
+}
+
+// TestBrowser_NewTabCloseTab_EndToEnd verifies that new_tab opens a fresh tab,
+// returns its target_id, and close_tab closes it again.
+func TestBrowser_NewTabCloseTab_EndToEnd(t *testing.T) {
+	wsURL, cleanup := startRemoteChrome(t)
+	defer cleanup()
+
+	tool := NewBrowserTool(wsURL, t.TempDir())
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	defer tool.EndSession("test-session")
+
+	// new_tab opens a fresh tab and returns its target_id.
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"new_tab"}`))
+	if err != nil {
+		t.Fatalf("new_tab returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("new_tab failed: %s", browserResultText(t, result))
+	}
+	targetID := browserTargetID(t, browserResultText(t, result))
+	if targetID == "" {
+		t.Fatalf("new_tab did not return a target_id, got: %q", browserResultText(t, result))
+	}
+
+	// The new tab shows up in list_targets.
+	seen := false
+	for i := 0; i < 50; i++ {
+		result, err = tool.Call(ctx, json.RawMessage(`{"action":"list_targets"}`))
+		if err != nil {
+			t.Fatalf("list_targets returned error: %v", err)
+		}
+		for _, tgt := range browserTargets(t, result) {
+			if tgt.TargetID == targetID {
+				seen = true
+				break
+			}
+		}
+		if seen {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !seen {
+		t.Fatal("new tab did not appear in list_targets")
+	}
+
+	// close_tab closes the tab.
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"close_tab","args":{"target_id":%q}}`, targetID)))
+	if err != nil {
+		t.Fatalf("close_tab returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("close_tab failed: %s", browserResultText(t, result))
+	}
+
+	// The closed tab disappears from list_targets.
+	gone := false
+	for i := 0; i < 50; i++ {
+		result, err = tool.Call(ctx, json.RawMessage(`{"action":"list_targets"}`))
+		if err != nil {
+			t.Fatalf("list_targets returned error: %v", err)
+		}
+		stillThere := false
+		for _, tgt := range browserTargets(t, result) {
+			if tgt.TargetID == targetID {
+				stillThere = true
+				break
+			}
+		}
+		if !stillThere {
+			gone = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !gone {
+		t.Fatal("closed tab still appears in list_targets")
+	}
+}
+
+// TestBrowser_SelectGetValue_EndToEnd verifies select sets a <select> option and
+// get_value reads back the current value of form elements.
+func TestBrowser_SelectGetValue_EndToEnd(t *testing.T) {
+	wsURL, cleanup := startRemoteChrome(t)
+	defer cleanup()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>Form Test</title></head><body>
+			<input id="name" type="text" placeholder="Name">
+			<select id="color">
+				<option value="">Pick a color</option>
+				<option value="red">Red</option>
+				<option value="green">Green</option>
+			</select>
+		</body></html>`)
+	}))
+	defer srv.Close()
+
+	tool := NewBrowserTool(wsURL, t.TempDir())
+	ctx := context.WithValue(context.Background(), SessionIDKey, "test-session")
+	defer tool.EndSession("test-session")
+
+	// Open a fresh tab and navigate it to the form page.
+	result, err := tool.Call(ctx, json.RawMessage(`{"action":"new_tab"}`))
+	if err != nil {
+		t.Fatalf("new_tab returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("new_tab failed: %s", browserResultText(t, result))
+	}
+	targetID := browserTargetID(t, browserResultText(t, result))
+	if targetID == "" {
+		t.Fatalf("new_tab did not return a target_id, got: %q", browserResultText(t, result))
+	}
+
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"navigate","args":{"target_id":%q,"url":%q}}`, targetID, srv.URL)))
+	if err != nil {
+		t.Fatalf("navigate returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("navigate failed: %s", browserResultText(t, result))
+	}
+
+	// get_value on an empty text input returns "".
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"get_value","args":{"target_id":%q,"selector":"#name"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("get_value returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("get_value failed: %s", browserResultText(t, result))
+	}
+	if !strings.Contains(browserResultText(t, result), `""`) {
+		t.Errorf("expected empty initial input value, got: %s", browserResultText(t, result))
+	}
+
+	// Type text, then get_value reads it back.
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"type","args":{"target_id":%q,"selector":"#name","text":"Alice"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("type returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("type failed: %s", browserResultText(t, result))
+	}
+
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"get_value","args":{"target_id":%q,"selector":"#name"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("get_value returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("get_value failed: %s", browserResultText(t, result))
+	}
+	if !strings.Contains(browserResultText(t, result), "Alice") {
+		t.Errorf("get_value did not report typed text, got: %s", browserResultText(t, result))
+	}
+
+	// select sets the <select> dropdown value.
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"select","args":{"target_id":%q,"selector":"#color","value":"green"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("select returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("select failed: %s", browserResultText(t, result))
+	}
+
+	// get_value on the <select> reports the chosen option value.
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"get_value","args":{"target_id":%q,"selector":"#color"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("get_value returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("get_value failed: %s", browserResultText(t, result))
+	}
+	if !strings.Contains(browserResultText(t, result), "green") {
+		t.Errorf("get_value did not report selected option, got: %s", browserResultText(t, result))
+	}
+
+	// get_value on a missing element reports an error.
+	result, err = tool.Call(ctx, json.RawMessage(fmt.Sprintf(`{"action":"get_value","args":{"target_id":%q,"selector":"#missing"}}`, targetID)))
+	if err != nil {
+		t.Fatalf("get_value returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("get_value on a missing element should report an error")
 	}
 }
 

@@ -19,7 +19,12 @@ Add a built-in `browser` tool in `internal/tool/browser.go` that uses `chromedp.
 
 ### Tool surface
 
-Single verb-driven tool `browser` with a `"action"` parameter covering: `list_targets`, `get_dom`, `screenshot`, `click`, `type`, `navigate`.
+Single verb-driven tool `browser` with a `"action"` parameter covering: `list_targets`, `get_dom`, `screenshot`, `click`, `type`, `navigate`, `new_tab`, `close_tab`, `select`, `get_value`.
+
+- `new_tab` opens a fresh tab and returns its `target_id` for subsequent actions.
+- `close_tab` closes a tab.
+- `select` sets an HTML `<select>` dropdown to a given option value.
+- `get_value` reads back the current value of a form element.
 
 ### Tab interaction
 
