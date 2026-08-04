@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/voocel/litellm"
@@ -22,8 +23,8 @@ import (
 
 // browserArgs defines the JSON schema for the browser tool.
 type browserArgs struct {
-	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot)" jsonschema_enum:"list_targets|navigate|get_dom|click|type|screenshot"`
-	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters. For type: {target_id, selector, text}; navigate: {target_id, url, timeout?}; click: {target_id, selector}; get_dom: {target_id, selector?}; screenshot: {target_id}. The selector field is called 'selector', not 'query'."`
+	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value)" jsonschema_enum:"list_targets|navigate|get_dom|click|type|screenshot|new_tab|close_tab|select|get_value"`
+	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters. For type: {target_id, selector, text}; navigate: {target_id, url, timeout?}; click: {target_id, selector}; get_dom: {target_id, selector?}; screenshot: {target_id}. new_tab takes no args. close_tab: {target_id}. select: {target_id, selector, value}. get_value: {target_id, selector}. The selector field is called 'selector', not 'query'."`
 }
 
 // navigateArgs defines the JSON schema for the navigate action.
@@ -55,6 +56,28 @@ type getDOMArgs struct {
 type clickArgs struct {
 	TargetID string `json:"target_id" jsonschema:"Target tab ID to click in"`
 	Selector string `json:"selector" jsonschema:"CSS selector for the element to click"`
+}
+
+// newTabArgs defines the JSON schema for the new_tab action. It takes no
+// arguments — the browser tool opens a fresh tab.
+type newTabArgs struct{}
+
+// closeTabArgs defines the JSON schema for the close_tab action.
+type closeTabArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to close"`
+}
+
+// selectArgs defines the JSON schema for the select action.
+type selectArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to operate on"`
+	Selector string `json:"selector" jsonschema:"CSS selector for the <select> element"`
+	Value    string `json:"value" jsonschema:"Option value to select"`
+}
+
+// getValueArgs defines the JSON schema for the get_value action.
+type getValueArgs struct {
+	TargetID string `json:"target_id" jsonschema:"Target tab ID to operate on"`
+	Selector string `json:"selector" jsonschema:"CSS selector for the element to read the value of"`
 }
 
 // domElement represents a single DOM element in the structural summary.
@@ -125,7 +148,7 @@ func (t *NativeBrowserTool) Name() string {
 
 func (t *NativeBrowserTool) Description() string {
 	return "Control a remote Chrome browser via CDP. " +
-		"Supports actions: list_targets, navigate, get_dom, click, type, screenshot. " +
+		"Supports actions: list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value. " +
 		"Requires a configured browser_ws_url (remote Chrome DevTools Protocol WebSocket endpoint)."
 }
 
@@ -140,7 +163,7 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	}
 
 	if parsed.Action == "" {
-		return ToolError(TextBlocks("Error: 'action' is required (list_targets, navigate, get_dom, click, type, screenshot)")), nil
+		return ToolError(TextBlocks("Error: 'action' is required (list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value)")), nil
 	}
 
 	// Check WS URL is configured
@@ -173,8 +196,16 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 		return t.getDOM(allocCtx, sessionID, parsed.Args)
 	case "click":
 		return t.click(allocCtx, sessionID, parsed.Args)
+	case "new_tab":
+		return t.newTab(allocCtx, sessionID, parsed.Args)
+	case "close_tab":
+		return t.closeTab(allocCtx, sessionID, parsed.Args)
+	case "select":
+		return t.selectOption(allocCtx, sessionID, parsed.Args)
+	case "get_value":
+		return t.getValue(allocCtx, sessionID, parsed.Args)
 	default:
-		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot", parsed.Action))), nil
+		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value", parsed.Action))), nil
 	}
 }
 
@@ -624,6 +655,192 @@ func (t *NativeBrowserTool) screenshot(allocCtx context.Context, sessionID strin
 		litellm.TextBlock{Text: fmt.Sprintf("Screenshot saved to %s", filename)},
 		litellm.ImageBlock{Data: pngData, MIME: "image/png"},
 	}), nil
+}
+
+// newTab opens a fresh browser tab and returns its target_id so subsequent
+// actions can operate on it. The tab is created on the long-lived allocator
+// context (not a short-lived timeout child) so the RemoteAllocator does not
+// register its cancel handler on a context that expires and closes the tab;
+// creation is instead bounded by the action timeout externally.
+func (t *NativeBrowserTool) newTab(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
+	// new_tab takes no required arguments; accept missing/null/empty args.
+	if len(rawArgs) > 0 && string(rawArgs) != "null" {
+		var args newTabArgs
+		if err := json.Unmarshal(rawArgs, &args); err != nil {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: invalid new_tab action args: %v", err))), nil
+		}
+	}
+
+	// Create a new chromedp context on the allocator. Its first Run creates a
+	// brand new tab via target.CreateTarget.
+	tabCtx, cancel := chromedp.NewContext(allocCtx)
+
+	initDone := make(chan error, 1)
+	go func() {
+		initDone <- chromedp.Run(tabCtx)
+	}()
+	select {
+	case err := <-initDone:
+		if err != nil {
+			cancel()
+			return ToolError(TextBlocks(fmt.Sprintf("Error: failed to open new tab: %v", err))), nil
+		}
+	case <-time.After(t.actionTimeout):
+		cancel()
+		return ToolError(TextBlocks(fmt.Sprintf("Error: browser did not open a new tab within %s", t.actionTimeout))), nil
+	}
+
+	cdpCtx := chromedp.FromContext(tabCtx)
+	if cdpCtx == nil || cdpCtx.Target == nil {
+		cancel()
+		return ToolError(TextBlocks("Error: new tab was created but its target could not be identified")), nil
+	}
+	targetID := cdpCtx.Target.TargetID
+
+	// Cache the context so the tab stays open for subsequent actions and is
+	// released when the session ends.
+	t.targetsMu.Lock()
+	if t.targets[sessionID] == nil {
+		t.targets[sessionID] = make(map[string]*targetContext)
+	}
+	t.targets[sessionID][string(targetID)] = &targetContext{ctx: tabCtx, cancel: cancel}
+	t.targetsMu.Unlock()
+
+	return TextResult(fmt.Sprintf("Opened new tab with target_id: %s", targetID)), nil
+}
+
+// closeTab closes the target tab. It attaches via the deadline-bounded
+// prepareTarget path and issues target.CloseTarget through the browser
+// connection, then releases the cached target context.
+func (t *NativeBrowserTool) closeTab(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
+	var args closeTabArgs
+	if len(rawArgs) > 0 && string(rawArgs) != "null" {
+		if err := json.Unmarshal(rawArgs, &args); err != nil {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: invalid close_tab action args: %v", err))), nil
+		}
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for close_tab action")), nil
+	}
+
+	opCtx, opCancel, err := t.prepareTarget(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
+	defer opCancel()
+
+	if err := target.CloseTarget(target.ID(args.TargetID)).Do(cdp.WithExecutor(opCtx, chromedp.FromContext(opCtx).Browser)); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to close tab %s: %v", args.TargetID, err))), nil
+	}
+	t.releaseTargetCtx(sessionID, args.TargetID)
+
+	return TextResult(fmt.Sprintf("Closed tab %s", args.TargetID)), nil
+}
+
+// selectOption sets a <select> element to the given option value. It waits for
+// the element to become visible and reports errors like click/type.
+func (t *NativeBrowserTool) selectOption(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
+	var args selectArgs
+	if len(rawArgs) > 0 && string(rawArgs) != "null" {
+		if err := json.Unmarshal(rawArgs, &args); err != nil {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: invalid select action args: %v", err))), nil
+		}
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for select action")), nil
+	}
+
+	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
+	if args.Selector == "" {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(rawArgs, &raw); err == nil {
+			if q, ok := raw["query"]; ok && len(q) > 0 {
+				var qs string
+				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
+					args.Selector = qs
+				}
+			}
+		}
+	}
+	if args.Selector == "" {
+		return ToolError(TextBlocks("Error: 'selector' is required for select action")), nil
+	}
+
+	if args.Value == "" {
+		return ToolError(TextBlocks("Error: 'value' is required for select action")), nil
+	}
+
+	opCtx, opCancel, err := t.prepareTarget(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
+	defer opCancel()
+
+	// Wait for the element to be visible (default 10s timeout), then set its
+	// value. SetValue dispatches input + change events so page logic wired to
+	// the dropdown fires, matching a real user selection.
+	selCtx, selCancel := context.WithTimeout(opCtx, 10*time.Second)
+	defer selCancel()
+
+	if err := chromedp.Run(selCtx,
+		chromedp.WaitVisible(args.Selector, chromedp.ByQuery),
+		chromedp.SetValue(args.Selector, args.Value, chromedp.ByQuery),
+	); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: Element matching selector %q did not become visible within 10s", args.Selector))), nil
+		}
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to set select element matching selector %q to value %q: %v", args.Selector, args.Value, err))), nil
+	}
+
+	return TextResult(fmt.Sprintf("Set select element matching selector %q to value %q", args.Selector, args.Value)), nil
+}
+
+// getValue reads back the current value of the form element identified by the
+// CSS selector (input, textarea, select, or any element with a .value field).
+func (t *NativeBrowserTool) getValue(allocCtx context.Context, sessionID string, rawArgs json.RawMessage) (ToolResult, error) {
+	var args getValueArgs
+	if len(rawArgs) > 0 && string(rawArgs) != "null" {
+		if err := json.Unmarshal(rawArgs, &args); err != nil {
+			return ToolError(TextBlocks(fmt.Sprintf("Error: invalid get_value action args: %v", err))), nil
+		}
+	}
+
+	if args.TargetID == "" {
+		return ToolError(TextBlocks("Error: 'target_id' is required for get_value action")), nil
+	}
+
+	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
+	if args.Selector == "" {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(rawArgs, &raw); err == nil {
+			if q, ok := raw["query"]; ok && len(q) > 0 {
+				var qs string
+				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
+					args.Selector = qs
+				}
+			}
+		}
+	}
+	if args.Selector == "" {
+		return ToolError(TextBlocks("Error: 'selector' is required for get_value action")), nil
+	}
+
+	opCtx, opCancel, err := t.prepareTarget(allocCtx, sessionID, args.TargetID)
+	if err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to attach to target: %v", err))), nil
+	}
+	defer opCancel()
+
+	var value string
+	if err := chromedp.Run(opCtx,
+		chromedp.Value(args.Selector, &value, chromedp.ByQuery),
+	); err != nil {
+		return ToolError(TextBlocks(fmt.Sprintf("Error: failed to read value of element matching selector %q: %v", args.Selector, err))), nil
+	}
+
+	return TextResult(fmt.Sprintf("Value of element matching selector %q: %q", args.Selector, value)), nil
 }
 
 // getDOM returns the DOM content of a page in two modes:
