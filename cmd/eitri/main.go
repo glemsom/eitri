@@ -341,6 +341,42 @@ func main() {
 	}
 }
 
+// HTTP server hardening constants (issue #966).
+const (
+	// serverReadHeaderTimeout bounds how long the server waits for a request's
+	// headers before closing the connection. A client that connects and sends a
+	// partial header (slow-loris) is reaped within this window instead of
+	// pinning a goroutine and socket indefinitely.
+	serverReadHeaderTimeout = 5 * time.Second
+	// serverIdleTimeout bounds how long a keep-alive connection may sit idle
+	// between requests before being closed, so dead connections are reaped
+	// instead of slowly accumulating.
+	serverIdleTimeout = 60 * time.Second
+	// serverMaxHeaderBytes caps the size of a single request header block.
+	serverMaxHeaderBytes = 1 << 20 // 1 MiB
+)
+
+// newHTTPServer builds the HTTP server used for the main listener with sane
+// connection limits so stalled or hostile clients are closed promptly while
+// long-lived SSE streams keep working exactly as before.
+//
+// ReadTimeout and WriteTimeout are deliberately left at zero: SSE streams (the
+// chat stream and the browser events stream) legitimately outlive a single
+// request body read or response write. A WriteTimeout would kill a
+// slow-consumer's stream, and a ReadTimeout would pin the connection's read
+// deadline for the whole streaming lifetime. ReadHeaderTimeout, IdleTimeout and
+// MaxHeaderBytes cover the slow-loris and dead-keepalive cases without
+// touching streaming responses, which instead rely on their own keep-alive
+// tickers and the request context.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		IdleTimeout:       serverIdleTimeout,
+		MaxHeaderBytes:    serverMaxHeaderBytes,
+	}
+}
+
 func serve(ctx context.Context, opts serveOptions) error {
 	if opts.Handler == nil {
 		opts.Handler = http.NewServeMux()
@@ -364,6 +400,12 @@ func serve(ctx context.Context, opts serveOptions) error {
 	}
 	defer listener.Close()
 
+	return serveWithListener(ctx, opts, listener)
+}
+
+// serveWithListener runs the HTTP server on an already-bound listener. Split
+// out of serve so tests can pre-bind a listener and know the exact address.
+func serveWithListener(ctx context.Context, opts serveOptions, listener net.Listener) error {
 	url := "http://" + listener.Addr().String()
 	if isNonLoopbackBind(listener.Addr().String()) {
 		fmt.Fprintf(opts.Stderr, "Warning: Eitri has no authentication and can execute host commands. Non-loopback bind exposes your machine.\n")
@@ -377,7 +419,7 @@ func serve(ctx context.Context, opts serveOptions) error {
 		}
 	}
 
-	httpServer := &http.Server{Handler: opts.Handler}
+	httpServer := newHTTPServer(opts.Handler)
 	serveErrCh := make(chan error, 1)
 	go func() {
 		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

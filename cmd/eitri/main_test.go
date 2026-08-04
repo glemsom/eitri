@@ -189,6 +189,167 @@ func TestServeWarnsOnNonLoopbackBind(t *testing.T) {
 	}
 }
 
+func TestNewHTTPServerSetsConnectionTimeouts(t *testing.T) {
+	srv := newHTTPServer(http.NewServeMux())
+
+	if srv.ReadHeaderTimeout != serverReadHeaderTimeout {
+		t.Errorf("ReadHeaderTimeout = %v, want %v", srv.ReadHeaderTimeout, serverReadHeaderTimeout)
+	}
+	if srv.IdleTimeout != serverIdleTimeout {
+		t.Errorf("IdleTimeout = %v, want %v", srv.IdleTimeout, serverIdleTimeout)
+	}
+	if srv.MaxHeaderBytes != serverMaxHeaderBytes {
+		t.Errorf("MaxHeaderBytes = %d, want %d", srv.MaxHeaderBytes, serverMaxHeaderBytes)
+	}
+	// SSE streams (chat stream + browser events stream) must not be killed by
+	// a write or read deadline — streaming responses stay unbounded.
+	if srv.WriteTimeout != 0 {
+		t.Errorf("WriteTimeout = %v, want 0 so streaming responses stay unbounded", srv.WriteTimeout)
+	}
+	if srv.ReadTimeout != 0 {
+		t.Errorf("ReadTimeout = %v, want 0 so streaming responses stay unbounded", srv.ReadTimeout)
+	}
+}
+
+func TestServeClosesStalledPartialHeader(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Pre-bind a listener so the test knows the address the server binds to.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- serveWithListener(ctx, serveOptions{
+			Addr:      listener.Addr().String(),
+			Workspace: t.TempDir(),
+			Handler:   http.NewServeMux(),
+			Stdout:    &stdout,
+			Stderr:    &stderr,
+			Getenv:    func(string) string { return "0" },
+			OpenURL:   func(string) error { return nil },
+		}, listener)
+	}()
+
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// Send a partial request header (no terminating CRLFCRLF) and then stall,
+	// simulating a slow-loris client that pins the connection forever.
+	if _, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: example.com\r\n"); err != nil {
+		cancel()
+		<-done
+		t.Fatalf("write partial header: %v", err)
+	}
+
+	readErr := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1)
+		_, err := conn.Read(buf)
+		readErr <- err
+	}()
+
+	// The connection must survive well past the initial write — it should not
+	// be closed for an unrelated reason…
+	select {
+	case err := <-readErr:
+		cancel()
+		<-done
+		t.Fatalf("connection closed too early (%v), want it held open until ReadHeaderTimeout", err)
+	case <-time.After(time.Second):
+	}
+
+	// …and be reaped within ReadHeaderTimeout (plus a scheduling margin).
+	select {
+	case err := <-readErr:
+		cancel()
+		<-done
+		if err == nil {
+			t.Fatal("read returned no error, want closed/EOF from the server")
+		}
+	case <-time.After(serverReadHeaderTimeout + 3*time.Second):
+		cancel()
+		<-done
+		t.Fatalf("connection still open after ReadHeaderTimeout %s + margin", serverReadHeaderTimeout)
+	}
+}
+
+func TestServeStreamingResponseNotKilledByWriteTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fmt.Fprint(w, "data: first\n\n")
+		flusher.Flush()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(time.Second):
+		}
+		fmt.Fprint(w, "data: second\n\n")
+		flusher.Flush()
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- serveWithListener(ctx, serveOptions{
+			Addr:      listener.Addr().String(),
+			Workspace: t.TempDir(),
+			Handler:   handler,
+			Stdout:    &stdout,
+			Stderr:    &stderr,
+			Getenv:    func(string) string { return "0" },
+			OpenURL:   func(string) error { return nil },
+		}, listener)
+	}()
+
+	// A slow consumer that reads the stream progressively must not be killed by
+	// a write timeout: the hardened server leaves streaming responses unbounded.
+	resp, err := http.Get("http://" + listener.Addr().String() + "/")
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("serve returned error: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("read stream body: %v", err)
+	}
+	if !strings.Contains(string(body), "data: first") || !strings.Contains(string(body), "data: second") {
+		t.Fatalf("stream body = %q, want both events", body)
+	}
+}
+
 func TestServeOpensBrowserWhenForced(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

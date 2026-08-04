@@ -47,7 +47,7 @@ model service.
 | `internal/sandbox/sandbox_test.go` | Sandbox `BwrapIsUsable`, `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not usable) |
 | `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, etc. | Runner service, run config, run loop, batch runs, broadcasts |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
-| `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior |
+| `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior, HTTP connection timeouts (stalled-header conn reaping, streaming exempt from write deadlines) |
 
 ## Browser tests (chromedp)
 
