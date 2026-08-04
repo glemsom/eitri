@@ -5,7 +5,7 @@
 
 ## Overview
 
-Eitri is a self-hosted, single-binary AI coding agent for Linux. It launches an HTTP server with an HTMX-based chat UI for Chrome on Linux. A browser profile can keep up to 10 in-memory chat sessions via top-bar tabs. Shell commands execute via `os/exec.Command` inside an optional bubblewrap sandbox (read-only root, writable workspace and /tmp) for defense-in-depth. Falls back to direct execution when bwrap is unavailable or sandbox is disabled. No tmux dependency.
+Eitri is a self-hosted, single-binary AI coding agent for Linux. It launches an HTTP server with an HTMX-based chat UI for Chrome on Linux. A browser profile can keep up to 10 in-memory chat sessions via a four-panel sidebar. Shell commands execute via `os/exec.Command` inside an optional bubblewrap sandbox (read-only root, writable workspace and /tmp) for defense-in-depth. Falls back to direct execution when bwrap is unavailable or sandbox is disabled. No tmux dependency.
 
 ```mermaid
 flowchart LR
@@ -27,6 +27,7 @@ flowchart LR
         Persist["persist/ (session snapshots, traces)"]
         Compactor["compactor/ (message compaction)"]
         Compress["compress/ (pattern compression)"]
+        Msg["message/ (shared message types)"]
         Persona["persona/ (named system prompts)"]
         Report["report/ (session reports)"]
         Tokenizer["tokenizer/ (token estimation + calibration)"]
@@ -44,6 +45,7 @@ flowchart LR
     RunSvc --> UISess
     RunSvc --> Provider
     RunSvc --> Tools
+    RunSvc --> Msg
     Tools --> Sandbox
     Tools --> Compress
 ```
@@ -71,7 +73,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | `session.go` | `SessionManager` — per-chat LLM conversation history with sliding window cap |
 | `session_test.go` | Unit tests for session lifecycle, history, sliding window |
 
-Stores per-session LLM message history with configurable exchange cap. System prompt stored separately and prepended on reads. Used by `runner` loop to load history before each agent turn. Lost on server restart.
+Stores per-session LLM message history with configurable exchange cap. System prompt stored separately and prepended on reads. Used by `runner` loop to load history before each agent turn. Histories are restored on startup from persisted snapshots via `RestoreHistory`, so they survive server restarts.
 
 ### `internal/fileutil/` — File path validation and operations
 
@@ -109,9 +111,11 @@ Provides `WrapCommand(workspace, command, Config)` which returns the executable,
 
 | File | Responsibility |
 |------|---------------|
-| `runstate.go` | `State` — subscriber fan-out, event history, text buffer, `SSEEvent`, `TokenUsage` types |
-| `compute_context.go` | `ComputeContext()` — estimate token breakdown (system/prompt/history/skill/completion) for a message list |
+| `runstate.go` | `State` — subscriber fan-out, event history, text buffer, `SSEEvent`, `TokenUsage` types; `ComputeContext()` / `EstimateUsage()` — token estimation |
+| `timeline.go` | `TimelineEvent`, `TerminationReason` — condensed per-event timeline entries persisted for session reports |
 | `runstate_test.go` | Tests for SSE broadcast and context computation |
+| `compute_context_test.go` | Tests for token estimation |
+| `timeline_test.go` | Tests for timeline serialization |
 
 Network-agnostic: manages channels, not HTTP connections. Each active runner run creates one `State` via `runstate.New()`. The runner broadcasts `SSEEvent` values; `api.Server` connects subscribers to SSE HTTP streams.
 
@@ -139,7 +143,7 @@ Replaces inline `UISession` map in early `api.Server`. Server-owned canonical se
 
 | File | Responsibility |
 |------|---------------|
-| `dump.go` | `WriteCrashDump()` — writes structured crash dump to `~/.eitri/dumps/` |
+| `dump.go` | `WriteCrashDump()` — writes structured crash dump to `~/.eitri/crash-dump/` |
 | `recorder.go` | `Recorder` — ring buffer of HTTP request/response traces for diagnostics |
 | `log_handler.go` | `RingBufferHandler` — circular log buffer for crash dump capture |
 | `doc.go` | Package documentation |
@@ -154,6 +158,10 @@ Replaces inline `UISession` map in early `api.Server`. Server-owned canonical se
 | `handlers_sessions.go` | Session CRUD, rename, close |
 | `handlers_skills.go` | Skills list, diagnostics |
 | `handlers_confirm.go` | Confirmation approval/denial endpoints |
+| `handlers_compact.go` | Conversation compaction endpoint |
+| `handlers_personas.go` | Persona list/set endpoints |
+| `handlers_report.go` | Session report generation endpoint |
+| `handlers_report_page.go` | Session Report page renderer |
 | `handlers_workspace.go` | Workspace file browser |
 | `handlers_browse_directory.go` | Directory listing with breadcrumbs |
 | `copilot_device_flow.go` | GitHub Copilot device-flow UI handler |
@@ -162,6 +170,7 @@ Replaces inline `UISession` map in early `api.Server`. Server-owned canonical se
 | `markdown_enhance.go` | Custom AST transformers and renderer enhancements |
 | `markdown_math.go` | LaTeX math block rendering (KaTeX integration) |
 | `markdown_code.go` | Code block rendering (syntax highlighting via Prism.js) |
+| `render_helpers.go` | Shared message-rendering helpers (mermaid detection, component rendering) |
 | `templates/` | Templ source files (`.templ` → Go via `templ generate`) |
 | `assets/` | Pinned frontend assets served from `embed.FS` (HTMX, Prism, KaTeX, Mermaid, and stylesheet assets) |
 
@@ -176,6 +185,10 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `session_tabs.templ` | `SessionTabs` — session list with title, status dot, close button, and new-session button in header |
 | `settings.templ` | `SettingsView` — config form, provider + model selectors, custom system prompt |
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
+| `sessions.templ` | `SessionsPage` — full sessions management page (active + persisted on disk) |
+| `personas.templ` | `PersonaList` — persona selector cards |
+| `report.templ` | Session report view (per-turn breakdowns) |
+| `screenshot_display.templ` | `ScreenshotDisplay` — browser screenshot `<img>` block with caption |
 | `message_input.templ` | `MessageInput` — textarea with skill `/` and file `@` completion |
 | `chat_bubble.templ` | User/assistant message bubbles |
 | `error_toast.templ` | Error banner, auto-dismiss |
@@ -216,20 +229,22 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 |------|---------------|
 | `service.go` | `RunService` — run lifecycle, confirmation handling, SSE broadcast bridge, auth persist callbacks |
 | `run.go` | `StartRun()` — validates config, snapshot runtime limits, builds LLM service, resolves skill context, builds tool registry (including `skill`, `delegate`, `collect`, `render_quick_replies`), starts agent loop |
-| `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills |
+| `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` |
 | `skill_context.go` | `resolveSessionSkillContext()` — re-resolves active skill names against current registry |
 | `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()` |
 | `subagent_store.go` | Thread-safe sub-agent task storage and cancellation |
-| `run_tracker.go` | Tracks active `RunState` records per session |
+| `context_files.go` | `ScanContextFiles()` — scans workspace for `AGENTS.md` and linked context files loaded into the prompt |
+| `model_api.go` | `resolveModelAPI()` — resolves the GitHub Copilot model API endpoint |
+| `repo_instructions.go` | `readRepositoryInstructions()` — reads workspace `AGENTS.md` into `<repository_instructions>` tags (capped at 4 KB) |
 | `runconfig.go` | `RunConfig` — runtime configuration snapshot from config + workspace |
 | `broadcast.go` | `Broadcaster` — fan-out event distribution used by runner |
 | `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer` |
-| `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `stream.go`, `tool_call.go`, `debug.go`) + `adapters.go` (confirmation seam: `ConfirmationFunc`, `NewFuncConfirmer`) |
+| `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `tool_call.go`, `debug.go`) + `adapters.go` (confirmation seam: `ConfirmationFunc`, `NewFuncConfirmer`). Streaming (ChatStream consumption) lives in `loop.go` |
 
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
 1. Validates config, snapshots runtime limits (`max_turns`, `context_window_tokens`)
 2. Resolves skill context from session's active skills
-3. Calls `buildLLMService()` → resolves auth, creates `llm.LLMService`, builds base tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`)
+3. Calls `buildLLMService()` → resolves auth, creates a `*litellm.Client` via `provider.NewLitellmClient`, builds base tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`)
 4. Registers parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
 5. Creates `runstate.State` for SSE broadcast
 6. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
@@ -249,6 +264,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 | `render_mermaid_diagram.go` | `RenderMermaidDiagram` — emit mermaid diagram data for server-side rendering |
 | `render_quick_replies.go` | `RenderQuickReplies` — emit suggestion chips for UI |
 | `web_fetch.go` | `WebFetchTool` — fetch a web page and convert to Markdown |
+| `browser.go` | `BrowserTool` (`NativeBrowserTool`) — control a remote Chrome via CDP (`list_targets`, `navigate`, `get_dom`, `click`, `type`, `screenshot`, `new_tab`, `close_tab`, `select`, `get_value`) |
 | `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
 | `delegate.go` | `DelegateTool` — spawn a sub-agent in the background, returns task_id immediately |
 | `collect.go` | `CollectTool` — block until sub-agent tasks complete, returns structured JSON results |
@@ -267,7 +283,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 - No cross-turn shell state — agent must use `&&` chains or explicit env vars
 
 **Tool registration** happens in two places:
-- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`
+- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`
 - `startRunWithConfig()` in `internal/runner/run.go` adds parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
 
 Sub-agents only receive the base registry (no delegate/collect/render_quick_replies/skill).
@@ -292,7 +308,7 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 - Templ renders pages, fragments, and rich UI components.
 - HTMX handles forms, navigation, partial updates, OOB swaps, indicators, and transitions.
 - DOM is base UI state.
-- Browser islands own only ephemeral widget state: stream buffer, completion menu, copy toggles, rendered-library lifecycle, diff view mode.
+- Browser islands own only ephemeral widget state: stream buffer, completion menu, copy toggles, rendered-library lifecycle, sidebar resizing.
 - No island owns canonical app state or global store.
 
 **Island lifecycle**:
@@ -302,11 +318,17 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 - Tolerate missing Prism/KaTeX/Mermaid.
 - Use text nodes or server-rendered sanitized HTML for untrusted content; never `innerHTML` from user/LLM data.
 
-**Key islands** (scripts in `internal/api/assets/`):
+**Islands** (scripts in `internal/api/assets/`, loaded via `base.templ`):
 - `eitri-stream`: opens `/api/sessions/{id}/stream` only after chat POST trigger; parses JSON envelopes; batches display-only tokens; handles run phases, no-dead-air, reconnect state, cancellation UI, render endpoint dispatch, and final Markdown render by `message_id`.
 - `eitri-composer`: owns textarea keyboard behavior and `/` skill + `@` file completion menu state; calls JSON completion endpoints with debounce/sequence checks; preserves HTMX chat submit as authoritative transport.
 - `eitri-context`: reads `context_update` SSE events, renders per-category progress bars (system/prompt/history/skill/completion) against context window cap, persists state across session switches via `sessionStorage`, toggles expanded/collapsed view.
-- `eitri-code-block`, `eitri-mermaid`, `eitri-diff-card`: local widget behavior for copy/wrap/show-all, Mermaid rendering, and diff view toggles.
+- `eitri-events`: browser-level event stream for real-time session status updates.
+- `eitri-mermaid`: idempotent Mermaid diagram initialization on page load and HTMX swaps.
+- `eitri-persona-selector`: persona selector dropdown behavior.
+- `eitri-renderers`: code-block, Prism, and KaTeX hooks; runs on load and after HTMX swaps.
+- `eitri-resize`: sidebar drag-to-resize.
+- `eitri-session-rename`: inline session title editing.
+- `eitri-settings`: settings-page interactivity (dirty guards, model refresh, test connection).
 
 **Asset strategy**: `internal/api/assets/` contains pinned vendor assets served from `embed.FS` to avoid CDN availability, offline, and privacy failure modes. Do not use CDN or npm/bundler.
 
@@ -319,7 +341,7 @@ sequenceDiagram
     participant Browser as Browser (HTMX)
     participant API as api.Server
     participant RunSvc as runner.RunService
-    participant LLM as llm.LLMService
+    participant LLM as litellm.Client
     participant Skills as skills.Service
     participant Tool as tool/
 
@@ -430,6 +452,7 @@ eitri/
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history
+│   ├── message/               # Shared message types (EitriMessage/Message)
 │   ├── persist/               # Session snapshots, history, traces on disk
 │   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams
@@ -444,14 +467,15 @@ eitri/
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
 │   ├── tokenizer/             # Token estimation and calibration
-│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, skill, delegate, collect)
+│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, browser, render, skill, delegate, collect)
 ├── scripts/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── TESTING.md
+│   ├── debug-api.md
 │   ├── adr/
 │   ├── agents/
-│   └── providers/
+│   └── research/
 ├── CONTEXT.md
 ├── AGENTS.md
 ├── go.mod / go.sum
@@ -469,4 +493,4 @@ ADR index lives in [CONTEXT.md](../CONTEXT.md#architecture-decisions).
 
 ## Runtime configuration
 
-Config file (`~/.eitri/config.json`), listen address (`--listen` flag, default `127.0.0.1:8080`), and environment variable overrides are defined in `internal/config/manager.go`. Batch mode supports headless execution via `-b` flag (see `docs/agents/batch.md`).
+Config file (`~/.eitri/config.json`), listen address (`EITRI_ADDR` env var, default `127.0.0.1:8080`), and environment variable overrides are defined in `internal/config/manager.go`. Batch mode supports headless execution via `-b` flag (see `docs/agents/batch.md`).
