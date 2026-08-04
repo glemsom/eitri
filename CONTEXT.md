@@ -1,6 +1,6 @@
 # Eitri — Context
 
-Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith who forged Mjölnir. V1 runs from the user's chosen workspace (process CWD), serves a Chrome-on-Linux browser UI, and supports OpenCode Go, GitHub Copilot, and OpenRouter via litellm-backed LLM transport.
+Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith who forged Mjölnir. V1 runs from the user's chosen workspace (process CWD), serves a Chrome-on-Linux browser UI, and supports OpenCode Go, GitHub Copilot, and Custom OpenAI via litellm-backed LLM transport.
 
 ## Domain glossary
 
@@ -9,8 +9,8 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Agent** | Synchronous turn loop that drives LLM → tool call → tool result → LLM until done or max turns. Lives in a single goroutine; SSE events fan out to UI concurrently. |
 | **Session Report** | A structured, human-readable retrospective of one complete agent session, showing the full conversation transcript, tool calls (with arguments and results), tool failures, timing per LLM call, and token utilization. Produced from persisted snapshots, history, traces, and SSE event timeline. |
 | **Session** | Single in-memory chat conversation. Has unique ID, message/render history, and active-run state. Lives only in memory — not restored from disk on startup. A new session is created by clicking the + button in the sidebar. The session cap (default 10) limits only the number of concurrent in-memory instances. |
-| **Tool** | Capability agent can invoke (`bash`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, `render_quick_replies`, `skill`, `browser`). Defined as Go structs with `JSONSchema()` methods; dispatched by name in the agent loop. |
-| **Render component** | A browser-visible UI element (tool card, DiffCard, Mermaid diagram, QuickReplies chips) rendered by the server as a Templ fragment and swapped into the DOM via HTMX. Each component is triggered by an SSE `component` event, not by tool return text. |
+| **Tool** | Capability agent can invoke (`bash`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, `render_quick_replies`, `skill`, `browser`, `delegate`, `collect`). `delegate` and `collect` are parent-only tools — sub-agents cannot spawn further sub-agents. Defined as Go structs with `JSONSchema()` methods; dispatched by name in the agent loop. |
+| **Render component** | A browser-visible UI element (tool card, Mermaid diagram, QuickReplies chips) rendered by the server as a Templ fragment and swapped into the DOM via HTMX. Each component is triggered by an SSE `component` event, not by tool return text. |
 | **Tool card** | A `<details>` element showing tool progress (running with timer) and final result (collapsible output). Emitted by `tool_call` and `tool_result` SSE events. |
 | **Provider** | External LLM service integration that owns authentication, model discovery, endpoint selection, and chat transport. Eitri's auth/discovery/profile layer configures litellm Provider adapters underneath. A Provider exposes one or more Models. |
 | **Provider endpoint** | Base URL used to reach a Provider for model discovery and chat. Built-in Providers have default endpoints; Custom OpenAI requires a user-entered endpoint. |
@@ -19,9 +19,9 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | **Child session** | A `UISession` with a `ParentID` field, created when a browser-visible parent delegates to a sub-agent. Appears nested under the parent in the sidebar tree. |
 | **Skill** | Agent Skills-compatible directory containing `SKILL.md` instructions and optional `scripts/`, `references/`, and `assets/`. Discovered from fixed project/user roots and activated per session. |
 | **Bash tool** | Executes shell commands via `os/exec.Command`. Commands run inside a bubblewrap sandbox (defense-in-depth) with read-only root, writable workspace and /tmp. Falls back to direct execution when bwrap is unavailable or profile is "none". Proper stdout/stderr separation, exit code handling. Per-command timeout configurable via `command_timeout`. |
-| **Compactor** | The `internal/compactor/` package that scans conversation history for oversized messages and replaces them with LLM-generated summaries. Controlled by `compaction_size_threshold` config (default 2000 estimated tokens). Compacted non-tool messages are tagged with `[MESSAGE COMPACTED]` prefix to prevent re-compaction. Runs automatically after each turn and on demand via `CompactSession`. |
+| **Compactor** | The `internal/compactor/` package that scans conversation history for oversized messages and replaces them with LLM-generated summaries. Individual messages are gated by `compaction_message_size_threshold` (default 2000 estimated tokens); compaction runs when the context window crosses `compaction_threshold_percent` (high-water mark) and stops once below `compaction_low_water_percent`. Compaction is salience-aware (`compaction_salience_enabled`): messages are scored by heuristic importance and the least important ones are compacted first. Compacted non-tool messages are tagged with `[MESSAGE COMPACTED]` prefix to prevent re-compaction. Runs automatically after each turn and on demand via `CompactSession`. |
 | **Pattern compression** | Deterministic, zero-LLM compression of bash tool output by matching the command name (`ls`, `find`, `grep`, `rg`) against command-specific pattern compressors. Outputs are regrouped and summarized (group by directory, truncate per-group entries, add counts). Guaranteed to never inflate tokens. The raw original is preserved in `RawBlocks` for snapshots and debugging. |
-| **Model** | LLM accessible via a litellm-backed Provider adapter. OpenCode Go models route by prefix (qwen*/minimax* → Anthropic /v1/messages, rest → OpenAI /chat/completions). GitHub Copilot and OpenRouter use dedicated adapters. Configured via Settings or `~/.eitri/config.json`. |
+| **Model** | LLM accessible via a litellm-backed Provider adapter. OpenCode Go models route by prefix (qwen*/minimax* → Anthropic /v1/messages, rest → OpenAI /chat/completions). GitHub Copilot and Custom OpenAI use dedicated adapters. Configured via Settings or `~/.eitri/config.json`. |
 | **Unverified model** | Model selected in Settings whose availability has not yet been checked against the current draft Provider endpoint and credentials. Save or Test Connection must verify it before use. |
 | **HTML-over-wire shell** | Go/Templ/HTMX-rendered application frame and fragments. Server owns canonical UI state and rendering. |
 | **Browser island** | Isolated client-side behavior attached to server-rendered markup; owns only local ephemeral UI state. |
@@ -80,6 +80,7 @@ eitri/
 │   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
 │   ├── fileutil/              # File path validation and I/O operations
 │   ├── history/               # LLM conversation history (per-session sliding window)
+│   ├── message/               # Message/EitriMessage types — conversation message model shared across packages
 │   ├── persist/               # Session snapshots, conversation history, HTTP traces on disk
 │   ├── persona/               # Persona (named system prompt) management
 │   ├── provider/              # Provider profiles + auth seams
@@ -91,7 +92,7 @@ eitri/
 │   ├── session/               # UI session management (in-memory, browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
 │   ├── tokenizer/             # Token estimation and calibration (chars-per-token EMA)
-│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, skill, delegate, collect)
+│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, browser, skill, delegate, collect)
 ├── scripts/                   # Install script, release tools
 ├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
 ├── docs/TESTING.md            # Test runbook
