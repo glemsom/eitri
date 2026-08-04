@@ -21,7 +21,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 - **Agent Skills** — modular skill packs that extend the agent's capabilities per-project (like Agent Skills for GitHub Copilot).
 - **Sub-agents** — the agent can delegate sub-tasks to subordinate agents via `delegate`/`collect` tools for parallel exploration.
 - **Chat UI** — HTMX-based browser UI with SSE streaming, Mermaid diagram rendering, file diffs, and a live context panel.
-- **Session persistence** — conversations survive server restarts; snapshots written after every agent turn and restored on startup.
+- **Session persistence** — snapshots written to disk after every agent turn; LLM conversation histories and HTTP traces are restored on startup, and full sessions can be brought back on demand via `POST /api/sessions/{id}/load`.
 - **Headless batch mode** — `eitri -b "your prompt"` runs the agent from the terminal without a browser, streaming output to stdout.
 - **Self-hosted** — your data stays on your machine. No third-party cloud.
 
@@ -141,7 +141,7 @@ by default. The sandbox can be configured via the settings UI or directly in `~/
 |----------|---------|
 | `EITRI_ADDR` | Listen address (default `127.0.0.1:8080`) |
 | `EITRI_CONFIG` | Path to config file (default `~/.eitri/config.json`) |
-| `EITRI_WORKSPACE` | Workspace directory (default current working directory) |
+| `EITRI_DIR` | Root directory for persisted data — session snapshots, conversation histories, and HTTP traces (default `~/.eitri/`) |
 | `EITRI_OPEN_BROWSER` | `1` to force open browser, `0` to disable, unset for auto-detect |
 | `EITRI_GITHUB_CLIENT_ID` | Override the built-in GitHub Copilot OAuth client ID |
 

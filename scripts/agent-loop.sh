@@ -67,7 +67,7 @@ Step 1:
 - [ ] Create a branch for the implementation
 - [ ] Implement the work described in the GitHub issue using the \`tdd\` skill if possible
 - [ ] Update any relevant documentation
-- [ ] Run \`make test\` in a subagent (Instruct the subagent to fix any issues in the tests)
+- [ ] Run \`make test\` and fix any issues found.
 - [ ] Commit and push changes to git
 - [ ] Create a GitHub pull request, ensure to link it to the GitHub issue we worked on
 
