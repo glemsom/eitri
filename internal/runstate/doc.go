@@ -11,6 +11,17 @@
 // Writer provides typed helpers (Token, ToolCall, ToolResult, Component, etc.)
 // that compose SSEEvent structs and broadcast them via State.
 //
+// Token and ThinkingDelta are batched server-side: consecutive deltas
+// accumulate and are flushed as a single event on a short interval (~50ms)
+// or a character budget (4096 chars), so the client receives the same text
+// with far fewer SSE frames. Batches flush early on type/turn changes,
+// non-token events, Subscribe, and stream close, preserving event order.
+//
+// Run-state event history is bounded: a max event count and a max byte budget
+// for high-volume token/thinking content. Oldest content is dropped first, so
+// a subscriber connecting mid-run or on reconnect replays the recent tail
+// instead of the entire run, keeping long streaming runs memory-bounded.
+//
 // ComputeContext estimates token counts for the current conversation using a
 // configurable chars-per-token ratio (from CalibrationStore, default 4.0),
 // broken down by category (system, skill, history).

@@ -462,7 +462,11 @@ func fakeThinkingChatServer(t *testing.T) *httptest.Server {
 // sidebar thinking panel (#thinking-panel .thinking-content) via thinking_delta
 // SSE events — the path that used to do a full textContent rewrite + scroll
 // reflow per delta (O(n²), freezing the main thread on long reasoning).
-func fakeReasoningStreamChatServer(t *testing.T, nDeltas int) *httptest.Server {
+// fakeReasoningStreamChatServer streams a sequence of reasoning_content deltas.
+// perChunkDelay paces the deltas so they span multiple server-side batch flush
+// intervals (and multiple SSE frames), mimicking a real streaming reasoning
+// model. A perChunkDelay of 0 bursts all deltas as fast as possible.
+func fakeReasoningStreamChatServer(t *testing.T, nDeltas int, perChunkDelay time.Duration) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -487,6 +491,13 @@ func fakeReasoningStreamChatServer(t *testing.T, nDeltas int) *httptest.Server {
 				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"reasoning_content":"tok%d "},"finish_reason":null}]}`+"\n\n", now, i)
 				if i%50 == 49 {
 					flusher.Flush()
+				}
+				if perChunkDelay > 0 {
+					select {
+					case <-r.Context().Done():
+						return
+					case <-time.After(perChunkDelay):
+					}
 				}
 			}
 			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)

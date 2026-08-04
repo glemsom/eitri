@@ -49,6 +49,35 @@ type TokenUsage struct {
 	CompletionTokens int `json:"completion_tokens"`
 }
 
+// Token batching and history bounds. High-volume stream content (token and
+// thinking_delta deltas) is accumulated server-side and flushed as a single
+// SSE event on a short interval or character budget, so the client receives
+// the same complete text with far fewer network frames.
+const (
+	// tokenFlushInterval is the maximum time batched token/thinking_delta
+	// content is held before being flushed to subscribers as one event.
+	tokenFlushInterval = 50 * time.Millisecond
+	// tokenFlushBudget is the character budget at which a pending batch is
+	// flushed immediately, even before the interval elapses.
+	tokenFlushBudget = 4096
+	// maxHistoryEvents caps the number of events retained in run-state history.
+	maxHistoryEvents = 4096
+	// maxHistoryBytes caps the total content bytes of high-volume (token and
+	// thinking_delta) events retained in run-state history. Keeps replay and
+	// diagnostics memory-bounded for long reasoning streams while preserving
+	// all semantic events (tool calls, results, context updates).
+	maxHistoryBytes = 1 << 20 // 1 MiB
+)
+
+// tokenBatch accumulates consecutive same-type stream content (token or
+// thinking_delta) until a flush interval, character budget, or an interleaving
+// non-batched event forces delivery.
+type tokenBatch struct {
+	typ     string
+	content strings.Builder
+	turn    int
+}
+
 // State tracks one active assistant run per session.
 // Owns subscriber fan-out, event history, and text buffer.
 type State struct {
@@ -58,6 +87,7 @@ type State struct {
 	nextSubscriber  uint64
 	streamsClosed   bool
 	history         []SSEEvent
+	historyBytes    int
 	subscriberCount uint64
 	replayCount     uint64
 
@@ -66,6 +96,13 @@ type State struct {
 
 	reasoningMu sync.Mutex
 	reasoning   strings.Builder
+
+	// Token/thinking_delta batching. The pending batch and flush timer are
+	// guarded by mu (the same lock that protects subscribers/history), so a
+	// batch flush and an interleaving Broadcast are atomic relative to each
+	// other and event ordering is exact.
+	batch      *tokenBatch
+	batchTimer *time.Timer
 }
 
 // New creates a new State ready for use.
@@ -141,7 +178,12 @@ func (s *State) AppendReasoningBuffer(text string) {
 // Subscribe allocates a subscriber channel and replays history.
 // Returns subscriberID, receive-only channel, and whether the stream is still open.
 // If streams are already closed, the channel carries history (if any) and is closed.
+//
+// Any pending batched token/thinking_delta content is flushed first so a late
+// subscriber receives the most recent text before live events.
 func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
+	s.flushBatch()
+
 	s.mu.Lock()
 
 	history := append([]SSEEvent(nil), s.history...)
@@ -200,18 +242,106 @@ func (s *State) Unsubscribe(id uint64) {
 
 // Broadcast sends an event to all current subscribers and appends it to history.
 // No-op after CloseStreams is called.
+//
+// Token and thinking_delta events normally flow through Writer.Token and
+// Writer.ThinkingDelta, which batch them server-side. A direct Broadcast of
+// those types is delivered immediately. Any other event type first flushes
+// pending batched content under the same lock, so event ordering between
+// batched stream text and interleaving events is exact.
 func (s *State) Broadcast(evt SSEEvent) {
-	subscribers := s.broadcastPrepare()
-	if subscribers == nil {
+	s.mu.Lock()
+	if evt.Type != "token" && evt.Type != "thinking_delta" {
+		s.flushBatchLocked()
+	}
+	s.broadcastLocked(evt)
+	s.mu.Unlock()
+}
+
+// broadcastLocked appends evt to history and sends it to all current
+// subscribers. Must be called with s.mu held.
+func (s *State) broadcastLocked(evt SSEEvent) {
+	if s.streamsClosed {
 		return
 	}
 	evt.Timestamp = time.Now()
-	s.history = append(s.history, evt)
-	s.mu.Unlock()
-
+	s.appendHistory(evt)
+	subscribers := make([]*subscriber, 0, len(s.subscribers))
+	for _, sub := range s.subscribers {
+		subscribers = append(subscribers, sub)
+	}
 	for _, sub := range subscribers {
 		sub.send(evt)
 	}
+}
+
+// flushBatchLocked flushes any pending batched content as part of the current
+// operation, so the batched text is appended before an interleaving event.
+// Must be called with s.mu held.
+func (s *State) flushBatchLocked() {
+	b := s.swapBatchLocked()
+	if b == nil {
+		return
+	}
+	s.broadcastLocked(SSEEvent{Type: b.typ, Content: b.content.String(), Turn: b.turn})
+}
+
+// Flush delivers any pending batched token/thinking_delta content to
+// subscribers and history immediately. Idempotent.
+func (s *State) Flush() {
+	s.flushBatch()
+}
+
+// addBatch accumulates token (or thinking_delta) content for batched delivery.
+// A pending batch is flushed early when the character budget is reached, when
+// the event type or turn changes, or by the flush timer.
+func (s *State) addBatch(typ, content string, turn int) {
+	if content == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// A type or turn change flushes the pending batch first so events keep
+	// their original order and carry the correct turn number.
+	if s.batch != nil && (s.batch.typ != typ || s.batch.turn != turn) {
+		s.flushBatchLocked()
+	}
+	if s.batch == nil {
+		s.batch = &tokenBatch{typ: typ, turn: turn}
+	}
+	s.batch.content.WriteString(content)
+	if s.batch.content.Len() >= tokenFlushBudget {
+		s.flushBatchLocked()
+		return
+	}
+	if s.batchTimer == nil {
+		s.batchTimer = time.AfterFunc(tokenFlushInterval, s.flushTimerTick)
+	}
+}
+
+// flushTimerTick is the timer callback for batched delivery.
+func (s *State) flushTimerTick() {
+	s.flushBatch()
+}
+
+// swapBatchLocked removes and returns the pending batch, stopping its timer.
+// Must be called with s.mu held.
+func (s *State) swapBatchLocked() *tokenBatch {
+	b := s.batch
+	s.batch = nil
+	if s.batchTimer != nil {
+		s.batchTimer.Stop()
+		s.batchTimer = nil
+	}
+	return b
+}
+
+// flushBatch swaps out any pending batch and broadcasts it. Safe to call from
+// Subscribe, History, the flush timer, and closeStreams. Broadcast uses
+// flushBatchLocked instead so ordering with interleaving events is exact.
+func (s *State) flushBatch() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.flushBatchLocked()
 }
 
 // BroadcastDone sends a done event with kind "markdown", closes all subscriber streams, and marks the state as closed.
@@ -236,11 +366,61 @@ func (s *State) Closed() bool {
 	return s.streamsClosed
 }
 
-// History returns a copy of all broadcast events.
+// History returns a copy of all broadcast events. Pending batched
+// token/thinking_delta content is flushed first so the returned history is
+// complete up to the call.
 func (s *State) History() []SSEEvent {
+	s.flushBatch()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]SSEEvent(nil), s.history...)
+}
+
+// appendHistory appends an event to the run-state history and enforces the
+// history bounds (event count and high-volume content byte budget). Must be
+// called with s.mu held.
+func (s *State) appendHistory(evt SSEEvent) {
+	s.history = append(s.history, evt)
+	if isHighVolumeEvent(evt) {
+		s.historyBytes += len(evt.Content)
+	}
+	s.trimHistory()
+}
+
+// trimHistory enforces the run-state history bounds: a maximum event count and
+// a maximum total byte budget for high-volume token/thinking content. Oldest
+// events are dropped first, so replay-on-reconnect delivers the recent tail
+// while keeping memory bounded for long reasoning streams. Semantic events
+// (tool calls, results, context updates) are preserved wherever possible.
+func (s *State) trimHistory() {
+	for len(s.history) > maxHistoryEvents {
+		dropped := s.history[0]
+		s.history = s.history[1:]
+		if isHighVolumeEvent(dropped) {
+			s.historyBytes -= len(dropped.Content)
+		}
+	}
+	for s.historyBytes > maxHistoryBytes {
+		idx := -1
+		for i, evt := range s.history {
+			if isHighVolumeEvent(evt) {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			break
+		}
+		dropped := s.history[idx]
+		s.history = append(s.history[:idx], s.history[idx+1:]...)
+		s.historyBytes -= len(dropped.Content)
+	}
+}
+
+// isHighVolumeEvent reports whether an event type carries per-stream text that
+// is batched server-side and bounded in history.
+func isHighVolumeEvent(evt SSEEvent) bool {
+	return evt.Type == "token" || evt.Type == "thinking_delta"
 }
 
 // SubscriberCount returns the number of distinct subscribers that have connected.
@@ -257,22 +437,11 @@ func (s *State) ReplayCount() uint64 {
 	return s.replayCount
 }
 
-// broadcastPrepare locks the mutex and returns the subscriber list.
-// Returns nil if streams are closed. Caller must Unlock after use.
-func (s *State) broadcastPrepare() []*subscriber {
-	s.mu.Lock()
-	if s.streamsClosed {
-		s.mu.Unlock()
-		return nil
-	}
-	subscribers := make([]*subscriber, 0, len(s.subscribers))
-	for _, sub := range s.subscribers {
-		subscribers = append(subscribers, sub)
-	}
-	return subscribers
-}
-
 func (s *State) closeStreams(evt *SSEEvent) {
+	// Flush any pending batched content so subscribers receive the final text
+	// before the closing event and channel teardown.
+	s.flushBatch()
+
 	s.mu.Lock()
 	if s.streamsClosed {
 		s.mu.Unlock()
@@ -280,7 +449,7 @@ func (s *State) closeStreams(evt *SSEEvent) {
 	}
 	if evt != nil {
 		evt.Timestamp = time.Now()
-		s.history = append(s.history, *evt)
+		s.appendHistory(*evt)
 	}
 	s.streamsClosed = true
 	subscribers := make([]*subscriber, 0, len(s.subscribers))
@@ -319,10 +488,12 @@ func (w *Writer) SetTurn(turn int) {
 	w.currentTurn = turn
 }
 
-// Token sends a text token event and appends to the text buffer.
+// Token appends to the text buffer and batches a text token event for
+// server-side delivery. The client receives the same complete text in far
+// fewer network frames (see State.addBatch).
 func (w *Writer) Token(content string) {
 	w.state.AppendBuffer(content)
-	w.state.Broadcast(SSEEvent{Type: "token", Content: content, Turn: w.currentTurn})
+	w.state.addBatch("token", content, w.currentTurn)
 }
 
 // ToolCall sends a tool call event with kind "tool_card".
@@ -368,11 +539,11 @@ func (w *Writer) Error(msg string) {
 	w.state.BroadcastError(msg)
 }
 
-// ThinkingDelta broadcasts a thinking_delta SSE event with reasoning content
-// and appends to the reasoning buffer for persistence across session switches.
+// ThinkingDelta appends to the reasoning buffer and batches a thinking_delta
+// SSE event with reasoning content for server-side delivery.
 func (w *Writer) ThinkingDelta(content string) {
 	w.state.AppendReasoningBuffer(content)
-	w.state.Broadcast(SSEEvent{Type: "thinking_delta", Content: content, Turn: w.currentTurn})
+	w.state.addBatch("thinking_delta", content, w.currentTurn)
 }
 
 // ContextUpdate holds estimated token counts broken down by category.
