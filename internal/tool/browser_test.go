@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
@@ -95,7 +96,7 @@ func TestBrowser_SchemaHasActionParam(t *testing.T) {
 	}
 }
 
-func TestBrowser_SchemaArgsIsObject(t *testing.T) {
+func TestBrowser_SchemaArgsDiscriminatedUnion(t *testing.T) {
 	t.Parallel()
 	schema := NewBrowserTool("ws://test", "/tmp").JSONSchema()
 	var schemaObj map[string]any
@@ -114,16 +115,82 @@ func TestBrowser_SchemaArgsIsObject(t *testing.T) {
 	if !ok {
 		t.Fatal("args property is not a map")
 	}
-	if argsMap["type"] != "object" {
-		t.Errorf("args type = %v, want 'object'", argsMap["type"])
+	// args must be a discriminated union of per-action typed schemas, not a
+	// free-form blob: no type/additionalProperties, and a oneOf per action.
+	if _, hasType := argsMap["type"]; hasType {
+		t.Error("args should not have a 'type' (it is a oneOf union, not an object blob)")
 	}
-	// Should NOT have items (json.RawMessage is not an array)
 	if _, hasItems := argsMap["items"]; hasItems {
-		t.Error("args should not have 'items' property (json.RawMessage is not an array)")
+		t.Error("args should not have 'items' property")
 	}
-	// Should have additionalProperties
-	if argsMap["additionalProperties"] != true {
-		t.Error("args should have additionalProperties: true")
+	if _, hasAdditionalProps := argsMap["additionalProperties"]; hasAdditionalProps {
+		t.Error("args should not have additionalProperties (free-form blob is gone)")
+	}
+
+	oneOf, ok := argsMap["oneOf"].([]any)
+	if !ok {
+		t.Fatal("args should have a 'oneOf' discriminated union")
+	}
+	if len(oneOf) != len(browserActions) {
+		t.Errorf("len(args oneOf) = %d, want %d (one branch per action)", len(oneOf), len(browserActions))
+	}
+
+	// Each branch is a typed object schema with the action's required params.
+	type branchCheck struct {
+		required []string
+	}
+	// Map from oneOf index to the expected required params, in browserActions order.
+	want := []branchCheck{
+		{nil},                                        // list_targets: no args
+		{[]string{"target_id", "url"}},               // navigate
+		{[]string{"target_id"}},                      // get_dom (selector optional)
+		{[]string{"target_id", "selector"}},          // click
+		{[]string{"target_id", "selector", "text"}},  // type
+		{[]string{"target_id"}},                      // screenshot
+		{nil},                                        // new_tab: no args
+		{[]string{"target_id"}},                      // close_tab
+		{[]string{"target_id", "selector", "value"}}, // select
+		{[]string{"target_id", "selector"}},          // get_value
+	}
+	if len(want) != len(browserActions) {
+		t.Fatalf("test table has %d entries, want %d", len(want), len(browserActions))
+	}
+	for i, branch := range oneOf {
+		branchMap, ok := branch.(map[string]any)
+		if !ok {
+			t.Fatalf("oneOf[%d] is not an object schema", i)
+		}
+		if branchMap["type"] != "object" {
+			t.Errorf("oneOf[%d] (%s) type = %v, want 'object'", i, browserActions[i], branchMap["type"])
+		}
+		if _, ok := branchMap["additionalProperties"]; ok {
+			t.Errorf("oneOf[%d] (%s) should not set additionalProperties (plain per-action object schema)", i, browserActions[i])
+		}
+		required, _ := branchMap["required"].([]any)
+		if len(required) != len(want[i].required) {
+			t.Errorf("oneOf[%d] (%s) required = %v, want %v", i, browserActions[i], required, want[i].required)
+			continue
+		}
+		for _, wantReq := range want[i].required {
+			found := false
+			for _, gotReq := range required {
+				if gotReq == wantReq {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("oneOf[%d] (%s) required missing %q (got %v)", i, browserActions[i], wantReq, required)
+			}
+		}
+	}
+}
+
+func TestBrowser_SchemaArgsBlobDescriptionGone(t *testing.T) {
+	t.Parallel()
+	schema := NewBrowserTool("ws://test", "/tmp").JSONSchema()
+	if bytes.Contains(schema, []byte("Action-specific JSON parameters")) {
+		t.Error("schema still contains the old free-form args blob description")
 	}
 }
 

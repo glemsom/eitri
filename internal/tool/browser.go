@@ -21,10 +21,29 @@ import (
 	"github.com/voocel/litellm"
 )
 
-// browserArgs defines the JSON schema for the browser tool.
+// browserArgs is the on-wire envelope for the browser tool. The schema exposed
+// to the model is a discriminated union built by buildBrowserSchema, so the
+// action-specific parameters (the args blob) are typed per action rather than
+// a free-form object.
 type browserArgs struct {
-	Action string          `json:"action" jsonschema:"Action to perform on the browser (list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value)" jsonschema_enum:"list_targets|navigate|get_dom|click|type|screenshot|new_tab|close_tab|select|get_value"`
-	Args   json.RawMessage `json:"args,omitempty" jsonschema:"Action-specific JSON parameters. For type: {target_id, selector, text}; navigate: {target_id, url, timeout?}; click: {target_id, selector}; get_dom: {target_id, selector?}; screenshot: {target_id}. new_tab takes no args. close_tab: {target_id}. select: {target_id, selector, value}. get_value: {target_id, selector}. The selector field is called 'selector', not 'query'."`
+	Action string          `json:"action"`
+	Args   json.RawMessage `json:"args,omitempty"`
+}
+
+// browserActions is the canonical list of valid browser tool actions, in
+// dispatch order. It feeds both the schema's action enum and the args
+// discriminated union.
+var browserActions = []string{
+	"list_targets",
+	"navigate",
+	"get_dom",
+	"click",
+	"type",
+	"screenshot",
+	"new_tab",
+	"close_tab",
+	"select",
+	"get_value",
 }
 
 // navigateArgs defines the JSON schema for the navigate action.
@@ -80,6 +99,70 @@ type getValueArgs struct {
 	Selector string `json:"selector" jsonschema:"CSS selector for the element to read the value of"`
 }
 
+// listTargetsArgs is the schema for the list_targets action, which takes no
+// arguments. It exists so every action has a typed schema entry in the args
+// discriminated union; an empty object schema accepts the empty/missing args
+// the action already tolerates.
+type listTargetsArgs struct{}
+
+// actionSchema returns the typed object schema for a single browser action
+// from its args struct, for use as one branch of the args discriminated union.
+func actionSchema[T any]() JSONSchema {
+	var js JSONSchema
+	if err := json.Unmarshal(SchemaOf[T](), &js); err != nil {
+		// SchemaOf is compile-time typed; this only fails on a builder bug.
+		panic(fmt.Sprintf("browser: parse action schema: %v", err))
+	}
+	return js
+}
+
+// buildBrowserSchema builds the model-facing schema for the browser tool.
+//
+// Instead of exposing a free-form args blob, each browser action gets its own
+// typed object schema: the args property is a discriminated union (oneOf) whose
+// branches carry the exact required parameters for each action, and the action
+// property is an enum of the valid actions. The on-wire envelope
+// {"action": ..., "args": {...}} is unchanged.
+func buildBrowserSchema() (litellm.Schema, error) {
+	argsDesc := "Action-specific parameters. The required fields depend on 'action' — each action has its own typed schema: " +
+		"list_targets (none), navigate {target_id, url, timeout?}, get_dom {target_id, selector?}, click {target_id, selector}, " +
+		"type {target_id, selector, text}, screenshot {target_id}, new_tab (none), close_tab {target_id}, select {target_id, selector, value}, " +
+		"get_value {target_id, selector}. The selector field is called 'selector', not 'query'."
+
+	schema := JSONSchema{
+		Type: "object",
+		Properties: map[string]SchemaProp{
+			"action": {
+				Type:        "string",
+				Description: "Action to perform on the browser",
+				Enum:        browserActions,
+			},
+			"args": {
+				Description: argsDesc,
+				OneOf: []JSONSchema{
+					actionSchema[listTargetsArgs](),
+					actionSchema[navigateArgs](),
+					actionSchema[getDOMArgs](),
+					actionSchema[clickArgs](),
+					actionSchema[typeArgs](),
+					actionSchema[screenshotArgs](),
+					actionSchema[newTabArgs](),
+					actionSchema[closeTabArgs](),
+					actionSchema[selectArgs](),
+					actionSchema[getValueArgs](),
+				},
+			},
+		},
+		Required: []string{"action"},
+	}
+
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("browser: marshal schema: %w", err)
+	}
+	return litellm.Schema(raw), nil
+}
+
 // domElement represents a single DOM element in the structural summary.
 type domElement struct {
 	Type        string `json:"type"`
@@ -132,13 +215,18 @@ type NativeBrowserTool struct {
 // workspace is the workspace root directory where screenshot files are saved.
 // If wsURL is empty, the tool returns a descriptive error asking the user to configure it.
 func NewBrowserTool(wsURL, workspace string) *NativeBrowserTool {
+	schema, err := buildBrowserSchema()
+	if err != nil {
+		// Schema construction is fully deterministic; only fails on a bug.
+		panic(err)
+	}
 	return &NativeBrowserTool{
 		conns:         make(map[string]remoteConnection),
 		targets:       make(map[string]map[string]*targetContext),
 		wsURL:         wsURL,
 		workspace:     workspace,
 		actionTimeout: 30 * time.Second,
-		schema:        SchemaOf[browserArgs](),
+		schema:        schema,
 	}
 }
 
@@ -148,7 +236,7 @@ func (t *NativeBrowserTool) Name() string {
 
 func (t *NativeBrowserTool) Description() string {
 	return "Control a remote Chrome browser via CDP. " +
-		"Supports actions: list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value. " +
+		"Supports actions: " + strings.Join(browserActions, ", ") + ". " +
 		"Requires a configured browser_ws_url (remote Chrome DevTools Protocol WebSocket endpoint)."
 }
 
@@ -163,7 +251,7 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	}
 
 	if parsed.Action == "" {
-		return ToolError(TextBlocks("Error: 'action' is required (list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value)")), nil
+		return ToolError(TextBlocks("Error: 'action' is required (" + strings.Join(browserActions, ", ") + ")")), nil
 	}
 
 	// Check WS URL is configured
@@ -205,7 +293,7 @@ func (t *NativeBrowserTool) Call(ctx context.Context, args json.RawMessage) (Too
 	case "get_value":
 		return t.getValue(allocCtx, sessionID, parsed.Args)
 	default:
-		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: list_targets, navigate, get_dom, click, type, screenshot, new_tab, close_tab, select, get_value", parsed.Action))), nil
+		return ToolError(TextBlocks(fmt.Sprintf("Error: unknown action %q. Valid actions: %s", parsed.Action, strings.Join(browserActions, ", ")))), nil
 	}
 }
 
@@ -509,18 +597,6 @@ func (t *NativeBrowserTool) typeText(allocCtx context.Context, sessionID string,
 		return ToolError(TextBlocks("Error: 'target_id' is required for type action")), nil
 	}
 
-	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
-	if args.Selector == "" {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(rawArgs, &raw); err == nil {
-			if q, ok := raw["query"]; ok && len(q) > 0 {
-				var qs string
-				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
-					args.Selector = qs
-				}
-			}
-		}
-	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for type action")), nil
 	}
@@ -563,18 +639,6 @@ func (t *NativeBrowserTool) click(allocCtx context.Context, sessionID string, ra
 		return ToolError(TextBlocks("Error: 'target_id' is required for click action")), nil
 	}
 
-	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
-	if args.Selector == "" {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(rawArgs, &raw); err == nil {
-			if q, ok := raw["query"]; ok && len(q) > 0 {
-				var qs string
-				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
-					args.Selector = qs
-				}
-			}
-		}
-	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for click action")), nil
 	}
@@ -752,18 +816,6 @@ func (t *NativeBrowserTool) selectOption(allocCtx context.Context, sessionID str
 		return ToolError(TextBlocks("Error: 'target_id' is required for select action")), nil
 	}
 
-	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
-	if args.Selector == "" {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(rawArgs, &raw); err == nil {
-			if q, ok := raw["query"]; ok && len(q) > 0 {
-				var qs string
-				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
-					args.Selector = qs
-				}
-			}
-		}
-	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for select action")), nil
 	}
@@ -811,18 +863,6 @@ func (t *NativeBrowserTool) getValue(allocCtx context.Context, sessionID string,
 		return ToolError(TextBlocks("Error: 'target_id' is required for get_value action")), nil
 	}
 
-	// Fallback: if Selector is empty, try the "query" key (common LLM mistake)
-	if args.Selector == "" {
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(rawArgs, &raw); err == nil {
-			if q, ok := raw["query"]; ok && len(q) > 0 {
-				var qs string
-				if err := json.Unmarshal(q, &qs); err == nil && qs != "" {
-					args.Selector = qs
-				}
-			}
-		}
-	}
 	if args.Selector == "" {
 		return ToolError(TextBlocks("Error: 'selector' is required for get_value action")), nil
 	}

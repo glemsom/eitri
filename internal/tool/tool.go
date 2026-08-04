@@ -29,7 +29,7 @@ type ToolHandler interface {
 
 // JSONSchema is a strongly-typed JSON Schema object builder.
 type JSONSchema struct {
-	Type                 string                `json:"type"`
+	Type                 string                `json:"type,omitempty"`
 	Properties           map[string]SchemaProp `json:"properties,omitempty"`
 	Required             []string              `json:"required,omitempty"`
 	AdditionalProperties *bool                 `json:"additionalProperties,omitempty"`
@@ -39,15 +39,16 @@ type JSONSchema struct {
 
 // SchemaProp represents a single JSON Schema property.
 type SchemaProp struct {
-	Type                 string      `json:"type"`
-	Description          string      `json:"description,omitempty"`
-	Items                *SchemaProp `json:"items,omitempty"`
-	AdditionalProperties *bool       `json:"additionalProperties,omitempty"`
-	Enum                 []string    `json:"enum,omitempty"`
-	Minimum              *float64    `json:"minimum,omitempty"`
-	Maximum              *float64    `json:"maximum,omitempty"`
-	MinItems             *int        `json:"minItems,omitempty"`
-	MaxItems             *int        `json:"maxItems,omitempty"`
+	Type                 string       `json:"type,omitempty"`
+	Description          string       `json:"description,omitempty"`
+	Items                *SchemaProp  `json:"items,omitempty"`
+	AdditionalProperties *bool        `json:"additionalProperties,omitempty"`
+	Enum                 []string     `json:"enum,omitempty"`
+	Minimum              *float64     `json:"minimum,omitempty"`
+	Maximum              *float64     `json:"maximum,omitempty"`
+	MinItems             *int         `json:"minItems,omitempty"`
+	MaxItems             *int         `json:"maxItems,omitempty"`
+	OneOf                []JSONSchema `json:"oneOf,omitempty"`
 }
 
 // fieldOptions carries the constraints derived from a field's jsonschema tag
@@ -78,6 +79,12 @@ type fieldOptions struct {
 //	jsonschema_min_items:"1"             minimum array length (slice fields)
 //	jsonschema_max_items:"5"             maximum array length (slice fields)
 //	jsonschema_item_description:"..."    description for each slice element
+//
+// Tools that need more than a single object type (e.g. a discriminated union
+// where one property selects between per-action argument schemas) can build the
+// schema with JSONSchema/SchemaProp directly: SchemaProp.OneOf holds the union
+// branches, so a property can be a oneOf of typed object schemas without a
+// free-form blob.
 func SchemaOf[T any]() litellm.Schema {
 	s, err := schemaOf(reflect.TypeFor[T]())
 	if err != nil {

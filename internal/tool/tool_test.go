@@ -586,3 +586,52 @@ func TestFieldSchema_ArrayConstraints(t *testing.T) {
 		t.Errorf("Items.Description = %q, want 'an item description'", sp.Items.Description)
 	}
 }
+
+func TestSchemaProp_OneOfRendersUnion(t *testing.T) {
+	schema := JSONSchema{
+		Type: "object",
+		Properties: map[string]SchemaProp{
+			"action": {Type: "string", Enum: []string{"a", "b"}},
+			"args": {
+				OneOf: []JSONSchema{
+					{Type: "object", Properties: map[string]SchemaProp{
+						"target_id": {Type: "string"},
+					}, Required: []string{"target_id"}},
+					{Type: "object"},
+				},
+			},
+		},
+		Required: []string{"action"},
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	props := parsed["properties"].(map[string]any)
+	argsProp := props["args"].(map[string]any)
+
+	oneOf, ok := argsProp["oneOf"].([]any)
+	if !ok {
+		t.Fatal("args.oneOf not found")
+	}
+	if len(oneOf) != 2 {
+		t.Fatalf("len(oneOf) = %d, want 2", len(oneOf))
+	}
+	first := oneOf[0].(map[string]any)
+	if first["type"] != "object" {
+		t.Errorf("oneOf[0].type = %v, want 'object'", first["type"])
+	}
+	req, _ := first["required"].([]any)
+	if len(req) != 1 || req[0] != "target_id" {
+		t.Errorf("oneOf[0].required = %v, want [target_id]", req)
+	}
+	second := oneOf[1].(map[string]any)
+	if _, hasProps := second["properties"]; hasProps {
+		t.Error("oneOf[1] should be a bare object schema")
+	}
+}
