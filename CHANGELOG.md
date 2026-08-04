@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix the gear/header (global nav) becoming unclickable while a blocked-read confirmation is pending mid-run: the full-screen confirmation overlay (z-index:1000) covered the header (z-index:100), freezing the UI during a running/streaming session. The header now stacks above the overlay so nav stays usable while a confirmation waits.
 
+### Documentation
+
+- **CONTEXT.md**: fix domain glossary and project structure drift — drop OpenRouter from supported providers, add `delegate`/`collect` to the Tool entry, correct the compactor config key names and note salience-aware compaction, drop removed DiffCard from Render component, and add `internal/message/` + `browser` tool to the project structure. (#960)
+
 ## [0.1.6] — 2026-07-29
 
 ### Added
