@@ -2,7 +2,10 @@ package runstate
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestWriter_ThinkingDelta(t *testing.T) {
@@ -19,6 +22,8 @@ func TestWriter_ThinkingDelta(t *testing.T) {
 
 	content := "Reasoning about the problem step by step..."
 	w.ThinkingDelta(content)
+	// Batching: flush so the queued thinking content is delivered.
+	state.Flush()
 
 	select {
 	case evt := <-ch:
@@ -53,19 +58,26 @@ func TestWriter_ThinkingDelta_MultipleDeltas(t *testing.T) {
 	for _, d := range deltas {
 		w.ThinkingDelta(d)
 	}
+	// Batching: flush so the queued thinking content is delivered.
+	state.Flush()
 
-	for i, want := range deltas {
-		select {
-		case evt := <-ch:
-			if evt.Type != "thinking_delta" {
-				t.Errorf("event %d: type = %q, want %q", i, evt.Type, "thinking_delta")
-			}
-			if evt.Content != want {
-				t.Errorf("event %d: content = %q, want %q", i, evt.Content, want)
-			}
-		default:
-			t.Fatalf("event %d: no event received", i)
+	// Batching coalesces consecutive thinking deltas into a single event with
+	// the concatenated content, delivered in order.
+	select {
+	case evt := <-ch:
+		if evt.Type != "thinking_delta" {
+			t.Errorf("event type = %q, want %q", evt.Type, "thinking_delta")
 		}
+		if want := "First reasoning step...Second reasoning step...Third reasoning step..."; evt.Content != want {
+			t.Errorf("content = %q, want %q", evt.Content, want)
+		}
+	default:
+		t.Fatal("no event received")
+	}
+	select {
+	case evt := <-ch:
+		t.Errorf("unexpected extra event: %+v", evt)
+	default:
 	}
 }
 
@@ -392,6 +404,8 @@ func TestWriter_Token_BroadcastsEvent(t *testing.T) {
 	}
 
 	w.Token("Hello, world!")
+	// Batching: flush so the queued token content is delivered.
+	state.Flush()
 
 	select {
 	case evt := <-ch:
@@ -448,6 +462,386 @@ func TestWriter_Token_HistoryReplayed(t *testing.T) {
 		}
 	default:
 		t.Fatal("no history event received after Subscribe")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Writer: token batching
+// ---------------------------------------------------------------------------
+
+func TestWriter_Token_Batching_CoalescesIntoOneEvent(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.Token("Hello ")
+	w.Token("world")
+	w.Token("!")
+
+	// Batching: flush so the queued content is delivered as one event.
+	state.Flush()
+
+	select {
+	case evt := <-ch:
+		if evt.Type != "token" {
+			t.Errorf("event type = %q, want %q", evt.Type, "token")
+		}
+		if evt.Content != "Hello world!" {
+			t.Errorf("event content = %q, want %q", evt.Content, "Hello world!")
+		}
+	default:
+		t.Fatal("no event received after Token")
+	}
+	select {
+	case evt := <-ch:
+		t.Errorf("unexpected extra event: %+v", evt)
+	default:
+	}
+}
+
+func TestWriter_Token_Batching_FlushesOnInterval(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.Token("streamed content")
+
+	// No explicit Flush: the flush interval timer must deliver the content.
+	deadline := time.After(time.Second)
+	select {
+	case evt := <-ch:
+		if evt.Type != "token" {
+			t.Errorf("event type = %q, want %q", evt.Type, "token")
+		}
+		if evt.Content != "streamed content" {
+			t.Errorf("event content = %q, want %q", evt.Content, "streamed content")
+		}
+	case <-deadline:
+		t.Fatal("token not delivered by flush interval")
+	}
+}
+
+func TestWriter_Token_Batching_FlushesBeforeNonTokenEvent(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.Token("partial text")
+	w.ToolCall("bash", nil)
+
+	// Batched token content must be delivered before the tool_call event.
+	first := <-ch
+	if first.Type != "token" {
+		t.Errorf("first event type = %q, want %q (batched token flushed before tool_call)", first.Type, "token")
+	}
+	if first.Content != "partial text" {
+		t.Errorf("first event content = %q, want %q", first.Content, "partial text")
+	}
+	second := <-ch
+	if second.Type != "tool_call" {
+		t.Errorf("second event type = %q, want %q", second.Type, "tool_call")
+	}
+}
+
+func TestWriter_Token_Batching_TypeSwitchSeparatesThinkingAndContent(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.ThinkingDelta("reasoning...")
+	w.Token("answer.")
+	state.Flush()
+
+	first := <-ch
+	if first.Type != "thinking_delta" {
+		t.Errorf("first event type = %q, want %q", first.Type, "thinking_delta")
+	}
+	if first.Content != "reasoning..." {
+		t.Errorf("first event content = %q, want %q", first.Content, "reasoning...")
+	}
+	second := <-ch
+	if second.Type != "token" {
+		t.Errorf("second event type = %q, want %q", second.Type, "token")
+	}
+	if second.Content != "answer." {
+		t.Errorf("second event content = %q, want %q", second.Content, "answer.")
+	}
+}
+
+func TestWriter_Token_Batching_FlushesOnClose(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.Token("final text")
+	w.Done("msg-1", nil)
+
+	// The done event flushes pending batched content; subscribers must see
+	// the final token before the done event.
+	first := <-ch
+	if first.Type != "token" {
+		t.Errorf("first event type = %q, want %q", first.Type, "token")
+	}
+	if first.Content != "final text" {
+		t.Errorf("first event content = %q, want %q", first.Content, "final text")
+	}
+	second := <-ch
+	if second.Type != "done" {
+		t.Errorf("second event type = %q, want %q", second.Type, "done")
+	}
+	if _, open := <-ch; open {
+		t.Error("channel still open after done")
+	}
+}
+
+func TestState_Batch_OrderingWithInterleavedEvents(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	w.Token("a")
+	w.Token("b")
+	w.ToolCall("bash", nil)
+	w.Token("c")
+	w.Token("d")
+	w.ToolCall("read", nil)
+	w.Token("e")
+	w.Done("msg-1", nil)
+
+	wantTypes := []string{"token", "tool_call", "token", "tool_call", "token", "done"}
+	var got []string
+	for evt := range ch {
+		got = append(got, evt.Type)
+	}
+	if len(got) != len(wantTypes) {
+		t.Fatalf("event types = %v, want %v", got, wantTypes)
+	}
+	for i := range wantTypes {
+		if got[i] != wantTypes[i] {
+			t.Errorf("event %d type = %q, want %q (batched tokens must flush before interleaving events)", i, got[i], wantTypes[i])
+		}
+	}
+}
+
+// TestState_Batch_OrderingUnderConcurrentTimer exercises the race between the
+// flush-interval timer and interleaving broadcasts: token content written
+// before a tool_call must never arrive at subscribers after that tool_call,
+// even when the timer splits batches concurrently.
+func TestState_Batch_OrderingUnderConcurrentTimer(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	const (
+		iterations = 25
+		perIter    = 8
+	)
+	go func() {
+		defer w.Done("msg", nil)
+		for i := 0; i < iterations; i++ {
+			for j := 0; j < perIter; j++ {
+				w.Token(fmt.Sprintf("i%02dj%d ", i, j))
+				// Pace writes so the 50ms flush timer fires mid-batch.
+				time.Sleep(2 * time.Millisecond)
+			}
+			w.ToolCall("bash", map[string]any{"i": i})
+		}
+	}()
+
+	// parts tracks, per iteration, how many token parts have been received.
+	parts := make([]int, iterations)
+	deadline := time.After(30 * time.Second)
+	for {
+		select {
+		case evt, ok := <-ch:
+			if !ok {
+				t.Fatal("stream closed before done event")
+			}
+			switch evt.Type {
+			case "token":
+				re := regexp.MustCompile(`i(\d+)j(\d+)`)
+				for _, m := range re.FindAllStringSubmatch(evt.Content, -1) {
+					var i, j int
+					fmt.Sscanf(m[1], "%d", &i)
+					fmt.Sscanf(m[2], "%d", &j)
+					if i < 0 || i >= iterations {
+						t.Fatalf("unexpected iteration index %d in %q", i, evt.Content)
+					}
+					parts[i]++
+				}
+			case "tool_call":
+				var i int
+				if data, ok := evt.Args.(map[string]any); ok {
+					if fi, ok := data["i"].(float64); ok {
+						i = int(fi)
+					}
+				}
+				for k := 0; k <= i; k++ {
+					if parts[k] < perIter {
+						t.Fatalf("tool_call for iteration %d arrived before all %d tokens of iteration %d (got %d)", i, perIter, k, parts[k])
+					}
+				}
+			case "done":
+				for k := 0; k < iterations; k++ {
+					if parts[k] != perIter {
+						t.Fatalf("done arrived with iteration %d at %d/%d parts", k, parts[k], perIter)
+					}
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for stream")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// State: bounded history
+// ---------------------------------------------------------------------------
+
+func TestState_History_BoundedByEventCount(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	for i := 0; i < maxHistoryEvents+100; i++ {
+		state.Broadcast(SSEEvent{Type: "tool_call", Tool: fmt.Sprintf("tool-%d", i)})
+	}
+
+	history := state.History()
+	if len(history) > maxHistoryEvents {
+		t.Errorf("history length = %d, want <= %d", len(history), maxHistoryEvents)
+	}
+	// The tail (newest events) must be retained, in order.
+	if len(history) > 0 {
+		last := history[len(history)-1]
+		want := "tool-" + fmt.Sprint(maxHistoryEvents+99)
+		if last.Tool != want {
+			t.Errorf("last history event tool = %q, want %q", last.Tool, want)
+		}
+	}
+}
+
+func TestState_History_BoundedByBytes(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	big := strings.Repeat("x", 8192)
+	for i := 0; i < 300; i++ {
+		state.Broadcast(SSEEvent{Type: "token", Content: big})
+	}
+
+	history := state.History()
+	total := 0
+	for _, evt := range history {
+		if evt.Type == "token" {
+			total += len(evt.Content)
+		}
+	}
+	if total > maxHistoryBytes {
+		t.Errorf("history token content bytes = %d, want <= %d", total, maxHistoryBytes)
+	}
+	if total == 300*len(big) {
+		t.Errorf("history retained all %d token events; expected the byte budget to trim old content", len(history))
+	}
+}
+
+func TestState_Subscribe_LateSubscriberGetsRecentTailInOrder(t *testing.T) {
+	t.Parallel()
+
+	state := New()
+	w := NewWriter(state)
+
+	// Broadcast enough content to exceed the history byte budget so the full
+	// run can no longer fit — a mid-run subscriber must get only the tail.
+	const totalEvents = 300
+	for i := 0; i < totalEvents; i++ {
+		w.Token(fmt.Sprintf("token-%03d-", i) + strings.Repeat("y", 4096))
+		state.Flush()
+	}
+
+	_, ch, ok := state.Subscribe()
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+
+	// Read a handful of replayed events and assert they arrive in order with
+	// no gaps (contiguous tail of the original sequence).
+	var received []string
+	deadline := time.After(2 * time.Second)
+	for len(received) < 8 {
+		select {
+		case evt := <-ch:
+			if evt.Type != "token" {
+				t.Errorf("replayed event type = %q, want %q", evt.Type, "token")
+			}
+			received = append(received, evt.Content)
+		case <-deadline:
+			t.Fatalf("timed out waiting for replayed events, got %d", len(received))
+		}
+	}
+
+	var prev int
+	for i, content := range received {
+		var n int
+		if _, err := fmt.Sscanf(content, "token-%d-", &n); err != nil {
+			t.Fatalf("unexpected content %q", content)
+		}
+		if i > 0 && n != prev+1 {
+			t.Errorf("replayed sequence gap: event %d = %d, previous = %d", i, n, prev)
+		}
+		prev = n
+	}
+
+	// The subscriber must not receive the whole run — the byte-bounded history
+	// drops the oldest content so the tail fits.
+	history := state.History()
+	if len(history) >= totalEvents {
+		t.Errorf("history retained %d of %d events; expected bounding to trim the oldest", len(history), totalEvents)
+	}
+	if got, want := len(history[0].Content), len("token-000-")+4096; got != want {
+		t.Errorf("replayed event content length = %d, want %d", got, want)
 	}
 }
 
@@ -1090,6 +1484,8 @@ func TestState_Unsubscribe_DoesNotAffectOtherSubscribers(t *testing.T) {
 	// ch2 should still be open
 	w := NewWriter(state)
 	w.Token("hello")
+	// Batching: flush so the queued token content is delivered.
+	state.Flush()
 
 	select {
 	case evt := <-ch2:
@@ -1552,7 +1948,6 @@ func TestFormatErrorMessage_HTMLError(t *testing.T) {
 		t.Errorf("FormatErrorMessage() = %q, want %q", msg, want)
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // MaxTurnsMessage

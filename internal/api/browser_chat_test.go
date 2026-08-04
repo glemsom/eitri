@@ -1947,11 +1947,13 @@ func TestBrowser_ThinkingRendering(t *testing.T) {
 //
 // Regression guard: for a many-chunk stream the panel must be built from
 // multiple incremental text nodes (old code produced exactly one giant
-// text-node rewrite regardless of chunk count).
+// text-node rewrite regardless of chunk count). Deltas are paced at 10ms so
+// the stream spans multiple server-side batch-flush intervals and arrives as
+// several SSE events rather than one coalesced burst.
 func TestBrowser_LiveThinkingPanelStreaming(t *testing.T) {
 	const nDeltas = 300
 	server := newTestServerWithRuns(t)
-	configureProvider(t, server, fakeReasoningStreamChatServer(t, nDeltas).URL)
+	configureProvider(t, server, fakeReasoningStreamChatServer(t, nDeltas, 10*time.Millisecond).URL)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
