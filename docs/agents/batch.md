@@ -57,6 +57,5 @@ This is designed for AFK (away-from-keyboard) batch processing of fully specifie
 
 | Code | Meaning                                      |
 |------|----------------------------------------------|
-| 0    | Success — agent loop completed               |
-| 1    | Config load failure, auth failure, or run error |
-| ≥2   | Unexpected runtime error or context cancelled |
+| 0    | Success — agent loop completed, or the run was cancelled via context |
+| 1    | Any batch failure — config load failure, auth failure, or run error |
