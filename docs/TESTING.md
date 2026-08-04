@@ -42,11 +42,10 @@ model service.
 | `internal/fileutil/path_test.go` | Path validation |
 | `internal/fileutil/filetools_test.go` | File operations |
 | `internal/api/render_helpers_test.go` | Render helpers (hasMermaidComponent, stripMermaidCodeBlocks, renderSessionForPage, renderComponentsToHTML) |
-| `internal/api/templates/helpers_test.go` | Template helpers (pathBase, scopeLabel, scopeIcon, statusDot, countLines) |
-| `internal/api/templates/diff_test.go` | Diff text helpers (diffText, splitLines, escapeDiff, countLines) |
+| `internal/api/templates/helpers_test.go` | Template helpers (pathBase, scopeLabel, scopeIcon, statusDot, GravatarURL, SandboxBadge) |
 | `internal/config/config_test.go` | Config load/save/merge, provider validation |
 | `internal/sandbox/sandbox_test.go` | Sandbox `BwrapIsUsable`, `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not usable) |
-| `internal/runner/manager_test.go` | Runner manager, cache keys |
+| `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, etc. | Runner service, run config, run loop, batch runs, broadcasts |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior |
 
@@ -80,6 +79,7 @@ All browser tests live across multiple files in `internal/api/`:
 | `browser_settings_test.go` | Settings page, provider config, model discovery |
 | `browser_skills_test.go` | Skills UI, activation, diagnostics |
 | `browser_workspace_test.go` | Workspace directory browser |
+| `browser_stream_responsiveness_test.go` | Main-thread responsiveness during large reasoning streams |
 
 Browser tests are **not** gated behind a build tag. Chrome-not-found skips at
 runtime with `t.Skip`.
