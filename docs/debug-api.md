@@ -191,6 +191,7 @@ Each trace record:
 | `request_body` | string | Truncated request JSON body (max 256KB) |
 | `response_bytes` | int | Response body byte count |
 | `response_body` | string | Truncated response JSON body (max 256KB) |
+| `response_headers` | object | Provider response headers (map of header name to value arrays, e.g. `x-request-id` for provider-side correlation). Omitted when empty. |
 | `error` | string | Error message if the request failed |
 
 Request and response bodies are diagnostic data. They may contain conversation
@@ -272,7 +273,8 @@ Browser / curl        api.Server
 ```
 
 The debug handler assembles the response inline by reading from each data
-source. There is no persistence layer — data is in-memory and lost on restart.
+source. Traces and run timelines are also persisted to disk and restored on
+startup (see [Persistence](#persistence)).
 
 ## HTTP Trace Recording
 
@@ -293,6 +295,33 @@ buffer without consuming the original stream.
 
 Recorder does not record static assets, browser UI requests, or any
 non-LLM-provider HTTP traffic.
+
+### Last failing trace
+
+The recorder keeps a dedicated slot for the most recent non-2xx (or errored)
+trace — a response with a status outside 2xx, or a transport-level error. This
+trace is never evicted by the ring buffer, so the last failure is always
+available even when the ring buffer has rotated past it. Crash dumps include it
+as `failing_http_trace` (see crash dumps under the Eitri data directory).
+
+### Persistence
+
+Traces and run timelines are not limited to the in-memory ring buffer:
+
+- **Traces** are written to
+  `<data-dir>/sessions/<session_id>/traces/<trace_id>.json` on completion and
+  are restored into the recorder on startup, so previously recorded traces
+  remain queryable after a restart.
+- **Run timelines** are written to
+  `<data-dir>/sessions/<session_id>/timeline/<started_at>.json` at the end of
+  each run (one condensed timeline file per run).
+- Traces of permanently deleted sessions are not recreated — `SaveTrace` skips
+  sessions whose `session.json` has been removed.
+- The on-disk archive is bounded by a 1 GiB retention cap; the oldest timeline
+  and trace files are pruned when the total exceeds the cap.
+
+`<data-dir>` defaults to `~/.eitri` and can be overridden with the `EITRI_DIR`
+environment variable.
 
 ## Common Investigation Recipes
 
@@ -366,8 +395,10 @@ curl -sS "$BASE/api/debug/http" \
 
 ## Limitations (v1)
 
-- Traces are in-memory only — lost on server restart.
-- No persistent event log or session timeline beyond message history.
+- Traces and run timelines are persisted to disk (bounded by the 1 GiB
+  retention cap; see [Persistence](#persistence)) but the debug API itself has
+  no query surface over the historical archive — only the restored in-memory
+  recorder contents are exposed.
 - No deep debug toggle (always captures at full available detail).
 - No rewind or other state-mutation endpoints.
 - No pprof endpoints.
