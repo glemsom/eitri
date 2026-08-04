@@ -541,6 +541,125 @@ func TestWebFetch_HTTPServerError(t *testing.T) {
 	}
 }
 
+func TestWebFetch_OversizedBodyStopsReading(t *testing.T) {
+	t.Parallel()
+	// An endless, never-ending body. If web_fetch read the response body
+	// unbounded, this call would hang until the client timeout; with a bounded
+	// read it must stop cleanly at the cap and return truncated content.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("response writer is not an http.Flusher")
+			return
+		}
+		for {
+			if _, err := fmt.Fprint(w, "<p>endless content</p>"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`","timeout":5}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("result.IsError = true, want false for oversized body: %q", textOf(t, result))
+	}
+	if len(result.Blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(tb.Text, "truncated at 32 KiB") {
+		t.Errorf("output missing truncation marker, length=%d", len(tb.Text))
+	}
+	if len(tb.Text) > 40*1024 {
+		t.Errorf("output too long: %d bytes, want <= ~40 KiB", len(tb.Text))
+	}
+}
+
+func TestWebFetch_RedirectLimit(t *testing.T) {
+	t.Parallel()
+	// Redirect loop: the client must stop following redirects at the cap and
+	// report a clear error instead of looping forever.
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`","timeout":5}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("result.IsError = false, want true for redirect loop")
+	}
+	if len(result.Blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(tb.Text, "redirect") {
+		t.Errorf("error output should mention redirects, got: %q", tb.Text)
+	}
+}
+
+func TestWebFetch_RedirectFollowed(t *testing.T) {
+	t.Parallel()
+	// A single redirect within the limit must still be followed transparently.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/final", http.StatusFound)
+	})
+	mux.HandleFunc("/final", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `<html><head><title>Final Page</title></head><body><h1>Redirected</h1><p>Landed here.</p></body></html>`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tool := NewWebFetchTool()
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`/start"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("result.IsError = true, want false after a single redirect")
+	}
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block type = %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(tb.Text, "Final Page") {
+		t.Errorf("output missing redirected page title: %q", tb.Text)
+	}
+	if !strings.Contains(tb.Text, "# Redirected") {
+		t.Errorf("output missing redirected page content: %q", tb.Text)
+	}
+}
+
+// textOf returns the text of the first block of a result for test diagnostics.
+func textOf(t *testing.T, result ToolResult) string {
+	t.Helper()
+	if len(result.Blocks) == 0 {
+		return ""
+	}
+	tb, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		return fmt.Sprintf("<non-text block %T>", result.Blocks[0])
+	}
+	return tb.Text
+}
+
 // --- htmlToMarkdown unit tests ---
 
 func TestHTMLToMarkdown_Headings(t *testing.T) {

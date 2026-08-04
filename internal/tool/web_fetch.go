@@ -51,6 +51,12 @@ func (t *WebFetchTool) JSONSchema() litellm.Schema {
 const (
 	// contentCap is the maximum size of extracted Markdown content (32 KiB).
 	contentCap = 32 * 1024
+	// bodyCap is the maximum number of bytes read from the response body.
+	// It is larger than contentCap so the 32 KiB truncation path stays
+	// meaningful for oversized pages before the read is stopped.
+	bodyCap = contentCap + 64*1024
+	// maxRedirects is the maximum number of HTTP redirects followed.
+	maxRedirects = 10
 	// truncationMsg is appended when content is truncated.
 	truncationMsg = "\n\n[Content truncated at 32 KiB — use a more specific URL or section]"
 )
@@ -85,6 +91,14 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) (ToolResu
 	}
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
+		// Bound the number of redirects so a redirect loop fails with a clear
+		// error instead of being followed indefinitely.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxRedirects)
+			}
+			return nil
+		},
 		Transport: &http.Transport{
 			Proxy: proxyFromEnv,
 		},
@@ -96,7 +110,9 @@ func (t *WebFetchTool) Call(ctx context.Context, args json.RawMessage) (ToolResu
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Read the body with a hard cap so a huge or hostile page can't be pulled
+	// into memory unbounded; the read simply stops at the cap.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, bodyCap))
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: reading response body: %v", err))), nil
 	}

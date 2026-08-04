@@ -16,11 +16,13 @@ Add a built-in `web_fetch` tool in `internal/tool/web_fetch.go`:
 1. **Single URL fetch** — accepts one `url` param. No batching.
 2. **Semantic HTML extraction** — uses `goquery` to strip chrome (nav, footer, aside, script, style), extract title, and convert body to Markdown preserving headings, code blocks, links, and lists.
 3. **32 KiB content cap** — prevents context-window blowup. Truncation marker appended when hit.
-4. **15s default timeout** — configurable per-call via `timeout` param. Short enough to not stall agent turn.
-5. **Plain HTTP** — no JS rendering. SPAs return minimal content. Acceptable trade-off for the initial scope.
-6. **Proxy support** — `httpproxy.FromEnvironment().ProxyFunc()` reads `HTTP_PROXY`/`HTTPS_PROXY` env vars fresh on each request (unlike `http.ProxyFromEnvironment` which caches at process startup).
-7. **No auth** — public URLs only.
-8. **No search** — user provides the URL.
+4. **Bounded body read** — the response body is read through `io.LimitReader` with a cap above the 32 KiB content cap, so a huge or hostile page is never read fully into memory; the read stops cleanly at the cap and truncation still applies meaningfully.
+5. **Redirect bound** — `http.Client.CheckRedirect` caps redirects (10), so a redirect loop fails with a clear error instead of being followed indefinitely.
+6. **15s default timeout** — configurable per-call via `timeout` param. Short enough to not stall agent turn.
+7. **Plain HTTP** — no JS rendering. SPAs return minimal content. Acceptable trade-off for the initial scope.
+8. **Proxy support** — `httpproxy.FromEnvironment().ProxyFunc()` reads `HTTP_PROXY`/`HTTPS_PROXY` env vars fresh on each request (unlike `http.ProxyFromEnvironment` which caches at process startup).
+9. **No auth** — public URLs only.
+10. **No search** — user provides the URL.
 
 ## Consequences
 
