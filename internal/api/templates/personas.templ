@@ -153,6 +153,13 @@ templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Sk
 
 // PersonaSelector renders a compact dropdown for the header that lists all
 // personas and allows switching the active persona.
+//
+// Accessibility (issue #1074): the trigger is a button that opens a
+// single-select listbox (WAI-ARIA listbox pattern with a roving tabindex).
+// It advertises the popup via aria-haspopup/aria-expanded/aria-controls;
+// each option exposes its selection state via aria-selected. Keyboard
+// behavior (arrow navigation, Enter/Space activation, Escape/Tab closing)
+// lives in eitri-persona-selector.js.
 templ PersonaSelector(personas []*persona.PersonaDefinition, activePersona string) {
 	<div id="persona-selector" class="persona-selector">
 		<button
@@ -160,12 +167,13 @@ templ PersonaSelector(personas []*persona.PersonaDefinition, activePersona strin
 			class="persona-trigger"
 			aria-haspopup="listbox"
 			aria-expanded="false"
+			aria-controls="persona-listbox"
 			data-ps-target="trigger"
 		>
 			<span class="persona-trigger-label">{ activePersona }</span>
 			<span class="persona-chevron" data-ps-target="chevron">▾</span>
 		</button>
-		<div class="persona-dropdown" hidden role="listbox" data-ps-target="dropdown">
+		<div id="persona-listbox" class="persona-dropdown" hidden role="listbox" aria-label="Personas" data-ps-target="dropdown">
 			for _, p := range personas {
 				<button
 					type="button"

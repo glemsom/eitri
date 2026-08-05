@@ -394,7 +394,7 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 - `eitri-context`: reads `context_update` SSE events, renders per-category progress bars (system/prompt/history/skill/completion) against context window cap, persists state across session switches via `sessionStorage`, toggles expanded/collapsed view.
 - `eitri-events`: browser-level event stream for real-time session status updates.
 - `eitri-mermaid`: idempotent Mermaid diagram initialization on page load and HTMX swaps.
-- `eitri-persona-selector`: persona selector dropdown behavior.
+- `eitri-persona-selector`: persona selector dropdown behavior. The trigger is a button that opens a single-select listbox (WAI-ARIA listbox pattern, roving tabindex): ArrowUp/ArrowDown/Home/End navigate options, Enter/Space activate the focused option, Tab closes the widget, and Escape closes it and returns focus to the trigger; activating a persona hands focus back to the re-rendered trigger so keyboard users can keep operating the dropdown. The trigger advertises the popup via `aria-haspopup`/`aria-expanded`/`aria-controls`, and options expose their selection state via `aria-selected`. (issue #1074)
 - `eitri-renderers`: code-block, Prism, and KaTeX hooks; runs on load and after HTMX swaps.
 - `eitri-resize`: sidebar drag-to-resize.
 - `eitri-session-rename`: inline session title editing.

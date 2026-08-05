@@ -110,6 +110,7 @@ All browser tests live across multiple files in `internal/api/`:
 | `browser_workspace_test.go` | Workspace directory browser |
 | `browser_fonts_test.go` | No external font/CDN requests; fonts served from embedded `/static/fonts/*` |
 | `browser_stream_responsiveness_test.go` | Main-thread responsiveness during large reasoning streams |
+| `browser_persona_keyboard_test.go` | Persona dropdown keyboard accessibility (arrow navigation, Enter/Space activation, Escape focus return, ARIA wiring) |
 
 Browser tests are **not** gated behind a build tag. Chrome-not-found skips at
 runtime with `t.Skip`.
