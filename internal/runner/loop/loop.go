@@ -19,6 +19,7 @@ import (
 
 	"github.com/voocel/litellm"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -329,7 +330,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			if opts.TurnTimeout > 0 {
 				turnCtx, turnCancel = context.WithTimeout(ctx, opts.TurnTimeout)
 			}
-			stream, err := spec.Client.Stream(turnCtx, *litellmReq)
+			// Stamp the zero-based retry attempt onto the request context so the
+			// trace recorder can count retries per provider/model (issue #987).
+			attemptCtx := debug.WithAttempt(turnCtx, attempt)
+			stream, err := spec.Client.Stream(attemptCtx, *litellmReq)
 			if err == nil {
 				// Process stream events inline
 				content.Reset()

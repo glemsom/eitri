@@ -193,6 +193,11 @@ Each trace record:
 | `response_body` | string | Truncated response JSON body (max 256KB) |
 | `response_headers` | object | Provider response headers (map of header name to value arrays, e.g. `x-request-id` for provider-side correlation). Omitted when empty. |
 | `error` | string | Error message if the request failed |
+| `model` | string | Model name extracted from the request body |
+| `attempt` | int | Zero-based retry attempt number of this call (0 = initial call) |
+| `finish_reason` | string | Provider-reported finish reason (`stop`, `length`, `tool_calls`, …) |
+| `usage` | object | Provider-reported token usage: `prompt_tokens`, `completion_tokens`, `cache_read_tokens`, `cache_write_tokens`, `total_tokens`. Parsed from the response body; for streaming responses the usage is captured from the stream tail even when the body exceeds 256KB. |
+| `error_class` | string | Structured capture-time error classification: `rate_limit`, `timeout`, `auth`, `context_length`, `network`, or `other`. Empty on success. |
 
 Request and response bodies are diagnostic data. They may contain conversation
 content, tool results, and file contents the agent processed. Do not assume
@@ -255,6 +260,83 @@ Response fields:
 - `completed_run_retention_ms`: how long (ms) a completed run stays in the
   active map, allowing SSE subscribers to replay historical events. Omitted
   when no RunService is configured.
+
+### `GET /api/debug/metrics`
+
+Aggregate per-provider/per-model LLM health counters, accumulated by the trace
+recorder at capture time. This is the aggregate view of provider behaviour that
+the raw trace ring-buffer cannot provide: counters survive ring-buffer
+rotation, and error classes are classified once at capture time (from the HTTP
+status code and the error observed then) — never by scanning error text at
+display time. Batch (headless) runs and sub-agents feed the same counters as
+browser runs.
+
+```sh
+curl -sS "$BASE/api/debug/metrics" | jq .
+```
+
+Response shape:
+
+- `generated_at`: snapshot timestamp.
+- `total_calls`: total LLM calls recorded across all providers/models.
+- `total_errors`: total failed calls (non-2xx status or transport error).
+- `providers`: array of per-provider groups, sorted by `provider_id`. Each
+  entry has:
+  - `provider_id`: Eitri provider ID.
+  - `total_calls`: total calls for this provider.
+  - `models`: array of per-model aggregates, sorted by `model`. Each entry has:
+    - `model`: model name (from the request body).
+    - `calls`: total calls for this provider+model.
+    - `retries`: number of calls that were retry attempts (attempt > 0).
+    - `errors`: error counts by structured class: `rate_limit`, `timeout`,
+      `auth`, `context_length`, `network`, `other`. Every class key is always
+      present.
+    - `latency_ms`: latency histogram counts keyed by cumulative bucket label
+      (`le_100`, `le_250`, `le_500`, `le_1000`, `le_2500`, `le_5000`,
+      `le_10000`, `le_30000`, `inf`).
+    - `tokens`: provider-reported token totals: `prompt_tokens`,
+      `completion_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+      `total_tokens`.
+    - `cache`: cache hit/miss counts. A call counts as a hit when the
+      provider reported cached prompt tokens (`cache_read_tokens > 0`); a miss
+      when measured usage was reported with no cached tokens. Calls without
+      measured usage count toward neither.
+    - `last_called`: timestamp of the most recent call (omitted before any
+      call).
+    - `last_error`: error class of the most recent failed call (omitted when
+      none).
+
+Example:
+
+```json
+{
+  "generated_at": "2026-08-05T10:02:07Z",
+  "total_calls": 42,
+  "total_errors": 3,
+  "providers": [
+    {
+      "provider_id": "opencode_go",
+      "total_calls": 42,
+      "models": [
+        {
+          "model": "deepseek-v4-flash",
+          "calls": 42,
+          "retries": 5,
+          "errors": {"rate_limit": 1, "timeout": 1, "auth": 0, "context_length": 0, "network": 1, "other": 0},
+          "latency_ms": {"le_100": 2, "le_250": 9, "le_500": 15, "le_1000": 9, "le_2500": 4, "le_5000": 2, "le_10000": 0, "le_30000": 0, "inf": 1},
+          "tokens": {"prompt_tokens": 12450, "completion_tokens": 6230, "cache_read_tokens": 3100, "cache_write_tokens": 900, "total_tokens": 22680},
+          "cache": {"hits": 12, "misses": 27},
+          "last_called": "2026-08-05T10:02:07Z",
+          "last_error": "rate_limit"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Returns `404` when no debug recorder is enabled (mirroring the other trace
+endpoints).
 
 ## Data Flow
 

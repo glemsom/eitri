@@ -3,9 +3,12 @@ package debug
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -29,6 +32,17 @@ type HTTPTrace struct {
 	ResponseBody    string              `json:"response_body"`
 	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
 	Error           string              `json:"error,omitempty"`
+
+	// Enriched per-call measurements (issue #987). Model is extracted from
+	// the request body at capture time; Usage and FinishReason come from the
+	// response body (including the stream tail); Attempt is the zero-based
+	// retry attempt number threaded through the request context; ErrorClass
+	// is the structured capture-time classification of a failed call.
+	Model        string       `json:"model,omitempty"`
+	Attempt      int          `json:"attempt,omitempty"`
+	FinishReason string       `json:"finish_reason,omitempty"`
+	Usage        *UsageTotals `json:"usage,omitempty"`
+	ErrorClass   ErrorClass   `json:"error_class,omitempty"`
 }
 
 const (
@@ -54,6 +68,7 @@ type Recorder struct {
 	maxInFlight      int
 	nextID           uint64
 	lastFailingTrace *HTTPTrace // most recent non-2xx trace, never evicted
+	metrics          map[providerModelKey]*providerModelMetrics
 
 	// OnComplete, if non-nil, is called after every completed trace (from
 	// completeTrace or Record) with the fully populated trace. It is always
@@ -74,6 +89,7 @@ func NewRecorder(capacity int) *Recorder {
 		capacity:    capacity,
 		inFlight:    make(map[TraceID]*HTTPTrace),
 		maxInFlight: DefaultMaxInFlightTraces,
+		metrics:     make(map[providerModelKey]*providerModelMetrics),
 	}
 }
 
@@ -89,7 +105,7 @@ func (r *Recorder) nextTraceID() TraceID {
 // trace is evicted (fail-safe) so the map cannot grow without bound. The
 // evicted trace is moved to completed storage with an eviction marker and its
 // OnComplete fires after the lock is released.
-func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody []byte) TraceID {
+func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody []byte, attempt int) TraceID {
 	r.mu.Lock()
 
 	var evicted *HTTPTrace
@@ -110,6 +126,8 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 		Status:       0, // in-flight
 		RequestBytes: len(reqBody),
 		RequestBody:  string(truncated),
+		Model:        extractModel(reqBody),
+		Attempt:      attempt,
 	}
 
 	r.inFlight[id] = trace
@@ -123,9 +141,9 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 }
 
 // completeTrace moves an in-flight trace to completed storage.
-func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
+func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string) {
 	r.mu.Lock()
-	trace := r.finalizeLocked(id, respBody, status, duration, errMsg, respHeaders)
+	trace := r.finalizeLocked(id, respBody, status, duration, errMsg, respHeaders, usage, finishReason)
 	r.mu.Unlock()
 
 	// Fire OnComplete outside the recorder lock so persistence (disk I/O)
@@ -137,7 +155,7 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 
 // finalizeLocked moves an in-flight trace to completed storage and returns it,
 // or nil if the trace is unknown (e.g. already evicted). Assumes r.mu is held.
-func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) *HTTPTrace {
+func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string) *HTTPTrace {
 	trace, ok := r.inFlight[id]
 	if !ok {
 		return nil
@@ -147,10 +165,14 @@ func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, durat
 	trace.DurationMs = duration.Milliseconds()
 	trace.Error = errMsg
 	trace.ResponseHeaders = respHeaders
+	trace.Usage = usage
+	trace.FinishReason = finishReason
 
 	truncated := truncateBody(respBody)
 	trace.ResponseBytes = len(respBody)
 	trace.ResponseBody = string(truncated)
+
+	trace.ErrorClass = classifyTrace(status, errMsg, trace.ResponseBody)
 
 	delete(r.inFlight, id)
 
@@ -166,7 +188,79 @@ func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, durat
 		r.lastFailingTrace = &cp
 	}
 
+	r.aggregateLocked(trace)
+
 	return trace
+}
+
+// classifyTrace derives the capture-time error class for a finalized trace.
+// Successful calls (2xx, no transport error) get no class. The message comes
+// from the transport error string (transport failures) or the response body
+// (HTTP failures).
+func classifyTrace(status int, errMsg, respBody string) ErrorClass {
+	if isSuccess(status) && errMsg == "" {
+		return ""
+	}
+	msg := errMsg
+	if msg == "" && respBody != "" && !isSuccess(status) {
+		msg = respBody
+	}
+	return ClassifyError(status, msg)
+}
+
+// aggregateLocked folds a completed trace into the per-provider-per-model
+// metrics. Assumes r.mu is held.
+func (r *Recorder) aggregateLocked(trace *HTTPTrace) {
+	if trace == nil {
+		return
+	}
+	key := providerModelKey{ProviderID: trace.ProviderID, Model: trace.Model}
+	m := r.metrics[key]
+	if m == nil {
+		m = newProviderModelMetrics()
+		r.metrics[key] = m
+	}
+
+	m.calls++
+	if trace.Attempt > 0 {
+		m.retries++
+	}
+	if !isSuccess(trace.Status) || trace.Error != "" {
+		class := trace.ErrorClass
+		if class == "" {
+			class = ErrorClassOther
+		}
+		m.errors[class]++
+		m.lastErrorClass = class
+	}
+	m.latency[latencyBucketFor(trace.DurationMs)]++
+	if u := trace.Usage; u != nil && u.HasTokens() {
+		m.promptTokens += u.PromptTokens
+		m.completionTokens += u.CompletionTokens
+		m.cacheReadTokens += u.CacheReadTokens
+		m.cacheWriteTokens += u.CacheWriteTokens
+		if u.CacheReadTokens > 0 {
+			m.cacheHits++
+		} else {
+			m.cacheMisses++
+		}
+	}
+	if !trace.Timestamp.IsZero() {
+		m.lastCalled = trace.Timestamp
+	}
+}
+
+// latencyBucketFor returns the index into latencyBuckets for a duration in ms.
+func latencyBucketFor(ms int64) int {
+	for i, b := range latencyBuckets {
+		if b.Upper == 0 { // +inf bucket
+			return i
+		}
+		if ms <= b.Upper {
+			return i
+		}
+	}
+	return len(latencyBuckets) - 1
 }
 
 // evictOldestLocked removes the oldest in-flight trace (by start timestamp)
@@ -215,14 +309,41 @@ func truncateBody(body []byte) []byte {
 	return body
 }
 
+// extractModel pulls the model name from an LLM request body. All supported
+// provider wire formats (OpenAI /chat/completions, Anthropic /v1/messages,
+// /responses) carry the model as a top-level JSON "model" field.
+func extractModel(reqBody []byte) string {
+	var payload struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(reqBody, &payload); err != nil {
+		return ""
+	}
+	return payload.Model
+}
+
+// RecordMeta carries optional per-call metadata for RecordWithMeta.
+type RecordMeta struct {
+	// Attempt is the zero-based retry attempt number of this call.
+	Attempt int
+}
+
 // Record records a complete (non-streaming) HTTP trace.
 func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
+	r.RecordWithMeta(sessionID, providerID, method, url, reqBody, respBody, status, duration, errMsg, respHeaders, RecordMeta{})
+}
+
+// RecordWithMeta records a complete (non-streaming) HTTP trace with optional
+// per-call metadata (e.g. the retry attempt number).
+func (r *Recorder) RecordWithMeta(sessionID, providerID, method, url string, reqBody, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, meta RecordMeta) {
 	r.mu.Lock()
 
 	id := r.nextTraceID()
 
 	reqTruncated := truncateBody(reqBody)
 	respTruncated := truncateBody(respBody)
+
+	usage, finishReason, model := parseResponseEnrichment(respBody)
 
 	trace := &HTTPTrace{
 		ID:              id,
@@ -239,7 +360,15 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 		ResponseBody:    string(respTruncated),
 		ResponseHeaders: respHeaders,
 		Error:           errMsg,
+		Model:           extractModel(reqBody),
+		Attempt:         meta.Attempt,
+		Usage:           usage,
+		FinishReason:    finishReason,
 	}
+	if model != "" && trace.Model == "" {
+		trace.Model = model
+	}
+	trace.ErrorClass = classifyTrace(status, errMsg, trace.ResponseBody)
 
 	if len(r.traces) >= r.capacity {
 		r.traces = r.traces[1:]
@@ -251,6 +380,7 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 		cp := *trace
 		r.lastFailingTrace = &cp
 	}
+	r.aggregateLocked(trace)
 	r.mu.Unlock()
 
 	// Fire OnComplete outside the recorder lock so persistence (disk I/O)
@@ -263,6 +393,8 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 // LoadAll bulk-inserts completed traces into the recorder.
 // Used for restoring persisted traces on startup. Each trace is appended
 // directly without calling OnComplete. Traces beyond capacity evict oldest.
+// Restored traces also feed the interaction metrics, so the metrics endpoint
+// reflects archived calls after a restart.
 func (r *Recorder) LoadAll(traces []*HTTPTrace) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -278,6 +410,7 @@ func (r *Recorder) LoadAll(traces []*HTTPTrace) {
 		if trace.Status >= 300 && trace.Status != 0 {
 			r.lastFailingTrace = trace
 		}
+		r.aggregateLocked(trace)
 	}
 }
 
@@ -369,7 +502,96 @@ func (r *Recorder) LastFailingTrace() *HTTPTrace {
 	return &cp
 }
 
+// Metrics returns a point-in-time snapshot of the per-provider-per-model
+// interaction counters accumulated by this recorder. Providers and models are
+// sorted by name so the JSON output is deterministic.
+func (r *Recorder) Metrics() MetricsSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	snap := MetricsSnapshot{GeneratedAt: time.Now()}
+	if len(r.metrics) == 0 {
+		snap.Providers = []ProviderMetrics{}
+		return snap
+	}
+
+	providers := make(map[string]*ProviderMetrics, len(r.metrics))
+	for key, m := range r.metrics {
+		pm := providers[key.ProviderID]
+		if pm == nil {
+			pm = &ProviderMetrics{ProviderID: key.ProviderID}
+			providers[key.ProviderID] = pm
+		}
+
+		latency := make(map[string]int64, len(latencyBuckets))
+		for i, b := range latencyBuckets {
+			latency[b.Label] = m.latency[i]
+		}
+		errors := make(map[ErrorClass]int, len(m.errors))
+		errorTotal := 0
+		for _, class := range allErrorClasses {
+			n := m.errors[class]
+			errors[class] = n
+			errorTotal += n
+		}
+
+		mm := ModelMetrics{
+			Model:   key.Model,
+			Calls:   m.calls,
+			Retries: m.retries,
+			Errors:  errors,
+			Latency: latency,
+			Tokens: UsageTotals{
+				PromptTokens:     m.promptTokens,
+				CompletionTokens: m.completionTokens,
+				CacheReadTokens:  m.cacheReadTokens,
+				CacheWriteTokens: m.cacheWriteTokens,
+				TotalTokens:      m.promptTokens + m.completionTokens + m.cacheReadTokens + m.cacheWriteTokens,
+			},
+			Cache:      CacheCounts{Hits: m.cacheHits, Misses: m.cacheMisses},
+			LastCalled: m.lastCalled,
+			LastError:  m.lastErrorClass,
+		}
+		pm.Models = append(pm.Models, mm)
+		pm.TotalCalls += m.calls
+		snap.TotalCalls += m.calls
+		snap.TotalErrors += errorTotal
+	}
+
+	snap.Providers = make([]ProviderMetrics, 0, len(providers))
+	for _, pm := range providers {
+		sort.Slice(pm.Models, func(i, j int) bool { return pm.Models[i].Model < pm.Models[j].Model })
+		snap.Providers = append(snap.Providers, *pm)
+	}
+	sort.Slice(snap.Providers, func(i, j int) bool { return snap.Providers[i].ProviderID < snap.Providers[j].ProviderID })
+	return snap
+}
+
 // ————— RoundTripper —————
+
+// attemptContextKey is the context key carrying the zero-based retry attempt
+// number of the current LLM call. The agent loop stamps it per attempt so the
+// recorder can distinguish initial calls from retries.
+type attemptContextKey struct{}
+
+// WithAttempt returns a context that carries the retry attempt number. The
+// attempt is stamped onto the trace at capture time and feeds the retry
+// counter in the interaction metrics.
+func WithAttempt(ctx context.Context, attempt int) context.Context {
+	return context.WithValue(ctx, attemptContextKey{}, attempt)
+}
+
+// AttemptFromContext extracts the retry attempt number from a context,
+// returning 0 when absent.
+func AttemptFromContext(ctx context.Context) int {
+	if ctx == nil {
+		return 0
+	}
+	if v, ok := ctx.Value(attemptContextKey{}).(int); ok {
+		return v
+	}
+	return 0
+}
 
 // RecordingRoundTripper wraps an http.RoundTripper and records all
 // requests/responses through the given Recorder.
@@ -404,13 +626,13 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	}
 
 	start := time.Now()
-	traceID := rt.recorder.startTrace(rt.sessionID, rt.providerID, req.Method, req.URL.Path, reqBody)
+	traceID := rt.recorder.startTrace(rt.sessionID, rt.providerID, req.Method, req.URL.Path, reqBody, AttemptFromContext(req.Context()))
 
 	resp, err := rt.inner.RoundTrip(req)
 
 	if err != nil {
 		duration := time.Since(start)
-		rt.recorder.completeTrace(traceID, nil, 0, duration, err.Error(), nil)
+		rt.recorder.completeTrace(traceID, nil, 0, duration, err.Error(), nil, nil, "")
 		return nil, err
 	}
 
@@ -427,8 +649,9 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	return resp, nil
 }
 
-// traceBody wraps an io.ReadCloser, captures up to MaxBodyBytes of the response,
-// and completes the trace when Close() is called.
+// traceBody wraps an io.ReadCloser, captures up to MaxBodyBytes of the response
+// plus a rolling tail window (for stream tails), and completes the trace when
+// Close() is called.
 type traceBody struct {
 	io.ReadCloser
 	recorder    *Recorder
@@ -439,6 +662,8 @@ type traceBody struct {
 
 	mu       sync.Mutex
 	buf      bytes.Buffer
+	total    int64
+	tail     []byte
 	done     bool
 	closeErr error
 }
@@ -447,6 +672,7 @@ func (tb *traceBody) Read(p []byte) (int, error) {
 	n, err := tb.ReadCloser.Read(p)
 	if n > 0 {
 		tb.mu.Lock()
+		tb.total += int64(n)
 		if tb.buf.Len() < MaxBodyBytes {
 			remaining := MaxBodyBytes - tb.buf.Len()
 			writeLen := n
@@ -454,6 +680,10 @@ func (tb *traceBody) Read(p []byte) (int, error) {
 				writeLen = remaining
 			}
 			tb.buf.Write(p[:writeLen])
+		}
+		tb.tail = append(tb.tail, p[:n]...)
+		if len(tb.tail) > maxTailBytes {
+			tb.tail = append([]byte(nil), tb.tail[len(tb.tail)-maxTailBytes:]...)
 		}
 		tb.mu.Unlock()
 	}
@@ -480,7 +710,18 @@ func (tb *traceBody) Close() error {
 		tb.mu.Unlock()
 	}
 
-	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr, tb.respHeaders)
+	// Parse usage/finish_reason from the head plus the stream tail, so
+	// streaming responses longer than the body cap still yield their tail
+	// enrichment (usage and finish_reason live in the final SSE chunks).
+	var parseSrc []byte
+	if tb.total <= int64(MaxBodyBytes) {
+		parseSrc = tb.buf.Bytes()
+	} else {
+		parseSrc = append(truncateBody(tb.buf.Bytes()), tb.tail...)
+	}
+	usage, finishReason, _ := parseResponseEnrichment(parseSrc)
+
+	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr, tb.respHeaders, usage, finishReason)
 	return err
 }
 
