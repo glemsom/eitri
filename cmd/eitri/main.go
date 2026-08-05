@@ -122,6 +122,17 @@ func main() {
 	// Create calibration store for per-model chars-per-token tracking.
 	calStore := tokenizer.NewCalibrationStore()
 
+	// Restore calibration data from disk so per-model chars-per-token ratios
+	// survive restarts. An absent or empty file falls back to current defaults.
+	calPath := calibrationStorePath()
+	if calPath != "" {
+		if err := calStore.Load(calPath); err != nil {
+			slog.Warn("failed to load calibration data", slog.String("path", calPath), slog.Any("error", err))
+		} else if calStore.Count() > 0 {
+			slog.Info("restored calibration data", slog.Int("models", calStore.Count()), slog.String("path", calPath))
+		}
+	}
+
 	if *batchPrompt != "" {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
@@ -191,6 +202,9 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Crash dump written to %s\n", dumpDir)
 				}
 
+				// Preserve any calibration observations collected during the
+				// failed batch run before exiting.
+				saveCalibration(calStore, calPath)
 				os.Exit(1)
 			}
 		}
@@ -200,6 +214,7 @@ func main() {
 		if persister != nil {
 			_ = persister.Flush(nil, nil)
 		}
+		saveCalibration(calStore, calPath)
 		return
 	}
 
@@ -336,6 +351,10 @@ func main() {
 		}
 	}
 
+	// Persist calibration observations collected during this run so the
+	// per-model chars-per-token ratios survive the next restart.
+	saveCalibration(calStore, calPath)
+
 	cleanupRuntime(server, runSvc)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, err)
@@ -454,6 +473,37 @@ func shouldOpenBrowser(getenv func(string) string) bool {
 		return false
 	}
 	return getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != ""
+}
+
+// calibrationStorePath returns the on-disk location for calibration data under
+// the Eitri data dir (EITRI_DIR, defaulting to ~/.eitri), mirroring the
+// persister's root-dir resolution. Returns "" when the home directory cannot
+// be determined, in which case calibration persistence is skipped.
+func calibrationStorePath() string {
+	dir := os.Getenv("EITRI_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".eitri")
+	}
+	return filepath.Join(dir, "calibration.json")
+}
+
+// saveCalibration persists the calibration store to disk. It is called on
+// shutdown (server mode) and at the end of batch runs so per-model
+// chars-per-token observations survive restarts. Failures are logged, never
+// fatal.
+func saveCalibration(store *tokenizer.CalibrationStore, path string) {
+	if store == nil || path == "" {
+		return
+	}
+	if err := store.Save(path); err != nil {
+		slog.Warn("failed to save calibration data", slog.String("path", path), slog.Any("error", err))
+		return
+	}
+	slog.Info("calibration data saved", slog.String("path", path))
 }
 
 func openBrowserURL(url string) error {

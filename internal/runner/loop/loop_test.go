@@ -2567,6 +2567,88 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	}
 }
 
+func TestContextUpdate_UsesCalibratedStore(t *testing.T) {
+	t.Parallel()
+
+	// A long system prompt so token estimates are well above the minimum of 1.
+	const systemPrompt = "You are a helpful assistant. You always answer concisely. "
+	// Calibrate the model toward CPT 8.0 (default is 4.0) so the same text
+	// estimates to roughly half the default token count.
+	store := tokenizer.NewCalibrationStore()
+	for i := 0; i < 50; i++ {
+		store.Update("test-model", 8.0)
+	}
+
+	run := func(useCalibration bool) *runstate.ContextUpdate {
+		t.Helper()
+		sseState := runstate.New()
+		w := runstate.NewWriter(sseState)
+
+		client := newMockClient([]mockTurn{
+			{tokens: []tokenEvent{{content: "answer"}}},
+		})
+
+		sessionMgr := history.NewSessionManager(0)
+		sessionID := "test-session-calibrated"
+		sessionMgr.Create(sessionID)
+		sessionMgr.SetSystemPrompt(sessionID, systemPrompt)
+		sessionMgr.AppendUser(sessionID, "hello")
+
+		req := &litellm.Request{Model: "test-model"}
+
+		opts := RunOpts{
+			HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
+			Confirmer:     nil,
+			UISessionMgr:  nil,
+			SessionID:     sessionID,
+			ContextWindow: 128000,
+			CrashDumpFunc: nil,
+			Turns:         nil,
+		}
+		if useCalibration {
+			opts.CalibrationStore = store
+			opts.ModelName = "test-model"
+		}
+
+		err := RunAgent(context.Background(), RunSpec{
+			Client:     client,
+			Request:    req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, opts)
+		if err != nil {
+			t.Fatalf("RunAgent error: %v", err)
+		}
+
+		events := collectSSE(sseState)
+		for _, evt := range events {
+			if evt.Type == "context_update" {
+				if data, ok := evt.Data.(*runstate.ContextUpdate); ok {
+					return data
+				}
+			}
+		}
+		t.Fatal("expected context_update event with ContextUpdate data")
+		return nil
+	}
+
+	calibrated := run(true)
+	defaulted := run(false)
+
+	// The same system prompt must estimate to fewer tokens when the calibrated
+	// ratio (8.0) is in effect than when the default 4.0 fallback is used.
+	if calibrated.SystemTokens >= defaulted.SystemTokens {
+		t.Errorf("calibrated SystemTokens (%d) should be less than default (%d)",
+			calibrated.SystemTokens, defaulted.SystemTokens)
+	}
+	if calibrated.TotalTokens >= defaulted.TotalTokens {
+		t.Errorf("calibrated TotalTokens (%d) should be less than default (%d)",
+			calibrated.TotalTokens, defaulted.TotalTokens)
+	}
+}
+
 func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	t.Parallel()
 

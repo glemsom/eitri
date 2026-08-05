@@ -282,7 +282,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if history == nil {
 			return
 		}
-		update := runstate.ComputeContext(toFlatMessages(history), opts.ContextWindow, nil, "")
+		update := runstate.ComputeContext(toFlatMessages(history), opts.ContextWindow, opts.CalibrationStore, opts.ModelName)
 		if actualUsage != nil {
 			update.ActualPromptTokens = actualUsage.InputTokens
 			update.ActualCompletionTokens = actualUsage.OutputTokens

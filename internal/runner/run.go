@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/persona"
 
 	"github.com/glemsom/eitri/internal/compactor"
+	"github.com/glemsom/eitri/internal/tokenizer"
 
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -507,7 +508,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		flatMsgs[i] = em.ToMessage()
 	}
 
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled, cfg.ModelName)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, s.calibrationStore, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled, cfg.ModelName)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -575,10 +576,13 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 
 // compactSessionHistory runs the compactor on the given messages using the
 // provided LLM service, gated by high-water and low-water thresholds.
+// The high-water gate uses the CalibrationStore's per-model chars-per-token
+// estimate when a store and model are provided, falling back to the default
+// 4.0 ratio when the store is nil.
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
 // Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
-func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool, model string) ([]message.Message, int, int, int, error) {
-	totalEst := compactor.MessagesTokenEstimate(messages, nil, "")
+func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, store *tokenizer.CalibrationStore, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool, model string) ([]message.Message, int, int, int, error) {
+	totalEst := compactor.MessagesTokenEstimate(messages, store, model)
 	if totalEst <= highWater {
 		return nil, 0, 0, 0, nil
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
@@ -2003,7 +2004,7 @@ func TestCompactSessionHistory_SharedHelper(t *testing.T) {
 	highWater := 999_999 // far above total estimate
 	lowWater := 500_000
 
-	result, count, freed, pruned, err := compactSessionHistory(context.Background(), msgs, llmSvc, highWater, lowWater, 0, 0, false, "")
+	result, count, freed, pruned, err := compactSessionHistory(context.Background(), msgs, llmSvc, nil, highWater, lowWater, 0, 0, false, "")
 	if err != nil {
 		t.Fatalf("compactSessionHistory: %v", err)
 	}
@@ -2032,6 +2033,59 @@ func TestCompactSessionHistory_SharedHelper(t *testing.T) {
 	}
 	_ = manualFreed
 	_ = manualPruned
+}
+
+func TestCompactSessionHistory_CalibratedHighWaterGate(t *testing.T) {
+	// ~400 chars of content → 100 tokens at the default CPT 4.0, but only
+	// ~50 tokens once the model is calibrated toward CPT 8.0.
+	msgs := []message.Message{
+		{Role: "user", Content: strings.Repeat("a", 400)},
+	}
+
+	store := tokenizer.NewCalibrationStore()
+	for i := 0; i < 50; i++ {
+		store.Update("calibrated-model", 8.0)
+	}
+	if cpt := store.Lookup("calibrated-model"); cpt < 7.9 {
+		t.Fatalf("calibrated-model CPT = %f, want ≈8.0", cpt)
+	}
+
+	// highWater sits between the calibrated estimate (50) and the default
+	// estimate (100): the gate must use the calibrated value.
+	highWater := 75
+
+	// With calibration the estimate (50) is below high-water → no compaction,
+	// and no LLM service is needed because the gate short-circuits first.
+	result, count, freed, pruned, err := compactSessionHistory(context.Background(), msgs, nil, store, highWater, 0, 0, 0, false, "calibrated-model")
+	if err != nil {
+		t.Fatalf("compactSessionHistory (calibrated): %v", err)
+	}
+	if result != nil {
+		t.Fatal("expected nil result when calibrated estimate is below high-water")
+	}
+	if count != 0 || freed != 0 || pruned != 0 {
+		t.Fatalf("expected 0 values when gated, got count=%d freed=%d pruned=%d", count, freed, pruned)
+	}
+
+	// Without calibration the same content estimates to 100 tokens > 75, so
+	// compaction runs — proving the gate reacts to calibration, not to size alone.
+	fakeLLM := fakeCompactLLMServer(t, "summary")
+	llmSvc, err := newCompactLLMService(context.Background(), compactRunConfig(fakeLLM.URL), nil)
+	if err != nil {
+		t.Fatalf("newCompactLLMService: %v", err)
+	}
+	result, count, freed, pruned, err = compactSessionHistory(context.Background(), msgs, llmSvc, nil, highWater, 0, 0, 0, false, "calibrated-model")
+	if err != nil {
+		t.Fatalf("compactSessionHistory (default): %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected compaction to run without calibration (default estimate exceeds high-water)")
+	}
+	if count == 0 {
+		t.Fatal("expected at least one compacted message without calibration")
+	}
+	_ = freed
+	_ = pruned
 }
 
 func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {

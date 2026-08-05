@@ -1,9 +1,11 @@
 package runstate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 func TestComputeContext_EmptyInput(t *testing.T) {
@@ -282,5 +284,46 @@ func TestComputeContext_CompletionTokensZero(t *testing.T) {
 	}
 	if result.CompletionTokens != 0 {
 		t.Errorf("CompletionTokens = %d, want 0 (set by caller)", result.CompletionTokens)
+	}
+}
+
+func TestComputeContext_CalibratedCPT(t *testing.T) {
+	t.Parallel()
+
+	store := tokenizer.NewCalibrationStore()
+	// Converge the calibrated chars-per-token ratio toward 8.0 (default is 4.0).
+	for i := 0; i < 50; i++ {
+		store.Update("calibrated-model", 8.0)
+	}
+	if cpt := store.Lookup("calibrated-model"); cpt < 7.9 {
+		t.Fatalf("calibrated-model CPT = %f, want ≈8.0", cpt)
+	}
+
+	msgs := []message.Message{
+		{Role: "system", Content: strings.Repeat("s", 400)},
+		{Role: "user", Content: strings.Repeat("u", 400)},
+	}
+
+	calibrated := ComputeContext(msgs, 128000, store, "calibrated-model")
+	defaulted := ComputeContext(msgs, 128000, nil, "")
+	uncalibratedModel := ComputeContext(msgs, 128000, store, "other-model")
+
+	if calibrated == nil || defaulted == nil || uncalibratedModel == nil {
+		t.Fatal("ComputeContext returned nil")
+	}
+
+	// 400 chars / CPT 8.0 = 50 tokens per section (vs 100 at default 4.0).
+	if calibrated.SystemTokens != 50 {
+		t.Errorf("calibrated SystemTokens = %d, want 50 (400 chars / CPT 8.0)", calibrated.SystemTokens)
+	}
+	if calibrated.HistoryTokens != 50 {
+		t.Errorf("calibrated HistoryTokens = %d, want 50 (400 chars / CPT 8.0)", calibrated.HistoryTokens)
+	}
+	if defaulted.SystemTokens != 100 {
+		t.Errorf("default SystemTokens = %d, want 100 (400 chars / CPT 4.0)", defaulted.SystemTokens)
+	}
+	// A different (uncalibrated) model must keep using the default ratio.
+	if uncalibratedModel.TotalTokens != defaulted.TotalTokens {
+		t.Errorf("uncalibrated model TotalTokens = %d, want default %d", uncalibratedModel.TotalTokens, defaulted.TotalTokens)
 	}
 }
