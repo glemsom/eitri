@@ -33,6 +33,31 @@ registered for headless runs, so the agent can spawn sub-agents for
 data-intensive work just as it can in the browser UI. Because there is no UI
 session, sub-agents spawned from batch mode do not create child sessions.
 
+## Session persistence
+
+Every batch run leaves the same reviewable trail on disk as a UI session,
+under `~/.eitri/sessions/<id>/` (or `$EITRI_DIR/sessions/<id>/`):
+
+```
+~/.eitri/sessions/<id>/
+├── session.json              ← snapshot (id, title, status, messages, system prompt, workspace)
+├── timeline/<ts>.json        ← per-run timeline with termination reason
+└── traces/<trace_id>.json    ← one HTTP trace per LLM call
+```
+
+- `session.json` is written after each complete agent turn and again on exit
+  (`idle` on success, `error` on failure), in the exact snapshot shape UI
+  sessions use — so the usual `jq`/`cat` inspection, on-demand session load,
+  and session report generation work on batch sessions unchanged.
+- The session ID defaults to `batch-<unixnano>`. Set `EITRI_BATCH_SESSION_ID`
+  to name the session directory yourself (validated: non-empty, no path
+  separators, no `..`).
+- Traces are drained to disk before the process exits on both success and
+  failure paths.
+- Retention follows the existing policy: `session.json` is never pruned;
+  traces and timelines count toward the global 1 GiB cap. There is no opt-out
+  — `EITRI_DIR` already redirects storage. See ADR-0023.
+
 ## Caveats
 
 - **No confirmations:** Confirmation requests are automatically denied. Ops that require confirmation will return errors to the LLM.

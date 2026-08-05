@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -15,6 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
+	uisession "github.com/glemsom/eitri/internal/session"
 
 	"github.com/glemsom/eitri/internal/tool"
 )
@@ -37,9 +39,28 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	// Generate a unique session ID for this batch run
-	batchID := fmt.Sprintf("batch-%d", time.Now().UnixNano())
+	// Resolve the session ID for this batch run: default batch-<unixnano>,
+	// overridable via EITRI_BATCH_SESSION_ID (validated so it cannot escape
+	// the sessions directory). The ID names the persisted session directory
+	// (~/.eitri/sessions/<id>/) and the in-memory history session.
+	batchID, err := batchSessionID()
+	if err != nil {
+		return "", err
+	}
 	batchStartedAt := time.Now()
+	rootDir := "~/.eitri"
+	if s.persister != nil {
+		rootDir = s.persister.RootDir()
+	}
+	slog.Info("batch session",
+		slog.String("session_id", batchID),
+		slog.String("session_dir", filepath.Join(rootDir, "sessions", batchID)),
+	)
+
+	// Title derives from the prompt using the same rule as UI session titles
+	// (session.TitlePreview, exported for headless runs — issue #1038).
+	title := batchTitle(prompt, batchID)
+	workspace := cfg.Workspace
 
 	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode).
 	// The session ID and recorder are passed so headless batch runs feed the same
@@ -87,6 +108,12 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	sessionMgr.AppendUser(batchID, prompt)
 	defer sessionMgr.Close(batchID)
 
+	// Initial snapshot so the batch session's session.json exists before the
+	// first LLM call completes. SaveTrace skips sessions without a snapshot
+	// (treated as permanently deleted), so without this the first turn's HTTP
+	// traces would be silently dropped (issue #1039).
+	s.batchSnapshot(sessionMgr, batchID, uisession.StatusRunning, title, workspace, fullSystemPrompt, batchStartedAt)
+
 	// Store parent config so sub-agents can look up provider/model settings
 	s.subagents.StoreParentCfg(batchID, cfg)
 	defer s.subagents.DeleteParentCfg(batchID)
@@ -128,6 +155,21 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Track turns for conversation context
 	var turns int
+	runID := runstate.GenerateRunID(batchID, batchStartedAt)
+
+	// Per-turn snapshot seam: after each complete agent turn the batch run's
+	// conversation is persisted to disk as session.json (issue #1039), via
+	// the same completion seam the UI path uses — no agent-loop changes.
+	turnCompleter := &batchTurnCompleter{
+		svc:          s,
+		sessionMgr:   sessionMgr,
+		sessionID:    batchID,
+		title:        title,
+		workspace:    workspace,
+		systemPrompt: fullSystemPrompt,
+		createdAt:    batchStartedAt,
+	}
+
 	runErr := loop.RunAgent(runCtx, loop.RunSpec{
 		Client:     llmSvc,
 		Request:    req,
@@ -140,7 +182,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        batchID,
-		RunID:            runstate.GenerateRunID(batchID, batchStartedAt),
+		RunID:            runID,
 		ContextWindow:    cfg.ContextWindowTokens,
 		CrashDumpFunc:    nil,
 		Turns:            &turns,
@@ -149,6 +191,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		CalibrationStore: s.calibrationStore,
 		ModelName:        cfg.ModelName,
 		RetryPolicy:      &cfg.RetryPolicy,
+		TurnCompleter:    turnCompleter,
 	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context
@@ -182,7 +225,46 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		)
 	}
 
+	// Terminal snapshot + timeline on every exit path (success and failure).
+	// The snapshot reflects the final status: idle on success, error on any
+	// failure. The timeline carries the specific termination reason
+	// (completed / cancelled / max-turns / error) matching UI behaviour.
+	status := uisession.StatusIdle
+	if runErr != nil {
+		status = uisession.StatusError
+	}
+	s.batchSnapshot(sessionMgr, batchID, status, title, workspace, fullSystemPrompt, batchStartedAt)
+	s.persistRunTimeline(batchID, runID, batchStartedAt, sseState, cfg, batchTermination(runErr, runCtx))
+
 	return content, runErr
+}
+
+// batchTermination classifies a batch run's outcome into the timeline
+// termination reason, matching the UI exit paths (issue #1039).
+func batchTermination(runErr error, runCtx context.Context) *runstate.TimelineTermination {
+	switch {
+	case runErr == nil:
+		return &runstate.TimelineTermination{Reason: runstate.TerminationCompleted}
+
+	case runCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded):
+		return &runstate.TimelineTermination{
+			Reason:  runstate.TerminationCancelled,
+			Message: "Run cancelled by user or context deadline exceeded",
+		}
+
+	default:
+		var maxTurnsErr *loop.MaxTurnsExceededError
+		if errors.As(runErr, &maxTurnsErr) {
+			return &runstate.TimelineTermination{
+				Reason:  runstate.TerminationMaxTurns,
+				Message: runstate.MaxTurnsMessage(maxTurnsErr.Limit),
+			}
+		}
+		return &runstate.TimelineTermination{
+			Reason:  runstate.TerminationError,
+			Message: runErr.Error(),
+		}
+	}
 }
 
 // extractLastMessages extracts the last user and assistant messages from the

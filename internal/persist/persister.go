@@ -488,6 +488,16 @@ func (p *Persister) RootDir() string {
 	return p.rootDir
 }
 
+// SetRetention sets the maximum total bytes (across all sessions) retained on
+// disk before Prune evicts the oldest trace and timeline files. Tests use it
+// to exercise eviction without writing gigabytes; production keeps the
+// default 1 GiB cap.
+func (p *Persister) SetRetention(maxBytes int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.retention = maxBytes
+}
+
 // DeleteSession removes all persisted data for a session from disk:
 // <root>/sessions/<id>/.
 // If the directory doesn't exist, the call is a no-op.

@@ -205,6 +205,15 @@ func main() {
 				// Preserve any calibration observations collected during the
 				// failed batch run before exiting.
 				saveCalibration(calStore, calPath)
+
+				// Drain the async trace-persistence queue before exiting so
+				// failure-path traces reach disk under the batch session's
+				// traces/ instead of being dropped (issue #1039). Today the
+				// failure path exits without draining, silently losing any
+				// queued traces.
+				if persister != nil {
+					_ = persister.Flush(nil, nil)
+				}
 				os.Exit(1)
 			}
 		}

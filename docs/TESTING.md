@@ -70,7 +70,7 @@ model service.
 | `internal/api/templates/helpers_test.go` | Template helpers (pathBase, scopeLabel, scopeIcon, statusDot, GravatarURL, SandboxBadge) |
 | `internal/config/config_test.go` | Config load/save/merge, provider validation |
 | `internal/sandbox/sandbox_test.go` | Sandbox `BwrapIsUsable`, `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not usable) |
-| `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, etc. | Runner service, run config, run loop, batch runs, broadcasts |
+| `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, `batch_persist_test.go`, etc. | Runner service, run config, run loop, batch runs (incl. session snapshot/trace/timeline persistence and `EITRI_BATCH_SESSION_ID`), broadcasts |
 | `internal/debug/recorder_test.go`, `tracemeta_test.go` | HTTP trace recording/enrichment; run/turn correlation IDs, time-to-first-token, round-tripper stamping |
 | `internal/report/report_test.go` | Session report assembly, turn↔trace ID joins, retry attempt surfacing, timestamp-heuristic fallback |
 | `internal/runstate/timeline_test.go` | Timeline condensation, `llm_call` correlation events, run ID generation |
