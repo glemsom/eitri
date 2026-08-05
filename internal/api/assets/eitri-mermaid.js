@@ -6,9 +6,13 @@
   function initMermaid() {
     if (typeof mermaid === 'undefined') return;
 
+    // Detect color scheme for theme selection (issue #977)
+    var isLightTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    var theme = isLightTheme ? 'default' : 'dark';
+
     mermaid.initialize({
       startOnLoad: false,
-      theme: 'dark',
+      theme: theme,
       securityLevel: 'loose',
     });
 
