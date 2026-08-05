@@ -79,9 +79,7 @@
   }
 
   function getActiveSessionId() {
-    // Extract session ID from URL pattern /sessions/{id}
-    var match = window.location.pathname.match(/^\/sessions\/([a-f0-9]+)/);
-    return match ? match[1] : '';
+    return window.eitriGetSessionId();
   }
 
   // Initialize on page load

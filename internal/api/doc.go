@@ -118,7 +118,7 @@
 //     skills page, and all render components.
 //   - internal/api/assets/ — frontend assets embedded via embed.FS at compile
 //     time. Includes HTMX, Prism.js, KaTeX, Mermaid, custom CSS, and JS islands
-//     (eitri-stream.js, eitri-composer.js, eitri-context.js, etc.).
+//     (eitri-session-id.js, eitri-stream.js, eitri-composer.js, etc.).
 //
 // # Dependencies
 //

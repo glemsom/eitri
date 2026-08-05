@@ -17,6 +17,7 @@ self.addEventListener("install", (event) => {
         "/",
         "/static/eitri.css?v=__EITRI_VERSION__",
         "/static/htmx.min.js?v=__EITRI_VERSION__",
+        "/static/eitri-session-id.js?v=__EITRI_VERSION__",
         "/static/eitri-stream.js?v=__EITRI_VERSION__",
         "/static/eitri-composer.js?v=__EITRI_VERSION__",
         "/static/eitri-renderers.js?v=__EITRI_VERSION__",

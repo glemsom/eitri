@@ -10,6 +10,7 @@ import (
 
 func TestJsFiles(t *testing.T) {
 	files := []string{
+		"eitri-session-id.js",
 		"eitri-composer.js",
 		"eitri-stream.js",
 		"eitri-renderers.js",
@@ -460,6 +461,73 @@ func TestJsFiles(t *testing.T) {
 	}
 	if !strings.Contains(content2, "flushStreamAnnounce") {
 		t.Error("eitri-stream.js missing flushStreamAnnounce")
+	}
+}
+
+// TestSharedSessionIdHelper verifies the one shared session-ID parsing
+// implementation used by all frontend islands (issue #1077): it must extract
+// hex-only IDs (no regression) and IDs containing '-' or '_' from both the
+// page URL (/sessions/{id}) and the chat form action (/api/sessions/{id}/chat),
+// and return an empty string when no session ID is present.
+func TestSharedSessionIdHelper(t *testing.T) {
+	data, err := Files.ReadFile("eitri-session-id.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-session-id.js: %v", err)
+	}
+
+	// Verify the helper is a single global used by every island.
+	helperSrc := string(data)
+	if !strings.Contains(helperSrc, "window.eitriGetSessionId") {
+		t.Fatal("eitri-session-id.js must expose window.eitriGetSessionId")
+	}
+	for _, island := range []string{"eitri-events.js", "eitri-stream.js", "eitri-context.js", "eitri-composer.js"} {
+		src, err := Files.ReadFile(island)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", island, err)
+		}
+		if !strings.Contains(string(src), "window.eitriGetSessionId") {
+			t.Errorf("%s does not use the shared window.eitriGetSessionId helper", island)
+		}
+		if strings.Contains(string(src), "pathname.match") {
+			t.Errorf("%s still parses the session ID from the URL itself; it must use window.eitriGetSessionId", island)
+		}
+	}
+
+	runtime := goja.New()
+	if _, err := runtime.RunString(`globalThis.window = { location: { pathname: '/sessions/not-used' } };`); err != nil {
+		t.Fatalf("failed to set up window stub: %v", err)
+	}
+	if _, err := runtime.RunString(helperSrc); err != nil {
+		t.Fatalf("failed to run eitri-session-id.js: %v", err)
+	}
+	var fn func(url string) string
+	if err := runtime.ExportTo(runtime.Get("window").ToObject(runtime).Get("eitriGetSessionId"), &fn); err != nil {
+		t.Fatalf("failed to export eitriGetSessionId: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "hex page URL", url: "/sessions/abc123def456", want: "abc123def456"},
+		{name: "dash in ID", url: "/sessions/abc-def_123", want: "abc-def_123"},
+		{name: "underscore in ID", url: "/sessions/abc_def-123", want: "abc_def-123"},
+		{name: "mixed alnum dash underscore", url: "/sessions/sess-7f3c_ab", want: "sess-7f3c_ab"},
+		{name: "hex API chat action", url: "/api/sessions/abc123def456/chat", want: "abc123def456"},
+		{name: "non-hex API chat action", url: "/api/sessions/abc-def_123/chat", want: "abc-def_123"},
+		{name: "no session in root", url: "/", want: ""},
+		{name: "no session in settings", url: "/settings", want: ""},
+		{name: "sessions list page", url: "/sessions", want: ""},
+		{name: "no url falls back to current pathname", url: "", want: "not-used"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fn(tc.url)
+			if got != tc.want {
+				t.Errorf("eitriGetSessionId(%q) = %q, want %q", tc.url, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -1149,6 +1217,7 @@ func TestContextElementListenerLifecycle(t *testing.T) {
 		};
 		globalThis.window = {
 			location: { pathname: '/sessions/abc123' },
+			eitriGetSessionId: function () { return 'abc123'; },
 			setTimeout: function () {},
 			clearTimeout: function () {},
 		};
