@@ -109,15 +109,23 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	// Subscribe to forward token events to the output writer in real-time
+	// Subscribe to forward token and thinking_delta events to the output
+	// writer in real-time. Reasoning deltas from reasoning models are
+	// streamed alongside ordinary text, delimited by [thinking]/[/thinking]
+	// markers so the two are distinguishable (issue #1095).
 	_, ch, ok := sseState.Subscribe()
 	streamDone := make(chan struct{})
 	if ok {
 		go func() {
 			defer close(streamDone)
+			streamer := &batchStreamer{out: out}
+			defer streamer.closeThinking()
 			for evt := range ch {
-				if evt.Type == "token" {
-					_, _ = fmt.Fprint(out, evt.Content)
+				switch evt.Type {
+				case "token":
+					streamer.writeToken(evt.Content)
+				case "thinking_delta":
+					streamer.writeThinking(evt.Content)
 				}
 			}
 		}()
@@ -224,6 +232,50 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	s.persistRunTimeline(batchID, runID, batchStartedAt, sseState, cfg, batchTermination(runErr, runCtx))
 
 	return content, runErr
+}
+
+// batchStreamer writes batch-mode stream output to an io.Writer, keeping
+// ordinary text and reasoning/thinking deltas distinguishable. Ordinary text
+// tokens are written verbatim; reasoning content is wrapped in
+// [thinking]...[/thinking] markers (issue #1095). A reasoning block is opened
+// on the first thinking delta and closed again when the stream moves back to
+// ordinary text (or ends), so the markers delimit each contiguous reasoning
+// span — models without reasoning never produce markers and their output is
+// unchanged.
+type batchStreamer struct {
+	out        io.Writer
+	inThinking bool
+}
+
+const (
+	thinkingOpenMarker  = "[thinking]\n"
+	thinkingCloseMarker = "[/thinking]\n"
+)
+
+// writeToken streams an ordinary text delta, closing an open reasoning block
+// first so the reasoning markers delimit exactly the thinking span.
+func (b *batchStreamer) writeToken(content string) {
+	b.closeThinking()
+	_, _ = fmt.Fprint(b.out, content)
+}
+
+// writeThinking streams a reasoning delta, opening the reasoning block on the
+// first delta of a span.
+func (b *batchStreamer) writeThinking(content string) {
+	if !b.inThinking {
+		_, _ = fmt.Fprint(b.out, thinkingOpenMarker)
+		b.inThinking = true
+	}
+	_, _ = fmt.Fprint(b.out, content)
+}
+
+// closeThinking closes an open reasoning block. Idempotent.
+func (b *batchStreamer) closeThinking() {
+	if !b.inThinking {
+		return
+	}
+	_, _ = fmt.Fprint(b.out, thinkingCloseMarker)
+	b.inThinking = false
 }
 
 // batchTermination classifies a batch run's outcome into the timeline

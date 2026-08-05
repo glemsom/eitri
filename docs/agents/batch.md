@@ -16,7 +16,10 @@ remaining command-line arguments after the flag, so quoting is optional —
 feature X". An empty or whitespace-only prompt (`eitri -b ""`, `eitri -b "   "`)
 is rejected with a clear error and a non-zero exit code instead of starting the
 UI server. Output is streamed token-by-token to stdout as plain text (no SSE,
-no tool cards, no HTML).
+no tool cards, no HTML). For reasoning models, thinking/reasoning deltas are
+streamed to stdout as they arrive, delimited by `[thinking]` and `[/thinking]`
+markers so the reasoning content is distinguishable from the final text —
+models without reasoning produce no markers and their output is unchanged.
 
 The optional `--persona` flag overrides the active persona for the batch run only — it does not change `config.json`.
 
@@ -34,7 +37,7 @@ The persona is resolved from the workspace `.eitri/personas/` directory, falling
    wires the same skills service as the UI, so Agent Skills work identically
    in batch mode
 3. Calls `BatchRun` which runs the agent loop with a request-based history manager
-4. Streams text tokens to stdout in real-time (tool calls execute silently — only final text is streamed)
+4. Streams text tokens and reasoning/thinking deltas to stdout in real-time. Ordinary text is written as plain tokens; reasoning content is wrapped in `[thinking]`…`[/thinking]` markers (tool calls execute silently — only final text and thinking are streamed)
 5. Exits with code 0 on success, non-zero on failure
 
 Sub-agents are supported in batch mode: the `delegate` and `collect` tools are
@@ -106,7 +109,7 @@ under `~/.eitri/sessions/<id>/` (or `$EITRI_DIR/sessions/<id>/`):
 
 - **No confirmations:** Confirmation requests are automatically denied. Ops that require confirmation will return errors to the LLM.
 - **No browser session:** The agent cannot open browser tabs or interact with a UI.
-- **No SSE/streaming UI:** Output is raw text only. Tool cards, chat bubbles, and the HTMX frontend are not available.
+- **No SSE/streaming UI:** Output is raw text only. Tool cards, chat bubbles, and the HTMX frontend are not available. Reasoning/thinking content from reasoning models is delimited with `[thinking]`…`[/thinking]` markers on stdout.
 - **Config-driven:** The model, provider, workspace, and system prompt come from the config file. Set `EITRI_CONFIG` to use a non-default config.
 - **Single-shot:** Each `eitri -b` invocation runs one prompt and exits. For processing multiple issues in parallel, use the agent loop script (see below).
 
