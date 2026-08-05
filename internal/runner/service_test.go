@@ -2065,7 +2065,7 @@ func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {
 
 	svc.OnTurnComplete(context.Background(), sess.ID)
 
-	convo := uiMgr.GetConversation(sess.ID)
+	convo := uiMgr.GetConversationShared(sess.ID)
 	if convo == nil {
 		t.Fatal("expected a conversation in the UI session")
 	}

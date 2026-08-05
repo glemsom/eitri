@@ -26,10 +26,14 @@ func (m *Manager) UpdateStatus(id string, status Status) {
 	}
 }
 
-// GetMeta returns a SessionMeta view of the session identified by id.
-// Returns nil if the session does not exist.
-// The returned SessionMeta is a copy safe for use outside the lock.
-func (m *Manager) GetMeta(id string) *SessionMeta {
+// CopyMeta returns a detached deep copy of the SessionMeta for the session
+// identified by id. Returns nil if the session does not exist.
+//
+// CopyMeta exists for callers that genuinely need a detached copy: the debug
+// endpoints, which run concurrently with active agent runs and must not race
+// with in-place mutations. Ordinary read-only access should use
+// GetMetaShared, which is a cheap shared-reference return.
+func (m *Manager) CopyMeta(id string) *SessionMeta {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	meta := m.metaStore[id]

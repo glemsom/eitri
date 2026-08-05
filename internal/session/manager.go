@@ -134,6 +134,11 @@ func (m *Manager) LoadFromDisk(data []byte) (*UISession, error) {
 var ErrSessionIDCollision = fmt.Errorf("session ID collision")
 
 // Get returns a session by ID. Returns nil if not found.
+//
+// The returned facade shares the manager's internal state and is cheap to
+// build (no deep copy). Callers must treat it as read-only — all mutation
+// must go through the manager's mutating methods. For a detached snapshot
+// safe to mutate and serialize, use CopySession.
 func (m *Manager) Get(id string) *UISession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -143,6 +148,9 @@ func (m *Manager) Get(id string) *UISession {
 // GetValidated returns a session by ID, checking ownership by browser_id.
 // Returns the session and true if found and owned by browserID.
 // Returns nil and false if not found or ownership mismatch.
+//
+// Like Get, the returned facade is a cheap read-only view of the manager's
+// internal state — do not mutate it. Use CopySession for a detached copy.
 func (m *Manager) GetValidated(id, browserID string) (*UISession, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -1326,11 +1326,12 @@ func TestGetConfigShared_NonexistentSession(t *testing.T) {
 	}
 }
 
-// TestCopyingGettersReturnDetachedCopies guards the expand-contract sequence
-// (issue #979): the legacy copying getters must keep returning detached copies
-// until every caller migrates to the shared accessors. Mutating the returned
-// copy must not affect the manager's internal state.
-func TestCopyingGettersReturnDetachedCopies(t *testing.T) {
+// TestCopyHelpersReturnDetachedCopies guards the contract step (issue #981):
+// the default read path returns shared references without copying, and the
+// explicitly-named copy helpers (CopyMeta, CopyConversation, CopyConfig,
+// CopySession) return detached copies for the callers that genuinely need
+// them. Mutating a copy must not affect the manager's internal state.
+func TestCopyHelpersReturnDetachedCopies(t *testing.T) {
 	mgr := session.NewManager(10, t.TempDir())
 
 	sess, err := mgr.Create("browser-1")
@@ -1339,25 +1340,71 @@ func TestCopyingGettersReturnDetachedCopies(t *testing.T) {
 	}
 	mgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "original"})
 
-	// GetMeta: mutating the copy must not change the manager's state.
-	meta := mgr.GetMeta(sess.ID)
+	// CopyMeta: mutating the copy must not change the manager's state.
+	meta := mgr.CopyMeta(sess.ID)
 	meta.Title = "Mutated copy"
 	if got := mgr.GetMetaShared(sess.ID).Title; got == "Mutated copy" {
-		t.Error("GetMeta copy mutation leaked into manager state")
+		t.Error("CopyMeta copy mutation leaked into manager state")
 	}
 
-	// GetConversation: mutating the copy must not change the manager's state.
-	convo := mgr.GetConversation(sess.ID)
+	// CopyConversation: mutating the copy must not change the manager's state.
+	convo := mgr.CopyConversation(sess.ID)
 	convo.Messages[0].Content = "mutated"
 	if got := mgr.GetConversationShared(sess.ID).Messages[0].Content; got != "original" {
-		t.Errorf("GetConversation copy mutation leaked into manager state: Content = %q", got)
+		t.Errorf("CopyConversation copy mutation leaked into manager state: Content = %q", got)
 	}
 
-	// GetConfig: mutating the copy must not change the manager's state.
-	initialWorkspace := mgr.GetConfig(sess.ID).Workspace
-	cfg := mgr.GetConfig(sess.ID)
+	// CopyConfig: mutating the copy must not change the manager's state.
+	initialWorkspace := mgr.CopyConfig(sess.ID).Workspace
+	cfg := mgr.CopyConfig(sess.ID)
 	cfg.Workspace = "mutated"
 	if got := mgr.GetConfigShared(sess.ID).Workspace; got != initialWorkspace {
-		t.Errorf("GetConfig copy mutation leaked into manager state: Workspace = %q, want %q", got, initialWorkspace)
+		t.Errorf("CopyConfig copy mutation leaked into manager state: Workspace = %q, want %q", got, initialWorkspace)
+	}
+
+	// CopySession: mutating the facade copy must not change the manager's state.
+	sessCopy := mgr.CopySession(sess.ID)
+	sessCopy.Messages[0].Content = "mutated facade"
+	sessCopy.Title = "Mutated facade title"
+	if got := mgr.GetConversationShared(sess.ID).Messages[0].Content; got != "original" {
+		t.Errorf("CopySession message mutation leaked into manager state: Content = %q", got)
+	}
+	if got := mgr.GetMetaShared(sess.ID).Title; got == "Mutated facade title" {
+		t.Error("CopySession title mutation leaked into manager state")
+	}
+}
+
+// TestReadPathReturnsSharedReference guards the contract step (issue #981):
+// the default read path must not deep-copy the conversation; reads are cheap
+// shared-reference returns. In-place mutations through the manager are visible
+// through references obtained before the mutation.
+func TestReadPathReturnsSharedReference(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "original"})
+
+	// Get: the returned facade shares the manager's message slice backing
+	// array — an in-place mutation through the manager is visible through the
+	// earlier-obtained reference.
+	facade := mgr.Get(sess.ID)
+	if len(facade.Messages) != 1 {
+		t.Fatalf("Get Messages length = %d, want 1", len(facade.Messages))
+	}
+	mgr.UpdateLastAssistantContent(sess.ID, "updated in place")
+	if got := facade.Messages[0].Content; got != "updated in place" {
+		t.Errorf("Get facade did not observe in-place mutation: Content = %q", got)
+	}
+
+	// GetValidated behaves the same way.
+	validated, ok := mgr.GetValidated(sess.ID, "browser-1")
+	if !ok {
+		t.Fatal("GetValidated returned not-ok for matching browser")
+	}
+	if got := validated.Messages[0].Content; got != "updated in place" {
+		t.Errorf("GetValidated facade Messages[0].Content = %q, want %q", got, "updated in place")
 	}
 }

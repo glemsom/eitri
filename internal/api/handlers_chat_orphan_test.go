@@ -95,7 +95,7 @@ func TestChatOrphanedMessageOnStartRunFailure(t *testing.T) {
 	sessionID := strings.TrimPrefix(loc, "/sessions/")
 
 	// Verify session starts with no messages
-	convo := h.sessionMgr.GetConversation(sessionID)
+	convo := h.sessionMgr.GetConversationShared(sessionID)
 	if convo == nil {
 		t.Fatal("session not found")
 	}
@@ -127,7 +127,7 @@ func TestChatOrphanedMessageOnStartRunFailure(t *testing.T) {
 	}
 
 	// Verify the message was NOT added to the conversation
-	convo = h.sessionMgr.GetConversation(sessionID)
+	convo = h.sessionMgr.GetConversationShared(sessionID)
 	if convo == nil {
 		t.Fatal("session not found after chat")
 	}

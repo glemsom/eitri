@@ -104,11 +104,10 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	// We render two elements in the response:
 	//   1. The toast (main target, goes to #error-toasts)
 	//   2. The messages container via OOB swap (replaces #messages in-place)
-	// Keeps the copying getter: renderSessionForPage needs the assembled
+	// Uses the explicit copy helper: renderSessionForPage needs the assembled
 	// UISession facade (meta + messages + skills in one struct) to produce the
-	// HTML. The shared accessors expose the sub-stores separately, so this
-	// stays on Get until the contract step (#981) provides a shared facade.
-	sess := s.config.SessionManager.Get(id)
+	// HTML, and the render may run concurrently with an active agent run.
+	sess := s.config.SessionManager.CopySession(id)
 	if sess != nil {
 		renderedSess := renderSessionForPage(sess)
 		w.Header().Set("Content-Type", "text/html")
