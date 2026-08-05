@@ -311,6 +311,7 @@ Deterministic, zero-LLM compression of bash tool output. `Compress(command, outp
 
 Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB before compression; when compression changes the output, the raw original is preserved in `ToolResult.RawBlocks` for snapshots and debugging. See ADR-0021.
 
+<a id="built-in-tools"></a>
 ### `internal/tool/` — Built-in tools
 
 | File | Responsibility |
