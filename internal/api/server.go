@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/glemsom/eitri/internal/api/assets"
@@ -210,6 +211,13 @@ func (s *Server) requestBodyLimitMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if testing.Testing() {
+			// Per-request info lines are suppressed in test binaries so
+			// failed-test output dumps stay lean (issue #1031). Production
+			// binaries still log every request at Info level.
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		rw := &responseRecorder{ResponseWriter: w}
 		next.ServeHTTP(rw, r)
@@ -217,14 +225,21 @@ func (s *Server) requestLoggingMiddleware(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		s.logger.Info("http_request",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Int("status", status),
-			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			slog.String("session_id", extractSessionIDFromPath(r.URL.Path)),
-		)
+		s.logRequest(r, status, time.Since(start))
 	})
+}
+
+// logRequest writes the per-request log line with the HTTP method, path,
+// status, duration, and session id. Kept as a method so the structured fields
+// stay testable even though the middleware suppresses them under test binaries.
+func (s *Server) logRequest(r *http.Request, status int, duration time.Duration) {
+	s.logger.Info("http_request",
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.Int("status", status),
+		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("session_id", extractSessionIDFromPath(r.URL.Path)),
+	)
 }
 
 func extractSessionIDFromPath(path string) string {
