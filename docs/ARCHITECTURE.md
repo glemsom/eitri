@@ -483,6 +483,7 @@ eitri/
 │   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, browser, render, skill, delegate, collect)
 ├── scripts/
 ├── docs/
+│   ├── ADRs.md
 │   ├── ARCHITECTURE.md
 │   ├── TESTING.md
 │   ├── debug-api.md
@@ -498,4 +499,4 @@ Tests are colocated as `*_test.go`. Browser E2E tests live under `internal/api` 
 
 ## Key ADRs
 
-ADR index lives in [CONTEXT.md](../CONTEXT.md#architecture-decisions).
+ADR index lives in [docs/ADRs.md](ADRs.md).
