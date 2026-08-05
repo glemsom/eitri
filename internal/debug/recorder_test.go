@@ -2,6 +2,7 @@ package debug
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -659,5 +660,179 @@ func TestRecorder_ResponseHeaders(t *testing.T) {
 	tr := traces[0]
 	if tr.ResponseHeaders["X-Request-Id"][0] != "req-abc-123" {
 		t.Fatalf("List: X-Request-Id = %q, want 'req-abc-123'", tr.ResponseHeaders["X-Request-Id"])
+	}
+}
+
+func TestRecorder_StreamingTruncationPreservesEnrichedFields(t *testing.T) {
+	r := NewRecorder(5)
+
+	// A streaming response whose tail — the chunk carrying usage and
+	// finish_reason — sits far beyond the MaxBodyBytes cap. The first chunk
+	// alone pushes the body over the cap, so the raw-body capture keeps only
+	// the head; the enriched fields must survive via the TraceMeta bridge.
+	pad := strings.Repeat("x", MaxBodyBytes)
+	tail := "data: {\"id\":\"c1\",\"model\":\"gpt-stream\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":101,\"completion_tokens\":42,\"total_tokens\":143}}\n\ndata: [DONE]\n"
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Delay before the first byte so time-to-first-byte is measurable
+		// (sub-millisecond responses would otherwise report 0ms).
+		time.Sleep(5 * time.Millisecond)
+		_, _ = w.Write([]byte(pad))
+		_, _ = w.Write([]byte(tail))
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	rt := NewRecordingRoundTripper(nil, r, "s1", "p1")
+
+	meta := &TraceMeta{}
+	meta.SetAttempt(2)
+	meta.SetModel("gpt-stream")
+	req, err := http.NewRequestWithContext(WithTraceMeta(context.Background(), meta), http.MethodPost, srv.URL+"/v1/chat/completions", bytes.NewReader([]byte(`{"model":"gpt-stream"}`)))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	resp, err := (&http.Client{Transport: rt, Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	// Simulate the run loop: it parses the SSE stream and records usage and
+	// finish reason on the meta before the body/stream is closed.
+	meta.SetUsage(&UsageTotals{PromptTokens: 101, CompletionTokens: 42, TotalTokens: 143})
+	meta.SetFinishReason("stop")
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	traces := r.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	tr := traces[0]
+
+	// The raw body capture is capped at MaxBodyBytes and the tail (with the
+	// usage chunk) is gone — exactly the truncation bug this ticket fixes.
+	if len(tr.ResponseBody) != MaxBodyBytes {
+		t.Fatalf("captured body length = %d, want %d (capped, tail dropped)", len(tr.ResponseBody), MaxBodyBytes)
+	}
+	if strings.Contains(tr.ResponseBody, "finish_reason") || strings.Contains(tr.ResponseBody, "usage") {
+		t.Fatal("captured body unexpectedly contains the stream tail")
+	}
+	if tr.ResponseBytes != MaxBodyBytes {
+		t.Fatalf("ResponseBytes = %d, want %d (capped capture)", tr.ResponseBytes, MaxBodyBytes)
+	}
+
+	// Yet the enriched fields survive because they came from the parsed stream.
+	if tr.Usage == nil || tr.Usage.PromptTokens != 101 || tr.Usage.CompletionTokens != 42 || tr.Usage.TotalTokens != 143 {
+		t.Fatalf("trace Usage = %+v, want prompt=101 completion=42 total=143", tr.Usage)
+	}
+	if tr.FinishReason != "stop" {
+		t.Fatalf("FinishReason = %q, want %q", tr.FinishReason, "stop")
+	}
+	if tr.Model != "gpt-stream" {
+		t.Fatalf("Model = %q, want %q", tr.Model, "gpt-stream")
+	}
+	if tr.Attempt != 2 {
+		t.Fatalf("Attempt = %d, want 2", tr.Attempt)
+	}
+	if tr.TTFBMs <= 0 {
+		t.Fatalf("TTFBMs = %d, want > 0 (measured on first body read)", tr.TTFBMs)
+	}
+}
+
+func TestRecord_EnrichesFromOpenAIBody(t *testing.T) {
+	r := NewRecorder(5)
+
+	body := `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":3}}}`
+	r.Record("s1", "p1", "POST", "/chat/completions", nil, []byte(body), 200, time.Second, "", nil)
+
+	tr := r.List(0, "", "")[0]
+	if tr.Usage == nil {
+		t.Fatal("expected parsed usage from OpenAI body")
+	}
+	if tr.Usage.PromptTokens != 10 || tr.Usage.CompletionTokens != 5 || tr.Usage.TotalTokens != 15 {
+		t.Fatalf("Usage = %+v, want prompt=10 completion=5 total=15", tr.Usage)
+	}
+	if tr.Usage.CacheReadTokens != 3 {
+		t.Fatalf("CacheReadTokens = %d, want 3", tr.Usage.CacheReadTokens)
+	}
+	if tr.FinishReason != "stop" {
+		t.Fatalf("FinishReason = %q, want %q", tr.FinishReason, "stop")
+	}
+	if tr.Model != "gpt-4o" {
+		t.Fatalf("Model = %q, want %q", tr.Model, "gpt-4o")
+	}
+}
+
+func TestRecord_EnrichesFromAnthropicBody(t *testing.T) {
+	r := NewRecorder(5)
+
+	body := `{"id":"msg_1","model":"claude-3-7","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":3,"cache_creation_input_tokens":2}}`
+	r.Record("s1", "p1", "POST", "/v1/messages", nil, []byte(body), 200, time.Second, "", nil)
+
+	tr := r.List(0, "", "")[0]
+	if tr.Usage == nil {
+		t.Fatal("expected parsed usage from Anthropic body")
+	}
+	if tr.Usage.PromptTokens != 10 || tr.Usage.CompletionTokens != 5 {
+		t.Fatalf("Usage = %+v, want prompt=10 completion=5", tr.Usage)
+	}
+	if tr.Usage.CacheReadTokens != 3 || tr.Usage.CacheWriteTokens != 2 {
+		t.Fatalf("cache usage = read:%d write:%d, want read:3 write:2", tr.Usage.CacheReadTokens, tr.Usage.CacheWriteTokens)
+	}
+	if tr.Usage.TotalTokens != 15 {
+		t.Fatalf("TotalTokens = %d, want 15 (computed from prompt+completion)", tr.Usage.TotalTokens)
+	}
+	if tr.FinishReason != "end_turn" {
+		t.Fatalf("FinishReason = %q, want %q", tr.FinishReason, "end_turn")
+	}
+	if tr.Model != "claude-3-7" {
+		t.Fatalf("Model = %q, want %q", tr.Model, "claude-3-7")
+	}
+}
+
+func TestRecord_IgnoresTruncatedStreamBody(t *testing.T) {
+	r := NewRecorder(5)
+
+	// An SSE stream body (not a single JSON document) must not crash or
+	// produce bogus usage — parsing fails safely and leaves fields empty.
+	body := `data: {"id":"c1","choices":[{"delta":{"content":"hi"},"finish_reason":null}],"usage":null}` + "\n\ndata: [DONE]\n"
+	r.Record("s1", "p1", "POST", "/chat/completions", nil, []byte(body), 200, time.Second, "", nil)
+
+	tr := r.List(0, "", "")[0]
+	if tr.Usage != nil {
+		t.Fatalf("expected nil usage for SSE body, got %+v", tr.Usage)
+	}
+	if tr.FinishReason != "" {
+		t.Fatalf("expected empty finish reason for SSE body, got %q", tr.FinishReason)
+	}
+}
+
+func TestTraceMeta_ContextRoundTrip(t *testing.T) {
+	meta := &TraceMeta{}
+	ctx := WithTraceMeta(context.Background(), meta)
+	if got := TraceMetaFromContext(ctx); got != meta {
+		t.Fatal("TraceMetaFromContext did not return the attached meta")
+	}
+	if got := TraceMetaFromContext(context.Background()); got != nil {
+		t.Fatal("TraceMetaFromContext should return nil without a meta")
+	}
+	if got := TraceMetaFromContext(nil); got != nil {
+		t.Fatal("TraceMetaFromContext should return nil for a nil context")
+	}
+
+	meta.SetAttempt(3)
+	meta.SetTTFBMs(17)
+	meta.SetModel("m-1")
+	meta.SetFinishReason("length")
+	meta.SetUsage(&UsageTotals{PromptTokens: 7, CompletionTokens: 8})
+
+	if meta.Attempt() != 3 || meta.TTFBMs() != 17 || meta.Model() != "m-1" || meta.FinishReason() != "length" {
+		t.Fatalf("meta getters did not round-trip setters: %+v", meta)
+	}
+	if u := meta.Usage(); u == nil || u.PromptTokens != 7 || u.CompletionTokens != 8 {
+		t.Fatalf("meta Usage did not round-trip: %+v", u)
 	}
 }

@@ -320,6 +320,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			finishReason litellm.FinishReason
 			streamErr    error
 		)
+		// TraceMeta bridges the per-call measurements parsed from the stream
+		// (usage, finish_reason, model) and the retry attempt number into the
+		// HTTP trace recorded by the transport. It is reused across retries of
+		// this turn; the attempt number is updated before each attempt.
+		traceMeta := &debug.TraceMeta{}
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			// Bound each attempt with the per-turn timeout. This caps a stalled
 			// turn (e.g. a provider streaming reasoning/thinking tokens forever
@@ -331,15 +336,19 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				turnCtx, turnCancel = context.WithTimeout(ctx, opts.TurnTimeout)
 			}
 			// Stamp the zero-based retry attempt onto the request context so the
-			// trace recorder can count retries per provider/model (issue #987).
+			// trace recorder can count retries per provider/model (issue #987),
+			// and onto the TraceMeta bridge which carries it (plus usage, finish
+			// reason, model, TTFB) into the trace for streaming calls (issue #986).
 			attemptCtx := debug.WithAttempt(turnCtx, attempt)
-			stream, err := spec.Client.Stream(attemptCtx, *litellmReq)
+			traceMeta.SetAttempt(attempt)
+			streamCtx := debug.WithTraceMeta(attemptCtx, traceMeta)
+			stream, err := spec.Client.Stream(streamCtx, *litellmReq)
 			if err == nil {
 				// Process stream events inline
 				content.Reset()
 				toolCalls = nil
 				usage = nil
-				content, toolCalls, usage, finishReason, streamErr = processStream(turnCtx, stream, spec.SSEWriter)
+				content, toolCalls, usage, finishReason, streamErr = processStream(turnCtx, stream, spec.SSEWriter, traceMeta)
 				if turnCancel != nil {
 					turnCancel()
 				}
@@ -476,8 +485,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// Broadcast final context_update before done, including actual provider usage
 			broadcastContextUpdate(usage)
 
-			usage := runstate.EstimateUsage(contentStr, opts.CalibrationStore, opts.ModelName)
-			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
+			// The done event carries the provider-reported usage when the
+			// provider returned any; the text-length estimate is used only as a
+			// fallback so the actual value is never shadowed.
+			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usageForDone(usage, contentStr, opts.CalibrationStore, opts.ModelName))
 			// Append final assistant response to conversation history
 			// Only append when there's actual content — empty assistant messages
 			// produce invalid OpenAI-format JSON and may be rejected by providers.
@@ -652,6 +663,11 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 // processStream consumes a litellm.Stream using Next() and a type-switch,
 // accumulating content, tool calls, and usage until DoneEvent or ErrorEvent.
 //
+// When traceMeta is non-nil, the provider-parsed usage, finish reason, and
+// model are recorded on it as events arrive. The meta is read by the recording
+// round-tripper when the stream closes, so it must be populated before this
+// function returns (its deferred stream.Close() is what finalizes the trace).
+//
 // IMPORTANT: The OpenAI-style SSE stream provider does NOT emit ToolUseDone
 // events — it emits ToolUseStart + ToolUseDelta deltas and then a final
 // DoneEvent. When DoneEvent arrives, any tool calls that were started via
@@ -661,6 +677,7 @@ func processStream(
 	ctx context.Context,
 	stream litellm.Stream,
 	sseWriter *runstate.Writer,
+	traceMeta *debug.TraceMeta,
 ) (strings.Builder, []litellm.ToolUseBlock, *litellm.Usage, litellm.FinishReason, error) {
 	var closeOnce sync.Once
 	closeStream := func() {
@@ -698,7 +715,7 @@ func processStream(
 		// Check context before each event
 		if err := ctx.Err(); err != nil {
 			// Drain any remaining buffered events before returning cancellation
-			drainRemaining(stream, &content, &toolCalls, &usage, toolAcc, sseWriter)
+			drainRemaining(stream, &content, &toolCalls, &usage, toolAcc, sseWriter, traceMeta)
 			return content, toolCalls, usage, litellm.FinishReason(""), err
 		}
 
@@ -743,6 +760,12 @@ func processStream(
 
 		case litellm.UsageEvent:
 			usage = &e.Usage
+			if traceMeta != nil {
+				traceMeta.SetUsage(debugUsageFromLitellm(usage))
+				if e.Usage.Model != "" {
+					traceMeta.SetModel(e.Usage.Model)
+				}
+			}
 
 		case litellm.DoneEvent:
 			// OpenAI-style SSE providers (including OpenCode Go) don't emit
@@ -754,6 +777,12 @@ func processStream(
 				}
 			}
 			startedToolIDs = nil
+			if traceMeta != nil {
+				traceMeta.SetFinishReason(string(e.FinishReason))
+				if e.Model != "" {
+					traceMeta.SetModel(e.Model)
+				}
+			}
 			return content, toolCalls, usage, e.FinishReason, nil
 
 		case litellm.ErrorEvent:
@@ -772,6 +801,7 @@ func drainRemaining(
 	usage **litellm.Usage,
 	toolAcc *litellm.ToolUseAccumulator,
 	sseWriter *runstate.Writer,
+	traceMeta *debug.TraceMeta,
 ) {
 	startedToolIDs := make(map[string]bool)
 	for {
@@ -807,12 +837,24 @@ func drainRemaining(
 			delete(startedToolIDs, e.ID)
 		case litellm.UsageEvent:
 			*usage = &e.Usage
+			if traceMeta != nil {
+				traceMeta.SetUsage(debugUsageFromLitellm(*usage))
+				if e.Usage.Model != "" {
+					traceMeta.SetModel(e.Usage.Model)
+				}
+			}
 		case litellm.DoneEvent:
 			// Finalize pending tool calls before returning
 			for id := range startedToolIDs {
 				_, block, _ := toolAcc.Done(litellm.ToolUseDone{ID: id})
 				if block != nil {
 					*toolCalls = append(*toolCalls, *block)
+				}
+			}
+			if traceMeta != nil {
+				traceMeta.SetFinishReason(string(e.FinishReason))
+				if e.Model != "" {
+					traceMeta.SetModel(e.Model)
 				}
 			}
 			return
@@ -855,6 +897,41 @@ type TurnTimeoutError struct {
 
 func (e *TurnTimeoutError) Error() string {
 	return fmt.Sprintf("turn timed out after %s (no content or tool call received)", e.Timeout)
+}
+
+// debugUsageFromLitellm converts provider usage parsed from a litellm stream
+// into the UsageTotals shape recorded on HTTP traces.
+func debugUsageFromLitellm(u *litellm.Usage) *debug.UsageTotals {
+	if u == nil {
+		return nil
+	}
+	return &debug.UsageTotals{
+		PromptTokens:     u.InputTokens,
+		CompletionTokens: u.OutputTokens,
+		TotalTokens:      u.TotalTokens,
+		ReasoningTokens:  u.ReasoningTokens,
+		CacheReadTokens:  u.CacheReadTokens,
+		CacheWriteTokens: u.CacheWriteTokens,
+	}
+}
+
+// usageForDone converts provider-reported usage into the TokenUsage carried on
+// the done SSE event when the provider reported any. When the provider returned
+// no usage, it falls back to the text-length estimate. This guarantees the
+// provider-reported value is never shadowed by the estimate on the done path.
+func usageForDone(usage *litellm.Usage, text string, store *tokenizer.CalibrationStore, model string) *runstate.TokenUsage {
+	if usage != nil && usage.HasTokens() {
+		total := usage.TotalTokens
+		if total == 0 {
+			total = usage.InputTokens + usage.OutputTokens
+		}
+		return &runstate.TokenUsage{
+			TotalTokens:      total,
+			PromptTokens:     usage.InputTokens,
+			CompletionTokens: usage.OutputTokens,
+		}
+	}
+	return runstate.EstimateUsage(text, store, model)
 }
 
 // updateCalibration feeds provider usage data from a completed LLM response

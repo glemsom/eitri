@@ -193,10 +193,11 @@ Each trace record:
 | `response_body` | string | Truncated response JSON body (max 256KB) |
 | `response_headers` | object | Provider response headers (map of header name to value arrays, e.g. `x-request-id` for provider-side correlation). Omitted when empty. |
 | `error` | string | Error message if the request failed |
-| `model` | string | Model name extracted from the request body |
-| `attempt` | int | Zero-based retry attempt number of this call (0 = initial call) |
-| `finish_reason` | string | Provider-reported finish reason (`stop`, `length`, `tool_calls`, …) |
-| `usage` | object | Provider-reported token usage: `prompt_tokens`, `completion_tokens`, `cache_read_tokens`, `cache_write_tokens`, `total_tokens`. Parsed from the response body; for streaming responses the usage is captured from the stream tail even when the body exceeds 256KB. |
+| `model` | string | Model name that produced the response (extracted from the request body or reported by the provider). |
+| `attempt` | int | Zero-based retry attempt number of this call (0 = initial call). |
+| `finish_reason` | string | Provider-reported finish reason (`stop`, `length`, `tool_calls`, `end_turn`, …). Omitted when unknown. |
+| `usage` | object | Provider-reported token usage: `prompt_tokens`, `completion_tokens`, `total_tokens`, `reasoning_tokens`, `cache_read_tokens` (prompt cache hits) and `cache_write_tokens` (prompt cache creation) where the provider reports them. Parsed from the response body (including the stream tail when the body exceeds 256KB). Omitted when the provider returned no usage. |
+| `ttfb_ms` | int | Time-to-first-byte in milliseconds — time from request start to the first response byte. |
 | `error_class` | string | Structured capture-time error classification: `rate_limit`, `timeout`, `auth`, `context_length`, `network`, or `other`. Empty on success. |
 
 Request and response bodies are diagnostic data. They may contain conversation

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -74,6 +75,7 @@ type mockTurn struct {
 	tokens       []tokenEvent
 	toolCalls    []litellm.ToolUseBlock
 	finishReason litellm.FinishReason
+	usage        *litellm.Usage
 	err          error
 }
 
@@ -199,6 +201,9 @@ func (m *mockProvider) Stream(ctx context.Context, req *litellm.Request) (litell
 	finishReason := turn.finishReason
 	if finishReason == "" {
 		finishReason = litellm.FinishReasonStop
+	}
+	if turn.usage != nil {
+		events = append(events, litellm.UsageEvent{Usage: *turn.usage})
 	}
 	events = append(events, litellm.DoneEvent{FinishReason: finishReason})
 
@@ -3498,4 +3503,202 @@ func TestRunAgent_TurnTimeout(t *testing.T) {
 	if !found {
 		t.Errorf("expected an SSE error event, got %v", events)
 	}
+}
+
+// doneEventFrom returns the done SSE event from a collected event list.
+func doneEventFrom(events []runstate.SSEEvent) *runstate.SSEEvent {
+	for i := range events {
+		if events[i].Type == "done" {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
+func TestRunAgent_DoneCarriesProviderUsage(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	client := newMockClient([]mockTurn{
+		{
+			tokens:       []tokenEvent{{content: "hello world"}},
+			finishReason: litellm.FinishReasonStop,
+			usage:        &litellm.Usage{InputTokens: 100, OutputTokens: 25, TotalTokens: 125, CacheReadTokens: 40},
+		},
+	})
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}}},
+		lrWithModel("test-model"),
+	)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr: NewRequestHistoryManager(req),
+		Confirmer:  nil,
+		SessionID:  "",
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	done := doneEventFrom(collectSSE(sseState))
+	if done == nil {
+		t.Fatal("expected a done event")
+	}
+	if done.Usage == nil {
+		t.Fatal("expected provider usage on the done event")
+	}
+	if done.Usage.PromptTokens != 100 || done.Usage.CompletionTokens != 25 || done.Usage.TotalTokens != 125 {
+		t.Fatalf("done usage = %+v, want prompt=100 completion=25 total=125 (provider-reported, not estimate)", done.Usage)
+	}
+}
+
+func TestRunAgent_DoneFallsBackToEstimateWhenNoUsage(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// No UsageEvent in the stream — the provider returned no usage.
+	client := newMockClient([]mockTurn{
+		{tokens: []tokenEvent{{content: "hello world"}}},
+	})
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}}},
+		lrWithModel("test-model"),
+	)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr: NewRequestHistoryManager(req),
+		Confirmer:  nil,
+		SessionID:  "",
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	done := doneEventFrom(collectSSE(sseState))
+	if done == nil {
+		t.Fatal("expected a done event")
+	}
+	if done.Usage == nil {
+		t.Fatal("expected estimated usage on the done event")
+	}
+	// No store: EstimateUsage uses 4 chars/token over "hello world" (11 chars)
+	// → total 2, split 1 prompt + 1 completion.
+	if done.Usage.TotalTokens != 2 || done.Usage.PromptTokens != 1 || done.Usage.CompletionTokens != 1 {
+		t.Fatalf("done usage = %+v, want estimated total=2 prompt=1 completion=1", done.Usage)
+	}
+}
+
+func TestRunAgent_AttemptNumberPropagatesThroughRetryLoop(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	inner := newMockClient([]mockTurn{
+		{
+			tokens:       []tokenEvent{{content: "Hello after retry!"}},
+			finishReason: litellm.FinishReasonStop,
+			usage:        &litellm.Usage{InputTokens: 10, OutputTokens: 3, TotalTokens: 13},
+		},
+	})
+	transient := &transientErrorLLM{
+		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
+		inner:        inner,
+	}
+	// attemptCaptureLLM records the TraceMeta attached to the request context on
+	// each Stream call, so the test can verify the retry loop increments the
+	// attempt number per attempt.
+	capture := &attemptCaptureLLM{inner: transient}
+	client, err := litellm.New(capture)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}}},
+		lrWithModel("test-model"),
+	)
+
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:  NewRequestHistoryManager(req),
+		Confirmer:   nil,
+		SessionID:   "",
+		RetryPolicy: &RetryPolicy{Attempts: 1, Backoff: 0},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error after retry: %v", err)
+	}
+
+	if len(capture.attempts) != 2 {
+		t.Fatalf("Stream calls = %d, want 2 (initial + one retry)", len(capture.attempts))
+	}
+	if capture.attempts[0] != 0 || capture.attempts[1] != 1 {
+		t.Fatalf("attempt numbers = %v, want [0 1]", capture.attempts)
+	}
+	// The final attempt's meta carries the provider-parsed measurements.
+	meta := capture.metas[len(capture.metas)-1]
+	if meta.Attempt() != 1 {
+		t.Fatalf("final meta Attempt = %d, want 1", meta.Attempt())
+	}
+	if meta.FinishReason() != string(litellm.FinishReasonStop) {
+		t.Fatalf("meta FinishReason = %q, want %q", meta.FinishReason(), litellm.FinishReasonStop)
+	}
+	if u := meta.Usage(); u == nil || u.PromptTokens != 10 || u.CompletionTokens != 3 {
+		t.Fatalf("meta Usage = %+v, want prompt=10 completion=3", u)
+	}
+
+	types := sseEventTypes(collectSSE(sseState))
+	if len(types) < 2 || types[len(types)-1] != "done" {
+		t.Fatalf("expected run to succeed after retry, events: %v", types)
+	}
+}
+
+// attemptCaptureLLM records the TraceMeta (and its attempt number) attached to
+// the request context on every Stream call, then delegates to an inner
+// litellm.Provider.
+type attemptCaptureLLM struct {
+	mu       sync.Mutex
+	inner    litellm.Provider
+	attempts []int
+	metas    []*debug.TraceMeta
+}
+
+func (m *attemptCaptureLLM) Name() string { return "attempt-capture" }
+
+func (m *attemptCaptureLLM) Chat(ctx context.Context, req *litellm.Request) (*litellm.Response, error) {
+	return m.inner.Chat(ctx, req)
+}
+
+func (m *attemptCaptureLLM) Stream(ctx context.Context, req *litellm.Request) (litellm.Stream, error) {
+	m.mu.Lock()
+	if meta := debug.TraceMetaFromContext(ctx); meta != nil {
+		m.attempts = append(m.attempts, meta.Attempt())
+		m.metas = append(m.metas, meta)
+	}
+	m.mu.Unlock()
+	return m.inner.Stream(ctx, req)
 }

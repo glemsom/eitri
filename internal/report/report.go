@@ -23,79 +23,87 @@ type TerminationInfo struct {
 
 // RunInfo is a summary of one run in a session.
 type RunInfo struct {
-	Run          int                `json:"run"`
-	StartedAt    time.Time          `json:"started_at"`
-	Turns        int                `json:"turns"`
-	Termination  TerminationInfo    `json:"termination"`
+	Run         int             `json:"run"`
+	StartedAt   time.Time       `json:"started_at"`
+	Turns       int             `json:"turns"`
+	Termination TerminationInfo `json:"termination"`
 }
 
 // ContextInfo holds token usage for context updates.
 type ContextInfo struct {
-	TotalTokens           int `json:"total_tokens"`
-	PromptTokens          int `json:"prompt_tokens"`
-	ContextWindow         int `json:"context_window"`
-	ActualPromptTokens    int `json:"actual_prompt_tokens,omitempty"`
+	TotalTokens            int `json:"total_tokens"`
+	PromptTokens           int `json:"prompt_tokens"`
+	ContextWindow          int `json:"context_window"`
+	ActualPromptTokens     int `json:"actual_prompt_tokens,omitempty"`
 	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
 }
 
 // ToolCallInfo represents one tool call in a turn.
 type ToolCallInfo struct {
-	Name            string      `json:"name"`
-	Arguments       any         `json:"arguments"`
-	ResultPreview   string      `json:"result_preview"`
-	ResultTruncated bool        `json:"result_truncated"`
-	Error           bool        `json:"error"`
-	DurationMs      int64       `json:"duration_ms,omitempty"`
+	Name            string `json:"name"`
+	Arguments       any    `json:"arguments"`
+	ResultPreview   string `json:"result_preview"`
+	ResultTruncated bool   `json:"result_truncated"`
+	Error           bool   `json:"error"`
+	DurationMs      int64  `json:"duration_ms,omitempty"`
 }
 
 // Turn represents one turn in the assistant run.
 type Turn struct {
-	Turn            int             `json:"turn"`
-	Role            string          `json:"role"`
-	Content         string          `json:"content"`
-	ReasoningContent string         `json:"reasoning_content,omitempty"`
-	Timestamp       time.Time       `json:"timestamp"`
-	LLMDurationMs   int64           `json:"llm_duration_ms,omitempty"`
-	LLMTraceID      string          `json:"llm_trace_id,omitempty"`
-	LLMRequestBytes int             `json:"llm_request_bytes,omitempty"`
-	LLMResponseBytes int            `json:"llm_response_bytes,omitempty"`
-	ContextBefore   *ContextInfo    `json:"context_before,omitempty"`
-	ContextAfter    *ContextInfo    `json:"context_after,omitempty"`
-	ToolCalls       []ToolCallInfo  `json:"tool_calls,omitempty"`
+	Turn             int       `json:"turn"`
+	Role             string    `json:"role"`
+	Content          string    `json:"content"`
+	ReasoningContent string    `json:"reasoning_content,omitempty"`
+	Timestamp        time.Time `json:"timestamp"`
+	LLMDurationMs    int64     `json:"llm_duration_ms,omitempty"`
+	LLMTraceID       string    `json:"llm_trace_id,omitempty"`
+	LLMRequestBytes  int       `json:"llm_request_bytes,omitempty"`
+	LLMResponseBytes int       `json:"llm_response_bytes,omitempty"`
+	// Enriched per-call measurements from the matched HTTP trace.
+	LLMTTFBMs       int64              `json:"llm_ttfb_ms,omitempty"`
+	LLMAttempt      int                `json:"llm_attempt,omitempty"`
+	LLMModel        string             `json:"llm_model,omitempty"`
+	LLMFinishReason string             `json:"llm_finish_reason,omitempty"`
+	LLMUsage        *debug.UsageTotals `json:"llm_usage,omitempty"`
+	ContextBefore   *ContextInfo       `json:"context_before,omitempty"`
+	ContextAfter    *ContextInfo       `json:"context_after,omitempty"`
+	ToolCalls       []ToolCallInfo     `json:"tool_calls,omitempty"`
 }
 
 // Summary holds aggregate statistics for a run.
 type Summary struct {
-	TotalTurns          int      `json:"total_turns"`
-	TotalLLMCalls       int      `json:"total_llm_calls"`
-	TotalToolCalls      int      `json:"total_tool_calls"`
-	FailedToolCalls     int      `json:"failed_tool_calls"`
-	FailedToolNames     []string `json:"failed_tool_names,omitempty"`
-	HallucinatedTools   []string `json:"hallucinated_tools,omitempty"`
-	EstimatedTotalTokens int     `json:"estimated_total_tokens"`
-	EstimatedCompletionTokens int `json:"estimated_completion_tokens"`
-	TotalPromptTokens     int    `json:"total_prompt_tokens,omitempty"`
-	TotalCompletionTokens int    `json:"total_completion_tokens,omitempty"`
-	TotalDurationMs     int64    `json:"total_duration_ms"`
-	Note                string   `json:"note,omitempty"`
+	TotalTurns                int      `json:"total_turns"`
+	TotalLLMCalls             int      `json:"total_llm_calls"`
+	TotalToolCalls            int      `json:"total_tool_calls"`
+	FailedToolCalls           int      `json:"failed_tool_calls"`
+	FailedToolNames           []string `json:"failed_tool_names,omitempty"`
+	HallucinatedTools         []string `json:"hallucinated_tools,omitempty"`
+	EstimatedTotalTokens      int      `json:"estimated_total_tokens"`
+	EstimatedCompletionTokens int      `json:"estimated_completion_tokens"`
+	TotalPromptTokens         int      `json:"total_prompt_tokens,omitempty"`
+	TotalCompletionTokens     int      `json:"total_completion_tokens,omitempty"`
+	TotalCacheReadTokens      int      `json:"total_cache_read_tokens,omitempty"`
+	TotalCacheWriteTokens     int      `json:"total_cache_write_tokens,omitempty"`
+	TotalDurationMs           int64    `json:"total_duration_ms"`
+	Note                      string   `json:"note,omitempty"`
 }
 
 // SessionReport is the complete report for one run of a session.
 type SessionReport struct {
-	SessionID   string            `json:"session_id"`
-	Title       string            `json:"title"`
-	SystemPrompt string           `json:"system_prompt,omitempty"`
-	Model       string            `json:"model"`
-	Provider    string            `json:"provider"`
-	Workspace   string            `json:"workspace"`
-	StartedAt   time.Time         `json:"started_at"`
-	EndedAt     time.Time         `json:"ended_at"`
-	DurationMs  int64             `json:"duration_ms"`
-	ReportVersion string          `json:"report_version"` // "full" or "reconstructed"
-	Termination *TerminationInfo  `json:"termination,omitempty"`
-	Turns       []Turn            `json:"turns"`
-	Summary     Summary           `json:"summary"`
-	SubAgents   []string          `json:"sub_agents,omitempty"`
+	SessionID     string           `json:"session_id"`
+	Title         string           `json:"title"`
+	SystemPrompt  string           `json:"system_prompt,omitempty"`
+	Model         string           `json:"model"`
+	Provider      string           `json:"provider"`
+	Workspace     string           `json:"workspace"`
+	StartedAt     time.Time        `json:"started_at"`
+	EndedAt       time.Time        `json:"ended_at"`
+	DurationMs    int64            `json:"duration_ms"`
+	ReportVersion string           `json:"report_version"` // "full" or "reconstructed"
+	Termination   *TerminationInfo `json:"termination,omitempty"`
+	Turns         []Turn           `json:"turns"`
+	Summary       Summary          `json:"summary"`
+	SubAgents     []string         `json:"sub_agents,omitempty"`
 }
 
 // Service assembles Session Reports from on-disk data.
@@ -289,10 +297,10 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timel
 			}
 		case "context_update":
 			ci := &ContextInfo{
-				TotalTokens:           evt.TotalTokens,
-				PromptTokens:          evt.PromptTokens,
-				ContextWindow:         evt.ContextWindow,
-				ActualPromptTokens:    evt.ActualPromptTokens,
+				TotalTokens:            evt.TotalTokens,
+				PromptTokens:           evt.PromptTokens,
+				ContextWindow:          evt.ContextWindow,
+				ActualPromptTokens:     evt.ActualPromptTokens,
 				ActualCompletionTokens: evt.ActualCompletionTokens,
 			}
 			if lastContextBefore != nil {
@@ -336,8 +344,8 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timel
 // computeSummary calculates aggregate statistics from a timeline.
 func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary {
 	summary := Summary{
-		TotalTurns:       len(turns),
-		TotalDurationMs:  tl.EndedAt.Sub(tl.StartedAt).Milliseconds(),
+		TotalTurns:      len(turns),
+		TotalDurationMs: tl.EndedAt.Sub(tl.StartedAt).Milliseconds(),
 	}
 
 	toolCallCount := 0
@@ -454,7 +462,9 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 	return report
 }
 
-// enrichFromTraces fills in LLM timing and request/response bytes from traces.
+// enrichFromTraces fills in LLM timing, bytes, and per-call measurements
+// (usage, finish reason, model, attempt, TTFB) from the HTTP traces recorded
+// for the run. It also updates the summary cache-token totals.
 func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *SessionReport {
 	traceIDs, err := svc.persister.ListTraces(sessionID)
 	if err != nil || len(traceIDs) == 0 {
@@ -466,6 +476,11 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 		requestBytes  int
 		responseBytes int
 		traceID       string
+		ttfbMs        int64
+		attempt       int
+		model         string
+		finishReason  string
+		usage         *debug.UsageTotals
 		timeDiff      time.Duration
 	}
 
@@ -498,6 +513,11 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 					requestBytes:  trace.RequestBytes,
 					responseBytes: trace.ResponseBytes,
 					traceID:       string(trace.ID),
+					ttfbMs:        trace.TTFBMs,
+					attempt:       trace.Attempt,
+					model:         trace.Model,
+					finishReason:  trace.FinishReason,
+					usage:         trace.Usage,
 					timeDiff:      diff,
 				}
 			}
@@ -508,7 +528,25 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 			report.Turns[i].LLMRequestBytes = best.requestBytes
 			report.Turns[i].LLMResponseBytes = best.responseBytes
 			report.Turns[i].LLMTraceID = best.traceID
+			report.Turns[i].LLMTTFBMs = best.ttfbMs
+			report.Turns[i].LLMAttempt = best.attempt
+			report.Turns[i].LLMModel = best.model
+			report.Turns[i].LLMFinishReason = best.finishReason
+			report.Turns[i].LLMUsage = best.usage
 		}
+	}
+
+	// Update cache-token totals from the enriched turns.
+	var cacheRead, cacheWrite int
+	for _, t := range report.Turns {
+		if t.LLMUsage != nil {
+			cacheRead += t.LLMUsage.CacheReadTokens
+			cacheWrite += t.LLMUsage.CacheWriteTokens
+		}
+	}
+	if cacheRead > 0 || cacheWrite > 0 {
+		report.Summary.TotalCacheReadTokens = cacheRead
+		report.Summary.TotalCacheWriteTokens = cacheWrite
 	}
 
 	return report
