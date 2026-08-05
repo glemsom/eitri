@@ -383,6 +383,7 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 **Island lifecycle**:
 - Initialize on full page load and `htmx:afterSwap`.
 - Idempotent setup: no duplicate handlers, double renders, or timer leaks.
+- Custom elements that register `document`/`document.body`-level listeners in `connectedCallback` must remove them in `disconnectedCallback` (storing the exact bound handler reference so removal matches); re-entry into `connectedCallback` is guarded (e.g. an `_initialized` flag) so moving or re-rendering an element can never stack handlers, and any deferred/retry initialization loop (e.g. the composer waiting for its form after an HTMX swap) is bounded so a missing dependency terminates the retries instead of looping forever. Non-element islands keep document-level listeners either registered exactly once at module scope (delegated handlers that query the current DOM) or transient with guaranteed removal. (#1069)
 - Read configuration from server-rendered `data-*` attributes.
 - Tolerate missing Prism/KaTeX/Mermaid.
 - Use text nodes or server-rendered sanitized HTML for untrusted content; never `innerHTML` from user/LLM data.

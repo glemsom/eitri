@@ -4,6 +4,12 @@
 (function () {
   'use strict';
 
+  // Upper bound for connectedCallback retries while waiting for the htmx swap
+  // that delivers the composer form. At 60fps this is ~0.5s of retrying; after
+  // that the element gives up so a permanently missing form can't leave a
+  // requestAnimationFrame loop running forever (issue #1069).
+  var MAX_COMPOSER_INIT_ATTEMPTS = 30;
+
   class EitriComposer extends HTMLElement {
     connectedCallback() {
       if (this._initialized) return;
@@ -11,10 +17,13 @@
       this.textarea = this.querySelector('.chat-input');
       this.form = this.querySelector('form');
       if (!this.textarea || !this.form) {
-        if (!this._initScheduled) {
+        this._initAttempts = (this._initAttempts || 0) + 1;
+        if (!this._initScheduled && this._initAttempts < MAX_COMPOSER_INIT_ATTEMPTS) {
           this._initScheduled = true;
           window.requestAnimationFrame(() => {
             this._initScheduled = false;
+            // Bail out entirely if the element was torn down mid-retry.
+            if (!this.isConnected) return;
             this.connectedCallback();
           });
         }

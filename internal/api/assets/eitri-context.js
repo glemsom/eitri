@@ -32,6 +32,11 @@
       }
 
       connectedCallback() {
+        // Guard re-entry so moving or re-rendering this element never
+        // double-registers handlers (issue #1069).
+        if (this._initialized) return;
+        this._initialized = true;
+
         var self = this;
         self._contextWindow = parseInt(self.getAttribute('data-context-window'), 10) || 256000;
         self._warningThreshold = parseInt(self.getAttribute('data-warning-threshold'), 10) || 75;
@@ -87,61 +92,84 @@
         self._warningBtnEl = self.querySelector('.context-warning-btn');
 
         // Listen for context-update custom events
-        self.addEventListener('context-update', function (e) {
+        self._onContextUpdate = function (e) {
           var data = e.detail;
           self._lastData = data;
           // Persist per session for re-hydration across session switches
           persistContextData(data);
           self._debouncedRender();
-        });
+        };
+        self.addEventListener('context-update', self._onContextUpdate);
 
         // Click compact view to toggle expanded
-        self._compactEl.addEventListener('click', function () {
+        self._onCompactClick = function () {
           self._expandedEl.classList.toggle('open');
-        });
+        };
+        self._compactEl.addEventListener('click', self._onCompactClick);
 
         // Click sidebar header to toggle content
-        var header = document.querySelector('#context-panel .sidebar-header');
-        if (header) {
-          header.addEventListener('click', function () {
-            if (self._lastData) {
-              // Active: toggle expanded detail view
-              self._expandedEl.classList.toggle('open');
-            } else {
-              // Idle: toggle idle message
-              self._idleEl.classList.toggle('open');
-            }
-          });
+        self._onHeaderClick = function () {
+          if (self._lastData) {
+            // Active: toggle expanded detail view
+            self._expandedEl.classList.toggle('open');
+          } else {
+            // Idle: toggle idle message
+            self._idleEl.classList.toggle('open');
+          }
+        };
+        self._headerEl = document.querySelector('#context-panel .sidebar-header');
+        if (self._headerEl) {
+          self._headerEl.addEventListener('click', self._onHeaderClick);
         }
 
         // Wire up the warning banner's "Compact now" button
-        if (self._warningBtnEl) {
-          self._warningBtnEl.addEventListener('click', function () {
-            var sessionId = self.getActiveSessionId();
-            if (!sessionId) return;
-            htmx.ajax('POST', '/api/sessions/' + sessionId + '/compact', {
-              target: '#error-toasts',
-              swap: 'beforeend',
-              handler: function () {
-                // On successful compaction, hide the warning banner immediately
-                self._warningEl.style.display = 'none';
-              }
-            });
+        self._onWarningBtnClick = function () {
+          var sessionId = self.getActiveSessionId();
+          if (!sessionId) return;
+          htmx.ajax('POST', '/api/sessions/' + sessionId + '/compact', {
+            target: '#error-toasts',
+            swap: 'beforeend',
+            handler: function () {
+              // On successful compaction, hide the warning banner immediately
+              self._warningEl.style.display = 'none';
+            }
           });
+        };
+        if (self._warningBtnEl) {
+          self._warningBtnEl.addEventListener('click', self._onWarningBtnClick);
         }
 
         // Also listen for HTMX events from the sidebar compact-btn
-        document.body.addEventListener('htmx:afterRequest', function (e) {
+        self._onBodyAfterRequest = function (e) {
           // If the compact request completed successfully for this session
           if (e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.indexOf('/compact') !== -1) {
             if (e.detail.successful) {
               self._warningEl.style.display = 'none';
             }
           }
-        });
+        };
+        document.body.addEventListener('htmx:afterRequest', self._onBodyAfterRequest);
 
         // Re-hydrate from persisted data when element is (re-)connected
         rehydrateIfAvailable(self);
+      }
+
+      disconnectedCallback() {
+        // Tear down every document/body-level listener so a detached element
+        // can be garbage-collected instead of leaking (issue #1069). The
+        // _initialized flag is reset so re-connecting this same element
+        // re-initializes cleanly instead of stacking handlers.
+        if (this._onBodyAfterRequest) {
+          document.body.removeEventListener('htmx:afterRequest', this._onBodyAfterRequest);
+        }
+        if (this._onHeaderClick && this._headerEl) {
+          this._headerEl.removeEventListener('click', this._onHeaderClick);
+        }
+        if (this._debounceTimer) {
+          window.clearTimeout(this._debounceTimer);
+          this._debounceTimer = null;
+        }
+        this._initialized = false;
       }
 
       resetToIdle() {
