@@ -12,7 +12,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -197,40 +196,10 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 	// Append task-specific suffix to the base system prompt
 	systemPrompt := basePrompt + "\n\nYou are performing the following task: " + task
 
-	// Create request and set up messages
-	req := &litellm.Request{
-		Model: parentCfg.ModelName,
-	}
-	// Set task ID as prompt cache key if the provider supports it.
-	// Skip for Anthropic-routed models (qwen*, minimax*) because the
-	// Anthropic provider rejects unknown provider options like prompt_cache_key.
-	providerDesc, _ := provider.Describe(parentCfg.ProviderID)
-	if providerDesc.SupportsPromptCache && !provider.IsAnthropicRoutedModel(parentCfg.ModelName) {
-		if req.ProviderOptions == nil {
-			req.ProviderOptions = make(litellm.ProviderOptions)
-		}
-		req.ProviderOptions["prompt_cache_key"] = taskID
-	}
-
-	if parentCfg.ThinkingLevel != "" {
-		if levels := provider.SupportedThinkingLevels(parentCfg.ProviderID, parentCfg.ModelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping",
-				slog.String("model", parentCfg.ModelName),
-				slog.String("provider", parentCfg.ProviderID),
-				slog.String("thinking_level", parentCfg.ThinkingLevel),
-			)
-		} else if !loop.IsReasoningModel(parentCfg.ModelName) {
-			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
-				slog.String("model", parentCfg.ModelName),
-				slog.String("thinking_level", parentCfg.ThinkingLevel),
-			)
-		} else {
-			req.Thinking = &litellm.Thinking{
-				Mode:   litellm.ThinkingEnabled,
-				Effort: parentCfg.ThinkingLevel,
-			}
-		}
-	}
+	// Create request and set up messages. The request (model, max_output_tokens,
+	// prompt-cache key, thinking level) is assembled by the same shared builder
+	// the UI and batch parent runs use (issue #1091).
+	req := buildRunRequest(parentCfg, taskID)
 	req.Messages = []litellm.Message{
 		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: systemPrompt}}},
 		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: task}}},
