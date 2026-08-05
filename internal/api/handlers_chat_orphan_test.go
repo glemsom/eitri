@@ -10,7 +10,10 @@ import (
 
 // chatFailingProviderServer returns a mock provider that:
 // - Returns valid data for /v1/models (so config validation passes)
-// - Returns error for /v1/chat/completions (so StartRun fails)
+// - Optionally returns an error for /v1/chat/completions (SetFailChat)
+//
+// Reusable helper for tests that need a reachable provider endpoint that
+// passes model discovery but can fail chat traffic.
 type chatFailingProviderServer struct {
 	server *httptest.Server
 	mu     sync.RWMutex
@@ -67,16 +70,6 @@ func (m *chatFailingProviderServer) SetFailChat(fail bool) {
 // The fix moves AppendMessage to after StartRun succeeds, so if starting
 // the run fails, the message is never added to the conversation.
 func TestChatOrphanedMessageOnStartRunFailure(t *testing.T) {
-	// This test's premise is stale: since the litellm transport refactor
-	// (ADR 0019), StartRun no longer performs a chat request synchronously —
-	// buildLLMService does no network I/O, so a failing chat endpoint surfaces
-	// as an async run error, not a StartRun failure. The test broke on main in
-	// #1022 (unreachable base_url now fails config validation instead). The
-	// orphan-guarantee itself (AppendUser after buildLLMService succeeds in
-	// startRunWithConfig) is covered by runner tests; revisit this test when
-	// StartRun gains a synchronous failure mode.
-	t.Skip("stale premise: StartRun no longer fails synchronously on chat errors (ADR 0019)")
-
 	h := newManagedTestServerWithRuns(t)
 	client := noRedirectClient()
 
@@ -108,12 +101,14 @@ func TestChatOrphanedMessageOnStartRunFailure(t *testing.T) {
 	}
 	initialMsgCount := len(convo.Messages)
 
-	// Configure a provider whose /v1/models passes config validation but whose
-	// chat endpoint fails, so buildLLMService fails inside StartRun.
-	// This simulates the exact scenario from issue #972: LLM service construction error.
+	// Configure a fake provider whose /v1/models serves model discovery, so the
+	// config save passes live connection validation. custom_openai accepts a
+	// keyless draft (APIKeyRequired=false), so saving with an empty api_key
+	// succeeds — but buildLLMService rejects the empty key when the run starts,
+	// reproducing issue #972's exact scenario: an LLM service construction error
+	// after a successful config save, with no unreachable-URL trick.
 	prov := newChatFailingProviderServer(t)
-	prov.SetFailChat(true)
-	putJSONConfig(t, h.server, `{"provider":"custom_openai","base_url":"`+prov.URL()+`","api_key":"sk-test","model":"gpt-4"}`)
+	putJSONConfig(t, h.server, `{"provider":"custom_openai","base_url":"`+prov.URL()+`","api_key":"","model":"gpt-4"}`)
 
 	// Send a chat message that will fail during StartRun
 	chatReq, _ := http.NewRequest(http.MethodPost, h.server.URL+"/api"+loc+"/chat", strings.NewReader("message=orphaned+message"))
