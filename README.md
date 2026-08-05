@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp">
-  <img alt="Eitri" src="https://github.com/glemsom/eitri/blob/main/internal/api/assets/face.webp" width="320" height="320">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/glemsom/eitri/main/internal/api/assets/face.webp">
+  <img alt="Eitri" src="https://raw.githubusercontent.com/glemsom/eitri/main/internal/api/assets/face.webp" width="320" height="320">
 </picture>
 
 # Eitri
@@ -19,10 +19,9 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI agent that 
 - **Agent loop with built-in tools** — `bash`, `grep`, `read`, `write`, `edit`, `web_fetch`, `render_mermaid_diagram`, and more.
 - **Multi-provider LLM support** — works with OpenCode Go, GitHub Copilot, and Custom OpenAI providers. Configurable per session.
 - **Agent Skills** — modular skill packs that extend the agent's capabilities per-project (like Agent Skills for GitHub Copilot).
-- **Sub-agents** — the agent can delegate sub-tasks to subordinate agents via `delegate`/`collect` tools for parallel exploration.
+- **Sub-agents** — delegate sub-tasks to subordinate agents via `delegate`/`collect` for parallel exploration.
 - **Chat UI** — HTMX-based browser UI with SSE streaming, Mermaid diagram rendering, file diffs, and a live context panel.
-- **Session persistence** — snapshots written to disk after every agent turn; LLM conversation histories and HTTP traces are restored on startup, and full sessions can be brought back on demand via `POST /api/sessions/{id}/load`.
-- **Headless batch mode** — `eitri -b "your prompt"` runs the agent from the terminal without a browser, streaming output to stdout.
+- **Headless batch mode** — `eitri -b "your prompt"` runs the agent from the terminal, streaming output to stdout.
 - **Self-hosted** — your data stays on your machine. No third-party cloud.
 
 ---
@@ -71,10 +70,9 @@ tar -xzf eitri-linux-amd64.tar.gz
 sudo install -m 755 eitri /usr/local/bin/eitri
 ```
 
-### 2. Configure (via the UI)
+### 2. Configure
 
-Eitri includes a settings page at [http://127.0.0.1:8080/settings](http://127.0.0.1:8080/settings).
-After starting the server (step 3), open the settings page to configure:
+Start the server (step 3), then open the settings page at [http://127.0.0.1:8080/settings](http://127.0.0.1:8080/settings) to configure:
 
 - **LLM provider** — OpenCode Go, GitHub Copilot (device-flow OAuth), or Custom OpenAI
 - **Model** — discoverable from the provider after configuring credentials
@@ -108,9 +106,6 @@ This runs the agent once and streams text output to stdout — no browser needed
 
 ## Configuration
 
-Most settings are configured through the UI at [http://127.0.0.1:8080/settings](http://127.0.0.1:8080/settings)
-— provider, model, API key, timeouts, system prompt, and more are all editable there.
-
 Eitri stores configuration in `~/.eitri/config.json` under the hood, but you should use the
 settings page rather than hand-editing the file.
 
@@ -141,7 +136,7 @@ by default. The sandbox can be configured via the settings UI or directly in `~/
 |----------|---------|
 | `EITRI_ADDR` | Listen address (default `127.0.0.1:8080`) |
 | `EITRI_CONFIG` | Path to config file (default `~/.eitri/config.json`) |
-| `EITRI_DIR` | Root directory for persisted data — session snapshots, conversation histories, and HTTP traces (default `~/.eitri/`) |
+| `EITRI_DIR` | Root directory for persisted data (default `~/.eitri/`) |
 | `EITRI_OPEN_BROWSER` | `1` to force open browser, `0` to disable, unset for auto-detect |
 | `EITRI_GITHUB_CLIENT_ID` | Override the built-in GitHub Copilot OAuth client ID |
 
