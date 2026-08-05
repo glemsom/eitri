@@ -2,7 +2,12 @@
 package tokenizer
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -92,4 +97,100 @@ func (cs *CalibrationStore) Reset(model string) {
 	cs.mu.Lock()
 	delete(cs.store, model)
 	cs.mu.Unlock()
+}
+
+// Count returns the number of models that currently have calibration entries.
+func (cs *CalibrationStore) Count() int {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	return len(cs.store)
+}
+
+// Snapshot returns a copy of the current per-model CPT values keyed by model
+// name. Mutating the returned map does not affect the store.
+func (cs *CalibrationStore) Snapshot() map[string]float64 {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	out := make(map[string]float64, len(cs.store))
+	for model, entry := range cs.store {
+		entry.Lock()
+		out[model] = entry.cpt
+		entry.Unlock()
+	}
+	return out
+}
+
+// Restore replaces the store's calibration data with the given per-model CPT
+// values. Models absent from the data fall back to DefaultCPT on next access.
+func (cs *CalibrationStore) Restore(data map[string]float64) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	cs.store = make(map[string]*modelEntry, len(data))
+	for model, cpt := range data {
+		cs.store[model] = &modelEntry{cpt: cpt}
+	}
+}
+
+// Save persists the store's calibration data to path as JSON using an atomic
+// write (temp file + rename), so a crash mid-write never leaves a corrupt
+// calibration file behind.
+func (cs *CalibrationStore) Save(path string) error {
+	data, err := json.MarshalIndent(cs.Snapshot(), "", "  ")
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, "calibration-*.json.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if tmpName != "" {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	tmpName = ""
+	return nil
+}
+
+// Load reads calibration data from path into the store, replacing any current
+// entries. An absent or empty file is treated as a no-op so the store keeps
+// its defaults. A corrupt file returns an error and leaves the store unchanged.
+func (cs *CalibrationStore) Load(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+
+	var snapshot map[string]float64
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return fmt.Errorf("parse calibration data %s: %w", path, err)
+	}
+	cs.Restore(snapshot)
+	return nil
 }

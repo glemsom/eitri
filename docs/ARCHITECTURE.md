@@ -121,16 +121,16 @@ Network-agnostic: manages channels, not HTTP connections. Each active runner run
 
 `Writer.Token` and `Writer.ThinkingDelta` batch stream text server-side: consecutive deltas are flushed as a single SSE event on a ~50ms interval or a 4096-char budget (also on type/turn changes, non-token events, subscribe, and stream close), so the client receives the same text with far fewer network frames. Run-state event history is bounded by event count (4096) and a 1 MiB byte budget for high-volume token/thinking content, so a long reasoning stream stays memory-bounded and replay-on-reconnect delivers only the recent tail.
 
-**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios.
+**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios. The live call sites pass the active store and model name: `ComputeContext` is fed by the run loop's `CalibrationStore`/`ModelName` options, and the auto-compaction high-water gate (`compactSessionHistory`) estimates with the same store so threshold checks track the calibrated ratio for the current model.
 
 ### `internal/tokenizer/` — Token estimation and calibration
 
 | File | Responsibility |
 |------|---------------|
-| `calibration_store.go` | `CalibrationStore` — per-model chars-per-token (CPT) exponential moving average with thread-safe access |
-| `calibration_store_test.go` | Unit tests for EMA math, concurrent access, default fallback, reset |
+| `calibration_store.go` | `CalibrationStore` — per-model chars-per-token (CPT) exponential moving average with thread-safe access; `Save`/`Load` JSON persistence under the Eitri data dir (`~/.eitri/calibration.json` by default) |
+| `calibration_store_test.go` | Unit tests for EMA math, concurrent access, default fallback, reset, and save/load round-trips |
 
-The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns.
+The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns. Calibration data is restored from disk on startup and saved on shutdown (server mode) and at the end of batch runs, so observations survive restarts; an absent or empty file falls back to current defaults.
 
 ### `internal/session/` — UI session management
 

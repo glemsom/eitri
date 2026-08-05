@@ -2,6 +2,8 @@ package tokenizer
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -178,5 +180,114 @@ func TestEMASmoothingConvergence(t *testing.T) {
 	cpt := cs.Lookup(model)
 	if math.Abs(cpt-trueCPT) > 0.1 {
 		t.Errorf("EMA did not converge: Lookup() = %f, want ≈%f", cpt, trueCPT)
+	}
+}
+
+func TestSnapshotRestore(t *testing.T) {
+	t.Parallel()
+
+	cs := NewCalibrationStore()
+	cs.Update("model-a", 5.0)
+	cs.Update("model-b", 2.5)
+	wantA := cs.Lookup("model-a")
+	wantB := cs.Lookup("model-b")
+
+	restored := NewCalibrationStore()
+	restored.Restore(cs.Snapshot())
+
+	if got := restored.Lookup("model-a"); got != wantA {
+		t.Errorf("restored model-a Lookup() = %f, want %f", got, wantA)
+	}
+	if got := restored.Lookup("model-b"); got != wantB {
+		t.Errorf("restored model-b Lookup() = %f, want %f", got, wantB)
+	}
+	// Models absent from the snapshot fall back to the default.
+	if got := restored.Lookup("model-c"); got != DefaultCPT {
+		t.Errorf("restored model-c Lookup() = %f, want %f", got, DefaultCPT)
+	}
+	// The original store is unaffected by the caller mutating the snapshot.
+	snap := cs.Snapshot()
+	delete(snap, "model-a")
+	if got := cs.Lookup("model-a"); got != wantA {
+		t.Errorf("original store mutated by snapshot edit: Lookup() = %f, want %f", got, wantA)
+	}
+}
+
+func TestSaveLoad_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cs := NewCalibrationStore()
+	cs.Update("model-a", 5.0)
+	cs.Update("model-b", 2.5)
+	wantA := cs.Lookup("model-a")
+	wantB := cs.Lookup("model-b")
+
+	path := filepath.Join(t.TempDir(), "calibration.json")
+	if err := cs.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded := NewCalibrationStore()
+	if err := loaded.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := loaded.Lookup("model-a"); got != wantA {
+		t.Errorf("loaded model-a Lookup() = %f, want %f", got, wantA)
+	}
+	if got := loaded.Lookup("model-b"); got != wantB {
+		t.Errorf("loaded model-b Lookup() = %f, want %f", got, wantB)
+	}
+	// Models absent from the file fall back to the default.
+	if got := loaded.Lookup("model-c"); got != DefaultCPT {
+		t.Errorf("loaded model-c Lookup() = %f, want %f", got, DefaultCPT)
+	}
+}
+
+func TestLoad_AbsentFileFallsBackToDefaults(t *testing.T) {
+	t.Parallel()
+
+	loaded := NewCalibrationStore()
+	path := filepath.Join(t.TempDir(), "does-not-exist.json")
+	if err := loaded.Load(path); err != nil {
+		t.Fatalf("Load(absent) should be a no-op, got error: %v", err)
+	}
+	if got := loaded.Lookup("any-model"); got != DefaultCPT {
+		t.Errorf("Lookup() = %f, want %f", got, DefaultCPT)
+	}
+}
+
+func TestLoad_EmptyFileFallsBackToDefaults(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "calibration.json")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	loaded := NewCalibrationStore()
+	if err := loaded.Load(path); err != nil {
+		t.Fatalf("Load(empty) should be a no-op, got error: %v", err)
+	}
+	if got := loaded.Lookup("any-model"); got != DefaultCPT {
+		t.Errorf("Lookup() = %f, want %f", got, DefaultCPT)
+	}
+}
+
+func TestLoad_CorruptFileReturnsError(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "calibration.json")
+	if err := os.WriteFile(path, []byte("{not json"), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	loaded := NewCalibrationStore()
+	if err := loaded.Load(path); err == nil {
+		t.Fatal("Load(corrupt) should return an error")
+	}
+	// The store must be unaffected by a failed load.
+	if got := loaded.Lookup("any-model"); got != DefaultCPT {
+		t.Errorf("Lookup() = %f, want %f", got, DefaultCPT)
 	}
 }
