@@ -459,38 +459,34 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 		records = append(records, recordInfo{done: rec.Done, record: rec})
 	}
 
-	// Wait for each task to complete
+	// Wait for each task to complete, snapshotting each record's final result
+	// at the moment its done channel closes. Completed records are reaped from
+	// the store after subAgentReapTTL, so a long wait for a slow task would
+	// otherwise lose the results of fast tasks — they came back as "cancelled"
+	// with empty results even though they completed. The record pointer stays
+	// valid after reaping; only the store entry is removed.
+	results := make(map[string]SubAgentResult, len(taskIDs))
 	for _, ri := range records {
 		select {
 		case <-ri.done:
-			// Task completed
+			// Task completed — snapshot now, before the record can be reaped.
+			results[ri.record.TaskID] = subAgentRecordToResult(ri.record)
 		case <-ctx.Done():
-			// Context cancelled — return partial results
+			// Context cancelled — return partial results: prefer the snapshot
+			// for tasks already observed done, then fall back to the store.
 			slog.Info("collect cancelled, returning partial results")
-			results := make(map[string]SubAgentResult, len(taskIDs))
 			for _, tid := range taskIDs {
-				rec := s.subagents.getRecord(tid)
-				if rec == nil {
-					results[tid] = SubAgentResult{
-						Status: "cancelled",
-					}
+				if _, ok := results[tid]; ok {
 					continue
 				}
-				results[tid] = subAgentRecordToResult(rec)
+				if rec := s.subagents.getRecord(tid); rec != nil {
+					results[tid] = subAgentRecordToResult(rec)
+				} else {
+					results[tid] = SubAgentResult{Status: "cancelled"}
+				}
 			}
 			return results, nil
 		}
-	}
-
-	// Collect results
-	results := make(map[string]SubAgentResult, len(taskIDs))
-	for _, tid := range taskIDs {
-		rec := s.subagents.getRecord(tid)
-		if rec == nil {
-			results[tid] = SubAgentResult{Status: "cancelled"}
-			continue
-		}
-		results[tid] = subAgentRecordToResult(rec)
 	}
 
 	return results, nil

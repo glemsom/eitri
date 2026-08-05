@@ -460,6 +460,73 @@ func TestRunService_CollectSubAgents_UnknownID(t *testing.T) {
 	}
 }
 
+func TestRunService_CollectSubAgents_PreservesResultsAfterReap(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// Task A finished before collect started; its record is reaped while
+	// collect is still waiting on the slower task B. The result must survive
+	// the reap — previously it was reported as "cancelled" with an empty
+	// result even though the task completed.
+	taskA := "task_a"
+	recA := &subAgentRecord{
+		TaskID:    taskA,
+		Status:    subAgentCompleted,
+		Result:    "result A",
+		TurnCount: 3,
+		Done:      make(chan struct{}),
+		StartedAt: time.Now(),
+	}
+	recA.finish()
+	svc.subagents.storeRecord(taskA, recA)
+
+	taskB := "task_b"
+	recB := &subAgentRecord{
+		TaskID:    taskB,
+		Status:    subAgentRunning,
+		Done:      make(chan struct{}),
+		StartedAt: time.Now(),
+	}
+	svc.subagents.storeRecord(taskB, recB)
+
+	resultsCh := make(chan map[string]SubAgentResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		results, err := svc.CollectSubAgents(context.Background(), []string{taskA, taskB})
+		resultsCh <- results
+		errCh <- err
+	}()
+
+	// Let collect capture both records, then reap A while it waits on B.
+	time.Sleep(50 * time.Millisecond)
+	svc.subagents.reapAfterTTL(taskA)
+
+	// Finish B; collect should now return with both results intact.
+	recB.Status = subAgentCompleted
+	recB.Result = "result B"
+	recB.TurnCount = 5
+	recB.finish()
+
+	results := <-resultsCh
+	if err := <-errCh; err != nil {
+		t.Fatalf("CollectSubAgents: %v", err)
+	}
+
+	a, ok := results[taskA]
+	if !ok {
+		t.Fatalf("task %s missing from results", taskA)
+	}
+	if a.Status != "completed" || a.Result != "result A" || a.TurnCount != 3 {
+		t.Fatalf("task A result = %+v, want completed/'result A'/3 turns despite reap", a)
+	}
+
+	b, ok := results[taskB]
+	if !ok {
+		t.Fatalf("task %s missing from results", taskB)
+	}
+	if b.Status != "completed" || b.Result != "result B" || b.TurnCount != 5 {
+		t.Fatalf("task B result = %+v, want completed/'result B'/5 turns", b)
+	}
+}
 func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 
