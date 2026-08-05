@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -232,6 +234,112 @@ func TestBatchRun_FeedsDebugRecorderMetrics(t *testing.T) {
 	if mm.Cache.Hits != 0 || mm.Cache.Misses != 1 {
 		t.Fatalf("model cache = %+v, want hits=0 misses=1", mm.Cache)
 	}
+}
+
+// TestBatchRun_DelegateSpawnsSubAgent verifies that the delegate tool resolves
+// the parent run config in batch mode (issue #1001). BatchRun registers the
+// parent config under the batch ID, so the run context must carry the batch ID
+// as the tool session ID — otherwise DelegateTool.Call forwards an empty
+// session ID and SpawnSubAgent fails with "no parent run config found".
+//
+// The mock LLM server is driven by the request bodies it receives: the first
+// parent turn is told to call delegate, the spawned sub-agent (identified by
+// its task-suffix system prompt) gets a plain answer, and the parent's second
+// turn must have the delegate task_id in its history. Asserting the parent's
+// second turn carries the task_id proves delegate returned successfully.
+func TestBatchRun_DelegateSpawnsSubAgent(t *testing.T) {
+	var mu sync.Mutex
+	var parentReqs, subAgentReqs int
+	parentTurn2HadTaskID := false
+
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read body", http.StatusBadRequest)
+			return
+		}
+		isSubAgent := bytes.Contains(body, []byte("You are performing the following task"))
+
+		parentNum := 0
+		if isSubAgent {
+			mu.Lock()
+			subAgentReqs++
+			mu.Unlock()
+		} else {
+			mu.Lock()
+			parentReqs++
+			parentNum = parentReqs
+			if parentNum > 1 && bytes.Contains(body, []byte("task_id")) {
+				parentTurn2HadTaskID = true
+			}
+			mu.Unlock()
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+
+		switch {
+		case isSubAgent:
+			// Sub-agent gets a plain text answer and finishes.
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"sub-agent done"},"index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+		case parentNum == 1:
+			// Parent turn 1: the model decides to delegate a task.
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"delegate","arguments":"{\"task\":\"run whoami\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+		default:
+			// Parent turn 2: give the sub-agent a window to fire its request,
+			// then wrap up the batch run with a final answer.
+			time.Sleep(200 * time.Millisecond)
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"delegation complete"},"index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+		}
+	}))
+	defer llm.Close()
+
+	svc := NewRunService(RunServiceDeps{
+		HistorySessionMgr: history.NewSessionManager(50),
+	})
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   5,
+	}
+
+	var buf bytes.Buffer
+	content, err := svc.BatchRun(context.Background(), "delegate this task", cfg, &buf)
+	if err != nil {
+		t.Fatalf("batch run failed: %v", err)
+	}
+	if !strings.Contains(content, "delegation complete") {
+		t.Fatalf("unexpected batch content: %q", content)
+	}
+
+	// The parent's second turn must carry the delegate task_id in history —
+	// if delegate errored (e.g. "no parent run config found"), no task_id
+	// would have been fed back.
+	if !parentTurn2HadTaskID {
+		t.Fatal("parent's second turn did not carry the delegate task_id — delegate likely failed with 'no parent run config found'")
+	}
+
+	// The delegate must have actually spawned a sub-agent request against the
+	// LLM server (it runs asynchronously, so poll briefly).
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := subAgentReqs
+		mu.Unlock()
+		if n >= 1 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("delegate did not spawn a sub-agent request to the LLM server")
 }
 
 // TestBatchRun_ErrorFeedsMetrics verifies that a failing headless batch run

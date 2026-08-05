@@ -115,6 +115,10 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
+	// Pass the batch ID as the session ID in the run context so tools
+	// (e.g. delegate/collect for sub-agents) can resolve the parent run
+	// config that was registered under batchID above (issue #1001).
+	runCtx = context.WithValue(runCtx, tool.SessionIDKey, batchID)
 	defer cancel()
 
 	maxTurns := cfg.MaxTurns

@@ -28,6 +28,11 @@ The persona is resolved from the workspace `.eitri/personas/` directory, falling
 4. Streams text tokens to stdout in real-time (tool calls execute silently — only final text is streamed)
 5. Exits with code 0 on success, non-zero on failure
 
+Sub-agents are supported in batch mode: the `delegate` and `collect` tools are
+registered for headless runs, so the agent can spawn sub-agents for
+data-intensive work just as it can in the browser UI. Because there is no UI
+session, sub-agents spawned from batch mode do not create child sessions.
+
 ## Caveats
 
 - **No confirmations:** Confirmation requests are automatically denied. Ops that require confirmation will return errors to the LLM.
