@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **CONTEXT.md**: trim the Bash tool domain glossary entry to a one-liner with links to the `internal/sandbox/` and `internal/tool/` sections in `docs/ARCHITECTURE.md`; sandbox and execution details now live only in `docs/ARCHITECTURE.md`. (#1006)
 - **CONTEXT.md**: fix domain glossary and project structure drift — drop OpenRouter from supported providers, add `delegate`/`collect` to the Tool entry, correct the compactor config key names and note salience-aware compaction, drop removed DiffCard from Render component, and add `internal/message/` + `browser` tool to the project structure. (#960)
 
 ## [0.1.6] — 2026-07-29
