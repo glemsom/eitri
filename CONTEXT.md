@@ -148,7 +148,7 @@ Optional developer tools:
 - `make build` — compile the binary with embedded version
 - `./eitri --version` — print the compiled version
 
-The `scripts/agent-loop.sh` script is an optional convenience for those with `gh` installed. It iterates `ready-for-agent` issues and runs each via `eitri -b`. See `docs/agents/batch.md`.
+The `scripts/agent-loop.sh` script is an optional convenience for those with `gh` installed. It is a dispatcher: it claims up to `-j N` (default 2) `ready-for-agent` issues, runs one `eitri -b` worker per issue in a detached git worktree (`.worktrees/issue-N`), then serially rebases and squash-merges the resulting PRs. See `docs/agents/batch.md`.
 
 ### Cutting a release
 
@@ -207,4 +207,4 @@ Or download a tarball from the GitHub Releases page and verify the SHA256 checks
 | `scripts/release.sh` | Orchestrate bump → changelog → tag → push | AI agent or human |
 | `.github/workflows/ci.yml` | CI: test + build on push/PR | Committed |
 | `.github/workflows/release.yml` | Build + publish on `v*` tag | Committed |
-| `scripts/agent-loop.sh` | Batch issue processing (optional) | Committed, optional use |
+| `scripts/agent-loop.sh` | Parallel batch issue processing (optional) | Committed, optional use |

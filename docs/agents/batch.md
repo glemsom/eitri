@@ -34,24 +34,26 @@ The persona is resolved from the workspace `.eitri/personas/` directory, falling
 - **No browser session:** The agent cannot open browser tabs or interact with a UI.
 - **No SSE/streaming UI:** Output is raw text only. Tool cards, chat bubbles, and the HTMX frontend are not available.
 - **Config-driven:** The model, provider, workspace, and system prompt come from the config file. Set `EITRI_CONFIG` to use a non-default config.
-- **Single-shot:** Each `eitri -b` invocation runs one prompt and exits. For processing multiple prompts in sequence, use the agent loop script (see below).
+- **Single-shot:** Each `eitri -b` invocation runs one prompt and exits. For processing multiple issues in parallel, use the agent loop script (see below).
 
 ## Agent loop pattern
 
-For processing a series of `ready-for-agent` issues in sequence, use `scripts/agent-loop.sh`:
+For AFK (away-from-keyboard) processing of `ready-for-agent` issues, use `scripts/agent-loop.sh`. It is a **dispatcher** that works on up to `N` issues in parallel:
 
 ```bash
-./scripts/agent-loop.sh /path/to/repo
+./scripts/agent-loop.sh /path/to/repo       # 2 workers (default)
+./scripts/agent-loop.sh /path/to/repo -j 4  # 4 workers
 ```
 
-The script:
+How it works:
 
-1. Lists open `ready-for-agent` issues sorted by number (oldest first)
-2. For each issue, calls `eitri -b "implement the feature in issue #N — TITLE"`
-3. Exits with 0 when no more issues remain
-4. Exits non-zero if a batch run fails
+1. **Claim:** Lists the oldest open `ready-for-agent` issues (excluding `in-progress` and `issue-type:parent`), claims up to `-j N` of them, and adds an `in-progress` label to each. The dispatcher is the only process that touches issue state — workers never do, so there is no claim race.
+2. **Worktrees:** Fetches `origin/main` and creates one detached git worktree per issue (`.worktrees/issue-N`). Detached HEAD is required because `main` is checked out in the primary worktree.
+3. **Workers:** Runs one `eitri -b` worker per worktree, in parallel. Each worker creates a branch, implements the issue, pushes, and opens a PR whose description contains `Closes #N` (so the issue auto-closes on merge). Worker output goes to `.worktrees/issue-N/log` — never interleaved on the terminal. Workers do **not** merge.
+4. **Merge queue:** After all workers finish, the dispatcher merges PRs one at a time (`gh pr merge --squash --delete-branch`), rebasing each PR branch onto the latest `origin/main` first. If a rebase conflicts, the dispatcher spawns a focused `eitri -b` resolution run inside that worktree, capped at 3 attempts per PR; past the cap the PR is left open with a comment and the dispatcher moves on. Merging is serialized because two concurrent merges would race (the second PR goes stale and GitHub refuses to merge).
+5. **Cleanup:** Worktrees are removed on success and on crash (via `trap`). On startup the dispatcher removes stale `in-progress` labels whose worktree no longer exists.
 
-This is designed for AFK (away-from-keyboard) batch processing of fully specified issues.
+The dispatcher reports per-issue worker exit status and continues past failures; it exits 0 only if nothing was left unmerged or orphaned.
 
 ## Exit codes
 

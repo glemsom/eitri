@@ -2,6 +2,7 @@ eitri
 dist/
 *.test
 .scratch
+.worktrees/
 architecture-review.html
 .gocache/
 .gomodcache/
