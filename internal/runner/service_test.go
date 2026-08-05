@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,6 +39,20 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 	return svc, uiSessionMgr
 }
 
+// unreachableURL returns a loopback HTTP URL with no listener, so dialing it
+// fails immediately with connection refused. Unlike DNS-resolved hostnames
+// (e.g. test.local), it never touches the resolver and cannot stall on mDNS.
+func unreachableURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("unreachableURL: listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	return "http://" + addr
+}
+
 func TestStartRun_InjectsRepoInstructions(t *testing.T) {
 	dir := t.TempDir()
 	content := "# My Repo\n\nBe specific."
@@ -48,7 +63,7 @@ func TestStartRun_InjectsRepoInstructions(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 		Workspace:  dir,
@@ -77,7 +92,7 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 	}
@@ -128,7 +143,7 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 
 func TestRunService_StartRun_RejectsDuplicateActiveRun(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -144,7 +159,7 @@ func TestRunService_StartRun_RejectsDuplicateActiveRun(t *testing.T) {
 
 func TestRunService_Subscribe_ReplaysHistoryForLateJoiners(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -191,7 +206,7 @@ check:
 
 func TestRunService_Cancel_StopsRunAndBroadcastsDone(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -238,7 +253,7 @@ loop:
 
 func TestRunService_CancelAll_StopsAllRuns(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	for _, id := range []string{"session-a", "session-b"} {
 		_, err := svc.StartRun(context.Background(), id, "hello", cfg)
@@ -271,7 +286,7 @@ func TestRunService_AuthCallback(t *testing.T) {
 		return nil
 	})
 
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
@@ -325,7 +340,7 @@ func TestRunService_MaxTurnsMessage(t *testing.T) {
 
 func TestRunService_NotifySessionClosed_BroadcastsClosedEvent(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -376,7 +391,7 @@ func TestRunService_SpawnSubAgent_ReturnsUniqueIDs(t *testing.T) {
 	// Store a parent config
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
@@ -447,7 +462,7 @@ func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
@@ -481,7 +496,7 @@ func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 
 func TestRunService_Cancel_CancelsSubAgents(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -529,7 +544,7 @@ func TestRunService_BuildBaseToolRegistry_ExcludesDelegateCollect(t *testing.T) 
 
 func TestRunService_ParentConfig_StoredOnStartRun(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model", Workspace: t.TempDir()}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -559,7 +574,7 @@ func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
 	// Store parent config
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
@@ -602,7 +617,7 @@ func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 		Workspace:  t.TempDir(),
@@ -627,7 +642,7 @@ func TestRunService_ActiveRunSSESnapshot_NoDataRaceWithCancel(t *testing.T) {
 	t.Parallel()
 
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -672,7 +687,7 @@ func TestRunService_ActiveRunCount_InitialZero(t *testing.T) {
 
 func TestRunService_ActiveRunCount_IncrementsAfterStartRun(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -687,7 +702,7 @@ func TestRunService_ActiveRunCount_IncrementsAfterStartRun(t *testing.T) {
 
 func TestRunService_ActiveRunCount_DecrementsAfterCancel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -705,7 +720,7 @@ func TestRunService_ActiveRunCount_DecrementsAfterCancel(t *testing.T) {
 
 func TestRunService_CloseSession_CancelsRunAndClosesHistory(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	// Create a history session
 	svc.historySessionMgr.Create("session-1")
@@ -758,7 +773,7 @@ func TestRunService_CloseSession_NilHistoryManager(t *testing.T) {
 	svc := NewRunService(RunServiceDeps{
 		HistorySessionMgr: nil,
 	})
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -1013,7 +1028,7 @@ func TestRunService_ActiveRunSSESnapshot_ReturnsNilForNoActiveRun(t *testing.T) 
 
 func TestRunService_ActiveRunSSESnapshot_ReturnsSnapshotForActiveRun(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -1032,7 +1047,7 @@ func TestRunService_ActiveRunSSESnapshot_ReturnsSnapshotForActiveRun(t *testing.
 
 func TestRunService_ActiveRunSSESnapshot_ReturnsNilAfterCancel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -1051,7 +1066,7 @@ func TestRunService_ActiveRunSSESnapshot_ReturnsNilAfterCancel(t *testing.T) {
 
 func TestRunService_NotifyAllStreamsClosed_BroadcastsToAllActive(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: "http://test.local", APIKey: "test-key", ModelName: "test-model"}
+	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	for _, id := range []string{"session-a", "session-b"} {
 		_, err := svc.StartRun(context.Background(), id, "hello", cfg)
@@ -1813,7 +1828,7 @@ func TestCompactSession_NoHistoryManager(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, compactRunConfig("http://test.local"))
+	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, compactRunConfig(unreachableURL(t)))
 	if err == nil {
 		t.Fatal("expected error when history manager is nil")
 	}
@@ -1826,7 +1841,7 @@ func TestCompactSession_SessionNotFound(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 
 	// Session not in history manager should not error — just return no compaction.
-	count, freed, pruned, err := svc.CompactSession(context.Background(), "unknown-session", compactRunConfig("http://test.local"))
+	count, freed, pruned, err := svc.CompactSession(context.Background(), "unknown-session", compactRunConfig(unreachableURL(t)))
 	if err != nil {
 		t.Fatalf("CompactSession should not error for unknown session: %v", err)
 	}
