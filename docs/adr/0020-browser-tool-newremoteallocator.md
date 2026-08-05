@@ -1,7 +1,7 @@
 # 0020 — `browser` tool via chromedp NewRemoteAllocator
 
-- **Status:** Accepted
-- **Date:** 2025-07-27
+**Status**: Accepted
+**Date**: 2025-07-27
 
 ## Context
 

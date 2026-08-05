@@ -9,7 +9,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`. This file is the c
 | [0003](adr/0003-provider-profiles-and-github-copilot.md) | Provider profiles and GitHub Copilot | Accepted |
 | [0004](adr/0004-merge-tool-activity-into-inline-tool-cards.md) | Merge tool activity into inline tool cards | Accepted |
 | [0005](adr/0005-prompt-caching.md) | Session-scoped prompt caching | Accepted |
-| [0006](adr/0006-remove-adk-litellm-transport.md) | Remove ADK, adopt litellm transport + custom agent loop | Accepted |
+| [0006](adr/0006-remove-adk-litellm-transport.md) | Remove ADK, adopt litellm transport + custom agent loop | Superseded by 0019 |
 | [0007](adr/0007-split-render-component-into-per-component-tools.md) | Split render_component into per-component tools | Accepted |
 | [0008](adr/0008-add-context-lines-to-grep-tool.md) | Add context lines to grep tool | Accepted |
 | [0009](adr/0009-live-context-panel.md) | Live context window utilization panel | Accepted |

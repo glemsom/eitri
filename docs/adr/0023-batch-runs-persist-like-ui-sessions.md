@@ -1,7 +1,7 @@
 # 0023 — Batch runs persist like UI sessions
 
-**Status:** Accepted
-**Date:** 2026-08-05
+**Status**: Accepted
+**Date**: 2026-08-05
 
 ## Context
 

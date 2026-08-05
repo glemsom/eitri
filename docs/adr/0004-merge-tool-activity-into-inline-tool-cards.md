@@ -47,12 +47,3 @@ Negative:
 
 - Loss of chronological tool log separate from chat (can be re-added later as collapsed sidebar if needed)
 - JS needs to inject "running" card on `tool_call` event (currently only injects on `tool_result`)
-
-## Implementation plan
-
-1. Expose `tool_call` data to the render endpoint so JS can inject running cards
-2. JS: inject running tool card on `tool_call` SSE event
-3. JS: morph running card to done on `tool_result` event
-4. Remove activity panel template + CSS + JS
-5. Merge ToolCallCard + ToolResultCard templates into unified ToolCard
-6. Add live elapsed timer on running cards

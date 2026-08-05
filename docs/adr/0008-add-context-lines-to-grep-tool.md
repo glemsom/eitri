@@ -1,8 +1,6 @@
 # 0008 — Add context lines to the `grep` tool
 
-## Status
-
-Accepted
+**Status**: Accepted
 
 ## Context
 

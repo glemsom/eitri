@@ -1,8 +1,6 @@
 # 0010 — Replace tmux-backed bash tool with direct exec.Command execution
 
-## Status
-
-Accepted
+**Status**: Accepted
 
 ## Context
 
@@ -45,7 +43,7 @@ Replace `TmuxExecutor` (and the entire `internal/executor/` package) with direct
 - `BashTool` name + schema + dispatch unchanged
 - `bash` tool description updated to reflect new behavior
 - All config fields preserved: `command_timeout` stays active, `session_timeout` becomes dead config (kept for backward compat, documented as unused)
-|- All other tools (`read`, `write`, `edit`, `grep`, etc.) unchanged — they already receive `workspace` directly
+- All other tools (`read`, `write`, `edit`, `grep`, etc.) unchanged — they already receive `workspace` directly
 
 ## Considered Options
 

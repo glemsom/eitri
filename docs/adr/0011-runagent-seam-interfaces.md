@@ -1,147 +1,42 @@
-# 0011 — Extract HistoryManager and Confirmer seam interfaces from RunAgent
+# 0011 — HistoryManager and Confirmer seam interfaces for RunAgent
 
-## Status
-
-Accepted
+**Status**: Accepted
 
 ## Context
 
-`RunAgent` (the agent turn loop in `internal/runner/loop.go`) currently accepts a flat list of 12 parameters, including `sessionMgr *history.SessionManager` and `uisessionMgr *uisession.Manager`. The session manager drives two parallel history-management paths inside the loop:
-
-```go
-if sessionMgr != nil {
-    sessionMgr.AppendAssistant(sessionID, content, toolCalls)
-} else {
-    req.Messages = append(req.Messages, litellm.Message{...})
-}
-```
-
-There are **8 such `if sessionMgr != nil { ... } else { ... }` branches** in the loop, each duplicating the same intent through different types. The non-session path mutates `req.Messages` directly; the session path delegates to the session manager.
-
-The confirmation flow (`confirm.go`) — which gates user-path approval for the edit tool — has **zero unit tests**. It is only exercised through browser E2E tests (chromedp). The `ConfirmationFunc` callback type is always passed as `nil` in existing unit tests, so the entire approve/deny path is untested.
-
-Test volume reflects this friction: `loop_test.go` is 1949 lines (5.3× the 363-line `loop.go`), much of that overhead coming from having to cover both session and non-session paths.
-
-### Existing dependencies behind the seam
-
-| Loop operation | Session path | Non-session path |
-|---|---|---|
-| Load history | `sessionMgr.History()` | `req.Messages` (already populated) |
-| Append assistant | `sessionMgr.AppendAssistant(...)` | `req.Messages = append(...)` |
-| Append tool result | `sessionMgr.AppendTool(...)` | `req.Messages = append(...)` |
-| Request-based? | `RequestBased() → false` | `RequestBased() → true` |
-| UI component replay | `uisessionMgr.AppendComponent(...)` | Skipped (no UI) |
-| Quick replies | `uisessionMgr.SetQuickReplies(...)` | Skipped (no UI) |
+`RunAgent` (the agent turn loop in `internal/runner/loop/`) accepted a flat list of 12 parameters and drove two parallel history paths: a session-backed path (`*history.SessionManager`) for the browser UI and a direct `req.Messages` path for headless runs, via ~8 duplicated `if sessionMgr != nil` branches in the loop. The confirmation flow (user-path approval for the edit tool) was exercised only through browser E2E tests — `ConfirmationFunc` was always `nil` in unit tests, leaving the approve/deny path untested, and `loop_test.go` paid the cost of covering both paths in every combination.
 
 ## Decision
 
-Introduce two internal seam interfaces in the `runner` package, and refactor `RunAgent` to accept them in place of the raw session-manager parameters.
-
-### HistoryManager interface
+Introduce two internal seam interfaces in the runner package and refactor `RunAgent` to accept them.
 
 ```go
 type HistoryManager interface {
-    History() []litellm.Message
-    AppendAssistant(content string, toolCalls []litellm.ToolCall)
-    AppendTool(toolCallID string, content string, isError bool)
+    History() []message.EitriMessage
+    AppendAssistant(content string, toolCalls []litellm.ToolUseBlock)
+    AppendTool(toolCallID, content, rawContent string, isError bool)
+    ReplaceHistory(messages []message.Message)   // used by auto-compaction
     RequestBased() bool
 }
-```
 
-Two adapters:
-
-- **`sessionHistoryManager`** — wraps `*history.SessionManager` and `sessionID`. Satisfies all three methods for the browser UI path. Component replay and quick-replies are handled directly via `RunOpts.UISessionMgr`.
-- **`requestHistoryManager`** — wraps `*litellm.Request`. Satisfies the three methods by mutating `req.Messages` directly. No-op for UI component operations.
-
-### Confirmer interface
-
-```go
 type Confirmer interface {
     Confirm(ctx context.Context, sessionID, path, message string) (*ConfirmationResult, error)
 }
 ```
 
-Two adapters:
+Two adapters each: session-backed vs request-backed history managers (UI component replay and quick replies stay on the UI session manager, outside the interface), and `RunService` (channel-based rendezvous with the API endpoint) vs a canned-result test stub.
 
-- **`RunService`** — the existing `confirmPath` method implements this interface (channel-based blocking, rendezvous with the API endpoint).
-- **`testConfirmerStub`** — returns a canned result for unit tests.
-
-### RunSpec + AgentConfig split
-
-Later, the flat `AgentConfig` struct was split into two structs to separate transport/config from runtime/UI concerns:
-
-- **`RunSpec`** — LLM service, request, tools, SSE writer, turn/history caps
-- **`AgentConfig`** — history manager, confirmer, UI session manager, session ID, context window, crash dump func, turn pointer
-
-```go
-type RunSpec struct {
-    Service    llm.LLMService
-    Request    *llm.Request
-    MaxTurns   int
-    MaxHistory int
-    SSEWriter  *runstate.Writer
-    Tools      *tool.Registry
-}
-
-type AgentConfig struct {
-    HistoryMgr    HistoryManager
-    Confirmer     Confirmer
-    UISessionMgr  *uisession.Manager
-    SessionID     string
-    ContextWindow int
-    CrashDumpFunc func(err error, stack []byte)
-    Turns         *int
-}
-```
-
-### RunAgent signature
-
-Before (12 params):
-
-```go
-func RunAgent(
-    ctx context.Context, llm litellm.LLMService, req *litellm.Request,
-    maxTurns int, maxHistory int, sseWriter *runstate.Writer,
-    tools *tool.Registry, sessionMgr *history.SessionManager,
-    uisessionMgr *uisession.Manager, sessionID string,
-    confirmFn ConfirmationFunc, contextWindow int,
-) error
-```
-
-After (single AgentConfig struct):
-
-```go
-func RunAgent(ctx context.Context, cfg AgentConfig) error
-```
-
-After (RunSpec + AgentConfig split):
-
-```go
-func RunAgent(ctx context.Context, spec RunSpec, cfg AgentConfig) error
-```
-
-`RunSpec` collects the LLM-transport and tool-registry fields; `AgentConfig` retains the runtime/UI/history fields.
-
-### Migration strategy (inside-out)
-
-1. Define `HistoryManager` and `Confirmer` interfaces. Write the two adapters each. Write unit tests for each adapter.
-2. Rewrite `RunAgent`'s internals to use the adapters (constructed from existing params). No signature change. All existing tests pass.
-3. Change `RunAgent`'s signature to take the interfaces. Update callers (`run.go`, `loop_test.go`). Remove adapter-construction code inside `RunAgent`.
-4. Add confirmation-flow tests using `testConfirmerStub`. Remove `confirm.go` (fold `Confirm` method onto `RunService`).
+`RunAgent` now takes `RunSpec` (transport/config: client, request, tools, SSE writer, turn/history caps) plus `RunOpts` (runtime/UI: history manager, confirmer, UI session manager, session ID, run ID, context window, crash-dump func, turn pointer, debug dir, turn completer, calibration store). UI-only concerns stay out of the seam interfaces.
 
 ## Considered Options
 
-- **ConfirmationFunc callback instead of Confirmer interface** — less ceremony, but inconsistent with HistoryManager pattern and harder to test in isolation (no named type for stub implementations). Rejected for consistency and testability.
-
-- **Keep uisessionMgr as a separate parameter** (not merged into HistoryManager) — component replay and quick-replies are a genuinely different concern from conversation history. The session-backed HistoryManager adapter touches uisessionMgr internally, but the interface doesn't expose it. Clean separation.
-
-- **Big-bang signature change** — faster but riskier. Incremental inside-out approach lets each step be verified independently.
+- **ConfirmationFunc callback instead of Confirmer interface**: less ceremony, but no named type for stubs — harder to test in isolation.
+- **Merge uisessionMgr into HistoryManager**: rejected — component replay and quick replies are a genuinely different concern from conversation history.
+- **Big-bang signature change**: faster but riskier; an incremental inside-out migration let each step be verified independently.
 
 ## Consequences
 
-- **Positive**: The 8 conditional branches disappear from `RunAgent`, replaced by uniform interface calls. Easier to reason about the loop's control flow.
-- **Positive**: Confirmation flow becomes unit-testable via `testConfirmerStub`, eliminating the need for browser E2E tests to cover approve/deny paths.
-- **Positive**: Test matrix collapses — `loop_test.go` no longer needs to test both session and non-session paths in every combination. Each adapter is tested independently.
-- **Positive**: Adding a third history storage backend (e.g. persistent database) means a new adapter, not more branching in the loop.
-- **Negative**: Two new types and adapters add indirection. A reader must look at two places to understand history operations instead of one. Worth the cost given the branch-count reduction.
-- **Negative**: `RunService` gains a `Confirmer` interface implementation in addition to its existing responsibilities, but this is a thin delegation to the existing channel map.
+- The ~8 conditional branches disappear from `RunAgent`, replaced by uniform interface calls.
+- The confirmation flow becomes unit-testable via a stub; the test matrix collapses (each adapter tested independently, no both-path combinations).
+- Adding a third history backend (e.g. persistent database) means a new adapter, not more branching.
+- Two new types/adapters add a little indirection — a reader consults two places for history operations instead of one.

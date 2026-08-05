@@ -1,8 +1,8 @@
 # 0003 — Provider profiles and GitHub Copilot
 
-Eitri will support GitHub Copilot with provider profile instead of separate LLM implementation or Copilot SDK runtime. `github_copilot` discovers models from `GET {base_url}/models`, filters to picker-enabled `/chat/completions` models, and sends chat through existing OpenAI-style streaming transport at `POST {base_url}/chat/completions` with Copilot-specific headers. Settings support both manual bearer-token entry and GitHub OAuth device flow; returned OAuth token is stored as provider-owned auth state and resolved through provider auth before discovery and chat.
-
 **Status**: Accepted
+
+Eitri will support GitHub Copilot with provider profile instead of separate LLM implementation or Copilot SDK runtime. `github_copilot` discovers models from `GET {base_url}/models`, filters to picker-enabled `/chat/completions` models, and sends chat through existing OpenAI-style streaming transport at `POST {base_url}/chat/completions` with Copilot-specific headers. Settings support both manual bearer-token entry and GitHub OAuth device flow; returned OAuth token is stored as provider-owned auth state and resolved through provider auth before discovery and chat.
 
 ## Consequences
 

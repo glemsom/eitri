@@ -45,6 +45,3 @@ The ADK session ID is stable per conversation, making it the natural cache key v
 
 - [OpenCode Go source](https://github.com/opencode-ai/opencode) — supports `prompt_cache_key` in chat-completions bodies.
 - [Pi extension `pi-opencode-go-cache`](https://github.com/glemsom/pi-opencode-go-cache) — confirmed cache-hit behaviour in multi-turn sessions.
-- Issue #141 (T1) — Added `prompt_cache_key` field and profile flag.
-- Issue #142 (T2) — Threaded ADK session ID into `OpenAIModel`.
-- Issue #143 (T3) — Enabled `supportsPromptCache` for `opencode_go` and `custom_openai`.

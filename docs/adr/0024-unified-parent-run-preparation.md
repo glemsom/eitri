@@ -1,7 +1,7 @@
 # 0024 — Unified parent-run preparation across UI and batch modes
 
-**Status:** Accepted
-**Date:** 2026-08-05
+**Status**: Accepted
+**Date**: 2026-08-05
 
 ## Context
 

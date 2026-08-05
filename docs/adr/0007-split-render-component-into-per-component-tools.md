@@ -1,52 +1,29 @@
 # 0007 — Split `render_component` into per-component tools
 
-## Status
-
-Accepted
+**Status**: Accepted
 
 ## Context
 
-An earlier ADR defined `render_component` as a single tool with `name` and `data` fields. In practice, the LLM sees a weak schema (`data: object`) and must guess which fields each component expects — `data.code` for Mermaid, `data.options` for QuickReplies, `data.old`/`data.new` for DiffCard. Wrong guesses waste turns on validation errors.
-
-Additionally, the tool never actually emitted SSE `component` events — it returned stub text `[Component rendered: %s]` but the agent loop had no code to broadcast a visual component to the browser. The fix for that bug also makes a per-tool dispatch structure cleaner (tool name maps directly to component name).
+`render_component` was a single tool with `name` and `data` fields. The LLM saw a weak schema (`data: object`) and had to guess per-component fields (`data.code` for Mermaid, `data.options` for QuickReplies, `data.old`/`data.new` for DiffCard), wasting turns on validation errors. The tool also never emitted SSE `component` events — it returned stub text the agent loop never broadcast.
 
 ## Decision
 
-Replace the single `render_component` tool with three tools, each with a precise typed schema:
+Replace `render_component` with per-component tools, each with a precise typed schema via `SchemaOf[T]()` — compile-time validation, 1:1 mapping to a Templ component, an SSE `component` event emitted after a successful call, and structured text returned to the LLM:
 
 | Tool | Params | Emitted component |
 |------|--------|-------------------|
 | `render_mermaid_diagram` | `code: string` | MermaidDiagram |
 | `render_quick_replies` | `options: []string` | QuickReplies |
-| `render_diff_card` | `old: string, new: string, lang?: string` | DiffCard |
 
-Each tool:
-- Has a typed Go struct with `SchemaOf[T]()` — LLM sees exact required fields
-- Validates at compile time, not at runtime
-- Maps 1:1 to a Templ component in the render handler
-- Emits an SSE `component` event from the agent loop after successful call
-- Returns structured text to LLM describing what rendered (e.g. "Rendered MermaidDiagram with graph TD; A-->B;")
+`render_diff_card` was removed later: the LLM rarely shows a diff independently of editing, and the `edit` tool already auto-emits a diff as a side effect. That emission is now `FileEditCard` — the diff viewer wrapped with file path, mode (overwrite/create), and byte count, giving the user more context at a glance.
 
 ## Considered Options
 
-- **Keep single `render_component` with improved docs**: Schema stays weak — LLM still has no structural hints. Descriptions alone don't prevent field-name guesswork.
-- **Discriminated union in one tool**: JSON Schema `oneOf` per component shape. Clean but unsupported by `SchemaOf[T]()` reflection — would require manual schema construction.
-- **Per-component tools (chosen)**: Each tool is a struct with one job. LLM picks by intent. Zero runtime validation. New components simply add a new tool.
-
-## Reversal (2026-07-17): `render_diff_card` removed, `edit` emits richer `FileEditCard`
-
-`render_diff_card` was later removed as an LLM-facing tool. The LLM rarely,
-if ever, chooses to show a diff independently of editing. The `edit` tool
-already auto-emits a diff component — the LLM uses `edit` for its primary
-purpose and gets the diff as a side effect.
-
-Replaced `DiffCard` emission from the `edit` tool with `FileEditCard`, which
-wraps the diff viewer with file path, mode (overwrite/create), and byte count.
-This gives the user more context at a glance.
+- **Keep single `render_component` with improved docs**: schema stays weak — descriptions alone don't prevent field-name guesswork.
+- **Discriminated union in one tool**: JSON Schema `oneOf` per component shape — clean but unsupported by `SchemaOf[T]()` reflection; would require manual schema construction.
+- **Per-component tools (chosen)**: one struct per tool, LLM picks by intent, zero runtime validation; new components simply add a new tool.
 
 ## Consequences
 
-- Tool count goes from 8 to 9 — still manageable, each is single-purpose (8 - 1 old `render_component` + 2 active replacements = 9; `render_diff_card` was removed, see reversal above)
-- Adding a new component requires a new tool registration in `runner/service.go` and a case in `loop_helpers.go` component-name map
-- The `render_component` Go file is deleted; replaced by two files (`render_mermaid_diagram.go`, `render_quick_replies.go`)
-- The agent loop in `loop.go` gets a generic component-emission hook keyed by tool name, not a special case per tool
+- Adding a component requires a tool registration and a case in the component-name map; the agent loop emits components via a generic hook keyed by tool name, not per-tool special cases.
+- The `render_component` Go file was deleted, replaced by `render_mermaid_diagram.go` and `render_quick_replies.go`.

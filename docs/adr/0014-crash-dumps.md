@@ -1,7 +1,7 @@
 # 0014 — Crash dump directory for unexpected failures
 
-- **Status:** Accepted
-- **Date:** 2025-07-23
+**Status**: Accepted
+**Date**: 2025-07-23
 
 ## Context
 

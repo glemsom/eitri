@@ -1,6 +1,6 @@
 # 0016 — Session persistence via JSON snapshots
 
-**Status:** Accepted (updated for single-file snapshot)
+**Status**: Accepted (updated for single-file snapshot)
 
 ## Context
 
@@ -105,8 +105,6 @@ Negative:
   thousands of turns or large file diffs embedded in messages could grow.
 - No queryability — you cannot SQL-query past sessions. File system tools
   (`grep`, `jq`) suffice for the current use case but may not scale.
-- The symlink approach is Unix-centric; Windows junction points would need
-  separate handling if Eitri ever targets Windows.
 
 ## Alternatives considered
 

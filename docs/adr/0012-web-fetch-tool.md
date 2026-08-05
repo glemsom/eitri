@@ -1,7 +1,7 @@
 # 0012 — web_fetch tool
 
-- **Status:** Accepted
-- **Date:** 2025-07-17
+**Status**: Accepted
+**Date**: 2025-07-17
 
 ## Context
 

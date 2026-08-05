@@ -1,7 +1,7 @@
 # 0022 — Save-only settings drafts
 
-**Status:** Accepted
-**Date:** 2026-07-29
+**Status**: Accepted
+**Date**: 2026-07-29
 
 ## Context
 

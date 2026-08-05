@@ -1,7 +1,7 @@
 # 0021 — Deterministic pattern compression for bash tool output
 
-**Status:** Accepted
-**Date:** 2025-07-28
+**Status**: Accepted
+**Date**: 2025-07-28
 
 ## Context
 
