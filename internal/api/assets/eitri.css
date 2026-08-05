@@ -4104,3 +4104,72 @@ eitri-context {
   text-align: center;
 }
 
+
+/* ============================================
+   Accessibility preferences: Issue #1075
+   Collapse decorative/infinite animations under
+   prefers-reduced-motion, and replace backdrop-filter
+   glass panels with solid fills under
+   prefers-reduced-transparency.
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Glow pulses collapse to a static box-shadow so the stream status stays
+     visible without looping. */
+  .streaming-message .message-avatar-container[data-stream-status="connecting"],
+  .streaming-message .message-avatar-container[data-stream-status="tool-running"] {
+    animation: none;
+    box-shadow: 0 0 4px 2px color-mix(in srgb, var(--warning) 30%, transparent);
+  }
+
+  .streaming-message .message-avatar-container[data-stream-status="streaming"] {
+    animation: none;
+    box-shadow: 0 0 4px 2px color-mix(in srgb, var(--success) 30%, transparent);
+  }
+
+  /* Face/avatar breathing, typing dots, refresh spinner, and opacity pulse
+     all render statically. */
+  .streaming-message .message-avatar-container[data-stream-status="streaming"] .message-avatar,
+  .streaming-message .message-avatar-container[data-stream-status="tool-running"] .message-avatar,
+  .header-face-container[data-stream-status="streaming"] .header-face,
+  .header-face-container[data-stream-status="tool-running"] .header-face,
+  .typing-dots span,
+  .model-refresh-spinner,
+  .test-connection-pending,
+  /* Undo countdown bar: no width animation (the toast still auto-dismisses
+     on its JS 5s timeout). */
+  .undo-toast-bar {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  /* Glass dropdowns/menus/modals become solid elevated surfaces without
+     backdrop blur. */
+  .dropdown-content,
+  .persona-dropdown,
+  .completion-menu,
+  .confirmation-modal,
+  .directory-browser-modal {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Sticky form-actions footer: solid base surface instead of the
+     semi-transparent glass tint. */
+  .form-actions-sticky {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Modal overlay scrim keeps its dimming background (it is not a glass
+     panel) but drops the backdrop blur. */
+  .confirmation-overlay,
+  .directory-browser-overlay {
+    background: var(--overlay-bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
