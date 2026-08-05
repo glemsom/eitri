@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"fmt"
 	"io"
 	"regexp"
 	"sort"
@@ -589,6 +590,23 @@ func ruleBody(rules []cssRule, sel string) string {
 	return ""
 }
 
+// ruleBodyExact returns the body of the rule whose full (trimmed) selector
+// equals sel, falling back to a comma-split part match. Unlike ruleBody it
+// also matches selectors that contain commas inside :where(...) groups.
+func ruleBodyExact(rules []cssRule, sel string) string {
+	for _, r := range rules {
+		if strings.TrimSpace(r.selector) == sel {
+			return r.body
+		}
+		for _, part := range strings.Split(r.selector, ",") {
+			if strings.TrimSpace(part) == sel {
+				return r.body
+			}
+		}
+	}
+	return ""
+}
+
 // TestEmbeddedCSSPrefersReducedMotion verifies the stylesheet honours
 // prefers-reduced-motion: reduce by collapsing every decorative/infinite
 // animation — the box-shadow glow pulses, face breathing, typing dots,
@@ -697,4 +715,99 @@ func stripCSSComments(s string) string {
 		s = s[:start] + s[start+2+end+2:]
 	}
 	return s
+}
+
+// TestEmbeddedCSSButtonHierarchyNoImportant verifies the button system derives
+// its hierarchy from structured selectors, not !important (issue #1079):
+//   - the .btn-primary/.btn-danger/.btn-secondary hierarchy rules carry no
+//     !important;
+//   - the generic <button> and .form-actions defaults are zero-specificity
+//     :where() rules, so class-based overrides win by structure;
+//   - the Send/Stop toggles compose with their button classes instead of
+//     relying on !important;
+//   - the remaining !important budget is confined to the justified
+//     vendored-library surfaces (Prism light palette and pre.mermaid).
+func TestEmbeddedCSSButtonHierarchyNoImportant(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	rules := parseCSSRules(css)
+
+	// 1. Hierarchy classes must win by specificity, not !important.
+	for _, sel := range []string{
+		".btn-primary", ".btn-primary:hover",
+		".btn-danger", ".btn-danger:hover",
+		".btn-secondary", ".btn-secondary:hover",
+	} {
+		body := ruleBodyExact(rules, sel)
+		if body == "" {
+			t.Errorf("missing rule for %s", sel)
+			continue
+		}
+		if strings.Contains(body, "!important") {
+			t.Errorf("%s must not use !important (hierarchy from structured selectors), got: %s", sel, body)
+		}
+	}
+
+	// 2. The generic <button> / form-actions defaults must be zero-specificity
+	//    :where() rules so any class applied to the same element wins.
+	for _, sel := range []string{
+		":where(input, select, textarea, button)",
+		":where(input:focus, select:focus, textarea:focus, button:focus)",
+		":where(button)",
+		":where(button:hover)",
+		":where(button:focus)",
+		":where(.form-actions button, .form-actions-sticky button)",
+		`:where(.form-actions button[type="button"], .form-actions-sticky button[type="button"])`,
+		`:where(.form-actions button[type="button"]:hover, .form-actions-sticky button[type="button"]:hover)`,
+	} {
+		if ruleBodyExact(rules, sel) == "" {
+			t.Errorf("missing zero-specificity base rule %s", sel)
+		}
+	}
+
+	// 3. Send/Stop toggles compose with their button classes (no !important).
+	for _, sel := range []string{".send-btn.send-hidden", ".stop-btn.stop-hidden"} {
+		body := ruleBodyExact(rules, sel)
+		if body == "" {
+			t.Errorf("missing toggle rule %s", sel)
+			continue
+		}
+		if strings.Contains(body, "!important") {
+			t.Errorf("%s must not use !important, got: %s", sel, body)
+		}
+	}
+
+	// 4. Remaining !important usages must all be justified vendored-library
+	//    overrides (Prism syntax palette and pre.mermaid chrome). At-rule
+	//    wrappers (@media) are skipped: their bodies just contain the nested
+	//    rules, which are counted individually.
+	var unjustified []string
+	total := 0
+	for _, r := range rules {
+		if strings.HasPrefix(r.selector, "@") {
+			continue
+		}
+		n := strings.Count(r.body, "!important")
+		if n == 0 {
+			continue
+		}
+		total += n
+		if isPrismSyntaxRule(r.selector) || strings.Contains(r.selector, "pre.mermaid") {
+			continue
+		}
+		unjustified = append(unjustified, fmt.Sprintf("%s (%d)", r.selector, n))
+	}
+	if len(unjustified) > 0 {
+		t.Errorf("unjustified !important usages remain:\n  %s", strings.Join(unjustified, "\n  "))
+	}
+	if total > 13 {
+		t.Errorf("!important budget exceeded: %d usages (expected ≤ 13, all vendored-library overrides)", total)
+	}
+	t.Logf("%d !important usages total — all confined to Prism/mermaid overrides", total)
 }
