@@ -27,8 +27,7 @@
       }
 
       getActiveSessionId() {
-        var m = window.location.pathname.match(/\/sessions\/([a-zA-Z0-9_-]+)/);
-        return m ? m[1] : null;
+        return window.eitriGetSessionId();
       }
 
       connectedCallback() {
@@ -299,8 +298,7 @@
   // Keyed by active session ID from the URL path.
 
   function getActiveSessionId() {
-    var m = window.location.pathname.match(/\/sessions\/([a-zA-Z0-9_-]+)/);
-    return m ? m[1] : null;
+    return window.eitriGetSessionId();
   }
 
   var STORAGE_KEY_PREFIX = 'eitri-context-';

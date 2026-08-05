@@ -703,6 +703,81 @@ func TestBrowser_FastRunRendersAssistantAndUsesValidStreamURL(t *testing.T) {
 	}
 }
 
+// TestBrowser_NonHexSessionIDAutoConnect verifies that a session whose ID
+// contains '-' or '_' (not just hex) still auto-connects its stream on page
+// load: the streaming island must resolve the session ID through the shared
+// helper instead of a hex-only regex (issue #1077).
+func TestBrowser_NonHexSessionIDAutoConnect(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	now := time.Now()
+	sessionMgr.Add(&session.UISession{
+		ID:        "sess-abc_def-123",
+		BrowserID: "browser-1",
+		Title:     "Non-hex session",
+		Status:    session.StatusIdle,
+		Workspace: workspace,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var (
+		mu         sync.Mutex
+		streamURLs []string
+	)
+	chromedp.ListenTarget(ctx, func(ev any) {
+		req, ok := ev.(*network.EventRequestWillBeSent)
+		if !ok {
+			return
+		}
+		if !strings.Contains(req.Request.URL, "/api/sessions/") || !strings.Contains(req.Request.URL, "/stream") {
+			return
+		}
+		mu.Lock()
+		streamURLs = append(streamURLs, req.Request.URL)
+		mu.Unlock()
+	})
+
+	err := chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie("browser_id", "browser-1").WithURL(server.URL).Do(ctx)
+		}),
+		chromedp.Navigate(server.URL+"/sessions/sess-abc_def-123"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+
+	// Auto-connect fires on DOMContentLoaded; poll briefly for the stream URL.
+	deadline := time.Now().Add(5 * time.Second)
+	found := false
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		for _, url := range streamURLs {
+			if strings.Contains(url, "/api/sessions/sess-abc_def-123/stream") {
+				found = true
+				break
+			}
+		}
+		mu.Unlock()
+		if found {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !found {
+		t.Fatalf("no stream auto-connect request for non-hex session ID; URLs: %v", streamURLs)
+	}
+}
+
 func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, t.TempDir())

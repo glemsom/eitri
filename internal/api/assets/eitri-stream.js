@@ -45,8 +45,7 @@
     return '';
   }
   function getSessionIdFromUrl() {
-    var match = window.location.pathname.match(/^\/sessions\/([a-f0-9]+)/);
-    return match ? match[1] : '';
+    return window.eitriGetSessionId();
   }
 
 

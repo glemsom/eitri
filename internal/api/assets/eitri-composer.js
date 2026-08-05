@@ -176,8 +176,7 @@
 
     _extractSessionId() {
       const action = this.form.getAttribute('hx-post') || '';
-      const m = action.match(/\/api\/sessions\/([^/]+)\/chat/);
-      return m ? m[1] : '';
+      return window.eitriGetSessionId(action);
     }
 
     _setupMenu() {
