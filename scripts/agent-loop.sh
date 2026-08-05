@@ -12,9 +12,14 @@
 # whose description contains `Closes #N`; they never merge.
 #
 # After all workers finish, the dispatcher merges PRs serially
-# (`gh pr merge --squash --delete-branch`), rebasing each PR branch onto the
-# latest `origin/main` first. Rebase conflicts spawn a focused `eitri -b`
-# resolution run inside that worktree (capped at 3 attempts per PR); past the
+# (`gh pr merge --squash`), rebasing each PR branch onto the latest
+# `origin/main` first. `--delete-branch` is intentionally NOT used: gh's local
+# branch cleanup cannot work when the head branch is checked out in its
+# worktree, so it fails with exit 1 *after* the merge already landed, which
+# would misreport every merge as a failure. Instead the merge outcome is
+# confirmed via PR state and the remote branch is deleted explicitly.
+# Rebase conflicts spawn a focused `eitri -b` resolution run inside that
+# worktree (capped at 3 attempts per PR); past the
 # cap the PR is left open with a comment and the dispatcher moves on.
 #
 # Exits 0 only when nothing was left unmerged or orphaned. Per-issue worker
@@ -81,11 +86,16 @@ WORKTREES_DIR=".worktrees"
 # --- Cleanup ---------------------------------------------------------------
 
 WORKTREES=()
+declare -A WT_BRANCH=()
 
 cleanup() {
 	for wt in "${WORKTREES[@]:-}"; do
 		[ -n "$wt" ] || continue
+		local br="${WT_BRANCH[$wt]:-}"
 		git worktree remove --force "$wt" 2>/dev/null || true
+		if [ -n "$br" ]; then
+			git branch -D "$br" 2>/dev/null || true
+		fi
 	done
 	git worktree prune 2>/dev/null || true
 }
@@ -253,47 +263,53 @@ merge_pr() {
 		attempts=$((attempts + 1))
 
 		git -C "$wt" fetch origin main >/dev/null 2>&1 || true
-		if git -C "$wt" rebase origin/main >/dev/null 2>&1; then
-			# Clean rebase: force-push the rebased branch, then merge.
-			git -C "$wt" push --force origin "HEAD:$branch" >/dev/null 2>&1 || true
-			if gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then
-				echo "Merged PR #$pr (issue #$num)"
-				merged=1
-				break
-			fi
-			echo "Warning: merge of PR #$pr (issue #$num) failed (attempt $attempts/3); retrying" >&2
-			continue
-		fi
-
-		# Rebase conflict — spawn a focused resolution run in the worktree.
-		echo "Rebase conflict on PR #$pr (issue #$num) — resolution run $attempts/3"
-		local resolve_prompt rpid rst=0
-		resolve_prompt=$(build_resolve_prompt "$branch" "$pr")
-		( cd "$wt" && exec $WORKER_SHIELD eitri --persona generic -b "$resolve_prompt" ) > "$wt/log.resolve" 2>&1 &
-		rpid=$!
-		while :; do
-			if wait "$rpid"; then
-				rst=0
-				break
-			else
-				rst=$?
-			fi
-			[ "$rst" -eq 130 ] || [ "$rst" -eq 143 ] || break
-		done
-		if [ "$rst" -ne 0 ]; then
-			echo "Warning: resolution run for PR #$pr failed (attempt $attempts/3)" >&2
-			continue
-		fi
+		# Abort any stale in-progress rebase (e.g. a resolution run that did
+		# not finish) so the next attempt starts from a clean tree.
 		if git -C "$wt" rev-parse -q --verify REBASE_HEAD >/dev/null 2>&1; then
-			echo "Warning: rebase still in progress after resolution run for PR #$pr" >&2
-			continue
+			git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+		fi
+		if ! git -C "$wt" rebase origin/main >/dev/null 2>&1; then
+			# Rebase conflict — spawn a focused resolution run in the worktree.
+			echo "Rebase conflict on PR #$pr (issue #$num) — resolution run $attempts/3"
+			local resolve_prompt rpid rst=0
+			resolve_prompt=$(build_resolve_prompt "$branch" "$pr")
+			( cd "$wt" && exec $WORKER_SHIELD eitri --persona generic -b "$resolve_prompt" ) > "$wt/log.resolve" 2>&1 &
+			rpid=$!
+			while :; do
+				if wait "$rpid"; then
+					rst=0
+					break
+				else
+					rst=$?
+				fi
+				[ "$rst" -eq 130 ] || [ "$rst" -eq 143 ] || break
+			done
+			if [ "$rst" -ne 0 ]; then
+				echo "Warning: resolution run for PR #$pr failed (attempt $attempts/3)" >&2
+				continue
+			fi
+			if git -C "$wt" rev-parse -q --verify REBASE_HEAD >/dev/null 2>&1; then
+				echo "Warning: rebase still in progress after resolution run for PR #$pr — aborting rebase" >&2
+				git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+				continue
+			fi
 		fi
 		git -C "$wt" push --force origin "HEAD:$branch" >/dev/null 2>&1 || true
-		if gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then
+
+		# Merge WITHOUT --delete-branch (see header comment): gh's local branch
+		# cleanup cannot delete the head branch while it is checked out in this
+		# worktree, so gh exits non-zero even though the merge already landed.
+		# Judge success by PR state instead of gh's exit code; gh can also fail
+		# transiently while GitHub recomputes mergeability after the force-push.
+		gh pr merge "$pr" --squash >/dev/null 2>&1 || true
+		if [ "$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null)" = "MERGED" ]; then
 			echo "Merged PR #$pr (issue #$num)"
+			git push origin --delete "$branch" >/dev/null 2>&1 || true
 			merged=1
 			break
 		fi
+		sleep 5
+		echo "Warning: merge of PR #$pr (issue #$num) failed (attempt $attempts/3); retrying" >&2
 	done
 
 	if [ "$merged" -ne 1 ]; then
@@ -408,6 +424,7 @@ main() {
 				failures=$((failures + 1))
 				continue
 			fi
+			WT_BRANCH["$wt"]="$branch"
 			if ! merge_pr "$num" "$pr" "$branch"; then
 				failures=$((failures + 1))
 			fi
