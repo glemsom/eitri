@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -550,5 +551,303 @@ func TestGetReport_TurnsReflectEnrichedTraceFields(t *testing.T) {
 
 	if rep.Summary.TotalCacheReadTokens != 120 || rep.Summary.TotalCacheWriteTokens != 30 {
 		t.Errorf("summary cache = read:%d write:%d, want 120/30", rep.Summary.TotalCacheReadTokens, rep.Summary.TotalCacheWriteTokens)
+	}
+}
+
+func TestGetReport_JoinsTurnToTraceByID(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-join-id"
+	now := time.Now().UTC()
+
+	// The turn's LLM call happened 2 minutes before the trace was finalized —
+	// far outside the old ±30s window. Only the trace_id recorded on the
+	// timeline (at write time) can join them.
+	turnStart := now.Add(-2 * time.Minute)
+	tl := &runstate.Timeline{
+		Version:   1,
+		RunID:     "run-join-id",
+		SessionID: sessionID,
+		Provider: runstate.TimelineProvider{
+			Model:      "test-model",
+			ProviderID: "test-provider",
+		},
+		StartedAt: turnStart,
+		EndedAt:   now,
+		Termination: &runstate.TimelineTermination{
+			Reason: runstate.TerminationCompleted,
+		},
+		Events: []runstate.TimelineEvent{
+			{Type: "llm_call", Timestamp: turnStart, Turn: 1, TraceID: "trace_join", Attempt: 0, Attempts: 1, DurationMs: 900, TTFBMs: 40, TTFTMs: 120},
+			{Type: "tool_call", Timestamp: turnStart, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"sleep 120"}`)},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "done", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// The trace is timestamped minutes after the turn; a timestamp-proximity
+	// join would miss it, the ID join must not.
+	trace := &debug.HTTPTrace{
+		ID:            "trace_join",
+		Timestamp:     now,
+		SessionID:     sessionID,
+		ProviderID:    "test-provider",
+		Status:        200,
+		DurationMs:    1100,
+		RequestBytes:  100,
+		ResponseBytes: 500,
+		TTFBMs:        40,
+		TTFTMs:        120,
+		Attempt:       0,
+		RunID:         "run-join-id",
+		Turn:          1,
+		Model:         "test-model",
+		FinishReason:  "stop",
+		Usage:         &debug.UsageTotals{PromptTokens: 400, CompletionTokens: 50, TotalTokens: 450},
+	}
+	writeTestTrace(t, dir, sessionID, trace)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+
+	if assistant.LLMTraceID != "trace_join" {
+		t.Errorf("LLMTraceID = %q, want trace_join", assistant.LLMTraceID)
+	}
+	if assistant.LLMDurationMs != 1100 {
+		t.Errorf("LLMDurationMs = %d, want 1100 (from trace)", assistant.LLMDurationMs)
+	}
+	if assistant.LLMTTFBMs != 40 {
+		t.Errorf("LLMTTFBMs = %d, want 40", assistant.LLMTTFBMs)
+	}
+	if assistant.LLMTTFTMs != 120 {
+		t.Errorf("LLMTTFTMs = %d, want 120 (time to first token)", assistant.LLMTTFTMs)
+	}
+	if assistant.LLMUsage == nil || assistant.LLMUsage.PromptTokens != 400 {
+		t.Errorf("LLMUsage = %+v, want prompt=400", assistant.LLMUsage)
+	}
+	if assistant.LLMFinishReason != "stop" {
+		t.Errorf("LLMFinishReason = %q, want stop", assistant.LLMFinishReason)
+	}
+}
+
+func TestGetReport_RetryAttemptsSurfaced(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-retry"
+	now := time.Now().UTC()
+
+	// The timeline records the successful attempt: it succeeded on the third
+	// attempt (zero-based attempt 2), with 3 total attempts for the turn.
+	tl := &runstate.Timeline{
+		Version:   1,
+		RunID:     "run-retry",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &runstate.TimelineTermination{
+			Reason: runstate.TerminationCompleted,
+		},
+		Events: []runstate.TimelineEvent{
+			{Type: "llm_call", Timestamp: now, Turn: 1, TraceID: "trace_ok", Attempt: 2, Attempts: 3, DurationMs: 800, TTFBMs: 30, TTFTMs: 90},
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "ok", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// Three traces for the same (run, turn): two failed attempts and one success.
+	for i, status := range []int{503, 503, 200} {
+		trace := &debug.HTTPTrace{
+			ID:        debug.TraceID(fmt.Sprintf("trace_%d", i)),
+			Timestamp: now,
+			SessionID: sessionID,
+			Status:    status,
+			Attempt:   i,
+			RunID:     "run-retry",
+			Turn:      1,
+		}
+		writeTestTrace(t, dir, sessionID, trace)
+	}
+	// The success trace is the one referenced by the timeline.
+	okTrace := &debug.HTTPTrace{
+		ID:           "trace_ok",
+		Timestamp:    now,
+		SessionID:    sessionID,
+		Status:       200,
+		DurationMs:   800,
+		Attempt:      2,
+		RunID:        "run-retry",
+		Turn:         1,
+		Model:        "test-model",
+		FinishReason: "stop",
+		TTFBMs:       30,
+		TTFTMs:       90,
+	}
+	writeTestTrace(t, dir, sessionID, okTrace)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+
+	if assistant.LLMAttempt != 2 {
+		t.Errorf("LLMAttempt = %d, want 2 (successful attempt)", assistant.LLMAttempt)
+	}
+	if assistant.LLMAttemptCount != 3 {
+		t.Errorf("LLMAttemptCount = %d, want 3", assistant.LLMAttemptCount)
+	}
+	if assistant.LLMFailedAttempts != 2 {
+		t.Errorf("LLMFailedAttempts = %d, want 2 (failed attempts before success)", assistant.LLMFailedAttempts)
+	}
+	if assistant.LLMTraceID != "trace_ok" {
+		t.Errorf("LLMTraceID = %q, want trace_ok", assistant.LLMTraceID)
+	}
+	if assistant.LLMTTFTMs != 90 {
+		t.Errorf("LLMTTFTMs = %d, want 90", assistant.LLMTTFTMs)
+	}
+}
+
+func TestGetReport_TraceRunTurnGroupFallback(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-group-fb"
+	now := time.Now().UTC()
+
+	// No llm_call event in the timeline (e.g. persisted before the feature),
+	// but the traces carry run/turn IDs that match this run.
+	tl := &runstate.Timeline{
+		Version:   1,
+		RunID:     "run-group",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &runstate.TimelineTermination{
+			Reason: runstate.TerminationCompleted,
+		},
+		Events: []runstate.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "found", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	for i, status := range []int{503, 200} {
+		trace := &debug.HTTPTrace{
+			ID:        debug.TraceID(fmt.Sprintf("group_%d", i)),
+			Timestamp: now.Add(time.Duration(i) * time.Minute), // far apart — timestamp join would fail
+			SessionID: sessionID,
+			Status:    status,
+			Attempt:   i,
+			RunID:     "run-group",
+			Turn:      1,
+		}
+		writeTestTrace(t, dir, sessionID, trace)
+	}
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+
+	// The (run, turn) group should have matched the traces: the final attempt
+	// wins the join and the group size is the attempt count.
+	if assistant.LLMTraceID != "group_1" {
+		t.Errorf("LLMTraceID = %q, want group_1 (highest attempt)", assistant.LLMTraceID)
+	}
+	if assistant.LLMAttempt != 1 {
+		t.Errorf("LLMAttempt = %d, want 1", assistant.LLMAttempt)
+	}
+	if assistant.LLMAttemptCount != 2 {
+		t.Errorf("LLMAttemptCount = %d, want 2", assistant.LLMAttemptCount)
+	}
+	if assistant.LLMFailedAttempts != 1 {
+		t.Errorf("LLMFailedAttempts = %d, want 1", assistant.LLMFailedAttempts)
+	}
+}
+
+func TestGetReport_TimestampHeuristicRemainsFallback(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-ts-fb"
+	now := time.Now().UTC()
+
+	// No llm_call events and traces without run/turn IDs: only the legacy
+	// ±30s timestamp heuristic can join them.
+	tl := &runstate.Timeline{
+		Version:   1,
+		RunID:     "run-ts",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &runstate.TimelineTermination{
+			Reason: runstate.TerminationCompleted,
+		},
+		Events: []runstate.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "ok", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	trace := &debug.HTTPTrace{
+		ID:         "legacy_trace",
+		Timestamp:  now.Add(2 * time.Second), // within the ±30s window
+		SessionID:  sessionID,
+		Status:     200,
+		DurationMs: 500,
+	}
+	writeTestTrace(t, dir, sessionID, trace)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+	if assistant.LLMTraceID != "legacy_trace" {
+		t.Errorf("LLMTraceID = %q, want legacy_trace (timestamp fallback)", assistant.LLMTraceID)
+	}
+	if assistant.LLMDurationMs != 500 {
+		t.Errorf("LLMDurationMs = %d, want 500", assistant.LLMDurationMs)
 	}
 }

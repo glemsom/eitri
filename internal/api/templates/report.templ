@@ -25,7 +25,10 @@ type TurnView struct {
 	LLMRequestBytes  int
 	LLMResponseBytes int
 	LLMTTFBMs        int64
+	LLMTTFTMs        int64
 	LLMAttempt       int
+	LLMAttemptCount  int
+	LLMFailedAttempts int
 	LLMModel         string
 	LLMFinishReason  string
 	LLMUsage         *debug.UsageTotals
@@ -112,6 +115,12 @@ templ ReportHeader(rep *report.SessionReport, sessionID string) {
 				<span class="report-meta-label">Estimated tokens</span>
 				<span class="report-meta-value">{ formatNumber(rep.Summary.EstimatedTotalTokens) }</span>
 			</div>
+			if rep.Summary.TotalRetries > 0 {
+				<div class="report-meta-item">
+					<span class="report-meta-label">Retries</span>
+					<span class="report-meta-value">{ strconv.Itoa(rep.Summary.TotalRetries) }</span>
+				</div>
+			}
 			if rep.Summary.TotalCacheReadTokens > 0 || rep.Summary.TotalCacheWriteTokens > 0 {
 				<div class="report-meta-item">
 					<span class="report-meta-label">Cache tokens</span>
@@ -209,13 +218,16 @@ templ TurnCard(turn TurnView) {
 				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
 				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
 			</div>
-			if turn.LLMDurationMs > 0 || turn.LLMTraceID != "" || turn.LLMRequestBytes > 0 || turn.LLMResponseBytes > 0 || turn.LLMTTFBMs > 0 || turn.LLMAttempt > 0 || turn.LLMModel != "" || turn.LLMFinishReason != "" || turn.LLMUsage != nil {
+			if turn.LLMDurationMs > 0 || turn.LLMTraceID != "" || turn.LLMRequestBytes > 0 || turn.LLMResponseBytes > 0 || turn.LLMTTFBMs > 0 || turn.LLMTTFTMs > 0 || turn.LLMAttemptCount > 0 || turn.LLMAttempt > 0 || turn.LLMModel != "" || turn.LLMFinishReason != "" || turn.LLMUsage != nil {
 				<div class="turn-llm-meta">
 					if turn.LLMDurationMs > 0 {
 						<span class="llm-meta-item">⏱ { formatDurationSmall(turn.LLMDurationMs) }</span>
 					}
 					if turn.LLMTTFBMs > 0 {
 						<span class="llm-meta-item" title="Time to first byte">⚡ { formatDurationSmall(turn.LLMTTFBMs) }</span>
+					}
+					if turn.LLMTTFTMs > 0 {
+						<span class="llm-meta-item" title="Time to first token">✍️ { formatDurationSmall(turn.LLMTTFTMs) }</span>
 					}
 					if turn.LLMRequestBytes > 0 {
 						<span class="llm-meta-item">↑ { formatBytes(turn.LLMRequestBytes) }</span>
@@ -232,7 +244,9 @@ templ TurnCard(turn TurnView) {
 					if turn.LLMModel != "" {
 						<span class="llm-meta-item" title="Model">🤖 { turn.LLMModel }</span>
 					}
-					if turn.LLMAttempt > 0 {
+					if turn.LLMAttemptCount > 0 {
+						<span class="llm-meta-item" title="Total LLM call attempts and retries before success">🔁 { strconv.Itoa(turn.LLMAttemptCount) } attempts ({ retryLabel(turn.LLMFailedAttempts) })</span>
+					} else if turn.LLMAttempt > 0 {
 						<span class="llm-meta-item" title="Retry attempt">🔁 attempt { strconv.Itoa(turn.LLMAttempt + 1) }</span>
 					}
 					if turn.LLMTraceID != "" {
@@ -405,6 +419,14 @@ func formatBytes(b int) string {
 		return strconv.Itoa(b/1024) + "KB"
 	}
 	return fmt.Sprintf("%.1fMB", float64(b)/(1024.0*1024.0))
+}
+
+// retryLabel renders the retry badge text for a turn, e.g. "1 retry" or "2 retries".
+func retryLabel(failed int) string {
+	if failed == 1 {
+		return "1 retry"
+	}
+	return strconv.Itoa(failed) + " retries"
 }
 
 // cacheTokenSuffix returns a human-readable suffix describing the provider's

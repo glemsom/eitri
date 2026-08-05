@@ -78,6 +78,12 @@ type RunOpts struct {
 	// SessionID identifies the conversation session.
 	SessionID string
 
+	// RunID identifies the run this loop belongs to. It is stamped onto every
+	// HTTP trace (via TraceMeta) so traces can be correlated back to their
+	// turn by (RunID, Turn) in session reports (issue #988). When empty, traces
+	// record no run correlation.
+	RunID string
+
 	// ContextWindow is the configured context window token limit. When > 0,
 	// context_update SSE events are broadcast after each turn. When <= 0,
 	// no context_update events are emitted.
@@ -319,13 +325,20 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			usage        *litellm.Usage
 			finishReason litellm.FinishReason
 			streamErr    error
+			attemptsMade int
+			callStart    time.Time
 		)
 		// TraceMeta bridges the per-call measurements parsed from the stream
 		// (usage, finish_reason, model) and the retry attempt number into the
 		// HTTP trace recorded by the transport. It is reused across retries of
-		// this turn; the attempt number is updated before each attempt.
+		// this turn; the attempt number is updated before each attempt. The run
+		// ID and 1-based turn number are stamped so every trace records the
+		// turn it belongs to (issue #988).
 		traceMeta := &debug.TraceMeta{}
+		traceMeta.SetRunID(opts.RunID)
+		traceMeta.SetTurn(turn + 1)
 		for attempt := 0; attempt <= maxRetries; attempt++ {
+			attemptsMade++
 			// Bound each attempt with the per-turn timeout. This caps a stalled
 			// turn (e.g. a provider streaming reasoning/thinking tokens forever
 			// without yielding content or a tool call). A fresh deadline per
@@ -341,7 +354,14 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// reason, model, TTFB) into the trace for streaming calls (issue #986).
 			attemptCtx := debug.WithAttempt(turnCtx, attempt)
 			traceMeta.SetAttempt(attempt)
+			// Clear the first-token anchor from any previous attempt so each
+			// attempt's trace records its own time-to-first-token (issue #988).
+			traceMeta.ResetFirstToken()
 			streamCtx := debug.WithTraceMeta(attemptCtx, traceMeta)
+			// callStart anchors the LLM-call duration carried on the llm_call
+			// SSE event (stream establishment + streaming). The HTTP trace
+			// records the authoritative duration at finalize time.
+			callStart = time.Now()
 			stream, err := spec.Client.Stream(streamCtx, *litellmReq)
 			if err == nil {
 				// Process stream events inline
@@ -466,6 +486,22 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			}
 			spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
 			return streamErr
+		}
+
+		// Emit the llm_call correlation event for this turn: it carries the
+		// HTTP trace ID recorded for the successful attempt plus the retry
+		// count and timing so the persisted timeline can join the turn to its
+		// traces by ID (issue #988). Skipped when no recording transport is
+		// attached (no trace was recorded for the call).
+		if traceID := string(traceMeta.TraceID()); traceID != "" {
+			spec.SSEWriter.LLMCall(runstate.LLMCallInfo{
+				TraceID:    traceID,
+				Attempt:    traceMeta.Attempt(),
+				Attempts:   attemptsMade,
+				DurationMs: time.Since(callStart).Milliseconds(),
+				TTFBMs:     traceMeta.TTFBMs(),
+				TTFTMs:     traceMeta.TTFTMs(),
+			})
 		}
 
 		// Feed provider usage data into CalibrationStore.
@@ -734,6 +770,12 @@ func processStream(
 
 		switch e := event.(type) {
 		case litellm.ContentDelta:
+			// The first content token anchors time-to-first-token (issue
+			// #988). TraceMeta keeps only the first recorded time per attempt
+			// (the loop resets it before each attempt).
+			if traceMeta != nil {
+				traceMeta.SetFirstTokenTime(time.Now())
+			}
 			content.WriteString(e.Text)
 			sseWriter.Token(e.Text)
 

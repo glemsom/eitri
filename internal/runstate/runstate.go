@@ -17,10 +17,10 @@ import (
 
 var (
 	// Pre-compiled regexes for HTML tag stripping
-	htmlTagRe            = regexp.MustCompile(`<[^>]*>`)
-	whitespaceRe         = regexp.MustCompile(`\s+`)
-	scriptTagContentRe   = regexp.MustCompile(`(?i)<script[^>]*>[\s\S]*?</script>`)
-	styleTagContentRe    = regexp.MustCompile(`(?i)<style[^>]*>[\s\S]*?</style>`)
+	htmlTagRe          = regexp.MustCompile(`<[^>]*>`)
+	whitespaceRe       = regexp.MustCompile(`\s+`)
+	scriptTagContentRe = regexp.MustCompile(`(?i)<script[^>]*>[\s\S]*?</script>`)
+	styleTagContentRe  = regexp.MustCompile(`(?i)<style[^>]*>[\s\S]*?</style>`)
 )
 
 // RenderKind maps SSE events to the render kind the browser island should POST.
@@ -55,6 +55,21 @@ type TokenUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
+}
+
+// LLMCallInfo carries per-turn LLM call correlation data on the llm_call SSE
+// event. It joins a turn to its HTTP trace by ID at write time (issue #988):
+// TraceID is the recorder-assigned trace of the successful attempt, Attempt
+// the zero-based attempt number of that call, Attempts the total number of
+// attempts (initial + retries) for the turn, and the timing fields summarize
+// the call (total duration, time-to-first-byte, time-to-first-token).
+type LLMCallInfo struct {
+	TraceID    string `json:"trace_id"`
+	Attempt    int    `json:"attempt"`
+	Attempts   int    `json:"attempts"`
+	DurationMs int64  `json:"duration_ms"`
+	TTFBMs     int64  `json:"ttfb_ms"`
+	TTFTMs     int64  `json:"ttft_ms"`
 }
 
 // Token batching and history bounds. High-volume stream content (token and
@@ -535,6 +550,14 @@ func (w *Writer) Component(data any) {
 // ContextUpdate broadcasts a context_update SSE event with token estimates.
 func (w *Writer) ContextUpdate(update *ContextUpdate) {
 	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update, Turn: w.currentTurn})
+}
+
+// LLMCall broadcasts an llm_call event carrying the HTTP trace ID recorded for
+// this turn's LLM call and its retry/timing measurements. The event is
+// consumed by the persisted timeline so session reports can join turns to
+// traces by ID (issue #988).
+func (w *Writer) LLMCall(info LLMCallInfo) {
+	w.state.Broadcast(SSEEvent{Type: "llm_call", Data: &info, Turn: w.currentTurn})
 }
 
 // SkillActivated broadcasts a skill_activated event with the skill name.

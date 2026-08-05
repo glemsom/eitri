@@ -182,6 +182,8 @@ Each trace record:
 |-------|------|-------------|
 | `timestamp` | string (ISO 8601) | When the request started |
 | `session_id` | string | Session that triggered this LLM call |
+| `run_id` | string | Run ID of the run this LLM call belongs to (shared with the persisted timeline). Lets report/session data join turns to traces by ID instead of timestamp proximity. Omitted when the call was made outside a tracked run. |
+| `turn` | int | 1-based turn number of this LLM call within its run. Together with `run_id` and `attempt` it groups the traces of one turn (retries produce one trace per attempt). |
 | `provider_id` | string | Eitri provider ID |
 | `method` | string | HTTP method (`POST`) |
 | `url` | string | Request URL (path only for security) |
@@ -198,6 +200,7 @@ Each trace record:
 | `finish_reason` | string | Provider-reported finish reason (`stop`, `length`, `tool_calls`, `end_turn`, …). Omitted when unknown. |
 | `usage` | object | Provider-reported token usage: `prompt_tokens`, `completion_tokens`, `total_tokens`, `reasoning_tokens`, `cache_read_tokens` (prompt cache hits) and `cache_write_tokens` (prompt cache creation) where the provider reports them. Parsed from the response body (including the stream tail when the body exceeds 256KB). Omitted when the provider returned no usage. |
 | `ttfb_ms` | int | Time-to-first-byte in milliseconds — time from request start to the first response byte. |
+| `ttft_ms` | int | Time-to-first-token in milliseconds — time from request start to the first content token of a streaming response. Omitted (0) when no token arrived. |
 | `error_class` | string | Structured capture-time error classification: `rate_limit`, `timeout`, `auth`, `context_length`, `network`, or `other`. Empty on success. |
 
 Request and response bodies are diagnostic data. They may contain conversation

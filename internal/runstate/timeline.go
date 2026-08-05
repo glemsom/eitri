@@ -53,6 +53,16 @@ type TimelineEvent struct {
 	Message   string      `json:"message,omitempty"`
 	MessageID string      `json:"message_id,omitempty"`
 	Usage     *TokenUsage `json:"usage,omitempty"`
+
+	// LLM call correlation (llm_call events): the HTTP trace ID of the
+	// successful attempt plus retry count and timing, so the session report
+	// can join this turn to its traces by ID.
+	TraceID    string `json:"trace_id,omitempty"`
+	Attempt    int    `json:"attempt,omitempty"`
+	Attempts   int    `json:"attempts,omitempty"`
+	DurationMs int64  `json:"duration_ms,omitempty"`
+	TTFBMs     int64  `json:"ttfb_ms,omitempty"`
+	TTFTMs     int64  `json:"ttft_ms,omitempty"`
 }
 
 // TimelineTermination describes why the run ended.
@@ -69,14 +79,14 @@ type TimelineProvider struct {
 
 // Timeline is the persisted timeline file format (one per run).
 type Timeline struct {
-	Version     int                 `json:"version"`
-	RunID       string              `json:"run_id"`
-	SessionID   string              `json:"session_id"`
-	Provider    TimelineProvider    `json:"provider"`
-	StartedAt   time.Time           `json:"started_at"`
-	EndedAt     time.Time           `json:"ended_at"`
+	Version     int                  `json:"version"`
+	RunID       string               `json:"run_id"`
+	SessionID   string               `json:"session_id"`
+	Provider    TimelineProvider     `json:"provider"`
+	StartedAt   time.Time            `json:"started_at"`
+	EndedAt     time.Time            `json:"ended_at"`
 	Termination *TimelineTermination `json:"termination,omitempty"`
-	Events      []TimelineEvent     `json:"events"`
+	Events      []TimelineEvent      `json:"events"`
 }
 
 // shouldExcludeFromTimeline returns true for high-volume event types that
@@ -136,6 +146,16 @@ func (s *State) CondensedEvents() []TimelineEvent {
 		case "component":
 			timelineEvt.Data = evt.Data
 			timelineEvt.Name = evt.Name
+
+		case "llm_call":
+			if li, ok := evt.Data.(*LLMCallInfo); ok {
+				timelineEvt.TraceID = li.TraceID
+				timelineEvt.Attempt = li.Attempt
+				timelineEvt.Attempts = li.Attempts
+				timelineEvt.DurationMs = li.DurationMs
+				timelineEvt.TTFBMs = li.TTFBMs
+				timelineEvt.TTFTMs = li.TTFTMs
+			}
 
 		case "skill_activated":
 			timelineEvt.SkillName = evt.Tool

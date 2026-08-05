@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
@@ -60,14 +61,17 @@ type Turn struct {
 	LLMRequestBytes  int       `json:"llm_request_bytes,omitempty"`
 	LLMResponseBytes int       `json:"llm_response_bytes,omitempty"`
 	// Enriched per-call measurements from the matched HTTP trace.
-	LLMTTFBMs       int64              `json:"llm_ttfb_ms,omitempty"`
-	LLMAttempt      int                `json:"llm_attempt,omitempty"`
-	LLMModel        string             `json:"llm_model,omitempty"`
-	LLMFinishReason string             `json:"llm_finish_reason,omitempty"`
-	LLMUsage        *debug.UsageTotals `json:"llm_usage,omitempty"`
-	ContextBefore   *ContextInfo       `json:"context_before,omitempty"`
-	ContextAfter    *ContextInfo       `json:"context_after,omitempty"`
-	ToolCalls       []ToolCallInfo     `json:"tool_calls,omitempty"`
+	LLMTTFBMs         int64              `json:"llm_ttfb_ms,omitempty"`
+	LLMTTFTMs         int64              `json:"llm_ttft_ms,omitempty"`
+	LLMAttempt        int                `json:"llm_attempt,omitempty"`
+	LLMAttemptCount   int                `json:"llm_attempt_count,omitempty"`
+	LLMFailedAttempts int                `json:"llm_failed_attempts,omitempty"`
+	LLMModel          string             `json:"llm_model,omitempty"`
+	LLMFinishReason   string             `json:"llm_finish_reason,omitempty"`
+	LLMUsage          *debug.UsageTotals `json:"llm_usage,omitempty"`
+	ContextBefore     *ContextInfo       `json:"context_before,omitempty"`
+	ContextAfter      *ContextInfo       `json:"context_after,omitempty"`
+	ToolCalls         []ToolCallInfo     `json:"tool_calls,omitempty"`
 }
 
 // Summary holds aggregate statistics for a run.
@@ -84,6 +88,7 @@ type Summary struct {
 	TotalCompletionTokens     int      `json:"total_completion_tokens,omitempty"`
 	TotalCacheReadTokens      int      `json:"total_cache_read_tokens,omitempty"`
 	TotalCacheWriteTokens     int      `json:"total_cache_write_tokens,omitempty"`
+	TotalRetries              int      `json:"total_retries,omitempty"`
 	TotalDurationMs           int64    `json:"total_duration_ms"`
 	Note                      string   `json:"note,omitempty"`
 }
@@ -91,6 +96,7 @@ type Summary struct {
 // SessionReport is the complete report for one run of a session.
 type SessionReport struct {
 	SessionID     string           `json:"session_id"`
+	RunID         string           `json:"run_id,omitempty"`
 	Title         string           `json:"title"`
 	SystemPrompt  string           `json:"system_prompt,omitempty"`
 	Model         string           `json:"model"`
@@ -234,7 +240,7 @@ func (svc *Service) GetReport(sessionID string, runIndex int) (*SessionReport, e
 	report = svc.enrichFromSnapshot(sessionID, report)
 
 	// Try to enrich with trace data
-	report = svc.enrichFromTraces(sessionID, report)
+	report = svc.enrichFromTraces(sessionID, tl.RunID, report)
 
 	return report, nil
 }
@@ -243,6 +249,7 @@ func (svc *Service) GetReport(sessionID string, runIndex int) (*SessionReport, e
 func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timeline, allMetas []persist.TimelineMeta) *SessionReport {
 	report := &SessionReport{
 		SessionID:     sessionID,
+		RunID:         tl.RunID,
 		Model:         tl.Provider.Model,
 		Provider:      tl.Provider.ProviderID,
 		StartedAt:     tl.StartedAt,
@@ -278,6 +285,22 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timel
 		t := turnsMap[turn]
 
 		switch evt.Type {
+		case "llm_call":
+			// The timeline records the trace ID of this turn's successful LLM
+			// call plus its retry count and timing at write time, so the report
+			// joins turn → trace by ID without any timestamp heuristic.
+			t.Role = "assistant"
+			t.LLMTraceID = evt.TraceID
+			t.LLMAttempt = evt.Attempt
+			t.LLMAttemptCount = evt.Attempts
+			t.LLMDurationMs = evt.DurationMs
+			t.LLMTTFBMs = evt.TTFBMs
+			t.LLMTTFTMs = evt.TTFTMs
+			// The last attempt of a turn's successful call succeeded, so the
+			// failures are every attempt before it.
+			if evt.Attempts > 0 {
+				t.LLMFailedAttempts = evt.Attempts - 1
+			}
 		case "tool_call":
 			t.Role = "assistant"
 			t.ToolCalls = append(t.ToolCalls, ToolCallInfo{
@@ -353,6 +376,7 @@ func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary 
 	failedNames := make(map[string]int)
 	hallucinatedNames := make(map[string]int)
 	totalTokens := 0
+	totalRetries := 0
 
 	for _, t := range turns {
 		for _, tc := range t.ToolCalls {
@@ -362,6 +386,7 @@ func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary 
 				failedNames[tc.Name]++
 			}
 		}
+		totalRetries += t.LLMFailedAttempts
 	}
 
 	// Compute estimated tokens from context updates
@@ -387,6 +412,7 @@ func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary 
 	summary.EstimatedTotalTokens = totalTokens
 	summary.TotalPromptTokens = totalPromptTokens
 	summary.TotalCompletionTokens = totalCompletionTokens
+	summary.TotalRetries = totalRetries
 
 	for name := range failedNames {
 		summary.FailedToolNames = append(summary.FailedToolNames, name)
@@ -463,25 +489,50 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 }
 
 // enrichFromTraces fills in LLM timing, bytes, and per-call measurements
-// (usage, finish reason, model, attempt, TTFB) from the HTTP traces recorded
-// for the run. It also updates the summary cache-token totals.
-func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *SessionReport {
+// (usage, finish reason, model, attempt, TTFB, TTFT) from the HTTP traces
+// recorded for the run. It also updates the summary cache-token totals.
+//
+// Turns are joined to traces by ID (issue #988): the timeline records the
+// trace ID of each turn's LLM call, and every trace records its run and turn
+// IDs. When a turn has no recorded ID (e.g. timelines persisted before the
+// feature), the join falls back to grouping traces by (run, turn) and finally
+// to the legacy ±30s timestamp heuristic.
+func (svc *Service) enrichFromTraces(sessionID, runID string, report *SessionReport) *SessionReport {
 	traceIDs, err := svc.persister.ListTraces(sessionID)
 	if err != nil || len(traceIDs) == 0 {
 		return report
 	}
 
-	type matchedTrace struct {
-		durationMs    int64
-		requestBytes  int
-		responseBytes int
-		traceID       string
-		ttfbMs        int64
-		attempt       int
-		model         string
-		finishReason  string
-		usage         *debug.UsageTotals
-		timeDiff      time.Duration
+	// Load all traces for the session once.
+	traces := make([]*debug.HTTPTrace, 0, len(traceIDs))
+	for _, tid := range traceIDs {
+		data, err := svc.persister.LoadTrace(sessionID, tid)
+		if err != nil {
+			continue
+		}
+		var trace debug.HTTPTrace
+		if err := json.Unmarshal(data, &trace); err != nil {
+			continue
+		}
+		traces = append(traces, &trace)
+	}
+	if len(traces) == 0 {
+		return report
+	}
+
+	// Index traces by ID for direct joins.
+	byID := make(map[string]*debug.HTTPTrace, len(traces))
+	for _, tr := range traces {
+		byID[string(tr.ID)] = tr
+	}
+
+	// Group traces by (run, turn): retries of one turn produce multiple traces
+	// sharing the same run/turn, which both counts attempts and acts as a
+	// fallback join when the timeline lacks an explicit trace ID.
+	byRunTurn := make(map[string][]*debug.HTTPTrace)
+	for _, tr := range traces {
+		key := runTurnKey(tr.RunID, tr.Turn)
+		byRunTurn[key] = append(byRunTurn[key], tr)
 	}
 
 	for i, turn := range report.Turns {
@@ -489,52 +540,78 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 			continue
 		}
 
-		var best *matchedTrace
-		for _, tid := range traceIDs {
-			data, err := svc.persister.LoadTrace(sessionID, tid)
-			if err != nil {
-				continue
-			}
-			var trace debug.HTTPTrace
-			if err := json.Unmarshal(data, &trace); err != nil {
-				continue
-			}
+		var best *debug.HTTPTrace
 
-			diff := trace.Timestamp.Sub(turn.Timestamp)
-			if diff < 0 {
-				diff = -diff
-			}
-			if diff > 30*time.Second {
-				continue
-			}
-			if best == nil || diff < best.timeDiff {
-				best = &matchedTrace{
-					durationMs:    trace.DurationMs,
-					requestBytes:  trace.RequestBytes,
-					responseBytes: trace.ResponseBytes,
-					traceID:       string(trace.ID),
-					ttfbMs:        trace.TTFBMs,
-					attempt:       trace.Attempt,
-					model:         trace.Model,
-					finishReason:  trace.FinishReason,
-					usage:         trace.Usage,
-					timeDiff:      diff,
+		// Primary: join by the trace ID recorded on the turn/timeline.
+		if turn.LLMTraceID != "" {
+			best = byID[turn.LLMTraceID]
+		}
+
+		// Fallback: join by (run, turn), preferring the highest attempt (the
+		// final attempt of the turn).
+		if best == nil && runID != "" && turn.Turn > 0 {
+			for _, tr := range byRunTurn[runTurnKey(runID, turn.Turn)] {
+				if best == nil || tr.Attempt > best.Attempt {
+					best = tr
 				}
 			}
 		}
 
+		// Last resort: legacy ±30s timestamp proximity heuristic for data
+		// persisted without correlation IDs.
+		if best == nil {
+			best = closestTraceByTimestamp(traces, turn.Timestamp)
+		}
+
 		if best != nil {
-			report.Turns[i].LLMDurationMs = best.durationMs
-			report.Turns[i].LLMRequestBytes = best.requestBytes
-			report.Turns[i].LLMResponseBytes = best.responseBytes
-			report.Turns[i].LLMTraceID = best.traceID
-			report.Turns[i].LLMTTFBMs = best.ttfbMs
-			report.Turns[i].LLMAttempt = best.attempt
-			report.Turns[i].LLMModel = best.model
-			report.Turns[i].LLMFinishReason = best.finishReason
-			report.Turns[i].LLMUsage = best.usage
+			report.Turns[i].LLMTraceID = string(best.ID)
+			report.Turns[i].LLMDurationMs = best.DurationMs
+			report.Turns[i].LLMRequestBytes = best.RequestBytes
+			report.Turns[i].LLMResponseBytes = best.ResponseBytes
+			report.Turns[i].LLMTTFBMs = best.TTFBMs
+			report.Turns[i].LLMTTFTMs = best.TTFTMs
+			report.Turns[i].LLMAttempt = best.Attempt
+			report.Turns[i].LLMModel = best.Model
+			report.Turns[i].LLMFinishReason = best.FinishReason
+			report.Turns[i].LLMUsage = best.Usage
+		}
+
+		// Attempt count and failures: prefer the values recorded on the
+		// timeline (they count every attempt the loop made, even when a
+		// failed trace was later pruned); otherwise derive them from the
+		// (run, turn) trace group.
+		if report.Turns[i].LLMAttemptCount == 0 && runID != "" && turn.Turn > 0 {
+			if group := byRunTurn[runTurnKey(runID, turn.Turn)]; len(group) > 0 {
+				report.Turns[i].LLMAttemptCount = len(group)
+			}
+		}
+		if report.Turns[i].LLMFailedAttempts == 0 && runID != "" && turn.Turn > 0 {
+			if group := byRunTurn[runTurnKey(runID, turn.Turn)]; len(group) > 0 {
+				failed := 0
+				for _, tr := range group {
+					if !isTraceSuccess(tr) {
+						failed++
+					}
+				}
+				// Every attempt before the final one was a retry; use that
+				// count when the trace outcomes don't mark them explicitly.
+				if failed == 0 && len(group) > 1 {
+					failed = len(group) - 1
+				}
+				if failed > 0 {
+					report.Turns[i].LLMFailedAttempts = failed
+				}
+			}
 		}
 	}
+
+	// Recompute the retry aggregate from the enriched turns (the timeline
+	// values may have been refined by trace outcomes above).
+	var totalRetries int
+	for _, t := range report.Turns {
+		totalRetries += t.LLMFailedAttempts
+	}
+	report.Summary.TotalRetries = totalRetries
 
 	// Update cache-token totals from the enriched turns.
 	var cacheRead, cacheWrite int
@@ -550,6 +627,40 @@ func (svc *Service) enrichFromTraces(sessionID string, report *SessionReport) *S
 	}
 
 	return report
+}
+
+// isTraceSuccess reports whether a trace represents a successful LLM call
+// (HTTP 2xx and no transport error).
+func isTraceSuccess(tr *debug.HTTPTrace) bool {
+	return tr.Error == "" && tr.Status >= 200 && tr.Status < 300
+}
+
+// runTurnKey builds the grouping key for traces by run and turn.
+func runTurnKey(runID string, turn int) string {
+	return runID + "\x00" + strconv.Itoa(turn)
+}
+
+// closestTraceByTimestamp returns the trace closest to ts within a ±30s
+// window, or nil when none qualify. This is the legacy heuristic kept as a
+// fallback for data persisted without correlation IDs.
+func closestTraceByTimestamp(traces []*debug.HTTPTrace, ts time.Time) *debug.HTTPTrace {
+	var best *debug.HTTPTrace
+	var bestDiff time.Duration
+	const window = 30 * time.Second
+	for _, tr := range traces {
+		diff := tr.Timestamp.Sub(ts)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > window {
+			continue
+		}
+		if best == nil || diff < bestDiff {
+			best = tr
+			bestDiff = diff
+		}
+	}
+	return best
 }
 
 // buildReconstructedReport builds a report from session snapshot only (no timeline).
@@ -618,6 +729,9 @@ func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, 
 	if snapData != nil {
 		report = svc.enrichFromSnapshot(sessionID, report)
 	}
+	// No timeline exists for this session, so there is no run ID to group
+	// traces by; enrichment falls back to the timestamp heuristic.
+	report = svc.enrichFromTraces(sessionID, "", report)
 
 	return report, nil
 }

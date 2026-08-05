@@ -39,6 +39,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Generate a unique session ID for this batch run
 	batchID := fmt.Sprintf("batch-%d", time.Now().UnixNano())
+	batchStartedAt := time.Now()
 
 	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode).
 	// The session ID and recorder are passed so headless batch runs feed the same
@@ -135,6 +136,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        batchID,
+		RunID:            runstate.GenerateRunID(batchID, batchStartedAt),
 		ContextWindow:    cfg.ContextWindowTokens,
 		CrashDumpFunc:    nil,
 		Turns:            &turns,
