@@ -387,7 +387,9 @@ func TestJsFiles(t *testing.T) {
 	if !strings.Contains(content2, "resetActivityTracking") {
 		t.Error("eitri-stream.js missing resetActivityTracking function")
 	}
-	// Verify es.onerror calls all three cleanup functions before RECONNECTING
+	// Verify es.onerror preserves in-flight tool state instead of clearing it
+	// before RECONNECTING: a transient EventSource error must not wipe tool
+	// activity/elapsed data that resumes after reconnect (issue #1070).
 	errReconnectIdx := strings.Index(content2, "state.status = STATES.RECONNECTING")
 	if errReconnectIdx < 0 {
 		t.Error("eitri-stream.js missing RECONNECTING state transition")
@@ -398,16 +400,40 @@ func TestJsFiles(t *testing.T) {
 			t.Error("eitri-stream.js missing es.onerror handler")
 		} else {
 			onerrorBlock := content2[onerrorStart:errReconnectIdx]
-			if !strings.Contains(onerrorBlock, "clearToolActivity()") {
-				t.Error("es.onerror handler missing clearToolActivity() call before RECONNECTING")
+			if strings.Contains(onerrorBlock, "clearToolActivity()") {
+				t.Error("es.onerror handler must NOT call clearToolActivity() — tool state survives reconnect (issue #1070)")
 			}
-			if !strings.Contains(onerrorBlock, "clearThinkingPanel()") {
-				t.Error("es.onerror handler missing clearThinkingPanel() call before RECONNECTING")
+			if strings.Contains(onerrorBlock, "clearThinkingPanel()") {
+				t.Error("es.onerror handler must NOT call clearThinkingPanel() — thinking content survives reconnect (issue #1070)")
 			}
-			if !strings.Contains(onerrorBlock, "resetActivityTracking()") {
-				t.Error("es.onerror handler missing resetActivityTracking() call before RECONNECTING")
+			if strings.Contains(onerrorBlock, "resetActivityTracking()") {
+				t.Error("es.onerror handler must NOT call resetActivityTracking() — elapsed tracking survives reconnect (issue #1070)")
 			}
 		}
+	}
+	// Verify a duplicate/replayed 'done' packet is ignored once the run is
+	// already finalizing or finalized (guard on run status, issue #1070).
+	if !strings.Contains(content2, "state.status === STATES.RENDERING || state.status === STATES.DONE") {
+		t.Error("eitri-stream.js done handler missing RENDERING/DONE guard against duplicate/replayed done packets (issue #1070)")
+	}
+	// Verify tool card keys are replay-stable across reconnect replays.
+	if !strings.Contains(content2, "toolKeysByIdentity") {
+		t.Error("eitri-stream.js missing toolKeysByIdentity replay-stable tool card key map (issue #1070)")
+	}
+	if !strings.Contains(content2, "toolIdentityForPacket") {
+		t.Error("eitri-stream.js missing toolIdentityForPacket helper (issue #1070)")
+	}
+	// Verify card timers die with their cards: FIFO eviction/full teardown go
+	// through pruneToolCardState, and the interval self-stops when its card
+	// leaves the DOM.
+	if !strings.Contains(content2, "function pruneToolCardState(") {
+		t.Error("eitri-stream.js missing pruneToolCardState helper (issue #1070)")
+	}
+	if !strings.Contains(content2, "!elapsedSpan || !elapsedSpan.isConnected") {
+		t.Error("eitri-stream.js timer must self-stop when its card is removed from the DOM (issue #1070)")
+	}
+	if !strings.Contains(content2, "window.__activeToolCardTimerKeys") {
+		t.Error("eitri-stream.js missing __activeToolCardTimerKeys test hook (issue #1070)")
 	}
 	if !strings.Contains(content2, "lightweightMarkdown") {
 		t.Error("eitri-stream.js missing lightweightMarkdown function")
