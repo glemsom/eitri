@@ -273,6 +273,67 @@ func TestBrowser_EndSession(t *testing.T) {
 	tool.EndSession("non-existent-session")
 }
 
+func TestBrowser_SequentialRuns_NoAccumulation(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test:9222/devtools/browser/test", "/tmp")
+
+	sessionID := "test-session-sequential"
+
+	// Simulate multiple runs in sequence
+	for run := 0; run < 3; run++ {
+		// Each run would create allocator connections
+		// In a real scenario, this happens via tool.Call()
+		// For this test, we simulate by calling getOrCreateAllocator
+		_, err := tool.getOrCreateAllocator(sessionID)
+		if err != nil {
+			t.Fatalf("run %d: failed to create allocator: %v", run, err)
+		}
+
+		// Simulate target context creation (as would happen with browser actions)
+		tool.targetsMu.Lock()
+		if tool.targets[sessionID] == nil {
+			tool.targets[sessionID] = make(map[string]*targetContext)
+		}
+		// Create a fake target context
+		targetCtx, cancel := context.WithCancel(context.Background())
+		tool.targets[sessionID]["fake-target"] = &targetContext{
+			ctx:    targetCtx,
+			cancel: cancel,
+		}
+		tool.targetsMu.Unlock()
+
+		// Verify resources were created
+		tool.mu.Lock()
+		if _, exists := tool.conns[sessionID]; !exists {
+			t.Fatalf("run %d: allocator should exist after creation", run)
+		}
+		tool.mu.Unlock()
+
+		tool.targetsMu.Lock()
+		if len(tool.targets[sessionID]) == 0 {
+			t.Fatalf("run %d: targets should exist after creation", run)
+		}
+		tool.targetsMu.Unlock()
+
+		// Call EndSession to clean up (as would happen in deferred cleanup)
+		tool.EndSession(sessionID)
+
+		// Verify resources were cleaned up
+		tool.mu.Lock()
+		if _, exists := tool.conns[sessionID]; exists {
+			t.Errorf("run %d: allocator should not exist after EndSession", run)
+		}
+		tool.mu.Unlock()
+
+		tool.targetsMu.Lock()
+		if _, exists := tool.targets[sessionID]; exists {
+			t.Errorf("run %d: targets should not exist after EndSession", run)
+		}
+		tool.targetsMu.Unlock()
+	}
+}
+
+
 func TestBrowser_GetOrCreateAllocator_New(t *testing.T) {
 	t.Parallel()
 	tool := NewBrowserTool("ws://test:9222/devtools/browser/test", "/tmp")

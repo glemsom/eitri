@@ -117,3 +117,17 @@ func (r *Registry) LitellmTools() []litellm.Tool {
 	}
 	return tools
 }
+
+// SessionEnder is implemented by tools that need cleanup when a session ends.
+type SessionEnder interface {
+	EndSession(sessionID string)
+}
+
+// EndSession calls EndSession on all registered tools that implement SessionEnder.
+func (r *Registry) EndSession(sessionID string) {
+	for _, h := range r.handlers {
+		if ender, ok := h.(SessionEnder); ok {
+			ender.EndSession(sessionID)
+		}
+	}
+}

@@ -221,6 +221,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 
 	go func() {
 		defer func() {
+			// Release browser allocator connections for this sub-agent's task ID
+			toolReg.EndSession(taskID)
 			record.finish()
 			// Clean up child session's RunState from active runs
 			if record.ChildSessionID != "" {
