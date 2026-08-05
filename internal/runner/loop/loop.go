@@ -191,12 +191,24 @@ func toLitellmMessage(m message.EitriMessage) litellm.Message {
 	return m.ToLitellm()
 }
 
-// litellmMsgText returns the concatenated text from all TextBlocks in a litellm.Message.
+// litellmMsgText returns the concatenated text from all TextBlocks in a
+// litellm.Message, including text nested inside ToolResultBlocks. This mirrors
+// what the provider tokenizes when counting prompt tokens: tool results are
+// part of the payload. Excluding them made the measured chars-per-token ratio
+// collapse (a 90KB tool result measured as ~0 chars), poisoning the
+// CalibrationStore and inflating every later context estimate.
 func litellmMsgText(msg litellm.Message) string {
 	var text strings.Builder
 	for _, block := range msg.Blocks {
-		if tb, ok := block.(litellm.TextBlock); ok {
-			text.WriteString(tb.Text)
+		switch b := block.(type) {
+		case litellm.TextBlock:
+			text.WriteString(b.Text)
+		case litellm.ToolResultBlock:
+			for _, c := range b.Content {
+				if tb, ok := c.(litellm.TextBlock); ok {
+					text.WriteString(tb.Text)
+				}
+			}
 		}
 	}
 	return text.String()
@@ -992,8 +1004,21 @@ func updateCalibration(store *tokenizer.CalibrationStore, model string, messages
 	if inputLen == 0 {
 		return
 	}
-
+	// Reject physically implausible observations. Even CJK-heavy payloads
+	// tokenize to >1 char/token; anything below 1.0 means the measured input
+	// length and the provider token count are not measuring the same bytes
+	// (e.g. a measurement bug), and accepting it would poison every later
+	// context estimate for the model.
 	cpt := float64(inputLen) / float64(usage.InputTokens)
+	if cpt < 1.0 {
+		slog.Warn("calibration observation rejected: chars/token below 1.0 is implausible",
+			slog.String("model", model),
+			slog.Float64("observed_cpt", cpt),
+			slog.Int("input_chars", inputLen),
+			slog.Int("prompt_tokens", usage.InputTokens),
+		)
+		return
+	}
 
 	oldCPT := store.Lookup(model)
 	store.Update(model, cpt)

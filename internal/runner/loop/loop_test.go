@@ -3234,6 +3234,58 @@ func TestUpdateCalibration_ComputesCorrectCPT(t *testing.T) {
 	}
 }
 
+func TestUpdateCalibration_CountsToolResultContent(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+
+	// Realistic request shape: a large tool result (e.g. a file read or a
+	// sub-agent transcript) dominates the payload, but the system prompt and
+	// user text are small. The provider tokenizes the tool result, so the
+	// observed chars-per-token must reflect it. Regression: input length used
+	// to count TextBlocks only, so a 90KB tool result was measured as ~8KB,
+	// collapsing the calibrated CPT to ~0.3 and inflating every later context
+	// estimate by an order of magnitude (issue: context panel showed 173k for
+	// a ~28k-token conversation).
+	systemText := strings.Repeat("You are a review agent. ", 400)        // ~10KB
+	toolText := strings.Repeat("package main\n\nfunc main() {}\n", 3000) // ~72KB
+	messages := []litellm.Message{
+		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: systemText}}},
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "review this"}}},
+		{Role: litellm.Role("tool"), Blocks: []litellm.Block{litellm.ToolResultBlock{ToolUseID: "call_1", Content: []litellm.Block{litellm.TextBlock{Text: toolText}}}}},
+	}
+
+	inputLen := len(systemText) + len("review this") + len(toolText)
+	// Provider truth: ~3.5 chars/token for this payload.
+	inputTokens := inputLen / 3
+	// Repeat so the EMA converges toward the observed ratio; a single update
+	// is masked by the 4.0 default (alpha=0.3).
+	for i := 0; i < 10; i++ {
+		updateCalibration(store, "gpt-4", messages, &litellm.Usage{InputTokens: inputTokens})
+	}
+
+	// Sanity: calibrated CPT must track the true ratio, not collapse toward 0.
+	cpt := store.Lookup("gpt-4")
+	if cpt < 2.5 {
+		t.Errorf("Lookup() = %f, want >= 2.5 (tool result content was excluded from input length)", cpt)
+	}
+}
+
+func TestUpdateCalibration_RejectsImplausibleCPT(t *testing.T) {
+	t.Parallel()
+	store := tokenizer.NewCalibrationStore()
+	messages := []litellm.Message{
+		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
+	}
+
+	// 2 chars / 50 tokens = 0.04 chars/token — physically impossible, must be
+	// a measurement mismatch. The store must stay at the default so later
+	// context estimates are not poisoned.
+	updateCalibration(store, "gpt-4", messages, &litellm.Usage{InputTokens: 50})
+	if cpt := store.Lookup("gpt-4"); cpt != tokenizer.DefaultCPT {
+		t.Errorf("Lookup() = %f, want default %f (implausible observation was accepted)", cpt, tokenizer.DefaultCPT)
+	}
+}
+
 func TestUpdateCalibration_MultipleUpdates(t *testing.T) {
 	t.Parallel()
 	store := tokenizer.NewCalibrationStore()
