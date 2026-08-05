@@ -1,9 +1,10 @@
 // Eitri — Service Worker
 // PWA installable standalone app shell
 
-// Cache version is bumped when the precache asset list changes so browsers
-// with an old service worker drop their stale cache on activate.
-const CACHE = "eitri-v2";
+// The cache version embeds the asset cache-bust version (substituted at serve
+// time by the server). Static asset URLs are content-addressed (?v=...), so a
+// release both updates this script and invalidates the precache. (issue #969)
+const CACHE = "eitri-__EITRI_VERSION__";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -14,24 +15,24 @@ self.addEventListener("install", (event) => {
       // actually needed. (issue #968)
       return cache.addAll([
         "/",
-        "/static/eitri.css",
-        "/static/htmx.min.js",
-        "/static/eitri-stream.js",
-        "/static/eitri-composer.js",
-        "/static/eitri-renderers.js",
-        "/static/eitri-mermaid.js",
-        "/static/eitri-lazy-load.js",
-        "/static/eitri-persona-selector.js",
-        "/static/eitri-session-rename.js",
-        "/static/eitri-settings.js",
-        "/static/eitri-context.js",
-        "/static/eitri-resize.js",
-        "/static/eitri-events.js",
-        "/static/face.webp",
-        "/static/favicon-32.png",
-        "/static/favicon-16.png",
-        "/static/pwa-icon-192.png",
-        "/static/pwa-icon-512.png",
+        "/static/eitri.css?v=__EITRI_VERSION__",
+        "/static/htmx.min.js?v=__EITRI_VERSION__",
+        "/static/eitri-stream.js?v=__EITRI_VERSION__",
+        "/static/eitri-composer.js?v=__EITRI_VERSION__",
+        "/static/eitri-renderers.js?v=__EITRI_VERSION__",
+        "/static/eitri-mermaid.js?v=__EITRI_VERSION__",
+        "/static/eitri-lazy-load.js?v=__EITRI_VERSION__",
+        "/static/eitri-persona-selector.js?v=__EITRI_VERSION__",
+        "/static/eitri-session-rename.js?v=__EITRI_VERSION__",
+        "/static/eitri-settings.js?v=__EITRI_VERSION__",
+        "/static/eitri-context.js?v=__EITRI_VERSION__",
+        "/static/eitri-resize.js?v=__EITRI_VERSION__",
+        "/static/eitri-events.js?v=__EITRI_VERSION__",
+        "/static/face.webp?v=__EITRI_VERSION__",
+        "/static/favicon-32.png?v=__EITRI_VERSION__",
+        "/static/favicon-16.png?v=__EITRI_VERSION__",
+        "/static/pwa-icon-192.png?v=__EITRI_VERSION__",
+        "/static/pwa-icon-512.png?v=__EITRI_VERSION__",
         "/manifest.json",
       ]);
     })

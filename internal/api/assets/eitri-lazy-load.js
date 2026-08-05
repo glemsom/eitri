@@ -31,6 +31,15 @@
     return !!document.querySelector('pre code');
   }
 
+  // Static assets are served with a long-lived immutable Cache-Control, so
+  // every URL must carry the cache-bust version rendered by the page shell
+  // (<body data-asset-version>) — otherwise a released asset change would never
+  // be picked up. (issue #969)
+  function assetUrl(path) {
+    var v = document.body && document.body.getAttribute('data-asset-version');
+    return path + '?v=' + (v || 'dev');
+  }
+
   function loadCss(href) {
     var link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -55,7 +64,7 @@
   function loadMermaid() {
     if (loaded.mermaid) return Promise.resolve();
     loaded.mermaid = true;
-    return loadScript('/static/mermaid.min.js').then(function () {
+    return loadScript(assetUrl('/static/mermaid.min.js')).then(function () {
       document.dispatchEvent(new CustomEvent('eitri:mermaid-loaded'));
     });
   }
@@ -63,8 +72,8 @@
   function loadKatex() {
     if (loaded.katex) return Promise.resolve();
     loaded.katex = true;
-    loadCss('/static/katex.min.css');
-    return loadScript('/static/katex.min.js').then(function () {
+    loadCss(assetUrl('/static/katex.min.css'));
+    return loadScript(assetUrl('/static/katex.min.js')).then(function () {
       document.dispatchEvent(new CustomEvent('eitri:katex-loaded'));
     });
   }
@@ -72,11 +81,11 @@
   function loadPrism() {
     if (loaded.prism) return Promise.resolve();
     loaded.prism = true;
-    loadCss('/static/prism.min.css');
+    loadCss(assetUrl('/static/prism.min.css'));
     // Prism's core must be present before the Go grammar component registers
     // itself, so the two are loaded strictly in sequence.
-    return loadScript('/static/prism-core.min.js')
-      .then(function () { return loadScript('/static/prism-go.min.js'); })
+    return loadScript(assetUrl('/static/prism-core.min.js'))
+      .then(function () { return loadScript(assetUrl('/static/prism-go.min.js')); })
       .then(function () {
         document.dispatchEvent(new CustomEvent('eitri:prism-loaded'));
       });

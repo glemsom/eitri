@@ -50,6 +50,38 @@ type Server struct {
 
 const maxRequestBodyBytes = 1 << 20
 
+// staticAssetCacheControl is applied to every successful /static/* response.
+// The embedded assets are content-addressed via the ?v= cache-bust query
+// string on all references (see templates/staticAsset), so the bytes behind
+// any given URL never change — a one-year immutable cache is safe and avoids
+// re-downloading the ~4.7MB bundle on every navigation/reload. (issue #969)
+const staticAssetCacheControl = "public, max-age=31536000, immutable"
+
+// cacheControlWriter attaches Cache-Control to successful responses written by
+// the wrapped handler. http.FileServer writes headers itself, so the header is
+// set on first WriteHeader/Write rather than before delegating.
+type cacheControlWriter struct {
+	http.ResponseWriter
+	headerWritten bool
+}
+
+func (w *cacheControlWriter) WriteHeader(status int) {
+	if !w.headerWritten {
+		if status >= 200 && status < 300 {
+			w.Header().Set("Cache-Control", staticAssetCacheControl)
+		}
+		w.headerWritten = true
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *cacheControlWriter) Write(b []byte) (int, error) {
+	if !w.headerWritten {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
 type responseRecorder struct {
 	http.ResponseWriter
 	status int
@@ -133,6 +165,14 @@ func (s *Server) Handler() http.Handler {
 	return s.withMiddleware(s.mux)
 }
 
+// assetVersionedContent replaces the cache-bust placeholder embedded in PWA
+// files (sw.js, manifest.json) with the current asset version so that their
+// internal static references and the service-worker cache name stay in lockstep
+// with the versioned URLs rendered by the page shell.
+func (s *Server) assetVersionedContent(content string) string {
+	return strings.ReplaceAll(content, "__EITRI_VERSION__", assets.CacheBustVersion)
+}
+
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return s.requestLoggingMiddleware(s.requestBodyLimitMiddleware(next))
 }
@@ -191,9 +231,16 @@ func writeRequestTooLarge(w http.ResponseWriter) {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
-	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets.Files)))
+	// Static assets are served with a long-lived immutable Cache-Control. All
+	// references carry a ?v=<content-hash> cache-bust query string, so stale
+	// copies are impossible after a release. (issue #969)
+	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.FileServerFS(assets.Files).ServeHTTP(&cacheControlWriter{ResponseWriter: w}, r)
+	})))
 
-	// PWA: manifest.json served directly from embedded assets
+	// PWA: manifest.json served directly from embedded assets. Icon URLs inside
+	// it are versioned via the cache-bust placeholder so they can be served
+	// immutable without going stale.
 	s.mux.HandleFunc("GET /manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		data, err := assets.Files.ReadFile("manifest.json")
 		if err != nil {
@@ -201,11 +248,15 @@ func (s *Server) registerRoutes() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		w.Write([]byte(s.assetVersionedContent(string(data))))
 	})
 
-	// PWA: sw.js with required Service-Worker-Allowed header
+	// PWA: sw.js with required Service-Worker-Allowed header. The cache name
+	// and precache URLs embed the asset cache-bust version, so a release both
+	// updates the service worker (fresh script, no-cache) and invalidates its
+	// precache. (issue #969)
 	s.mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
 		data, err := assets.Files.ReadFile("sw.js")
 		if err != nil {
@@ -214,8 +265,9 @@ func (s *Server) registerRoutes() {
 		}
 		w.Header().Set("Content-Type", "application/javascript")
 		w.Header().Set("Service-Worker-Allowed", "/")
+		w.Header().Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		w.Write([]byte(s.assetVersionedContent(string(data))))
 	})
 
 	// Root serves the base HTML page — redirects to session if browser known

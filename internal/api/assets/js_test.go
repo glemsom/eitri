@@ -569,15 +569,15 @@ func TestServiceWorker(t *testing.T) {
 		},
 		{
 			name: "precaches eitri.css",
-			want: `"/static/eitri.css"`,
+			want: `"/static/eitri.css?v=__EITRI_VERSION__"`,
 		},
 		{
 			name: "precaches JS files",
-			want: `"/static/htmx.min.js"`,
+			want: `"/static/htmx.min.js?v=__EITRI_VERSION__"`,
 		},
 		{
 			name: "precaches favicon",
-			want: `"/static/favicon-32.png"`,
+			want: `"/static/favicon-32.png?v=__EITRI_VERSION__"`,
 		},
 		{
 			name: "precaches manifest",
@@ -648,3 +648,68 @@ func TestServiceWorker(t *testing.T) {
 		})
 	}
 }
+
+// TestStreamJSVersionedAvatar verifies eitri-stream.js builds the streaming
+// bubble avatar URL with the cache-bust version (issue #969).
+func TestStreamJSVersionedAvatar(t *testing.T) {
+	data, err := Files.ReadFile("eitri-stream.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-stream.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "data-asset-version") {
+		t.Error("eitri-stream.js should read the page shell's data-asset-version for cache busting")
+	}
+	if !strings.Contains(content, "/static/face.webp?v=") {
+		t.Error("eitri-stream.js should append the cache-bust version to /static/face.webp")
+	}
+}
+
+// TestAssetVersionPlaceholder verifies that files served dynamically by the
+// HTTP server (sw.js, manifest.json) embed the cache-bust placeholder so the
+// server can substitute the current asset version at serve time (issue #969).
+func TestAssetVersionPlaceholder(t *testing.T) {
+	for _, name := range []string{"sw.js", "manifest.json"} {
+		data, err := Files.ReadFile(name)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", name, err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "__EITRI_VERSION__") {
+			t.Errorf("%s missing __EITRI_VERSION__ placeholder (server substitutes the asset version)", name)
+		}
+	}
+}
+
+// TestLazyLoadAssetVersioning verifies the on-demand heavy-library loader builds
+// versioned URLs from the cache-bust version the page shell renders (issue #969).
+func TestLazyLoadAssetVersioning(t *testing.T) {
+	data, err := Files.ReadFile("eitri-lazy-load.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-lazy-load.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "assetUrl") {
+		t.Error("eitri-lazy-load.js missing assetUrl helper for versioned URLs")
+	}
+	if !strings.Contains(content, "data-asset-version") {
+		t.Error("eitri-lazy-load.js should read the page shell's data-asset-version for cache busting")
+	}
+	// Every heavy-library URL must go through assetUrl so released asset changes
+	// are picked up despite immutable caching.
+	for _, want := range []string{
+		"assetUrl('/static/mermaid.min.js')",
+		"assetUrl('/static/katex.min.css')",
+		"assetUrl('/static/katex.min.js')",
+		"assetUrl('/static/prism.min.css')",
+		"assetUrl('/static/prism-core.min.js')",
+		"assetUrl('/static/prism-go.min.js')",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("eitri-lazy-load.js should load %s via assetUrl", want)
+		}
+	}
+}
+

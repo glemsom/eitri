@@ -710,7 +710,11 @@
 
     if (!el.classList.contains('message-assistant')) {
       el.className = 'message message-assistant streaming-message';
-      el.innerHTML = '<span class="message-avatar-container"><img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"></span><div class="message-body"><div class="message-content"></div></div>';
+      // Static assets are served immutable; the cache-bust version rendered on
+      // <body data-asset-version> keeps runtime-built asset URLs from going
+      // stale. (issue #969)
+      var assetVersion = document.body && document.body.getAttribute('data-asset-version') || 'dev';
+      el.innerHTML = '<span class="message-avatar-container"><img class="message-avatar" src="/static/face.webp?v=' + assetVersion + '" alt="Eitri" width="32" height="32"></span><div class="message-body"><div class="message-content"></div></div>';
     }
   }
 
