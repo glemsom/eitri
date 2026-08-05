@@ -368,6 +368,29 @@ func TestAppendMessage_BlankFirstUserMessageDoesNotBlockLaterRename(t *testing.T
 	}
 }
 
+func TestTitlePreview(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    string
+	}{
+		{"short message returned unchanged", "hello", "hello"},
+		{"empty input returns empty", "", ""},
+		{"whitespace-only input returns empty", "  \n\t  ", ""},
+		{"whitespace normalized to single spaces", "  fix   flaky\nsession\ttab  ", "fix flaky session tab"},
+		{"exactly 31 runes kept without ellipsis", "0123456789012345678901234567890", "0123456789012345678901234567890"},
+		{"32 runes truncated to 31 with ellipsis", "01234567890123456789012345678901", "012345678901234567890123456789…"},
+		{"multibyte runes counted by rune not byte", "éééééééééééééééééééééééééééééééé", "éééééééééééééééééééééééééééééé…"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := session.TitlePreview(tt.message); got != tt.want {
+				t.Errorf("TitlePreview(%q) = %q, want %q", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDefaultMaxSessions(t *testing.T) {
 	mgr := session.NewManager(0, t.TempDir()) // should use default
 	if mgr.Count() != 0 {

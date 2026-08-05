@@ -230,7 +230,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					s.appendToSession(sessionID, content, reasoningContent)
 				}
 				s.setSessionIdleAndSnapshot(sessionID)
-				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &runstate.TimelineTermination{
 					Reason:  runstate.TerminationCancelled,
 					Message: "Run cancelled by user or context deadline exceeded",
 				})
@@ -253,7 +253,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
 				s.appendToSession(sessionID, content, reasoningContent)
 				s.setSessionIdleAndSnapshot(sessionID)
-				s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &runstate.TimelineTermination{
 					Reason:  runstate.TerminationMaxTurns,
 					Message: limitMsg,
 				})
@@ -264,7 +264,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			// persisting diagnostics so UI and disk snapshots do not stay running.
 			s.setSessionErrorAndSnapshot(sessionID)
 			w.Error(err.Error())
-			s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+			s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &runstate.TimelineTermination{
 				Reason:  runstate.TerminationError,
 				Message: err.Error(),
 			})
@@ -280,7 +280,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			s.appendToSession(sessionID, content, reasoningContent)
 		}
 		s.setSessionIdleAndSnapshot(sessionID)
-		s.persistRunTimeline(sessionID, state, sseState, cfg, &runstate.TimelineTermination{
+		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &runstate.TimelineTermination{
 			Reason:  runstate.TerminationCompleted,
 			Message: "",
 		})
@@ -292,7 +292,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 }
 
 // persistRunTimeline builds and persists a condensed timeline for the run.
-func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseState *runstate.State, cfg RunConfig, termination *runstate.TimelineTermination) {
+// It takes the run ID and start time explicitly rather than the UI RunState,
+// so the same timeline-writing path is callable for headless (batch) runs,
+// which have no RunState (issue #1038).
+func (s *RunService) persistRunTimeline(sessionID, runID string, startedAt time.Time, sseState *runstate.State, cfg RunConfig, termination *runstate.TimelineTermination) {
 	if s.persister == nil {
 		return
 	}
@@ -302,13 +305,13 @@ func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseSt
 
 	timeline := &runstate.Timeline{
 		Version:   1,
-		RunID:     state.RunID,
+		RunID:     runID,
 		SessionID: sessionID,
 		Provider: runstate.TimelineProvider{
 			Model:      cfg.ModelName,
 			ProviderID: cfg.ProviderID,
 		},
-		StartedAt:   state.StartedAt,
+		StartedAt:   startedAt,
 		EndedAt:     now,
 		Termination: termination,
 		Events:      events,
