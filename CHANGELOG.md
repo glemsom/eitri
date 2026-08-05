@@ -58,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix the gear/header (global nav) becoming unclickable while a blocked-read confirmation is pending mid-run: the full-screen confirmation overlay (z-index:1000) covered the header (z-index:100), freezing the UI during a running/streaming session. The header now stacks above the overlay so nav stays usable while a confirmation waits.
 
+- The confirmation modal now restores focus to the element that had it before the modal opened (typically the composer input) when it closes, and the undo toast moves focus to its Undo button as soon as it appears — so keyboard users always know where focus is after the allow/deny flow. Escape while the undo toast is showing no longer re-runs the deny action, which would respawn the 5s auto-close timer and leak the old one. (#1067)
+
 ### Documentation
 
 - **CONTEXT.md**: compress the four Provider-flavoured domain glossary entries (`Provider`, `Provider endpoint`, `Model`, `Unverified model`) into a single `Provider` entry with compact inline bullets for endpoint/model/unverified, plus a link to the `internal/provider/` section of `docs/ARCHITECTURE.md`. (#1009)

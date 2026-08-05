@@ -1078,9 +1078,16 @@
   // ---- Confirmation modal for blocked read paths (issue #314) ----
 
   var activeConfirmation = null; // { sessionId, path, message }
+  var lastFocusedElement = null; // element to restore focus to on close (issue #1067)
 
   function showConfirmationModal(sessionId, path, message) {
     closeConfirmationModal();
+
+    // Remember which element had focus before the modal opened so it can be
+    // restored when the modal closes (issue #1067).
+    if (document.activeElement && document.activeElement !== document.body) {
+      lastFocusedElement = document.activeElement;
+    }
 
     activeConfirmation = { sessionId: sessionId, path: path, message: message };
 
@@ -1130,9 +1137,22 @@
       overlay.remove();
     }
     activeConfirmation = null;
+
+    // Restore focus to the element that opened the modal so keyboard users
+    // always know where focus is after the flow (issue #1067).
+    if (lastFocusedElement && lastFocusedElement.isConnected) {
+      lastFocusedElement.focus();
+    }
+    lastFocusedElement = null;
   }
 
   function confirmationKeyHandler(e) {
+    // Once the modal content is swapped for the undo toast, keyboard handling
+    // is delegated to the toast's single Undo button (native Tab/Enter). In
+    // particular Escape must not re-run deny, which would respawn the 5s
+    // auto-close timer on top of the pending one (issue #1067).
+    if (document.querySelector('.undo-toast')) return;
+
     var allowBtn = document.getElementById('confirm-allow');
     var denyBtn = document.getElementById('confirm-deny');
 
@@ -1237,6 +1257,10 @@
     }, 5000);
 
     if (undoBtn) {
+      // Move focus to the Undo button so keyboard users know where they are
+      // before the toast auto-closes (issue #1067).
+      undoBtn.focus();
+
       undoBtn.addEventListener('click', function () {
         clearTimeout(undoTimeout);
         fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/confirm', {
