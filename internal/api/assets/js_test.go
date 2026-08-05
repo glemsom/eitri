@@ -889,6 +889,115 @@ func TestJsListenerHygiene(t *testing.T) {
 	}
 }
 
+// TestPersonaSelectorKeyboardContract verifies the persona selector dropdown
+// implements the WAI-ARIA listbox keyboard contract (issue #1074): the
+// trigger advertises the popup, arrow/Home/End keys navigate the options,
+// Escape closes the dropdown and returns focus to the trigger, Tab closes the
+// widget, and a persona activation hands focus back to the re-rendered
+// trigger so keyboard users can keep operating the dropdown.
+func TestPersonaSelectorKeyboardContract(t *testing.T) {
+	data, err := Files.ReadFile("eitri-persona-selector.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-persona-selector.js: %v", err)
+	}
+	content := string(data)
+
+	// AC1 — options can be navigated and Escape returns focus to the trigger.
+	for _, want := range []string{
+		"personaMoveFocus", // shared index math behind navigation
+		"'ArrowDown'",
+		"'ArrowUp'",
+		"'Home'",
+		"'End'",
+		"e.key === 'Escape'", // Escape closes…
+		"trigger.focus()",    // …and returns focus to the trigger
+		"e.key === 'Tab'",    // Tab closes the widget
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("eitri-persona-selector.js missing %q in its keyboard contract", want)
+		}
+	}
+
+	// AC2 — the trigger announces the popup and options expose selection.
+	for _, want := range []string{
+		"aria-haspopup",
+		"aria-expanded",
+		"aria-controls",
+		"aria-selected",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("eitri-persona-selector.js missing %q in its ARIA wiring", want)
+		}
+	}
+
+	// Focus hand-back to the re-created trigger after an activation swap.
+	if !strings.Contains(content, "e.detail.target.id === 'persona-selector'") {
+		t.Error("eitri-persona-selector.js should restore focus to the re-created trigger after a persona activation swap")
+	}
+}
+
+// TestPersonaMoveFocus verifies the pure index math behind the persona
+// listbox arrow-key navigation (issue #1074): ArrowDown/ArrowUp wrap at the
+// ends of the list, Home/End jump to the extremes, and non-navigation keys
+// return -1 so the caller leaves the key to its native behaviour.
+func TestPersonaMoveFocus(t *testing.T) {
+	data, err := Files.ReadFile("eitri-persona-selector.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-persona-selector.js: %v", err)
+	}
+	fnSrc := extractFunctionBody(t, string(data), "function personaMoveFocus(key, currentIndex, optionCount) {")
+
+	runtime := goja.New()
+	if _, err := runtime.RunString(fnSrc); err != nil {
+		t.Fatalf("failed to parse personaMoveFocus: %v", err)
+	}
+	var fn func(string, int, int) int
+	if err := runtime.ExportTo(runtime.Get("personaMoveFocus"), &fn); err != nil {
+		t.Fatalf("failed to export personaMoveFocus: %v", err)
+	}
+
+	t.Run("arrow down moves forward and wraps", func(t *testing.T) {
+		if got := fn("ArrowDown", 0, 2); got != 1 {
+			t.Errorf("ArrowDown from 0/2 = %d, want 1", got)
+		}
+		if got := fn("ArrowDown", 1, 2); got != 0 {
+			t.Errorf("ArrowDown from 1/2 should wrap to 0, got %d", got)
+		}
+	})
+	t.Run("arrow up moves backward and wraps", func(t *testing.T) {
+		if got := fn("ArrowUp", 1, 2); got != 0 {
+			t.Errorf("ArrowUp from 1/2 = %d, want 0", got)
+		}
+		if got := fn("ArrowUp", 0, 2); got != 1 {
+			t.Errorf("ArrowUp from 0/2 should wrap to 1, got %d", got)
+		}
+	})
+	t.Run("home and end jump to the extremes", func(t *testing.T) {
+		if got := fn("Home", 1, 2); got != 0 {
+			t.Errorf("Home = %d, want 0", got)
+		}
+		if got := fn("End", 0, 2); got != 1 {
+			t.Errorf("End = %d, want 1", got)
+		}
+	})
+	t.Run("non-navigation keys leave the key alone", func(t *testing.T) {
+		if got := fn("Enter", 0, 2); got != -1 {
+			t.Errorf("Enter = %d, want -1", got)
+		}
+		if got := fn(" ", 0, 2); got != -1 {
+			t.Errorf("Space = %d, want -1", got)
+		}
+		if got := fn("Escape", 0, 2); got != -1 {
+			t.Errorf("Escape = %d, want -1", got)
+		}
+	})
+	t.Run("empty list never navigates", func(t *testing.T) {
+		if got := fn("ArrowDown", 0, 0); got != -1 {
+			t.Errorf("ArrowDown on empty list = %d, want -1", got)
+		}
+	})
+}
+
 // TestComposerInitRetryLoopIsBounded simulates the composer's connectedCallback
 // while its form is permanently missing and verifies the requestAnimationFrame
 // retry loop terminates (issue #1069, acceptance criterion 3).

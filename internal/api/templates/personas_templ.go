@@ -552,6 +552,13 @@ func PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Ski
 
 // PersonaSelector renders a compact dropdown for the header that lists all
 // personas and allows switching the active persona.
+//
+// Accessibility (issue #1074): the trigger is a button that opens a
+// single-select listbox (WAI-ARIA listbox pattern with a roving tabindex).
+// It advertises the popup via aria-haspopup/aria-expanded/aria-controls;
+// each option exposes its selection state via aria-selected. Keyboard
+// behavior (arrow navigation, Enter/Space activation, Escape/Tab closing)
+// lives in eitri-persona-selector.js.
 func PersonaSelector(personas []*persona.PersonaDefinition, activePersona string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -573,20 +580,20 @@ func PersonaSelector(personas []*persona.PersonaDefinition, activePersona string
 			templ_7745c5c3_Var31 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div id=\"persona-selector\" class=\"persona-selector\"><button type=\"button\" class=\"persona-trigger\" aria-haspopup=\"listbox\" aria-expanded=\"false\" data-ps-target=\"trigger\"><span class=\"persona-trigger-label\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div id=\"persona-selector\" class=\"persona-selector\"><button type=\"button\" class=\"persona-trigger\" aria-haspopup=\"listbox\" aria-expanded=\"false\" aria-controls=\"persona-listbox\" data-ps-target=\"trigger\"><span class=\"persona-trigger-label\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(activePersona)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 165, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 173, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</span> <span class=\"persona-chevron\" data-ps-target=\"chevron\">▾</span></button><div class=\"persona-dropdown\" hidden role=\"listbox\" data-ps-target=\"dropdown\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</span> <span class=\"persona-chevron\" data-ps-target=\"chevron\">▾</span></button><div id=\"persona-listbox\" class=\"persona-dropdown\" hidden role=\"listbox\" aria-label=\"Personas\" data-ps-target=\"dropdown\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -616,7 +623,7 @@ func PersonaSelector(personas []*persona.PersonaDefinition, activePersona string
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%t", p.Name == activePersona))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 174, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 182, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 			if templ_7745c5c3_Err != nil {
@@ -629,7 +636,7 @@ func PersonaSelector(personas []*persona.PersonaDefinition, activePersona string
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(personaActivateVals(p.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 176, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 184, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 			if templ_7745c5c3_Err != nil {
@@ -652,7 +659,7 @@ func PersonaSelector(personas []*persona.PersonaDefinition, activePersona string
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 185, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/personas.templ`, Line: 193, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
