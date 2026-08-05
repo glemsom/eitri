@@ -10,6 +10,7 @@ import (
 
 	"github.com/voocel/litellm"
 
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -58,6 +59,85 @@ type SubAgentResult = tool.SubAgentResult
 // subAgentReapTTL controls how long completed sub-agent records are kept
 // after finishing before they are automatically reaped.
 const subAgentReapTTL = 30 * time.Second
+
+// subAgentSnapshotter persists a sub-agent run as a child session on disk
+// (issue #1041). It implements loop.TurnCompleter so RunAgent fires a snapshot
+// after every complete turn, and writes the terminal snapshot + timeline on
+// the run's exit paths.
+//
+// Sub-agent runs have no UI session in batch mode (and no per-turn history
+// sync in UI mode), so snapshots are derived from the run's own request
+// history (req.Messages) rather than the UI session manager. They are keyed
+// by the task ID — the same ID the sub-agent's HTTP traces and run ID are
+// recorded under — so session.json, traces/, and timeline/ all land under
+// ~/.eitri/sessions/<taskID>/.
+type subAgentSnapshotter struct {
+	svc          *RunService
+	taskID       string
+	parentID     string
+	browserID    string
+	title        string
+	systemPrompt string
+	startedAt    time.Time
+	cfg          RunConfig
+	req          *litellm.Request
+}
+
+// OnTurnComplete implements loop.TurnCompleter: persist a running-status
+// snapshot after each complete agent turn.
+func (sn *subAgentSnapshotter) OnTurnComplete(ctx context.Context, sessionID string) {
+	sn.persist(uisession.StatusRunning)
+}
+
+// persist writes the current sub-agent conversation to disk as a session
+// snapshot under sessions/<taskID>/session.json.
+func (sn *subAgentSnapshotter) persist(status uisession.Status) {
+	if sn.svc.persister == nil {
+		return
+	}
+
+	// Build the flat message list from the run's request history. The system
+	// prompt is stored separately on the snapshot (SystemPrompt), mirroring
+	// how UI sessions keep it out of the message list.
+	messages := make([]message.Message, 0, len(sn.req.Messages))
+	for _, lm := range sn.req.Messages {
+		if lm.Role == litellm.Role("system") {
+			continue
+		}
+		messages = append(messages, message.FromLitellmMessage(lm))
+	}
+
+	sess := &uisession.UISession{
+		ID:           sn.taskID,
+		BrowserID:    sn.browserID,
+		ParentID:     sn.parentID,
+		Title:        sn.title,
+		Status:       status,
+		Messages:     messages,
+		SystemPrompt: sn.systemPrompt,
+		Workspace:    sn.cfg.Workspace,
+		CreatedAt:    sn.startedAt,
+		UpdatedAt:    time.Now(),
+	}
+	if err := sn.svc.persister.SnapshotSession(sn.taskID, sess); err != nil {
+		slog.Warn("failed to snapshot sub-agent session",
+			slog.String("task_id", sn.taskID),
+			slog.Any("error", err),
+		)
+	}
+}
+
+// terminal writes the terminal snapshot and the run timeline for the given
+// termination reason. It mirrors the UI exit paths: the snapshot ends idle on
+// completion / cancellation / max-turns and error on failure.
+func (sn *subAgentSnapshotter) terminal(sseState *runstate.State, termination *runstate.TimelineTermination) {
+	status := uisession.StatusIdle
+	if termination.Reason == runstate.TerminationError {
+		status = uisession.StatusError
+	}
+	sn.persist(status)
+	sn.svc.persistRunTimeline(sn.taskID, runstate.GenerateRunID(sn.taskID, sn.startedAt), sn.startedAt, sseState, sn.cfg, termination)
+}
 
 // SpawnSubAgent starts a sub-agent in the background to complete the given task.
 // Returns a unique task ID immediately. The sub-agent runs with its own LLM
@@ -222,6 +302,33 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		s.store(record.ChildSessionID, childRunState)
 	}
 
+	// Build the persisted child-session snapshotter. The snapshot is keyed by
+	// the task ID (the same ID the sub-agent's HTTP traces are recorded under)
+	// with parent linkage and a title derived from the task (issue #1041).
+	snapshotter := &subAgentSnapshotter{
+		svc:          s,
+		taskID:       taskID,
+		parentID:     sessionID,
+		title:        uisession.TitlePreview(task),
+		systemPrompt: systemPrompt,
+		startedAt:    record.StartedAt,
+		cfg:          parentCfg,
+		req:          req,
+	}
+	if snapshotter.title == "" {
+		snapshotter.title = "Sub-agent task"
+	}
+	if s.uiSessionMgr != nil {
+		if parentMeta := s.uiSessionMgr.GetMetaShared(sessionID); parentMeta != nil {
+			snapshotter.browserID = parentMeta.BrowserID
+		}
+	}
+	// Write the initial snapshot synchronously before the run goroutine starts
+	// so sessions/<taskID>/session.json exists before any HTTP trace (recorded
+	// under the same task ID) can complete — SaveTrace drops traces when no
+	// session.json exists for the session directory.
+	snapshotter.persist(uisession.StatusRunning)
+
 	go func() {
 		defer func() {
 			// Release browser allocator connections for this sub-agent's task ID
@@ -258,6 +365,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			ContextWindow:    0,
 			CrashDumpFunc:    nil,
 			Turns:            nil,
+			TurnCompleter:    snapshotter,
 			CalibrationStore: s.calibrationStore,
 			TurnTimeout:      parentCfg.TurnTimeout,
 			ModelName:        parentCfg.ModelName,
@@ -277,18 +385,49 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		record.Result, record.TurnCount = extractSubAgentResult(req.Messages)
 
 		if runErr != nil {
-			if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+			// Cancellation / context deadline — terminal snapshot is idle,
+			// matching the UI path's cancelled exit.
+			if subCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 				record.Status = subAgentCancelled
+				snapshotter.terminal(sseState, &runstate.TimelineTermination{
+					Reason:  runstate.TerminationCancelled,
+					Message: "Run cancelled by user or context deadline exceeded",
+				})
 				slog.Info("sub-agent cancelled", slog.String("task_id", taskID))
-			} else {
+				return
+			}
+
+			// Max turns exceeded — same terminal handling as the UI path.
+			var maxTurnsErr *loop.MaxTurnsExceededError
+			if errors.As(runErr, &maxTurnsErr) {
 				record.Status = subAgentError
 				record.Err = runErr
-				slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
+				snapshotter.terminal(sseState, &runstate.TimelineTermination{
+					Reason:  runstate.TerminationMaxTurns,
+					Message: runstate.MaxTurnsMessage(maxTurnsErr.Limit),
+				})
+				slog.Warn("sub-agent max turns exceeded",
+					slog.String("task_id", taskID),
+					slog.Int("limit", maxTurnsErr.Limit),
+				)
+				return
 			}
+
+			record.Status = subAgentError
+			record.Err = runErr
+			snapshotter.terminal(sseState, &runstate.TimelineTermination{
+				Reason:  runstate.TerminationError,
+				Message: runErr.Error(),
+			})
+			slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
 			return
 		}
 
 		record.Status = subAgentCompleted
+		snapshotter.terminal(sseState, &runstate.TimelineTermination{
+			Reason:  runstate.TerminationCompleted,
+			Message: "",
+		})
 		slog.Info("sub-agent completed",
 			slog.String("task_id", taskID),
 			slog.Int("turn_count", record.TurnCount),
