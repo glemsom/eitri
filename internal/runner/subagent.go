@@ -106,8 +106,10 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		slog.Int("max_turns", maxTurns),
 	)
 
-	// Build LLM service, tool registry, and system prompt (same provider/model as parent, restricted tools)
-	llmSvc, toolReg, basePrompt, err := buildLLMService(ctx, parentCfg, taskID, nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
+	// Build LLM service, tool registry, and system prompt (same provider/model as parent, restricted tools).
+	// The task ID and recorder are passed so sub-agent LLM calls feed the same
+	// trace recorder and interaction metrics as their parent (issue #987).
+	llmSvc, toolReg, basePrompt, err := buildLLMService(ctx, parentCfg, taskID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
 	if err != nil {
 		return "", fmt.Errorf("sub-agent LLM service: %w", err)
 	}

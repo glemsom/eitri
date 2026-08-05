@@ -67,7 +67,7 @@ func TestRecorder_InFlightCap_EvictsOldest(t *testing.T) {
 
 	var ids []TraceID
 	for i := 0; i < 3; i++ {
-		ids = append(ids, r.startTrace("s1", "p1", "GET", "/", nil))
+		ids = append(ids, r.startTrace("s1", "p1", "GET", "/", nil, 0))
 		time.Sleep(2 * time.Millisecond) // distinct start timestamps for oldest
 	}
 
@@ -103,7 +103,7 @@ func TestRecorder_InFlightCap_EvictsOldest(t *testing.T) {
 	}
 
 	// Completing an already-evicted trace later must be a safe no-op.
-	r.completeTrace(ids[0], []byte("late body"), 200, time.Second, "", nil)
+	r.completeTrace(ids[0], []byte("late body"), 200, time.Second, "", nil, nil, "")
 	if got := r.Get(ids[0]); got == nil {
 		t.Fatal("evicted trace should remain in completed storage")
 	} else if got.ResponseBody != "" {
@@ -122,11 +122,11 @@ func TestRecorder_InFlightCap_EvictsOldestAndFiresOnComplete(t *testing.T) {
 		}
 	}
 
-	first := r.startTrace("s1", "p1", "GET", "/1", nil)
+	first := r.startTrace("s1", "p1", "GET", "/1", nil, 0)
 	time.Sleep(2 * time.Millisecond)
-	second := r.startTrace("s1", "p1", "GET", "/2", nil)
+	second := r.startTrace("s1", "p1", "GET", "/2", nil, 0)
 	time.Sleep(2 * time.Millisecond)
-	_ = r.startTrace("s1", "p1", "GET", "/3", nil)
+	_ = r.startTrace("s1", "p1", "GET", "/3", nil, 0)
 
 	if len(evictions) != 2 {
 		t.Fatalf("got %d eviction callbacks, want 2", len(evictions))

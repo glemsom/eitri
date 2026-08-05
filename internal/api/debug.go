@@ -273,6 +273,17 @@ func (s *Server) handleDebugHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleDebugMetrics handles GET /api/debug/metrics: per-provider-per-model
+// interaction counters (calls, retries, errors by class, latency histogram,
+// token totals, cache hit/miss) accumulated by the trace recorder.
+func (s *Server) handleDebugMetrics(w http.ResponseWriter, r *http.Request) {
+	if s.config.DebugRecorder == nil {
+		writeError(w, http.StatusNotFound, "debug recorder not enabled")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.config.DebugRecorder.Metrics())
+}
+
 // loadConfig reads config from disk. Returns defaults on error.
 func (s *Server) loadConfig() *config.Config {
 	if s.config.ConfigPath == "" {

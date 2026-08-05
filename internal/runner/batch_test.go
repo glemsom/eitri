@@ -3,12 +3,16 @@ package runner
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -159,6 +163,123 @@ func TestBatchRun_SetsThinkingLevelForSupportedModel(t *testing.T) {
 	// No thinking-level-related error should appear
 	if err != nil && strings.Contains(err.Error(), "thinking") {
 		t.Errorf("unexpected thinking-level-related error: %v", err)
+	}
+}
+
+// TestBatchRun_FeedsDebugRecorderMetrics verifies that a headless batch run
+// records traces into the debug recorder and feeds the same interaction
+// metrics as browser runs (issue #987).
+func TestBatchRun_FeedsDebugRecorderMetrics(t *testing.T) {
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"id":"x","object":"chat.completion.chunk","model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"},"finish_reason":null}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"id":"x","object":"chat.completion.chunk","model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"id":"x","object":"chat.completion.chunk","model":"test-model","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	rec := debug.NewRecorder(20)
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: historyMgr,
+		DebugRecorder:     rec,
+	})
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   1,
+	}
+
+	var buf bytes.Buffer
+	if _, err := svc.BatchRun(context.Background(), "hello", cfg, &buf); err != nil {
+		t.Fatalf("batch run failed: %v", err)
+	}
+
+	// The trace must carry the model + usage parsed from the stream tail.
+	traces := rec.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	if traces[0].Model != "test-model" {
+		t.Fatalf("trace Model = %q, want test-model", traces[0].Model)
+	}
+	if traces[0].Usage == nil || traces[0].Usage.PromptTokens != 10 || traces[0].Usage.CompletionTokens != 5 {
+		t.Fatalf("trace Usage = %+v, want prompt=10 completion=5", traces[0].Usage)
+	}
+
+	// The metrics aggregate must reflect the batch call.
+	snap := rec.Metrics()
+	if snap.TotalCalls != 1 {
+		t.Fatalf("TotalCalls = %d, want 1", snap.TotalCalls)
+	}
+	if len(snap.Providers) != 1 || snap.Providers[0].ProviderID != "opencode_go" {
+		t.Fatalf("providers = %+v, want opencode_go", snap.Providers)
+	}
+	mm := snap.Providers[0].Models[0]
+	if mm.Model != "test-model" || mm.Calls != 1 {
+		t.Fatalf("model aggregate = %+v, want test-model calls=1", mm)
+	}
+	if mm.Tokens.PromptTokens != 10 || mm.Tokens.CompletionTokens != 5 {
+		t.Fatalf("model tokens = %+v, want prompt=10 completion=5", mm.Tokens)
+	}
+	if mm.Cache.Hits != 0 || mm.Cache.Misses != 1 {
+		t.Fatalf("model cache = %+v, want hits=0 misses=1", mm.Cache)
+	}
+}
+
+// TestBatchRun_ErrorFeedsMetrics verifies that a failing headless batch run
+// classifies the error at capture time and increments the per-model error
+// counters.
+func TestBatchRun_ErrorFeedsMetrics(t *testing.T) {
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"message":"rate limit exceeded"}}`)
+	}))
+	defer llm.Close()
+
+	rec := debug.NewRecorder(20)
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: historyMgr,
+		DebugRecorder:     rec,
+	})
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   1,
+	}
+
+	var buf bytes.Buffer
+	if _, err := svc.BatchRun(context.Background(), "hello", cfg, &buf); err == nil {
+		t.Fatal("expected batch run to fail on 429")
+	}
+
+	snap := rec.Metrics()
+	if snap.TotalCalls != 1 {
+		t.Fatalf("TotalCalls = %d, want 1", snap.TotalCalls)
+	}
+	if snap.TotalErrors != 1 {
+		t.Fatalf("TotalErrors = %d, want 1", snap.TotalErrors)
+	}
+	mm := snap.Providers[0].Models[0]
+	if mm.Errors[debug.ErrorClassRateLimit] != 1 {
+		t.Fatalf("rate_limit errors = %d, want 1", mm.Errors[debug.ErrorClassRateLimit])
+	}
+	if mm.LastError != debug.ErrorClassRateLimit {
+		t.Fatalf("last_error = %q, want rate_limit", mm.LastError)
 	}
 }
 

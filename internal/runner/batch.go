@@ -37,8 +37,13 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode)
-	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, "", nil, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
+	// Generate a unique session ID for this batch run
+	batchID := fmt.Sprintf("batch-%d", time.Now().UnixNano())
+
+	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode).
+	// The session ID and recorder are passed so headless batch runs feed the same
+	// trace recorder and interaction metrics as browser runs (issue #987).
+	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, batchID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
 	if err != nil {
 		return "", err
 	}
@@ -70,9 +75,6 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 			}
 		}
 	}
-
-	// Generate a unique session ID for this batch run
-	batchID := fmt.Sprintf("batch-%d", time.Now().UnixNano())
 
 	// Use the service's HistorySessionMgr or create a local one if nil
 	sessionMgr := s.historySessionMgr
