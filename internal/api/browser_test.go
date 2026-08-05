@@ -546,6 +546,60 @@ func fakeReasoningStreamChatServer(t *testing.T, nDeltas int, perChunkDelay time
 	return srv
 }
 
+// fakePacedChatServer streams a sequence of content chunks with a per-chunk
+// delay, so the reply arrives over a controllable multi-second window (unlike
+// fakeMarkdownChatServer, which emits the reply as a single burst token).
+// Useful for tests that need to observe streaming behaviour mid-run.
+func fakePacedChatServer(t *testing.T, chunks []string, perChunkDelay time.Duration) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			for _, chunk := range chunks {
+				select {
+				case <-r.Context().Done():
+					return
+				default:
+				}
+				fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, chunk)
+				flusher.Flush()
+				if perChunkDelay > 0 {
+					select {
+					case <-r.Context().Done():
+						return
+					case <-time.After(perChunkDelay):
+					}
+				}
+			}
+
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // streamingMarkdownLinkTest describes one link-rendering test case.
 type streamingMarkdownLinkTest struct {
 	// Name is the test case name (used for subtest naming).

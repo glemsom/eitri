@@ -2728,3 +2728,106 @@ func TestBrowser_StreamingKeepsMainThreadResponsive(t *testing.T) {
 		t.Errorf("main thread starved: only %d rAF frames in measurement window", res.Count)
 	}
 }
+
+// ————— Screen-reader streaming announcements ————— —
+
+// TestBrowser_StreamingScreenReaderAnnouncer verifies that during a streaming
+// run a visually-hidden role="status" live region carries the reply to screen
+// readers in *new-text deltas* (throttled), never the full accumulated stream
+// re-read at the 80ms flush cadence (issue #1071).
+func TestBrowser_StreamingScreenReaderAnnouncer(t *testing.T) {
+	// ~100 chunks paced at 20ms ≈ 2s+ of streaming — long enough to observe
+	// mid-stream announcements that are strictly smaller than the full reply.
+	const nChunks = 100
+	chunks := make([]string, nChunks)
+	full := ""
+	for i := range chunks {
+		chunks[i] = fmt.Sprintf("stream chunk number %d with some padding text. ", i)
+		full += chunks[i]
+	}
+
+	llmSrv := fakePacedChatServer(t, chunks, 20*time.Millisecond)
+	defer llmSrv.Close()
+
+	server := newTestServerWithRuns(t)
+	configureProvider(t, server, llmSrv.URL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+
+	if err := chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "test", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	// Poll for the announcer to appear with role="status", aria-live="polite",
+	// a visually-hidden style, and content that is (a) a substring of the reply
+	// and (b) strictly shorter than the full reply — proving new-text deltas are
+	// announced rather than the whole stream being re-read.
+	var announcer struct {
+		Exists   bool
+		Role     string
+		Live     string
+		Hidden   bool
+		TextLen  int
+		Text     string
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	sawPartial := false
+	for time.Now().Before(deadline) {
+		err := chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+			var el = document.getElementById('stream-announcer');
+			if (!el) return { exists: false };
+			var text = el.textContent || '';
+			var style = window.getComputedStyle(el);
+			return {
+				exists: true,
+				role: el.getAttribute('role'),
+				live: el.getAttribute('aria-live'),
+				hidden: style.position === 'absolute' && (style.clip !== 'auto' || style.clipPath !== 'none' || parseInt(style.width, 10) <= 1),
+				textLen: text.length,
+				text: text,
+			};
+		})()`, &announcer))
+		if err != nil {
+			t.Fatalf("read announcer failed: %v", err)
+		}
+		if !announcer.Exists {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		// A partial, in-order delta: non-empty, shorter than the whole reply,
+		// and a substring of the reply (never arbitrary re-read text).
+		if announcer.TextLen > 0 && announcer.TextLen < len(full) && strings.Contains(full, announcer.Text) {
+			sawPartial = true
+		}
+		if sawPartial && announcer.Role == "status" && announcer.Live == "polite" && announcer.Hidden {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !announcer.Exists {
+		t.Fatal("stream-announcer live region never appeared")
+	}
+	if announcer.Role != "status" {
+		t.Errorf("stream-announcer role = %q, want \"status\"", announcer.Role)
+	}
+	if announcer.Live != "polite" {
+		t.Errorf("stream-announcer aria-live = %q, want \"polite\"", announcer.Live)
+	}
+	if !announcer.Hidden {
+		t.Error("stream-announcer must be visually hidden (sr-only) so sighted users see only the streaming bubble")
+	}
+	if !sawPartial {
+		t.Errorf("announcer never carried a delta shorter than the full reply (%d chars) — it must announce new text only, not re-read the whole stream", len(full))
+	}
+}
