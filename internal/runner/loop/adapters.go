@@ -34,7 +34,8 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 // HistoryManager abstracts conversation history storage for the agent loop.
 // Two adapters exist: sessionHistoryManager (browser UI path via
 // *history.SessionManager) and requestHistoryManager (headless/direct-messages
-// path via *litellm.Request).
+// path via *litellm.Request). Both support ReplaceHistory so auto-compaction
+// can write the compacted history back regardless of the storage backend.
 type HistoryManager interface {
 	// History returns the full conversation history with system prompt prepended.
 	History() []message.EitriMessage
@@ -46,6 +47,12 @@ type HistoryManager interface {
 	// AppendTool appends a tool result message.
 	// rawContent is the pre-compression output (empty when compression did not apply).
 	AppendTool(toolCallID, content, rawContent string, isError bool)
+
+	// ReplaceHistory replaces the full conversation history with the given
+	// flat messages. Used by auto-compaction to write the compacted history
+	// back — both session-manager-backed and request-based histories support
+	// it (issue #1096).
+	ReplaceHistory(messages []message.Message)
 
 	// RequestBased returns true when history is stored directly on the
 	// *litellm.Request (requestHistoryManager) rather than in a session manager.
@@ -107,6 +114,16 @@ func (m *sessionHistoryManager) AppendTool(toolCallID, content, rawContent strin
 	m.sessionMgr.AppendTool(m.sessionID, toolCallID, content, rawContent, isError)
 }
 
+// ReplaceHistory replaces the session manager's full history for the session
+// with the given flat messages (e.g. compacted history written back after
+// auto-compaction).
+func (m *sessionHistoryManager) ReplaceHistory(messages []message.Message) {
+	if m.sessionMgr == nil {
+		return
+	}
+	m.sessionMgr.RestoreHistory(m.sessionID, messages)
+}
+
 // RequestBased returns false since this implementation uses a session manager.
 func (m *sessionHistoryManager) RequestBased() bool {
 	return false
@@ -147,6 +164,17 @@ func (m *requestHistoryManager) AppendTool(toolCallID, content, rawContent strin
 	_ = isError    // The error flag is not stored; content conveys it.
 	_ = rawContent // Not stored on the request (only used for snapshots).
 	m.req.Messages = append(m.req.Messages, toolResultToLitellm(toolCallID, content))
+}
+
+// ReplaceHistory replaces req.Messages with the given flat messages, converting
+// them back to litellm transport format. This is how auto-compaction writes
+// the compacted history back for request-based (sub-agent) histories.
+func (m *requestHistoryManager) ReplaceHistory(messages []message.Message) {
+	lm := make([]litellm.Message, 0, len(messages))
+	for _, msg := range messages {
+		lm = append(lm, message.ToLitellmMessage(msg))
+	}
+	m.req.Messages = lm
 }
 
 // RequestBased returns true since this implementation wraps *litellm.Request.

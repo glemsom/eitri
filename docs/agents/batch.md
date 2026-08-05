@@ -77,8 +77,10 @@ the same prompt would succeed in the UI. The compaction settings in
 honored identically in both modes. When a batch run's history exceeds the
 high-water mark it is compacted below the low-water mark, and the compacted
 history is reflected in the on-disk `session.json` snapshot (a second snapshot
-is written after compaction). Sub-agent runs spawned from batch mode remain
-snapshot-only — they do not auto-compact.
+is written after compaction). Sub-agents spawned from batch mode auto-compact
+too: they inherit the parent's context window and compaction settings, run the
+same shared compaction step after each turn, and their child-session snapshots
+under `~/.eitri/sessions/<taskID>/` reflect the compacted history.
 
 ## Session persistence
 

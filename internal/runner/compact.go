@@ -1,26 +1,28 @@
-// Shared auto-compaction for parent runs. UI turn completion (run.go) and
-// batch turn completion (batch_persist.go) both call autoCompactAfterTurn so
-// compaction settings in ~/.eitri/config.json are honored identically in both
-// modes (issue #1093).
+// Shared auto-compaction for runs. UI turn completion (run.go), batch turn
+// completion (batch_persist.go), and sub-agent turn completion (subagent.go)
+// all call autoCompactAfterTurn so compaction settings in ~/.eitri/config.json
+// are honored identically across parent and sub-agent runs (issues #1093,
+// #1096).
 
 package runner
 
 import (
 	"context"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/runner/loop"
 )
 
-// autoCompactAfterTurn is the shared auto-compaction step for parent runs (UI
-// and batch). It runs the compactor against the session's current conversation
-// history when the configured high-water mark is exceeded, using the same
-// thresholds, salience ordering, and tool-call retention as on-demand
-// compaction, and replaces the in-memory history with the compacted version
-// via the given history manager.
+// autoCompactAfterTurn is the shared auto-compaction step for runs (UI and
+// batch parents, plus sub-agents). It runs the compactor against the run's
+// current conversation history when the configured high-water mark is
+// exceeded, using the same thresholds, salience ordering, and tool-call
+// retention as on-demand compaction, and replaces the history with the
+// compacted version via the given history manager's replace-history
+// capability (both session-manager-backed and request-based histories).
 //
 // It is a no-op when compaction is disabled in config, when the context
-// window is unset, when the session has no history, or when the estimated
+// window is unset, when the run has no history, or when the estimated
 // history size is at or below the high-water mark — in all those cases the
 // returned compacted slice is nil and the history is left untouched.
 //
@@ -29,12 +31,12 @@ import (
 // callers can sync it into mode-specific state (UI session, snapshot) without
 // re-reading history. The returned count/freed/pruned stats mirror the
 // compactor's report for the compaction_complete UI event.
-func (s *RunService) autoCompactAfterTurn(ctx context.Context, sessionMgr *history.SessionManager, sessionID string, cfg RunConfig) (compacted []message.Message, compactedCount, freedTokens, prunedToolCalls int, err error) {
+func (s *RunService) autoCompactAfterTurn(ctx context.Context, historyMgr loop.HistoryManager, cfg RunConfig) (compacted []message.Message, compactedCount, freedTokens, prunedToolCalls int, err error) {
 	if !cfg.CompactionEnabled || cfg.ContextWindowTokens <= 0 {
 		return nil, 0, 0, 0, nil
 	}
 
-	historyMsgs := sessionMgr.History(sessionID)
+	historyMsgs := historyMgr.History()
 	if historyMsgs == nil {
 		return nil, 0, 0, 0, nil
 	}
@@ -62,8 +64,9 @@ func (s *RunService) autoCompactAfterTurn(ctx context.Context, sessionMgr *histo
 		return nil, 0, 0, 0, nil
 	}
 
-	// Replace in-memory history with compacted version so the next turn's LLM
-	// request stays within the context window.
-	sessionMgr.RestoreHistory(sessionID, compactedMsgs)
+	// Replace the run's history with the compacted version so the next turn's
+	// LLM request stays within the context window (session-manager-backed and
+	// request-based histories both support this via ReplaceHistory).
+	historyMgr.ReplaceHistory(compactedMsgs)
 	return compactedMsgs, compactedCount, freedTokens, prunedToolCalls, nil
 }
