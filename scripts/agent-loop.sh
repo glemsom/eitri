@@ -96,10 +96,10 @@ cleanup_stale_claims() {
 	# cleaning up. Drop in-progress labels whose worktree no longer exists so
 	# those issues can be picked again.
 	local num
-	for num in $(gh issue list --repo "$REPO" --label in-progress --state open --json number --jq '.[].number' 2>/dev/null || true); do
+	for num in $(gh issue list --label in-progress --state open --json number --jq '.[].number' 2>/dev/null || true); do
 		if [ ! -d "$WORKTREES_DIR/issue-$num" ]; then
 			echo "Removing stale in-progress label from issue #$num (no worktree)"
-			gh issue edit "$num" --repo "$REPO" --remove-label in-progress >/dev/null 2>&1 || true
+			gh issue edit "$num" --remove-label in-progress >/dev/null 2>&1 || true
 		fi
 	done
 }
@@ -148,7 +148,7 @@ EOF
 claim_issues() {
 	# Oldest N open ready-for-agent issues without an in-progress label
 	# (and without issue-type:parent, matching the previous prompt's constraint).
-	gh issue list --repo "$REPO" --label ready-for-agent --state open \
+	gh issue list --label ready-for-agent --state open \
 		--json number,title,labels \
 		--jq 'sort_by(.number) | .[] |
 			select(([.labels[].name] | index("in-progress")) | not) |
@@ -162,7 +162,7 @@ claim_issues() {
 find_pr() {
 	local num="$1"
 	# The open PR whose description references "Closes #num".
-	gh pr list --repo "$REPO" --state open --json number,body,headRefName \
+	gh pr list --state open --json number,body,headRefName \
 		--jq ".[] | select(.body != null) | select(.body | test(\"#${num}\\\\b\"; \"i\")) | .number" \
 		2>/dev/null | head -n 1 || true
 }
@@ -179,7 +179,7 @@ merge_pr() {
 		if git -C "$wt" rebase origin/main >/dev/null 2>&1; then
 			# Clean rebase: force-push the rebased branch, then merge.
 			git -C "$wt" push --force origin "HEAD:$branch" >/dev/null 2>&1 || true
-			if gh pr merge "$pr" --repo "$REPO" --squash --delete-branch >/dev/null 2>&1; then
+			if gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then
 				echo "Merged PR #$pr (issue #$num)"
 				merged=1
 				break
@@ -201,7 +201,7 @@ merge_pr() {
 			continue
 		fi
 		git -C "$wt" push --force origin "HEAD:$branch" >/dev/null 2>&1 || true
-		if gh pr merge "$pr" --repo "$REPO" --squash --delete-branch >/dev/null 2>&1; then
+		if gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then
 			echo "Merged PR #$pr (issue #$num)"
 			merged=1
 			break
@@ -210,7 +210,7 @@ merge_pr() {
 
 	if [ "$merged" -ne 1 ]; then
 		echo "Error: could not merge PR #$pr (issue #$num) after 3 attempts — leaving open" >&2
-		gh pr comment "$pr" --repo "$REPO" \
+		gh pr comment "$pr" \
 			--body "Dispatcher could not merge this PR (rebase conflicts or merge failure). Needs human intervention." \
 			>/dev/null 2>&1 || true
 		return 1
@@ -244,17 +244,17 @@ main() {
 
 		# Claim + spawn one worker per issue.
 		for num in $issues; do
-			if ! gh issue edit "$num" --repo "$REPO" --add-label in-progress >/dev/null 2>&1; then
+			if ! gh issue edit "$num" --add-label in-progress >/dev/null 2>&1; then
 				echo "Warning: could not claim issue #$num (add-label failed); skipping" >&2
 				continue
 			fi
 			if ! git worktree add "$WORKTREES_DIR/issue-$num" --detach origin/main >/dev/null 2>&1; then
 				echo "Warning: could not create worktree for issue #$num; releasing claim" >&2
-				gh issue edit "$num" --repo "$REPO" --remove-label in-progress >/dev/null 2>&1 || true
+				gh issue edit "$num" --remove-label in-progress >/dev/null 2>&1 || true
 				continue
 			fi
 			WORKTREES+=("$WORKTREES_DIR/issue-$num")
-			title=$(gh issue view "$num" --repo "$REPO" --json title --jq '.title' 2>/dev/null || echo "issue #$num")
+			title=$(gh issue view "$num" --json title --jq '.title' 2>/dev/null || echo "issue #$num")
 			prompt=$(build_prompt "$num" "$title")
 			echo "Starting worker for issue #$num — $title"
 			( cd "$WORKTREES_DIR/issue-$num" && eitri --persona generic -b "$prompt" ) > "$WORKTREES_DIR/issue-$num/log" 2>&1 &
@@ -285,7 +285,7 @@ main() {
 				failures=$((failures + 1))
 				continue
 			fi
-			branch=$(gh pr view "$pr" --repo "$REPO" --json headRefName --jq '.headRefName' 2>/dev/null || true)
+			branch=$(gh pr view "$pr" --json headRefName --jq '.headRefName' 2>/dev/null || true)
 			if [ -z "$branch" ]; then
 				echo "Error: could not resolve branch for PR #$pr (issue #$num)" >&2
 				failures=$((failures + 1))
