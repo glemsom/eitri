@@ -22,6 +22,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
@@ -74,6 +75,7 @@ type testServerOptions struct {
 	sessionManager *session.Manager
 	skillsService  *skills.Service
 	debugRecorder  *debug.Recorder
+	persister      *persist.Persister
 }
 
 func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOptions) *httptest.Server {
@@ -99,6 +101,7 @@ func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOpt
 		SkillsService:  skillsSvc,
 		CopilotOAuth:   opts.copilotOAuth,
 		DebugRecorder:  opts.debugRecorder,
+		Persister:      opts.persister,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())

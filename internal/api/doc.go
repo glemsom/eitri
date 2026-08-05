@@ -67,6 +67,8 @@
 //	                 GET  /api/debug/health
 //	                 GET  /api/debug/http
 //	                 GET  /api/debug/http/{trace_id}
+//	                 GET  /api/debug/traces           (query persisted trace archive)
+//	                 GET  /api/debug/traces/aggregate (window aggregate over persisted traces)
 //	Copilot OAuth:   POST /api/providers/github_copilot/device-flow/start
 //	                 GET  /api/providers/github_copilot/device-flow/{id}
 //	                 DELETE /api/providers/github_copilot/device-flow/{id}
