@@ -7,6 +7,18 @@
 // skills, manages a rendered-message-ID ring buffer for dedup on reconnect,
 // and enforces a global session cap.
 //
+// File layout (all files are in this package):
+//   - types.go — shared types (Status, ContextFile, UISession, SessionMeta,
+//     Conversation, SessionConfig, Manager struct)
+//   - manager.go — Manager lifecycle: construction, CRUD, capacity, disk loads
+//   - helpers.go — internal assemble/split helpers and ID generation
+//   - metadata.go — session metadata mutations (title, status, timestamps)
+//   - conversation.go — messages, components, quick replies, active skills
+//   - config.go — per-session config/workspace
+//   - browser.go — browser session ordering and indexing
+//   - child.go — parent-child (sub-agent) session management
+//   - ring.go — rendered-message-ID dedup ring buffer
+//
 // Internally, Manager stores session data in three sub-stores for clean
 // separation of concerns:
 //   - metaStore (SessionMeta) — identity, status, timestamps, ring buffer
