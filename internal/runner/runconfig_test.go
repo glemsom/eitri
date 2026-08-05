@@ -199,3 +199,20 @@ func TestFromConfig_NilAllowedReadPaths(t *testing.T) {
 		t.Errorf("AllowedReadPaths = %v, want nil", rc.AllowedReadPaths)
 	}
 }
+
+func TestFromConfig_RetryPolicyDefaultsToFiveAttemptsOneSecond(t *testing.T) {
+	cfg := &config.Config{
+		Provider: "opencode_go",
+		BaseURL:  "http://localhost",
+		APIKey:   "key",
+		Model:    "qwen2",
+	}
+
+	rc := FromConfig(cfg, "/ws", 10*time.Second)
+	if rc.RetryPolicy.Attempts != 5 {
+		t.Errorf("RetryPolicy.Attempts = %d, want 5", rc.RetryPolicy.Attempts)
+	}
+	if rc.RetryPolicy.Backoff != time.Second {
+		t.Errorf("RetryPolicy.Backoff = %v, want 1s", rc.RetryPolicy.Backoff)
+	}
+}

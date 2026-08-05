@@ -140,6 +140,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		TurnTimeout:      cfg.TurnTimeout,
 		CalibrationStore: s.calibrationStore,
 		ModelName:        cfg.ModelName,
+		RetryPolicy:      &cfg.RetryPolicy,
 	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context

@@ -94,6 +94,28 @@ func TestBatchRun_FailsGracefullyOnConnectionFailure(t *testing.T) {
 	t.Logf("unexpected success: result=%q, buf=%q", result, buf.String())
 }
 
+func TestBatchRun_DeadEndpointReturnsFastWithZeroRetryPolicy(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    "http://127.0.0.1:1", // connection refused
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		// RetryPolicy zero value means no retries: single attempt, no 1s sleeps.
+	}
+
+	var buf bytes.Buffer
+	start := time.Now()
+	_, err := svc.BatchRun(context.Background(), "test prompt", cfg, &buf)
+	if err == nil {
+		t.Fatal("expected connection failure error")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("BatchRun took %v, want < 2s (no retry sleeps on dead endpoint)", elapsed)
+	}
+}
+
 func TestBatchRun_SkipsThinkingLevelForUnsupportedModel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{

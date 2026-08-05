@@ -112,6 +112,27 @@ type RunOpts struct {
 	// forever without emitting content or a tool call. When <= 0 the turn is
 	// not bounded. Defaults to 5 minutes.
 	TurnTimeout time.Duration
+
+	// RetryPolicy controls retries of transient LLM errors during the run
+	// loop. When nil, DefaultRetryPolicy() is used (5 retries, 1s backoff).
+	// Inject a zero-attempt policy in tests so dead endpoints fail fast
+	// instead of sleeping 5×1s.
+	RetryPolicy *RetryPolicy
+}
+
+// RetryPolicy configures how the run loop retries transient LLM errors.
+// Attempts is the number of retries after the initial attempt (0 disables
+// retries); Backoff is the sleep between attempts (0 disables the sleep).
+// The zero value is a valid policy: a single attempt, no backoff.
+type RetryPolicy struct {
+	Attempts int
+	Backoff  time.Duration
+}
+
+// DefaultRetryPolicy returns the production retry policy: 5 retries with 1s
+// backoff — the historical hardcoded behavior.
+func DefaultRetryPolicy() RetryPolicy {
+	return RetryPolicy{Attempts: 5, Backoff: time.Second}
 }
 
 // DefaultRunOpts returns a RunOpts with safe defaults (nil callbacks).
@@ -224,6 +245,12 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		maxTurns = 10
 	}
 
+	retryPolicy := DefaultRetryPolicy()
+	if opts.RetryPolicy != nil {
+		retryPolicy = *opts.RetryPolicy
+	}
+	maxRetries := retryPolicy.Attempts
+
 	// Panic recovery: write crash dump then re-panic
 	if opts.CrashDumpFunc != nil {
 		defer func() {
@@ -285,7 +312,6 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		slog.Debug("llm turn", slog.Int("turn", turn), slog.Int("tools", len(litellmReq.Tools)), slog.Int("messages", len(litellmReq.Messages)))
 
 		// Call LLM streaming with retry on transient errors
-		const maxRetries = 5
 		var (
 			content      strings.Builder
 			toolCalls    []litellm.ToolUseBlock
@@ -352,7 +378,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 						slog.Any("error", streamErr),
 					)
 					dumpRequestOnError(litellmReq, streamErr, attempt+1, opts.DebugLLMDir)
-					time.Sleep(1 * time.Second)
+					if retryPolicy.Backoff > 0 {
+						time.Sleep(retryPolicy.Backoff)
+					}
 					continue
 				}
 				// Non-retryable stream error
@@ -385,7 +413,9 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 					slog.Any("error", err),
 				)
 				dumpRequestOnError(litellmReq, err, attempt+1, opts.DebugLLMDir)
-				time.Sleep(1 * time.Second)
+				if retryPolicy.Backoff > 0 {
+					time.Sleep(retryPolicy.Backoff)
+				}
 				continue
 			}
 			dumpRequestOnError(litellmReq, err, maxRetries+1, opts.DebugLLMDir)

@@ -214,6 +214,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			TurnCompleter:    s,
 			CalibrationStore: s.calibrationStore,
 			ModelName:        cfg.ModelName,
+			RetryPolicy:      &cfg.RetryPolicy,
 		})
 		if err != nil {
 			if runCtx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

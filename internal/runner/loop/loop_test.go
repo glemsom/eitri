@@ -1241,6 +1241,121 @@ func TestRunAgent_RetriesHTTP400WithUpstreamFailure(t *testing.T) {
 	}
 }
 
+func TestRunAgent_RetryPolicyZeroAttemptsDoesNotRetry(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	// inner mock would be called if any retry happened (which would be the bug)
+	transientProv := &transientErrorLLM{
+		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
+		inner: newMockClient([]mockTurn{
+			{tokens: []tokenEvent{{content: "should not be reached"}}},
+		}),
+	}
+	client, err := litellm.New(transientProv)
+	if err != nil {
+		t.Fatalf("failed to create transient error mock client: %v", err)
+	}
+
+	req := lrFromMessages(
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
+		},
+		lrWithModel("test-model"),
+	)
+
+	start := time.Now()
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:    NewRequestHistoryManager(req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+		RetryPolicy:   &RetryPolicy{Attempts: 0},
+	})
+	if err == nil {
+		t.Fatal("expected error for transient failure with zero retries, got nil")
+	}
+	if transientProv.calls != 1 {
+		t.Errorf("Stream calls = %d, want 1 (no retry)", transientProv.calls)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Errorf("run took %v, want fast with zero-attempt policy (no 1s sleeps)", elapsed)
+	}
+	types := sseEventTypes(collectSSE(sseState))
+	if len(types) != 1 || types[0] != "error" {
+		t.Fatalf("expected single error event, got: %v", types)
+	}
+}
+
+func TestRunAgent_RetryPolicyZeroBackoffRetriesFast(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	inner := newMockClient([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello after retry!"}}},
+	})
+	transientProv := &transientErrorLLM{
+		transientErr: fmt.Errorf("Provider returned HTTP 500: Internal Server Error"),
+		inner:        inner,
+	}
+	client, err := litellm.New(transientProv)
+	if err != nil {
+		t.Fatalf("failed to create transient error mock client: %v", err)
+	}
+
+	req := lrFromMessages(
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}},
+		},
+		lrWithModel("test-model"),
+	)
+
+	start := time.Now()
+	err = RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:    NewRequestHistoryManager(req),
+		Confirmer:     nil,
+		UISessionMgr:  nil,
+		SessionID:     "",
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+		RetryPolicy:   &RetryPolicy{Attempts: 1, Backoff: 0},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error after retry: %v", err)
+	}
+	if transientProv.calls != 2 {
+		t.Errorf("Stream calls = %d, want 2 (one retry)", transientProv.calls)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Errorf("run took %v, want fast with zero backoff (no 1s sleeps)", elapsed)
+	}
+
+	types := sseEventTypes(collectSSE(sseState))
+	if len(types) < 2 || types[len(types)-1] != "done" {
+		t.Fatalf("expected run to succeed after retry, events: %v", types)
+	}
+}
+
 func TestRunAgent_EmptyToolCallList(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()

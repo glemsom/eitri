@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/sandbox"
 )
 
@@ -60,6 +61,12 @@ type RunConfig struct {
 	CompactionMessageSizeThreshold   int  // estimated-token threshold; messages below this are skipped
 	CompactionToolCallRetentionTurns int  // number of recent assistant messages whose ToolCall arguments are preserved
 	CompactionSalienceEnabled        bool // use salience-scored ordering (default: true)
+
+	// RetryPolicy controls retries of transient LLM errors in the run loop.
+	// The zero value disables retries (single attempt, no backoff); FromConfig
+	// fills in the production default (5 retries with 1s backoff) so tests that
+	// build RunConfig literals fail fast on dead endpoints.
+	RetryPolicy loop.RetryPolicy
 }
 
 // resolveHomeDir returns homeDir if non-empty, falling back to the process
@@ -110,5 +117,6 @@ func FromConfig(cfg *config.Config, workspace string, cmdTimeout time.Duration) 
 		CompactionMessageSizeThreshold:   cfg.CompactionMessageSizeThreshold,
 		CompactionToolCallRetentionTurns: cfg.CompactionToolCallRetentionTurns,
 		CompactionSalienceEnabled:        cfg.CompactionSalienceEnabled,
+		RetryPolicy:                      loop.DefaultRetryPolicy(),
 	}
 }

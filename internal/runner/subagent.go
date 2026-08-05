@@ -257,6 +257,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			CalibrationStore: s.calibrationStore,
 			TurnTimeout:      parentCfg.TurnTimeout,
 			ModelName:        parentCfg.ModelName,
+			RetryPolicy:      &parentCfg.RetryPolicy,
 		})
 
 		// Persist sub-agent response to child UI session
