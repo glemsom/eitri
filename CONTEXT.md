@@ -66,45 +66,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`:
 | [0021](docs/adr/0021-pattern-compression-for-bash-output.md) | Deterministic pattern compression for bash tool output | Accepted |
 | [0022](docs/adr/0022-save-only-settings-drafts.md) | Save-only settings drafts | Accepted |
 
-## Project structure
-
-```
-eitri/
-├── cmd/eitri/                 # Entry point — starts HTTP+SSE server
-├── internal/
-│   ├── api/                   # HTTP server, SSE, HTMX/Templ render endpoints
-│   │   └── templates/         # Templ source files and generated Go
-│   ├── compactor/             # Message compaction (summarization of oversized messages)
-│   ├── compress/              # Pattern compression for bash output (ls, find, grep, rg)
-│   ├── config/                # ~/.eitri config management
-│   ├── debug/                 # Crash dumps, HTTP traces, diagnostics
-│   ├── fileutil/              # File path validation and I/O operations
-│   ├── history/               # LLM conversation history (per-session sliding window)
-│   ├── message/               # Message/EitriMessage types — conversation message model shared across packages
-│   ├── persist/               # Session snapshots, conversation history, HTTP traces on disk
-│   ├── persona/               # Persona (named system prompt) management
-│   ├── provider/              # Provider profiles + auth seams
-│   ├── report/                # Session report generation
-│   ├── runner/                # RunService — run lifecycle + agent loop orchestrator, SSE broadcast, auth persist callbacks
-│   │   └── loop/              # Agent turn loop (deep, earns its own package)
-│   ├── runstate/              # SSE broadcast infrastructure + context tracking
-│   ├── sandbox/               # bwrap sandbox wrapper for bash tool
-│   ├── session/               # UI session management (in-memory, browser-facing)
-│   ├── skills/                # Agent Skills discovery, registry, activation
-│   ├── tokenizer/             # Token estimation and calibration (chars-per-token EMA)
-│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, render, browser, skill, delegate, collect)
-├── scripts/                   # Install script, release tools
-├── docs/ARCHITECTURE.md       # Architecture guide for AI agents
-├── docs/TESTING.md            # Test runbook
-├── docs/debug-api.md          # Debug API reference (JSON API for operational inspection)
-├── docs/adr/                  # Architecture Decision Records
-├── docs/agents/               # Agent documentation framework
-├── go.mod
-├── go.sum
-├── VERSION                    # Canonical version string (semver)
-├── CHANGELOG.md               # Keep a Changelog-formatted release notes
-├── README.md                  # Human-facing project overview
-```
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#target-repository-layout).
 
 > **AI agents**: read `docs/ARCHITECTURE.md` before making changes — it covers module boundaries, key types, data flow, and extension points in detail.
 
