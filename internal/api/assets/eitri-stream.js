@@ -1357,11 +1357,6 @@
     messages.appendChild(bubble);
   }
 
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
 
   function removeOptimisticBubbles() {
     var bubbles = document.querySelectorAll('[data-optimistic="true"]');

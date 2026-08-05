@@ -56,6 +56,38 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-composer.js missing eitri:runStarted handler")
 	}
 
+	// Verify composer JS has draft persistence (issue #974)
+	if !strings.Contains(content, "_draftKey") {
+		t.Error("eitri-composer.js missing _draftKey for localStorage key")
+	}
+	if !strings.Contains(content, "_scheduleDraftSave") {
+		t.Error("eitri-composer.js missing _scheduleDraftSave method for debounced writes")
+	}
+	if !strings.Contains(content, "_saveDraftNow") {
+		t.Error("eitri-composer.js missing _saveDraftNow method")
+	}
+	if !strings.Contains(content, "_restoreDraft") {
+		t.Error("eitri-composer.js missing _restoreDraft method")
+	}
+	if !strings.Contains(content, "_clearDraft") {
+		t.Error("eitri-composer.js missing _clearDraft method")
+	}
+	if !strings.Contains(content, "localStorage.setItem") {
+		t.Error("eitri-composer.js missing localStorage.setItem for draft persistence")
+	}
+	if !strings.Contains(content, "localStorage.getItem") {
+		t.Error("eitri-composer.js missing localStorage.getItem for draft restoration")
+	}
+	if !strings.Contains(content, "localStorage.removeItem") {
+		t.Error("eitri-composer.js missing localStorage.removeItem for draft clearing")
+	}
+	if !strings.Contains(content, "eitri:composer-draft:") {
+		t.Error("eitri-composer.js missing per-session localStorage key prefix")
+	}
+	if !strings.Contains(content, "_draftDebounceMs") {
+		t.Error("eitri-composer.js missing _draftDebounceMs for debounce configuration")
+	}
+
 	// Verify stream JS has reenableComposer
 	f2, err := Files.Open("eitri-stream.js")
 	if err != nil {
@@ -69,6 +101,12 @@ func TestJsFiles(t *testing.T) {
 	content2 := string(data2)
 	if !strings.Contains(content2, "reenableComposer") {
 		t.Error("eitri-stream.js missing reenableComposer function")
+	}
+
+	// Verify escapeHtml is defined only once (issue #974)
+	escapeHtmlCount := strings.Count(content2, "function escapeHtml(")
+	if escapeHtmlCount != 1 {
+		t.Errorf("eitri-stream.js should define escapeHtml exactly once, found %d definitions", escapeHtmlCount)
 	}
 
 	// Verify stream JS has insertOptimisticBubble
