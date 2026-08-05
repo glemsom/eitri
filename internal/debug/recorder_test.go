@@ -12,6 +12,138 @@ import (
 	"time"
 )
 
+func TestRecorder_OnCompleteFiresOutsideLock(t *testing.T) {
+	r := NewRecorder(10)
+	done := make(chan struct{})
+
+	r.OnComplete = func(trace *HTTPTrace) {
+		// Re-entering the recorder from OnComplete must not deadlock: the
+		// callback fires after the recorder mutex is released. With the old
+		// (non-reentrant) locking these read calls would block forever.
+		_ = r.Count()
+		_ = r.List(0, "", "")
+		_ = r.InFlight()
+		_ = r.Get(trace.ID)
+		close(done)
+	}
+
+	// Both completion paths — Record and the streaming traceBody path — must
+	// fire OnComplete off the lock.
+	r.Record("s1", "p1", "GET", "/record", nil, nil, 200, time.Second, "", nil)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Record: OnComplete deadlocked while holding the recorder lock")
+	}
+
+	done = make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	})
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	rt := NewRecordingRoundTripper(nil, r, "s1", "p1")
+	client := &http.Client{Transport: rt, Timeout: 5 * time.Second}
+	resp, err := client.Get(srv.URL + "/stream")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("completeTrace: OnComplete deadlocked while holding the recorder lock")
+	}
+}
+
+func TestRecorder_InFlightCap_EvictsOldest(t *testing.T) {
+	r := NewRecorder(10)
+	r.maxInFlight = 2
+
+	var ids []TraceID
+	for i := 0; i < 3; i++ {
+		ids = append(ids, r.startTrace("s1", "p1", "GET", "/", nil))
+		time.Sleep(2 * time.Millisecond) // distinct start timestamps for oldest
+	}
+
+	// In-flight tracking stays bounded at the cap.
+	inflight := r.InFlight()
+	if len(inflight) != 2 {
+		t.Fatalf("got %d in-flight traces, want 2 (cap)", len(inflight))
+	}
+
+	// The oldest in-flight trace was evicted into completed storage with an
+	// eviction marker.
+	var evicted *HTTPTrace
+	for _, tr := range r.List(0, "", "") {
+		if tr.ID == ids[0] {
+			evicted = tr
+		}
+	}
+	if evicted == nil {
+		t.Fatal("expected the evicted (oldest) in-flight trace to be recorded as completed")
+	}
+	if !strings.Contains(evicted.Error, "evicted") {
+		t.Fatalf("evicted trace Error = %q, want eviction marker", evicted.Error)
+	}
+	if evicted.Status != 0 {
+		t.Fatalf("evicted trace Status = %d, want 0 (in-flight marker)", evicted.Status)
+	}
+
+	// The two newest traces remain tracked as in-flight.
+	for _, id := range ids[1:] {
+		if r.Get(id) == nil {
+			t.Fatalf("in-flight trace %s should still be tracked", id)
+		}
+	}
+
+	// Completing an already-evicted trace later must be a safe no-op.
+	r.completeTrace(ids[0], []byte("late body"), 200, time.Second, "", nil)
+	if got := r.Get(ids[0]); got == nil {
+		t.Fatal("evicted trace should remain in completed storage")
+	} else if got.ResponseBody != "" {
+		t.Fatalf("evicted trace was mutated by a late completion: ResponseBody = %q", got.ResponseBody)
+	}
+}
+
+func TestRecorder_InFlightCap_EvictsOldestAndFiresOnComplete(t *testing.T) {
+	r := NewRecorder(10)
+	r.maxInFlight = 1
+
+	var evictions []TraceID
+	r.OnComplete = func(trace *HTTPTrace) {
+		if strings.Contains(trace.Error, "evicted") {
+			evictions = append(evictions, trace.ID)
+		}
+	}
+
+	first := r.startTrace("s1", "p1", "GET", "/1", nil)
+	time.Sleep(2 * time.Millisecond)
+	second := r.startTrace("s1", "p1", "GET", "/2", nil)
+	time.Sleep(2 * time.Millisecond)
+	_ = r.startTrace("s1", "p1", "GET", "/3", nil)
+
+	if len(evictions) != 2 {
+		t.Fatalf("got %d eviction callbacks, want 2", len(evictions))
+	}
+	if evictions[0] != first {
+		t.Fatalf("first eviction = %s, want %s (oldest)", evictions[0], first)
+	}
+	if evictions[1] != second {
+		t.Fatalf("second eviction = %s, want %s", evictions[1], second)
+	}
+
+	// Evictions must not clobber the last failing trace.
+	if ft := r.LastFailingTrace(); ft != nil {
+		t.Fatalf("evictions must not set lastFailingTrace, got %s", ft.ID)
+	}
+}
+
 func TestRecorder_CapacityOverflow(t *testing.T) {
 	r := NewRecorder(3)
 
