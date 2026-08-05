@@ -173,7 +173,7 @@ Session titles derive from the exported `session.TitlePreview` helper (first 31 
 | `tracequery.go` | `QueryTraces` — `TraceFilter`/`TracePage`/`TraceAggregate` query surface over the persisted trace archive |
 | `persister_test.go`, `tracequery_test.go` | Unit tests |
 
-Owns all disk persistence under a root data directory (default `~/.eitri/`) with directory layout `<root>/sessions/<sessionID>/`: `session.json` snapshot (the single source of truth, written atomically each turn), `traces/<trace_id>.json` HTTP traces, and `timeline/<timestamp>.json` run timelines. Old-format history files (`HistorySchema`) remain readable on startup for backward compatibility.
+Owns all disk persistence under a root data directory (default `~/.eitri/`) with directory layout `<root>/sessions/<sessionID>/`: `session.json` snapshot (the single source of truth, written atomically each turn), `traces/<trace_id>.json` HTTP traces, and `timeline/<timestamp>.json` run timelines. Old-format history files (`HistorySchema`) remain readable on startup for backward compatibility. Headless batch runs write the same layout under their session ID (default `batch-<unixnano>`, overridable via `EITRI_BATCH_SESSION_ID`), so batch runs are reviewable and reportable exactly like UI sessions — see ADR-0023.
 
 Enforces a 1 GiB retention cap by default: `Prune` evicts the oldest timeline and trace files across all sessions when total size exceeds the cap. Trace persistence is asynchronous (`SaveTraceAsync`) through a bounded worker queue (256) so disk I/O never blocks the HTTP path; shutdown `Flush` drains the queue and re-scans the debug recorder so nothing is lost. Traces of permanently deleted sessions (no `session.json` on disk) are never written. `QueryTraces` filters by session/provider/model/time with limit/offset pagination and computes aggregates (error rate, p50/p95 latency, token totals) for the debug UI and session reports. See ADR-0016.
 
@@ -288,7 +288,7 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | `repo_instructions.go` | `readRepositoryInstructions()` — reads workspace `AGENTS.md` into `<repository_instructions>` tags (capped at 4 KB) |
 | `runconfig.go` | `RunConfig` — runtime configuration snapshot from config + workspace |
 | `broadcast.go` | `Broadcaster` — fan-out event distribution used by runner |
-| `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer` |
+| `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer`; persists session snapshots per turn (via the `TurnCompleter` seam) and a terminal snapshot + timeline on every exit path under `~/.eitri/sessions/<id>/`; session ID from `EITRI_BATCH_SESSION_ID` (validated) or `batch-<unixnano>`, title from `session.TitlePreview` |
 | `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `tool_call.go`, `debug.go`) + `adapters.go` (confirmation seam: `ConfirmationFunc`, `NewFuncConfirmer`). Streaming (ChatStream consumption) lives in `loop.go` |
 
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
