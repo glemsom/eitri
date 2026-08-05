@@ -308,6 +308,8 @@ Sub-agents only receive the base registry (no delegate/collect/render_quick_repl
 
 Config schema with defaults, masking, validation, and environment variable names are defined in `internal/config/manager.go`. Key details: `config.Manager` owns atomic JSON file writes, secure config permissions (`~/.eitri` `0700`, config/temp files `0600`), default loading without file creation, provider validation/model discovery on save, `context_window_tokens` fallback defaults (256k tokens for UI estimates when provider/model metadata lacks context length), and hot-reload on `PUT /api/config` / runner creation. Config reads provider defaults through caller-safe Provider descriptors rather than raw profile internals. Config also persists provider-owned auth state in `provider_auth` for providers that need richer auth than plain `api_key`; `GET /api/config` must never expose that raw state back to browser clients.
 
+The config file lives at `~/.eitri/config.json`; environment variable overrides, including the listen address (`EITRI_ADDR`, default `127.0.0.1:8080`), are applied by `manager.go`. Batch mode runs headlessly via the `-b` flag (see `docs/agents/batch.md`).
+
 ## Frontend architecture
 
 Architecture name: **HTMX + Templ shell with browser islands**. Server owns canonical state and rendering; browser islands own only local ephemeral UI state.
@@ -494,14 +496,6 @@ eitri/
 
 Tests are colocated as `*_test.go`. Browser E2E tests live under `internal/api` behind the `browser` build tag. Templ-generated `*_templ.go` files are committed next to `.templ` sources.
 
-## Testing patterns
-
-Canonical test commands, fixtures, browser setup, and per-layer coverage live in [TESTING.md](TESTING.md). BashTool is tested as part of `internal/tool/` tests. API tests use `httptest`; browser E2E uses chromedp against server-rendered HTMX DOM.
-
 ## Key ADRs
 
 ADR index lives in [CONTEXT.md](../CONTEXT.md#architecture-decisions).
-
-## Runtime configuration
-
-Config file (`~/.eitri/config.json`), listen address (`EITRI_ADDR` env var, default `127.0.0.1:8080`), and environment variable overrides are defined in `internal/config/manager.go`. Batch mode supports headless execution via `-b` flag (see `docs/agents/batch.md`).
