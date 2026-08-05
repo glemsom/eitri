@@ -9,11 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/voocel/litellm"
-
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -62,41 +59,28 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	title := batchTitle(prompt, batchID)
 	workspace := cfg.Workspace
 
-	// Build LLM service, tool registry, and system prompt (no skill activations in batch mode).
-	// The session ID and recorder are passed so headless batch runs feed the same
-	// trace recorder and interaction metrics as browser runs (issue #987).
-	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, batchID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
+	// Shared run-preparation seam: identical tool registry, LLM request, and
+	// system prompt contract as UI parent runs (issue #1091). No UI session,
+	// so render_quick_replies is not registered; the skills service is wired
+	// through the RunService so personas with required skills get the skills
+	// catalog, the <required_skills> directive, and the skill() tool exactly
+	// like the UI.
+	prep, err := s.prepareRun(ctx, cfg, runPrepOptions{
+		sessionID:    batchID,
+		skillCtx:     sessionSkillContext{},
+		uiSessionMgr: nil,
+	})
 	if err != nil {
 		return "", err
 	}
+	llmSvc := prep.llmSvc
+	toolReg := prep.toolReg
+	fullSystemPrompt := prep.systemPrompt
+	req := prep.req
 
-	// Register delegate/collect tools for batch mode (parent agent needs sub-agent support)
-	toolReg.Register(tool.NewDelegate(s))
-	toolReg.Register(tool.NewCollect(s))
-
-	// Create request (streaming only — history is managed by sessionHistoryManager)
-	req := &litellm.Request{
-		Model: cfg.ModelName,
-	}
-	if cfg.ThinkingLevel != "" {
-		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, cfg.ModelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping",
-				slog.String("model", cfg.ModelName),
-				slog.String("provider", cfg.ProviderID),
-				slog.String("thinking_level", cfg.ThinkingLevel),
-			)
-		} else if !loop.IsReasoningModel(cfg.ModelName) {
-			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
-				slog.String("model", cfg.ModelName),
-				slog.String("thinking_level", cfg.ThinkingLevel),
-			)
-		} else {
-			req.Thinking = &litellm.Thinking{
-				Mode:   litellm.ThinkingEnabled,
-				Effort: cfg.ThinkingLevel,
-			}
-		}
-	}
+	// Release browser-tool connections (and any other session-scoped tool
+	// state) when the batch run ends — same cleanup seam as UI runs.
+	defer toolReg.EndSession(batchID)
 
 	// Use the service's HistorySessionMgr or create a local one if nil
 	sessionMgr := s.historySessionMgr
@@ -184,7 +168,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		SessionID:        batchID,
 		RunID:            runID,
 		ContextWindow:    cfg.ContextWindowTokens,
-		CrashDumpFunc:    nil,
+		CrashDumpFunc:    s.crashDumpFunc,
 		Turns:            &turns,
 		DebugLLMDir:      cfg.DebugLLMDir,
 		TurnTimeout:      cfg.TurnTimeout,

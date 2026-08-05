@@ -170,6 +170,56 @@ func main() {
 			CalibrationStore: calStore,
 		})
 		runSvc.SetPersistAuth(nil)
+
+		// Wire the skills service so personas with required skills behave in
+		// batch mode exactly as in the UI: the skills catalog and the
+		// <required_skills> directive enter the system prompt and the agent can
+		// load skill content via the skill() tool (issue #1091).
+		skillsSvc := skills.NewService()
+		if len(cfg.DisabledSkills) > 0 {
+			skillsSvc.SetDisabledList(cfg.DisabledSkills, nil)
+		}
+		runSvc.SetSkillsService(skillsSvc)
+
+		// Crash-dump coverage for panics inside the batch agent loop: the
+		// error path below writes a dump for returned errors, and this
+		// callback covers recover()ed loop panics with the same diagnostics
+		// shape as UI runs (issue #1091).
+		runSvc.SetCrashDumpFunc(func(err error, stack []byte) {
+			crashCfg, cfgErr := config.Load(configPath)
+			if cfgErr != nil {
+				crashCfg = nil
+			}
+			var cfgSummary map[string]any
+			if crashCfg != nil {
+				cfgSummary = debug.SanitizeConfig(crashCfg)
+			}
+			dumpDir, dumpErr := debug.WriteCrashDump(debug.DumpOptions{
+				Error:         err.Error(),
+				ErrorChain:    fmt.Sprintf("%+v", err),
+				Stack:         string(stack),
+				Version:       Version,
+				ConfigSummary: cfgSummary,
+				RuntimeSummary: &debug.RuntimeSummary{
+					UpSince:            processStartTime,
+					ActiveRunCount:     1, // the batch run itself
+					SessionCount:       0, // batch mode has no UI sessions
+					RecordedHTTPTraces: debugRecorder.Count(),
+				},
+				SystemDiagnostics:   debug.CollectSystemDiagnostics(processStartTime),
+				ConversationContext: runSvc.LastBatchConversationContext(),
+				FailingHTTPTrace:    debugRecorder.LastFailingTrace(),
+				Traces:              debugRecorder.List(0, "", ""),
+				InFlightTraces:      debugRecorder.InFlight(),
+				Logs:                logBuffer.Entries(),
+			})
+			if dumpErr != nil {
+				slog.Error("Failed to write crash dump", slog.String("error", dumpErr.Error()))
+			} else {
+				slog.Info("Crash dump written", slog.String("path", dumpDir))
+			}
+		})
+
 		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)

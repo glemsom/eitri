@@ -23,7 +23,9 @@ The persona is resolved from the workspace `.eitri/personas/` directory, falling
 ## How it works
 
 1. Loads config from `EITRI_CONFIG` env var or `~/.eitri/config.json`
-2. Builds a minimal `RunService` — no UI session manager, no browser
+2. Builds a minimal `RunService` — no UI session manager, no browser — but
+   wires the same skills service as the UI, so Agent Skills work identically
+   in batch mode
 3. Calls `BatchRun` which runs the agent loop with a request-based history manager
 4. Streams text tokens to stdout in real-time (tool calls execute silently — only final text is streamed)
 5. Exits with code 0 on success, non-zero on failure
@@ -32,6 +34,25 @@ Sub-agents are supported in batch mode: the `delegate` and `collect` tools are
 registered for headless runs, so the agent can spawn sub-agents for
 data-intensive work just as it can in the browser UI. Because there is no UI
 session, sub-agents spawned from batch mode do not create child sessions.
+
+## Agent Skills
+
+Batch runs assemble their tool registry, LLM request, and system prompt
+through the same run-preparation seam as UI runs (ADR-0024), so skills behave
+identically:
+
+- The skills catalog is emitted into the system prompt.
+- A persona with required skills emits the `<required_skills>` directive and
+  the agent loads each skill via the `skill` tool on its first turn — the
+  loaded skill content flows into the conversation exactly as in the UI.
+- `max_output_tokens`, the session-scoped prompt-cache key, and the thinking
+  level are applied to batch LLM requests just as in the UI.
+- Browser-tool connections are released when the run ends, and a panic inside
+  the batch agent loop writes a crash dump to `~/.eitri/crash-dump/`.
+
+The only tool differences from a UI run are mode-specific: batch has no
+`render_quick_replies` (no UI to render chips into), confirmations are
+auto-denied, and output is plain text to stdout instead of SSE.
 
 ## Session persistence
 

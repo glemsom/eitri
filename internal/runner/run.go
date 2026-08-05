@@ -16,7 +16,6 @@ import (
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/tokenizer"
 
-	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -70,18 +69,21 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 	skillCtx := s.resolveSessionSkillContext(sessionID)
 
-	llmSvc, toolReg, fullSystemPrompt, err := buildLLMService(ctx, cfg, sessionID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, skillCtx)
+	// Shared run-preparation seam: identical tool registry, LLM request, and
+	// system prompt contract as batch mode (issue #1091). render_quick_replies
+	// is registered only because a UI session exists here.
+	prep, err := s.prepareRun(ctx, cfg, runPrepOptions{
+		sessionID:    sessionID,
+		skillCtx:     skillCtx,
+		uiSessionMgr: s.uiSessionMgr,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	toolReg.Register(tool.NewRenderQuickReplies())
-	if s.skillsSvc != nil {
-		toolReg.Register(tool.NewSkill(s.skillsSvc, s.uiSessionMgr))
-	}
-	// Sub-agent tools: only parent agents get delegate/collect
-	toolReg.Register(tool.NewDelegate(s))
-	toolReg.Register(tool.NewCollect(s))
+	llmSvc := prep.llmSvc
+	toolReg := prep.toolReg
+	fullSystemPrompt := prep.systemPrompt
+	req := prep.req
 
 	// Store the system prompt on the UI session so it gets persisted
 	// in session snapshots and displayed in reports.
@@ -103,49 +105,6 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	maxTurnsVal := maxTurns
 	if maxTurnsVal <= 0 {
 		maxTurnsVal = 10
-	}
-
-	req := &litellm.Request{
-		Model: modelName,
-	}
-
-	// Max output tokens per assistant turn. If a provider override exists,
-	// keep it. Config default is 32000 (generous headroom for reasoning models
-	// whose thinking can otherwise exhaust a small cap before emitting any
-	// tool call or answer). Zero means "no explicit cap".
-	if cfg.MaxOutputTokens > 0 {
-		req.MaxTokens = &cfg.MaxOutputTokens
-	}
-
-	// Set session-scoped prompt cache key if the provider supports it.
-	// Skip for Anthropic-routed models (qwen*, minimax*) because the
-	// Anthropic provider rejects unknown provider options like prompt_cache_key.
-	providerDesc, _ := provider.Describe(cfg.ProviderID)
-	if providerDesc.SupportsPromptCache && !provider.IsAnthropicRoutedModel(modelName) {
-		if req.ProviderOptions == nil {
-			req.ProviderOptions = make(litellm.ProviderOptions)
-		}
-		req.ProviderOptions["prompt_cache_key"] = sessionID
-	}
-
-	if cfg.ThinkingLevel != "" {
-		if levels := provider.SupportedThinkingLevels(cfg.ProviderID, modelName); len(levels) == 0 {
-			slog.Info("model does not support thinking_level, skipping",
-				slog.String("model", modelName),
-				slog.String("provider", cfg.ProviderID),
-				slog.String("thinking_level", cfg.ThinkingLevel),
-			)
-		} else if !loop.IsReasoningModel(modelName) {
-			slog.Debug("model does not support litellm thinking field, skipping thinking_level",
-				slog.String("model", modelName),
-				slog.String("thinking_level", cfg.ThinkingLevel),
-			)
-		} else {
-			req.Thinking = &litellm.Thinking{
-				Mode:   litellm.ThinkingEnabled,
-				Effort: cfg.ThinkingLevel,
-			}
-		}
 	}
 
 	sseState := runstate.New()

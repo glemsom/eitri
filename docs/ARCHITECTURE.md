@@ -280,8 +280,9 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | File | Responsibility |
 |------|---------------|
 | `service.go` | `RunService` — run lifecycle, confirmation handling, SSE broadcast bridge, auth persist callbacks |
-| `run.go` | `StartRun()` — validates config, snapshot runtime limits, builds LLM service, resolves skill context, builds tool registry (including `skill`, `delegate`, `collect`, `render_quick_replies`), starts agent loop; persists the run timeline on every exit path (completed, cancelled, max-turns, error) via a RunState-free path callable from headless batch runs |
-| `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` |
+| `prepare.go` | `prepareRun()` — the unified parent-run preparation seam (ADR-0024): builds the LLM service, tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`, `delegate`, `collect`, `skill`; `render_quick_replies` only with a UI session), the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt; shared by UI and batch parent runs |
+| `run.go` | `StartRun()` — validates config, snapshot runtime limits, resolves skill context, calls the shared `prepareRun` seam, starts agent loop; persists the run timeline on every exit path (completed, cancelled, max-turns, error) via a RunState-free path callable from headless batch runs |
+| `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` and the base tool registry |
 | `skill_context.go` | `resolveSessionSkillContext()` — re-resolves active skill names against current registry |
 | `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()`; persists each sub-agent run as a child session on disk (snapshot + traces + timeline under `~/.eitri/sessions/<taskID>/`) in both UI and batch modes |
 | `subagent_store.go` | Thread-safe sub-agent task storage and cancellation |
@@ -290,16 +291,15 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | `repo_instructions.go` | `readRepositoryInstructions()` — reads workspace `AGENTS.md` into `<repository_instructions>` tags (capped at 4 KB) |
 | `runconfig.go` | `RunConfig` — runtime configuration snapshot from config + workspace |
 | `broadcast.go` | `Broadcaster` — fan-out event distribution used by runner |
-| `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer`; persists session snapshots per turn (via the `TurnCompleter` seam) and a terminal snapshot + timeline on every exit path under `~/.eitri/sessions/<id>/`; session ID from `EITRI_BATCH_SESSION_ID` (validated) or `batch-<unixnano>`, title from `session.TitlePreview` |
+| `batch.go` | `BatchRun()` — headless batch execution with token streaming to `io.Writer`; shares the unified `prepareRun` seam with UI runs (skills catalog, `skill` tool, `max_output_tokens`, prompt-cache key, thinking level, `EndSession` cleanup, loop-panic crash dumps — ADR-0024); persists session snapshots per turn (via the `TurnCompleter` seam) and a terminal snapshot + timeline on every exit path under `~/.eitri/sessions/<id>/`; session ID from `EITRI_BATCH_SESSION_ID` (validated) or `batch-<unixnano>`, title from `session.TitlePreview` |
 | `loop/` | Agent turn loop (`loop.go`, `loop_helpers.go`, `tool_call.go`, `debug.go`) + `adapters.go` (confirmation seam: `ConfirmationFunc`, `NewFuncConfirmer`). Streaming (ChatStream consumption) lives in `loop.go` |
 
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
 1. Validates config, snapshots runtime limits (`max_turns`, `context_window_tokens`)
 2. Resolves skill context from session's active skills
-3. Calls `buildLLMService()` → resolves auth, creates a `*litellm.Client` via `provider.NewLitellmClient`, builds base tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`)
-4. Registers parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
-5. Creates `runstate.State` for SSE broadcast
-6. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
+3. Calls the shared `prepareRun()` seam (ADR-0024) → resolves auth, creates a `*litellm.Client` via `provider.NewLitellmClient`, builds the tool registry (base tools + `delegate`, `collect`, `skill`; `render_quick_replies` when a UI session exists), assembles the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt — the same seam `BatchRun` uses
+4. Creates `runstate.State` for SSE broadcast
+5. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
 
 ### `internal/compress/` — Pattern compression for bash output
 

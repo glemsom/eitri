@@ -18,8 +18,13 @@
 //
 //	service.go       — RunService type, constructor, subscribe/unsubscribe,
 //	                   cancel, confirm path, browser SSE broadcast
-//	run.go           — StartRun (agent loop entry point), tool registry
-//	                   assembly, session persistence after run
+//	prepare.go       — prepareRun: the unified parent-run preparation seam
+//	                   shared by run.go and batch.go (ADR-0024). Produces the
+//	                   tool registry, *litellm.Request, and system prompt in
+//	                   one parameterized call; buildRunRequest is shared with
+//	                   sub-agent runs too.
+//	run.go           — StartRun (agent loop entry point), session persistence
+//	                   after run
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
 //	                   loop.NewSessionHistoryManager, io.Writer output)
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
@@ -69,10 +74,13 @@
 //  4. Adding a new built-in tool available to the agent:
 //     Create the tool in internal/tool/ (implementing tool.Handler), then
 //     register it via toolReg.Register(...) in buildBaseToolRegistry
-//     (subagent.go) for all runs, or in startRunWithConfig for parent-only tools.
+//     (subagent.go) for all runs, or in prepareRun (prepare.go) for
+//     parent-only tools.
 //
 //  5. Modifying batch mode behaviour:
-//     BatchRun (batch.go) mirrors startRunWithConfig but uses
-//     requestHistoryManager, denies confirmations, and streams tokens to an
-//     io.Writer. Keep it in sync when adding new lifecycle features.
+//     BatchRun (batch.go) shares run preparation with the UI via prepareRun
+//     (prepare.go) and differs only in genuinely mode-specific runtime
+//     wiring: no UI session, no confirmation prompt (auto-denied), and
+//     text-to-stdout instead of SSE streaming. Add mode-specific knobs to
+//     runPrepOptions rather than patching one path.
 package runner
