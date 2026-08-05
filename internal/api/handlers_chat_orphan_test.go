@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
