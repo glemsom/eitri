@@ -128,8 +128,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		browserID = s.ensureBrowserID(w, r)
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
-	cfg := s.config.SessionManager.GetConfig(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
+	cfg := s.config.SessionManager.GetConfigShared(id)
 
 	state := s.loadConfigState(r.Context())
 	configValid := state.valid()
@@ -147,7 +147,11 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
-	sess := s.config.SessionManager.Get(id) // keep for renderSessionForPage
+	// Keeps the copying getter: the ChatPage template and renderSessionForPage
+	// consume the assembled UISession facade. The shared accessors expose the
+	// sub-stores separately, so this stays on Get until the contract step
+	// (#981) provides a shared facade.
+	sess := s.config.SessionManager.Get(id)
 	renderedSession := renderSessionForPage(sess)
 
 	contextWindow := state.cfg.ContextWindowTokens
@@ -185,7 +189,7 @@ func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil {
 		// Session already gone — redirect
 		s.hxRedirect(w, r, "/")
@@ -247,7 +251,7 @@ func (s *Server) handlePermanentDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta != nil {
 		if meta.BrowserID != browserID {
 			http.Error(w, "Session not found", http.StatusNotFound)
@@ -295,7 +299,7 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Already active → redirect to chat (no-op)
-	if sess := s.config.SessionManager.Get(id); sess != nil {
+	if s.config.SessionManager.GetMetaShared(id) != nil {
 		s.hxRedirect(w, r, "/sessions/"+id)
 		return
 	}
@@ -318,7 +322,7 @@ func (s *Server) handleLoadSession(w http.ResponseWriter, r *http.Request) {
 
 	// The loaded session may have a stale browser ID from when it was last active.
 	// Update it to the current browser so it appears in the sidebar.
-	loadedMeta := s.config.SessionManager.GetMeta(id)
+	loadedMeta := s.config.SessionManager.GetMetaShared(id)
 	if loadedMeta != nil && loadedMeta.BrowserID != browserID {
 		s.config.SessionManager.SetBrowserID(id, browserID)
 		s.config.SessionManager.SetClosedAt(id, nil)

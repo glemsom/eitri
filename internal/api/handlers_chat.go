@@ -21,7 +21,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
+	if meta := s.config.SessionManager.GetMetaShared(id); meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -94,7 +94,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cmdTimeout := time.Duration(cfgState.cfg.CommandTimeout)
-	cfg := s.config.SessionManager.GetConfig(id)
+	cfg := s.config.SessionManager.GetConfigShared(id)
 	workspace := ""
 	if cfg != nil {
 		workspace = cfg.Workspace
@@ -143,7 +143,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast run-started status to browser subscribers for real-time sidebar update
 	if s.config.RunService != nil {
-		meta := s.config.SessionManager.GetMeta(id)
+		meta := s.config.SessionManager.GetMetaShared(id)
 		if meta != nil && meta.BrowserID != "" {
 			s.config.RunService.BroadcastToBrowser(meta.BrowserID, runner.BrowserEvent{
 				Type: "session_status",
@@ -177,7 +177,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
+	if meta := s.config.SessionManager.GetMetaShared(id); meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -277,7 +277,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return

@@ -7,6 +7,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/report"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 // handleReportPage renders the full Session Report page at /report/{id}.
@@ -18,8 +19,12 @@ func (s *Server) handleReportPage(w http.ResponseWriter, r *http.Request) {
 		browserID = s.ensureBrowserID(w, r)
 	}
 
-	// Get session metadata from in-memory session manager
-	sess := s.config.SessionManager.Get(sessionID)
+	// Get session metadata from in-memory session manager via the shared read
+	// accessors. The report body renders from the persisted report (rep); the
+	// in-memory session contributes only the workspace and the "session not
+	// found" fallback, so a meta-only facade is enough — no conversation copy.
+	meta := s.config.SessionManager.GetMetaShared(sessionID)
+	cfg := s.config.SessionManager.GetConfigShared(sessionID)
 	state := s.loadConfigState(r.Context())
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
@@ -71,8 +76,8 @@ func (s *Server) handleReportPage(w http.ResponseWriter, r *http.Request) {
 
 	// Determine workspace for sidebar display
 	workspace := ""
-	if sess != nil {
-		workspace = sess.Workspace
+	if cfg != nil {
+		workspace = cfg.Workspace
 	}
 
 	contextWindow := 256000
@@ -80,8 +85,26 @@ func (s *Server) handleReportPage(w http.ResponseWriter, r *http.Request) {
 		contextWindow = state.cfg.ContextWindowTokens
 	}
 
+	// The ReportPage template only nil-checks the session facade to decide
+	// whether to show the "session data not found" fallback, so a meta-only
+	// facade is sufficient here (shared accessors, no conversation copy).
+	var sess *session.UISession
+	if meta != nil {
+		sess = &session.UISession{
+			ID:        meta.ID,
+			BrowserID: meta.BrowserID,
+			ParentID:  meta.ParentID,
+			Title:     meta.Title,
+			Status:    meta.Status,
+			CreatedAt: meta.CreatedAt,
+			UpdatedAt: meta.UpdatedAt,
+			ClosedAt:  meta.ClosedAt,
+			Workspace: workspace,
+		}
+	}
+
 	activeID := sessionID
-	if sess == nil && len(sessions) > 0 {
+	if meta == nil && len(sessions) > 0 {
 		activeID = sessions[0].ID
 	}
 

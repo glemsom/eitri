@@ -97,7 +97,7 @@ func (s *Server) handleCompleteSkills(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -137,7 +137,7 @@ func (s *Server) handleCompleteFiles(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -246,7 +246,7 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 	name := r.PathValue("name")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -268,7 +268,7 @@ func (s *Server) handleActivateSessionSkill(w http.ResponseWriter, r *http.Reque
 
 	// Return HTMX fragment with updated chips
 	if r.Header.Get("HX-Request") == "true" {
-		cfg := s.config.SessionManager.GetConfig(id)
+		cfg := s.config.SessionManager.GetConfigShared(id)
 		workspace := ""
 		if cfg != nil {
 			workspace = cfg.Workspace
@@ -290,14 +290,14 @@ func (s *Server) handleSessionSkillChips(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	cfg := s.config.SessionManager.GetConfig(id)
+	cfg := s.config.SessionManager.GetConfigShared(id)
 	workspace := ""
 	if cfg != nil {
 		workspace = cfg.Workspace

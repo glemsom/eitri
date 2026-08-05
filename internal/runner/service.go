@@ -324,9 +324,10 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 		return nil, fmt.Errorf("cannot restore session to manager: %w", err)
 	}
 
-	// Restore conversation history in the history manager
+	// Restore conversation history in the history manager.
+	// Shared read: the messages are copied out below into the history manager.
 	if s.historySessionMgr != nil {
-		convo := s.uiSessionMgr.GetConversation(sessionID)
+		convo := s.uiSessionMgr.GetConversationShared(sessionID)
 		if convo != nil {
 			msgs := make([]message.Message, 0, len(convo.Messages))
 			for _, m := range convo.Messages {
@@ -541,7 +542,7 @@ func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.St
 		return
 	}
 	uiSessionMgr.UpdateStatus(sessionID, status)
-	meta := uiSessionMgr.GetMeta(sessionID)
+	meta := uiSessionMgr.GetMetaShared(sessionID)
 	if meta == nil || meta.BrowserID == "" {
 		return
 	}
@@ -668,6 +669,8 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 	}
 
 	// Snapshot the compacted history if persister is available.
+	// Keeps the copying getter: the persister serializes the full session
+	// facade and needs a detached copy.
 	if s.persister != nil {
 		sessAfter := s.uiSessionMgr.Get(sessionID)
 		if sessAfter != nil {

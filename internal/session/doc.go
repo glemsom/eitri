@@ -35,12 +35,18 @@
 //     read API going forward.
 //
 // Expand-contract sequence (issues #979 → #980 → #981): the expand step added
-// the shared read accessors (this codebase's current state); the migrate step
-// (#980) switches read-only callers from the copying getters to the shared
-// accessors; the contract step (#981) removes the deep-copy behaviour from the
-// read path. Until #981 lands, the copying getters must stay unchanged so the
-// migrate step can proceed incrementally with CI green throughout. New code
-// that only reads session state should use the shared accessors.
+// the shared read accessors; the migrate step (#980) switched read-only callers
+// from the copying getters to the shared accessors (this codebase's current
+// state). The remaining copying-getter callers are deliberate and documented
+// at each call site: JSON snapshot serialization (the persister needs a
+// detached UISession facade), the ChatPage/ReportPage template rendering path
+// (the templates consume the assembled UISession facade), and the debug
+// endpoints (they are polled concurrently with active agent runs whose
+// in-place mutations would race with shared references). The contract step
+// (#981) removes the deep-copy behaviour from the read path. Until #981 lands,
+// the copying getters must stay unchanged so the migrate step can proceed
+// incrementally with CI green throughout. New code that only reads session
+// state should use the shared accessors.
 //
 // UISession is kept as a JSON serialization facade — it is assembled from
 // the three sub-stores on demand when snapshot I/O or direct field access

@@ -32,7 +32,7 @@ func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -141,7 +141,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -166,7 +166,9 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		var components []message.ComponentData
 		var quickReplies []string
 		var lastAssistantCreatedAt time.Time
-		convo := s.config.SessionManager.GetConversation(id)
+		// Shared read: only the values needed for the bubble are copied out of
+		// the conversation; components/quickReplies are rendered read-only.
+		convo := s.config.SessionManager.GetConversationShared(id)
 		if convo != nil {
 			// Find the last user message time so we can detect stale assistant content.
 			// A run that produced no text output (e.g. tool-only run) still fires a
