@@ -25,6 +25,23 @@
 //   - convoStore (Conversation) — messages, system prompt, active skills
 //   - configStore (SessionConfig) — workspace path
 //
+// Read-path accessors exist in two flavours:
+//   - Copying getters (GetMeta, GetConversation, GetConfig) — return detached
+//     copies safe for mutation. These deep-copy the conversation (every
+//     message, including components) on every call and are being phased out.
+//   - Shared read accessors (GetMetaShared, GetConversationShared,
+//     GetConfigShared) — return the manager's internal state directly as
+//     shared references. Callers must not mutate them. This is the preferred
+//     read API going forward.
+//
+// Expand-contract sequence (issues #979 → #980 → #981): the expand step added
+// the shared read accessors (this codebase's current state); the migrate step
+// (#980) switches read-only callers from the copying getters to the shared
+// accessors; the contract step (#981) removes the deep-copy behaviour from the
+// read path. Until #981 lands, the copying getters must stay unchanged so the
+// migrate step can proceed incrementally with CI green throughout. New code
+// that only reads session state should use the shared accessors.
+//
 // UISession is kept as a JSON serialization facade — it is assembled from
 // the three sub-stores on demand when snapshot I/O or direct field access
 // is needed. All runtime CRUD and mutation operations work on the sub-stores
@@ -46,7 +63,9 @@
 //   - NewManager — create a session manager with a capacity cap
 //   - Create / Get / GetValidated / Delete — CRUD with browser ownership
 //   - CreateChild — create a sub-agent child session
-//   - GetMeta / GetConversation / GetConfig — typed accessor views
+//   - GetMeta / GetConversation / GetConfig — copying accessor views (legacy)
+//   - GetMetaShared / GetConversationShared / GetConfigShared — shared
+//     read-only accessor views (preferred; see expand-contract note above)
 //   - UpdateMeta / AppendToConversation / UpdateConfig — typed setter methods
 //   - AppendMessage / AppendComponent — add data to a session
 //   - UpdateTitle / UpdateStatus — mutate session metadata

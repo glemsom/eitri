@@ -1,4 +1,4 @@
-// config.go — per-session configuration (workspace path).
+// config.go — per-session configuration (workspace path) and the SessionConfig accessors (copying + shared).
 
 package session
 
@@ -32,6 +32,21 @@ func (m *Manager) GetConfig(id string) *SessionConfig {
 	return &SessionConfig{
 		Workspace: cfg.Workspace,
 	}
+}
+
+// GetConfigShared returns the live SessionConfig for a session as a shared
+// reference, without copying. Returns nil if the session does not exist.
+//
+// The returned pointer is owned by the manager. Callers must treat it as
+// read-only and MUST NOT mutate it — all mutation must go through the
+// manager's mutating methods (SetWorkspace, UpdateConfig, etc.). The manager
+// may mutate the pointed-to state concurrently, so the reference is only
+// valid for the duration of a single read and must not be retained across
+// calls that mutate the session.
+func (m *Manager) GetConfigShared(id string) *SessionConfig {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.configStore[id]
 }
 
 // UpdateConfig updates the configuration fields of a session from the given SessionConfig.
