@@ -144,7 +144,6 @@
   --warning: #f39c12;
   --error: #e74c3c;
   --sidebar-width: 240px;
-  --sidebar-collapsed-width: 48px;
 
   /* Font families */
   --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -153,10 +152,8 @@
   /* Type scale */
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
-  --text-base: 1rem;
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
 
   /* Visual design tokens */
   --glass-bg: rgba(22, 33, 62, 0.7);
@@ -245,15 +242,12 @@
     /* Layout / typography tokens (theme-independent, declared here so the
        light token root stays symmetric with dark — issue #1068) */
     --sidebar-width: 240px;
-    --sidebar-collapsed-width: 48px;
     --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-code: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     --text-xs: 0.75rem;
     --text-sm: 0.875rem;
-    --text-base: 1rem;
     --text-lg: 1.125rem;
     --text-xl: 1.25rem;
-    --text-2xl: 1.5rem;
 
     /* Semantic status colors — light variants (issue #1068) */
     --status-connecting: #e67e22;
@@ -809,11 +803,6 @@ details.tool-entry-wrapper .tool-result {
   border: none;
 }
 
-.sidebar-footer {
-  padding: 0.5rem;
-  border-top: 1px solid var(--border);
-}
-
 /* Session items in sidebar */
 .session-item {
   display: flex;
@@ -1162,20 +1151,30 @@ noscript {
   border-radius: 4px;
 }
 
-.message-content table {
+/* Tables inside message and report content share the same chrome; each
+   section keeps only its padding/typography overrides below (issue #1072). */
+.message-content table,
+.turn-content table {
   border-collapse: collapse;
   margin: 0.5rem 0;
   width: 100%;
 }
 
 .message-content th,
-.message-content td {
+.message-content td,
+.turn-content th,
+.turn-content td {
   border: 1px solid var(--border);
-  padding: 0.4rem 0.6rem;
   text-align: left;
 }
 
-.message-content th {
+.message-content th,
+.message-content td {
+  padding: 0.4rem 0.6rem;
+}
+
+.message-content th,
+.turn-content th {
   background: var(--surface-alt);
 }
 
@@ -1237,24 +1236,8 @@ noscript {
   text-align: center;
 }
 
-/* Tool cards */
-.tool-card {
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin: 0.5rem 0;
-  overflow: hidden;
-}
-
-.tool-card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface-alt);
-  font-size: 0.9rem;
-}
-
+/* Tool icon/name/status/elapsed for tool entries in the sidebar activity
+   list (markup emitted by eitri-stream.js) */
 .tool-icon {
   font-size: 1rem;
 }
@@ -1264,12 +1247,6 @@ noscript {
   color: var(--text);
 }
 
-.tool-status {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
 .tool-elapsed {
   margin-left: 0.5rem;
   font-size: 0.8rem;
@@ -1277,7 +1254,7 @@ noscript {
   font-variant-numeric: tabular-nums;
 }
 
-/* Chevron indicator for collapsible tool cards */
+/* Chevron indicator for collapsible tool entries */
 .tool-chevron {
   margin-left: auto;
   font-size: 0.8rem;
@@ -1289,7 +1266,6 @@ details[open] .tool-chevron {
   transform: rotate(90deg);
 }
 
-.tool-args,
 .tool-result {
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
@@ -1298,18 +1274,8 @@ details[open] .tool-chevron {
   overflow-y: auto;
 }
 
-.tool-args code,
 .tool-result code {
   white-space: pre-wrap;
-}
-
-.tool-cards-container {
-  align-self: flex-start;
-  max-width: 85%;
-}
-
-.tool-call-container {
-  margin-top: 0.5rem;
 }
 
 /* Status text in header h1 (issue #451) */
@@ -1695,16 +1661,16 @@ details[open] .tool-chevron {
   color: var(--accent-hover);
 }
 
-/* Workspace indicator */
+/* Workspace indicator in header — clickable, opens the directory browser */
 .workspace-indicator {
   font-size: 0.8rem;
   color: var(--text-muted);
   padding: 0;
-  cursor: default;
+  cursor: pointer;
 }
 
 .workspace-indicator:hover {
-  color: var(--text);
+  color: var(--accent);
 }
 
 /* Persona selector in header (issue #770) — custom dark dropdown */
@@ -1826,12 +1792,16 @@ details[open] .tool-chevron {
   background: var(--text-muted);
 }
 
-/* Copy button for code blocks */
+/* Copy/code action buttons on code blocks. The same base button is emitted by
+   eitri-stream.js with the classes `code-btn copy-btn`, `code-btn wrap-btn`
+   and `code-btn show-all-btn`; .wrap-btn only overrides the horizontal
+   position. */
 pre {
   position: relative;
 }
 
-.copy-btn {
+.copy-btn,
+.code-btn {
   position: absolute;
   top: 0.25rem;
   right: 0.25rem;
@@ -1846,11 +1816,13 @@ pre {
   transition: opacity 0.2s;
 }
 
-pre:hover .copy-btn {
+pre:hover .copy-btn,
+pre:hover .code-btn {
   opacity: 1;
 }
 
-.copy-btn:hover {
+.copy-btn:hover,
+.code-btn:hover {
   background: var(--accent);
   color: white;
 }
@@ -1964,33 +1936,6 @@ pre.mermaid.mermaid-error {
 }
 
 /* Code block enhancements */
-.code-btn {
-  position: absolute;
-  top: 0.25rem;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.75rem;
-  background: var(--surface-alt);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-pre:hover .code-btn {
-  opacity: 1;
-}
-
-.code-btn:hover {
-  background: var(--accent);
-  color: white;
-}
-
-.copy-btn {
-  right: 0.25rem;
-}
-
 .wrap-btn {
   right: 3.5rem;
 }
@@ -2064,13 +2009,6 @@ pre.code-wrapped code {
   background: var(--accent-hover);
 }
 
-@media (max-width: 768px) {
-  .scroll-to-bottom-btn {
-    right: 1rem;
-    bottom: calc(var(--composer-bottom, var(--composer-height, 130px)) + 0.75rem);
-  }
-}
-
 /* eitri-composer lives in the grid so no extra positioning needed */
 eitri-composer {
   position: relative;
@@ -2094,6 +2032,11 @@ eitri-composer {
 
 /* Responsive: narrow viewport collapses sidebar to icon strip */
 @media (max-width: 768px) {
+  .scroll-to-bottom-btn {
+    right: 1rem;
+    bottom: calc(var(--composer-bottom, var(--composer-height, 130px)) + 0.75rem);
+  }
+
   #app {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
@@ -2176,10 +2119,6 @@ eitri-composer {
     white-space: nowrap;
   }
 
-  .sidebar-footer {
-    display: none;
-  }
-
   main {
     padding: 0.75rem;
   }
@@ -2227,15 +2166,6 @@ eitri-composer {
 .required-marker {
   color: var(--accent);
   font-weight: bold;
-}
-
-/* Settings header bar */
-.settings-header-bar {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 1rem;
 }
 
 /* Model refresh spinner */
@@ -2474,13 +2404,6 @@ eitri-composer {
   padding: 0.75rem 1rem 0.25rem;
 }
 
-.skill-scope-icon {
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
 .skill-name {
   font-weight: 600;
   font-size: 0.95rem;
@@ -2557,7 +2480,11 @@ eitri-composer {
    Blocked-read path confirmation overlay
    ============================================ */
 
-.confirmation-overlay {
+/* Shared overlay + modal chrome for the confirmation and directory-browser
+   dialogs (issue #1072). The directory-browser modal overrides width/height
+   below. */
+.confirmation-overlay,
+.directory-browser-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -2573,17 +2500,21 @@ eitri-composer {
   animation: fadeIn 0.2s ease;
 }
 
-.confirmation-modal {
+.confirmation-modal,
+.directory-browser-modal {
   background: var(--surface-overlay);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s ease;
+}
+
+.confirmation-modal {
   padding: 1.5rem;
   max-width: 520px;
   width: 90%;
-  box-shadow: var(--shadow-lg);
-  animation: slideUp 0.25s ease;
 }
 
 .confirmation-modal h3 {
@@ -3054,10 +2985,6 @@ eitri-context {
   min-width: 3.5rem;
   text-align: right;
 }
-.context-subrow {
-  padding-left: 0.75rem;
-  font-size: 0.76rem;
-}
 
 /* Mini progress bar inside each expanded category row */
 .context-category-bar {
@@ -3137,35 +3064,12 @@ eitri-context {
    Modal overlay for browsing directory tree
    ============================================ */
 
-.directory-browser-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: var(--overlay-bg);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
 .directory-browser-modal {
-  background: var(--surface-overlay);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
   width: 640px;
   max-width: 90vw;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-lg);
-  animation: slideUp 0.25s ease;
 }
 
 .directory-browser-header {
@@ -3327,51 +3231,6 @@ eitri-context {
 
 .directory-browser-actions .btn-secondary:hover {
   background: var(--border);
-}
-
-/* Workspace indicator in header - make it clickable */
-.workspace-indicator {
-  cursor: pointer;
-}
-
-.workspace-indicator:hover {
-  color: var(--accent);
-}
-
-/* Sidebar session workspace path */
-.session-workspace {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 0.15rem;
-  overflow: hidden;
-}
-
-.session-workspace-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-}
-
-.session-workspace-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0;
-  font-size: 0.85rem;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: color 0.15s;
-  display: inline-flex;
-  align-items: center;
-}
-
-.session-workspace-btn:hover {
-  color: var(--accent);
 }
 
 /* — Personas section — */
@@ -3784,21 +3643,13 @@ eitri-context {
   color: var(--text);
 }
 
-.turn-content table {
-  border-collapse: collapse;
-  margin: 8px 0;
-  width: 100%;
-}
-
-.turn-content th, .turn-content td {
-  border: 1px solid var(--border);
+.turn-content th,
+.turn-content td {
   padding: 6px 10px;
-  text-align: left;
   font-size: var(--text-sm);
 }
 
 .turn-content th {
-  background: var(--surface-alt);
   font-weight: 600;
 }
 
