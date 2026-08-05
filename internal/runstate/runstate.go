@@ -48,6 +48,14 @@ type SSEEvent struct {
 	Usage     *TokenUsage `json:"usage,omitempty"`
 	Timestamp time.Time   `json:"timestamp,omitempty"`
 	Turn      int         `json:"turn,omitempty"`
+	// Replayed marks an event delivered from run-state history to a subscriber
+	// joining mid-run (or reconnecting), as opposed to a live broadcast. The
+	// browser island skips replayed token/component events: committed messages
+	// are already rendered by the server on page load, and re-accumulating
+	// their tokens into a fresh streaming bubble duplicates the message after a
+	// session switch-back. The flag is set on the per-subscriber copy only —
+	// the stored history and the persisted timeline keep Replayed=false.
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 // TokenUsage holds token count information for a completed run.
@@ -215,7 +223,9 @@ func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 		s.mu.Unlock()
 		ch := make(chan SSEEvent, 512)
 		for _, evt := range history {
-			ch <- evt
+			ev := evt
+			ev.Replayed = true
+			ch <- ev
 		}
 		close(ch)
 		return 0, ch, len(history) > 0
@@ -242,8 +252,15 @@ func (s *State) Subscribe() (uint64, <-chan SSEEvent, bool) {
 	// Replay history outside the lock so Subscribe cannot deadlock
 	// when history exceeds the default channel buffer. sub.send is
 	// safe to call concurrently with sub.close from another goroutine.
+	// Each replayed event is marked Replayed on its per-subscriber copy so
+	// the browser island can distinguish history (already rendered on page
+	// load / already accumulated in the streaming bubble) from live events
+	// and skip re-accumulating token content (duplicate messages after a
+	// session switch-back).
 	for _, evt := range history {
-		sub.send(evt)
+		ev := evt
+		ev.Replayed = true
+		sub.send(ev)
 	}
 
 	return id, sub.ch, true

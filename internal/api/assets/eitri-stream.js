@@ -466,6 +466,12 @@
         break;
 
       case 'token':
+        // Replayed tokens belong to turns already committed and rendered as
+        // final bubbles by the server on page load; appending them again would
+        // duplicate the message after a session switch-back. The server marks
+        // every history-replayed event with `replayed`; live events are not
+        // marked and continue to stream normally.
+        if (packet.replayed) break;
         markStreamResumed(state);
         state.status = STATES.STREAMING;
         showStreamingBubble();
@@ -544,6 +550,10 @@
         break;
 
       case 'component':
+        // Components of committed messages are already server-rendered into
+        // their bubbles on page load; a replayed component event would render
+        // a duplicate; live components continue streaming normally.
+        if (packet.replayed) break;
         markStreamResumed(state);
         renderComponent(sessionId, packet, state.lastToolCallKey);
         state.lastToolCallKey = '';

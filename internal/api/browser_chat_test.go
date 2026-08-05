@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
@@ -13,8 +15,14 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persona"
+	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // ————— Composer tests ————— —
@@ -630,6 +638,256 @@ func TestBrowser_ScrollToBottomButton(t *testing.T) {
 	if !assistantMsgExists {
 		t.Error("assistant message should have rendered via SSE stream")
 	}
+}
+
+// fakeJoinMidRunChatServer returns a fake LLM that drives a three-turn run:
+// turn 1 issues a tool call, turn 2 streams content (which becomes a committed
+// bubble) plus a tool call, and turn 3 streams a first chunk then blocks until
+// releaseThirdTurn is closed. The blocked third turn keeps the run active so a
+// test can rejoin (reload) mid-run while turn-2 tokens are still in the
+// run-state replay history.
+func fakeJoinMidRunChatServer(t *testing.T, releaseThirdTurn <-chan struct{}) *httptest.Server {
+	t.Helper()
+
+	var (
+		mu   sync.Mutex
+		call int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			mu.Lock()
+			call++
+			thisCall := call
+			mu.Unlock()
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			if thisCall == 1 {
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo hello\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			if thisCall == 2 {
+				// Content + tool call: commits a bubble with SECOND_REPLY_MARKER
+				// and keeps the run alive for a third turn.
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"SECOND_REPLY_MARKER "},"index":0}]}`, "\n\n")
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_2","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo hello\"}"}}]},"finish_reason":"tool_calls","index":0}]}`, "\n\n")
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+
+			// Turn 3: stream one chunk, then block until released so the test
+			// can reload mid-run with the run still active.
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"THIRD_REPLY_START "},"index":0}]}`, "\n\n")
+			flusher.Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-releaseThirdTurn:
+			}
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"THIRD_REPLY_END"},"index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestBrowser_NoDuplicateMessageOnMidRunRejoin verifies that rejoining a
+// session with an active run (session switch-back / page reload) does not
+// duplicate already-committed assistant messages: the server replays the run's
+// event history to the new SSE subscriber, and the client must not re-accumulate
+// replayed token content into a fresh streaming bubble on top of the committed
+// bubbles the page already rendered.
+func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
+	releaseThirdTurn := make(chan struct{})
+	defer close(releaseThirdTurn)
+
+	llmURL := fakeJoinMidRunChatServer(t, releaseThirdTurn).URL
+
+	// The UI session only receives committed turns when a persister is
+	// configured (RunService.OnTurnComplete syncs live history into the UI
+	// session; without it the server-rendered page on rejoin would not show
+	// the committed bubble at all). Build the server with a persister.
+	homeDir := t.TempDir()
+	eitriDir := t.TempDir()
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	historySessionMgr := history.NewSessionManager(50)
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historySessionMgr,
+		Persister:         p,
+		HomeDir:           homeDir,
+	})
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
+	runSvc.SetSkillsService(skillsSvc)
+	srv := api.NewServer(api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		HomeDir:        homeDir,
+		SessionManager: sessionMgr,
+		RunService:     runSvc,
+		SkillsService:  skillsSvc,
+		Persister:      p,
+	})
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	configureProvider(t, server, llmURL)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+	waitForComposerReady(t, ctx)
+
+	// Start the run. Turn 1 issues a tool call, turn 2 commits the
+	// SECOND_REPLY_MARKER bubble, turn 3 streams THIRD_REPLY_START and then
+	// blocks on releaseThirdTurn, keeping the run active.
+	err = chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Hello", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("send message failed: %v", err)
+	}
+
+	// Wait for the run to reach turn 3 (turns 1-2 completed, turn-2 message
+	// committed to the session; turn 3 blocked on the fake LLM). Poll the
+	// debug API — deterministic, independent of client streaming timing.
+	sessionID := mustSessionID(t, ctx)
+	pollForCondition(t, 10*time.Second, 250*time.Millisecond, func() bool {
+		resp, err := http.Get(server.URL + "/api/debug/sessions/" + sessionID)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		var dbg struct {
+			Run *struct {
+				Turns int `json:"turns"`
+			} `json:"run"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&dbg) != nil || dbg.Run == nil {
+			return false
+		}
+		return dbg.Run.Turns >= 2
+	})
+
+	// Rejoin the session mid-run: navigate to the session URL (cache-buster
+	// query forces a real full-page load, unlike same-URL Navigate or
+	// location.reload which the browser may satisfy from BFCache) — this is
+	// exactly what switching back to the session in the sidebar does. The
+	// server renders the committed bubbles from the session manager and
+	// replays the full run history on the fresh SSE connection. Without the
+	// replay guard the streaming bubble re-accumulates the replayed turn-2
+	// tokens on top of the committed bubble and the marker appears twice.
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/sessions/"+sessionID+"?rejoin=1"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("rejoin navigation failed: %v", err)
+	}
+	pollForCondition(t, 10*time.Second, 100*time.Millisecond, func() bool {
+		var ready bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var chat = document.getElementById('chat-view');
+				// Committed bubble rendered by the server AND the replay has been
+				// processed (tool cards rebuilt from replayed tool_call events).
+				var hasCommitted = document.getElementById('messages') !== null &&
+					document.getElementById('messages').textContent.indexOf('SECOND_REPLY_MARKER') !== -1;
+				var hasCards = document.querySelectorAll('#tool-activity .tool-entry-wrapper').length > 0;
+				return !!chat && hasCommitted && hasCards;
+			})()`, &ready),
+		)
+		return ready
+	})
+
+	// The committed marker must appear exactly once in the whole messages
+	// container — as the committed bubble — and never inside the streaming
+	// bubble.
+	var counts struct {
+		Total     int
+		Streaming int
+	}
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var total = document.getElementById('messages').textContent;
+			var stream = document.getElementById('streaming');
+			var streamText = stream ? stream.textContent : '';
+			var count = function(hay, needle) {
+				var n = 0, i = 0;
+				while ((i = hay.indexOf(needle, i)) !== -1) { n++; i += needle.length; }
+				return n;
+			};
+			return { total: count(total, 'SECOND_REPLY_MARKER'), streaming: count(streamText, 'SECOND_REPLY_MARKER') };
+		})()`, &counts),
+	)
+	if err != nil {
+		t.Fatalf("count marker occurrences failed: %v", err)
+	}
+	if counts.Streaming != 0 {
+		t.Errorf("committed marker leaked into streaming bubble: %d occurrence(s)", counts.Streaming)
+	}
+	if counts.Total != 1 {
+		t.Errorf("committed marker appears %d times in #messages, want exactly 1 (duplicate message on rejoin)", counts.Total)
+		var dump struct {
+			Text  string
+			Child string
+		}
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var m = document.getElementById('messages');
+				return { text: m ? m.innerText.slice(0, 500) : 'NO #messages', child: m ? m.innerHTML.slice(0, 400) : '' };
+			})()`, &dump),
+		)
+		t.Logf("messages after rejoin: text=%q child=%q", dump.Text, dump.Child)
+	}
+}
+
+func mustSessionID(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	var id string
+	err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`location.pathname.split('/').pop()`, &id),
+	)
+	if err != nil || id == "" {
+		t.Fatalf("read session ID failed: %v", err)
+	}
+	return id
 }
 
 // ————— Fast run / streaming tests ————— —
