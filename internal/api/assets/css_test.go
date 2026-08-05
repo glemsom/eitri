@@ -565,6 +565,125 @@ func TestEmbeddedCSSWorkspaceIndicatorSingleDefinition(t *testing.T) {
 	t.Logf("%d workspace-indicator rule(s) found", len(defs))
 }
 
+// mediaBlockRules returns the rules nested inside the first @media block whose
+// condition text exactly matches cond, or nil if no such block exists.
+func mediaBlockRules(css, cond string) []cssRule {
+	for _, r := range parseCSSRules(css) {
+		if strings.TrimSpace(r.selector) == "@media "+cond {
+			return parseCSSBlock(r.body, 0, len(r.body))
+		}
+	}
+	return nil
+}
+
+// ruleBody returns the body of the first rule in rules whose selector group
+// contains exactly sel, or "" if absent.
+func ruleBody(rules []cssRule, sel string) string {
+	for _, r := range rules {
+		for _, part := range strings.Split(r.selector, ",") {
+			if strings.TrimSpace(part) == sel {
+				return r.body
+			}
+		}
+	}
+	return ""
+}
+
+// TestEmbeddedCSSPrefersReducedMotion verifies the stylesheet honours
+// prefers-reduced-motion: reduce by collapsing every decorative/infinite
+// animation — the box-shadow glow pulses, face breathing, typing dots,
+// spinners, opacity pulses, and the undo countdown width animation — to a
+// static render instead of looping. (issue #1075)
+func TestEmbeddedCSSPrefersReducedMotion(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	rules := mediaBlockRules(css, "(prefers-reduced-motion: reduce)")
+	if rules == nil {
+		t.Fatal("missing @media (prefers-reduced-motion: reduce) block")
+	}
+
+	// Selectors whose infinite/decorative animation must be disabled. The
+	// avatar glow states also get a static box-shadow so stream status stays
+	// visible without pulsing.
+	collapsed := []string{
+		`.streaming-message .message-avatar-container[data-stream-status="connecting"]`,
+		`.streaming-message .message-avatar-container[data-stream-status="tool-running"]`,
+		`.streaming-message .message-avatar-container[data-stream-status="streaming"]`,
+		`.streaming-message .message-avatar-container[data-stream-status="streaming"] .message-avatar`,
+		`.streaming-message .message-avatar-container[data-stream-status="tool-running"] .message-avatar`,
+		`.header-face-container[data-stream-status="streaming"] .header-face`,
+		`.header-face-container[data-stream-status="tool-running"] .header-face`,
+		`.typing-dots span`,
+		`.model-refresh-spinner`,
+		`.test-connection-pending`,
+		`.undo-toast-bar`,
+	}
+	for _, sel := range collapsed {
+		body := ruleBody(rules, sel)
+		if body == "" {
+			t.Errorf("reduced-motion block missing rule for %s", sel)
+			continue
+		}
+		if !strings.Contains(body, "animation: none") {
+			t.Errorf("%s must collapse to animation: none under reduced motion, got: %s", sel, body)
+		}
+	}
+	t.Logf("reduced-motion block disables %d infinite/decorative animations", len(collapsed))
+}
+
+// TestEmbeddedCSSPrefersReducedTransparency verifies the stylesheet honours
+// prefers-reduced-transparency: reduce by replacing backdrop-filter glass
+// panels (dropdowns, menus, modals, sticky footer) with solid fills and no
+// backdrop blur. (issue #1075)
+func TestEmbeddedCSSPrefersReducedTransparency(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	rules := mediaBlockRules(css, "(prefers-reduced-transparency: reduce)")
+	if rules == nil {
+		t.Fatal("missing @media (prefers-reduced-transparency: reduce) block")
+	}
+
+	// Every backdrop-filter surface must lose the blur and gain an explicit
+	// solid background. The overlay scrim keeps its dimming background (it is
+	// not a glass panel) but must still drop the backdrop blur.
+	glassPanels := []string{
+		".dropdown-content",
+		".persona-dropdown",
+		".completion-menu",
+		".confirmation-modal",
+		".directory-browser-modal",
+		".form-actions-sticky",
+		".confirmation-overlay",
+		".directory-browser-overlay",
+	}
+	for _, sel := range glassPanels {
+		body := ruleBody(rules, sel)
+		if body == "" {
+			t.Errorf("reduced-transparency block missing rule for %s", sel)
+			continue
+		}
+		if !strings.Contains(body, "backdrop-filter: none") {
+			t.Errorf("%s must set backdrop-filter: none under reduced transparency, got: %s", sel, body)
+		}
+		if !strings.Contains(body, "background:") {
+			t.Errorf("%s must declare a solid background under reduced transparency, got: %s", sel, body)
+		}
+	}
+	t.Logf("reduced-transparency block de-glasses %d surfaces", len(glassPanels))
+}
+
 func stripCSSComments(s string) string {
 	for {
 		start := strings.Index(s, "/*")
