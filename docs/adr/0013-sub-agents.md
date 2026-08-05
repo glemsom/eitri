@@ -1,6 +1,6 @@
 # 0013 — Sub-agent support via delegate/collect tools
 
-- **Status:** Accepted
+- **Status:** Accepted (amended ADR-0013a — sub-agents gain the `skill` tool, issue #1092)
 - **Date:** 2025-07-17
 
 ## Context
@@ -22,8 +22,8 @@ Add two new built-in tools: `delegate` and `collect`.
 ### Sub-agent behaviour
 
 - Same model, workspace, and command timeout as the parent
-- Full toolset minus `delegate`, `collect`, `render_quick_replies`, and `skill` (no recursion, no UI-only tools)
-- System prompt: default prompt + "You are performing the following task: {task}"
+- Toolset: base tools + `skill` (no `delegate`, `collect`, `render_quick_replies` — no recursion, no UI-only tools). `skill` is a leaf capability: loading skill content does not enable delegation or any other parent-only tool. *(Amended 2026-08-05, issue #1092 — `skill` was previously excluded from the sub-agent toolset.)*
+- System prompt: the sub-agent inherits the same prompt contract as a parent — the persona (the parent's active persona, or a persona named explicitly via `delegate`'s `persona` parameter), repository instructions, and skills catalog are assembled by the shared prompt builder. A persona with required skills therefore emits the `<required_skills>` directive, and the sub-agent loads each required skill via `skill()` on its first turn, exactly like a parent. The task description is appended as the final instruction: "{system prompt}\n\nYou are performing the following task: {task}". *(Amended 2026-08-05, issue #1092 — previously described as starting fresh with the default prompt.)*
 - Uses `requestHistoryManager` for history (no session persistence by default)
 - No confirmation prompts (confirmer is nil — confirmation-dependent operations return errors)
 
@@ -42,8 +42,8 @@ Child sessions are created only when `delegate` is called from a parent that has
 ### When to delegate: context management pattern
 
 Sub-agents have their **own independent context window**, separate from the parent.
-The parent system prompt (skills, repo instructions, history) is **not** forwarded —
-the sub-agent starts fresh with `DefaultSystemPrompt + task description`.
+The parent's conversation history is **not** forwarded — the sub-agent starts
+from the persona prompt contract (see above) plus the task description.
 
 This makes delegation ideal for data-intensive work that would bloat the
 parent's context window:
@@ -77,8 +77,8 @@ until all are done.
 | Decision | Chosen | Rejected alternatives |
 |----------|--------|----------------------|
 | **Sync vs async** | Non-blocking delegate + blocking collect | Fully blocking (can only spawn one per turn), fully async with result polling (more complex) |
-| **Toolset** | Full minus delegate/collect/quick_replies/skill | Read-only (too restrictive for real work), full with recursion (risk of infinite loops) |
-| **Sub-agent prompt** | Default + task description | Inherit full parent prompt (bloated, distracts sub-agent), generic default only (no task context) |
+| **Toolset** | Base + `skill` (no delegate/collect/quick_replies) | Read-only (too restrictive for real work), full with recursion (risk of infinite loops), base without skill (sub-agent cannot honor a persona's required skills) |
+| **Sub-agent prompt** | Persona prompt contract (persona/repo-instructions/skills catalog) + task description | Inherit full parent conversation (bloated, distracts sub-agent), generic default only (no task context, drops persona-required skills) |
 | **Recursion depth** | No nesting | Unlimited (risk of resource explosion), depth-capped (more complex) |
 | **Cancellation** | Cascade from parent context | No cancel (sub-agents run to completion or max turns), explicit per-task `cancel` tool |
 | **UI model** | Sidebar tree with parent/child session nesting | Inline within parent conversation (cluttered), no UI (invisible sub-agents) |

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -524,22 +526,144 @@ func TestRunService_Cancel_CancelsSubAgents(t *testing.T) {
 	}
 }
 
-func TestRunService_BuildBaseToolRegistry_ExcludesDelegateCollect(t *testing.T) {
+func TestRunService_BuildBaseToolRegistry_SubAgentToolset(t *testing.T) {
 	cfg := RunConfig{Workspace: t.TempDir()}
-	reg := buildBaseToolRegistry(cfg, nil, nil, nil)
 
-	// Must include basic tools
-	for _, name := range []string{"bash", "grep", "read", "write", "edit", "render_mermaid_diagram", "web_fetch"} {
+	// Sub-agent toolset = base + skill (issue #1092). With a skills service
+	// wired, the skill tool is registered alongside the base tools so a
+	// sub-agent inheriting a persona with required skills can load them.
+	reg := buildBaseToolRegistry(cfg, nil, skills.NewService(), nil)
+
+	// Must include base tools plus skill
+	for _, name := range []string{"bash", "grep", "read", "write", "edit", "render_mermaid_diagram", "web_fetch", "skill"} {
 		if reg.Lookup(name) == nil {
-			t.Errorf("base tool registry missing %q", name)
+			t.Errorf("sub-agent tool registry missing %q", name)
 		}
 	}
 
-	// Must NOT include delegate/collect/quick_replies/skill
-	for _, name := range []string{"delegate", "collect", "render_quick_replies", "skill"} {
+	// Must NOT include delegate/collect/quick_replies (parent-only / UI-only)
+	for _, name := range []string{"delegate", "collect", "render_quick_replies"} {
 		if reg.Lookup(name) != nil {
-			t.Errorf("base tool registry should NOT include %q", name)
+			t.Errorf("sub-agent tool registry should NOT include %q", name)
 		}
+	}
+
+	// Without a skills service, no skill tool is registered at all.
+	regNoSkills := buildBaseToolRegistry(cfg, nil, nil, nil)
+	if regNoSkills.Lookup("skill") != nil {
+		t.Error("skill tool must not be registered without a skills service")
+	}
+}
+
+// TestRunService_SpawnSubAgent_PersonaRequiredSkillFlow verifies that a
+// sub-agent spawned from a parent whose persona requires skills honors the
+// <required_skills> directive: the skill tool is registered, the directive is
+// emitted in the sub-agent system prompt, and the agent can load each required
+// skill via skill() on its first turn — the loaded content flows into the
+// sub-agent conversation. The flow is exercised in both UI mode (a UI session
+// manager wired) and batch mode (none) — the sub-agent toolset is shared
+// (issue #1092).
+func TestRunService_SpawnSubAgent_PersonaRequiredSkillFlow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ui   bool
+	}{
+		{name: "ui mode", ui: true},
+		{name: "batch mode", ui: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace, homeDir, skillsSvc := testPersonaWithRequiredSkill(t)
+
+			var sawSkillTool, sawDirective, sawSkillContent bool
+			var mu sync.Mutex
+			reqCount := 0
+			llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, "read body", http.StatusBadRequest)
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+
+				mu.Lock()
+				reqCount++
+				thisReq := reqCount
+				mu.Unlock()
+
+				if bytes.Contains(body, []byte(`"name":"skill"`)) {
+					sawSkillTool = true
+				}
+				// Go's encoding/json HTML-escapes < and > to \u003c/\u003e on the wire.
+				if bytes.Contains(body, []byte(`\u003crequired_skills\u003e`)) {
+					sawDirective = true
+				}
+				// First turn: the sub-agent decides to load its required skill via skill().
+				if thisReq == 1 {
+					fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_skill","type":"function","function":{"name":"skill","arguments":"{\"name\":\"test-review-skill\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+					fmt.Fprint(w, "data: [DONE]\n\n")
+					return
+				}
+				// Second turn: the loaded skill content is in history; finish up.
+				if bytes.Contains(body, []byte("Review the code for potential bugs and security issues.")) {
+					sawSkillContent = true
+				}
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"review complete"},"index":0}]}`, "\n\n")
+				fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			}))
+			defer llm.Close()
+
+			var uiSessionMgr *uisession.Manager
+			if tc.ui {
+				uiSessionMgr = uisession.NewManager(10, t.TempDir())
+			}
+			svc := NewRunService(RunServiceDeps{
+				UISessionMgr:      uiSessionMgr,
+				HistorySessionMgr: history.NewSessionManager(50),
+				SkillsService:     skillsSvc,
+			})
+			cfg := RunConfig{
+				ProviderID:    "opencode_go",
+				BaseURL:       llm.URL,
+				APIKey:        "test-key",
+				ModelName:     "test-model",
+				Workspace:     workspace,
+				HomeDir:       homeDir,
+				ActivePersona: "test-reviewer",
+				MaxTurns:      5,
+			}
+			svc.subagents.StoreParentCfg("parent-1", cfg)
+
+			taskID, err := svc.SpawnSubAgent(context.Background(), "parent-1", "review the code", 5, "")
+			if err != nil {
+				t.Fatalf("SpawnSubAgent: %v", err)
+			}
+
+			rec := svc.subagents.getRecord(taskID)
+			if rec == nil {
+				t.Fatal("sub-agent record not found")
+			}
+			select {
+			case <-rec.Done:
+			case <-time.After(15 * time.Second):
+				t.Fatal("sub-agent did not finish within 15s")
+			}
+			if rec.Status != subAgentCompleted {
+				t.Fatalf("sub-agent status = %q, want %q (err: %v)", rec.Status, subAgentCompleted, rec.Err)
+			}
+			if !strings.Contains(rec.Result, "review complete") {
+				t.Fatalf("unexpected sub-agent result: %q", rec.Result)
+			}
+			if !sawDirective {
+				t.Error("sub-agent system prompt did not carry the <required_skills> directive")
+			}
+			if !sawSkillTool {
+				t.Error("sub-agent request did not register the skill tool")
+			}
+			if !sawSkillContent {
+				t.Error("loaded skill content did not flow into the sub-agent conversation")
+			}
+		})
 	}
 }
 

@@ -140,8 +140,9 @@ func (sn *subAgentSnapshotter) terminal(sseState *runstate.State, termination *r
 
 // SpawnSubAgent starts a sub-agent in the background to complete the given task.
 // Returns a unique task ID immediately. The sub-agent runs with its own LLM
-// service, tool registry (restricted — no delegate/collect/quick_replies/skill),
-// and request-based history manager (no browser session persistence).
+// service, tool registry (base + skill — no delegate/collect/quick_replies,
+// so sub-agents cannot recurse or emit UI-only tools), and request-based
+// history manager (no browser session persistence).
 //
 // personaName is an optional persona name. If non-empty, the sub-agent resolves
 // that persona from disk and uses its system prompt + injected skills. If the
@@ -185,9 +186,10 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		slog.Int("max_turns", maxTurns),
 	)
 
-	// Build LLM service, tool registry, and system prompt (same provider/model as parent, restricted tools).
-	// The task ID and recorder are passed so sub-agent LLM calls feed the same
-	// trace recorder and interaction metrics as their parent (issue #987).
+	// Build LLM service, tool registry, and system prompt (same provider/model
+	// as parent; sub-agent toolset = base + skill). The task ID and recorder
+	// are passed so sub-agent LLM calls feed the same trace recorder and
+	// interaction metrics as their parent (issue #987).
 	llmSvc, toolReg, basePrompt, err := buildLLMService(ctx, parentCfg, taskID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
 	if err != nil {
 		return "", fmt.Errorf("sub-agent LLM service: %w", err)
@@ -535,9 +537,11 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 	s.subagents.CancelForSession(sessionID)
 }
 
-// buildBaseToolRegistry creates a tool registry with all standard tools
-// except delegate, collect, render_quick_replies, and skill (which are
-// only available to parent agents, not sub-agents).
+// buildBaseToolRegistry creates a tool registry with the standard tools plus
+// the skill tool (when a skills service is wired) — the sub-agent toolset
+// (issue #1092). delegate, collect, and render_quick_replies are parent-only
+// / UI-only: delegate and collect are registered by the parent-run
+// preparation seam, render_quick_replies only when a UI session exists.
 func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
 	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout, cfg.Sandbox))
@@ -548,5 +552,8 @@ func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.
 	reg.Register(tool.NewRenderMermaidDiagram())
 	reg.Register(tool.NewWebFetchTool())
 	reg.Register(tool.NewBrowserTool(cfg.BrowserWsUrl, cfg.Workspace))
+	if skillsSvc != nil {
+		reg.Register(tool.NewSkill(skillsSvc, uiSessionMgr))
+	}
 	return reg
 }
