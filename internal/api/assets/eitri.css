@@ -299,7 +299,10 @@
     display: none;
   }
 
-  /* Code blocks — Prism overrides for light theme */
+  /* Code blocks — Prism overrides for light theme. The vendored prism.min.css
+     is injected on demand (after eitri.css), so these palette swaps need
+     !important to outrank it; this is a fixed syntax palette, not a theme
+     color (issue #1079). */
   pre[class*="language-"],
   :not(pre) > code[class*="language-"] {
     background: #f6f8fa !important;
@@ -872,16 +875,27 @@ details.tool-entry-wrapper .tool-result {
   opacity: 0.6;
 }
 
-.session-close:hover {
+/* The hover state outranks the row-hover reveal by structure (compound
+   selector) instead of !important (issue #1079). */
+.session-item:hover .session-close:hover {
   color: var(--accent);
-  opacity: 1 !important;
+  opacity: 1;
 }
 
+/* Child sessions keep their nesting indent. margin-left/border-left stay at
+   class specificity so the .active accent border still wins on active
+   children, exactly as before (issue #1079). */
 .session-item-child {
-  padding-left: 2rem !important;
   margin-left: 0.5rem;
   border-left: 2px solid var(--border);
-  border-radius: 0 !important;
+}
+
+/* The indent and square left edge must also hold against the
+   .session-item.active border-radius and the mobile #sidebar compaction,
+   so these are boosted by structure instead of !important (issue #1079). */
+#sidebar .session-item.session-item-child {
+  padding-left: 2rem;
+  border-radius: 0;
 }
 
 .session-item-child .child-session-title {
@@ -1580,42 +1594,44 @@ details[open] .tool-chevron {
   font-size: 0.85rem;
 }
 
-/* Button hierarchy classes for skill page actions (issue #486) */
+/* Button hierarchy classes for skill page actions (issue #486).
+   Hierarchy comes from structured selectors, not !important (issue #1079):
+   the generic <button> and .form-actions rules below are wrapped in :where()
+   so they carry zero specificity, letting these single-class selectors win
+   the cascade on any element — <button>, <a> or <span> — without !important. */
 .btn-primary {
-  background: var(--accent) !important;
-  color: var(--on-accent) !important;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .btn-primary:hover {
   filter: brightness(1.1);
 }
 
 .btn-danger {
-  background: transparent !important;
-  border: 1px solid var(--error) !important;
-  color: var(--error) !important;
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
 }
 .btn-danger:hover {
-  background: var(--error) !important;
-  color: var(--on-accent) !important;
+  background: var(--error);
+  color: var(--on-accent);
 }
 
 .btn-secondary {
-  background: transparent !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text-muted) !important;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
 }
 .btn-secondary:hover {
-  border-color: var(--text-muted) !important;
-  color: var(--text) !important;
+  border-color: var(--text-muted);
+  color: var(--text);
 }
 
-/* Send/Stop CSS toggle classes (issue #103) */
-.send-hidden {
-  display: none !important;
-}
-
-.stop-hidden {
-  display: none !important;
+/* Send/Stop CSS toggle classes (issue #103). Composed with the button
+   classes so the toggle always outranks the base rules (issue #1079). */
+.send-btn.send-hidden,
+.stop-btn.stop-hidden {
+  display: none;
 }
 
 .device-flow-section {
@@ -1887,6 +1903,10 @@ pre:hover .code-btn {
   margin: 0.5rem 0;
 }
 
+/* Mermaid diagram blocks must not inherit Prism code-block chrome (vendored
+   prism.min.css is injected on demand after eitri.css and styles any
+   pre[class*="language-"]), so these overrides intentionally keep
+   !important (issue #1079). */
 pre.mermaid {
   background: transparent !important;
   border: none !important;
@@ -1982,7 +2002,7 @@ pre.code-collapsed {
 }
 
 pre.code-wrapped code {
-  white-space: pre-wrap !important;
+  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -2138,10 +2158,12 @@ eitri-composer {
     padding: 0.75rem;
   }
 
-  /* Mobile: form-actions not sticky */
+  /* Mobile: form-actions not sticky. The sticky variant is only defined in
+     the min-width media query below, so a plain override suffices (no
+     !important needed; issue #1079). */
   .form-actions,
   .form-actions-sticky {
-    position: static !important;
+    position: static;
   }
 }
 
@@ -2783,7 +2805,11 @@ eitri-composer {
 
 /* ============================================
    Base element resets (form controls)
-   ============================================ */
+   ============================================
+   These rules are the low-specificity defaults for native form controls.
+   They are wrapped in :where() so every class-based component (notably the
+   .btn hierarchy, .chat-input, select/textarea overrides) wins the cascade
+   by structure instead of needing !important (issue #1079). */
 
 fieldset {
   border: 1px solid var(--border);
@@ -2800,10 +2826,7 @@ legend {
   margin-left: -0.5rem;
 }
 
-input,
-select,
-textarea,
-button {
+:where(input, select, textarea, button) {
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--text);
@@ -2814,10 +2837,7 @@ button {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-input:focus,
-select:focus,
-textarea:focus,
-button:focus {
+:where(input:focus, select:focus, textarea:focus, button:focus) {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
@@ -2835,7 +2855,7 @@ select:focus {
   border-color: var(--accent);
 }
 
-button {
+:where(button) {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
@@ -2845,29 +2865,29 @@ button {
   transition: background 0.15s, border-color 0.15s;
 }
 
-button:hover {
+:where(button:hover) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
 
-button:focus {
+:where(button:focus) {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
-.form-actions button,
-.form-actions-sticky button {
+/* Defaults for plain (class-less) buttons inside form action bars. These are
+   zero-specificity too, so explicit hierarchy classes (.btn, .btn-*) applied
+   to the same buttons always take precedence (issue #1079). */
+:where(.form-actions button, .form-actions-sticky button) {
   background: var(--accent);
 }
 
-.form-actions button[type="button"],
-.form-actions-sticky button[type="button"] {
+:where(.form-actions button[type="button"], .form-actions-sticky button[type="button"]) {
   background: var(--surface-alt);
   border-color: var(--border);
   color: var(--text);
 }
 
-.form-actions button[type="button"]:hover,
-.form-actions-sticky button[type="button"]:hover {
+:where(.form-actions button[type="button"]:hover, .form-actions-sticky button[type="button"]:hover) {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
@@ -2892,8 +2912,7 @@ textarea {
   opacity: 0.6;
 }
 
-.form-actions button:focus,
-.form-actions-sticky button:focus {
+:where(.form-actions button:focus, .form-actions-sticky button:focus) {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
@@ -3243,7 +3262,7 @@ eitri-context {
 
 .directory-browser-actions .btn-primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .directory-browser-actions .btn-primary:hover {
