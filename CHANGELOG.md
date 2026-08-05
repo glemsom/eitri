@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session callers have been migrated to the shared read accessors from #979: every read-only call site of the copying getters (`Get`/`GetValidated` ownership checks, `GetMeta`, `GetConversation`, `GetConfig`) now reads via `GetMetaShared`/`GetConversationShared`/`GetConfigShared`, eliminating the per-request full-conversation deep copy on the chat, render, compact, skills, workspace, and run-status paths. The copying getters stay for callers that genuinely need a detached facade — JSON snapshot serialization, the ChatPage/ReportPage template rendering path, and the debug endpoints (which are polled concurrently with active runs) — each documented at its call site. (#980)
 
 - Per-request HTTP logging is now suppressed in test binaries, so failed-test output dumps stay lean — production servers still log every request at Info level. Test coverage for the request-log fields moved to a direct unit test. (#1031)
+- `make test` and `make test-race` now print a single compact verdict line (packages passed/failed, failing test names, and DATA RACE warnings with `-race`) plus only the failing tests' error excerpts, instead of one boilerplate line per package. Full raw output is teed to `dist/test-output.log` / `dist/test-race-output.log` for on-demand grepping, and the exit code mirrors `go test`. (#1032, #1033)
 
 ### Fixed
 

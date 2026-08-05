@@ -20,13 +20,13 @@ clean:
 	rm -f $(BINARY)
 	rm -rf $(BUILD_DIR)
 
-## test — run all tests (fast, no race detector)
+## test — run all tests (fast, no race detector), compact verdict, full log in dist/
 test:
-	$(GO) test ./...
+	./scripts/test.sh
 
-## test-race — run all tests with race detector
+## test-race — run all tests with race detector, compact verdict, full log in dist/
 test-race:
-	$(GO) test -race ./...
+	./scripts/test.sh --race
 
 ## release — build linux/amd64 release tarball + checksums (default platform)
 release: _clean-checksums release-linux-amd64
@@ -76,8 +76,8 @@ help:
 	@echo "Usage:"
 	@echo "  make build              Compile the eitri binary (with embedded version)"
 	@echo "  make clean              Remove build artifacts (binary + dist/)"
-	@echo "  make test               Run all tests (fast, no race detector)"
-	@echo "  make test-race          Run all tests with race detector"
+	@echo "  make test               Run all tests, compact verdict (full log in dist/test-output.log)"
+	@echo "  make test-race          Run all tests with race detector, compact verdict (log in dist/test-race-output.log)"
 	@echo "  make lint               Run golangci-lint with strict config"
 	@echo "  make release            Build linux/amd64 tarball + checksums"
 	@echo "  make release-all        Build tarball for linux/amd64"

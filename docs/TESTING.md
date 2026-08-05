@@ -5,18 +5,41 @@ Eitri uses Go unit/integration tests and browser-based E2E tests (via chromedp).
 ## Quick start
 
 ```bash
-# Run all tests (browser tests skip gracefully if Chrome not found)
-go test ./...
+# Run all tests with compact summary (browser tests skip gracefully if Chrome not found)
+make test
 
-# Run with race detector
+# Run with race detector (same compact summary; DATA RACE warnings surfaced)
 make test-race
 
-# Full release readiness gate (includes race + browser tests)
+# Full release readiness gate (includes race + browser tests, verbose output)
 make release-check
 
 # Run a specific package
-go test ./internal/api/ -v -run TestHealth
+cd internal/api && go test -v -run TestHealth
 ```
+
+### Compact test summary
+
+`make test` and `make test-race` route `go test` through `scripts/test.sh`,
+which replaces the per-package boilerplate with a single verdict line:
+
+```
+VERDICT: FAIL 1/15 packages failed (14 passed, 2 failed test(s): TestLogin,TestWorkspace) in 47s — full log: dist/test-output.log
+```
+
+- **Verdict line** — one line with packages passed/failed and failing test
+  names (comma-separated, truncated at 12). All-pass runs print
+  `VERDICT: PASS N/N packages in …s`.
+- **Failure details** — only the failing tests' `--- FAIL:` headers and their
+  error excerpts are printed; passing-test output is not shown.
+- **DATA RACE** — `make test-race` counts `DATA RACE` warnings in the verdict
+  line and prints each full race report.
+- **Build failures** — compile/vet error blocks (`# package` + errors) are
+  surfaced instead of the raw `[build failed]` summary.
+- **Artifact** — the full raw `go test` output is teed to
+  `dist/test-output.log` (or `dist/test-race-output.log` for `--race`) so
+  details can be grepped on demand. The file is overwritten on each run.
+- **Exit code** — mirrors `go test` (0 all pass, 1 test/build failures).
 
 ## Test layers
 
