@@ -36,6 +36,12 @@
       this.debounceTimer = null;
       this._token = null;
 
+      // Draft persistence (issue #974)
+      this._draftKey = 'eitri:composer-draft:' + this.sessionId;
+      this._draftDebounceMs = 300;
+      this._draftTimer = null;
+      this._restoreDraft();
+
       this._setupMenu();
       this._bindEvents();
       this._trackComposerHeight();
@@ -149,6 +155,12 @@
         window.visualViewport.removeEventListener('resize', this._visualViewportHandler);
         window.visualViewport.removeEventListener('scroll', this._visualViewportHandler);
       }
+      // Flush any pending draft write before teardown (issue #974)
+      if (this._draftTimer) {
+        window.clearTimeout(this._draftTimer);
+        this._draftTimer = null;
+        this._saveDraftNow();
+      }
     }
 
 
@@ -173,6 +185,7 @@
       this.textarea.addEventListener('input', () => {
         this._onInput();
         this._autoResize();
+        this._scheduleDraftSave();
       });
       this.textarea.addEventListener('keydown', (e) => this._onKeydown(e));
       this.textarea.addEventListener('blur', () => setTimeout(() => this._closeMenu(), 200));
@@ -393,6 +406,7 @@
     _submitForm() {
       if (this.textarea.disabled) return;
       this._closeMenu();
+      this._clearDraft();
       const sendBtn = this.form.querySelector('#send-btn');
       if (sendBtn) {
         sendBtn.click();
@@ -482,6 +496,52 @@
       this._token = null;
       this.textarea.setAttribute('aria-expanded', 'false');
       this.textarea.removeAttribute('aria-activedescendant');
+    }
+
+    // ---- Draft persistence (issue #974) ----
+
+    _scheduleDraftSave() {
+      if (!this.sessionId) return;
+      window.clearTimeout(this._draftTimer);
+      this._draftTimer = window.setTimeout(() => {
+        this._draftTimer = null;
+        this._saveDraftNow();
+      }, this._draftDebounceMs);
+    }
+
+    _saveDraftNow() {
+      if (!this.sessionId) return;
+      try {
+        var value = this.textarea.value;
+        if (value) {
+          localStorage.setItem(this._draftKey, value);
+        } else {
+          localStorage.removeItem(this._draftKey);
+        }
+      } catch (e) {
+        // localStorage may be unavailable (quota, disabled, private mode) — ignore
+      }
+    }
+
+    _restoreDraft() {
+      if (!this.sessionId) return;
+      try {
+        var saved = localStorage.getItem(this._draftKey);
+        if (saved) {
+          this.textarea.value = saved;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    _clearDraft() {
+      if (!this.sessionId) return;
+      try {
+        localStorage.removeItem(this._draftKey);
+      } catch (e) {
+        // ignore
+      }
     }
   }
 
