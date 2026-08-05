@@ -397,6 +397,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/debug", s.handleDebugUmbrella)
 	s.mux.HandleFunc("GET /api/debug/http", s.handleDebugHTTP)
 	s.mux.HandleFunc("GET /api/debug/http/{trace_id}", s.handleDebugHTTPByID)
+	s.mux.HandleFunc("GET /api/debug/traces", s.handleDebugTraces)
+	s.mux.HandleFunc("GET /api/debug/traces/aggregate", s.handleDebugTracesAggregate)
 
 	// Session file serving for screenshot images and other workspace files (issue #924)
 	s.mux.HandleFunc("GET /sessions/{id}/files/{filename}", s.handleSessionFile)

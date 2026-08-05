@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -400,6 +402,126 @@ func (s *Server) handleDebugHTTPByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, trace)
+}
+
+// maxPersistedTraceLimit caps the limit parameter of the persisted-trace
+// query endpoints. The in-memory endpoints cap at 100 because they read a
+// bounded ring buffer; the persisted archive can be much larger, so callers
+// get more headroom (pagination via offset covers the rest).
+const maxPersistedTraceLimit = 1000
+
+// parseTraceFilter parses the shared query parameters of the persisted-trace
+// endpoints: session_id, provider_id, model, from, to, limit and offset.
+// Returns a 400-style error message when a parameter is malformed.
+func parseTraceFilter(r *http.Request) (persist.TraceFilter, string) {
+	q := r.URL.Query()
+	filter := persist.TraceFilter{
+		SessionID:  q.Get("session_id"),
+		ProviderID: q.Get("provider_id"),
+		Model:      q.Get("model"),
+	}
+	for _, field := range []struct {
+		name string
+		dst  *time.Time
+	}{
+		{"from", &filter.From},
+		{"to", &filter.To},
+	} {
+		if v := q.Get(field.name); v != "" {
+			ts, err := parseTraceTime(v)
+			if err != nil {
+				return persist.TraceFilter{}, "invalid " + field.name + ": " + err.Error()
+			}
+			*field.dst = ts
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return persist.TraceFilter{}, "invalid limit: expected a non-negative integer"
+		}
+		if n > maxPersistedTraceLimit {
+			n = maxPersistedTraceLimit
+		}
+		filter.Limit = n
+	} else {
+		filter.Limit = 20 // default page size
+	}
+	if v := q.Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return persist.TraceFilter{}, "invalid offset: expected a non-negative integer"
+		}
+		filter.Offset = n
+	}
+	return filter, ""
+}
+
+// parseTraceTime parses a query-parameter timestamp. RFC3339 with optional
+// fractional seconds is accepted (RFC3339Nano's layout also parses plain
+// RFC3339 timestamps).
+func parseTraceTime(v string) (time.Time, error) {
+	ts, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("expected RFC3339 timestamp (e.g. 2026-01-02T15:04:05Z): %q", v)
+	}
+	return ts, nil
+}
+
+// handleDebugTraces handles GET /api/debug/traces: query the persisted trace
+// archive (on disk) by session_id / provider_id / model / time range, with
+// limit/offset pagination. Unlike /api/debug/http, this reads the full
+// historical archive — not just the restored in-memory ring buffer.
+func (s *Server) handleDebugTraces(w http.ResponseWriter, r *http.Request) {
+	if s.config.Persister == nil {
+		writeError(w, http.StatusNotFound, "persisted trace archive not available")
+		return
+	}
+
+	filter, errMsg := parseTraceFilter(r)
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, errMsg)
+		return
+	}
+
+	page, err := s.config.Persister.QueryTraces(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to query persisted traces: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// traceAggregateResponse is the shape returned by GET /api/debug/traces/aggregate.
+type traceAggregateResponse struct {
+	GeneratedAt time.Time `json:"generated_at"`
+	persist.TraceAggregate
+}
+
+// handleDebugTracesAggregate handles GET /api/debug/traces/aggregate: window
+// aggregates (count, error rate, p50/p95 latency, token totals) over the
+// persisted trace archive using the same filters as /api/debug/traces.
+func (s *Server) handleDebugTracesAggregate(w http.ResponseWriter, r *http.Request) {
+	if s.config.Persister == nil {
+		writeError(w, http.StatusNotFound, "persisted trace archive not available")
+		return
+	}
+
+	filter, errMsg := parseTraceFilter(r)
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, errMsg)
+		return
+	}
+	// The aggregate is a window summary — pagination parameters are ignored.
+	filter.Limit = 0
+	filter.Offset = 0
+
+	agg, err := s.config.Persister.AggregateTraces(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to aggregate persisted traces: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, traceAggregateResponse{GeneratedAt: time.Now(), TraceAggregate: *agg})
 }
 
 // debugUmbrellaResponse is the shape returned by GET /api/debug.

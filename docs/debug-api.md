@@ -57,6 +57,7 @@ The API reads state from three sources:
 | **Session Manager** | In-memory UI sessions (`Message`, `Status`, `ActiveSkills`, `Components`). Always available. |
 | **RunService** | Active run state per session (`RunState` — cancel, done signal, SSE state). Only available while a run is in progress. |
 | **HTTP Trace Recorder** | Bounded ring-buffer of LLM provider HTTP requests/responses. Available once at least one LLM call has been recorded. |
+| **Persisted Trace Archive** | Full on-disk trace history (`<data-dir>/sessions/*/traces/*.json`), queried by `GET /api/debug/traces` and `GET /api/debug/traces/aggregate`. Available once a persister is configured. |
 
 A session can exist in the session manager without an active run or recorded
 HTTP traces. In that case the debug response omits those sections.
@@ -216,6 +217,100 @@ curl -sS "$BASE/api/debug/http/trace-abc123" | jq .
 ```
 
 Returns `404` if the trace ID is unknown.
+
+### `GET /api/debug/traces`
+
+Query the **persisted** HTTP trace archive (on disk) by session, provider,
+model, and time range. Unlike `/api/debug/http` — which reads only the
+restored in-memory ring buffer (last ~20) — this endpoint covers the full
+historical archive across all sessions and restarts.
+
+```sh
+# All persisted traces, most recent first (default limit 20)
+curl -sS "$BASE/api/debug/traces" | jq '.total, (.traces | length)'
+
+# Filter by session, provider, and model
+curl -sS "$BASE/api/debug/traces?session_id=abc123&provider_id=opencode_go&model=deepseek-v4" | jq .
+
+# Time range (RFC3339; from inclusive, to exclusive)
+curl -sS "$BASE/api/debug/traces?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z" | jq .
+
+# Paginate
+curl -sS "$BASE/api/debug/traces?limit=50&offset=100" | jq '.total, (.traces | length)'
+```
+
+Query parameters:
+
+- `session_id`: filter to one session.
+- `provider_id`: filter by provider (e.g. `opencode_go`, `github_copilot`).
+- `model`: filter by model name.
+- `from`: inclusive lower bound on `timestamp` (RFC3339).
+- `to`: exclusive upper bound on `timestamp` (RFC3339).
+- `limit`: max traces to return (default 20, max 1000).
+- `offset`: how many most-recent matches to skip (pagination).
+
+Response shape:
+
+- `total`: number of matching traces ignoring `limit`/`offset` (for
+  pagination).
+- `offset`, `limit`: echoed back.
+- `traces`: matching traces, most recent first. Each trace has the same fields
+  as `GET /api/debug/http` (see the table above).
+
+Traces of permanently deleted sessions (no `session.json` on disk) are
+excluded. Returns `404` when no persisted archive is available (persister
+disabled).
+
+### `GET /api/debug/traces/aggregate`
+
+Window aggregate over the persisted trace archive using the same filters as
+`GET /api/debug/traces` (no pagination — the aggregate spans the whole
+window). Returns count, error rate, latency percentiles, and token totals.
+
+```sh
+curl -sS "$BASE/api/debug/traces/aggregate?provider_id=opencode_go" | jq .
+```
+
+Query parameters: `session_id`, `provider_id`, `model`, `from`, `to` (same
+semantics as above). `limit`/`offset` are ignored.
+
+Response shape:
+
+- `generated_at`: aggregate computation timestamp.
+- `count`: number of traces in the window.
+- `error_count`: failed calls (non-2xx status or transport error).
+- `error_rate`: `error_count / count` in [0, 1] (0 for an empty window).
+- `p50_latency_ms`, `p95_latency_ms`: latency percentiles over all windowed
+  call durations.
+- `tokens`: provider-reported token totals (`prompt_tokens`,
+  `completion_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+  `total_tokens`). `total_tokens` is derived from the four components, so it is
+  correct even for traces recorded before usage enrichment.
+- `from`, `to`: oldest and newest trace timestamps in the matching window.
+
+Example:
+
+```json
+{
+  "generated_at": "2026-08-05T10:02:07Z",
+  "count": 42,
+  "error_count": 3,
+  "error_rate": 0.07142857142857142,
+  "p50_latency_ms": 1250,
+  "p95_latency_ms": 4800,
+  "tokens": {
+    "prompt_tokens": 12450,
+    "completion_tokens": 6230,
+    "cache_read_tokens": 3100,
+    "cache_write_tokens": 900,
+    "total_tokens": 22680
+  },
+  "from": "2026-08-01T08:00:00Z",
+  "to": "2026-08-05T10:02:07Z"
+}
+```
+
+Returns `404` when no persisted archive is available.
 
 ### `GET /api/debug/runtime`
 
@@ -408,6 +503,10 @@ Traces and run timelines are not limited to the in-memory ring buffer:
   remain queryable after a restart. Writes go through a bounded async worker
   (256 queued) so disk I/O never blocks the HTTP response path; if the queue is
   ever full, the trace is deferred and the shutdown flush persists it.
+- The **persisted archive** is exposed through `GET /api/debug/traces`
+  (query) and `GET /api/debug/traces/aggregate` (window aggregate), so the
+  full historical archive is queryable — not just the last ~20 traces restored
+  into the in-memory recorder.
 - **Run timelines** are written to
   `<data-dir>/sessions/<session_id>/timeline/<started_at>.json` at the end of
   each run (one condensed timeline file per run).
@@ -472,6 +571,24 @@ curl -sS "$BASE/api/debug/http" \
   | jq '.traces | sort_by(.duration_ms) | reverse[:3] | .[] | {timestamp, session_id, duration_ms, request_bytes, response_bytes}'
 ```
 
+### Query the historical archive across restarts
+
+The in-memory ring buffer holds only the last ~20 traces. To see the full
+archive (e.g. last week across all sessions), query the persisted store:
+
+```sh
+# Last 7 days, newest first, one page at a time
+FROM=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+curl -sS "$BASE/api/debug/traces?from=$FROM&limit=100" \
+  | jq '{total, traces: [.traces[] | {timestamp, session_id, provider_id, model, status, duration_ms}]}'
+
+# Paginate through everything
+curl -sS "$BASE/api/debug/traces?limit=100&offset=100" | jq '.traces | length'
+
+# Aggregate a window: calls, error rate, p50/p95 latency, token totals
+curl -sS "$BASE/api/debug/traces/aggregate?from=$FROM" | jq .
+```
+
 ## Implementation Notes
 
 - The recorder is created during startup in `cmd/eitri/main.go` and injected
@@ -491,10 +608,13 @@ curl -sS "$BASE/api/debug/http" \
 
 ## Limitations (v1)
 
-- Traces and run timelines are persisted to disk (bounded by the 1 GiB
-  retention cap; see [Persistence](#persistence)) but the debug API itself has
-  no query surface over the historical archive — only the restored in-memory
-  recorder contents are exposed.
+- The persisted-trace query (`GET /api/debug/traces`) reads the archive from
+  disk on each request; very large archives make a full-scan query slower than
+  the in-memory ring-buffer endpoints. Use `session_id`, `provider_id`,
+  `model`, and time-range filters to narrow the scan, and `limit`/`offset` for
+  pagination.
+- Traces of permanently deleted sessions are excluded from the archive (their
+  files are removed on delete), so historical queries cannot see them.
 - No deep debug toggle (always captures at full available detail).
 - No rewind or other state-mutation endpoints.
 - No pprof endpoints.
