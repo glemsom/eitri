@@ -136,7 +136,15 @@ The `CalibrationStore` starts each model at a default CPT of 4.0. After each str
 
 | File | Responsibility |
 |------|---------------|
-| `session.go` | `Manager` — in-memory `UISession` records with browser_id ownership, max-session cap, title generation |
+| `types.go` | Shared types — `UISession`, `SessionMeta`, `Conversation`, `SessionConfig`, `Status`, `Manager` struct |
+| `manager.go` | `Manager` lifecycle — construction, CRUD, browser-ownership checks, session cap, disk snapshot loads |
+| `helpers.go` | Internal assemble/split helpers and session ID generation |
+| `metadata.go` | Session metadata mutations — title, status, closed-at timestamps |
+| `conversation.go` | Conversation mutations — messages, components, quick replies, active skills |
+| `config.go` | Per-session config/workspace |
+| `browser.go` | Browser session ordering and indexing |
+| `child.go` | Parent-child (sub-agent) session management |
+| `ring.go` | Rendered-message-ID dedup ring buffer |
 | `session_test.go` | Unit tests for session lifecycle, browser scoping, message limits |
 
 Replaces inline `UISession` map in early `api.Server`. Server-owned canonical session state: ID, browser_id, title, status (`idle`/`running`/`error`), messages, active skills, timestamps. `api.Server` stores `*session.Manager` and passes session data to templates. Not persisted — server restart loses all sessions.
