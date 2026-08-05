@@ -54,10 +54,15 @@ type RunServiceDeps struct {
 	UISessionMgr      *uisession.Manager
 	HistorySessionMgr *history.SessionManager
 	SkillsService     *skills.Service
-	DebugRecorder     *debug.Recorder               // optional HTTP trace recorder
-	CrashDumpFunc     func(err error, stack []byte) // optional; called on fatal agent error
-	Persister         *persist.Persister            // optional; writes session snapshots & traces to disk
-	CalibrationStore  *tokenizer.CalibrationStore   // optional; per-model CPT calibration
+	// HomeDir is the user home directory used for persona storage
+	// (~/.eitri/personas/). If empty, persona resolution falls back to
+	// os.UserHomeDir(). Tests inject a per-server home dir instead of
+	// mutating the process HOME env var.
+	HomeDir          string
+	DebugRecorder    *debug.Recorder               // optional HTTP trace recorder
+	CrashDumpFunc    func(err error, stack []byte) // optional; called on fatal agent error
+	Persister        *persist.Persister            // optional; writes session snapshots & traces to disk
+	CalibrationStore *tokenizer.CalibrationStore   // optional; per-model CPT calibration
 }
 
 // RunService owns the run lifecycle: agent loop execution,
@@ -81,6 +86,7 @@ type RunService struct {
 	skillsSvc         *skills.Service
 	historySessionMgr *history.SessionManager
 	debugRecorder     *debug.Recorder
+	homeDir           string // persona home directory; empty falls back to os.UserHomeDir()
 	persistAuth       PersistAuthFunc
 	crashDumpFunc     func(err error, stack []byte)
 	persister         *persist.Persister          // optional; writes session snapshots & traces to disk
@@ -100,10 +106,18 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		skillsSvc:         deps.SkillsService,
 		historySessionMgr: deps.HistorySessionMgr,
 		debugRecorder:     deps.DebugRecorder,
+		homeDir:           deps.HomeDir,
 		crashDumpFunc:     deps.CrashDumpFunc,
 		persister:         deps.Persister,
 		calibrationStore:  deps.CalibrationStore,
 	}
+}
+
+// SetHomeDir sets the persona home directory for the run service. It is used
+// by the API server to propagate its configured home dir into the run service,
+// keeping persona resolution hermetic per server (issue #1023).
+func (s *RunService) SetHomeDir(homeDir string) {
+	s.homeDir = homeDir
 }
 
 // SetSkillsService sets the skills service.

@@ -80,7 +80,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 
 	// Resolve persona if specified
 	if personaName != "" {
-		resolved, err := persona.Load(parentCfg.Workspace, personaName)
+		resolved, err := persona.LoadWithHome(parentCfg.Workspace, resolveHomeDir(parentCfg.HomeDir), personaName)
 		if err != nil {
 			slog.Warn("sub-agent persona not found, falling back to generic",
 				slog.String("persona", personaName),

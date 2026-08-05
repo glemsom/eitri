@@ -57,7 +57,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	// skill indicator chips. Skills already active are silently skipped
 	// (ActivateSkill deduplicates).
 	if cfg.ActivePersona != "" && s.uiSessionMgr != nil && s.skillsSvc != nil {
-		def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
+		def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(s.homeDir), cfg.ActivePersona)
 		if err == nil {
 			for _, skillName := range def.RequiredSkills {
 				if s.skillsSvc.Lookup(skillName) != nil {

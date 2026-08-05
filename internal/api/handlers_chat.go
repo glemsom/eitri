@@ -100,6 +100,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		workspace = cfg.Workspace
 	}
 	runCfg := runner.FromConfig(cfgState.cfg, workspace, cmdTimeout)
+	runCfg.HomeDir = s.config.HomeDir // persona storage home (issue #1023)
 
 	// Check for active run (concurrent run protection)
 	if s.config.RunService.ActiveRun(id) != nil {

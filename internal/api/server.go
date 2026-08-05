@@ -24,8 +24,13 @@ import (
 
 // ServerConfig holds dependencies and settings for the API server.
 type ServerConfig struct {
-	ConfigPath     string // path to config file for save
-	Workspace      string // launch workspace (process CWD)
+	ConfigPath string // path to config file for save
+	Workspace  string // launch workspace (process CWD)
+	// HomeDir is the user home directory used for persona storage
+	// (~/.eitri/personas/). If empty, it falls back to os.UserHomeDir().
+	// Tests inject a per-server home dir instead of mutating the process HOME
+	// env var (issue #1023).
+	HomeDir        string
 	SessionManager *session.Manager
 	RunService     *runner.RunService
 	SkillsService  *skills.Service
@@ -129,6 +134,19 @@ func NewServer(cfg ServerConfig) *Server {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+
+	// Resolve the persona home directory once at construction so all handlers
+	// share the server's home dir instead of re-reading the process env. An
+	// empty HomeDir keeps production behavior: fall back to os.UserHomeDir().
+	if cfg.HomeDir == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			cfg.HomeDir = home
+		}
+	}
+	if cfg.RunService != nil && cfg.HomeDir != "" {
+		cfg.RunService.SetHomeDir(cfg.HomeDir)
 	}
 
 	s := &Server{

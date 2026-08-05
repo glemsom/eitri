@@ -76,6 +76,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		workspace = cfgState.Workspace
 	}
 	runCfg := runner.FromConfig(cfg, workspace, 0)
+	runCfg.HomeDir = s.config.HomeDir // persona storage home (issue #1023)
 
 	count, freed, prunedToolCalls, err := s.config.RunService.CompactSession(ctx, id, runCfg)
 	if err != nil {

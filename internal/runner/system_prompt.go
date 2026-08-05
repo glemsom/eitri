@@ -37,7 +37,7 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 	if systemPrompt == "" {
 		// No user override; try active persona.
 		if cfg.ActivePersona != "" {
-			def, err := persona.Load(cfg.Workspace, cfg.ActivePersona)
+			def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(cfg.HomeDir), cfg.ActivePersona)
 			if err != nil {
 				// Persona file missing or unreadable — warn and fall back to default.
 				// This handles the case where active_persona was set in config but the

@@ -36,14 +36,13 @@ type DirectoryEntry struct {
 func (s *Server) handleBrowseDirectory(w http.ResponseWriter, r *http.Request) {
 	pathParam := r.URL.Query().Get("path")
 
-	// Default to $HOME if no path provided
+	// Default to the server's home directory if no path provided
 	if pathParam == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
+		pathParam = s.config.HomeDir
+		if pathParam == "" {
 			writeBrowseError(w, "cannot determine home directory", http.StatusInternalServerError)
 			return
 		}
-		pathParam = home
 	}
 
 	// Validate the path

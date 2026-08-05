@@ -7,6 +7,7 @@ package runner
 
 import (
 	"encoding/json"
+	"os"
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -17,18 +18,22 @@ import (
 // Extracted from RunService fields so StartRun can be called directly
 // with explicit config instead of relying on mutable service state.
 type RunConfig struct {
-	ProviderID          string
-	BaseURL             string
-	APIKey              string
-	ModelName           string
-	ModelAPI            string
-	SystemPrompt        string
-	MaxTurns            int
-	MaxOutputTokens     int
-	MaxHistory          int
-	AllowedReadPaths    []string
-	ProviderAuth        json.RawMessage
-	Workspace           string
+	ProviderID       string
+	BaseURL          string
+	APIKey           string
+	ModelName        string
+	ModelAPI         string
+	SystemPrompt     string
+	MaxTurns         int
+	MaxOutputTokens  int
+	MaxHistory       int
+	AllowedReadPaths []string
+	ProviderAuth     json.RawMessage
+	Workspace        string
+	// HomeDir is the user home directory used for persona storage (~/.eitri/personas/).
+	// If empty, persona resolution falls back to os.UserHomeDir(). Tests inject a
+	// per-server home dir instead of mutating the process HOME env var.
+	HomeDir             string
 	CmdTimeout          time.Duration
 	TurnTimeout         time.Duration
 	ContextWindowTokens int
@@ -55,6 +60,20 @@ type RunConfig struct {
 	CompactionMessageSizeThreshold   int  // estimated-token threshold; messages below this are skipped
 	CompactionToolCallRetentionTurns int  // number of recent assistant messages whose ToolCall arguments are preserved
 	CompactionSalienceEnabled        bool // use salience-scored ordering (default: true)
+}
+
+// resolveHomeDir returns homeDir if non-empty, falling back to the process
+// user home directory. Persona resolution routes through this helper so tests
+// can inject a per-server home dir without mutating the process environment.
+func resolveHomeDir(homeDir string) string {
+	if homeDir != "" {
+		return homeDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // FromConfig builds a RunConfig from a Config value object plus

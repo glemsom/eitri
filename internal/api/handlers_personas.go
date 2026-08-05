@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,11 +17,12 @@ import (
 // handleGetPersonas returns all persona definitions as JSON or HTML fragment.
 func (s *Server) handleGetPersonas(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	// Ensure generic persona exists in the user-level home directory
-	_ = persona.EnsureGeneric()
+	_ = persona.EnsureGenericWithHome(homeDir)
 
-	names, err := persona.List(workspace)
+	names, err := persona.ListWithHome(workspace, homeDir)
 	if err != nil {
 		http.Error(w, "Failed to list personas: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -30,7 +30,7 @@ func (s *Server) handleGetPersonas(w http.ResponseWriter, r *http.Request) {
 
 	defs := make([]*persona.PersonaDefinition, 0, len(names))
 	for _, name := range names {
-		def, err := persona.Load(workspace, name)
+		def, err := persona.LoadWithHome(workspace, homeDir, name)
 		if err != nil {
 			continue // skip unloadable personas
 		}
@@ -121,6 +121,7 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 // handleCreatePersona creates a new persona.
 func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	name, systemPrompt, injectedSkills, err := parsePersonaRequest(r)
 	if err != nil {
@@ -134,13 +135,13 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check name doesn't already exist
-	if existing, _ := persona.Load(workspace, name); existing != nil {
+	if existing, _ := persona.LoadWithHome(workspace, homeDir, name); existing != nil {
 		writeConfigError(w, r, http.StatusConflict, "Persona \""+name+"\" already exists")
 		return
 	}
 
 	// Check limit (not counting generic)
-	names, _ := persona.List(workspace)
+	names, _ := persona.ListWithHome(workspace, homeDir)
 	customCount := 0
 	for _, n := range names {
 		if n != persona.GenericName {
@@ -159,7 +160,6 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 		RequiredSkills: injectedSkills,
 	}
 
-	homeDir, _ := os.UserHomeDir()
 	if err := persona.SaveToHome(homeDir, def); err != nil {
 		writeConfigError(w, r, http.StatusInternalServerError, "Failed to save persona: "+err.Error())
 		return
@@ -183,8 +183,9 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetPersona(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
-	def, err := persona.Load(workspace, name)
+	def, err := persona.LoadWithHome(workspace, homeDir, name)
 	if err != nil {
 		writeConfigError(w, r, http.StatusNotFound, "Persona \""+name+"\" not found")
 		return
@@ -206,9 +207,10 @@ func (s *Server) handleGetPersona(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	// Check persona exists
-	_, err := persona.Load(workspace, name)
+	_, err := persona.LoadWithHome(workspace, homeDir, name)
 	if err != nil {
 		writeConfigError(w, r, http.StatusNotFound, "Persona \""+name+"\" not found")
 		return
@@ -226,11 +228,6 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 		RequiredSkills: injectedSkills,
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		writeConfigError(w, r, http.StatusInternalServerError, "Failed to resolve home directory: "+err.Error())
-		return
-	}
 	if err := persona.SaveToHome(homeDir, def); err != nil {
 		writeConfigError(w, r, http.StatusInternalServerError, "Failed to save persona: "+err.Error())
 		return
@@ -253,13 +250,14 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeletePersona(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	if name == persona.GenericName {
 		writeConfigError(w, r, http.StatusUnprocessableEntity, "Cannot delete the generic persona")
 		return
 	}
 
-	if err := persona.Delete(workspace, name); err != nil {
+	if err := persona.DeleteWithHome(workspace, homeDir, name); err != nil {
 		writeConfigError(w, r, http.StatusNotFound, "Persona \""+name+"\" not found")
 		return
 	}
@@ -286,6 +284,7 @@ func (s *Server) handleDeletePersona(w http.ResponseWriter, r *http.Request) {
 // the updated persona selector fragment for the header.
 func (s *Server) handleActivatePersona(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	// Read persona name from form body (submitted by the <select> element)
 	if err := r.ParseForm(); err != nil {
@@ -296,7 +295,7 @@ func (s *Server) handleActivatePersona(w http.ResponseWriter, r *http.Request) {
 
 	// Verify persona exists
 	if name != "" {
-		_, err := persona.Load(workspace, name)
+		_, err := persona.LoadWithHome(workspace, homeDir, name)
 		if err != nil {
 			writeConfigError(w, r, http.StatusNotFound, "Persona \""+name+"\" not found")
 			return
@@ -322,7 +321,7 @@ func (s *Server) handleActivatePersona(w http.ResponseWriter, r *http.Request) {
 // updatePersonaCatalog refreshes the persona_catalog field in the config file
 // to reflect the current set of persona files on disk.
 func (s *Server) updatePersonaCatalog(workspace string) {
-	names, err := persona.List(workspace)
+	names, err := persona.ListWithHome(workspace, s.config.HomeDir)
 	if err != nil {
 		return
 	}
@@ -332,15 +331,10 @@ func (s *Server) updatePersonaCatalog(workspace string) {
 		return
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
-
 	// Rebuild catalog from current files (absolute home paths)
 	newCatalog := make(map[string]string, len(names))
 	for _, name := range names {
-		newCatalog[name] = filepath.Join(persona.UserDir(homeDir), name+".yaml")
+		newCatalog[name] = filepath.Join(persona.UserDir(s.config.HomeDir), name+".yaml")
 	}
 	cfg.PersonaCatalog = newCatalog
 
@@ -352,11 +346,12 @@ func (s *Server) updatePersonaCatalog(workspace string) {
 // Used by the header persona selector on every page.
 func (s *Server) handlePersonaSelector(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
+	homeDir := s.config.HomeDir
 
 	// Ensure generic persona exists in the user-level home directory
-	_ = persona.EnsureGeneric()
+	_ = persona.EnsureGenericWithHome(homeDir)
 
-	names, err := persona.List(workspace)
+	names, err := persona.ListWithHome(workspace, homeDir)
 	if err != nil {
 		http.Error(w, "Failed to list personas", http.StatusInternalServerError)
 		return
@@ -364,7 +359,7 @@ func (s *Server) handlePersonaSelector(w http.ResponseWriter, r *http.Request) {
 
 	defs := make([]*persona.PersonaDefinition, 0, len(names))
 	for _, name := range names {
-		def, err := persona.Load(workspace, name)
+		def, err := persona.LoadWithHome(workspace, homeDir, name)
 		if err != nil {
 			continue
 		}

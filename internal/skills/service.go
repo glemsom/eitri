@@ -18,13 +18,25 @@ type Service struct {
 
 // NewService creates a Service with default discovery roots.
 func NewService() *Service {
-	home, _ := os.UserHomeDir()
-	cwd, _ := os.Getwd()
+	return NewServiceWithHome("", "")
+}
+
+// NewServiceWithHome creates a Service with default discovery roots rooted at
+// the given home directory and workspace. Empty values fall back to
+// os.UserHomeDir() and os.Getwd(). Tests inject a per-server home dir instead
+// of mutating the process HOME env var (issue #1023).
+func NewServiceWithHome(homeDir, workspace string) *Service {
+	if homeDir == "" {
+		homeDir, _ = os.UserHomeDir()
+	}
+	if workspace == "" {
+		workspace, _ = os.Getwd()
+	}
 
 	s := &Service{
-		roots:     defaultRoots(cwd, home),
-		home:      home,
-		workspace: cwd,
+		roots:     defaultRoots(workspace, homeDir),
+		home:      homeDir,
+		workspace: workspace,
 	}
 	// Initial scan
 	s.Refresh()
