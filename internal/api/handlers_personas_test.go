@@ -5,17 +5,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/persona"
 )
 
+// newPersonaTestServer creates a test server with an isolated persona home dir
+// and returns the server plus that home dir so tests can seed personas via
+// persona.SaveToHome without touching the process HOME env (issue #1023).
+func newPersonaTestServer(t *testing.T, workspace string) (*httptest.Server, string) {
+	t.Helper()
+	homeDir := t.TempDir()
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
+	return newTestServerAtWorkspaceWithHome(t, workspace, homeDir), homeDir
+}
+
 // ————— handleGetPersonas —————
 
 func TestHandleGetPersonas_ReturnsJSON(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/personas")
@@ -57,7 +70,7 @@ func TestHandleGetPersonas_ReturnsJSON(t *testing.T) {
 
 func TestHandleGetPersonas_HTMX(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	req, err := http.NewRequest("GET", server.URL+"/api/personas", nil)
@@ -86,7 +99,7 @@ func TestHandleGetPersonas_HTMX(t *testing.T) {
 
 func TestHandleCreatePersona_JSON(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, homeDir := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	body := `{"name":"test-agent","system_prompt":"You are a test agent.","required_skills":["read","write"]}`
@@ -101,7 +114,7 @@ func TestHandleCreatePersona_JSON(t *testing.T) {
 	}
 
 	// Verify persona was saved
-	def, err := persona.Load(workspace, "test-agent")
+	def, err := persona.LoadWithHome(workspace, homeDir, "test-agent")
 	if err != nil {
 		t.Fatalf("failed to load created persona: %v", err)
 	}
@@ -112,7 +125,7 @@ func TestHandleCreatePersona_JSON(t *testing.T) {
 
 func TestHandleCreatePersona_EmptyName(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	body := `{"name":"","system_prompt":"test"}`
@@ -129,7 +142,7 @@ func TestHandleCreatePersona_EmptyName(t *testing.T) {
 
 func TestHandleCreatePersona_Duplicate(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	// Create first
@@ -154,7 +167,7 @@ func TestHandleCreatePersona_Duplicate(t *testing.T) {
 
 func TestHandleCreatePersona_FormEncoded(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, homeDir := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	formBody := "name=form-agent&system_prompt=Created+via+form"
@@ -166,7 +179,7 @@ func TestHandleCreatePersona_FormEncoded(t *testing.T) {
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 		// Verify persona exists
-		def, err := persona.Load(workspace, "form-agent")
+		def, err := persona.LoadWithHome(workspace, homeDir, "form-agent")
 		if err != nil {
 			t.Fatalf("failed to load form-created persona: %v", err)
 		}
@@ -182,11 +195,11 @@ func TestHandleCreatePersona_FormEncoded(t *testing.T) {
 
 func TestHandleGetPersona_Single(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, homeDir := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	// Create persona first
-	persona.Save(workspace, &persona.PersonaDefinition{
+	persona.SaveToHome(homeDir, &persona.PersonaDefinition{
 		Name:         "single",
 		SystemPrompt: "Single persona test.",
 	})
@@ -212,7 +225,7 @@ func TestHandleGetPersona_Single(t *testing.T) {
 
 func TestHandleGetPersona_NotFound(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/personas/nonexistent")
@@ -230,11 +243,11 @@ func TestHandleGetPersona_NotFound(t *testing.T) {
 
 func TestHandleUpdatePersona(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, homeDir := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	// Create
-	persona.Save(workspace, &persona.PersonaDefinition{
+	persona.SaveToHome(homeDir, &persona.PersonaDefinition{
 		Name:         "updatable",
 		SystemPrompt: "Original prompt.",
 	})
@@ -258,7 +271,7 @@ func TestHandleUpdatePersona(t *testing.T) {
 	}
 
 	// Verify update
-	def, err := persona.Load(workspace, "updatable")
+	def, err := persona.LoadWithHome(workspace, homeDir, "updatable")
 	if err != nil {
 		t.Fatalf("load after update: %v", err)
 	}
@@ -269,7 +282,7 @@ func TestHandleUpdatePersona(t *testing.T) {
 
 func TestHandleUpdatePersona_NotFound(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	body := `{"system_prompt":"test"}`
@@ -294,11 +307,11 @@ func TestHandleUpdatePersona_NotFound(t *testing.T) {
 
 func TestHandleDeletePersona(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, homeDir := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	// Create
-	persona.Save(workspace, &persona.PersonaDefinition{
+	persona.SaveToHome(homeDir, &persona.PersonaDefinition{
 		Name:         "delete-me",
 		SystemPrompt: "To be deleted.",
 	})
@@ -320,7 +333,7 @@ func TestHandleDeletePersona(t *testing.T) {
 	}
 
 	// Verify deletion
-	_, err = persona.Load(workspace, "delete-me")
+	_, err = persona.LoadWithHome(workspace, homeDir, "delete-me")
 	if err == nil {
 		t.Error("persona still exists after deletion")
 	}
@@ -328,10 +341,10 @@ func TestHandleDeletePersona(t *testing.T) {
 
 func TestHandleDeletePersona_GenericFails(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
-	// Generic persona exists because newTestServerAtWorkspace ensures it
+	// Generic persona exists because newPersonaTestServer ensures it
 
 	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/generic", nil)
 	if err != nil {
@@ -351,7 +364,7 @@ func TestHandleDeletePersona_GenericFails(t *testing.T) {
 
 func TestHandleDeletePersona_NotFound(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/personas/nonexistent", nil)
@@ -374,7 +387,7 @@ func TestHandleDeletePersona_NotFound(t *testing.T) {
 
 func TestHandleGetPersonaAddForm(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/personas/add-form")
@@ -392,7 +405,7 @@ func TestHandleGetPersonaAddForm(t *testing.T) {
 
 func TestHandleCreatePersona_LimitEnforced(t *testing.T) {
 	workspace := t.TempDir()
-	server := newTestServerAtWorkspace(t, workspace)
+	server, _ := newPersonaTestServer(t, workspace)
 	defer server.Close()
 
 	// Create 10 custom personas (the max)

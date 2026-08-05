@@ -11,8 +11,8 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/skills"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 func TestBatchRun_ReturnsErrorForMissingBaseURL(t *testing.T) {
@@ -35,7 +35,7 @@ func TestBatchRun_ReturnsErrorForMissingModel(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 	}
 	var buf bytes.Buffer
 	_, err := svc.BatchRun(context.Background(), "hello", cfg, &buf)
@@ -51,7 +51,7 @@ func TestBatchRun_ReturnsErrorOnCancelledContext(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
-		BaseURL:    "http://test.local",
+		BaseURL:    unreachableURL(t),
 		APIKey:     "test-key",
 		ModelName:  "test-model",
 	}
@@ -216,11 +216,9 @@ func TestBatchRun_ConversationContextCapturedOnError(t *testing.T) {
 }
 
 func TestBatchRun_UsesActivePersona(t *testing.T) {
-	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	// Isolate the persona home dir per test; injected via RunConfig.HomeDir
+	// instead of mutating the process HOME env (issue #1023).
 	homeDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 
 	workspace := t.TempDir()
 
@@ -230,7 +228,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 		SystemPrompt:   "You are a code reviewer. Be thorough and check for edge cases.",
 		RequiredSkills: []string{"test-review-skill"},
 	}
-	if err := persona.Save(workspace, personaDef); err != nil {
+	if err := persona.SaveToHome(homeDir, personaDef); err != nil {
 		t.Fatalf("save persona: %v", err)
 	}
 
@@ -253,6 +251,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	// custom system prompt and the injected skill's content.
 	cfg := RunConfig{
 		Workspace:     workspace,
+		HomeDir:       homeDir,
 		ActivePersona: "test-reviewer",
 	}
 	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, skillsSvc)
@@ -295,6 +294,7 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 		APIKey:        "test-key",
 		ModelName:     "test-model",
 		Workspace:     workspace,
+		HomeDir:       homeDir,
 		ActivePersona: "test-reviewer",
 	}
 

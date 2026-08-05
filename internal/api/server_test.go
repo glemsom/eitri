@@ -30,17 +30,23 @@ import (
 
 func newTestServerAtWorkspace(t *testing.T, workspace string) *httptest.Server {
 	t.Helper()
-	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	// Isolate the persona home directory so test personas never touch the real
+	// ~/.eitri/personas. The home dir is injected per server (issue #1023).
 	homeDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 	_ = persona.EnsureGenericWithHome(homeDir) // ensure generic exists in isolated home
+	return newTestServerAtWorkspaceWithHome(t, workspace, homeDir)
+}
+
+// newTestServerAtWorkspaceWithHome builds a test server with an explicit
+// persona home directory, without mutating the process HOME env var.
+func newTestServerAtWorkspaceWithHome(t *testing.T, workspace, homeDir string) *httptest.Server {
+	t.Helper()
 	sessionMgr := session.NewManager(10, workspace)
-	skillsSvc := skills.NewService()
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		Version:        "dev",
@@ -72,13 +78,14 @@ type testServerOptions struct {
 
 func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOptions) *httptest.Server {
 	t.Helper()
+	homeDir := t.TempDir()
 	sessionMgr := opts.sessionManager
 	if sessionMgr == nil {
 		sessionMgr = session.NewManager(10, workspace)
 	}
 	skillsSvc := opts.skillsService
 	if skillsSvc == nil {
-		skillsSvc = skills.NewService()
+		skillsSvc = skills.NewServiceWithHome(homeDir, workspace)
 	}
 	configPath := opts.configPath
 	if configPath == "" {
@@ -87,6 +94,7 @@ func newTestServerWithOptions(t *testing.T, workspace string, opts testServerOpt
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		CopilotOAuth:   opts.copilotOAuth,
@@ -110,11 +118,13 @@ func extractCopilotFlowID(t *testing.T, body string) string {
 func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server {
 	t.Helper()
 	workspace := t.TempDir()
+	homeDir := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
-	skillsSvc := skills.NewService()
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		Logger:         logger,
@@ -127,10 +137,12 @@ func newTestServerWithLogger(t *testing.T, logger *slog.Logger) *httptest.Server
 
 func newTestServerWithSessionManager(t *testing.T, workspace string, sessionMgr *session.Manager) *httptest.Server {
 	t.Helper()
-	skillsSvc := skills.NewService()
+	homeDir := t.TempDir()
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 	}
@@ -146,6 +158,7 @@ func newTestServerWithSkillsService(t *testing.T, workspace string, skillsSvc *s
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
+		HomeDir:        t.TempDir(),
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 	}

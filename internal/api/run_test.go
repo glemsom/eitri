@@ -32,6 +32,7 @@ type testServerWithRuns struct {
 	server     *httptest.Server
 	configPath string
 	workspace  string
+	homeDir    string // persona home directory (injected, not env-mutated)
 	sessionMgr *session.Manager
 	runSvc     *runner.RunService
 }
@@ -41,15 +42,15 @@ type testServerWithRuns struct {
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historySessionMgr,
+		HomeDir:           homeDir,
 	})
-	skillsSvc := skills.NewService()
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 
 	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
@@ -61,6 +62,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
@@ -72,6 +74,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 		server:     server,
 		configPath: configPath,
 		workspace:  workspace,
+		homeDir:    homeDir,
 		sessionMgr: sessionMgr,
 		runSvc:     runSvc,
 	}
@@ -86,16 +89,14 @@ func newTestServerWithRuns(t *testing.T) *httptest.Server {
 func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {
 	t.Helper()
 
-	// Isolate home directory to prevent test personas from polluting ~/.eitri/personas
+	// Isolate the persona home directory per server; injected, not env-mutated (issue #1023)
 	homeDir := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", homeDir)
-	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 
 	sessionMgr := session.NewManager(10, workspace)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: history.NewSessionManager(50),
+		HomeDir:           homeDir,
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
@@ -107,6 +108,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
@@ -117,6 +119,7 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 	return &testServerWithRuns{
 		server:     server,
 		configPath: configPath,
+		homeDir:    homeDir,
 		sessionMgr: sessionMgr,
 		runSvc:     runSvc,
 	}
@@ -502,7 +505,7 @@ func TestChatRun_PersonaSystemPrompt(t *testing.T) {
 
 	// Create a custom persona on disk.
 	customPrompt := "You are a custom test agent for persona testing."
-	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:         "test-agent",
 		SystemPrompt: customPrompt,
 	}); err != nil {
@@ -550,7 +553,7 @@ This skill tests persona-based required skills.
 	defer llmSrv.Close()
 
 	// Create a persona with required_skills referencing our test skill.
-	if err := persona.Save(workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:           "required-skill-agent",
 		SystemPrompt:   "You are an agent that uses required skills.",
 		RequiredSkills: []string{"test-required-skill"},
@@ -627,7 +630,7 @@ This skill tests persona-based required skills UI update.
 		}
 	}()
 
-	if err := persona.Save(workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:           "required-skill-agent-ui",
 		SystemPrompt:   "You are an agent that uses required skills.",
 		RequiredSkills: []string{"test-required-skill-ui"},
@@ -690,7 +693,7 @@ func TestChatRun_PersonaFallbackOnMissing(t *testing.T) {
 	defer llmSrv.Close()
 
 	// Create a custom persona and set it as active.
-	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:         "vanishing-agent",
 		SystemPrompt: "You will never see this prompt.",
 	}); err != nil {
@@ -700,7 +703,7 @@ func TestChatRun_PersonaFallbackOnMissing(t *testing.T) {
 	putJSONConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","active_persona":"vanishing-agent"}`, llmSrv.URL))
 
 	// Delete the persona file from disk to simulate corruption/removal.
-	if err := persona.Delete(h.workspace, "vanishing-agent"); err != nil {
+	if err := persona.DeleteWithHome(h.workspace, h.homeDir, "vanishing-agent"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -726,13 +729,13 @@ func TestChatRun_MidSessionPersonaSwitch(t *testing.T) {
 	defer llmSrv.Close()
 
 	// Create two personas.
-	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:         "persona-a",
 		SystemPrompt: "You are Persona A.",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := persona.Save(h.workspace, &persona.PersonaDefinition{
+	if err := persona.SaveToHome(h.homeDir, &persona.PersonaDefinition{
 		Name:         "persona-b",
 		SystemPrompt: "You are Persona B.",
 	}); err != nil {
@@ -1283,7 +1286,6 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	}
 
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
 	srvWorkspace := t.TempDir()
 	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
 		t.Fatalf("ensure generic persona: %v", err)
@@ -1292,6 +1294,7 @@ func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	srv := api.NewServer(api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      srvWorkspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,

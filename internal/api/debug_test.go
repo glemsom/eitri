@@ -21,14 +21,14 @@ import (
 func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *session.Manager, rec *debug.Recorder, runSvc *runner.RunService) *httptest.Server {
 	t.Helper()
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
 	if sessionMgr == nil {
 		sessionMgr = session.NewManager(10, workspace)
 	}
-	skillsSvc := skills.NewService()
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 	if runSvc == nil {
 		runSvc = runner.NewRunService(runner.RunServiceDeps{
 			UISessionMgr: sessionMgr,
+			HomeDir:      homeDir,
 		})
 	}
 
@@ -39,6 +39,7 @@ func newTestServerWithRunService(t *testing.T, workspace string, sessionMgr *ses
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		SkillsService:  skillsSvc,
 		RunService:     runSvc,

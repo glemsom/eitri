@@ -93,13 +93,13 @@ func readBody(t *testing.T, resp *http.Response) string {
 func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 	t.Helper()
 	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historySessionMgr,
+		HomeDir:           homeDir,
 	})
 
 	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
@@ -125,6 +125,7 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 	cfg := api.ServerConfig{
 		ConfigPath:     configPath,
 		Workspace:      workspace,
+		HomeDir:        homeDir,
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 	}
@@ -135,6 +136,7 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 		server:     server,
 		configPath: configPath,
 		workspace:  workspace,
+		homeDir:    homeDir,
 		sessionMgr: sessionMgr,
 		runSvc:     runSvc,
 	}
