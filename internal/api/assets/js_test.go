@@ -24,6 +24,7 @@ func TestJsFiles(t *testing.T) {
 		"prism.min.css",
 		"katex.min.css",
 		"eitri-context.js",
+		"eitri-persona-selector.js",
 		"sw.js",
 	}
 	for _, name := range files {
@@ -761,3 +762,257 @@ func TestLazyLoadAssetVersioning(t *testing.T) {
 	}
 }
 
+// TestJsListenerHygiene verifies that frontend custom elements never leak
+// document/body-level listeners across HTMX re-renders (issue #1069).
+// Navigating the app re-creates the sidebar elements (context panel, persona
+// selector, composer) on every swap; each must tear down its document-level
+// listeners when disconnected so detached elements can be garbage-collected.
+func TestJsListenerHygiene(t *testing.T) {
+	read := func(name string) string {
+		data, err := Files.ReadFile(name)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", name, err)
+		}
+		return string(data)
+	}
+	composer := read("eitri-composer.js")
+	context := read("eitri-context.js")
+	persona := read("eitri-persona-selector.js")
+
+	// AC1: every custom element that registers document/body-level listeners
+	// implements disconnectedCallback (or equivalent) that removes them.
+	for _, want := range []string{
+		"disconnectedCallback",
+		"document.removeEventListener('keydown'",
+		"visualViewport.removeEventListener",
+	} {
+		if !strings.Contains(composer, want) {
+			t.Errorf("eitri-composer.js missing %q in its disconnect cleanup", want)
+		}
+	}
+	for _, want := range []string{
+		"disconnectedCallback",
+		"document.body.removeEventListener",
+	} {
+		if !strings.Contains(context, want) {
+			t.Errorf("eitri-context.js missing %q in its disconnect cleanup", want)
+		}
+	}
+	// The context panel's body-level listener must be added via a stored
+	// reference so disconnectedCallback can remove the exact handler.
+	if !strings.Contains(context, "_onBodyAfterRequest") {
+		t.Error("eitri-context.js should store its document.body htmx:afterRequest handler for removal")
+	}
+
+	// AC2: re-entry is guarded (e.g. _initialized flag) so moving or
+	// re-rendering an element does not double-register handlers.
+	for _, file := range []struct{ name, src string }{
+		{"eitri-composer.js", composer},
+		{"eitri-context.js", context},
+	} {
+		if !strings.Contains(file.src, "_initialized") {
+			t.Errorf("%s missing _initialized re-entry guard", file.name)
+		}
+	}
+
+	// AC3: the composer's requestAnimationFrame retry loop in connectedCallback
+	// terminates if the expected form is never found (attempt cap or timeout).
+	if !strings.Contains(composer, "MAX_COMPOSER_INIT_ATTEMPTS") {
+		t.Error("eitri-composer.js missing MAX_COMPOSER_INIT_ATTEMPTS cap for the init retry loop")
+	}
+	if !strings.Contains(composer, "_initAttempts < MAX_COMPOSER_INIT_ATTEMPTS") {
+		t.Error("eitri-composer.js should bound its connectedCallback rAF retry loop with the attempt cap")
+	}
+
+	// AC4 (equivalent, statically): the persona selector must register its
+	// document-level click listener exactly once (delegated, at module scope),
+	// never once per re-created element.
+	if n := strings.Count(persona, "document.addEventListener('click'"); n != 1 {
+		t.Errorf("eitri-persona-selector.js should register exactly one delegated document click listener, found %d", n)
+	}
+	if !strings.Contains(persona, "querySelectorAll('#persona-selector')") {
+		t.Error("eitri-persona-selector.js delegated click listener should walk current #persona-selector elements")
+	}
+	// Per-element init must stay idempotent so re-rendering the same element
+	// cannot stack handlers.
+	if !strings.Contains(persona, "psInitialized") {
+		t.Error("eitri-persona-selector.js missing psInitialized idempotency guard")
+	}
+}
+
+// TestComposerInitRetryLoopIsBounded simulates the composer's connectedCallback
+// while its form is permanently missing and verifies the requestAnimationFrame
+// retry loop terminates (issue #1069, acceptance criterion 3).
+func TestComposerInitRetryLoopIsBounded(t *testing.T) {
+	data, err := Files.ReadFile("eitri-composer.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-composer.js: %v", err)
+	}
+
+	runtime := goja.New()
+	_, err = runtime.RunString(`
+		// Minimal stubs: HTMLElement whose querySelector never finds the form,
+		// an rAF that queues callbacks for manual draining, and a customElements
+		// registry that captures the defined class.
+		class FakeHTMLElement {
+			constructor() {
+				this.isConnected = true;
+			}
+			querySelector() { return null; }
+		}
+		var rafQueue = [];
+		var rafScheduled = 0;
+		globalThis.HTMLElement = FakeHTMLElement;
+		globalThis.window = {
+			requestAnimationFrame: function (cb) { rafScheduled++; rafQueue.push(cb); },
+		};
+		globalThis.document = { addEventListener: function () {} };
+		globalThis.customElements = { define: function (name, cls) { globalThis.definedComposer = cls; } };
+	` + "\n" + string(data))
+	if err != nil {
+		t.Fatalf("failed to run eitri-composer.js in goja: %v", err)
+	}
+
+	// Drain retries until the loop must give up.
+	_, err = runtime.RunString(`
+		var el = new definedComposer();
+		var drained = 0;
+		el.connectedCallback();
+		while (rafQueue.length > 0 && drained < 500) {
+			rafQueue.shift()();
+			drained++;
+		}
+	`)
+	if err != nil {
+		t.Fatalf("failed to drain composer retry loop: %v", err)
+	}
+	var drained, scheduled int64
+	if err := runtime.ExportTo(runtime.Get("drained"), &drained); err != nil {
+		t.Fatalf("failed to export drained: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("rafScheduled"), &scheduled); err != nil {
+		t.Fatalf("failed to export rafScheduled: %v", err)
+	}
+	if scheduled != 29 {
+		t.Errorf("composer retry loop scheduled %d rAF frames, want 29 (MAX_COMPOSER_INIT_ATTEMPTS-1 retries after the initial attempt)", scheduled)
+	}
+	if drained != 29 {
+		t.Errorf("composer retry loop drained %d rAF frames, want 29", drained)
+	}
+
+	// A second element torn down mid-retry must stop scheduling immediately.
+	_, err = runtime.RunString(`
+		rafQueue.length = 0;
+		rafScheduled = 0;
+		var el2 = new definedComposer();
+		el2.connectedCallback();
+		el2.isConnected = false;
+		var drained2 = 0;
+		while (rafQueue.length > 0 && drained2 < 50) {
+			rafQueue.shift()();
+			drained2++;
+		}
+	`)
+	if err != nil {
+		t.Fatalf("failed to drain torn-down composer retry loop: %v", err)
+	}
+	var scheduled2 int64
+	if err := runtime.ExportTo(runtime.Get("rafScheduled"), &scheduled2); err != nil {
+		t.Fatalf("failed to export rafScheduled after teardown: %v", err)
+	}
+	if scheduled2 != 1 {
+		t.Errorf("torn-down composer should schedule exactly 1 rAF frame before bailing, got %d", scheduled2)
+	}
+}
+
+// TestContextElementListenerLifecycle simulates repeated connect/disconnect
+// cycles of the eitri-context custom element and verifies the document.body
+// listener is added once and removed on disconnect — no growth across swaps
+// (issue #1069, acceptance criteria 1 and 2).
+func TestContextElementListenerLifecycle(t *testing.T) {
+	data, err := Files.ReadFile("eitri-context.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-context.js: %v", err)
+	}
+
+	runtime := goja.New()
+	_, err = runtime.RunString(`
+		var bodyListenerCount = 0;
+		var headerListenerCount = 0;
+		class FakeEl {
+			constructor() {
+				this.style = {};
+				this.classList = { toggle: function () {}, add: function () {}, remove: function () {} };
+				this._listeners = {};
+			}
+			getAttribute() { return null; }
+			setAttribute() {}
+			addEventListener(type, fn) { this._listeners[type] = fn; }
+			removeEventListener(type, fn) {}
+			querySelector() { return new FakeEl(); }
+			contains() { return true; }
+		}
+		// The sidebar header is outside the custom element; track its listener
+		// separately so we can assert disconnect removes it too.
+		class HeaderEl {
+			addEventListener(type, fn) { if (type === 'click') headerListenerCount++; }
+			removeEventListener(type, fn) { if (type === 'click') headerListenerCount--; }
+		}
+		globalThis.HTMLElement = FakeEl;
+		globalThis.document = {
+			querySelector: function () { return new HeaderEl(); },
+			body: {
+				addEventListener: function (type) { if (type === 'htmx:afterRequest') bodyListenerCount++; },
+				removeEventListener: function (type) { if (type === 'htmx:afterRequest') bodyListenerCount--; },
+			},
+			addEventListener: function () {},
+		};
+		globalThis.window = {
+			location: { pathname: '/sessions/abc123' },
+			setTimeout: function () {},
+			clearTimeout: function () {},
+		};
+		globalThis.customElements = { define: function (name, cls) { globalThis.definedContext = cls; } };
+	` + "\n" + string(data))
+	if err != nil {
+		t.Fatalf("failed to run eitri-context.js in goja: %v", err)
+	}
+
+	_, err = runtime.RunString(`
+		var el = new definedContext();
+		el.connectedCallback();
+		var afterFirstConnect = bodyListenerCount;
+		el.connectedCallback();
+		var afterSecondConnect = bodyListenerCount;
+		el.disconnectedCallback();
+		var afterDisconnect = bodyListenerCount;
+		var headersAfterDisconnect = headerListenerCount;
+	`)
+	if err != nil {
+		t.Fatalf("failed to exercise context element lifecycle: %v", err)
+	}
+
+	var afterFirstConnect, afterSecondConnect, afterDisconnect, headersAfterDisconnect int64
+	for name, v := range map[string]*int64{
+		"afterFirstConnect":      &afterFirstConnect,
+		"afterSecondConnect":     &afterSecondConnect,
+		"afterDisconnect":        &afterDisconnect,
+		"headersAfterDisconnect": &headersAfterDisconnect,
+	} {
+		if err := runtime.ExportTo(runtime.Get(name), v); err != nil {
+			t.Fatalf("failed to export %s: %v", name, err)
+		}
+	}
+	if afterFirstConnect != 1 {
+		t.Errorf("context element should add exactly 1 document.body listener on connect, got %d", afterFirstConnect)
+	}
+	if afterSecondConnect != 1 {
+		t.Errorf("context element re-connect should not add another document.body listener, got %d", afterSecondConnect)
+	}
+	if afterDisconnect != 0 {
+		t.Errorf("context element should remove its document.body listener on disconnect, got %d", afterDisconnect)
+	}
+	if headersAfterDisconnect != 0 {
+		t.Errorf("context element should remove its sidebar-header listener on disconnect, got %d", headersAfterDisconnect)
+	}
+}
