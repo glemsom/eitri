@@ -280,11 +280,11 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | File | Responsibility |
 |------|---------------|
 | `service.go` | `RunService` — run lifecycle, confirmation handling, SSE broadcast bridge, auth persist callbacks |
-| `prepare.go` | `prepareRun()` — the unified parent-run preparation seam (ADR-0024): builds the LLM service, tool registry (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`, `delegate`, `collect`, `skill`; `render_quick_replies` only with a UI session), the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt; shared by UI and batch parent runs |
+| `prepare.go` | `prepareRun()` — the unified parent-run preparation seam (ADR-0024): builds the LLM service, tool registry (base tools including `skill`, plus parent-only `delegate`, `collect`; `render_quick_replies` only with a UI session), the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt; shared by UI and batch parent runs |
 | `run.go` | `StartRun()` — validates config, snapshot runtime limits, resolves skill context, calls the shared `prepareRun` seam, starts agent loop; persists the run timeline on every exit path (completed, cancelled, max-turns, error) via a RunState-free path callable from headless batch runs |
 | `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` and the base tool registry |
 | `skill_context.go` | `resolveSessionSkillContext()` — re-resolves active skill names against current registry |
-| `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()`; persists each sub-agent run as a child session on disk (snapshot + traces + timeline under `~/.eitri/sessions/<taskID>/`) in both UI and batch modes |
+| `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()` (base tools + `skill`; no `delegate`/`collect`/`render_quick_replies`); persists each sub-agent run as a child session on disk (snapshot + traces + timeline under `~/.eitri/sessions/<taskID>/`) in both UI and batch modes |
 | `subagent_store.go` | Thread-safe sub-agent task storage and cancellation |
 | `context_files.go` | `ScanContextFiles()` — scans workspace for `AGENTS.md` and linked context files loaded into the prompt |
 | `model_api.go` | `resolveModelAPI()` — resolves the GitHub Copilot model API endpoint |
@@ -297,7 +297,7 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 **Key flow**: `RunService.StartRun()` delegates to `startRunWithConfig()` which:
 1. Validates config, snapshots runtime limits (`max_turns`, `context_window_tokens`)
 2. Resolves skill context from session's active skills
-3. Calls the shared `prepareRun()` seam (ADR-0024) → resolves auth, creates a `*litellm.Client` via `provider.NewLitellmClient`, builds the tool registry (base tools + `delegate`, `collect`, `skill`; `render_quick_replies` when a UI session exists), assembles the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt — the same seam `BatchRun` uses
+3. Calls the shared `prepareRun()` seam (ADR-0024) → resolves auth, creates a `*litellm.Client` via `provider.NewLitellmClient`, builds the tool registry (base tools including `skill`, plus parent-only `delegate`, `collect`; `render_quick_replies` when a UI session exists), assembles the `*litellm.Request` (`max_output_tokens`, session-scoped `prompt_cache_key`, thinking level), and the system prompt — the same seam `BatchRun` uses
 4. Creates `runstate.State` for SSE broadcast
 5. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
 
@@ -350,10 +350,10 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 - No cross-turn shell state — agent must use `&&` chains or explicit env vars
 
 **Tool registration** happens in two places:
-- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`
-- `startRunWithConfig()` in `internal/runner/run.go` adds parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
+- `buildBaseToolRegistry()` in `internal/runner/subagent.go` registers the core tools: `bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser` — plus `skill` when a skills service is wired (sub-agents and parents share this base)
+- `prepareRun()` in `internal/runner/prepare.go` adds parent-only tools: `delegate`, `collect`, and `render_quick_replies` (the latter only when a UI session exists)
 
-Sub-agents only receive the base registry (no delegate/collect/render_quick_replies/skill).
+Sub-agents receive the base registry including `skill` (so a persona's required skills can be loaded) but never `delegate`/`collect`/`render_quick_replies` — no recursion, no UI-only tools (issue #1092, ADR-0013).
 
 ### `internal/config/` — Configuration
 
@@ -476,7 +476,7 @@ sequenceDiagram
 ### Adding a new built-in tool
 
 1. Define tool in `internal/tool/` implementing the `ToolHandler` interface (`Name()`, `Description()`, `JSONSchema()`, `Call()`) with a struct that embeds `SchemaOf[T]()` for parameter schemas. Multi-action tools (e.g. `browser`) build a discriminated union instead: `SchemaProp.OneOf` holds one typed object schema per action and the action selector is an `enum`, so the model sees per-action required parameters rather than a free-form args blob.
-2. Register with `tool.NewRegistry().Register(...)` in `buildBaseToolRegistry()` (base tools) or `startRunWithConfig()` (parent-only tools)
+2. Register with `tool.NewRegistry().Register(...)` in `buildBaseToolRegistry()` (base tools — available to parents and sub-agents) or `prepareRun()` (parent-only tools)
 3. Tool receives `context.Context` with `tool.SessionIDKey` for session-scoped state
 
 ### Extending Agent Skills support

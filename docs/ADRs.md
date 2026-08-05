@@ -16,7 +16,7 @@ Architecture decisions are documented as ADRs in `docs/adr/`. This file is the c
 | [0010](adr/0010-remove-tmux-executor.md) | Replace tmux executor with direct exec.Command | Accepted |
 | [0011](adr/0011-runagent-seam-interfaces.md) | Extract HistoryManager and Confirmer seam interfaces from RunAgent | Accepted |
 | [0012](adr/0012-web-fetch-tool.md) | web_fetch tool for fetching URLs | Accepted |
-| [0013](adr/0013-sub-agents.md) | Sub-agent support via delegate/collect tools | Accepted |
+| [0013](adr/0013-sub-agents.md) | Sub-agent support via delegate/collect tools | Accepted (amended) |
 | [0014](adr/0014-crash-dumps.md) | Crash dump directory for unexpected failures | Accepted |
 | [0015](adr/0015-per-session-workspaces.md) | Per-session workspaces with directory browser | Accepted |
 | [0016](adr/0016-session-persistence-json-snapshots.md) | Session persistence via JSON snapshots | Accepted |

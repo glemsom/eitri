@@ -45,8 +45,10 @@ type runPrepOptions struct {
 // config and prompt it produces:
 //
 //   - the same tool registry (bash, grep, read, write, edit,
-//     render_mermaid_diagram, web_fetch, browser, delegate, collect, skill;
-//     render_quick_replies is registered only when a UI session exists),
+//     render_mermaid_diagram, web_fetch, browser, and — via the shared base
+//     registry — skill when a skills service is wired; delegate and collect
+//     are registered here; render_quick_replies is registered only when a UI
+//     session exists),
 //   - the same system prompt contract (skills catalog + <required_skills>
 //     directive when the persona requires skills),
 //   - the same LLM request behavior (max_output_tokens from config,
@@ -65,9 +67,6 @@ func (s *RunService) prepareRun(ctx context.Context, cfg RunConfig, opts runPrep
 	// Parent-agent tools shared by UI and batch runs.
 	toolReg.Register(tool.NewDelegate(s))
 	toolReg.Register(tool.NewCollect(s))
-	if s.skillsSvc != nil {
-		toolReg.Register(tool.NewSkill(s.skillsSvc, opts.uiSessionMgr))
-	}
 	// UI-only: quick-reply chips render into the browser DOM.
 	if opts.uiSessionMgr != nil {
 		toolReg.Register(tool.NewRenderQuickReplies())
