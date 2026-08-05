@@ -186,6 +186,8 @@ func TestEmbeddedCSSContainsCriticalSelectors(t *testing.T) {
 		".context-compact",
 		"eitri-context",
 		".context-category-bar-fill",
+		".context-category.context-sub",
+		".context-category.context-sub .context-sub-value",
 		".sidebar-panel",
 		"#session-tabs",
 		".btn-primary",
@@ -479,7 +481,7 @@ func TestEmbeddedCSSNoOrphanSelectors(t *testing.T) {
 	orphans := []string{
 		"tool-card", "tool-card-header", "tool-args", "tool-cards-container",
 		"tool-call-container", "tool-status", "sidebar-footer",
-		"settings-header-bar", "skill-scope-icon", "context-subrow",
+		"settings-header-bar", "skill-scope-icon",
 		"session-workspace", "session-workspace-path", "session-workspace-btn",
 	}
 

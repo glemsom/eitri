@@ -56,17 +56,17 @@
               '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
               '<span class="context-category-value"></span>' +
             '</div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem">' +
+            '<div class="context-category context-sub">' +
               '<span class="context-category-label">System</span>' +
               '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
               '<span class="context-category-value context-sub-value"></span>' +
             '</div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem">' +
+            '<div class="context-category context-sub">' +
               '<span class="context-category-label">History</span>' +
               '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
               '<span class="context-category-value context-sub-value"></span>' +
             '</div>' +
-            '<div class="context-category context-sub" style="padding-left:1rem">' +
+            '<div class="context-category context-sub">' +
               '<span class="context-category-label">Skills</span>' +
               '<div class="context-category-bar"><div class="context-category-bar-fill"></div></div>' +
               '<span class="context-category-value context-sub-value"></span>' +
