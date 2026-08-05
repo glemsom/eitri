@@ -92,4 +92,10 @@
   }
   document.addEventListener('htmx:afterSwap', initAll);
   document.addEventListener('htmx:afterSettle', initAll);
+
+  // Re-run the relevant initialisers once the lazy loader has fetched Prism or
+  // KaTeX on demand (issue #968). The guards inside initPrism/initKatex make
+  // this a no-op when the libraries are not (yet) present.
+  document.addEventListener('eitri:prism-loaded', initPrism);
+  document.addEventListener('eitri:katex-loaded', initKatex);
 })();

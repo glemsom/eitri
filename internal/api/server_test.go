@@ -1648,17 +1648,11 @@ func TestSettingsPage(t *testing.T) {
 		`href="/"`,
 		`href="/settings"`,
 		`href="/skills"`,
-		`/static/prism-core.min.js`,
-		`/static/prism-go.min.js`,
-		`/static/prism.min.css`,
-		`/static/katex.min.js`,
-		`/static/katex-auto-render.min.js`,
-		`/static/katex.min.css`,
-		`/static/mermaid.min.js`,
 		`/static/eitri-stream.js`,
 		`/static/eitri-composer.js`,
 		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
+		`/static/eitri-lazy-load.js`,
 		`/static/face.webp`,
 		`/static/favicon-32.png`,
 		`/static/favicon-16.png`,
@@ -1666,6 +1660,31 @@ func TestSettingsPage(t *testing.T) {
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("settings page missing %q", required)
+		}
+	}
+
+	// Heavy rendering libraries (mermaid, KaTeX, Prism) must NOT be loaded in
+	// the page head — they are fetched on demand by eitri-lazy-load.js only
+	// when content that needs them is present. (issue #968)
+	for _, heavy := range []string{
+		`/static/prism-core.min.js`,
+		`/static/prism-go.min.js`,
+		`/static/prism.min.css`,
+		`/static/katex.min.js`,
+		`/static/katex-auto-render.min.js`,
+		`/static/katex.min.css`,
+		`/static/mermaid.min.js`,
+	} {
+		if strings.Contains(content, heavy) {
+			t.Errorf("settings page must not reference %q directly (should be lazy-loaded)", heavy)
+		}
+	}
+
+	// Every static script tag in the head must be non-render-blocking (defer).
+	scriptRe := regexp.MustCompile(`<script\s+src="(/static/[^"]+\.js)"([^>]*)></script>`)
+	for _, m := range scriptRe.FindAllStringSubmatch(content, -1) {
+		if !strings.Contains(m[2], "defer") {
+			t.Errorf("script tag for %q is missing the defer attribute (render-blocking)", m[1])
 		}
 	}
 }
@@ -1718,15 +1737,27 @@ func TestSessionPageRendersAssistantMarkdownAndRichAssets(t *testing.T) {
 		`<strong>bold</strong> answer`,
 		`class="code-btn copy-btn"`,
 		`<pre class="mermaid">graph TD; A--&gt;B;`,
+		`/static/eitri-lazy-load.js`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("session page missing %q\nbody: %s", want, content)
+		}
+	}
+
+	// Rich content is rendered server-side, but the heavy rendering libraries
+	// are loaded on demand by the browser (issue #968) — they must not appear
+	// in the raw page HTML.
+	for _, heavy := range []string{
 		`/static/prism-core.min.js`,
+		`/static/prism-go.min.js`,
 		`/static/prism.min.css`,
 		`/static/katex.min.js`,
 		`/static/katex.min.css`,
 		`/static/katex-auto-render.min.js`,
 		`/static/mermaid.min.js`,
 	} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("session page missing %q\nbody: %s", want, content)
+		if strings.Contains(content, heavy) {
+			t.Fatalf("session page must not reference %q directly (should be lazy-loaded)\nbody: %s", heavy, content)
 		}
 	}
 }
@@ -2978,17 +3009,11 @@ func TestSkillsEndpoint(t *testing.T) {
 	for _, required := range []string{
 		"Agent Skills",
 		"Workspace: " + filepath.Base(workspace),
-		`/static/prism-core.min.js`,
-		`/static/prism-go.min.js`,
-		`/static/prism.min.css`,
-		`/static/katex.min.js`,
-		`/static/katex-auto-render.min.js`,
-		`/static/katex.min.css`,
-		`/static/mermaid.min.js`,
 		`/static/eitri-stream.js`,
 		`/static/eitri-composer.js`,
 		`/static/eitri-renderers.js`,
 		`/static/eitri-mermaid.js`,
+		`/static/eitri-lazy-load.js`,
 		`/static/face.webp`,
 		`/static/favicon-32.png`,
 		`/static/favicon-16.png`,
@@ -2996,6 +3021,22 @@ func TestSkillsEndpoint(t *testing.T) {
 	} {
 		if !strings.Contains(content, required) {
 			t.Errorf("skills page missing %q", required)
+		}
+	}
+
+	// Heavy rendering libraries are loaded on demand (issue #968) — they must
+	// not be referenced directly in the skills page.
+	for _, heavy := range []string{
+		`/static/prism-core.min.js`,
+		`/static/prism-go.min.js`,
+		`/static/prism.min.css`,
+		`/static/katex.min.js`,
+		`/static/katex-auto-render.min.js`,
+		`/static/katex.min.css`,
+		`/static/mermaid.min.js`,
+	} {
+		if strings.Contains(content, heavy) {
+			t.Errorf("skills page must not reference %q directly (should be lazy-loaded)", heavy)
 		}
 	}
 }

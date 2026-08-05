@@ -1,26 +1,26 @@
 // Eitri — Service Worker
 // PWA installable standalone app shell
 
-const CACHE = "eitri-v1";
+// Cache version is bumped when the precache asset list changes so browsers
+// with an old service worker drop their stale cache on activate.
+const CACHE = "eitri-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => {
+      // Only core shell assets are precached. The heavy rendering libraries
+      // (mermaid, KaTeX, Prism) are loaded on demand by eitri-lazy-load.js and
+      // are cached by the cache-first handler below the first time they are
+      // actually needed. (issue #968)
       return cache.addAll([
         "/",
         "/static/eitri.css",
         "/static/htmx.min.js",
-        "/static/prism-core.min.js",
-        "/static/prism-go.min.js",
-        "/static/prism.min.css",
-        "/static/katex.min.js",
-        "/static/katex-auto-render.min.js",
-        "/static/katex.min.css",
-        "/static/mermaid.min.js",
         "/static/eitri-stream.js",
         "/static/eitri-composer.js",
         "/static/eitri-renderers.js",
         "/static/eitri-mermaid.js",
+        "/static/eitri-lazy-load.js",
         "/static/eitri-persona-selector.js",
         "/static/eitri-session-rename.js",
         "/static/eitri-settings.js",

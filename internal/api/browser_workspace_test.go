@@ -68,6 +68,11 @@ func TestBrowser_PageLoads(t *testing.T) {
 	var messagesOverflowY, messagesDisplay string
 	var gearBtnColor, gearBtnBg, gearBtnBorder, gearBtnRadius, gearBtnCursor, gearBtnFontSize string
 	var dropdownDisplay string
+	// Lazy-loading assertions: the heavy rendering libraries (mermaid, KaTeX,
+	// Prism) must not be present on a plain chat page with no rich content.
+	// ~4.7MB of JS is no longer parsed before first paint. (issue #968)
+	var mermaidScriptPresent, katexScriptPresent, prismScriptPresent bool
+	var mermaidDefined, katexDefined, prismDefined bool
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
@@ -93,6 +98,13 @@ func TestBrowser_PageLoads(t *testing.T) {
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.gear-btn')).getPropertyValue('font-size')", &gearBtnFontSize),
 		// Verify dropdown is hidden by default
 		chromedp.EvaluateAsDevTools("getComputedStyle(document.querySelector('.dropdown-content')).getPropertyValue('display')", &dropdownDisplay),
+		// Verify heavy libraries are not loaded on a page without rich content
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="mermaid.min.js"]') !== null`, &mermaidScriptPresent),
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="katex.min.js"]') !== null`, &katexScriptPresent),
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="prism-core.min.js"]') !== null`, &prismScriptPresent),
+		chromedp.EvaluateAsDevTools(`typeof mermaid !== 'undefined'`, &mermaidDefined),
+		chromedp.EvaluateAsDevTools(`typeof katex !== 'undefined'`, &katexDefined),
+		chromedp.EvaluateAsDevTools(`typeof Prism !== 'undefined'`, &prismDefined),
 	)
 	if err != nil {
 		t.Fatalf("page load test failed: %v", err)
@@ -148,6 +160,27 @@ func TestBrowser_PageLoads(t *testing.T) {
 	}
 	if dropdownDisplay != "none" {
 		t.Errorf(".dropdown-content display = %q, want 'none'", dropdownDisplay)
+	}
+
+	// Heavy libraries must not be fetched on a plain chat page: they are loaded
+	// on demand only when diagrams/equations/code blocks are present.
+	if mermaidScriptPresent {
+		t.Error("mermaid.min.js script tag present on plain page (should be lazy-loaded)")
+	}
+	if katexScriptPresent {
+		t.Error("katex.min.js script tag present on plain page (should be lazy-loaded)")
+	}
+	if prismScriptPresent {
+		t.Error("prism-core.min.js script tag present on plain page (should be lazy-loaded)")
+	}
+	if mermaidDefined {
+		t.Error("mermaid global defined on plain page (should be lazy-loaded)")
+	}
+	if katexDefined {
+		t.Error("katex global defined on plain page (should be lazy-loaded)")
+	}
+	if prismDefined {
+		t.Error("Prism global defined on plain page (should be lazy-loaded)")
 	}
 }
 

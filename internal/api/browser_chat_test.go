@@ -745,6 +745,17 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 		}),
 		chromedp.Navigate(server.URL+"/sessions/"+sess.ID),
 		chromedp.WaitVisible(".message-assistant .copy-btn", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("rich rendering browser test failed: %v", err)
+	}
+
+	// The heavy rendering libraries are now fetched on demand by
+	// eitri-lazy-load.js (issue #968). Wait until they have actually loaded
+	// before asserting their presence and behaviour.
+	waitForLazyLibraries(t, ctx, "mermaid", "katex", "Prism")
+
+	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools("typeof Prism !== 'undefined'", &prismLoaded),
 		chromedp.EvaluateAsDevTools("typeof katex !== 'undefined'", &katexLoaded),
 		chromedp.EvaluateAsDevTools("typeof mermaid !== 'undefined'", &mermaidLoaded),
@@ -760,27 +771,52 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 			if (!el) return false;
 			return !!el.querySelector('.katex') || (el.textContent || '').includes('$a+b$');
 		})()`, &mathRenderedOrVisible),
-		chromedp.EvaluateAsDevTools(`(function () {
-			var el = document.querySelector('.message-assistant pre.mermaid');
-			if (!el) return false;
-			return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
-		})()`, &mermaidBlockRenderedOrVisible),
+	)
+	if err != nil {
+		t.Fatalf("rich rendering browser test failed: %v", err)
+	}
+
+	// Mermaid rendering is async even after the library itself has loaded —
+	// poll until the fenced diagram has actually been rendered (or its raw
+	// code remains visible as a fallback).
+	pollForCondition(t, 15*time.Second, 100*time.Millisecond, func() bool {
+		var rendered bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function () {
+				var el = document.querySelector('.message-assistant pre.mermaid');
+				if (!el) return false;
+				return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
+			})()`, &rendered),
+		)
+		return rendered
+	})
+	mermaidBlockRenderedOrVisible = true
+
+	// Inject a diagram component and dispatch an HTMX swap — the lazy loader
+	// must pick it up and render it.
+	err = chromedp.Run(ctx,
 		chromedp.EvaluateAsDevTools(`(function () {
 			var messages = document.getElementById('messages');
 			messages.insertAdjacentHTML('beforeend', '<div class="mermaid-diagram"><pre class="mermaid">graph TD; A--&gt;B;</pre></div>');
 			document.dispatchEvent(new Event('htmx:afterSwap'));
 			return true;
 		})()`, nil),
-		chromedp.Sleep(200*time.Millisecond),
-		chromedp.EvaluateAsDevTools(`(function () {
-			var el = document.querySelector('.mermaid-diagram pre.mermaid');
-			if (!el) return false;
-			return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
-		})()`, &componentMermaidRenderedOrVisible),
 	)
 	if err != nil {
-		t.Fatalf("rich rendering browser test failed: %v", err)
+		t.Fatalf("inject component mermaid failed: %v", err)
 	}
+	pollForCondition(t, 15*time.Second, 100*time.Millisecond, func() bool {
+		var rendered bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function () {
+				var el = document.querySelector('.mermaid-diagram pre.mermaid');
+				if (!el) return false;
+				return !!el.querySelector('svg') || (el.textContent || '').includes('graph TD; A-->B;');
+			})()`, &rendered),
+		)
+		return rendered
+	})
+	componentMermaidRenderedOrVisible = true
 
 	if !prismLoaded {
 		t.Error("Prism asset not loaded")
@@ -805,6 +841,127 @@ func TestBrowser_RichRenderingAssetsAndBehavior(t *testing.T) {
 	}
 	if !componentMermaidRenderedOrVisible {
 		t.Error("mermaid component markup neither rendered nor visible")
+	}
+}
+
+// TestBrowser_LazyLoadsHeavyLibraries verifies the on-demand script strategy
+// (issue #968): a plain chat page must not fetch mermaid, KaTeX or Prism at
+// all, and injecting content that needs them (diagram, equation, code block)
+// must cause them to be loaded and rendered on the spot.
+func TestBrowser_LazyLoadsHeavyLibraries(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, t.TempDir())
+	sess, err := sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "plain chat"})
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "A simple reply with no code, math, or diagram."})
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	// Track every heavy asset the page actually requests on the wire.
+	var (
+		mu                  sync.Mutex
+		heavyRequests       []string
+	)
+	chromedp.ListenTarget(ctx, func(ev any) {
+		req, ok := ev.(*network.EventRequestWillBeSent)
+		if !ok {
+			return
+		}
+		for _, heavy := range []string{"mermaid.min.js", "katex.min.js", "prism-core.min.js", "prism-go.min.js"} {
+			if strings.Contains(req.Request.URL, heavy) {
+				mu.Lock()
+				heavyRequests = append(heavyRequests, req.Request.URL)
+				mu.Unlock()
+			}
+		}
+	})
+
+	var mermaidScriptPresent, katexScriptPresent, prismScriptPresent bool
+	err = chromedp.Run(ctx,
+		network.Enable(),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie("browser_id", "browser-1").WithURL(server.URL).Do(ctx)
+		}),
+		chromedp.Navigate(server.URL+"/sessions/"+sess.ID),
+		chromedp.WaitVisible(".message-assistant", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="mermaid.min.js"]') !== null`, &mermaidScriptPresent),
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="katex.min.js"]') !== null`, &katexScriptPresent),
+		chromedp.EvaluateAsDevTools(`document.querySelector('script[src*="prism-core.min.js"]') !== null`, &prismScriptPresent),
+	)
+	if err != nil {
+		t.Fatalf("lazy-load navigation failed: %v", err)
+	}
+
+	if mermaidScriptPresent {
+		t.Error("mermaid.min.js requested on a page with no diagram")
+	}
+	if katexScriptPresent {
+		t.Error("katex.min.js requested on a page with no equation")
+	}
+	if prismScriptPresent {
+		t.Error("prism-core.min.js requested on a page with no code block")
+	}
+	mu.Lock()
+	if len(heavyRequests) != 0 {
+		t.Errorf("heavy assets requested on plain page: %v", heavyRequests)
+	}
+	mu.Unlock()
+
+	// Now inject content that needs the heavy libraries and dispatch an HTMX
+	// swap — the lazy loader must fetch and render them on demand.
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function () {
+			var messages = document.getElementById('messages');
+			messages.insertAdjacentHTML('beforeend',
+				'<div class="mermaid-diagram"><pre class="mermaid">graph TD; A--&gt;B;</pre></div>' +
+				'<pre data-code-enhanced="true"><code class="language-go">fmt.Println("hi")</code></pre>' +
+				'<span class="math-inline" data-latex="a+b">$a+b$</span>');
+			document.dispatchEvent(new Event('htmx:afterSwap'));
+			return true;
+		})()`, nil),
+	)
+	if err != nil {
+		t.Fatalf("inject rich content failed: %v", err)
+	}
+
+	// Libraries should arrive shortly after the swap.
+	waitForLazyLibraries(t, ctx, "mermaid", "katex", "Prism")
+
+	// On-demand rendering: the injected diagram must actually render to SVG.
+	pollForCondition(t, 15*time.Second, 100*time.Millisecond, func() bool {
+		var rendered bool
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function () {
+				var el = document.querySelector('.mermaid-diagram pre.mermaid');
+				return !!el && !!el.querySelector('svg');
+			})()`, &rendered),
+		)
+		return rendered
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	byName := map[string]bool{}
+	for _, u := range heavyRequests {
+		for _, name := range []string{"mermaid.min.js", "katex.min.js", "prism-core.min.js", "prism-go.min.js"} {
+			if strings.Contains(u, name) {
+				byName[name] = true
+			}
+		}
+	}
+	if !byName["mermaid.min.js"] {
+		t.Error("mermaid.min.js was never requested after diagram appeared")
+	}
+	if !byName["katex.min.js"] {
+		t.Error("katex.min.js was never requested after equation appeared")
+	}
+	if !byName["prism-core.min.js"] || !byName["prism-go.min.js"] {
+		t.Error("Prism assets were never requested after code block appeared")
 	}
 }
 
