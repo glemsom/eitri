@@ -163,6 +163,8 @@ Compaction is salience-aware (`compaction_salience_enabled`, default true): mess
 
 Replaces inline `UISession` map in early `api.Server`. Server-owned canonical session state: ID, browser_id, title, status (`idle`/`running`/`error`), messages, active skills, timestamps. `api.Server` stores `*session.Manager` and passes session data to templates. Not persisted — server restart loses all sessions.
 
+Session titles derive from the exported `session.TitlePreview` helper (first 31 runes of the latest user message, whitespace-normalized, ellipsis-suffixed when truncated) — exported so headless (batch) runs can derive titles exactly like the UI (issue #1038).
+
 ### `internal/persist/` — Session snapshots, traces, and timelines on disk
 
 | File | Responsibility |
@@ -276,7 +278,7 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | File | Responsibility |
 |------|---------------|
 | `service.go` | `RunService` — run lifecycle, confirmation handling, SSE broadcast bridge, auth persist callbacks |
-| `run.go` | `StartRun()` — validates config, snapshot runtime limits, builds LLM service, resolves skill context, builds tool registry (including `skill`, `delegate`, `collect`, `render_quick_replies`), starts agent loop |
+| `run.go` | `StartRun()` — validates config, snapshot runtime limits, builds LLM service, resolves skill context, builds tool registry (including `skill`, `delegate`, `collect`, `render_quick_replies`), starts agent loop; persists the run timeline on every exit path (completed, cancelled, max-turns, error) via a RunState-free path callable from headless batch runs |
 | `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` |
 | `skill_context.go` | `resolveSessionSkillContext()` — re-resolves active skill names against current registry |
 | `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()` |

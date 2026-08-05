@@ -17,7 +17,7 @@ func (m *Manager) AppendMessage(id string, msg message.Message) {
 	defer m.mu.Unlock()
 	if convo := m.convoStore[id]; convo != nil {
 		if msg.Role == "user" {
-			if title := sessionTitlePreview(msg.Content); title != "" {
+			if title := TitlePreview(msg.Content); title != "" {
 				if meta := m.metaStore[id]; meta != nil {
 					meta.Title = title
 				}
@@ -141,7 +141,12 @@ func (m *Manager) SetLastReasoningContent(id, reasoningContent string) {
 	}
 }
 
-func sessionTitlePreview(message string) string {
+// TitlePreview returns the session title preview for a user message: the
+// first 31 runes of the message with runs of whitespace collapsed to single
+// spaces, suffixed with an ellipsis when truncated. Returns "" for blank
+// input. The UI derives session titles from this rule; it is exported so
+// headless (batch) runs can derive titles exactly like the UI (issue #1038).
+func TitlePreview(message string) string {
 	normalized := strings.Join(strings.Fields(message), " ")
 	if normalized == "" {
 		return ""
