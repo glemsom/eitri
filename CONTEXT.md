@@ -7,7 +7,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 | Term | Meaning |
 |------|---------|
 | **Agent** | Synchronous turn loop that drives LLM → tool call → tool result → LLM until done or max turns. Lives in a single goroutine; SSE events fan out to UI concurrently. |
-| **Session Report** | A structured, human-readable retrospective of one complete agent session, showing the full conversation transcript, tool calls (with arguments and results), tool failures, timing per LLM call, retry attempts, and token utilization. Produced from persisted snapshots, history, traces, and SSE event timeline. Turns are joined to their HTTP traces by ID (each trace records `run_id`/`turn`; an `llm_call` timeline event carries the turn's trace ID), so timing survives long tool runs and retries. |
+| **Session Report** | A structured, human-readable retrospective of one complete agent session, showing the full conversation transcript, tool calls (with arguments and results), tool failures, timing per LLM call, retry attempts, and token utilization. Produced from persisted snapshots, history, traces, and SSE event timeline; turns join to their HTTP traces by ID (each trace records `run_id`/`turn`; an `llm_call` timeline event carries the turn's trace ID), so timing survives long tool runs and retries. |
 | **Session** | Single in-memory chat conversation. Has unique ID, message/render history, and active-run state. Lives only in memory — not restored from disk on startup. A new session is created by clicking the + button in the sidebar. The session cap (default 10) limits only the number of concurrent in-memory instances. |
 | **Tool** | Built-in tools — see [ARCHITECTURE.md](docs/ARCHITECTURE.md#built-in-tools). |
 | **Render component** | A browser-visible UI element (tool card, Mermaid diagram, QuickReplies chips) rendered by the server as a Templ fragment and swapped into the DOM via HTMX. Each component is triggered by an SSE `component` event, not by tool return text. |
@@ -125,15 +125,4 @@ curl -sSf https://raw.githubusercontent.com/glemsom/eitri/main/scripts/install.s
 
 Or download a tarball from the GitHub Releases page and verify the SHA256 checksum.
 
-### Key files summary
 
-| File | Purpose | Maintained by |
-|------|---------|---------------|
-| `VERSION` | Canonical semver string | `bump-version.sh` / hand-edit |
-| `CHANGELOG.md` | Human-readable release notes | `update-changelog.sh` / hand-edit |
-| `scripts/bump-version.sh` | Semver bump tool (reads/writes VERSION) | AI agent or human |
-| `scripts/update-changelog.sh` | Version a new changelog section | AI agent or human |
-| `scripts/release.sh` | Orchestrate bump → changelog → tag → push | AI agent or human |
-| `.github/workflows/ci.yml` | CI: test + build on push/PR | Committed |
-| `.github/workflows/release.yml` | Build + publish on `v*` tag | Committed |
-| `scripts/agent-loop.sh` | Parallel batch issue processing (optional) | Committed, optional use |
