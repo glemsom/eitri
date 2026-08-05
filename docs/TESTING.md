@@ -174,3 +174,19 @@ improvement manually:
    `DOMContentLoaded`/`First Contentful Paint` against the same page with the
    old build: first-interactive should be measurably faster on pages without
    rich content because ~4.7MB of JavaScript is no longer parsed up front.
+
+### Verifying lazy-load failure degradation (issue #1078)
+
+When an on-demand library fails to load (offline, blocked request), the page
+must degrade gracefully instead of throwing an unhandled promise rejection and
+silently losing the diagram/formatting:
+
+1. Open Chrome DevTools → **Network** → right-click `mermaid.min.js` → **Block
+   request URL**, reload a page containing a `mermaid` fenced code block.
+2. The console shows **exactly one** `eitri-lazy-load: mermaid failed to load
+   (...)` error — no `Uncaught (in promise)` — and the diagram's raw source is
+   shown under a "Diagram renderer could not be loaded. Raw code:" message.
+3. Repeat with `katex.min.js` (equations keep their raw LaTeX, now marked with
+   a dotted underline) and `prism-core.min.js` (code blocks keep their raw
+   text, now marked with a warning left border). Each library logs once and
+   does not retry on later HTMX swaps.

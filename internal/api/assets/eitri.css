@@ -1135,6 +1135,12 @@ noscript {
   padding-top: 2.5rem;
 }
 
+/* Prism highlighting could not be loaded — raw code stays visible, signalled
+   subtly instead of silently losing the syntax highlighting (issue #1078). */
+.message-content pre.code-error {
+  border-left: 3px solid var(--warning);
+}
+
 .message-content code {
   font-family: var(--font-code);
   font-size: 0.9em;
@@ -1234,6 +1240,15 @@ noscript {
   margin: 0.75rem 0;
   overflow-x: auto;
   text-align: center;
+}
+
+/* KaTeX could not be loaded — raw LaTeX stays visible, marked so the missing
+   rendering is obvious instead of silently skipped (issue #1078). */
+.math-error {
+  color: var(--text-muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
 }
 
 /* Tool icon/name/status/elapsed for tool entries in the sidebar activity

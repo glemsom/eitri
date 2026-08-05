@@ -98,4 +98,26 @@
   // this a no-op when the libraries are not (yet) present.
   document.addEventListener('eitri:prism-loaded', initPrism);
   document.addEventListener('eitri:katex-loaded', initKatex);
+
+  // The lazy loader reports failed fetches of KaTeX/Prism (issue #1078). The
+  // raw LaTeX / source code is already in the DOM, so the content survives
+  // either way — these handlers just mark it so users can tell the formatting
+  // is unavailable instead of it silently not happening.
+  document.addEventListener('eitri:katex-load-failed', function () {
+    document.querySelectorAll('.math-inline, .math-block').forEach(function (el) {
+      if (el.dataset.katexProcessed === 'true') return;
+      el.dataset.katexProcessed = 'true';
+      el.classList.add('math-error');
+    });
+  });
+
+  document.addEventListener('eitri:prism-load-failed', function () {
+    document.querySelectorAll('pre code').forEach(function (codeEl) {
+      if (codeEl.closest('pre.mermaid')) return;
+      if (codeEl.dataset.prismProcessed === 'true') return;
+      codeEl.dataset.prismProcessed = 'true';
+      var pre = codeEl.closest('pre');
+      if (pre) pre.classList.add('code-error');
+    });
+  });
 })();
