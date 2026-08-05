@@ -398,10 +398,10 @@ func (s *RunService) snapshotSession(sessionID string) {
 	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
-	// Keeps the copying getter: the persister serializes the session to JSON
-	// and must receive a detached UISession facade (meta + messages + skills)
-	// rather than a shared reference to manager-owned state.
-	sess := s.uiSessionMgr.Get(sessionID)
+	// Uses the explicit copy helper: the persister serializes the session to
+	// JSON and must receive a detached UISession facade (meta + messages +
+	// skills) rather than a shared reference to manager-owned state.
+	sess := s.uiSessionMgr.CopySession(sessionID)
 	if sess == nil {
 		return
 	}
@@ -440,9 +440,9 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
-	// Keeps the copying getter: the snapshot below serializes the full session
-	// facade to disk and needs a detached copy (see snapshotSession).
-	sess := s.uiSessionMgr.Get(sessionID)
+	// Uses the explicit copy helper: the snapshot below serializes the full
+	// session facade to disk and needs a detached copy (see snapshotSession).
+	sess := s.uiSessionMgr.CopySession(sessionID)
 	if sess == nil {
 		return
 	}
@@ -542,9 +542,9 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
 	}
 
-	// Snapshot the compacted history. Keeps the copying getter: the persister
-	// serializes the full session facade and needs a detached copy.
-	sessAfter := s.uiSessionMgr.Get(sessionID)
+	// Snapshot the compacted history. Uses the explicit copy helper: the
+	// persister serializes the full session facade and needs a detached copy.
+	sessAfter := s.uiSessionMgr.CopySession(sessionID)
 	if sessAfter != nil {
 		if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
 			slog.Warn("failed to snapshot compacted session",

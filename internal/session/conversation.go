@@ -206,10 +206,14 @@ func (m *Manager) ActiveSkills(id string) []string {
 	return result
 }
 
-// GetConversation returns a Conversation view of the session identified by id.
-// Returns nil if the session does not exist.
-// The returned Conversation is a copy safe for use outside the lock.
-func (m *Manager) GetConversation(id string) *Conversation {
+// CopyConversation returns a detached deep copy of the Conversation for the
+// session identified by id. Returns nil if the session does not exist.
+//
+// CopyConversation exists for callers that genuinely need a detached copy:
+// the debug endpoints, which run concurrently with active agent runs and must
+// not race with in-place mutations. Ordinary read-only access should use
+// GetConversationShared, which is a cheap shared-reference return.
+func (m *Manager) CopyConversation(id string) *Conversation {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	convo := m.convoStore[id]

@@ -669,10 +669,10 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 	}
 
 	// Snapshot the compacted history if persister is available.
-	// Keeps the copying getter: the persister serializes the full session
+	// Uses the explicit copy helper: the persister serializes the full session
 	// facade and needs a detached copy.
 	if s.persister != nil {
-		sessAfter := s.uiSessionMgr.Get(sessionID)
+		sessAfter := s.uiSessionMgr.CopySession(sessionID)
 		if sessAfter != nil {
 			if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
 				slog.Warn("failed to snapshot compacted session",

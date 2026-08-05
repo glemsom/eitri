@@ -147,11 +147,11 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions := s.config.SessionManager.ListByBrowser(browserID)
-	// Keeps the copying getter: the ChatPage template and renderSessionForPage
-	// consume the assembled UISession facade. The shared accessors expose the
-	// sub-stores separately, so this stays on Get until the contract step
-	// (#981) provides a shared facade.
-	sess := s.config.SessionManager.Get(id)
+	// Uses the explicit copy helper: the ChatPage template and
+	// renderSessionForPage consume the assembled UISession facade while an
+	// active run may be mutating session state in place, so they need a
+	// detached snapshot rather than a shared reference.
+	sess := s.config.SessionManager.CopySession(id)
 	renderedSession := renderSessionForPage(sess)
 
 	contextWindow := state.cfg.ContextWindowTokens

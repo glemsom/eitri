@@ -19,10 +19,13 @@ func (m *Manager) SetWorkspace(id, workspace string) {
 	}
 }
 
-// GetConfig returns a SessionConfig view of the session identified by id.
-// Returns nil if the session does not exist.
-// The returned SessionConfig is a copy safe for use outside the lock.
-func (m *Manager) GetConfig(id string) *SessionConfig {
+// CopyConfig returns a detached deep copy of the SessionConfig for the
+// session identified by id. Returns nil if the session does not exist.
+//
+// CopyConfig exists for callers that genuinely need a detached copy.
+// Ordinary read-only access should use GetConfigShared, which is a cheap
+// shared-reference return.
+func (m *Manager) CopyConfig(id string) *SessionConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	cfg := m.configStore[id]

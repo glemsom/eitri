@@ -25,28 +25,32 @@
 //   - convoStore (Conversation) — messages, system prompt, active skills
 //   - configStore (SessionConfig) — workspace path
 //
-// Read-path accessors exist in two flavours:
-//   - Copying getters (GetMeta, GetConversation, GetConfig) — return detached
-//     copies safe for mutation. These deep-copy the conversation (every
-//     message, including components) on every call and are being phased out.
+// Read-path accessors:
 //   - Shared read accessors (GetMetaShared, GetConversationShared,
 //     GetConfigShared) — return the manager's internal state directly as
-//     shared references. Callers must not mutate them. This is the preferred
-//     read API going forward.
+//     shared references, without copying. Callers must not mutate them and
+//     must not retain them across calls that mutate the session. This is the
+//     primary read API.
+//   - Cheap facade assembly (Get, GetValidated, All, ListByBrowser) — build a
+//     UISession facade with shared references; O(1) for the conversation, no
+//     deep copy. Read-only views of manager-owned state.
+//   - Explicit copy helpers (CopySession, CopyMeta, CopyConversation,
+//     CopyConfig) — return detached deep copies for the few callers that
+//     genuinely need them: JSON snapshot serialization (the persister needs a
+//     detached UISession facade), the ChatPage/ReportPage template rendering
+//     path (the templates consume the assembled UISession facade while a run
+//     may be mutating in place), and the debug endpoints (they are polled
+//     concurrently with active agent runs whose in-place mutations would race
+//     with shared references).
 //
 // Expand-contract sequence (issues #979 → #980 → #981): the expand step added
-// the shared read accessors; the migrate step (#980) switched read-only callers
-// from the copying getters to the shared accessors (this codebase's current
-// state). The remaining copying-getter callers are deliberate and documented
-// at each call site: JSON snapshot serialization (the persister needs a
-// detached UISession facade), the ChatPage/ReportPage template rendering path
-// (the templates consume the assembled UISession facade), and the debug
-// endpoints (they are polled concurrently with active agent runs whose
-// in-place mutations would race with shared references). The contract step
-// (#981) removes the deep-copy behaviour from the read path. Until #981 lands,
-// the copying getters must stay unchanged so the migrate step can proceed
-// incrementally with CI green throughout. New code that only reads session
-// state should use the shared accessors.
+// the shared read accessors; the migrate step (#980) switched read-only
+// callers from the copying getters to the shared accessors; the contract step
+// (#981) removed the deep-copy behaviour from the default read path. The
+// copying getters (GetMeta, GetConversation, GetConfig) no longer exist — the
+// default read path returns shared references, and remaining copy needs are
+// served by the explicitly-named copy helpers above. New code that only reads
+// session state should use the shared accessors or cheap facades.
 //
 // UISession is kept as a JSON serialization facade — it is assembled from
 // the three sub-stores on demand when snapshot I/O or direct field access
@@ -69,9 +73,10 @@
 //   - NewManager — create a session manager with a capacity cap
 //   - Create / Get / GetValidated / Delete — CRUD with browser ownership
 //   - CreateChild — create a sub-agent child session
-//   - GetMeta / GetConversation / GetConfig — copying accessor views (legacy)
 //   - GetMetaShared / GetConversationShared / GetConfigShared — shared
-//     read-only accessor views (preferred; see expand-contract note above)
+//     read-only accessor views (primary read API)
+//   - CopySession / CopyMeta / CopyConversation / CopyConfig — explicit
+//     detached-copy helpers for the few callers that need snapshots
 //   - UpdateMeta / AppendToConversation / UpdateConfig — typed setter methods
 //   - AppendMessage / AppendComponent — add data to a session
 //   - UpdateTitle / UpdateStatus — mutate session metadata
