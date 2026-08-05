@@ -449,3 +449,119 @@ func TestServeOpensBrowserWhenForced(t *testing.T) {
 		t.Fatalf("stdout = %q, want workspace line", stdout.String())
 	}
 }
+
+// TestBatchModeEmptyPromptRejected verifies issue #1094 end-to-end: running
+// `eitri -b ""` or `eitri -b "   "` must exit non-zero with a clear error and
+// never fall through to starting the UI server. The error is raised before any
+// config load, so no config file or LLM connection is needed.
+func TestBatchModeEmptyPromptRejected(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "eitri")
+	cmd := exec.Command("go", "build", "-o", binary, ".")
+	cmd.Dir = "."
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build failed: %v\n%s", err, out)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "empty string", args: []string{"-b", ""}},
+		{name: "whitespace only", args: []string{"-b", "   "}},
+		{name: "tabs and newlines", args: []string{"-b", "\t \n"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			cmd := exec.Command(binary, tc.args...)
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected non-zero exit for empty batch prompt")
+			}
+			if !strings.Contains(stderr.String(), "empty prompt") {
+				t.Fatalf("stderr = %q, want clear empty-prompt error", stderr.String())
+			}
+		})
+	}
+}
+
+// TestBatchPromptFromArgs covers issue #1094: batch mode must join the -b
+// value with all remaining positional arguments (Go's flag package stops at
+// the first non-flag arg) and must reject empty or whitespace-only prompts.
+func TestBatchPromptFromArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		bValue  string
+		rest    []string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:   "single quoted prompt unchanged",
+			bValue: "one prompt",
+			want:   "one prompt",
+		},
+		{
+			name:   "flag value plus remaining args joined",
+			bValue: "implement",
+			rest:   []string{"feature", "X"},
+			want:   "implement feature X",
+		},
+		{
+			name:   "remaining args only",
+			bValue: "",
+			rest:   []string{"review", "PR", "#123"},
+			want:   "review PR #123",
+		},
+		{
+			name:   "multi-word flag value plus remaining args",
+			bValue: "refactor the",
+			rest:   []string{"database", "layer"},
+			want:   "refactor the database layer",
+		},
+		{
+			name:    "empty flag value and no args rejected",
+			bValue:  "",
+			wantErr: true,
+		},
+		{
+			name:    "whitespace-only flag value rejected",
+			bValue:  "   ",
+			wantErr: true,
+		},
+		{
+			name:    "whitespace-only flag value and no args rejected",
+			bValue:  "\t \n",
+			wantErr: true,
+		},
+		{
+			name:   "whitespace-only flag value plus real args",
+			bValue: "   ",
+			rest:   []string{"do", "it"},
+			want:   "do it",
+		},
+		{
+			name:   "extra internal whitespace preserved",
+			bValue: "a  b",
+			rest:   []string{"c"},
+			want:   "a  b c",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := batchPromptFromArgs(tt.bValue, tt.rest)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("batchPromptFromArgs(%q, %v) = %q, want error", tt.bValue, tt.rest, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("batchPromptFromArgs(%q, %v) returned error: %v", tt.bValue, tt.rest, err)
+			}
+			if got != tt.want {
+				t.Fatalf("batchPromptFromArgs(%q, %v) = %q, want %q", tt.bValue, tt.rest, got, tt.want)
+			}
+		})
+	}
+}

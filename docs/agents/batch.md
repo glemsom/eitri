@@ -6,10 +6,17 @@ Eitri supports a headless batch mode via the `-b` flag. Instead of starting the 
 
 ```bash
 eitri -b "implement the feature in issue #42"
-eitri -b --persona reviewer "review the code in PR #123"
+eitri --persona reviewer -b "review the code in PR #123"
+eitri -b implement the feature in issue #42
 ```
 
-The `-b` flag expects a prompt string (the remaining arguments after the flag). Output is streamed token-by-token to stdout as plain text (no SSE, no tool cards, no HTML).
+The `-b` flag takes a prompt; the full prompt is the `-b` value joined with all
+remaining command-line arguments after the flag, so quoting is optional —
+`eitri -b implement feature X` runs the agent with the prompt "implement
+feature X". An empty or whitespace-only prompt (`eitri -b ""`, `eitri -b "   "`)
+is rejected with a clear error and a non-zero exit code instead of starting the
+UI server. Output is streamed token-by-token to stdout as plain text (no SSE,
+no tool cards, no HTML).
 
 The optional `--persona` flag overrides the active persona for the batch run only — it does not change `config.json`.
 
