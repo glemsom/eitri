@@ -401,6 +401,8 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 
 **Asset strategy**: `internal/api/assets/` contains pinned vendor assets served from `embed.FS` to avoid CDN availability, offline, and privacy failure modes. Do not use CDN or npm/bundler. UI fonts (Inter, JetBrains Mono) are self-hosted as `woff2` under `assets/fonts/`, declared via `@font-face` in `eitri.css` with `font-display: swap`, and precached by the service worker — the page shell makes zero external font/CDN requests. (#970)
 
+**Design tokens**: every color in `eitri.css` flows from semantic custom properties declared in the `:root` token blocks — a dark root plus a light-theme override inside `@media (prefers-color-scheme: light)`. The two roots are kept symmetric (same token names) so no dark value can leak into light mode, and tints derived from a token (`user-message` background, focus rings, termination chips, glow pulses) are computed with `color-mix(in srgb, var(--token) N%, transparent)` so they follow the theme's token automatically. A Go test acts as the CI stylelint rule: `TestEmbeddedCSSNoBareHexOutsideTokenRoot` fails on any bare hex/rgba color outside the token root declarations (the Prism syntax-highlighting palette is the sole exempt surface), `TestEmbeddedCSSAllTokensDefined` fails when a component references an undeclared token, and `TestEmbeddedCSSTokenRootSymmetry` fails when the light root drifts from the dark one. (issue #1068)
+
 **Generative UI seam**: `render_mermaid_diagram` and `render_quick_replies` tools emit structured data; server renders Templ components via `/api/sessions/{id}/render`; islands add optional browser-native behavior without turning app into an SPA.
 
 ## Data flow (chat request)
