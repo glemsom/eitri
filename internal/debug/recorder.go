@@ -32,18 +32,25 @@ type HTTPTrace struct {
 	ResponseBody    string              `json:"response_body"`
 	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
 	Error           string              `json:"error,omitempty"`
+	// Correlation IDs: RunID identifies the run this LLM call belongs to and
+	// Turn is the 1-based turn number within that run, stamped from the run
+	// loop's TraceMeta bridge. Together with Attempt they group the traces of
+	// one turn (retries produce one trace per attempt).
+	RunID string `json:"run_id,omitempty"`
+	Turn  int    `json:"turn,omitempty"`
 	// Enriched per-call measurements. Model is extracted from the request body
 	// at capture time; Usage and FinishReason come from the response body
 	// (including the stream tail) or the run loop's TraceMeta bridge; Attempt
 	// is the zero-based retry attempt number; ErrorClass is the structured
 	// capture-time classification of a failed call; TTFBMs is the time to the
-	// first response byte.
+	// first response byte and TTFTMs the time to the first content token.
 	Model        string       `json:"model,omitempty"`
 	Attempt      int          `json:"attempt,omitempty"`
 	FinishReason string       `json:"finish_reason,omitempty"`
 	Usage        *UsageTotals `json:"usage,omitempty"`
 	ErrorClass   ErrorClass   `json:"error_class,omitempty"`
 	TTFBMs       int64        `json:"ttfb_ms,omitempty"` // ms from request start to first response byte
+	TTFTMs       int64        `json:"ttft_ms,omitempty"` // ms from request start to first content token
 }
 
 const (
@@ -106,7 +113,7 @@ func (r *Recorder) nextTraceID() TraceID {
 // trace is evicted (fail-safe) so the map cannot grow without bound. The
 // evicted trace is moved to completed storage with an eviction marker and its
 // OnComplete fires after the lock is released.
-func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody []byte, attempt int) TraceID {
+func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody []byte, attempt int, runID string, turn int) TraceID {
 	r.mu.Lock()
 
 	var evicted *HTTPTrace
@@ -129,6 +136,8 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 		RequestBody:  string(truncated),
 		Model:        extractModel(reqBody),
 		Attempt:      attempt,
+		RunID:        runID,
+		Turn:         turn,
 	}
 
 	r.inFlight[id] = trace
@@ -184,11 +193,12 @@ func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, durat
 
 	// TraceMeta bridge overrides the body-parsed values with the authoritative
 	// per-call measurements recorded by the run loop (retry attempt, TTFB,
-	// provider usage, finish reason, model). Applied before aggregation so the
-	// interaction metrics count the real values.
+	// TTFT, provider usage, finish reason, model, run/turn correlation IDs).
+	// Applied before aggregation so the interaction metrics count the real values.
 	if meta != nil {
 		trace.Attempt = meta.Attempt()
 		trace.TTFBMs = meta.TTFBMs()
+		trace.TTFTMs = meta.TTFTMs()
 		if u := meta.Usage(); u != nil {
 			trace.Usage = u
 		}
@@ -197,6 +207,12 @@ func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, durat
 		}
 		if m := meta.Model(); m != "" {
 			trace.Model = m
+		}
+		if rid := meta.RunID(); rid != "" {
+			trace.RunID = rid
+		}
+		if turn := meta.Turn(); turn > 0 {
+			trace.Turn = turn
 		}
 	}
 
@@ -352,6 +368,10 @@ func extractModel(reqBody []byte) string {
 type RecordMeta struct {
 	// Attempt is the zero-based retry attempt number of this call.
 	Attempt int
+	// RunID identifies the run this LLM call belongs to.
+	RunID string
+	// Turn is the 1-based turn number of this call within its run.
+	Turn int
 }
 
 // Record records a complete (non-streaming) HTTP trace.
@@ -388,6 +408,8 @@ func (r *Recorder) RecordWithMeta(sessionID, providerID, method, url string, req
 		Error:           errMsg,
 		Model:           extractModel(reqBody),
 		Attempt:         meta.Attempt,
+		RunID:           meta.RunID,
+		Turn:            meta.Turn,
 		Usage:           usage,
 		FinishReason:    finishReason,
 	}
@@ -642,6 +664,22 @@ func NewRecordingRoundTripper(inner http.RoundTripper, recorder *Recorder, sessi
 	}
 }
 
+// metaRunID returns the run ID recorded on a TraceMeta, or "" when nil.
+func metaRunID(meta *TraceMeta) string {
+	if meta == nil {
+		return ""
+	}
+	return meta.RunID()
+}
+
+// metaTurn returns the 1-based turn number recorded on a TraceMeta, or 0 when nil.
+func metaTurn(meta *TraceMeta) int {
+	if meta == nil {
+		return 0
+	}
+	return meta.Turn()
+}
+
 func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Read and buffer request body for recording
 	var reqBody []byte
@@ -653,11 +691,17 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 	// The run loop attaches a TraceMeta to the request context so the recorded
 	// trace can be enriched with per-call measurements (retry attempt, TTFB,
-	// provider-parsed usage/finish_reason/model).
+	// TTFT, run/turn correlation IDs, provider-parsed usage/finish_reason/model).
 	meta := TraceMetaFromContext(req.Context())
 
 	start := time.Now()
-	traceID := rt.recorder.startTrace(rt.sessionID, rt.providerID, req.Method, req.URL.Path, reqBody, AttemptFromContext(req.Context()))
+	if meta != nil {
+		meta.SetRequestStart(start)
+	}
+	// Correlation IDs: the run loop stamps the run ID and 1-based turn number
+	// on the TraceMeta for every turn, so the trace can later be joined back to
+	// its turn by ID (issue #988).
+	traceID := rt.recorder.startTrace(rt.sessionID, rt.providerID, req.Method, req.URL.Path, reqBody, AttemptFromContext(req.Context()), metaRunID(meta), metaTurn(meta))
 	if meta != nil {
 		meta.SetTraceID(traceID)
 	}

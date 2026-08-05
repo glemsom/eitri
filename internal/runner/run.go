@@ -160,6 +160,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		SSE:       sseState,
 		RunCfg:    cfg,
 	}
+	// Generate the run ID once at run start so the persisted timeline, SSE
+	// events, and HTTP traces all share the same identifier and turns can be
+	// correlated to traces by ID (issue #988).
+	state.RunID = runstate.GenerateRunID(sessionID, state.StartedAt)
 	s.store(sessionID, state)
 
 	go func() {
@@ -207,6 +211,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			Confirmer:        confirmer,
 			UISessionMgr:     s.uiSessionMgr,
 			SessionID:        sessionID,
+			RunID:            runstate.GenerateRunID(sessionID, state.StartedAt),
 			ContextWindow:    contextWindowTokens,
 			CrashDumpFunc:    s.crashDumpFunc,
 			Turns:            &state.Turns,
@@ -297,7 +302,7 @@ func (s *RunService) persistRunTimeline(sessionID string, state *RunState, sseSt
 
 	timeline := &runstate.Timeline{
 		Version:   1,
-		RunID:     runstate.GenerateRunID(sessionID, state.StartedAt),
+		RunID:     state.RunID,
 		SessionID: sessionID,
 		Provider: runstate.TimelineProvider{
 			Model:      cfg.ModelName,

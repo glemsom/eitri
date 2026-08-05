@@ -71,6 +71,9 @@ model service.
 | `internal/config/config_test.go` | Config load/save/merge, provider validation |
 | `internal/sandbox/sandbox_test.go` | Sandbox `BwrapIsUsable`, `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not usable) |
 | `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, etc. | Runner service, run config, run loop, batch runs, broadcasts |
+| `internal/debug/recorder_test.go`, `tracemeta_test.go` | HTTP trace recording/enrichment; run/turn correlation IDs, time-to-first-token, round-tripper stamping |
+| `internal/report/report_test.go` | Session report assembly, turn↔trace ID joins, retry attempt surfacing, timestamp-heuristic fallback |
+| `internal/runstate/timeline_test.go` | Timeline condensation, `llm_call` correlation events, run ID generation |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior, HTTP connection timeouts (stalled-header conn reaping, streaming exempt from write deadlines) |
 

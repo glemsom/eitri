@@ -198,6 +198,9 @@ Each trace record:
 | `finish_reason` | string | Provider-reported finish reason (`stop`, `length`, `tool_calls`, `end_turn`, …). Omitted when unknown. |
 | `usage` | object | Provider-reported token usage: `prompt_tokens`, `completion_tokens`, `total_tokens`, `reasoning_tokens`, `cache_read_tokens` (prompt cache hits) and `cache_write_tokens` (prompt cache creation) where the provider reports them. Parsed from the response body (including the stream tail when the body exceeds 256KB). Omitted when the provider returned no usage. |
 | `ttfb_ms` | int | Time-to-first-byte in milliseconds — time from request start to the first response byte. |
+| `ttft_ms` | int | Time-to-first-token in milliseconds — time from request start to the first content token of a streaming response. Omitted (0) when no token arrived. |
+| `run_id` | string | Identifier of the run this LLM call belongs to. Together with `turn` and `attempt` it groups the traces of one turn (retries produce one trace per attempt). Omitted for calls made outside the agent loop. |
+| `turn` | int | 1-based turn number of this call within its run. Omitted when unknown. |
 | `error_class` | string | Structured capture-time error classification: `rate_limit`, `timeout`, `auth`, `context_length`, `network`, or `other`. Empty on success. |
 
 Request and response bodies are diagnostic data. They may contain conversation

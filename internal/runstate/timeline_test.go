@@ -190,6 +190,47 @@ func TestCondensedEvents_NeedsConfirmation(t *testing.T) {
 	}
 }
 
+func TestCondensedEvents_LLMCallCorrelation(t *testing.T) {
+	s := New()
+	w := NewWriter(s)
+
+	w.SetTurn(2)
+	w.LLMCall(LLMCallInfo{
+		TraceID:    "trace_abc",
+		Attempt:    2,
+		Attempts:   3,
+		DurationMs: 900,
+		TTFBMs:     40,
+		TTFTMs:     120,
+	})
+	w.ToolCall("bash", json.RawMessage(`{"cmd":"ls"}`))
+
+	events := s.CondensedEvents()
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	llm := events[0]
+	if llm.Type != "llm_call" {
+		t.Errorf("expected type 'llm_call', got %q", llm.Type)
+	}
+	if llm.Turn != 2 {
+		t.Errorf("expected Turn 2, got %d", llm.Turn)
+	}
+	if llm.TraceID != "trace_abc" {
+		t.Errorf("TraceID = %q, want trace_abc", llm.TraceID)
+	}
+	if llm.Attempt != 2 {
+		t.Errorf("Attempt = %d, want 2", llm.Attempt)
+	}
+	if llm.Attempts != 3 {
+		t.Errorf("Attempts = %d, want 3", llm.Attempts)
+	}
+	if llm.DurationMs != 900 || llm.TTFBMs != 40 || llm.TTFTMs != 120 {
+		t.Errorf("timing = duration:%d ttfb:%d ttft:%d, want 900/40/120", llm.DurationMs, llm.TTFBMs, llm.TTFTMs)
+	}
+}
+
 func TestGenerateRunID_IsDeterministic(t *testing.T) {
 	sessionID := "test-session"
 	startedAt := time.Date(2026, 7, 25, 17, 46, 46, 0, time.UTC)

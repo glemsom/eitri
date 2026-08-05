@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/sandbox"
 	"github.com/glemsom/eitri/internal/tokenizer"
@@ -3701,4 +3704,237 @@ func (m *attemptCaptureLLM) Stream(ctx context.Context, req *litellm.Request) (l
 	}
 	m.mu.Unlock()
 	return m.inner.Stream(ctx, req)
+}
+
+// sseOpenAIStreamChunk is a single OpenAI-style SSE chunk for a streaming
+// chat completion.
+func sseOpenAIStreamChunk(delta, finishReason string, usage string) string {
+	return `data: {"id":"x","object":"chat.completion.chunk","model":"test-model","choices":[{"index":0,"delta":{"content":"` + delta + `"},"finish_reason":` + finishReason + `}]` + usage + `}` + "\n\n"
+}
+
+// recordedLLMServer returns an httptest.Server that streams a canned OpenAI
+// SSE chat completion (with a small delay so TTFB/TTFT are measurable) and
+// counts the number of requests it received. When firstAttemptFails is true
+// the first request returns HTTP 500 (a transient, retryable error).
+func recordedLLMServer(t *testing.T, firstAttemptFails bool) (*httptest.Server, *debug.Recorder, *int) {
+	t.Helper()
+	rec := debug.NewRecorder(20)
+	calls := 0
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		this := calls
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		if firstAttemptFails && this == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":{"message":"upstream burst limit reached"}}`)
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, sseOpenAIStreamChunk("hi", "null", ""))
+		fmt.Fprint(w, sseOpenAIStreamChunk("", `"stop"`, ""))
+		fmt.Fprint(w, sseOpenAIStreamChunk("", "null", `,"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}`))
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv, rec, &calls
+}
+
+// recordedClient builds a litellm.Client whose HTTP transport records traces
+// into rec under the given session, pointing at the provided SSE server.
+func recordedClient(t *testing.T, srv *httptest.Server, rec *debug.Recorder, sessionID string) *litellm.Client {
+	t.Helper()
+	client, err := provider.NewLitellmClient(provider.LitellmConfig{
+		ProviderID:   "custom_openai",
+		Model:        "test-model",
+		BaseURL:      srv.URL,
+		APIKey:       "test-key",
+		RoundTripper: debug.NewRecordingRoundTripper(nil, rec, sessionID, "custom_openai"),
+	})
+	if err != nil {
+		t.Fatalf("failed to create recorded client: %v", err)
+	}
+	return client
+}
+
+func TestRunAgent_EmitsLLMCallCorrelationEvent(t *testing.T) {
+	srv, rec, _ := recordedLLMServer(t, false)
+	client := recordedClient(t, srv, rec, "sess-1")
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}}},
+		lrWithModel("test-model"),
+	)
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:  NewRequestHistoryManager(req),
+		SessionID:   "sess-1",
+		RunID:       "run-1",
+		RetryPolicy: &RetryPolicy{Attempts: 0, Backoff: 0},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	// The timeline-side correlation event must carry the trace ID.
+	var call *runstate.SSEEvent
+	for _, evt := range collectSSE(sseState) {
+		if evt.Type == "llm_call" {
+			e := evt
+			call = &e
+			break
+		}
+	}
+	if call == nil {
+		t.Fatal("expected an llm_call event for the turn")
+	}
+	info, ok := call.Data.(*runstate.LLMCallInfo)
+	if !ok {
+		t.Fatalf("llm_call Data = %T, want *runstate.LLMCallInfo", call.Data)
+	}
+	if info.TraceID == "" {
+		t.Fatal("llm_call TraceID is empty")
+	}
+	if info.Attempt != 0 {
+		t.Errorf("llm_call Attempt = %d, want 0 (single attempt)", info.Attempt)
+	}
+	if info.Attempts != 1 {
+		t.Errorf("llm_call Attempts = %d, want 1", info.Attempts)
+	}
+	if info.TTFBMs <= 0 {
+		t.Errorf("llm_call TTFBMs = %d, want > 0", info.TTFBMs)
+	}
+	if info.TTFTMs <= 0 {
+		t.Errorf("llm_call TTFTMs = %d, want > 0", info.TTFTMs)
+	}
+	if info.DurationMs <= 0 {
+		t.Errorf("llm_call DurationMs = %d, want > 0", info.DurationMs)
+	}
+
+	// The recorded trace must carry the run/turn correlation IDs and the
+	// time-to-first-token derived from request start → first token.
+	traces := rec.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	tr := traces[0]
+	if string(tr.ID) != info.TraceID {
+		t.Errorf("trace ID %q does not match llm_call trace ID %q", tr.ID, info.TraceID)
+	}
+	if tr.RunID != "run-1" {
+		t.Errorf("trace RunID = %q, want run-1", tr.RunID)
+	}
+	if tr.Turn != 1 {
+		t.Errorf("trace Turn = %d, want 1", tr.Turn)
+	}
+	if tr.Attempt != 0 {
+		t.Errorf("trace Attempt = %d, want 0", tr.Attempt)
+	}
+	if tr.TTFTMs <= 0 {
+		t.Errorf("trace TTFTMs = %d, want > 0", tr.TTFTMs)
+	}
+	if tr.TTFBMs <= 0 {
+		t.Errorf("trace TTFBMs = %d, want > 0", tr.TTFBMs)
+	}
+}
+
+func TestRunAgent_RetryRecordsTracesAndAttemptCount(t *testing.T) {
+	srv, rec, calls := recordedLLMServer(t, true)
+	client := recordedClient(t, srv, rec, "sess-1")
+
+	req := lrFromMessages(
+		[]litellm.Message{{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "test"}}}},
+		lrWithModel("test-model"),
+	)
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   1,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      nil,
+	}, RunOpts{
+		HistoryMgr:  NewRequestHistoryManager(req),
+		SessionID:   "sess-1",
+		RunID:       "run-1",
+		RetryPolicy: &RetryPolicy{Attempts: 1, Backoff: 0},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error after retry: %v", err)
+	}
+
+	if *calls != 2 {
+		t.Fatalf("LLM calls = %d, want 2 (initial + retry)", *calls)
+	}
+
+	// Two traces for the same (run, turn): the first failed, the second
+	// succeeded. Both must carry the run/turn correlation IDs.
+	traces := rec.List(0, "", "")
+	if len(traces) != 2 {
+		t.Fatalf("got %d traces, want 2 (one per attempt)", len(traces))
+	}
+	for _, tr := range traces {
+		if tr.RunID != "run-1" {
+			t.Errorf("trace RunID = %q, want run-1", tr.RunID)
+		}
+		if tr.Turn != 1 {
+			t.Errorf("trace Turn = %d, want 1", tr.Turn)
+		}
+	}
+	if traces[0].Attempt != 0 {
+		t.Errorf("first trace Attempt = %d, want 0", traces[0].Attempt)
+	}
+	if traces[1].Attempt != 1 {
+		t.Errorf("second trace Attempt = %d, want 1", traces[1].Attempt)
+	}
+	if traces[0].Status != http.StatusInternalServerError {
+		t.Errorf("first trace Status = %d, want 500", traces[0].Status)
+	}
+	if traces[1].Status != http.StatusOK {
+		t.Errorf("second trace Status = %d, want 200", traces[1].Status)
+	}
+
+	// The llm_call event must reference the successful (second) trace and
+	// report the total attempt count so the report can surface retries.
+	var call *runstate.SSEEvent
+	for _, evt := range collectSSE(sseState) {
+		if evt.Type == "llm_call" {
+			e := evt
+			call = &e
+			break
+		}
+	}
+	if call == nil {
+		t.Fatal("expected an llm_call event for the turn")
+	}
+	info, ok := call.Data.(*runstate.LLMCallInfo)
+	if !ok {
+		t.Fatalf("llm_call Data = %T, want *runstate.LLMCallInfo", call.Data)
+	}
+	if info.TraceID != string(traces[1].ID) {
+		t.Errorf("llm_call TraceID = %q, want the successful attempt's trace %q", info.TraceID, traces[1].ID)
+	}
+	if info.Attempt != 1 {
+		t.Errorf("llm_call Attempt = %d, want 1", info.Attempt)
+	}
+	if info.Attempts != 2 {
+		t.Errorf("llm_call Attempts = %d, want 2", info.Attempts)
+	}
 }

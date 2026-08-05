@@ -28,6 +28,10 @@ import (
 // RunState holds SSE broadcast state and cancel for one run.
 type RunState struct {
 	SessionID string
+	// RunID is the stable identifier for this run, shared by the persisted
+	// timeline, SSE events, and HTTP traces so turns can be correlated to
+	// their traces by ID (issue #988).
+	RunID     string
 	Cancel    context.CancelFunc
 	StartedAt time.Time
 	Done      chan struct{}

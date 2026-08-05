@@ -68,7 +68,7 @@ func TestRecorder_InFlightCap_EvictsOldest(t *testing.T) {
 
 	var ids []TraceID
 	for i := 0; i < 3; i++ {
-		ids = append(ids, r.startTrace("s1", "p1", "GET", "/", nil, 0))
+		ids = append(ids, r.startTrace("s1", "p1", "GET", "/", nil, 0, "", 0))
 		time.Sleep(2 * time.Millisecond) // distinct start timestamps for oldest
 	}
 
@@ -123,11 +123,11 @@ func TestRecorder_InFlightCap_EvictsOldestAndFiresOnComplete(t *testing.T) {
 		}
 	}
 
-	first := r.startTrace("s1", "p1", "GET", "/1", nil, 0)
+	first := r.startTrace("s1", "p1", "GET", "/1", nil, 0, "", 0)
 	time.Sleep(2 * time.Millisecond)
-	second := r.startTrace("s1", "p1", "GET", "/2", nil, 0)
+	second := r.startTrace("s1", "p1", "GET", "/2", nil, 0, "", 0)
 	time.Sleep(2 * time.Millisecond)
-	_ = r.startTrace("s1", "p1", "GET", "/3", nil, 0)
+	_ = r.startTrace("s1", "p1", "GET", "/3", nil, 0, "", 0)
 
 	if len(evictions) != 2 {
 		t.Fatalf("got %d eviction callbacks, want 2", len(evictions))
@@ -834,5 +834,114 @@ func TestTraceMeta_ContextRoundTrip(t *testing.T) {
 	}
 	if u := meta.Usage(); u == nil || u.PromptTokens != 7 || u.CompletionTokens != 8 {
 		t.Fatalf("meta Usage did not round-trip: %+v", u)
+	}
+}
+
+func TestTraceMeta_RunTurnAndTTFTRoundTrip(t *testing.T) {
+	meta := &TraceMeta{}
+	meta.SetRunID("run-42")
+	meta.SetTurn(3)
+	meta.SetAttempt(1)
+
+	start := time.Now().Add(-200 * time.Millisecond)
+	meta.SetRequestStart(start)
+	meta.SetFirstTokenTime(start.Add(50 * time.Millisecond))
+
+	if meta.RunID() != "run-42" {
+		t.Errorf("RunID = %q, want run-42", meta.RunID())
+	}
+	if meta.Turn() != 3 {
+		t.Errorf("Turn = %d, want 3", meta.Turn())
+	}
+	// 50ms from request start to first token.
+	if ttft := meta.TTFTMs(); ttft < 40 || ttft > 60 {
+		t.Errorf("TTFTMs = %d, want ~50", ttft)
+	}
+
+	// ResetFirstToken clears the anchors so a retry starts a fresh
+	// measurement (issue #988).
+	meta.ResetFirstToken()
+	if meta.TTFTMs() != 0 {
+		t.Errorf("TTFTMs after reset = %d, want 0", meta.TTFTMs())
+	}
+	newStart := time.Now().Add(-100 * time.Millisecond)
+	meta.SetRequestStart(newStart)
+	meta.SetFirstTokenTime(newStart.Add(25 * time.Millisecond))
+	if ttft := meta.TTFTMs(); ttft < 15 || ttft > 35 {
+		t.Errorf("TTFTMs after retry = %d, want ~25", ttft)
+	}
+}
+
+func TestRecorder_RoundTripperStampsRunTurnAndTTFT(t *testing.T) {
+	r := NewRecorder(5)
+	meta := &TraceMeta{}
+	meta.SetRunID("run-1")
+	meta.SetTurn(2)
+	meta.SetAttempt(0)
+
+	// Serve a small body so the round-tripper's traceBody measures TTFB and
+	// the meta's first-token anchor produces a TTFT at finalize time.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"choices":[{"delta":{"content":"hi"}}]}`))
+	}))
+	defer srv.Close()
+
+	rt := NewRecordingRoundTripper(nil, r, "s1", "p1")
+	client := &http.Client{Transport: rt, Timeout: 5 * time.Second}
+
+	ctx := WithTraceMeta(context.Background(), meta)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/v1/chat", bytes.NewReader([]byte(`{"model":"test"}`)))
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	// First token arrives as soon as the body is read.
+	io.Copy(io.Discard, resp.Body)
+	meta.SetFirstTokenTime(meta.RequestStart().Add(7 * time.Millisecond))
+	resp.Body.Close()
+
+	traces := r.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	tr := traces[0]
+	if tr.RunID != "run-1" {
+		t.Errorf("trace RunID = %q, want run-1", tr.RunID)
+	}
+	if tr.Turn != 2 {
+		t.Errorf("trace Turn = %d, want 2", tr.Turn)
+	}
+	if tr.TTFTMs != 7 {
+		t.Errorf("trace TTFTMs = %d, want 7", tr.TTFTMs)
+	}
+}
+
+func TestRecordWithMeta_CarriesRunTurnCorrelation(t *testing.T) {
+	r := NewRecorder(5)
+
+	r.RecordWithMeta("s1", "p1", "POST", "/v1/chat", []byte(`{"model":"m"}`), []byte(`{"model":"m"}`), 200, time.Second, "", nil, RecordMeta{
+		Attempt: 3,
+		RunID:   "run-9",
+		Turn:    4,
+	})
+
+	traces := r.List(0, "", "")
+	if len(traces) != 1 {
+		t.Fatalf("got %d traces, want 1", len(traces))
+	}
+	tr := traces[0]
+	if tr.RunID != "run-9" {
+		t.Errorf("trace RunID = %q, want run-9", tr.RunID)
+	}
+	if tr.Turn != 4 {
+		t.Errorf("trace Turn = %d, want 4", tr.Turn)
+	}
+	if tr.Attempt != 3 {
+		t.Errorf("trace Attempt = %d, want 3", tr.Attempt)
 	}
 }
