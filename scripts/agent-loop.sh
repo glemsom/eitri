@@ -254,6 +254,21 @@ find_pr() {
 		2>/dev/null | head -n 1 || true
 }
 
+wait_for_rebase_finish() {
+	# Wait up to GRACE seconds for an in-progress rebase (REBASE_HEAD) to
+	# finish. Resolution agents routinely complete the rebase and force-push a
+	# moment before their subprocess teardown lands, so REBASE_HEAD can still be
+	# present right after the resolution run exits; the single immediate check
+	# races that teardown and aborts an already-finished rebase. Returns 0 once
+	# the rebase is gone, 1 if it is still in progress after the grace period.
+	local wt="$1" grace="${2:-10}" i=0
+	while [ "$i" -lt "$grace" ] && git -C "$wt" rev-parse -q --verify REBASE_HEAD >/dev/null 2>&1; do
+		sleep 1
+		i=$((i + 1))
+	done
+	! git -C "$wt" rev-parse -q --verify REBASE_HEAD >/dev/null 2>&1
+}
+
 merge_pr() {
 	local num="$1" pr="$2" branch="$3"
 	local wt="$WORKTREES_DIR/issue-$num"
@@ -288,7 +303,10 @@ merge_pr() {
 				echo "Warning: resolution run for PR #$pr failed (attempt $attempts/3)" >&2
 				continue
 			fi
-			if git -C "$wt" rev-parse -q --verify REBASE_HEAD >/dev/null 2>&1; then
+			# The agent may have completed the rebase (and force-push) a moment
+			# before its teardown landed — poll briefly instead of racing the
+			# single immediate check and aborting an already-finished rebase.
+			if ! wait_for_rebase_finish "$wt"; then
 				echo "Warning: rebase still in progress after resolution run for PR #$pr — aborting rebase" >&2
 				git -C "$wt" rebase --abort >/dev/null 2>&1 || true
 				continue
