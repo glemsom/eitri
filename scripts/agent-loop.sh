@@ -10,6 +10,9 @@
 # parallel. Worker stdout goes to `.worktrees/issue-N/log` — never interleaved
 # on the terminal. Workers create a branch, implement, push, and open a PR
 # whose description contains `Closes #N`; they never merge.
+# Each worker exports `EITRI_BATCH_SESSION_ID=issue-N` so its batch session is
+# persisted under `~/.eitri/sessions/issue-N/` for post-run review instead of
+# an opaque `batch-*` directory.
 #
 # After all workers finish, the dispatcher merges PRs serially
 # (`gh pr merge --squash`), rebasing each PR branch onto the latest
@@ -389,7 +392,10 @@ main() {
 			title=$(gh issue view "$num" --json title --jq '.title' 2>/dev/null || echo "issue #$num")
 			prompt=$(build_prompt "$num" "$title")
 			echo "Starting worker for issue #$num — $title"
-			( cd "$WORKTREES_DIR/issue-$num" && exec $WORKER_SHIELD eitri --persona generic -b "$prompt" ) > "$WORKTREES_DIR/issue-$num/log" 2>&1 &
+			# Name the worker's batch session per issue so the whole AFK
+			# workflow is reviewable: `~/.eitri/sessions/issue-N/` holds the
+			# session snapshot, HTTP traces, and timeline for this issue.
+			( cd "$WORKTREES_DIR/issue-$num" && EITRI_BATCH_SESSION_ID="issue-$num" exec $WORKER_SHIELD eitri --persona generic -b "$prompt" ) > "$WORKTREES_DIR/issue-$num/log" 2>&1 &
 			pid=$!
 			pids+=("$num:$pid")
 			spawned=$((spawned + 1))

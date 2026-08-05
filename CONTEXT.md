@@ -77,7 +77,7 @@ Optional developer tools:
 - `make build` — compile the binary with embedded version
 - `./eitri --version` — print the compiled version
 
-The `scripts/agent-loop.sh` script is an optional convenience for those with `gh` installed. It is a dispatcher: it claims up to `-j N` (default 2) `ready-for-agent` issues, runs one `eitri -b` worker per issue in a detached git worktree (`.worktrees/issue-N`), then serially rebases and squash-merges the resulting PRs. See `docs/agents/batch.md`.
+The `scripts/agent-loop.sh` script is an optional convenience for those with `gh` installed. It is a dispatcher: it claims up to `-j N` (default 2) `ready-for-agent` issues, runs one `eitri -b` worker per issue in a detached git worktree (`.worktrees/issue-N`), then serially rebases and squash-merges the resulting PRs. Each worker names its batch session `issue-N` (`EITRI_BATCH_SESSION_ID`), leaving a reviewable `~/.eitri/sessions/issue-N/` per issue. See `docs/agents/batch.md`.
 
 ### Cutting a release
 
