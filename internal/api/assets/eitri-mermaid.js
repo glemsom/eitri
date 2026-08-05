@@ -53,4 +53,15 @@
   document.addEventListener('eitri:mermaid-loaded', function () {
     setTimeout(initMermaid, 100);
   });
+
+  // The lazy loader reports a failed fetch of mermaid.min.js (issue #1078).
+  // Degrade every untouched diagram to its raw source with a visible message
+  // instead of leaving a silently unrendered block.
+  document.addEventListener('eitri:mermaid-load-failed', function () {
+    document.querySelectorAll('pre.mermaid:not([data-mermaid-processed])').forEach(function (el) {
+      el.setAttribute('data-mermaid-processed', 'true');
+      el.classList.add('mermaid-error');
+      el.insertAdjacentHTML('afterend', '<p class="text-muted">Diagram renderer could not be loaded. Raw code:</p>');
+    });
+  });
 })();

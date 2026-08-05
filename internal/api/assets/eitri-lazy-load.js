@@ -10,10 +10,24 @@
 // (eitri-mermaid.js, eitri-renderers.js) do the actual rendering and already
 // tolerate missing libraries. Once a library arrives we dispatch a custom
 // event so those islands run exactly as they would have on a full page load.
+//
+// If a library fails to load (offline, blocked request, server hiccup) the
+// rejection is caught here — never left as an unhandled promise rejection —
+// logged once, and surfaced to the renderer islands via a *-load-failed event
+// so content degrades to a visible fallback instead of silently losing the
+// diagram, equation, or syntax highlighting (issue #1078).
 (function () {
   'use strict';
 
   var loaded = {
+    mermaid: false,
+    katex: false,
+    prism: false,
+  };
+
+  // A failed load is permanent for the page lifetime: re-scanning after HTMX
+  // swaps must not re-attempt the fetch and spam the console on every swap.
+  var failed = {
     mermaid: false,
     katex: false,
     prism: false,
@@ -54,28 +68,47 @@
       s.async = true;
       s.onload = resolve;
       s.onerror = function () {
-        console.error('eitri-lazy-load: failed to load ' + src);
         reject(new Error('failed to load ' + src));
       };
       document.head.appendChild(s);
     });
   }
 
+  // Shared failure path: logs the failure exactly once per library (subsequent
+  // scans are no-ops) and tells the renderer islands to degrade their content
+  // with a visible message/fallback. Because every load*() promise is caught
+  // here, scan() can fire-and-forget without ever producing an unhandled
+  // promise rejection in the console. (issue #1078)
+  function handleLoadFailure(name, failEvent, err) {
+    if (failed[name]) return;
+    failed[name] = true;
+    console.error('eitri-lazy-load: ' + name + ' failed to load (' + err.message + '); ' + name + ' content will not be rendered');
+    document.dispatchEvent(new CustomEvent(failEvent));
+  }
+
   function loadMermaid() {
     if (loaded.mermaid) return Promise.resolve();
     loaded.mermaid = true;
-    return loadScript(assetUrl('/static/mermaid.min.js')).then(function () {
-      document.dispatchEvent(new CustomEvent('eitri:mermaid-loaded'));
-    });
+    return loadScript(assetUrl('/static/mermaid.min.js'))
+      .then(function () {
+        document.dispatchEvent(new CustomEvent('eitri:mermaid-loaded'));
+      })
+      .catch(function (err) {
+        handleLoadFailure('mermaid', 'eitri:mermaid-load-failed', err);
+      });
   }
 
   function loadKatex() {
     if (loaded.katex) return Promise.resolve();
     loaded.katex = true;
     loadCss(assetUrl('/static/katex.min.css'));
-    return loadScript(assetUrl('/static/katex.min.js')).then(function () {
-      document.dispatchEvent(new CustomEvent('eitri:katex-loaded'));
-    });
+    return loadScript(assetUrl('/static/katex.min.js'))
+      .then(function () {
+        document.dispatchEvent(new CustomEvent('eitri:katex-loaded'));
+      })
+      .catch(function (err) {
+        handleLoadFailure('katex', 'eitri:katex-load-failed', err);
+      });
   }
 
   function loadPrism() {
@@ -88,6 +121,9 @@
       .then(function () { return loadScript(assetUrl('/static/prism-go.min.js')); })
       .then(function () {
         document.dispatchEvent(new CustomEvent('eitri:prism-loaded'));
+      })
+      .catch(function (err) {
+        handleLoadFailure('prism', 'eitri:prism-load-failed', err);
       });
   }
 

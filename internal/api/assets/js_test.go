@@ -2,6 +2,7 @@ package assets
 
 import (
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -245,6 +246,40 @@ func TestJsFiles(t *testing.T) {
 		t.Error("eitri-lazy-load.js must only load libraries, not initialise them")
 	}
 
+	// Verify the lazy loader catches script-load failures, logs them once, and
+	// notifies the renderer islands so content degrades visibly instead of
+	// throwing unhandled promise rejections (issue #1078).
+	for _, want := range []string{
+		".catch(function (err) {",
+		"eitri:mermaid-load-failed",
+		"eitri:katex-load-failed",
+		"eitri:prism-load-failed",
+		"handleLoadFailure",
+	} {
+		if !strings.Contains(contentLazy, want) {
+			t.Errorf("eitri-lazy-load.js missing %q", want)
+		}
+	}
+	if !strings.Contains(content3, "eitri:katex-load-failed") {
+		t.Error("eitri-renderers.js missing eitri:katex-load-failed handler for graceful degradation")
+	}
+	if !strings.Contains(content3, "eitri:prism-load-failed") {
+		t.Error("eitri-renderers.js missing eitri:prism-load-failed handler for graceful degradation")
+	}
+	fMermaid, err := Files.Open("eitri-mermaid.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-mermaid.js: %v", err)
+	}
+	mermaidData, err := io.ReadAll(fMermaid)
+	fMermaid.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-mermaid.js: %v", err)
+	}
+	contentMermaid := string(mermaidData)
+	if !strings.Contains(contentMermaid, "eitri:mermaid-load-failed") {
+		t.Error("eitri-mermaid.js missing eitri:mermaid-load-failed handler for graceful degradation")
+	}
+
 	// Verify CSS has scroll-to-bottom button with --composer-height variable
 	f4, err := Files.Open("eitri.css")
 	if err != nil {
@@ -256,6 +291,14 @@ func TestJsFiles(t *testing.T) {
 		t.Fatalf("failed to read eitri.css: %v", err)
 	}
 	content4 := string(data4)
+
+	// Verify the fallback styles for failed lazy-loads are present (issue #1078).
+	if !strings.Contains(content4, "math-error") {
+		t.Error("eitri.css missing .math-error fallback style for failed KaTeX loads")
+	}
+	if !strings.Contains(content4, "code-error") {
+		t.Error("eitri.css missing .code-error fallback style for failed Prism loads")
+	}
 
 	// Verify CSS has .messages as scroll container with overflow-y: auto
 	if !strings.Contains(content4, ".messages {") {
@@ -1293,6 +1336,242 @@ func extractFunctionBody(t *testing.T, content, startMatch string) string {
 	}
 	t.Fatalf("could not find matching closing brace for %q", startMatch)
 	return ""
+}
+
+// TestLazyLoadScriptFailureIsCaughtAndLoggedOnce simulates a network failure
+// while the lazy loader fetches mermaid.min.js and verifies the rejection is
+// caught — no unhandled promise rejection, exactly one console.error, and a
+// failure event the renderer islands can react to (issue #1078, acceptance
+// criterion 1). The <script> onerror fires asynchronously (as in a real
+// browser) so the .then/.catch handlers are attached before the rejection.
+func TestLazyLoadScriptFailureIsCaughtAndLoggedOnce(t *testing.T) {
+	data, err := Files.ReadFile("eitri-lazy-load.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-lazy-load.js: %v", err)
+	}
+
+	runtime := goja.New()
+
+	// Track unhandled rejections the way a browser's unhandledrejection would.
+	var rejectionOps []goja.PromiseRejectionOperation
+	runtime.SetPromiseRejectionTracker(func(_ *goja.Promise, op goja.PromiseRejectionOperation) {
+		rejectionOps = append(rejectionOps, op)
+	})
+
+	_, err = runtime.RunString(`
+		var scriptEls = [];
+		var errors = [];
+		var dispatched = [];
+		function FakeCustomEvent(type) { this.type = type; }
+		globalThis.CustomEvent = FakeCustomEvent;
+		globalThis.console = { error: function (msg) { errors.push(String(msg)); } };
+		globalThis.document = {
+			readyState: 'complete',
+			body: { getAttribute: function () { return 'test-version'; } },
+			createElement: function (tag) {
+				if (tag === 'script') {
+					var el = { src: '', async: false, onload: null, onerror: null };
+					scriptEls.push(el);
+					return el;
+				}
+				return { rel: '', href: '' };
+			},
+			head: {
+				appendChild: function (el) {
+					if (el && typeof el.onerror === 'function') {
+						// Simulate the network failure asynchronously — a real
+						// <script> onerror never fires during appendChild.
+						Promise.resolve().then(function () { el.onerror(); });
+					}
+				}
+			},
+			querySelector: function (sel) {
+				// Only mermaid content is present, so only mermaid is loaded.
+				if (sel === 'pre.mermaid') return {};
+				return null;
+			},
+			querySelectorAll: function () { return []; },
+			addEventListener: function () {},
+			dispatchEvent: function (ev) { dispatched.push(ev.type); },
+		};
+	` + "\n" + string(data))
+	if err != nil {
+		t.Fatalf("failed to run eitri-lazy-load.js in goja: %v", err)
+	}
+
+	if len(rejectionOps) != 0 {
+		t.Errorf("script-load failure produced %d unhandled promise rejection report(s), want 0", len(rejectionOps))
+	}
+
+	var errors, dispatched []string
+	if err := runtime.ExportTo(runtime.Get("errors"), &errors); err != nil {
+		t.Fatalf("failed to export errors: %v", err)
+	}
+	if len(errors) != 1 {
+		t.Fatalf("console.error called %d time(s), want exactly 1 (logged once)", len(errors))
+	}
+	if !strings.Contains(errors[0], "mermaid") {
+		t.Errorf("console.error %q does not mention the failed library", errors[0])
+	}
+	if err := runtime.ExportTo(runtime.Get("dispatched"), &dispatched); err != nil {
+		t.Fatalf("failed to export dispatched: %v", err)
+	}
+	if !slices.Contains(dispatched, "eitri:mermaid-load-failed") {
+		t.Errorf("dispatched events %v missing eitri:mermaid-load-failed", dispatched)
+	}
+}
+
+// TestMermaidLoadFailureDegradesContent verifies that when the lazy loader
+// reports a failed mermaid.min.js fetch, every untouched diagram is marked
+// with the error class and gets a visible "could not be loaded" message with
+// its raw source preserved (issue #1078, acceptance criterion 2).
+func TestMermaidLoadFailureDegradesContent(t *testing.T) {
+	data, err := Files.ReadFile("eitri-mermaid.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-mermaid.js: %v", err)
+	}
+
+	runtime := goja.New()
+	_, err = runtime.RunString(`
+		var markedEls = [];
+		var listeners = {};
+		var inserted = [];
+		globalThis.window = { matchMedia: function () { return { matches: true }; } };
+		globalThis.setTimeout = function () {};
+		globalThis.document = {
+			readyState: 'loading',
+			querySelectorAll: function () { return markedEls; },
+			addEventListener: function (type, fn) { listeners[type] = fn; },
+			dispatchEvent: function () {},
+		};
+	` + "\n" + string(data))
+	if err != nil {
+		t.Fatalf("failed to run eitri-mermaid.js in goja: %v", err)
+	}
+
+	_, err = runtime.RunString(`
+		var pre = {
+			_classes: [],
+			_attrs: {},
+			classList: { add: function (c) { pre._classes.push(c); } },
+			setAttribute: function (k, v) { pre._attrs[k] = v; },
+			insertAdjacentHTML: function (pos, html) { inserted.push(pos + ':' + html); },
+		};
+		markedEls.push(pre);
+		listeners['eitri:mermaid-load-failed']();
+		var outClasses = pre._classes;
+		var outAttrs = pre._attrs;
+	`)
+	if err != nil {
+		t.Fatalf("failed to fire eitri:mermaid-load-failed: %v", err)
+	}
+
+	var classes, insertedStrs []string
+	var attrs map[string]interface{}
+	if err := runtime.ExportTo(runtime.Get("outClasses"), &classes); err != nil {
+		t.Fatalf("failed to export pre classes: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("outAttrs"), &attrs); err != nil {
+		t.Fatalf("failed to export pre attrs: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("inserted"), &insertedStrs); err != nil {
+		t.Fatalf("failed to export inserted: %v", err)
+	}
+	if !slices.Contains(classes, "mermaid-error") {
+		t.Errorf("diagram classes %v missing mermaid-error", classes)
+	}
+	if attrs["data-mermaid-processed"] != "true" {
+		t.Errorf("data-mermaid-processed = %v, want true", attrs["data-mermaid-processed"])
+	}
+	if len(insertedStrs) != 1 || !strings.Contains(insertedStrs[0], "Diagram renderer could not be loaded") {
+		t.Errorf("diagram fallback message not inserted: %v", insertedStrs)
+	}
+}
+
+// TestRenderersLoadFailureDegradesContent verifies the KaTeX/Prism failure
+// handlers mark the affected content so the missing formatting is visible
+// rather than silently skipped: raw LaTeX stays in place with a .math-error
+// marker and raw code blocks get a .code-error marker on their <pre> (issue
+// #1078, acceptance criterion 2).
+func TestRenderersLoadFailureDegradesContent(t *testing.T) {
+	data, err := Files.ReadFile("eitri-renderers.js")
+	if err != nil {
+		t.Fatalf("failed to read eitri-renderers.js: %v", err)
+	}
+
+	runtime := goja.New()
+	_, err = runtime.RunString(`
+		var katexEls = [];
+		var codeEls = [];
+		var listeners = {};
+		globalThis.document = {
+			readyState: 'loading',
+			querySelectorAll: function (sel) {
+				if (sel === '.math-inline, .math-block') return katexEls;
+				if (sel === 'pre code') return codeEls;
+				return [];
+			},
+			addEventListener: function (type, fn) { listeners[type] = fn; },
+		};
+	` + "\n" + string(data))
+	if err != nil {
+		t.Fatalf("failed to run eitri-renderers.js in goja: %v", err)
+	}
+
+	_, err = runtime.RunString(`
+		var mathEl = {
+			_classes: [],
+			dataset: {},
+			classList: { add: function (c) { mathEl._classes.push(c); } },
+		};
+		katexEls.push(mathEl);
+
+		var preEl = { _classes: [], classList: { add: function (c) { preEl._classes.push(c); } } };
+		var codeEl = {
+			_classes: [],
+			dataset: {},
+			classList: { add: function (c) { codeEl._classes.push(c); } },
+			closest: function (sel) { return sel === 'pre' ? preEl : null; },
+		};
+		codeEls.push(codeEl);
+
+		listeners['eitri:katex-load-failed']();
+		listeners['eitri:prism-load-failed']();
+		var outMathClasses = mathEl._classes;
+		var outMathDataset = mathEl.dataset;
+		var outPreClasses = preEl._classes;
+		var outCodeDataset = codeEl.dataset;
+	`)
+	if err != nil {
+		t.Fatalf("failed to fire load-failed events: %v", err)
+	}
+
+	var mathClasses, preClasses []string
+	var mathDataset, codeDataset map[string]interface{}
+	if err := runtime.ExportTo(runtime.Get("outMathClasses"), &mathClasses); err != nil {
+		t.Fatalf("failed to export math classes: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("outMathDataset"), &mathDataset); err != nil {
+		t.Fatalf("failed to export math dataset: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("outPreClasses"), &preClasses); err != nil {
+		t.Fatalf("failed to export pre classes: %v", err)
+	}
+	if err := runtime.ExportTo(runtime.Get("outCodeDataset"), &codeDataset); err != nil {
+		t.Fatalf("failed to export code dataset: %v", err)
+	}
+	if !slices.Contains(mathClasses, "math-error") {
+		t.Errorf("math classes %v missing math-error", mathClasses)
+	}
+	if mathDataset["katexProcessed"] != "true" {
+		t.Errorf("katexProcessed = %v, want true", mathDataset["katexProcessed"])
+	}
+	if !slices.Contains(preClasses, "code-error") {
+		t.Errorf("pre classes %v missing code-error", preClasses)
+	}
+	if codeDataset["prismProcessed"] != "true" {
+		t.Errorf("prismProcessed = %v, want true", codeDataset["prismProcessed"])
+	}
 }
 
 // TestAccumulateStreamAnnounce verifies the pure delta bookkeeping behind the
