@@ -52,6 +52,7 @@ How it works:
 3. **Workers:** Runs one `eitri -b` worker per worktree, in parallel. Each worker creates a branch, implements the issue, pushes, and opens a PR whose description contains `Closes #N` (so the issue auto-closes on merge). Worker output goes to `.worktrees/issue-N/log` — never interleaved on the terminal. Workers do **not** merge.
 4. **Merge queue:** After all workers finish, the dispatcher merges PRs one at a time (`gh pr merge --squash --delete-branch`), rebasing each PR branch onto the latest `origin/main` first. If a rebase conflicts, the dispatcher spawns a focused `eitri -b` resolution run inside that worktree, capped at 3 attempts per PR; past the cap the PR is left open with a comment and the dispatcher moves on. Merging is serialized because two concurrent merges would race (the second PR goes stale and GitHub refuses to merge).
 5. **Cleanup:** Worktrees are removed on success and on crash (via `trap`). On startup the dispatcher removes stale `in-progress` labels whose worktree no longer exists.
+6. **Stopping:** Ctrl+C (or SIGTERM) stops claiming new issues after the current batch finishes — in-flight workers and the merge queue run to completion, then the script exits. A second signal forces an immediate exit. Workers are spawned via `setsid --wait` so the terminal signal only reaches the dispatcher; without `setsid` a Ctrl+C also kills the workers.
 
 The dispatcher reports per-issue worker exit status and continues past failures; it exits 0 only if nothing was left unmerged or orphaned.
 

@@ -18,8 +18,9 @@
 # cap the PR is left open with a comment and the dispatcher moves on.
 #
 # Exits 0 only when nothing was left unmerged or orphaned. Per-issue worker
-# failures are reported and never stop the other workers. See
-# docs/agents/batch.md.
+# failures are reported and never stop the other workers. Ctrl+C (or SIGTERM)
+# stops claiming after the current batch finishes; a second signal forces exit.
+# See docs/agents/batch.md.
 
 set -euo pipefail
 
@@ -83,11 +84,48 @@ WORKTREES=()
 
 cleanup() {
 	for wt in "${WORKTREES[@]:-}"; do
+		[ -n "$wt" ] || continue
 		git worktree remove --force "$wt" 2>/dev/null || true
 	done
 	git worktree prune 2>/dev/null || true
 }
 trap cleanup EXIT
+
+# --- Stop handling ---------------------------------------------------------
+
+STOP_REQUESTED=0
+
+request_stop() {
+	if [ "$STOP_REQUESTED" -eq 1 ]; then
+		echo "Second signal received — forcing exit" >&2
+		exit 130
+	fi
+	STOP_REQUESTED=1
+	echo "Stop requested — finishing current batch; no new issues will be claimed (send signal again to force exit)" >&2
+}
+trap request_stop INT TERM
+
+# Run workers in their own session so a terminal Ctrl+C only reaches the
+# dispatcher (it finishes the current batch instead of killing workers).
+WORKER_SHIELD=""
+if command -v setsid >/dev/null 2>&1 && setsid --wait true >/dev/null 2>&1; then
+	WORKER_SHIELD="setsid --wait"
+fi
+
+
+# --- Labels ----------------------------------------------------------------
+
+ensure_in_progress_label() {
+	# gh refuses to add a label that does not exist; create it on demand.
+	if gh label list --json name --jq 'any(.name == "in-progress")' 2>/dev/null | grep -q true; then
+		return 0
+	fi
+	echo "Creating missing in-progress label"
+	if ! gh label create in-progress --color "fbca04" --description "Issue currently being worked on by an agent" >/dev/null 2>&1; then
+		echo "Error: in-progress label is missing and could not be created (insufficient permissions?)" >&2
+		return 1
+	fi
+}
 
 # --- Crash recovery --------------------------------------------------------
 
@@ -190,9 +228,20 @@ merge_pr() {
 
 		# Rebase conflict — spawn a focused resolution run in the worktree.
 		echo "Rebase conflict on PR #$pr (issue #$num) — resolution run $attempts/3"
-		local resolve_prompt
+		local resolve_prompt rpid rst=0
 		resolve_prompt=$(build_resolve_prompt "$branch" "$pr")
-		if ! ( cd "$wt" && eitri --persona generic -b "$resolve_prompt" ) > "$wt/log.resolve" 2>&1; then
+		( cd "$wt" && exec $WORKER_SHIELD eitri --persona generic -b "$resolve_prompt" ) > "$wt/log.resolve" 2>&1 &
+		rpid=$!
+		while :; do
+			if wait "$rpid"; then
+				rst=0
+				break
+			else
+				rst=$?
+			fi
+			[ "$rst" -eq 130 ] || [ "$rst" -eq 143 ] || break
+		done
+		if [ "$rst" -ne 0 ]; then
 			echo "Warning: resolution run for PR #$pr failed (attempt $attempts/3)" >&2
 			continue
 		fi
@@ -224,9 +273,16 @@ main() {
 	local failures=0
 
 	git worktree prune 2>/dev/null || true
+	if ! ensure_in_progress_label; then
+		exit 1
+	fi
 	cleanup_stale_claims
 
 	while true; do
+		if [ "$STOP_REQUESTED" -eq 1 ]; then
+			echo "Stop requested — not claiming more issues."
+			break
+		fi
 		if ! git fetch origin main >/dev/null 2>&1; then
 			echo "Error: git fetch origin main failed" >&2
 			exit 1
@@ -240,7 +296,7 @@ main() {
 		fi
 
 		echo "Claimed $(echo "$issues" | wc -l | tr -d ' ') issue(s): $(echo "$issues" | tr '\n' ' ')"
-		local pids=() num title prompt pid wt
+		local pids=() num title prompt pid wt spawned=0
 
 		# Claim + spawn one worker per issue.
 		for num in $issues; do
@@ -257,19 +313,38 @@ main() {
 			title=$(gh issue view "$num" --json title --jq '.title' 2>/dev/null || echo "issue #$num")
 			prompt=$(build_prompt "$num" "$title")
 			echo "Starting worker for issue #$num — $title"
-			( cd "$WORKTREES_DIR/issue-$num" && eitri --persona generic -b "$prompt" ) > "$WORKTREES_DIR/issue-$num/log" 2>&1 &
+			( cd "$WORKTREES_DIR/issue-$num" && exec $WORKER_SHIELD eitri --persona generic -b "$prompt" ) > "$WORKTREES_DIR/issue-$num/log" 2>&1 &
 			pid=$!
 			pids+=("$num:$pid")
+			spawned=$((spawned + 1))
 		done
 
+		if [ "$spawned" -eq 0 ]; then
+			echo "Error: could not spawn any workers (claim or worktree creation failed) — aborting" >&2
+			exit 1
+		fi
+
 		# Wait for all workers; report per-issue exit status.
+		# wait returns >128 when interrupted by a trapped signal — retry then
+		# instead of mistaking the signal for a worker failure.
 		for entry in "${pids[@]:-}"; do
+			[ -n "$entry" ] || continue
 			num=${entry%%:*}
 			pid=${entry##*:}
-			if wait "$pid"; then
+			st=0
+			while :; do
+				if wait "$pid"; then
+					st=0
+					break
+				else
+					st=$?
+				fi
+				[ "$st" -eq 130 ] || [ "$st" -eq 143 ] || break
+			done
+			if [ "$st" -eq 0 ]; then
 				echo "Worker for issue #$num succeeded"
 			else
-				echo "Warning: worker for issue #$num failed (exit $?)" >&2
+				echo "Warning: worker for issue #$num failed (exit $st)" >&2
 			fi
 		done
 
