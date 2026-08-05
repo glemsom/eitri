@@ -132,6 +132,20 @@ Network-agnostic: manages channels, not HTTP connections. Each active runner run
 
 The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns. Calibration data is restored from disk on startup and saved on shutdown (server mode) and at the end of batch runs, so observations survive restarts; an absent or empty file falls back to current defaults.
 
+### `internal/compactor/` — Message compaction
+
+| File | Responsibility |
+|------|---------------|
+| `compactor.go` | `Compactor.Compact()` — pure-function compaction of oversized messages into LLM-generated summaries; salience scoring, role-aware compaction, tool-call argument pruning |
+| `doc.go` | Package documentation incl. threshold semantics and usage |
+| `compactor_test.go` | Unit tests with a mock LLM service |
+
+**Role**: side-effect-free message transformer. `Compactor.Compact(ctx, messages, llmSvc, thresholds)` takes conversation history in and returns compacted messages out, plus the number of messages compacted, approximate tokens freed, and number of tool-call argument blocks pruned. Because it has no side effects, it is fully unit-testable with a mock LLM service.
+
+Compaction is gated by estimated-token thresholds (`compactor.Thresholds`): it triggers when total estimated tokens exceed `HighWater` and stops once below `LowWater`; an individual message must exceed `MessageSizeThreshold` (default 2000 estimated tokens) to be eligible. The runner derives these from `compaction_threshold_percent` (high-water, default 90) and `compaction_low_water_percent` (default 30) of the context window, gated by `compaction_enabled`. Auto-compaction runs after each agent turn (`OnTurnComplete`); on-demand compaction runs via `RunService.CompactSession`, exposed as `POST /api/sessions/{id}/compact` and the `/compact` slash command.
+
+Compaction is salience-aware (`compaction_salience_enabled`, default true): messages are scored by heuristic importance (error/failure indicators, stack traces, file paths, function/method names, numeric results, message length) and the least important messages are compacted first. `compaction_tool_call_retention_turns` (default 5) preserves `ToolCall` arguments on recent assistant messages and prunes older ones to a compact placeholder. Compacted non-tool messages are tagged with `[MESSAGE COMPACTED]` (tool results with `[TOOL RESULT COMPACTED]`) to prevent re-compaction; system messages are never compacted. Token estimates use the tokenizer's per-model chars-per-token calibration when available.
+
 ### `internal/session/` — UI session management
 
 | File | Responsibility |
@@ -148,6 +162,18 @@ The `CalibrationStore` starts each model at a default CPT of 4.0. After each str
 | `session_test.go` | Unit tests for session lifecycle, browser scoping, message limits |
 
 Replaces inline `UISession` map in early `api.Server`. Server-owned canonical session state: ID, browser_id, title, status (`idle`/`running`/`error`), messages, active skills, timestamps. `api.Server` stores `*session.Manager` and passes session data to templates. Not persisted — server restart loses all sessions.
+
+### `internal/persist/` — Session snapshots, traces, and timelines on disk
+
+| File | Responsibility |
+|------|---------------|
+| `persister.go` | `Persister` — disk I/O for session snapshots, HTTP traces, and run timelines; 1 GiB retention cap with oldest-first eviction, async trace queue, shutdown flush, legacy history reads |
+| `tracequery.go` | `QueryTraces` — `TraceFilter`/`TracePage`/`TraceAggregate` query surface over the persisted trace archive |
+| `persister_test.go`, `tracequery_test.go` | Unit tests |
+
+Owns all disk persistence under a root data directory (default `~/.eitri/`) with directory layout `<root>/sessions/<sessionID>/`: `session.json` snapshot (the single source of truth, written atomically each turn), `traces/<trace_id>.json` HTTP traces, and `timeline/<timestamp>.json` run timelines. Old-format history files (`HistorySchema`) remain readable on startup for backward compatibility.
+
+Enforces a 1 GiB retention cap by default: `Prune` evicts the oldest timeline and trace files across all sessions when total size exceeds the cap. Trace persistence is asynchronous (`SaveTraceAsync`) through a bounded worker queue (256) so disk I/O never blocks the HTTP path; shutdown `Flush` drains the queue and re-scans the debug recorder so nothing is lost. Traces of permanently deleted sessions (no `session.json` on disk) are never written. `QueryTraces` filters by session/provider/model/time with limit/offset pagination and computes aggregates (error rate, p50/p95 latency, token totals) for the debug UI and session reports. See ADR-0016.
 
 ### `internal/debug/` — Crash dumps, HTTP traces, diagnostics
 
@@ -234,6 +260,17 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 
 `api.Server` stores active skill names per UI session. The `skill` tool (in `internal/tool/`) delegates to `skills.Service`. At chat-run start, `runner.RunService` re-resolves those active names against current effective registry state, drops disappeared/invalid/shadowed Skills with a warning, and injects ephemeral skill tool-call context into that Run's LLM request so Skill instructions re-apply without permanently duplicating them into conversation history. API and runner packages consume this service; they never scan skill files directly.
 
+### `internal/persona/` — Personas (named system prompts)
+
+| File | Responsibility |
+|------|---------------|
+| `persona.go` | `PersonaDefinition` (name, system_prompt, required_skills), `Save`/`Load`/`Delete`/`List`, `EnsureGeneric`, file-name sanitization |
+| `persona_test.go` | Unit tests |
+
+A persona is a named bundle of a system prompt and optional injected skills. Personas are stored as YAML under `~/.eitri/personas/<name>.yaml` — user-level only, never workspace-scoped (unlike skills, which support workspace overrides): they represent the user's agent behaviour preferences, not project-specific capabilities. Files are written with `0600` permissions in a `0700` directory; names are sanitized for safe filenames.
+
+The `generic` persona is the built-in default (its prompt is kept in sync with `history.DefaultSystemPrompt`) and is always present; `EnsureGeneric` materializes `generic.yaml` on startup. Up to `MaxCustomPersonas` (10) custom personas may be defined. Personas determine the agent's behaviour instructions; tools and the workspace are shared across personas. The API exposes persona list/set endpoints (`handlers_personas.go`) and the UI offers a persona selector (`eitri-persona-selector` island). See ADR-0018.
+
 ### `internal/runner/` — Run service + agent loop
 
 | File | Responsibility |
@@ -259,6 +296,20 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 4. Registers parent-only tools: `render_quick_replies`, `skill`, `delegate`, `collect`
 5. Creates `runstate.State` for SSE broadcast
 6. Calls `RunAgent()` — synchronous agent turn loop in `loop.RunAgent()`
+
+### `internal/compress/` — Pattern compression for bash output
+
+| File | Responsibility |
+|------|---------------|
+| `compress.go` | `Compress(command, output)` — command-name dispatch (`ls`, `find`, `grep`, `rg`) and anti-inflation guard |
+| `ls.go` | `ls` output compressors (short and long formats) |
+| `find.go` | `find`/`fd` path-list compressor — groups by directory |
+| `grep.go` | `grep`/`rg`/`ripgrep` match compressor — groups by file |
+| `*_test.go` | Unit tests per compressor |
+
+Deterministic, zero-LLM compression of bash tool output. `Compress(command, output)` matches the command name (`ls`, `find`, `grep`, `rg`; a leading `$ ` hint is stripped) against command-specific pattern compressors that regroup and summarize output — group by directory/file, truncate per-group entries, add counts. Every compressor guarantees it never inflates: if the compressed result would use as many or more estimated tokens (chars/4 heuristic) as the original, the original is returned unchanged.
+
+Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB before compression; when compression changes the output, the raw original is preserved in `ToolResult.RawBlocks` for snapshots and debugging. See ADR-0021.
 
 ### `internal/tool/` — Built-in tools
 
