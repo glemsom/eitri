@@ -163,6 +163,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 	go func() {
 		defer func() {
+			// Release browser allocator connections before the retention
+			// sleep so CDP connections do not leak across runs.
+			toolReg.EndSession(sessionID)
 			state.finish()
 			time.Sleep(completedRunRetention)
 			s.remove(sessionID, state)
