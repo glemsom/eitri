@@ -113,6 +113,45 @@ if command -v setsid >/dev/null 2>&1 && setsid --wait true >/dev/null 2>&1; then
 fi
 
 
+# --- Sandbox check ---------------------------------------------------------
+
+ensure_sandbox_git_writable() {
+	# eitri's default bwrap sandbox binds the filesystem read-only and punches
+	# writable holes only for the workspace and extra_writable_paths. The git
+	# metadata for a worktree lives in the *main* repo's .git dir
+	# (.git/worktrees/issue-N), which is read-only unless explicitly bound
+	# writable. Workers then cannot commit/push inside the worktree; they fall
+	# back to shadow-repo hacks that leave the worktree detached and dirty,
+	# which silently breaks the rebase/merge queue below. Fail early with an
+	# actionable message instead.
+	local cfg="${EITRI_CONFIG:-$HOME/.eitri/config.json}"
+	local profile="default"
+	if [ -f "$cfg" ]; then
+		profile=$(jq -r '.sandbox.profile // "default"' "$cfg")
+	fi
+	# Profile "none" disables the sandbox entirely — git works.
+	if [ "$profile" = "none" ]; then
+		return 0
+	fi
+	# If bwrap is missing or unusable, eitri falls back to direct execution.
+	if ! command -v bwrap >/dev/null 2>&1 || ! bwrap --ro-bind / / true >/dev/null 2>&1; then
+		return 0
+	fi
+	# Default profile: the main repo's git dir must be writable in the sandbox.
+	local gitdir repo
+	gitdir=$(git rev-parse --absolute-git-dir 2>/dev/null || echo "$REPO/.git")
+	repo=$(cd "$REPO" && pwd -P)
+	if [ -f "$cfg" ] && jq -e --arg d "$gitdir" --arg r "$repo" \
+		'.sandbox.extra_writable_paths // [] | any(. == $d or . == $r or . == ($r + "/"))' "$cfg" >/dev/null 2>&1; then
+		return 0
+	fi
+	echo "Error: eitri sandbox (profile '$profile') blocks git writes to $gitdir" >&2
+	echo "       Worktree git metadata lives there; workers cannot commit/push, breaking the merge queue." >&2
+	echo "       Add it to the sandbox's writable paths in $cfg:" >&2
+	echo "       \"sandbox\": { \"profile\": \"default\", \"extra_writable_paths\": [\"$gitdir\"] }" >&2
+	return 1
+}
+
 # --- Labels ----------------------------------------------------------------
 
 ensure_in_progress_label() {
@@ -273,6 +312,9 @@ main() {
 	local failures=0
 
 	git worktree prune 2>/dev/null || true
+	if ! ensure_sandbox_git_writable; then
+		exit 1
+	fi
 	if ! ensure_in_progress_label; then
 		exit 1
 	fi
