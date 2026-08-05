@@ -163,15 +163,19 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 	go func() {
 		defer func() {
-			// Release browser allocator connections before the retention
-			// sleep so CDP connections do not leak across runs.
+			// Release browser allocator connections before retention
+			// so CDP connections do not leak across runs.
 			toolReg.EndSession(sessionID)
+			// Mark the run done and schedule retention cleanup via a
+			// timer rather than sleeping the goroutine. This avoids
+			// parking a goroutine for the entire retention window in
+			// batch workloads with many finished runs.
 			state.finish()
-			time.Sleep(completedRunRetention)
-			s.remove(sessionID, state)
-
-			// Clean up parent config for sub-agent setup
-			s.subagents.DeleteParentCfg(sessionID)
+			time.AfterFunc(completedRunRetention, func() {
+				s.remove(sessionID, state)
+				// Clean up parent config for sub-agent setup
+				s.subagents.DeleteParentCfg(sessionID)
+			})
 		}()
 
 		// snapshotAndBroadcastIdle persists the session with StatusIdle and fires
