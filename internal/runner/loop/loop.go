@@ -442,7 +442,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// Broadcast final context_update before done, including actual provider usage
 			broadcastContextUpdate(usage)
 
-			usage := runstate.EstimateUsage(contentStr, nil, "")
+			usage := runstate.EstimateUsage(contentStr, opts.CalibrationStore, opts.ModelName)
 			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usage)
 			// Append final assistant response to conversation history
 			// Only append when there's actual content — empty assistant messages
