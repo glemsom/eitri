@@ -1,4 +1,4 @@
-// conversation.go — conversation mutations: messages, components, quick replies, reasoning content, and active skills.
+// conversation.go — conversation mutations: messages, components, quick replies, reasoning content, active skills, and the Conversation accessors (copying + shared).
 
 package session
 
@@ -225,6 +225,22 @@ func (m *Manager) GetConversation(id string) *Conversation {
 		SystemPrompt: convo.SystemPrompt,
 		ActiveSkills: skills,
 	}
+}
+
+// GetConversationShared returns the live Conversation for a session as a
+// shared reference, without copying. Returns nil if the session does not exist.
+//
+// The returned pointer is owned by the manager. Callers must treat it as
+// read-only and MUST NOT mutate it or any value reachable from it — all
+// mutation must go through the manager's mutating methods (AppendMessage,
+// AppendToConversation, ReplaceConversationMessages, SetSystemPrompt, etc.).
+// The manager may mutate the pointed-to state concurrently, so the reference
+// is only valid for the duration of a single read and must not be retained
+// across calls that mutate the session.
+func (m *Manager) GetConversationShared(id string) *Conversation {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.convoStore[id]
 }
 
 // AppendToConversation appends a message to the session's conversation.

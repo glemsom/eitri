@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 func TestCreateAndGet(t *testing.T) {
@@ -1239,5 +1239,125 @@ func TestLoadFromDisk_PreservesMessages(t *testing.T) {
 	if loaded.Messages[2].Role != "tool" || loaded.Messages[2].ToolCallID != "call_123" {
 		t.Errorf("Tool message not preserved: got Role=%q, ToolCallID=%q",
 			loaded.Messages[2].Role, loaded.Messages[2].ToolCallID)
+	}
+}
+
+func TestGetMetaShared_ReturnsSharedReference(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared := mgr.GetMetaShared(sess.ID)
+	if shared == nil {
+		t.Fatal("GetMetaShared returned nil for existing session")
+	}
+	if shared.ID != sess.ID {
+		t.Errorf("shared.ID = %q, want %q", shared.ID, sess.ID)
+	}
+
+	// The reference must be live: mutations through the manager are visible.
+	mgr.UpdateTitle(sess.ID, "Renamed")
+	if got := mgr.GetMetaShared(sess.ID).Title; got != "Renamed" {
+		t.Errorf("shared Title = %q, want %q", got, "Renamed")
+	}
+}
+
+func TestGetMetaShared_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+	if shared := mgr.GetMetaShared("nope"); shared != nil {
+		t.Errorf("GetMetaShared = %v, want nil", shared)
+	}
+}
+
+func TestGetConversationShared_ReturnsSharedReference(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared := mgr.GetConversationShared(sess.ID)
+	if shared == nil {
+		t.Fatal("GetConversationShared returned nil for existing session")
+	}
+
+	// The reference must be live: mutations through the manager are visible.
+	mgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "hi"})
+	if got := len(mgr.GetConversationShared(sess.ID).Messages); got != 1 {
+		t.Errorf("shared Messages length = %d, want 1", got)
+	}
+}
+
+func TestGetConversationShared_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+	if shared := mgr.GetConversationShared("nope"); shared != nil {
+		t.Errorf("GetConversationShared = %v, want nil", shared)
+	}
+}
+
+func TestGetConfigShared_ReturnsSharedReference(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared := mgr.GetConfigShared(sess.ID)
+	if shared == nil {
+		t.Fatal("GetConfigShared returned nil for existing session")
+	}
+
+	// The reference must be live: mutations through the manager are visible.
+	mgr.SetWorkspace(sess.ID, "/some/workspace")
+	if got := mgr.GetConfigShared(sess.ID).Workspace; got != "/some/workspace" {
+		t.Errorf("shared Workspace = %q, want %q", got, "/some/workspace")
+	}
+}
+
+func TestGetConfigShared_NonexistentSession(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+	if shared := mgr.GetConfigShared("nope"); shared != nil {
+		t.Errorf("GetConfigShared = %v, want nil", shared)
+	}
+}
+
+// TestCopyingGettersReturnDetachedCopies guards the expand-contract sequence
+// (issue #979): the legacy copying getters must keep returning detached copies
+// until every caller migrates to the shared accessors. Mutating the returned
+// copy must not affect the manager's internal state.
+func TestCopyingGettersReturnDetachedCopies(t *testing.T) {
+	mgr := session.NewManager(10, t.TempDir())
+
+	sess, err := mgr.Create("browser-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "original"})
+
+	// GetMeta: mutating the copy must not change the manager's state.
+	meta := mgr.GetMeta(sess.ID)
+	meta.Title = "Mutated copy"
+	if got := mgr.GetMetaShared(sess.ID).Title; got == "Mutated copy" {
+		t.Error("GetMeta copy mutation leaked into manager state")
+	}
+
+	// GetConversation: mutating the copy must not change the manager's state.
+	convo := mgr.GetConversation(sess.ID)
+	convo.Messages[0].Content = "mutated"
+	if got := mgr.GetConversationShared(sess.ID).Messages[0].Content; got != "original" {
+		t.Errorf("GetConversation copy mutation leaked into manager state: Content = %q", got)
+	}
+
+	// GetConfig: mutating the copy must not change the manager's state.
+	initialWorkspace := mgr.GetConfig(sess.ID).Workspace
+	cfg := mgr.GetConfig(sess.ID)
+	cfg.Workspace = "mutated"
+	if got := mgr.GetConfigShared(sess.ID).Workspace; got != initialWorkspace {
+		t.Errorf("GetConfig copy mutation leaked into manager state: Workspace = %q, want %q", got, initialWorkspace)
 	}
 }

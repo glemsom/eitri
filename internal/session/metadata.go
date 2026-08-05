@@ -1,4 +1,4 @@
-// metadata.go — session metadata mutations: title, status, closed-at timestamps, and the SessionMeta accessor.
+// metadata.go — session metadata mutations: title, status, closed-at timestamps, and the SessionMeta accessors (copying + shared).
 
 package session
 
@@ -50,6 +50,21 @@ func (m *Manager) GetMeta(id string) *SessionMeta {
 	}
 	copy(cp.RenderedMessageIDs, meta.RenderedMessageIDs)
 	return cp
+}
+
+// GetMetaShared returns the live SessionMeta for a session as a shared
+// reference, without copying. Returns nil if the session does not exist.
+//
+// The returned pointer is owned by the manager. Callers must treat it as
+// read-only and MUST NOT mutate it or any value reachable from it — all
+// mutation must go through the manager's mutating methods (UpdateTitle,
+// UpdateStatus, UpdateMeta, etc.). The manager may mutate the pointed-to
+// state concurrently, so the reference is only valid for the duration of a
+// single read and must not be retained across calls that mutate the session.
+func (m *Manager) GetMetaShared(id string) *SessionMeta {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.metaStore[id]
 }
 
 // UpdateMeta updates the metadata fields of a session from the given SessionMeta.
