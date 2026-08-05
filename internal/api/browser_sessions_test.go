@@ -295,6 +295,40 @@ func TestBrowser_ContextPanel(t *testing.T) {
 		t.Errorf("category bar-fill count = %d, want 5 (one per category)", barCount)
 	}
 
+	// Verify sub-rows (System/History/Skills) render with their intended
+	// styling: indented and smaller than the top-level category rows, with
+	// muted sub-values (issue #1073).
+	var subRowStyles string
+	err = chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var subs = document.querySelectorAll('eitri-context .context-category.context-sub');
+			if (subs.length !== 3) return 'count=' + subs.length;
+			var main = document.querySelector('eitri-context .context-category:not(.context-sub)');
+			var sub = subs[0];
+			var ms = window.getComputedStyle(main);
+			var ss = window.getComputedStyle(sub);
+			var label = window.getComputedStyle(main.querySelector('.context-category-label'));
+			var subVal = window.getComputedStyle(sub.querySelector('.context-sub-value'));
+			var mainVal = window.getComputedStyle(main.querySelector('.context-category-value'));
+			var indented = parseFloat(ss.paddingLeft) > parseFloat(ms.paddingLeft);
+			var smaller = parseFloat(ss.fontSize) < parseFloat(ms.fontSize);
+			var muted = subVal.color === label.color && subVal.color !== mainVal.color;
+			return 'indented=' + indented + ';smaller=' + smaller + ';muted=' + muted;
+		})()`, &subRowStyles),
+	)
+	if err != nil {
+		t.Fatalf("sub-row style check failed: %v", err)
+	}
+	if !strings.Contains(subRowStyles, "indented=true") {
+		t.Errorf("sub-row styles = %q, want indented=true (sub-rows indented)", subRowStyles)
+	}
+	if !strings.Contains(subRowStyles, "smaller=true") {
+		t.Errorf("sub-row styles = %q, want smaller=true (sub-rows smaller font)", subRowStyles)
+	}
+	if !strings.Contains(subRowStyles, "muted=true") {
+		t.Errorf("sub-row styles = %q, want muted=true (sub-values muted)", subRowStyles)
+	}
+
 	// Verify each bar has fill-green class (all < 60%)
 	var barClassesList string
 	err = chromedp.Run(ctx,

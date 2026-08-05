@@ -2986,6 +2986,18 @@ eitri-context {
   text-align: right;
 }
 
+/* Sub-rows (System / History / Skills) in the expanded context panel —
+   smaller and indented relative to the top-level categories, with muted
+   sub-values so the primary rows lead the visual hierarchy. */
+.context-category.context-sub {
+  padding-left: 1rem;
+  font-size: 0.76rem;
+}
+.context-category.context-sub .context-sub-value {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
 /* Mini progress bar inside each expanded category row */
 .context-category-bar {
   flex: 1;
