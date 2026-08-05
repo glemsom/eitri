@@ -167,6 +167,54 @@
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
   --surface-raised: #1a2740;
   --surface-overlay: rgba(22, 33, 62, 0.95);
+  --composer-height: 130px;
+
+  /* Semantic status colors (issue #1068) — one token per stream status,
+     used identically in both themes (light overrides below). */
+  --status-connecting: #ffd08a;
+  --status-streaming: #7ff0aa;
+  --status-tool-running: #ffd08a;
+  --status-rendering: #ff9aac;
+  --status-done: #7ff0aa;
+  --status-error: #ff9b90;
+  --status-reconnecting: #ffd08a;
+  --status-tool-icon: #f0b400;
+  --sandbox-ok: #2e7d32;
+  --sandbox-warn: #e65100;
+
+  /* Hover / on-color variants */
+  --error-hover: #c0392b;
+  --success-hover: #27ae60;
+  --on-accent: #ffffff;
+  --on-accent-dim: rgba(255, 255, 255, 0.7);
+  --on-warning: #000000;
+
+  /* Component aliases — complete the half-migrated token set (issue #1068).
+     These were referenced by components but never declared, so persona cards,
+     the sessions table, form errors, and typing dots rendered unstyled. */
+  --muted: var(--text-muted);
+  --border-muted: var(--border);
+  --danger: var(--error);
+  --text-secondary: var(--text-muted);
+  --bg-secondary: var(--surface-alt);
+  --bg-tertiary: var(--surface);
+  --fg: var(--text);
+  --fg-muted: var(--text-muted);
+  --mono-font: var(--font-code);
+  --radius: 8px;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+
+  /* Surface tints */
+  --header-bg: rgba(22, 33, 62, 0.97);
+  --header-border: var(--glass-border);
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --device-flow-bg: rgba(255, 255, 255, 0.015);
+  --llm-meta-bg: rgba(15, 52, 96, 0.3);
+  --turn-context-bg: rgba(15, 52, 96, 0.15);
+
+  /* Elevation */
+  --shadow-btn: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --shadow-float: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Light theme overrides (issue #977) */
@@ -192,71 +240,64 @@
     --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
     --surface-raised: #ffffff;
     --surface-overlay: rgba(255, 255, 255, 0.97);
-  }
+    --composer-height: 130px;
 
-  /* Header background */
-  header {
-    background: rgba(255, 255, 255, 0.97);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  }
+    /* Layout / typography tokens (theme-independent, declared here so the
+       light token root stays symmetric with dark — issue #1068) */
+    --sidebar-width: 240px;
+    --sidebar-collapsed-width: 48px;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-code: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
 
-  /* Status colors that are hardcoded */
-  .stream-status-text.connecting,
-  .stream-status-text.tool-running,
-  .stream-status-text.reconnecting {
-    color: #e67e22;
-  }
+    /* Semantic status colors — light variants (issue #1068) */
+    --status-connecting: #e67e22;
+    --status-streaming: #27ae60;
+    --status-tool-running: #e67e22;
+    --status-rendering: #e84393;
+    --status-done: #27ae60;
+    --status-error: #e74c3c;
+    --status-reconnecting: #e67e22;
+    --status-tool-icon: #d97706;
+    --sandbox-ok: #16a34a;
+    --sandbox-warn: #ea580c;
 
-  .stream-status-text.streaming,
-  .stream-status-text.done {
-    color: #27ae60;
-  }
+    /* Hover / on-color variants (shared with dark theme) */
+    --error-hover: #c0392b;
+    --success-hover: #27ae60;
+    --on-accent: #ffffff;
+    --on-accent-dim: rgba(255, 255, 255, 0.7);
+    --on-warning: #000000;
 
-  .stream-status-text.rendering {
-    color: #e84393;
-  }
+    /* Component aliases */
+    --muted: var(--text-muted);
+    --border-muted: var(--border);
+    --danger: var(--error);
+    --text-secondary: var(--text-muted);
+    --bg-secondary: var(--surface-alt);
+    --bg-tertiary: var(--surface);
+    --fg: var(--text);
+    --fg-muted: var(--text-muted);
+    --mono-font: var(--font-code);
+    --radius: 8px;
+    --surface-hover: rgba(0, 0, 0, 0.04);
 
-  .stream-status-text.error {
-    color: #e74c3c;
-  }
+    /* Surface tints — light variants */
+    --header-bg: rgba(255, 255, 255, 0.97);
+    --header-border: rgba(0, 0, 0, 0.1);
+    --overlay-bg: rgba(0, 0, 0, 0.6);
+    --device-flow-bg: rgba(0, 0, 0, 0.02);
+    --llm-meta-bg: rgba(232, 232, 237, 0.6);
+    --turn-context-bg: rgba(232, 232, 237, 0.4);
 
-  /* Stop button hover */
-  .stop-btn:hover {
-    background: #c0392b;
-  }
-
-  /* Confirm buttons */
-  .confirm-allow:hover:not(:disabled) {
-    background: #27ae60;
-  }
-
-  .confirm-deny:hover:not(:disabled) {
-    background: #c0392b;
-  }
-
-  /* Completion item description */
-  .completion-item[aria-selected="true"] .completion-desc {
-    color: rgba(0, 0, 0, 0.6);
-  }
-
-  /* Device flow section */
-  .device-flow-section {
-    background: rgba(0, 0, 0, 0.02);
-  }
-
-  /* Report system prompt summary */
-  .report-system-prompt summary:hover {
-    background: rgba(0, 0, 0, 0.04);
-  }
-
-  /* Turn LLM metadata */
-  .turn-llm-meta {
-    background: rgba(232, 232, 237, 0.6);
-  }
-
-  /* Context bar */
-  .turn-context-bar {
-    background: rgba(232, 232, 237, 0.4);
+    /* Elevation — lighter shadows for light theme */
+    --shadow-btn: 0 1px 4px rgba(0, 0, 0, 0.1);
+    --shadow-float: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   /* Status text colors */
@@ -330,20 +371,6 @@
   .token.variable {
     color: #e36209 !important;
   }
-
-  /* Tool icon colors - lighter for light theme */
-  .tool-entry.tool-running .tool-icon {
-    color: #d97706;
-  }
-
-  /* Sandbox badge colors - adjusted for light theme */
-  .sandbox-badge--ok {
-    color: #16a34a;
-  }
-
-  .sandbox-badge--warn {
-    color: #ea580c;
-  }
 }
 
 html {
@@ -416,8 +443,8 @@ header {
   /* Solid (near-opaque) bar rather than backdrop-filter blur: the header spans
      the full width and backdrop-filtered repaints on every scroll/animation
      during streaming, which contributes to main-thread jank on long sessions. */
-  background: rgba(22, 33, 62, 0.97);
-  border-bottom: 1px solid var(--glass-border);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
   padding: 0.5rem 1rem;
   display: flex;
   align-items: center;
@@ -461,11 +488,11 @@ header h1 {
 }
 
 .streaming-message .message-avatar-container[data-stream-status="error"] {
-  box-shadow: 0 0 12px 4px rgba(231, 76, 60, 0.5);
+  box-shadow: 0 0 12px 4px color-mix(in srgb, var(--error) 50%, transparent);
 }
 
 .streaming-message .message-avatar-container[data-stream-status="done"] {
-  box-shadow: 0 0 8px 3px rgba(46, 204, 113, 0.35);
+  box-shadow: 0 0 8px 3px color-mix(in srgb, var(--success) 35%, transparent);
 }
 
 .streaming-message .message-avatar-container[data-stream-status="streaming"] .message-avatar,
@@ -511,13 +538,13 @@ header h1 {
 }
 
 @keyframes glow-pulse-amber {
-  0%, 100% { box-shadow: 0 0 4px 2px rgba(243, 156, 18, 0.3); }
-  50% { box-shadow: 0 0 14px 6px rgba(243, 156, 18, 0.6); }
+  0%, 100% { box-shadow: 0 0 4px 2px color-mix(in srgb, var(--warning) 30%, transparent); }
+  50% { box-shadow: 0 0 14px 6px color-mix(in srgb, var(--warning) 60%, transparent); }
 }
 
 @keyframes glow-pulse-green {
-  0%, 100% { box-shadow: 0 0 4px 2px rgba(46, 204, 113, 0.3); }
-  50% { box-shadow: 0 0 14px 6px rgba(46, 204, 113, 0.6); }
+  0%, 100% { box-shadow: 0 0 4px 2px color-mix(in srgb, var(--success) 30%, transparent); }
+  50% { box-shadow: 0 0 14px 6px color-mix(in srgb, var(--success) 60%, transparent); }
 }
 
 /* Face breathing animation (issue #449) */
@@ -703,7 +730,7 @@ header h1 {
 }
 
 .tool-entry.tool-error {
-  background: rgba(231, 76, 60, 0.1);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
   border-radius: 4px;
 }
 
@@ -712,12 +739,12 @@ header h1 {
 }
 
 .tool-entry.tool-running {
-  background: rgba(243, 156, 18, 0.12);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-radius: 4px;
 }
 
 .tool-entry.tool-running .tool-icon {
-  color: #f0b400;
+  color: var(--status-tool-icon);
 }
 
 /* Sidebar tool entry details — summary row is .tool-entry */
@@ -911,7 +938,6 @@ main {
     "composer";
   flex: 1;
   min-height: 0;
-  --composer-height: 130px;
 }
 
 #messages {
@@ -1027,7 +1053,7 @@ noscript {
 
 .message-user {
   align-self: flex-end;
-  background: rgba(233, 69, 96, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .message-assistant {
@@ -1283,31 +1309,31 @@ details[open] .tool-chevron {
 }
 
 .stream-status-text.connecting {
-  color: #ffd08a;
+  color: var(--status-connecting);
 }
 
 .stream-status-text.streaming {
-  color: #7ff0aa;
+  color: var(--status-streaming);
 }
 
 .stream-status-text.tool-running {
-  color: #ffd08a;
+  color: var(--status-tool-running);
 }
 
 .stream-status-text.rendering {
-  color: #ff9aac;
+  color: var(--status-rendering);
 }
 
 .stream-status-text.done {
-  color: #7ff0aa;
+  color: var(--status-done);
 }
 
 .stream-status-text.error {
-  color: #ff9b90;
+  color: var(--status-error);
 }
 
 .stream-status-text.reconnecting {
-  color: #ffd08a;
+  color: var(--status-reconnecting);
 }
 
 /* Error toast */
@@ -1351,7 +1377,7 @@ details[open] .tool-chevron {
   gap: 0.4rem;
   padding: 0.4rem 0.75rem;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--border, #30363d);
+  border-bottom: 1px solid var(--border);
   min-height: 2rem;
 }
 
@@ -1361,7 +1387,7 @@ details[open] .tool-chevron {
 
 .active-skills-label {
   font-size: 0.78rem;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1369,20 +1395,20 @@ details[open] .tool-chevron {
 .active-skills-label.context-files-label {
   margin-left: 0.3rem;
   padding-left: 0.6rem;
-  border-left: 1px solid var(--border, #30363d);
+  border-left: 1px solid var(--border);
 }
 
 .context-file-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: var(--surface, #0d1117);
-  border: 1px solid var(--border-muted, #21262d);
+  background: var(--surface);
+  border: 1px solid var(--border-muted);
   border-radius: 12px;
   padding: 0.2rem 0.65rem 0.2rem 0.45rem;
   font-size: 0.8rem;
   font-weight: 400;
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted);
   line-height: 1.4;
   cursor: default;
 }
@@ -1405,9 +1431,9 @@ details[open] .tool-chevron {
   max-height: 280px;
   overflow-y: auto;
   padding: 0.5rem;
-  border: 1px solid var(--border, #30363d);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface, #0d1117);
+  background: var(--surface);
 }
 
 .skills-checkbox-group .checkbox-label {
@@ -1418,29 +1444,29 @@ details[open] .tool-chevron {
 }
 
 .skills-checkbox-group .checkbox-label:hover {
-  background: var(--surface-raised, #161b22);
+  background: var(--surface-raised);
 }
 
 .skills-checkbox-group .skill-name {
   font-weight: 500;
-  color: var(--text, #e6edf3);
+  color: var(--text);
 }
 
 .skills-checkbox-group .skill-desc {
-  color: var(--text-muted, #8b949e);
+  color: var(--text-muted);
 }
 
 .skill-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: var(--surface-raised, #161b22);
-  border: 1px solid var(--border, #30363d);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.2rem 0.65rem 0.2rem 0.45rem;
   font-size: 0.8rem;
   font-weight: 500;
-  color: var(--text, #e6edf3);
+  color: var(--text);
   line-height: 1.4;
 }
 
@@ -1504,7 +1530,7 @@ details[open] .tool-chevron {
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-btn);
   line-height: 1.4;
   transition: background 0.2s, opacity 0.2s;
 }
@@ -1532,7 +1558,7 @@ details[open] .tool-chevron {
 }
 
 .stop-btn:hover {
-  background: #c0392b;
+  background: var(--error-hover);
 }
 
 /* Base button class — makes any element (a, span, div) render as a button.
@@ -1561,7 +1587,7 @@ details[open] .tool-chevron {
 /* Button hierarchy classes for skill page actions (issue #486) */
 .btn-primary {
   background: var(--accent) !important;
-  color: #fff !important;
+  color: var(--on-accent) !important;
 }
 .btn-primary:hover {
   filter: brightness(1.1);
@@ -1569,12 +1595,12 @@ details[open] .tool-chevron {
 
 .btn-danger {
   background: transparent !important;
-  border: 1px solid var(--error, #e74c3c) !important;
-  color: var(--error, #e74c3c) !important;
+  border: 1px solid var(--error) !important;
+  color: var(--error) !important;
 }
 .btn-danger:hover {
-  background: var(--error, #e74c3c) !important;
-  color: #fff !important;
+  background: var(--error) !important;
+  color: var(--on-accent) !important;
 }
 
 .btn-secondary {
@@ -1600,7 +1626,7 @@ details[open] .tool-chevron {
   border-top: 1px solid var(--border);
   margin-top: 1rem;
   padding-top: 1rem;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--device-flow-bg);
   border-radius: 0 0 8px 8px;
   padding-left: 0.75rem;
   padding-right: 0.75rem;
@@ -1625,8 +1651,8 @@ details[open] .tool-chevron {
 /* System message (used for setup banner prepended to message list) */
 .message-system {
   align-self: flex-start;
-  background: rgba(243, 156, 18, 0.12);
-  border: 1px solid rgba(243, 156, 18, 0.3);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   border-radius: 8px;
   gap: 0.75rem;
   padding: 0.75rem;
@@ -1636,7 +1662,7 @@ details[open] .tool-chevron {
 
 .message-system .message-avatar {
   background: var(--warning);
-  color: #000;
+  color: var(--on-warning);
   flex-shrink: 0;
 }
 
@@ -1887,7 +1913,6 @@ pre.mermaid.mermaid-error {
   max-height: 240px;
   overflow-y: auto;
   min-width: 200px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
 .completion-item {
@@ -1920,7 +1945,7 @@ pre.mermaid.mermaid-error {
 }
 
 .completion-item[aria-selected="true"] .completion-desc {
-  color: rgba(255,255,255,0.7);
+  color: var(--on-accent-dim);
 }
 
 /* Code block enhancements */
@@ -2007,7 +2032,7 @@ pre.code-wrapped code {
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow-float);
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s;
@@ -2290,7 +2315,7 @@ eitri-composer {
   padding: 0.25rem 0.75rem;
   border: 1px solid var(--success);
   border-radius: 6px;
-  background: rgba(46, 204, 113, 0.08);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
   animation: saveSlideIn 0.3s ease;
 }
 
@@ -2391,11 +2416,11 @@ eitri-composer {
 }
 
 .sandbox-badge--ok {
-  color: #2e7d32;
+  color: var(--sandbox-ok);
 }
 
 .sandbox-badge--warn {
-  color: #e65100;
+  color: var(--sandbox-warn);
 }
 
 /* Skill cards */
@@ -2412,13 +2437,13 @@ eitri-composer {
 }
 
 .skill-card.skill-disabled {
-  background: var(--surface, #0d1117);
+  background: var(--surface);
   opacity: 0.75;
   border-left: 3px solid var(--warning);
 }
 
 .skill-card.skill-shadowed {
-  background: var(--surface, #0d1117);
+  background: var(--surface);
   opacity: 0.65;
   border-left: 3px dashed var(--text-muted);
 }
@@ -2464,13 +2489,13 @@ eitri-composer {
   padding: 0.25rem 1rem 0;
   margin: 0;
   font-size: 0.85rem;
-  color: var(--text-secondary, var(--text-muted));
+  color: var(--text-secondary);
 }
 
 .skill-path {
   padding: 0.25rem 1rem 0.75rem;
   font-size: 0.75rem;
-  font-family: var(--font-code, monospace);
+  font-family: var(--font-code);
 }
 
 
@@ -2523,7 +2548,7 @@ eitri-composer {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -2602,7 +2627,7 @@ eitri-composer {
 }
 
 .confirm-allow:hover:not(:disabled) {
-  background: #27ae60;
+  background: var(--success-hover);
 }
 
 .confirm-deny {
@@ -2611,7 +2636,7 @@ eitri-composer {
 }
 
 .confirm-deny:hover:not(:disabled) {
-  background: #c0392b;
+  background: var(--error-hover);
 }
 
 /* ============================================
@@ -2775,7 +2800,7 @@ eitri-composer {
   background: var(--accent);
   border: 2px solid var(--bg);
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .range-input::-moz-range-thumb {
@@ -2834,7 +2859,7 @@ textarea:focus,
 button:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 input:invalid {
@@ -2865,7 +2890,7 @@ button:hover {
 }
 
 button:focus {
-  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .form-actions button,
@@ -2908,7 +2933,7 @@ textarea {
 
 .form-actions button:focus,
 .form-actions-sticky button:focus {
-  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 /* ============================================
@@ -3072,8 +3097,8 @@ eitri-context {
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: rgba(233, 69, 96, 0.1);
-  border-top: 1px solid rgba(233, 69, 96, 0.3);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   font-size: 0.78rem;
   color: var(--text);
   min-height: 32px;
@@ -3103,7 +3128,7 @@ eitri-context {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-bg);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
@@ -3361,7 +3386,7 @@ eitri-context {
   padding: 1px 6px;
   border-radius: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 500;
 }
 
@@ -3516,7 +3541,7 @@ eitri-context {
 
 .report-meta-badge-error {
   background: var(--error);
-  color: #fff;
+  color: var(--on-accent);
   padding: 0 6px;
   border-radius: 4px;
   display: inline-block;
@@ -3536,8 +3561,8 @@ eitri-context {
   width: 100%;
   margin-top: 8px;
   padding: 8px 12px;
-  background: rgba(243, 156, 18, 0.15);
-  border: 1px solid rgba(243, 156, 18, 0.3);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   border-radius: 6px;
   color: var(--warning);
   font-size: var(--text-sm);
@@ -3553,22 +3578,22 @@ eitri-context {
 }
 
 .termination-completed {
-  background: rgba(46, 204, 113, 0.2);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
   color: var(--success);
 }
 
 .termination-max-turns {
-  background: rgba(243, 156, 18, 0.2);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
   color: var(--warning);
 }
 
 .termination-cancelled {
-  background: rgba(231, 76, 60, 0.15);
+  background: color-mix(in srgb, var(--error) 15%, transparent);
   color: var(--error);
 }
 
 .termination-error {
-  background: rgba(231, 76, 60, 0.2);
+  background: color-mix(in srgb, var(--error) 20%, transparent);
   color: var(--error);
 }
 
@@ -3624,7 +3649,7 @@ eitri-context {
 
 .report-system-prompt summary:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
 }
 
 .report-system-prompt-content {
@@ -3768,7 +3793,7 @@ eitri-context {
   align-items: center;
   gap: 12px;
   padding: 4px 16px;
-  background: rgba(15, 52, 96, 0.3);
+  background: var(--llm-meta-bg);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-xs);
   color: var(--text-muted);
@@ -3818,7 +3843,7 @@ eitri-context {
   display: flex;
   gap: 16px;
   padding: 6px 16px;
-  background: rgba(15, 52, 96, 0.15);
+  background: var(--turn-context-bg);
   border-top: 1px solid var(--border);
   font-size: var(--text-xs);
 }
@@ -3874,7 +3899,7 @@ eitri-context {
 
 .tool-call-card.tool-call-error {
   border-color: var(--error);
-  background: rgba(231, 76, 60, 0.08);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
 }
 
 .tool-call-summary {
@@ -4168,7 +4193,7 @@ eitri-context {
 
 .cleanup-value {
   font-weight: 600;
-  font-family: var(--mono-font, 'JetBrains Mono', monospace);
+  font-family: var(--mono-font);
   color: var(--text);
 }
 

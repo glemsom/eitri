@@ -61,6 +61,7 @@ model service.
 | `internal/api/debug_test.go` | Debug API handler tests (sessions, runtime, config, HTTP traces, health) |
 | `internal/api/debug_internal_test.go` | Debug API helper function unit tests (writeJSON, writeError, sanitizeConfig, sessionToSummary, loadConfig) |
 | `internal/api/assets/js_test.go` | Static JS/CSS checks; `lightweightMarkdown` via Goja |
+| `internal/api/assets/css_test.go` | Embedded CSS lint: balanced braces, critical selectors, self-hosted fonts, design-token invariants (every `var()` token is declared, dark/light token roots are symmetric, no bare hex/rgba outside the token root — the CI stylelint rule for issue #1068) |
 | `internal/history/session_test.go` | Session lifecycle, history, sliding window |
 | `internal/session/session_test.go` | Session Manager lifecycle, CRUD, sub-stores, shared read accessors, copy helpers |
 | `internal/session/bench_test.go` | Read-path allocation benchmarks (`Get`/shared accessors vs `CopySession`/`CopyConversation`) |
