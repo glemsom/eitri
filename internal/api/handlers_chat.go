@@ -111,13 +111,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Append user message to session
-	s.config.SessionManager.AppendMessage(id, eitrimsg.Message{
-		Role:      "user",
-		Content:   prompt,
-		CreatedAt: time.Now(),
-	})
-
 	// Start run in background
 	// Use context.Background() instead of r.Context() so the run survives
 	// the HTTP handler returning (which cancels the request context).
@@ -130,6 +123,14 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		component.Render(r.Context(), w)
 		return
 	}
+
+	// Append user message to session only after run starts successfully.
+	// This prevents orphaned messages if StartRun fails (issue #972).
+	s.config.SessionManager.AppendMessage(id, eitrimsg.Message{
+		Role:      "user",
+		Content:   prompt,
+		CreatedAt: time.Now(),
+	})
 
 	// Render skill warnings
 	for _, warning := range skillWarnings {
