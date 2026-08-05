@@ -39,7 +39,7 @@ Self-hosted, single-binary AI Agent for Linux. Named after the Norse blacksmith 
 
 ## Architecture decisions
 
-See [docs/ADRs.md](docs/ADRs.md).
+Architecture decisions are documented as ADRs in `docs/adr/` and indexed in [docs/ADRs.md](docs/ADRs.md).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#target-repository-layout).
 

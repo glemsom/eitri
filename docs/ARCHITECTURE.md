@@ -500,3 +500,7 @@ Tests are colocated as `*_test.go`. Browser E2E tests live under `internal/api` 
 ## Key ADRs
 
 ADR index lives in [docs/ADRs.md](ADRs.md).
+
+## Runtime configuration
+
+Config file (`~/.eitri/config.json`), listen address (`EITRI_ADDR` env var, default `127.0.0.1:8080`), and environment variable overrides are defined in `internal/config/manager.go`. Batch mode supports headless execution via `-b` flag (see `docs/agents/batch.md`).
