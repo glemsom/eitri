@@ -463,6 +463,28 @@ func TestJsFiles(t *testing.T) {
 	}
 }
 
+// TestStreamIslandNoDebugLogging guards the streaming island (issue #1076)
+// against debug console.log calls that noise up the console on every stream:
+// a disconnect-trigger log and full packet dumps when rendering components.
+// Normal streaming, rendering, and disconnect flows must stay silent. Error
+// handling is allowed to keep using console.warn/console.error — those fire
+// only on failure paths, never during normal operation.
+func TestStreamIslandNoDebugLogging(t *testing.T) {
+	f, err := Files.Open("eitri-stream.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-stream.js: %v", err)
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("failed to read eitri-stream.js: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "console.log") {
+		t.Error("eitri-stream.js contains console.log debug calls; remove them (issue #1076)")
+	}
+}
+
 func TestLightweightMarkdown(t *testing.T) {
 	f, err := Files.Open("eitri-stream.js")
 	if err != nil {
