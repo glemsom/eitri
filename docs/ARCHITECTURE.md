@@ -332,7 +332,7 @@ Architecture name: **HTMX + Templ shell with browser islands**. Server owns cano
 - `eitri-session-rename`: inline session title editing.
 - `eitri-settings`: settings-page interactivity (dirty guards, model refresh, test connection).
 
-**Asset strategy**: `internal/api/assets/` contains pinned vendor assets served from `embed.FS` to avoid CDN availability, offline, and privacy failure modes. Do not use CDN or npm/bundler.
+**Asset strategy**: `internal/api/assets/` contains pinned vendor assets served from `embed.FS` to avoid CDN availability, offline, and privacy failure modes. Do not use CDN or npm/bundler. UI fonts (Inter, JetBrains Mono) are self-hosted as `woff2` under `assets/fonts/`, declared via `@font-face` in `eitri.css` with `font-display: swap`, and precached by the service worker — the page shell makes zero external font/CDN requests. (#970)
 
 **Generative UI seam**: `render_mermaid_diagram` and `render_quick_replies` tools emit structured data; server renders Templ components via `/api/sessions/{id}/render`; islands add optional browser-native behavior without turning app into an SPA.
 

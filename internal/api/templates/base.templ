@@ -15,9 +15,12 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			     (eitri-lazy-load.js, eitri-stream.js) so runtime-fetched assets
 			     are versioned too. (issue #969) -->
 			<link rel="stylesheet" href={ templ.URL(staticAsset("/static/eitri.css")) }/>
-			<link rel="preconnect" href="https://fonts.googleapis.com"/>
-			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+			<!-- Fonts are self-hosted (embedded in the binary, served from
+			     /static/fonts/*) — no external network requests. The critical
+			     latin subsets are preloaded; font-display: swap in eitri.css
+			     keeps text visible while they load. (issue #970) -->
+			<link rel="preload" href={ templ.URL(staticAsset("/static/fonts/Inter-latin.woff2")) } as="font" type="font/woff2" crossorigin/>
+			<link rel="preload" href={ templ.URL(staticAsset("/static/fonts/JetBrainsMono-latin.woff2")) } as="font" type="font/woff2" crossorigin/>
 			<!-- Core scripts are non-render-blocking (defer). The heavy rendering
 			     libraries (mermaid, KaTeX, Prism) are NOT loaded here — they are
 			     fetched on demand by eitri-lazy-load.js only when content that
