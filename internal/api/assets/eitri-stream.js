@@ -362,7 +362,6 @@
   document.addEventListener('htmx:beforeSwap', function (evt) {
     const targetId = evt.detail && evt.detail.target && evt.detail.target.id;
     if (targetId === 'app' || targetId === 'chat-view' || targetId === 'streaming') {
-      console.log('[eitri] disconnectAll triggered by target:', targetId);
       disconnectAll();
     }
   });
@@ -950,7 +949,6 @@
   }
 
   function renderComponent(sessionId, packet, toolCallKey) {
-    console.log('[eitri] renderComponent called', JSON.stringify(packet));
     // The SSE 'component' event nests name/data inside packet.data:
     //   {"type":"component","data":{"name":"MermaidDiagram","data":{...}}}
     var nested = packet.data || {};
@@ -960,7 +958,6 @@
       console.warn('[eitri] renderComponent: no compName, packet.data=', JSON.stringify(packet.data));
       return;
     }
-    console.log('[eitri] renderComponent: name=' + compName + ' data keys=' + Object.keys(compData).join(','));
 
     if (compName === 'MermaidDiagram') {
       return;
@@ -973,7 +970,6 @@
       console.warn('[eitri] renderComponent: no #streaming element');
       return;
     }
-    console.log('[eitri] renderComponent: inserting after #streaming');
 
     htmx.ajax('POST', '/api/sessions/' + sessionId + '/render', {
       source: document.body,
