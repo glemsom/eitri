@@ -9,7 +9,12 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
-			<link rel="stylesheet" href="/static/eitri.css"/>
+			<!-- Static assets are served with an immutable Cache-Control, so
+			     every URL carries the asset cache-bust version. The same value
+			     is exposed on <body data-asset-version> for the JS islands
+			     (eitri-lazy-load.js, eitri-stream.js) so runtime-fetched assets
+			     are versioned too. (issue #969) -->
+			<link rel="stylesheet" href={ templ.URL(staticAsset("/static/eitri.css")) }/>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
@@ -17,27 +22,27 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			     libraries (mermaid, KaTeX, Prism) are NOT loaded here — they are
 			     fetched on demand by eitri-lazy-load.js only when content that
 			     needs them is present. (issue #968) -->
-			<script src="/static/htmx.min.js" defer></script>
-			<script src="/static/eitri-stream.js" defer></script>
-			<script src="/static/eitri-composer.js" defer></script>
-			<script src="/static/eitri-renderers.js" defer></script>
-			<script src="/static/eitri-mermaid.js" defer></script>
-			<script src="/static/eitri-persona-selector.js" defer></script>
-			<script src="/static/eitri-session-rename.js" defer></script>
-			<script src="/static/eitri-settings.js" defer></script>
-			<script src="/static/eitri-context.js" defer></script>
-			<script src="/static/eitri-resize.js" defer></script>
-			<script src="/static/eitri-events.js" defer></script>
-			<script src="/static/eitri-lazy-load.js" defer></script>
-			<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png"/>
-			<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png"/>
+			<script src={ templ.URL(staticAsset("/static/htmx.min.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-composer.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-renderers.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-mermaid.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-persona-selector.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-session-rename.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-settings.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-context.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-resize.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-events.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-lazy-load.js")) } defer></script>
+			<link rel="icon" type="image/png" sizes="32x32" href={ templ.URL(staticAsset("/static/favicon-32.png")) }/>
+			<link rel="icon" type="image/png" sizes="16x16" href={ templ.URL(staticAsset("/static/favicon-16.png")) }/>
 			<!-- PWA meta tags -->
 			<meta name="theme-color" content="#1a1a2e"/>
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-title" content="Eitri"/>
 			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-			<link rel="apple-touch-icon" sizes="192x192" href="/static/pwa-icon-192.png"/>
-			<link rel="apple-touch-icon" sizes="512x512" href="/static/pwa-icon-512.png"/>
+			<link rel="apple-touch-icon" sizes="192x192" href={ templ.URL(staticAsset("/static/pwa-icon-192.png")) }/>
+			<link rel="apple-touch-icon" sizes="512x512" href={ templ.URL(staticAsset("/static/pwa-icon-512.png")) }/>
 			<link rel="manifest" href="/manifest.json"/>
 			<script>
 				if ('serviceWorker' in navigator) {
@@ -47,10 +52,10 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 				}
 			</script>
 		</head>
-		<body hx-ext="head-support">
+		<body hx-ext="head-support" data-asset-version={ assetVersion() }>
 			<div id="app">
 				<header>
-					<h1><span class="header-face-container" data-stream-status="idle"><img src="/static/face.webp" alt="" class="header-face" width="28" height="28"/></span><span class="typing-dots" hidden><span>.</span><span>.</span><span>.</span></span> Eitri<span class="stream-status-text idle">Idle</span></h1>
+					<h1><span class="header-face-container" data-stream-status="idle"><img src={ templ.URL(staticAsset("/static/face.webp")) } alt="" class="header-face" width="28" height="28"/></span><span class="typing-dots" hidden><span>.</span><span>.</span><span>.</span></span> Eitri<span class="stream-status-text idle">Idle</span></h1>
 					if activeID != "" {
 						<div id="workspace-indicator" class="workspace-indicator" title={ workspace }
 							hx-get={ "/api/sessions/" + activeID + "/directory-browser" }

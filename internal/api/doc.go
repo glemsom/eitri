@@ -21,7 +21,11 @@
 // pattern syntax ("METHOD /path"). The route table is grouped as follows:
 //
 //	Health:          GET  /health
-//	Static assets:   GET  /static/*       (embedded in assets.Files via embed.FS)
+//	Static assets:   GET  /static/*       (embedded in assets.Files via embed.FS;
+//	                                     served with `Cache-Control: public, max-age=31536000, immutable`.
+//	                                     All references carry a ?v=<content-hash> cache-bust query string
+//	                                     so released asset changes are picked up despite the immutable cache.
+//	                                     See templates/staticAsset and assets.CacheBustVersion.)
 //	Root page:       GET  /{$}            (serves the base HTML shell)
 //	Sessions:        POST /api/sessions             (create)
 //	                 GET  /sessions/{id}            (view)

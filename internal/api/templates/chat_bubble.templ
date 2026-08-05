@@ -21,7 +21,7 @@ templ UserBubble(htmlContent string, userEmail string) {
 // quickReplies are rendered as an inline footer with a thin separator when present.
 templ AssistantBubble(sessionID string, htmlContent string, quickReplies []string) {
 	<div class="message message-assistant">
-		<img class="message-avatar" src="/static/face.webp" alt="Eitri" width="32" height="32"/>
+		<img class="message-avatar" src={ templ.URL(staticAsset("/static/face.webp")) } alt="Eitri" width="32" height="32"/>
 		<div class="message-body">
 			<div class="message-content">@templ.Raw(htmlContent)</div>
 			if len(quickReplies) > 0 {

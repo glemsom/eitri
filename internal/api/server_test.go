@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/api/assets"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
@@ -1681,10 +1682,230 @@ func TestSettingsPage(t *testing.T) {
 	}
 
 	// Every static script tag in the head must be non-render-blocking (defer).
-	scriptRe := regexp.MustCompile(`<script\s+src="(/static/[^"]+\.js)"([^>]*)></script>`)
+	scriptRe := regexp.MustCompile(`<script\s+src="(/static/[^"]+\.js(?:\?[^"]*)?)"([^>]*)></script>`)
 	for _, m := range scriptRe.FindAllStringSubmatch(content, -1) {
 		if !strings.Contains(m[2], "defer") {
 			t.Errorf("script tag for %q is missing the defer attribute (render-blocking)", m[1])
+		}
+	}
+}
+
+func TestStaticAssetsImmutableCacheControl(t *testing.T) {
+	server := newTestServer(t)
+
+	for _, path := range []string{
+		"/static/eitri.css",
+		"/static/eitri-stream.js",
+		"/static/eitri-lazy-load.js",
+		"/static/face.webp",
+		"/static/favicon-16.png",
+		"/static/pwa-icon-512.png",
+		"/static/fonts/KaTeX_Main-Regular.woff2",
+	} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(server.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
+			}
+
+			cc := resp.Header.Get("Cache-Control")
+			for _, want := range []string{"public", "max-age=31536000", "immutable"} {
+				if !strings.Contains(cc, want) {
+					t.Errorf("GET %s Cache-Control = %q, want it to contain %q", path, cc, want)
+				}
+			}
+		})
+	}
+}
+
+func TestStaticAssetsImmutableCacheControlOnlyOnSuccess(t *testing.T) {
+	server := newTestServer(t)
+
+	resp, err := http.Get(server.URL + "/static/does-not-exist.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET missing asset status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "" {
+		t.Errorf("missing asset Cache-Control = %q, want empty (404 must not be cached immutably)", cc)
+	}
+}
+
+func TestStaticAssetURLsCarryCacheBustVersion(t *testing.T) {
+	server := newTestServer(t)
+
+	resp, err := http.Get(server.URL + "/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	version := assets.CacheBustVersion
+	if version == "" {
+		t.Fatal("assets.CacheBustVersion must not be empty")
+	}
+
+	for _, asset := range []string{
+		"/static/eitri.css",
+		"/static/eitri-stream.js",
+		"/static/eitri-composer.js",
+		"/static/eitri-renderers.js",
+		"/static/eitri-mermaid.js",
+		"/static/eitri-lazy-load.js",
+		"/static/favicon-32.png",
+		"/static/favicon-16.png",
+		"/static/pwa-icon-192.png",
+		"/static/pwa-icon-512.png",
+		"/static/face.webp",
+	} {
+		want := asset + "?v=" + version
+		if !strings.Contains(content, want) {
+			t.Errorf("page HTML missing versioned URL %q", want)
+		}
+	}
+
+	// The versioned URLs must actually resolve to the asset.
+	resp2, err := http.Get(server.URL + "/static/eitri.css?v=" + version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("GET versioned /static/eitri.css status = %d, want %d", resp2.StatusCode, http.StatusOK)
+	}
+}
+
+func TestHTMLPagesNotCachedImmutable(t *testing.T) {
+	server := newTestServer(t)
+
+	for _, path := range []string{"/settings", "/sessions", "/skills"} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(server.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			cc := resp.Header.Get("Cache-Control")
+			if strings.Contains(cc, "immutable") || strings.Contains(cc, "max-age") {
+				t.Errorf("GET %s Cache-Control = %q, HTML pages must not be served with long-lived caching", path, cc)
+			}
+		})
+	}
+}
+
+func TestSSEStreamNotCachedImmutable(t *testing.T) {
+	mgr := newManagedTestServerWithRuns(t)
+	sess, err := mgr.sessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	req, err := http.NewRequest("GET", mgr.server.URL+"/api/sessions/"+sess.ID+"/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: "browser-1"})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET stream status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	cc := resp.Header.Get("Cache-Control")
+	if strings.Contains(cc, "immutable") || strings.Contains(cc, "max-age") {
+		t.Errorf("SSE stream Cache-Control = %q, SSE must not be served with long-lived caching", cc)
+	}
+}
+
+func TestServiceWorkerEndpointVersioned(t *testing.T) {
+	server := newTestServer(t)
+
+	resp, err := http.Get(server.URL + "/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sw.js status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if got := resp.Header.Get("Service-Worker-Allowed"); got != "/" {
+		t.Errorf("Service-Worker-Allowed = %q, want %q", got, "/")
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control = %q, want %q (service worker must be revalidated)", got, "no-cache")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	version := assets.CacheBustVersion
+	if strings.Contains(content, "__EITRI_VERSION__") {
+		t.Error("served sw.js still contains unsubstituted __EITRI_VERSION__ placeholder")
+	}
+	if !strings.Contains(content, `"eitri-`+version+`"`) {
+		t.Errorf("served sw.js missing versioned cache name %q", "eitri-"+version)
+	}
+	if !strings.Contains(content, "/static/eitri.css?v="+version) {
+		t.Errorf("served sw.js missing versioned precache URL /static/eitri.css?v=%s", version)
+	}
+}
+
+func TestManifestEndpointVersionedIcons(t *testing.T) {
+	server := newTestServer(t)
+
+	resp, err := http.Get(server.URL + "/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /manifest.json status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(body)
+
+	version := assets.CacheBustVersion
+	if strings.Contains(content, "__EITRI_VERSION__") {
+		t.Error("served manifest.json still contains unsubstituted __EITRI_VERSION__ placeholder")
+	}
+	for _, want := range []string{
+		"/static/pwa-icon-192.png?v=" + version,
+		"/static/pwa-icon-512.png?v=" + version,
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("manifest.json missing versioned icon URL %q", want)
 		}
 	}
 }
