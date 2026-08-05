@@ -98,8 +98,9 @@ func parseResponseEnrichment(body []byte) (usage *UsageTotals, finishReason, mod
 	}
 
 	if usage != nil && usage.TotalTokens == 0 {
-		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens +
-			usage.CacheReadTokens + usage.CacheWriteTokens
+		// Provider convention: total = prompt + completion (cache tokens are
+		// already part of the prompt count).
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 	return usage, finishReason, model
 }

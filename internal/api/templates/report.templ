@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/report"
 	"github.com/glemsom/eitri/internal/session"
 )
@@ -22,6 +24,11 @@ type TurnView struct {
 	LLMTraceID       string
 	LLMRequestBytes  int
 	LLMResponseBytes int
+	LLMTTFBMs        int64
+	LLMAttempt       int
+	LLMModel         string
+	LLMFinishReason  string
+	LLMUsage         *debug.UsageTotals
 	ContextBefore    *report.ContextInfo
 	ContextAfter     *report.ContextInfo
 	ToolCalls        []report.ToolCallInfo
@@ -105,6 +112,12 @@ templ ReportHeader(rep *report.SessionReport, sessionID string) {
 				<span class="report-meta-label">Estimated tokens</span>
 				<span class="report-meta-value">{ formatNumber(rep.Summary.EstimatedTotalTokens) }</span>
 			</div>
+			if rep.Summary.TotalCacheReadTokens > 0 || rep.Summary.TotalCacheWriteTokens > 0 {
+				<div class="report-meta-item">
+					<span class="report-meta-label">Cache tokens</span>
+					<span class="report-meta-value">{ cacheSummary(rep.Summary) }</span>
+				</div>
+			}
 			<div class="report-meta-item">
 				<span class="report-meta-label">Duration</span>
 				<span class="report-meta-value">{ formatDuration(rep.DurationMs) }</span>
@@ -196,16 +209,31 @@ templ TurnCard(turn TurnView) {
 				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
 				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
 			</div>
-			if turn.LLMDurationMs > 0 || turn.LLMTraceID != "" || turn.LLMRequestBytes > 0 || turn.LLMResponseBytes > 0 {
+			if turn.LLMDurationMs > 0 || turn.LLMTraceID != "" || turn.LLMRequestBytes > 0 || turn.LLMResponseBytes > 0 || turn.LLMTTFBMs > 0 || turn.LLMAttempt > 0 || turn.LLMModel != "" || turn.LLMFinishReason != "" || turn.LLMUsage != nil {
 				<div class="turn-llm-meta">
 					if turn.LLMDurationMs > 0 {
 						<span class="llm-meta-item">⏱ { formatDurationSmall(turn.LLMDurationMs) }</span>
+					}
+					if turn.LLMTTFBMs > 0 {
+						<span class="llm-meta-item" title="Time to first byte">⚡ { formatDurationSmall(turn.LLMTTFBMs) }</span>
 					}
 					if turn.LLMRequestBytes > 0 {
 						<span class="llm-meta-item">↑ { formatBytes(turn.LLMRequestBytes) }</span>
 					}
 					if turn.LLMResponseBytes > 0 {
 						<span class="llm-meta-item">↓ { formatBytes(turn.LLMResponseBytes) }</span>
+					}
+					if turn.LLMUsage != nil && turn.LLMUsage.PromptTokens > 0 && turn.LLMUsage.CompletionTokens > 0 {
+						<span class="llm-meta-item" title="Provider-reported tokens: prompt + completion{ cacheTokenSuffix(turn.LLMUsage) }">🧮 { formatNumber(turn.LLMUsage.PromptTokens) } + { formatNumber(turn.LLMUsage.CompletionTokens) } tok</span>
+					}
+					if turn.LLMFinishReason != "" {
+						<span class="llm-meta-item" title="Finish reason">🏁 { turn.LLMFinishReason }</span>
+					}
+					if turn.LLMModel != "" {
+						<span class="llm-meta-item" title="Model">🤖 { turn.LLMModel }</span>
+					}
+					if turn.LLMAttempt > 0 {
+						<span class="llm-meta-item" title="Retry attempt">🔁 attempt { strconv.Itoa(turn.LLMAttempt + 1) }</span>
 					}
 					if turn.LLMTraceID != "" {
 						<span class="llm-meta-item">
@@ -377,6 +405,37 @@ func formatBytes(b int) string {
 		return strconv.Itoa(b/1024) + "KB"
 	}
 	return fmt.Sprintf("%.1fMB", float64(b)/(1024.0*1024.0))
+}
+
+// cacheTokenSuffix returns a human-readable suffix describing the provider's
+// cache-read/cache-creation token counts, or "" when neither is reported.
+func cacheTokenSuffix(u *debug.UsageTotals) string {
+	if u == nil {
+		return ""
+	}
+	var parts []string
+	if u.CacheReadTokens > 0 {
+		parts = append(parts, fmt.Sprintf("%d cache read", u.CacheReadTokens))
+	}
+	if u.CacheWriteTokens > 0 {
+		parts = append(parts, fmt.Sprintf("%d cache created", u.CacheWriteTokens))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " · " + strings.Join(parts, ", ")
+}
+
+// cacheSummary renders the aggregate cache token counts for a run summary.
+func cacheSummary(s report.Summary) string {
+	var parts []string
+	if s.TotalCacheReadTokens > 0 {
+		parts = append(parts, formatNumber(s.TotalCacheReadTokens)+" read")
+	}
+	if s.TotalCacheWriteTokens > 0 {
+		parts = append(parts, formatNumber(s.TotalCacheWriteTokens)+" created")
+	}
+	return strings.Join(parts, " / ")
 }
 
 func contextPercent(ci *report.ContextInfo) int {

@@ -154,7 +154,8 @@ Replaces inline `UISession` map in early `api.Server`. Server-owned canonical se
 | File | Responsibility |
 |------|---------------|
 | `dump.go` | `WriteCrashDump()` — writes structured crash dump to `~/.eitri/crash-dump/` |
-| `recorder.go` | `Recorder` — ring buffer of HTTP request/response traces for diagnostics |
+| `recorder.go` | `Recorder` — ring buffer of HTTP request/response traces for diagnostics. Each `HTTPTrace` is enriched with provider-reported usage, `finish_reason`, model name, retry attempt number, and time-to-first-byte. |
+| `tracemeta.go` | `TraceMeta` — per-LLM-call bridge carried on the request context; the run loop records parsed usage/finish_reason/model and the attempt number, and the recorder merges them into the trace at finalize time |
 | `log_handler.go` | `RingBufferHandler` — circular log buffer for crash dump capture |
 | `doc.go` | Package documentation |
 

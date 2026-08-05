@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -119,7 +120,7 @@ func TestListRuns_MultipleTimelines(t *testing.T) {
 		StartedAt: now.Add(30 * time.Second),
 		EndedAt:   now.Add(45 * time.Second),
 		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCancelled,
+			Reason:  runstate.TerminationCancelled,
 			Message: "user cancelled",
 		},
 		Events: []runstate.TimelineEvent{
@@ -426,5 +427,128 @@ func TestSummary_FailedTools(t *testing.T) {
 	}
 	if len(rep.Summary.FailedToolNames) == 0 {
 		t.Errorf("expected failed tool names, got none")
+	}
+}
+
+// writeTestTrace writes an HTTP trace file for testing.
+func writeTestTrace(t *testing.T, dir, sessionID string, trace *debug.HTTPTrace) {
+	t.Helper()
+	tracesDir := filepath.Join(dir, "sessions", sessionID, "traces")
+	if err := os.MkdirAll(tracesDir, 0o700); err != nil {
+		t.Fatalf("failed to create traces dir: %v", err)
+	}
+	data, err := json.Marshal(trace)
+	if err != nil {
+		t.Fatalf("failed to marshal trace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tracesDir, string(trace.ID)+".json"), data, 0o600); err != nil {
+		t.Fatalf("failed to write trace: %v", err)
+	}
+}
+
+func TestGetReport_TurnsReflectEnrichedTraceFields(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-trace-enrich"
+	now := time.Now().UTC()
+
+	tl := &runstate.Timeline{
+		Version:   1,
+		RunID:     "run-trace-enrich",
+		SessionID: sessionID,
+		Provider: runstate.TimelineProvider{
+			Model:      "test-model",
+			ProviderID: "test-provider",
+		},
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &runstate.TimelineTermination{
+			Reason: runstate.TerminationCompleted,
+		},
+		Events: []runstate.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"ls"}`)},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "file.txt", Error: false},
+			{Type: "context_update", Timestamp: now, Turn: 1, TotalTokens: 500, PromptTokens: 400, ContextWindow: 128000},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// A trace recorded for the assistant turn, enriched with provider usage,
+	// finish reason, model, attempt, and TTFB.
+	trace := &debug.HTTPTrace{
+		ID:            "trace_1",
+		Timestamp:     now,
+		SessionID:     sessionID,
+		ProviderID:    "test-provider",
+		Status:        200,
+		DurationMs:    1200,
+		RequestBytes:  100,
+		ResponseBytes: 500,
+		TTFBMs:        80,
+		Attempt:       1,
+		Model:         "test-model",
+		FinishReason:  "stop",
+		Usage: &debug.UsageTotals{
+			PromptTokens:     400,
+			CompletionTokens: 50,
+			TotalTokens:      450,
+			CacheReadTokens:  120,
+			CacheWriteTokens: 30,
+		},
+	}
+	writeTestTrace(t, dir, sessionID, trace)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rep == nil {
+		t.Fatal("expected non-nil report")
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+
+	if assistant.LLMTraceID != "trace_1" {
+		t.Errorf("LLMTraceID = %q, want %q", assistant.LLMTraceID, "trace_1")
+	}
+	if assistant.LLMDurationMs != 1200 {
+		t.Errorf("LLMDurationMs = %d, want 1200", assistant.LLMDurationMs)
+	}
+	if assistant.LLMRequestBytes != 100 || assistant.LLMResponseBytes != 500 {
+		t.Errorf("LLM bytes = req:%d resp:%d, want 100/500", assistant.LLMRequestBytes, assistant.LLMResponseBytes)
+	}
+	if assistant.LLMTTFBMs != 80 {
+		t.Errorf("LLMTTFBMs = %d, want 80", assistant.LLMTTFBMs)
+	}
+	if assistant.LLMAttempt != 1 {
+		t.Errorf("LLMAttempt = %d, want 1", assistant.LLMAttempt)
+	}
+	if assistant.LLMModel != "test-model" {
+		t.Errorf("LLMModel = %q, want %q", assistant.LLMModel, "test-model")
+	}
+	if assistant.LLMFinishReason != "stop" {
+		t.Errorf("LLMFinishReason = %q, want %q", assistant.LLMFinishReason, "stop")
+	}
+	if assistant.LLMUsage == nil {
+		t.Fatal("expected LLMUsage on turn")
+	} else {
+		if assistant.LLMUsage.PromptTokens != 400 || assistant.LLMUsage.CompletionTokens != 50 || assistant.LLMUsage.TotalTokens != 450 {
+			t.Errorf("LLMUsage = %+v, want prompt=400 completion=50 total=450", assistant.LLMUsage)
+		}
+		if assistant.LLMUsage.CacheReadTokens != 120 || assistant.LLMUsage.CacheWriteTokens != 30 {
+			t.Errorf("LLMUsage cache = read:%d write:%d, want 120/30", assistant.LLMUsage.CacheReadTokens, assistant.LLMUsage.CacheWriteTokens)
+		}
+	}
+
+	if rep.Summary.TotalCacheReadTokens != 120 || rep.Summary.TotalCacheWriteTokens != 30 {
+		t.Errorf("summary cache = read:%d write:%d, want 120/30", rep.Summary.TotalCacheReadTokens, rep.Summary.TotalCacheWriteTokens)
 	}
 }

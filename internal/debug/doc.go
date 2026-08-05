@@ -15,9 +15,13 @@
 //
 // Key types:
 //   - Recorder — trace recorder (NewRecorder, Record, List, InFlight, Count, LastFailingTrace, Metrics)
-//   - HTTPTrace — one recorded LLM provider request/response (includes ResponseHeaders, Usage, ErrorClass)
+//   - HTTPTrace — one recorded LLM provider request/response (includes ResponseHeaders,
+//     Usage, FinishReason, Model, Attempt, TTFBMs, ErrorClass)
 //   - MetricsSnapshot / ModelMetrics — JSON shape of the interaction metrics aggregate
 //   - ErrorClass — structured capture-time error classification (ClassifyError)
+//   - TraceMeta — per-LLM-call bridge between the run loop and the recorder;
+//     carried on the request context, populated with parsed usage/finish_reason/
+//     model, the retry attempt, and TTFB, and merged into the trace at finalize time
 //   - RingBufferHandler — log ring buffer (NewRingBufferHandler, Entries, Count)
 //   - LogEntry — one captured structured log entry
 //   - DumpOptions — input struct for WriteCrashDump (Error, ErrorChain, Stack, ..., FailingHTTPTrace)

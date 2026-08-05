@@ -32,17 +32,18 @@ type HTTPTrace struct {
 	ResponseBody    string              `json:"response_body"`
 	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
 	Error           string              `json:"error,omitempty"`
-
-	// Enriched per-call measurements (issue #987). Model is extracted from
-	// the request body at capture time; Usage and FinishReason come from the
-	// response body (including the stream tail); Attempt is the zero-based
-	// retry attempt number threaded through the request context; ErrorClass
-	// is the structured capture-time classification of a failed call.
+	// Enriched per-call measurements. Model is extracted from the request body
+	// at capture time; Usage and FinishReason come from the response body
+	// (including the stream tail) or the run loop's TraceMeta bridge; Attempt
+	// is the zero-based retry attempt number; ErrorClass is the structured
+	// capture-time classification of a failed call; TTFBMs is the time to the
+	// first response byte.
 	Model        string       `json:"model,omitempty"`
 	Attempt      int          `json:"attempt,omitempty"`
 	FinishReason string       `json:"finish_reason,omitempty"`
 	Usage        *UsageTotals `json:"usage,omitempty"`
 	ErrorClass   ErrorClass   `json:"error_class,omitempty"`
+	TTFBMs       int64        `json:"ttfb_ms,omitempty"` // ms from request start to first response byte
 }
 
 const (
@@ -142,8 +143,16 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 
 // completeTrace moves an in-flight trace to completed storage.
 func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string) {
+	r.completeTraceWithMeta(id, respBody, status, duration, errMsg, respHeaders, usage, finishReason, nil)
+}
+
+// completeTraceWithMeta is completeTrace with an optional *TraceMeta bridge.
+// When meta is non-nil, the per-call measurements the run loop recorded on it
+// (retry attempt, time-to-first-byte, provider usage, finish reason, model)
+// override whatever the raw body parsing inferred.
+func (r *Recorder) completeTraceWithMeta(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string, meta *TraceMeta) {
 	r.mu.Lock()
-	trace := r.finalizeLocked(id, respBody, status, duration, errMsg, respHeaders, usage, finishReason)
+	trace := r.finalizeLocked(id, respBody, status, duration, errMsg, respHeaders, usage, finishReason, meta)
 	r.mu.Unlock()
 
 	// Fire OnComplete outside the recorder lock so persistence (disk I/O)
@@ -155,7 +164,7 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 
 // finalizeLocked moves an in-flight trace to completed storage and returns it,
 // or nil if the trace is unknown (e.g. already evicted). Assumes r.mu is held.
-func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string) *HTTPTrace {
+func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string, usage *UsageTotals, finishReason string, meta *TraceMeta) *HTTPTrace {
 	trace, ok := r.inFlight[id]
 	if !ok {
 		return nil
@@ -171,8 +180,25 @@ func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, durat
 	truncated := truncateBody(respBody)
 	trace.ResponseBytes = len(respBody)
 	trace.ResponseBody = string(truncated)
-
 	trace.ErrorClass = classifyTrace(status, errMsg, trace.ResponseBody)
+
+	// TraceMeta bridge overrides the body-parsed values with the authoritative
+	// per-call measurements recorded by the run loop (retry attempt, TTFB,
+	// provider usage, finish reason, model). Applied before aggregation so the
+	// interaction metrics count the real values.
+	if meta != nil {
+		trace.Attempt = meta.Attempt()
+		trace.TTFBMs = meta.TTFBMs()
+		if u := meta.Usage(); u != nil {
+			trace.Usage = u
+		}
+		if fr := meta.FinishReason(); fr != "" {
+			trace.FinishReason = fr
+		}
+		if m := meta.Model(); m != "" {
+			trace.Model = m
+		}
+	}
 
 	delete(r.inFlight, id)
 
@@ -625,14 +651,22 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 	}
 
+	// The run loop attaches a TraceMeta to the request context so the recorded
+	// trace can be enriched with per-call measurements (retry attempt, TTFB,
+	// provider-parsed usage/finish_reason/model).
+	meta := TraceMetaFromContext(req.Context())
+
 	start := time.Now()
 	traceID := rt.recorder.startTrace(rt.sessionID, rt.providerID, req.Method, req.URL.Path, reqBody, AttemptFromContext(req.Context()))
+	if meta != nil {
+		meta.SetTraceID(traceID)
+	}
 
 	resp, err := rt.inner.RoundTrip(req)
 
 	if err != nil {
 		duration := time.Since(start)
-		rt.recorder.completeTrace(traceID, nil, 0, duration, err.Error(), nil, nil, "")
+		rt.recorder.completeTraceWithMeta(traceID, nil, 0, duration, err.Error(), nil, nil, "", meta)
 		return nil, err
 	}
 
@@ -644,14 +678,15 @@ func (rt *RecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		startTime:   start,
 		status:      resp.StatusCode,
 		respHeaders: resp.Header,
+		meta:        meta,
 	}
 
 	return resp, nil
 }
 
 // traceBody wraps an io.ReadCloser, captures up to MaxBodyBytes of the response
-// plus a rolling tail window (for stream tails), and completes the trace when
-// Close() is called.
+// plus a rolling tail window (for stream tails), measures time-to-first-byte,
+// and completes the trace when Close() is called.
 type traceBody struct {
 	io.ReadCloser
 	recorder    *Recorder
@@ -659,19 +694,27 @@ type traceBody struct {
 	startTime   time.Time
 	status      int
 	respHeaders map[string][]string
+	meta        *TraceMeta
 
-	mu       sync.Mutex
-	buf      bytes.Buffer
-	total    int64
-	tail     []byte
-	done     bool
-	closeErr error
+	mu        sync.Mutex
+	buf       bytes.Buffer
+	total     int64
+	tail      []byte
+	done      bool
+	closeErr  error
+	firstByte bool
 }
 
 func (tb *traceBody) Read(p []byte) (int, error) {
 	n, err := tb.ReadCloser.Read(p)
 	if n > 0 {
 		tb.mu.Lock()
+		if !tb.firstByte {
+			tb.firstByte = true
+			if tb.meta != nil {
+				tb.meta.SetTTFBMs(time.Since(tb.startTime).Milliseconds())
+			}
+		}
 		tb.total += int64(n)
 		if tb.buf.Len() < MaxBodyBytes {
 			remaining := MaxBodyBytes - tb.buf.Len()
@@ -709,10 +752,10 @@ func (tb *traceBody) Close() error {
 		tb.closeErr = err
 		tb.mu.Unlock()
 	}
-
 	// Parse usage/finish_reason from the head plus the stream tail, so
 	// streaming responses longer than the body cap still yield their tail
-	// enrichment (usage and finish_reason live in the final SSE chunks).
+	// enrichment (usage and finish_reason live in the final SSE chunks). The
+	// TraceMeta bridge then overrides with the run loop's authoritative values.
 	var parseSrc []byte
 	if tb.total <= int64(MaxBodyBytes) {
 		parseSrc = tb.buf.Bytes()
@@ -721,7 +764,7 @@ func (tb *traceBody) Close() error {
 	}
 	usage, finishReason, _ := parseResponseEnrichment(parseSrc)
 
-	tb.recorder.completeTrace(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr, tb.respHeaders, usage, finishReason)
+	tb.recorder.completeTraceWithMeta(tb.traceID, tb.buf.Bytes(), tb.status, duration, errStr, tb.respHeaders, usage, finishReason, tb.meta)
 	return err
 }
 

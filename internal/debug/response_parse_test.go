@@ -57,8 +57,8 @@ func TestParseResponseEnrichment_AnthropicJSON(t *testing.T) {
 	if usage.CacheReadTokens != 6 || usage.CacheWriteTokens != 3 {
 		t.Fatalf("unexpected cache counts: %+v", usage)
 	}
-	if usage.TotalTokens != 37 {
-		t.Fatalf("total tokens = %d, want 37", usage.TotalTokens)
+	if usage.TotalTokens != 28 {
+		t.Fatalf("total tokens = %d, want 28 (prompt+completion; cache is part of prompt)", usage.TotalTokens)
 	}
 	if finishReason != "end_turn" {
 		t.Fatalf("finish_reason = %q, want end_turn", finishReason)
