@@ -149,9 +149,7 @@ func main() {
 		if persister != nil {
 			p := persister
 			debugRecorder.OnComplete = func(trace *debug.HTTPTrace) {
-				if err := p.SaveTrace(trace.SessionID, trace); err != nil {
-					slog.Warn("failed to save trace", slog.String("trace_id", string(trace.ID)), slog.Any("error", err))
-				}
+				p.SaveTraceAsync(trace.SessionID, trace)
 			}
 		}
 
@@ -196,6 +194,12 @@ func main() {
 				os.Exit(1)
 			}
 		}
+
+		// Drain the async trace-persistence queue so batch-mode traces reach
+		// disk before the process exits.
+		if persister != nil {
+			_ = persister.Flush(nil, nil)
+		}
 		return
 	}
 
@@ -215,9 +219,7 @@ func main() {
 	if persister != nil {
 		p := persister
 		debugRecorder.OnComplete = func(trace *debug.HTTPTrace) {
-			if err := p.SaveTrace(trace.SessionID, trace); err != nil {
-				slog.Warn("failed to save trace", slog.String("trace_id", string(trace.ID)), slog.Any("error", err))
-			}
+			p.SaveTraceAsync(trace.SessionID, trace)
 		}
 	}
 

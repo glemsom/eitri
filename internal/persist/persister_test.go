@@ -2,9 +2,11 @@ package persist
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -172,6 +174,203 @@ func TestSnapshotSession_OverwritesOnSecondCall(t *testing.T) {
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".json") && e.Name() != "session.json" {
 			t.Errorf("unexpected timestamped file: %s", e.Name())
+		}
+	}
+}
+
+func TestSaveTraceAsync_WritesFile(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "async-session"
+	// A session.json must exist — SaveTrace guards against recreating
+	// deleted sessions.
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	trace := &debug.HTTPTrace{
+		ID:        "trace_async_1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/v1/chat/completions",
+		Status:    200,
+	}
+
+	p.SaveTraceAsync(sessionID, trace)
+
+	// The write is asynchronous — drain the queue and wait for the worker.
+	if err := p.Flush(nil, nil); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	traceFile := filepath.Join(rootDir, "sessions", sessionID, "traces", "trace_async_1.json")
+	if _, err := os.Stat(traceFile); err != nil {
+		t.Fatalf("expected trace file %s after async save: %v", traceFile, err)
+	}
+}
+
+func TestFlush_PersistsRecorderTracesWithoutLossOrDuplication(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "flush-session"
+	if err := p.SnapshotSession(sessionID, &session.UISession{ID: sessionID}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wire a recorder's OnComplete to the async save path, exactly like main.go.
+	r := debug.NewRecorder(100)
+	r.OnComplete = func(trace *debug.HTTPTrace) {
+		p.SaveTraceAsync(trace.SessionID, trace)
+	}
+
+	const n = 20
+	for i := 0; i < n; i++ {
+		r.Record(sessionID, "p1", "GET", "/", nil, nil, 200, 0, "", nil)
+	}
+
+	// Simulate the shutdown flush: main.go passes the recorder's completed +
+	// in-flight traces.
+	allTraces := append(r.List(0, "", ""), r.InFlight()...)
+	if err := p.Flush(nil, allTraces); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Every trace must be on disk exactly once (no loss, no duplication).
+	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	entries, err := os.ReadDir(tracesDir)
+	if err != nil {
+		t.Fatalf("cannot read traces dir: %v", err)
+	}
+	if len(entries) != n {
+		t.Fatalf("got %d trace files, want %d (one per recorded trace)", len(entries), n)
+	}
+
+	// A second flush must not write duplicates.
+	if err := p.Flush(nil, allTraces); err != nil {
+		t.Fatalf("second Flush: %v", err)
+	}
+	entries, err = os.ReadDir(tracesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != n {
+		t.Fatalf("after second Flush: got %d trace files, want %d", len(entries), n)
+	}
+}
+
+func TestFlush_TraceFailureDoesNotBlockRecording(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	good := "good-session"
+	if err := p.SnapshotSession(good, &session.UISession{ID: good}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sabotage the "bad" session's traces path with a regular file so every
+	// SaveTrace for that session fails on MkdirAll.
+	bad := "bad-session"
+	if err := p.SnapshotSession(bad, &session.UISession{ID: bad}); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(rootDir, "sessions", bad, "traces")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Enqueue a failing trace first, then a good one — the failure must not
+	// block or corrupt the recording of subsequent traces.
+	p.SaveTraceAsync(bad, &debug.HTTPTrace{ID: "trace_fail", SessionID: bad, Method: "GET", URL: "/bad"})
+	p.SaveTraceAsync(good, &debug.HTTPTrace{ID: "trace_good", SessionID: good, Method: "GET", URL: "/good"})
+
+	// The shutdown flush completes despite the failing write.
+	if err := p.Flush(nil, nil); err != nil {
+		t.Fatalf("Flush returned error despite best-effort contract: %v", err)
+	}
+
+	// The good trace reached disk; the failed one did not create a directory.
+	goodFile := filepath.Join(rootDir, "sessions", good, "traces", "trace_good.json")
+	if _, err := os.Stat(goodFile); err != nil {
+		t.Fatalf("expected good trace file %s to exist: %v", goodFile, err)
+	}
+	if info, err := os.Stat(blocked); err != nil || info.IsDir() {
+		t.Fatalf("sabotaged path must not have become a directory: info=%v err=%v", info, err)
+	}
+
+	// The recorder keeps recording after the failure.
+	r := debug.NewRecorder(5)
+	r.OnComplete = func(trace *debug.HTTPTrace) { p.SaveTraceAsync(trace.SessionID, trace) }
+	r.Record(good, "p1", "GET", "/after-failure", nil, nil, 200, 0, "", nil)
+	if err := p.Flush(nil, r.List(0, "", "")); err != nil {
+		t.Fatalf("Flush after failure: %v", err)
+	}
+	if tr := r.Get("trace_1"); tr == nil || tr.URL != "/after-failure" {
+		t.Fatalf("recorder did not keep recording after a persistence failure: %+v", tr)
+	}
+}
+
+func TestConcurrentSessions_AsyncTracePersistence(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const sessions = 8
+	const perSession = 10
+	for i := 0; i < sessions; i++ {
+		sid := fmt.Sprintf("sess-%d", i)
+		if err := p.SnapshotSession(sid, &session.UISession{ID: sid}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r := debug.NewRecorder(0)
+	r.OnComplete = func(trace *debug.HTTPTrace) {
+		p.SaveTraceAsync(trace.SessionID, trace)
+	}
+
+	// Concurrent sessions record traces simultaneously; the shared trace
+	// worker must not serialize them on disk I/O or lose any trace.
+	var wg sync.WaitGroup
+	for i := 0; i < sessions; i++ {
+		wg.Add(1)
+		go func(sid string) {
+			defer wg.Done()
+			for j := 0; j < perSession; j++ {
+				r.Record(sid, "p1", "GET", "/", nil, nil, 200, 0, "", nil)
+			}
+		}(fmt.Sprintf("sess-%d", i))
+	}
+	wg.Wait()
+
+	// Shutdown flush: drain the queue and persist anything the queue dropped.
+	allTraces := append(r.List(0, "", ""), r.InFlight()...)
+	if err := p.Flush(nil, allTraces); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	for i := 0; i < sessions; i++ {
+		sid := fmt.Sprintf("sess-%d", i)
+		dir := filepath.Join(rootDir, "sessions", sid, "traces")
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("session %s: cannot read traces dir: %v", sid, err)
+		}
+		if len(entries) != perSession {
+			t.Errorf("session %s: got %d trace files, want %d (no loss)", sid, len(entries), perSession)
 		}
 	}
 }

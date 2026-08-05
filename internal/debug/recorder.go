@@ -36,6 +36,11 @@ const (
 	DefaultCapacity = 20
 	// MaxBodyBytes is the maximum body size to record per trace (256KB).
 	MaxBodyBytes = 256 * 1024
+	// DefaultMaxInFlightTraces is the default cap on concurrently tracked
+	// in-flight traces. When the cap is reached the oldest in-flight trace is
+	// evicted (fail-safe) so the in-flight map stays bounded even when a
+	// response body is never read or closed.
+	DefaultMaxInFlightTraces = 64
 )
 
 // Recorder is a thread-safe, bounded recorder for HTTP traces.
@@ -46,12 +51,16 @@ type Recorder struct {
 	traces           []*HTTPTrace // ordered oldest-first
 	capacity         int
 	inFlight         map[TraceID]*HTTPTrace
+	maxInFlight      int
 	nextID           uint64
 	lastFailingTrace *HTTPTrace // most recent non-2xx trace, never evicted
 
 	// OnComplete, if non-nil, is called after every completed trace (from
-	// completeTrace or Record) with the fully populated trace. Set at startup
-	// to persist traces to disk via a Persister.
+	// completeTrace or Record) with the fully populated trace. It is always
+	// fired after the recorder mutex is released, so the callback can perform
+	// blocking work (e.g. disk persistence) without stalling trace recording
+	// or the request path. Set at startup to persist traces to disk via a
+	// Persister.
 	OnComplete func(trace *HTTPTrace)
 }
 
@@ -61,9 +70,10 @@ func NewRecorder(capacity int) *Recorder {
 		capacity = DefaultCapacity
 	}
 	return &Recorder{
-		traces:   make([]*HTTPTrace, 0, capacity),
-		capacity: capacity,
-		inFlight: make(map[TraceID]*HTTPTrace),
+		traces:      make([]*HTTPTrace, 0, capacity),
+		capacity:    capacity,
+		inFlight:    make(map[TraceID]*HTTPTrace),
+		maxInFlight: DefaultMaxInFlightTraces,
 	}
 }
 
@@ -73,9 +83,19 @@ func (r *Recorder) nextTraceID() TraceID {
 }
 
 // startTrace creates an in-flight trace. Returns the trace ID.
+//
+// In-flight tracking is bounded: if the in-flight cap is reached (e.g. by
+// response bodies that are never read and never closed), the oldest in-flight
+// trace is evicted (fail-safe) so the map cannot grow without bound. The
+// evicted trace is moved to completed storage with an eviction marker and its
+// OnComplete fires after the lock is released.
 func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody []byte) TraceID {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+
+	var evicted *HTTPTrace
+	if len(r.inFlight) >= r.maxInFlight {
+		evicted = r.evictOldestLocked()
+	}
 
 	id := r.nextTraceID()
 	truncated := truncateBody(reqBody)
@@ -93,17 +113,34 @@ func (r *Recorder) startTrace(sessionID, providerID, method, url string, reqBody
 	}
 
 	r.inFlight[id] = trace
+	r.mu.Unlock()
+
+	// Fire OnComplete for the evicted trace outside the recorder lock.
+	if evicted != nil && r.OnComplete != nil {
+		r.OnComplete(evicted)
+	}
 	return id
 }
 
 // completeTrace moves an in-flight trace to completed storage.
 func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	trace := r.finalizeLocked(id, respBody, status, duration, errMsg, respHeaders)
+	r.mu.Unlock()
 
+	// Fire OnComplete outside the recorder lock so persistence (disk I/O)
+	// never blocks trace recording or the request path.
+	if trace != nil && r.OnComplete != nil {
+		r.OnComplete(trace)
+	}
+}
+
+// finalizeLocked moves an in-flight trace to completed storage and returns it,
+// or nil if the trace is unknown (e.g. already evicted). Assumes r.mu is held.
+func (r *Recorder) finalizeLocked(id TraceID, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) *HTTPTrace {
 	trace, ok := r.inFlight[id]
 	if !ok {
-		return
+		return nil
 	}
 
 	trace.Status = status
@@ -129,10 +166,35 @@ func (r *Recorder) completeTrace(id TraceID, respBody []byte, status int, durati
 		r.lastFailingTrace = &cp
 	}
 
-	// Fire OnComplete callback if set.
-	if r.OnComplete != nil {
-		r.OnComplete(trace)
+	return trace
+}
+
+// evictOldestLocked removes the oldest in-flight trace (by start timestamp)
+// from the in-flight map and moves it to completed storage with an eviction
+// marker, returning it so the caller can fire OnComplete after releasing the
+// lock. Evicted traces do not update lastFailingTrace — they are a resource
+// bound, not an LLM failure. Returns nil if there are no in-flight traces.
+// Assumes r.mu is held.
+func (r *Recorder) evictOldestLocked() *HTTPTrace {
+	var oldest *HTTPTrace
+	for _, t := range r.inFlight {
+		if oldest == nil || t.Timestamp.Before(oldest.Timestamp) {
+			oldest = t
+		}
 	}
+	if oldest == nil {
+		return nil
+	}
+
+	oldest.DurationMs = time.Since(oldest.Timestamp).Milliseconds()
+	oldest.Error = "evicted: in-flight trace cap reached"
+	delete(r.inFlight, oldest.ID)
+
+	if len(r.traces) >= r.capacity {
+		r.traces = r.traces[1:]
+	}
+	r.traces = append(r.traces, oldest)
+	return oldest
 }
 
 // isSuccess returns true for HTTP 2xx status codes.
@@ -156,7 +218,6 @@ func truncateBody(body []byte) []byte {
 // Record records a complete (non-streaming) HTTP trace.
 func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, respBody []byte, status int, duration time.Duration, errMsg string, respHeaders map[string][]string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	id := r.nextTraceID()
 
@@ -190,8 +251,10 @@ func (r *Recorder) Record(sessionID, providerID, method, url string, reqBody, re
 		cp := *trace
 		r.lastFailingTrace = &cp
 	}
+	r.mu.Unlock()
 
-	// Fire OnComplete callback if set.
+	// Fire OnComplete outside the recorder lock so persistence (disk I/O)
+	// never blocks trace recording or the request path.
 	if r.OnComplete != nil {
 		r.OnComplete(trace)
 	}

@@ -288,10 +288,18 @@ recorder is a bounded ring-buffer:
 - **Active traces**: in-flight traces are tracked separately. They appear in
   responses with `"status": 0` and `"duration_ms"` representing elapsed time.
   They are moved to completed traces when the response finishes or fails.
+  In-flight tracking is capped (64 by default): when the cap is reached the
+  oldest in-flight trace is evicted with an `evicted` marker so the map stays
+  bounded even if a response body is never read or closed.
 
 The recorder wraps the `http.Transport` used by the litellm adapters. It does
 not modify request or response content — it copies body bytes into the ring
 buffer without consuming the original stream.
+
+The completion callback (`OnComplete`) fires after the recorder mutex is
+released and persistence itself is asynchronous, so recording adds no
+trace-induced latency to the LLM request path and parallel sessions never
+serialize on a disk write.
 
 Recorder does not record static assets, browser UI requests, or any
 non-LLM-provider HTTP traffic.
@@ -311,7 +319,9 @@ Traces and run timelines are not limited to the in-memory ring buffer:
 - **Traces** are written to
   `<data-dir>/sessions/<session_id>/traces/<trace_id>.json` on completion and
   are restored into the recorder on startup, so previously recorded traces
-  remain queryable after a restart.
+  remain queryable after a restart. Writes go through a bounded async worker
+  (256 queued) so disk I/O never blocks the HTTP response path; if the queue is
+  ever full, the trace is deferred and the shutdown flush persists it.
 - **Run timelines** are written to
   `<data-dir>/sessions/<session_id>/timeline/<started_at>.json` at the end of
   each run (one condensed timeline file per run).

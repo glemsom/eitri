@@ -23,6 +23,18 @@ import (
 // defaultRetention is the default maximum total size (1 GiB) for persisted data.
 const defaultRetention = 1 * 1024 * 1024 * 1024
 
+// traceQueueSize is the maximum number of completed traces that may be queued
+// for async persistence. If the queue is full, new traces are dropped — they
+// remain in the debug recorder and the shutdown Flush re-scans and persists
+// them, so nothing is lost.
+const traceQueueSize = 256
+
+// traceJob is a unit of work for the async trace-persistence worker.
+type traceJob struct {
+	sessionID string
+	trace     *debug.HTTPTrace
+}
+
 // iso8601Dashes is the time format used for timestamped filenames.
 // Colons are replaced by dashes for cross-platform filesystem compatibility.
 const iso8601Dashes = "2006-01-02T15-04-05"
@@ -51,6 +63,14 @@ type Persister struct {
 	retention       int64 // max total bytes before pruning; default 1 GiB
 	mu              sync.Mutex
 	persistedTraces map[debug.TraceID]bool // set of trace IDs already saved to disk
+
+	// Async trace persistence: completed traces are handed to a worker via
+	// traceQueue so disk I/O never blocks the HTTP response path or other
+	// trace recording. Flush (shutdown) closes the queue and waits for the
+	// worker to drain it.
+	traceQueue  chan traceJob
+	traceClosed bool // guarded by mu; when true the queue is closed
+	workerDone  chan struct{}
 }
 
 // New creates a Persister rooted at the given directory. If rootDir is empty,
@@ -69,6 +89,8 @@ func New(rootDir string) (*Persister, error) {
 		rootDir:         rootDir,
 		retention:       defaultRetention,
 		persistedTraces: make(map[debug.TraceID]bool),
+		traceQueue:      make(chan traceJob, traceQueueSize),
+		workerDone:      make(chan struct{}),
 	}
 
 	// Create sessions directory tree
@@ -77,7 +99,69 @@ func New(rootDir string) (*Persister, error) {
 		return nil, fmt.Errorf("cannot create sessions dir %s: %w", sessionsDir, err)
 	}
 
+	go p.traceWorker()
 	return p, nil
+}
+
+// traceWorker drains traceQueue, persisting each trace to disk, and exits once
+// the queue is closed (by Flush on shutdown) after writing every queued trace.
+func (p *Persister) traceWorker() {
+	defer close(p.workerDone)
+	for job := range p.traceQueue {
+		if err := p.SaveTrace(job.sessionID, job.trace); err != nil {
+			slog.Warn("failed to save trace",
+				slog.String("trace_id", string(job.trace.ID)),
+				slog.Any("error", err))
+		}
+	}
+}
+
+// SaveTraceAsync persists a completed trace to disk without blocking the
+// caller. The trace is enqueued to a bounded worker queue; if the queue is
+// full the trace is dropped and the shutdown Flush (which re-scans the
+// recorder) persists it instead. After the queue has been closed (shutdown in
+// progress) the trace is written synchronously so a straggler cannot lose
+// data.
+func (p *Persister) SaveTraceAsync(sessionID string, trace *debug.HTTPTrace) {
+	if p == nil {
+		return
+	}
+
+	p.mu.Lock()
+	if p.traceClosed {
+		p.mu.Unlock()
+		// Shutdown drain in progress — fall back to a synchronous write.
+		if err := p.SaveTrace(sessionID, trace); err != nil {
+			slog.Warn("failed to save trace",
+				slog.String("trace_id", string(trace.ID)),
+				slog.Any("error", err))
+		}
+		return
+	}
+
+	select {
+	case p.traceQueue <- traceJob{sessionID: sessionID, trace: trace}:
+	default:
+		// Queue full — drop now; the shutdown Flush re-scans the recorder and
+		// persists any trace that was never written.
+		slog.Warn("trace persistence queue is full; deferring to shutdown flush",
+			slog.String("trace_id", string(trace.ID)))
+	}
+	p.mu.Unlock()
+}
+
+// drainTraceQueue closes the async trace queue and waits for the worker to
+// write every queued trace. Called from Flush on shutdown. After the queue is
+// closed, SaveTraceAsync falls back to synchronous writes so in-flight
+// stragglers still reach disk.
+func (p *Persister) drainTraceQueue() {
+	p.mu.Lock()
+	if !p.traceClosed {
+		p.traceClosed = true
+		close(p.traceQueue)
+	}
+	p.mu.Unlock()
+	<-p.workerDone
 }
 
 // TimelineSchema is the canonical JSON schema marker for timeline files.
@@ -323,6 +407,9 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 // Flush writes any pending session snapshots, unpersisted HTTP traces to disk.
 // It is intended for use during graceful shutdown to ensure no data is lost.
 //
+// It first drains the async trace-persistence queue so every trace enqueued by
+// SaveTraceAsync is written, then handles the remaining work below.
+//
 // For each session, a final snapshot is always written (the write is cheap
 // and guarantees consistency).
 // For each trace, SaveTrace is called only if the trace has not already been
@@ -340,6 +427,10 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 	if p == nil {
 		return nil
 	}
+
+	// Wait for the async trace worker to write every queued trace before
+	// scanning recorder traces below, so each trace is persisted exactly once.
+	p.drainTraceQueue()
 
 	var flushErr error
 
