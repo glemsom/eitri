@@ -1032,6 +1032,21 @@ noscript {
 }
 
 /* Messages */
+/* Visually-hidden live region for screen-reader streaming announcements
+   (issue #1071). Sighted users keep seeing the streaming bubble; this element
+   exists only for assistive tech. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;

@@ -438,6 +438,29 @@ func TestJsFiles(t *testing.T) {
 	if !strings.Contains(content2, "lightweightMarkdown") {
 		t.Error("eitri-stream.js missing lightweightMarkdown function")
 	}
+
+	// Verify the screen-reader stream announcer (issue #1071): a hidden
+	// role="status" live region that receives only *new* stream deltas at a
+	// throttled cadence, so assistive tech announces the reply without
+	// re-reading the full stream on every 80ms flush.
+	if !strings.Contains(content2, "stream-announcer") {
+		t.Error("eitri-stream.js missing stream-announcer live-region element")
+	}
+	if !strings.Contains(content2, "role") || !strings.Contains(content2, "'status'") {
+		t.Error("eitri-stream.js stream announcer missing role=\"status\"")
+	}
+	if !strings.Contains(content2, "aria-live") || !strings.Contains(content2, "'polite'") {
+		t.Error("eitri-stream.js stream announcer missing aria-live=\"polite\"")
+	}
+	if !strings.Contains(content2, "accumulateStreamAnnounce") {
+		t.Error("eitri-stream.js missing accumulateStreamAnnounce delta bookkeeping")
+	}
+	if !strings.Contains(content2, "ANNOUNCE_INTERVAL_MS") {
+		t.Error("eitri-stream.js missing ANNOUNCE_INTERVAL_MS throttle constant")
+	}
+	if !strings.Contains(content2, "flushStreamAnnounce") {
+		t.Error("eitri-stream.js missing flushStreamAnnounce")
+	}
 }
 
 func TestLightweightMarkdown(t *testing.T) {
@@ -573,12 +596,12 @@ extractBody:
 		{
 			name:     "task list unchecked",
 			input:    "- [ ] todo",
-			wantHTML: `<li><input type="checkbox" disabled="" /> todo</li>`,
+			wantHTML: `<li><label><input type="checkbox" disabled="" /> todo</label></li>`,
 		},
 		{
 			name:     "task list checked",
 			input:    "- [x] done",
-			wantHTML: `<li><input type="checkbox" checked="" disabled="" /> done</li>`,
+			wantHTML: `<li><label><input type="checkbox" checked="" disabled="" /> done</label></li>`,
 		},
 		{
 			name:     "task list with preceding paragraph",
@@ -1041,4 +1064,120 @@ func TestContextElementListenerLifecycle(t *testing.T) {
 	if headersAfterDisconnect != 0 {
 		t.Errorf("context element should remove its sidebar-header listener on disconnect, got %d", headersAfterDisconnect)
 	}
+}
+
+// extractFunctionBody pulls the body of a top-level function declaration out
+// of a JS source file, mirroring the extraction used for lightweightMarkdown.
+// The function must have no nested top-level braces outside its own body.
+func extractFunctionBody(t *testing.T, content, startMatch string) string {
+	t.Helper()
+	startIdx := strings.Index(content, startMatch)
+	if startIdx < 0 {
+		t.Fatalf("function %q not found in JS source", startMatch)
+	}
+	braceIdx := startIdx + len(startMatch) - 1
+	bodyStart := braceIdx + 1
+	depth := 1
+	bodyEnd := bodyStart
+	for bodyEnd < len(content) {
+		switch content[bodyEnd] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return startMatch + content[bodyStart:bodyEnd+1]
+			}
+		}
+		bodyEnd++
+	}
+	t.Fatalf("could not find matching closing brace for %q", startMatch)
+	return ""
+}
+
+// TestAccumulateStreamAnnounce verifies the pure delta bookkeeping behind the
+// screen-reader stream announcer: each call returns the existing pending text
+// plus only the *new* unannounced bytes of the stream buffer — never the whole
+// accumulated reply — so screen readers announce the reply in delta chunks at
+// the throttled cadence instead of re-reading the full stream every 80ms flush
+// (issue #1071).
+func TestAccumulateStreamAnnounce(t *testing.T) {
+	f, err := Files.Open("eitri-stream.js")
+	if err != nil {
+		t.Fatalf("failed to open eitri-stream.js: %v", err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatalf("failed to read eitri-stream.js: %v", err)
+	}
+	content := string(data)
+
+	fnSrc := extractFunctionBody(t, content, "function accumulateStreamAnnounce(streamBuf, lastAnnouncedLen, pending) {")
+
+	runtime := goja.New()
+	if _, err := runtime.RunString(fnSrc); err != nil {
+		t.Fatalf("failed to parse accumulateStreamAnnounce: %v", err)
+	}
+
+	// goja cannot map a JS object return into a Go struct through ExportTo, so
+	// export as map[string]interface{} (the same extraction machinery that
+	// TestLightweightMarkdown uses for string returns).
+	var fn func(string, int, string) map[string]interface{}
+	if err := runtime.ExportTo(runtime.Get("accumulateStreamAnnounce"), &fn); err != nil {
+		t.Fatalf("failed to export accumulateStreamAnnounce: %v", err)
+	}
+
+	pendingOf := func(m map[string]interface{}) string {
+		if v, ok := m["pending"].(string); ok {
+			return v
+		}
+		return ""
+	}
+	lenOf := func(m map[string]interface{}) int {
+		if v, ok := m["lastAnnouncedLen"].(int64); ok {
+			return int(v)
+		}
+		return 0
+	}
+
+	t.Run("first call returns full delta and advances offset", func(t *testing.T) {
+		got := fn("hello world", 0, "")
+		if pendingOf(got) != "hello world" {
+			t.Errorf("pending = %q, want %q", pendingOf(got), "hello world")
+		}
+		if lenOf(got) != 11 {
+			t.Errorf("lastAnnouncedLen = %d, want 11", lenOf(got))
+		}
+	})
+
+	t.Run("no new text produces no duplicate announcement", func(t *testing.T) {
+		got := fn("hello world", 11, "hello world")
+		if pendingOf(got) != "hello world" {
+			t.Errorf("pending must be unchanged when buffer did not grow, got %q", pendingOf(got))
+		}
+		if lenOf(got) != 11 {
+			t.Errorf("lastAnnouncedLen must stay 11, got %d", lenOf(got))
+		}
+	})
+
+	t.Run("new text appends only the delta", func(t *testing.T) {
+		got := fn("hello world, this is more", 11, "hello world")
+		if pendingOf(got) != "hello world, this is more" {
+			t.Errorf("pending = %q, want %q", pendingOf(got), "hello world, this is more")
+		}
+		if lenOf(got) != 25 {
+			t.Errorf("lastAnnouncedLen = %d, want 25", lenOf(got))
+		}
+	})
+
+	t.Run("empty buffer is a no-op", func(t *testing.T) {
+		got := fn("", 0, "")
+		if pendingOf(got) != "" {
+			t.Errorf("pending = %q, want empty", pendingOf(got))
+		}
+		if lenOf(got) != 0 {
+			t.Errorf("lastAnnouncedLen = %d, want 0", lenOf(got))
+		}
+	})
 }

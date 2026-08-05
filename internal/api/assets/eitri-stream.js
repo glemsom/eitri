@@ -19,6 +19,13 @@
 
   const FLUSH_INTERVAL = 80;
   const NO_DEAD_AIR_MS = 650;
+  // Screen-reader announcement pacing for streaming replies (issue #1071).
+  // The visible streaming bubble is re-rendered every ~80ms flush, so marking
+  // IT as a live region would make assistive tech re-read the whole reply at
+  // token cadence. Instead a visually-hidden role="status" region receives
+  // only *new* text, at most once per ANNOUNCE_INTERVAL_MS, so screen readers
+  // announce the reply in chunks without ever re-reading the full stream.
+  const ANNOUNCE_INTERVAL_MS = 1000;
   // Armed the moment an HTMX swap touches #messages, so showStreamingBubble knows
   // there may be elements past the scroll-sentinel to relocate. The relocation
   // walk is O(history) and ran on every streaming flush before; gating it on this
@@ -128,11 +135,13 @@
           var content = line;
           var checkbox = '';
 
-          // Task list: - [ ] or - [x]
+          // Task list: - [ ] or - [x]. The checkbox and its text are wrapped
+          // in a <label> so screen readers announce "text, checkbox" instead
+          // of an unlabelled checkbox (issue #1071).
           var taskMatch = line.match(/^- \[([ x])\] (.+)$/);
           if (taskMatch) {
-            checkbox = '<input type="checkbox"' + (taskMatch[1] === 'x' ? ' checked=""' : '') + ' disabled="" /> ';
-            content = checkbox + taskMatch[2];
+            checkbox = '<label><input type="checkbox"' + (taskMatch[1] === 'x' ? ' checked=""' : '') + ' disabled="" /> ';
+            content = checkbox + taskMatch[2] + '</label>';
           } else if (line.match(/^[-*+] (.+)$/)) {
             content = line.match(/^[-*+] (.+)$/)[1];
           } else if (line.match(/^\d+\. (.+)$/)) {
@@ -188,6 +197,9 @@
       renderedBase: '', // length-matched prefix of streamBuf already committed to DOM as stable blocks
       streamTimer: null,
       deadAirTimer: null,
+      lastAnnouncedLen: 0, // streamBuf offset already handed to the screen-reader announcer (issue #1071)
+      announcePending: '', // new text waiting for the next throttled announcement
+      announceTimer: null,
       needsSectionBreak: false,
       lastToolCallKey: '', // set on tool_call, consumed on tool_result and component
       toolKeysByIdentity: {}, // replay-stable (turn+tool+args) -> toolCallKey (issue #1070)
@@ -418,6 +430,7 @@
     if (!entry) return;
     clearDeadAirTimer(entry.state);
     clearStreamTimer(entry.state);
+    clearStreamAnnounceTimer(entry.state);
     stopAllToolCardTimers();
     if (entry.eventSource) {
       entry.eventSource.close();
@@ -548,6 +561,11 @@
         clearDeadAirTimer(state);
         state.status = STATES.RENDERING;
         updateRunStatus(STATES.RENDERING, defaultStatusDetail(STATES.RENDERING, state), state);
+        // Flush any unannounced stream tail to the screen-reader live region
+        // before the streaming bubble is replaced by the final render — the
+        // last tokens must not go unannounced (issue #1071).
+        flushStreamBuffer(state);
+        flushStreamAnnounce(state);
         // Prevent reconnect cycle: set guard BEFORE finalizeMessage sends
         // the HTMX render POST. Otherwise htmx:beforeSwap (#streaming) →
         // disconnectAll → htmx:afterSwap → autoConnectOnPageLoad reconnects
@@ -581,6 +599,10 @@
         clearDeadAirTimer(state);
         state.status = STATES.ERROR;
         updateRunStatus(STATES.ERROR, packet.message || defaultStatusDetail(STATES.ERROR, state), state);
+        // Announce whatever was received before the failure so a partially
+        // streamed reply is not silently swallowed (issue #1071).
+        flushStreamBuffer(state);
+        flushStreamAnnounce(state);
         renderError(sessionId, packet.message);
         disconnectStream(sessionId);
         reenableComposer();
@@ -629,9 +651,73 @@
     }
   }
 
+  // ── Screen-reader streaming announcements (issue #1071) ──────────────────
+  // Streaming replies are announced through a dedicated visually-hidden live
+  // region rather than the visible streaming bubble (which is re-rendered
+  // every ~80ms flush and would make assistive tech re-read the whole reply at
+  // token cadence). The announcer only ever receives *new* text deltas,
+  // throttled to ANNOUNCE_INTERVAL_MS and flushed on run completion.
+
+  // Pure delta bookkeeping: returns the pending announcement text plus the
+  // stream-buffer offset already handed to the announcer. O(delta) per call —
+  // never copies the whole buffer, so streaming flush performance is
+  // unaffected no matter how long the reply grows.
+  function accumulateStreamAnnounce(streamBuf, lastAnnouncedLen, pending) {
+    if (lastAnnouncedLen >= streamBuf.length) {
+      return { pending: pending, lastAnnouncedLen: lastAnnouncedLen };
+    }
+    return {
+      pending: pending + streamBuf.substring(lastAnnouncedLen),
+      lastAnnouncedLen: streamBuf.length,
+    };
+  }
+
+  function ensureStreamAnnouncer() {
+    var el = document.getElementById('stream-announcer');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'stream-announcer';
+      el.className = 'sr-only';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function clearStreamAnnounceTimer(state) {
+    if (!state || !state.announceTimer) return;
+    clearTimeout(state.announceTimer);
+    state.announceTimer = null;
+  }
+
+  function flushStreamAnnounce(state) {
+    clearStreamAnnounceTimer(state);
+    if (!state || !state.announcePending) return;
+    // Replacing textContent announces only the new delta (role="status" is
+    // atomic): the region never accumulates the whole reply in the DOM.
+    ensureStreamAnnouncer().textContent = state.announcePending;
+    state.announcePending = '';
+  }
+
+  function queueStreamAnnounce(state) {
+    if (!state) return;
+    var acc = accumulateStreamAnnounce(state.streamBuf, state.lastAnnouncedLen, state.announcePending);
+    state.announcePending = acc.pending;
+    state.lastAnnouncedLen = acc.lastAnnouncedLen;
+    if (!state.announcePending) return;
+    if (!state.announceTimer) {
+      state.announceTimer = window.setTimeout(function () {
+        state.announceTimer = null;
+        flushStreamAnnounce(state);
+      }, ANNOUNCE_INTERVAL_MS);
+    }
+  }
+
   function flushStreamBuffer(state) {
     clearStreamTimer(state);
     if (!state.streamBuf) return;
+    queueStreamAnnounce(state);
 
     const text = state.streamBuf;
     const el = document.getElementById('streaming');

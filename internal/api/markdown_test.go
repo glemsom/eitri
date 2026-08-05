@@ -116,6 +116,57 @@ func TestRenderMarkdownToHTML_EnhancesCodeMathAndMermaid(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownToHTML_TaskListCheckboxLabels(t *testing.T) {
+	html := renderMarkdownToHTML("- [ ] item one\n- [x] item two")
+
+	// Every task-list checkbox must be wrapped in a <label> with its text so
+	// screen readers announce "item one, checkbox, not checked" instead of an
+	// unlabelled checkbox (issue #1071).
+	if !strings.Contains(html, "<label><input") {
+		t.Fatalf("task checkbox missing <label> wrapper: %s", html)
+	}
+	if !strings.Contains(html, `type="checkbox"`) {
+		t.Fatalf("task checkbox missing in output: %s", html)
+	}
+	if !strings.Contains(html, "item one") || !strings.Contains(html, "item two") {
+		t.Fatalf("task item text missing from output: %s", html)
+	}
+	if strings.Contains(html, `<input`+" "+`disabled=""`+` type="checkbox"/> item one</li>`) {
+		t.Fatalf("checkbox must be label-associated, not a bare sibling of the text: %s", html)
+	}
+	// The label text must sit inside the label (accessible name), not outside it.
+	if !strings.Contains(html, "item one</label>") || !strings.Contains(html, "item two</label>") {
+		t.Fatalf("task item text must live inside the label element: %s", html)
+	}
+}
+
+func TestRenderMarkdownToHTML_TaskListWithFormatting(t *testing.T) {
+	// Formatting inside task items (inline code, bold) must survive the label wrap.
+	html := renderMarkdownToHTML("- [ ] run `go test`\n- [x] **done**")
+
+	for _, want := range []string{
+		`<label><input`,
+		"<code>go test</code>",
+		"<strong>done</strong>",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in %s", want, html)
+		}
+	}
+}
+
+func TestRenderMarkdownToHTML_NonTaskListUntouched(t *testing.T) {
+	// Regular (non-task) lists must not gain labels.
+	html := renderMarkdownToHTML("- plain item\n- another")
+
+	if strings.Contains(html, "<label") {
+		t.Fatalf("plain list items must not be wrapped in labels: %s", html)
+	}
+	if !strings.Contains(html, "<li>plain item</li>") {
+		t.Fatalf("plain list item missing: %s", html)
+	}
+}
+
 func TestStripMermaidCodeBlocks(t *testing.T) {
 	tests := []struct {
 		name   string

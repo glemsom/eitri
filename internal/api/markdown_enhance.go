@@ -50,6 +50,11 @@ func transformTree(node *htmlnode.Node) {
 					child = next
 					continue
 				}
+			case "li":
+				if transformTaskListItem(child) {
+					child = next
+					continue
+				}
 			case "pre":
 				transformPreBlock(child)
 				child = next
@@ -69,6 +74,44 @@ func transformTree(node *htmlnode.Node) {
 
 		child = next
 	}
+}
+
+// transformTaskListItem wraps a goldmark task-list checkbox and its text in a
+// <label> so screen readers announce the checkbox with a meaningful name.
+// goldmark renders task items as <li><input type="checkbox" disabled/> text</li>
+// — the checkbox has no accessible label. Wrapping the checkbox and its text
+// in a <label> makes assistive tech announce "text, checkbox, not checked"
+// (issue #1071). Returns true if the <li> was a task item (already handled).
+func transformTaskListItem(li *htmlnode.Node) bool {
+	if li == nil || li.Type != htmlnode.ElementNode || li.Data != "li" {
+		return false
+	}
+	input := firstElementChild(li)
+	if input == nil || input.Data != "input" {
+		return false
+	}
+	isCheckbox := false
+	for _, attr := range input.Attr {
+		if attr.Key == "type" && attr.Val == "checkbox" {
+			isCheckbox = true
+			break
+		}
+	}
+	if !isCheckbox {
+		return false
+	}
+
+	// Move the checkbox and every following sibling (item text, inline
+	// formatting) into a <label> element.
+	label := &htmlnode.Node{Type: htmlnode.ElementNode, Data: "label"}
+	for child := li.FirstChild; child != nil; {
+		next := child.NextSibling
+		li.RemoveChild(child)
+		label.AppendChild(child)
+		child = next
+	}
+	li.AppendChild(label)
+	return true
 }
 
 // sanitizeLink removes the <a> element if its href uses a disallowed URL scheme
