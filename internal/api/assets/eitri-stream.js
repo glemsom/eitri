@@ -165,10 +165,18 @@
   var toolNames = {}; // toolCallKey -> tool name
 
   function clearToolActivity() {
+    var list = document.querySelector('#tool-activity .tool-activity-list');
+    if (list) {
+      // Stop every live card timer before clearing the list so no interval
+      // outlives its card (issue #1070).
+      var cards = list.querySelectorAll('[data-tool-key]');
+      for (var i = 0; i < cards.length; i++) {
+        stopToolCardTimer(cards[i].getAttribute('data-tool-key'));
+      }
+      list.innerHTML = '';
+    }
     toolArgs = {};
     toolNames = {};
-    var list = document.querySelector('#tool-activity .tool-activity-list');
-    if (list) list.innerHTML = '';
   }
 
   function createStreamState() {
@@ -182,10 +190,12 @@
       deadAirTimer: null,
       needsSectionBreak: false,
       lastToolCallKey: '', // set on tool_call, consumed on tool_result and component
+      toolKeysByIdentity: {}, // replay-stable (turn+tool+args) -> toolCallKey (issue #1070)
     };
   }
 
   function resetActivityTracking() {
+    stopAllToolCardTimers();
     toolCardTimers = {};
     toolCardElapsed = {};
     toolArgs = {};
@@ -383,9 +393,11 @@
         return;
       }
       clearDeadAirTimer(state);
-      clearToolActivity();
-      clearThinkingPanel();
-      resetActivityTracking();
+      // Do NOT clear tool activity, thinking content, or elapsed tracking here:
+      // a transient EventSource error (network blip, proxy timeout) must not
+      // destroy in-flight tool UI. The server replays the retention window on
+      // reconnect and tool cards/elapsed timers resume where they left off
+      // (issue #1070).
       state.awaitingResume = state.firstEventSeen;
       state.status = STATES.RECONNECTING;
       updateRunStatus(STATES.RECONNECTING, defaultStatusDetail(STATES.RECONNECTING, state), state);
@@ -460,9 +472,17 @@
         state.status = STATES.TOOL_RUNNING;
         updateRunStatus(STATES.TOOL_RUNNING, 'Running tool: ' + (packet.tool || 'unknown tool'), state);
 
-        // Track tool call key for card slot (monotonic counter for rapid events)
-        toolEntryCounter++;
-        var toolCallKey = sessionId + '-tool-' + Date.now() + '-' + toolEntryCounter;
+        // Tool card keys are derived from the packet's replay-stable identity
+        // (turn + tool + args) instead of Date.now: when the server replays the
+        // retention window after a reconnect, a replayed tool_call resolves to
+        // the SAME card that survived the reconnect instead of creating a
+        // duplicate (issue #1070).
+        var identity = toolIdentityForPacket(packet);
+        if (!state.toolKeysByIdentity[identity]) {
+          toolEntryCounter++;
+          state.toolKeysByIdentity[identity] = sessionId + '-tool-' + Date.now() + '-' + toolEntryCounter;
+        }
+        var toolCallKey = state.toolKeysByIdentity[identity];
         state.lastToolCallKey = toolCallKey;
 
         // Skip tool card for render_quick_replies — the actual quick reply chips
@@ -519,6 +539,12 @@
         break;
 
       case 'done':
+        // A run finalizes exactly once: ignore duplicate/replayed 'done'
+        // packets (SSE retention-window replay after a reconnect) once the run
+        // is already finalizing or finalized — guard on run status (issue #1070).
+        if (state.status === STATES.RENDERING || state.status === STATES.DONE) {
+          break;
+        }
         clearDeadAirTimer(state);
         state.status = STATES.RENDERING;
         updateRunStatus(STATES.RENDERING, defaultStatusDetail(STATES.RENDERING, state), state);
@@ -729,7 +755,8 @@
     var toolName = packet.tool || packet.name || 'tool';
     toolNames[toolCallKey] = toolName;
 
-    // Idempotent: skip if already exists (e.g. SSE reconnect)
+    // Idempotent: skip if already exists (e.g. SSE reconnect replay of a
+    // tool_call whose card survived the reconnect)
     if (list.querySelector('[data-tool-key="' + toolCallKey + '"]')) return;
 
     // Max 6 entries — FIFO eviction
@@ -737,10 +764,7 @@
     while (existingWrappers.length >= 6) {
       var firstKey = existingWrappers[0].getAttribute('data-tool-key');
       if (firstKey) {
-        stopToolCardTimer(firstKey);
-        delete toolCardElapsed[firstKey];
-        delete toolArgs[firstKey];
-        delete toolNames[firstKey];
+        pruneToolCardState(firstKey);
       }
       existingWrappers[0].remove();
       existingWrappers = list.querySelectorAll('.tool-entry-wrapper');
@@ -771,6 +795,15 @@
     return document.querySelector('#tool-activity [data-tool-key="' + toolCallKey + '"]');
   }
 
+  // Replay-stable identity for a tool_call packet: (turn, tool, args). The
+  // server replays the retention window on reconnect, so the SAME logical tool
+  // call must map to the SAME tool card key across replays (issue #1070).
+  function toolIdentityForPacket(packet) {
+    var args = packet.args || packet.Args || '';
+    var argsStr = (typeof args === 'string') ? args : JSON.stringify(args);
+    return (packet.turn || 0) + ':' + (packet.tool || packet.name || 'tool') + ':' + argsStr;
+  }
+
   function renderToolCard(sessionId, type, packet, toolCallKey) {
     if (!toolCallKey) return;
 
@@ -778,7 +811,11 @@
     stopToolCardTimer(toolCallKey);
     var finalElapsed = '';
     if (toolCardElapsed[toolCallKey] && toolCardElapsed[toolCallKey].startMs) {
-      var elapsedMs = Date.now() - toolCardElapsed[toolCallKey].startMs;
+      // Keep the originally recorded final elapsed when a replayed tool_result
+      // (reconnect replay) updates an already-done card, instead of inflating
+      // it with wall-clock time spent disconnected (issue #1070).
+      var elapsedMs = toolCardElapsed[toolCallKey].finalMs ||
+        (Date.now() - toolCardElapsed[toolCallKey].startMs);
       toolCardElapsed[toolCallKey].finalMs = elapsedMs;
       finalElapsed = formatTimer(elapsedMs);
     }
@@ -1048,11 +1085,33 @@
 
   // ---- Live elapsed timer for tool cards (issue #134) ----
 
+  // Stops a card's timer and drops its cached state. Used by FIFO eviction,
+  // full teardown, and the timer's own DOM-removal guard (issue #1070).
+  function pruneToolCardState(toolCallKey) {
+    if (!toolCallKey) return;
+    stopToolCardTimer(toolCallKey);
+    delete toolCardElapsed[toolCallKey];
+    delete toolArgs[toolCallKey];
+    delete toolNames[toolCallKey];
+  }
+
+  // Test hook: keys of tool cards whose live elapsed interval is still running,
+  // so browser E2E tests can assert interval timers die with their cards
+  // (issue #1070).
+  window.__activeToolCardTimerKeys = function () {
+    return Object.keys(toolCardTimers);
+  };
+
   function startToolCardTimer(toolCallKey) {
     stopToolCardTimer(toolCallKey); // Ensure no duplicate timers
     toolCardTimers[toolCallKey] = window.setInterval(function () {
       var elapsedSpan = document.querySelector('[data-tool-elapsed="' + toolCallKey + '"]');
-      if (!elapsedSpan) return;
+      if (!elapsedSpan || !elapsedSpan.isConnected) {
+        // Card left the DOM (sidebar swap, session switch, FIFO eviction) —
+        // stop the timer so it cannot leak past its card (issue #1070).
+        pruneToolCardState(toolCallKey);
+        return;
+      }
       var elapsed = toolCardElapsed[toolCallKey];
       if (!elapsed || !elapsed.startMs) return;
       var diff = Date.now() - elapsed.startMs;
