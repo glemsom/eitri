@@ -15,6 +15,14 @@ import (
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
+var (
+	// Pre-compiled regexes for HTML tag stripping
+	htmlTagRe            = regexp.MustCompile(`<[^>]*>`)
+	whitespaceRe         = regexp.MustCompile(`\s+`)
+	scriptTagContentRe   = regexp.MustCompile(`(?i)<script[^>]*>[\s\S]*?</script>`)
+	styleTagContentRe    = regexp.MustCompile(`(?i)<style[^>]*>[\s\S]*?</style>`)
+)
+
 // RenderKind maps SSE events to the render kind the browser island should POST.
 type RenderKind string
 
@@ -677,29 +685,20 @@ func FormatErrorMessage(err error) string {
 // stripHTMLTags removes HTML tags from a string.
 func stripHTMLTags(s string) string {
 	// First strip content of <script>...</script> and <style>...</style> blocks.
-	s = stripTagContent(s, "script")
-	s = stripTagContent(s, "style")
+	s = scriptTagContentRe.ReplaceAllString(s, "")
+	s = styleTagContentRe.ReplaceAllString(s, "")
 
 	// Then remove remaining HTML tags.
-	re := regexp.MustCompile(`<[^>]*>`)
-	result := re.ReplaceAllString(s, "")
+	result := htmlTagRe.ReplaceAllString(s, "")
 
 	// Collapse multiple whitespace.
-	space := regexp.MustCompile(`\s+`)
-	result = strings.TrimSpace(space.ReplaceAllString(result, " "))
+	result = strings.TrimSpace(whitespaceRe.ReplaceAllString(result, " "))
 
 	// Truncate long messages to 200 chars.
 	if len(result) > 200 {
 		result = result[:200] + "..."
 	}
 	return result
-}
-
-// stripTagContent removes the content of named HTML tags (including the tags themselves).
-// Handles multiline content and nested quotes in attributes. Non-greedy match.
-func stripTagContent(s, tag string) string {
-	re := regexp.MustCompile(`(?i)<` + tag + `[^>]*>[\s\S]*?</` + tag + `>`)
-	return re.ReplaceAllString(s, "")
 }
 
 // MaxTurnsMessage returns a user-facing message for max-turn limits.

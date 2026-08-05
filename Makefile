@@ -78,6 +78,7 @@ help:
 	@echo "  make clean              Remove build artifacts (binary + dist/)"
 	@echo "  make test               Run all tests (fast, no race detector)"
 	@echo "  make test-race          Run all tests with race detector"
+	@echo "  make lint               Run golangci-lint with strict config"
 	@echo "  make release            Build linux/amd64 tarball + checksums"
 	@echo "  make release-all        Build tarball for linux/amd64"
 	@echo "  make release-check      Run release readiness tests (includes race detector)"
@@ -90,3 +91,7 @@ help:
 	@echo "  EITRI_DIR           Root directory for persisted data (default ~/.eitri/)"
 	@echo "  EITRI_OPEN_BROWSER  Browser auto-open: 1 force, 0 disable, unset auto-detect"
 	@echo "  EITRI_GITHUB_CLIENT_ID Optional override for built-in Copilot device-flow client ID"
+
+## lint — run golangci-lint with strict config
+lint:
+	golangci-lint run
