@@ -17,6 +17,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -95,7 +96,7 @@ func (b *batchTurnCompleter) OnTurnComplete(ctx context.Context, _ string) {
 	// retention as UI runs (the settings come from the same RunConfig). The
 	// compacted history replaces the session manager's history, so the next
 	// turn's LLM request stays within the context window.
-	compactedMsgs, count, freedTokens, prunedToolCalls, err := b.svc.autoCompactAfterTurn(ctx, b.sessionMgr, b.sessionID, b.cfg)
+	compactedMsgs, count, freedTokens, prunedToolCalls, err := b.svc.autoCompactAfterTurn(ctx, loop.NewSessionHistoryManager(b.sessionMgr, b.sessionID), b.cfg)
 	if err != nil {
 		slog.Warn("batch compaction failed, will retry on next turn",
 			slog.String("session_id", b.sessionID),

@@ -83,9 +83,36 @@ type subAgentSnapshotter struct {
 }
 
 // OnTurnComplete implements loop.TurnCompleter: persist a running-status
-// snapshot after each complete agent turn.
+// snapshot after each complete agent turn, then run the shared auto-compaction
+// step so a long sub-agent task compacts its request-based history below the
+// low-water mark instead of overflowing the context window (issue #1096). The
+// compacted history is written back to the run's request and reflected in a
+// follow-up snapshot, so the next turn's LLM request and the on-disk
+// session.json stay within the parent's configured thresholds, salience
+// ordering, and tool-call retention.
 func (sn *subAgentSnapshotter) OnTurnComplete(ctx context.Context, sessionID string) {
 	sn.persist(uisession.StatusRunning)
+
+	compactedMsgs, count, freedTokens, prunedToolCalls, err := sn.svc.autoCompactAfterTurn(ctx, loop.NewRequestHistoryManager(sn.req), sn.cfg)
+	if err != nil {
+		slog.Warn("sub-agent compaction failed, will retry on next turn",
+			slog.String("task_id", sn.taskID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if compactedMsgs == nil {
+		return
+	}
+
+	// Re-persist so session.json reflects the compacted history.
+	sn.persist(uisession.StatusRunning)
+	slog.Info("sub-agent compacted conversation history",
+		slog.String("task_id", sn.taskID),
+		slog.Int("compacted_count", count),
+		slog.Int("freed_tokens", freedTokens),
+		slog.Int("pruned_tool_calls", prunedToolCalls),
+	)
 }
 
 // persist writes the current sub-agent conversation to disk as a session
@@ -333,7 +360,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			UISessionMgr:     s.uiSessionMgr,
 			SessionID:        "",
 			RunID:            runstate.GenerateRunID(taskID, record.StartedAt),
-			ContextWindow:    0,
+			ContextWindow:    parentCfg.ContextWindowTokens,
 			CrashDumpFunc:    nil,
 			Turns:            nil,
 			TurnCompleter:    snapshotter,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/history"
@@ -128,6 +129,40 @@ func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 	adapter := NewSessionHistoryManager(nil, "test-session")
 	// Should not panic
 	adapter.AppendTool("call_1", "result", "", false)
+}
+
+func TestSessionHistoryManager_ReplaceHistory(t *testing.T) {
+	t.Parallel()
+	sessionMgr := history.NewSessionManager(0)
+	sessionID := "test-session-rh"
+	sessionMgr.Create(sessionID)
+	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
+	sessionMgr.AppendUser(sessionID, "hello")
+
+	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter.ReplaceHistory([]message.Message{
+		{Role: "system", Content: "You are helpful."},
+		{Role: "user", Content: "compacted user"},
+		{Role: "assistant", Content: "compacted answer"},
+	})
+
+	msgs := adapter.History()
+	if len(msgs) != 3 {
+		t.Fatalf("History() returned %d messages, want 3", len(msgs))
+	}
+	if msgs[0].Role != "system" || msgs[0].Content() != "You are helpful." {
+		t.Errorf("message[0] = %q/%q, want system prompt preserved", msgs[0].Role, msgs[0].Content())
+	}
+	if msgs[2].Content() != "compacted answer" {
+		t.Errorf("message[2] content = %q, want %q", msgs[2].Content(), "compacted answer")
+	}
+}
+
+func TestSessionHistoryManager_ReplaceHistory_NilSessionMgr(t *testing.T) {
+	t.Parallel()
+	adapter := NewSessionHistoryManager(nil, "test-session")
+	// Should not panic
+	adapter.ReplaceHistory([]message.Message{{Role: "user", Content: "x"}})
 }
 
 func TestSessionHistoryManager_Interface(t *testing.T) {
@@ -287,6 +322,44 @@ func TestRequestHistoryManager_AppendToolErrorFlag(t *testing.T) {
 	// The isError flag is intentionally discarded by requestHistoryManager
 	// because the message type does not carry it; the error content
 	// is passed in the Content field for the LLM to interpret.
+}
+
+func TestRequestHistoryManager_ReplaceHistory(t *testing.T) {
+	t.Parallel()
+	req := &litellm.Request{
+		Messages: []litellm.Message{
+			{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: "sys"}}},
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hello"}}},
+			{Role: litellm.Role("tool"), Blocks: []litellm.Block{litellm.TextBlock{Text: "huge result"}}},
+		},
+	}
+	adapter := NewRequestHistoryManager(req)
+	adapter.ReplaceHistory([]message.Message{
+		{Role: "system", Content: "sys"},
+		{Role: "tool", ToolCallID: "call_1", Content: "[TOOL RESULT COMPACTED - originally 1000 tokens] summary"},
+	})
+
+	if len(req.Messages) != 2 {
+		t.Fatalf("req.Messages length = %d, want 2", len(req.Messages))
+	}
+	if req.Messages[0].Role != litellm.Role("system") {
+		t.Errorf("message[0].Role = %q, want %q", req.Messages[0].Role, litellm.Role("system"))
+	}
+	// The tool message must round-trip through the flat Message type back into
+	// a ToolResultBlock so the LLM sees a well-formed tool result.
+	tr, ok := req.Messages[1].Blocks[0].(litellm.ToolResultBlock)
+	if !ok {
+		t.Fatalf("message[1].Blocks[0] = %T, want litellm.ToolResultBlock", req.Messages[1].Blocks[0])
+	}
+	if tr.ToolUseID != "call_1" {
+		t.Errorf("ToolResultBlock.ToolUseID = %q, want %q", tr.ToolUseID, "call_1")
+	}
+	if len(tr.Content) == 0 {
+		t.Fatal("ToolResultBlock has no content blocks")
+	}
+	if tb, ok := tr.Content[0].(litellm.TextBlock); !ok || !strings.Contains(tb.Text, "[TOOL RESULT COMPACTED") {
+		t.Errorf("ToolResultBlock content = %v, want compacted marker", tr.Content)
+	}
 }
 
 func TestRequestHistoryManager_Interface(t *testing.T) {

@@ -24,8 +24,9 @@
 //	                   one parameterized call; buildRunRequest is shared with
 //	                   sub-agent runs too.
 //	compact.go       — autoCompactAfterTurn: the shared auto-compaction step
-//	                   for UI and batch parent runs (issue #1093); restores
-//	                   the compacted history into the history manager
+//	                   for UI, batch, and sub-agent runs (issues #1093, #1096);
+//	                   replaces the run's history with the compacted version
+//	                   via the history manager's replace-history capability
 //	run.go           — StartRun (agent loop entry point), session persistence
 //	                   after run, UI OnTurnComplete (snapshot + compaction)
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
@@ -37,7 +38,10 @@
 //	                   buildLLMService assembles auth, LLM service, tool
 //	                   registry, and the system prompt in one seam call.
 //	subagent.go      — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
-//	                   sub-agent record tracking, restricted tool registry
+//	                   sub-agent record tracking, restricted tool registry,
+//	                   per-turn child-session snapshots, and sub-agent
+//	                   auto-compaction (via the shared autoCompactAfterTurn
+//	                   step, issue #1096)
 //	skill_context.go — sessionSkillContext resolution, stale skill
 //	                   detection, skill directory enumeration
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)
@@ -58,7 +62,7 @@
 //   - debug     — HTTP trace recorder (optional)
 //   - config    — Config value object
 //   - runner/loop — RunAgent, RunSpec, RunOpts, HistoryManager, Confirmer,
-//                   ConfirmationResult
+//     ConfirmationResult
 //
 // # Extension points
 //

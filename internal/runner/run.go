@@ -455,7 +455,7 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 	}
 	cfg := state.RunCfg
 
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := s.autoCompactAfterTurn(ctx, s.historySessionMgr, sessionID, cfg)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := s.autoCompactAfterTurn(ctx, loop.NewSessionHistoryManager(s.historySessionMgr, sessionID), cfg)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
