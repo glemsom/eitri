@@ -101,6 +101,10 @@ eitri -b "Refactor the database connection pool to use context cancellation"
 ```
 
 This runs the agent once and streams text output to stdout — no browser needed.
+The full prompt is the `-b` value joined with all remaining arguments, so
+quoting is optional (`eitri -b refactor the database layer` works too). An
+empty or whitespace-only prompt is rejected with an error rather than starting
+the server.
 
 ---
 

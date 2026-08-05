@@ -77,6 +77,31 @@ func main() {
 		return
 	}
 
+	// Batch mode is triggered by an explicit -b flag, even when its value is
+	// empty (eitri -b "" must error instead of silently starting the UI
+	// server). flag.Visit reports every flag that was set on the command line.
+	batchMode := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "b" {
+			batchMode = true
+		}
+	})
+
+	// Go's flag package stops parsing at the first non-flag argument, so
+	// `eitri -b implement feature X` leaves ["feature", "X"] in flag.Args().
+	// Join them with the -b value so the full prompt survives, and reject an
+	// empty or whitespace-only prompt with a clear error instead of starting
+	// the server (issue #1094).
+	var batchPromptText string
+	if batchMode {
+		var err error
+		batchPromptText, err = batchPromptFromArgs(*batchPrompt, flag.Args())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -133,7 +158,7 @@ func main() {
 		}
 	}
 
-	if *batchPrompt != "" {
+	if batchMode {
 		// Batch mode: headless, no UI session manager
 		cmdTimeout := time.Duration(cfg.CommandTimeout)
 		runCfg := runner.FromConfig(cfg, workspace, cmdTimeout)
@@ -220,7 +245,7 @@ func main() {
 			}
 		})
 
-		if _, err := runSvc.BatchRun(ctx, *batchPrompt, runCfg, os.Stdout); err != nil {
+		if _, err := runSvc.BatchRun(ctx, batchPromptText, runCfg, os.Stdout); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "Batch run failed: %v\n", err)
 
@@ -532,6 +557,19 @@ func shouldOpenBrowser(getenv func(string) string) bool {
 		return false
 	}
 	return getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != ""
+}
+
+// batchPromptFromArgs builds the batch-mode prompt from the -b flag value and
+// all remaining positional arguments. Go's flag package stops parsing at the
+// first non-flag argument, so `eitri -b implement feature X` must join
+// ["feature", "X"] (flag.Args()) with the -b value instead of silently
+// dropping them. An empty or whitespace-only prompt is rejected.
+func batchPromptFromArgs(bValue string, rest []string) (string, error) {
+	prompt := strings.TrimSpace(strings.Join(append([]string{bValue}, rest...), " "))
+	if prompt == "" {
+		return "", errors.New("empty prompt: batch mode requires a non-empty prompt, e.g. eitri -b \"your prompt\"")
+	}
+	return prompt, nil
 }
 
 // calibrationStorePath returns the on-disk location for calibration data under
