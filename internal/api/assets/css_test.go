@@ -423,6 +423,146 @@ func TestEmbeddedCSSTokenRootSymmetry(t *testing.T) {
 	t.Logf("dark and light token roots both declare %d tokens", len(dark))
 }
 
+// TestEmbeddedCSSTokensAllUsed verifies every token declared in a :root block
+// is actually referenced somewhere in the stylesheet. Declared-but-unused
+// tokens are dead weight and drift from the theme blocks. (issue #1072)
+func TestEmbeddedCSSTokensAllUsed(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	referenced := map[string]bool{}
+	for _, m := range varTokenRe.FindAllStringSubmatch(css, -1) {
+		referenced[m[1]] = true
+	}
+
+	var unused []string
+	seen := map[string]bool{}
+	for _, r := range tokenRoots(css) {
+		for _, name := range tokenNames(r.body) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if !referenced[strings.TrimPrefix(name, "--")] {
+				unused = append(unused, name)
+			}
+		}
+	}
+	sort.Strings(unused)
+	if len(unused) > 0 {
+		t.Errorf("tokens declared in :root but never referenced by eitri.css: %s",
+			strings.Join(unused, ", "))
+	}
+	t.Logf("all %d declared tokens are referenced", len(referenced))
+}
+
+// TestEmbeddedCSSNoOrphanSelectors verifies that no rule targets classes that
+// no template, JS, or Go code emits. Orphaned selectors are dead CSS that
+// drift out of sync with the UI. (issue #1072)
+func TestEmbeddedCSSNoOrphanSelectors(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	// Classes with zero hits in templates/JS/Go. Prism syntax-highlighting
+	// selectors (token.*, class*="language-") are exempt: they style markup
+	// emitted at runtime by the vendored highlighter.
+	orphans := []string{
+		"tool-card", "tool-card-header", "tool-args", "tool-cards-container",
+		"tool-call-container", "tool-status", "sidebar-footer",
+		"settings-header-bar", "skill-scope-icon", "context-subrow",
+		"session-workspace", "session-workspace-path", "session-workspace-btn",
+	}
+
+	var found []string
+	for _, r := range parseCSSRules(css) {
+		if strings.HasPrefix(r.selector, "@") {
+			continue // media/at-rule wrappers carry no selectors of their own
+		}
+		for _, part := range strings.Split(r.selector, ",") {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, ".token.") || strings.Contains(part, `class*="language-"`) {
+				continue // Prism palette — see isPrismSyntaxRule
+			}
+			for _, cls := range orphans {
+				// Match the class as a whole token, not as a prefix of
+				// another class (e.g. tool-status vs tool-status-label).
+				if regexp.MustCompile(`(^|[\s.>~+])\.` + regexp.QuoteMeta(cls) + `($|[\s.:#[,\]>~+])`).MatchString(part) {
+					found = append(found, part)
+				}
+			}
+		}
+	}
+	if len(found) > 0 {
+		t.Errorf("orphaned selectors still present in eitri.css:\n  %s",
+			strings.Join(found, "\n  "))
+	}
+	t.Log("no orphaned class selectors remain")
+}
+
+// TestEmbeddedCSSNoDuplicateMediaBlocks verifies each @media query condition
+// appears exactly once — duplicate blocks with the same condition must be
+// merged into one. (issue #1072)
+func TestEmbeddedCSSNoDuplicateMediaBlocks(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	counts := map[string]int{}
+	for _, m := range regexp.MustCompile(`@media\s+([^{]+)\{`).FindAllStringSubmatch(css, -1) {
+		counts[strings.TrimSpace(m[1])]++
+	}
+	for cond, n := range counts {
+		if n > 1 {
+			t.Errorf("@media (%s) appears %d times — merge into a single block", cond, n)
+		}
+	}
+	t.Logf("checked %d distinct @media conditions — no duplicates", len(counts))
+}
+
+// TestEmbeddedCSSWorkspaceIndicatorSingleDefinition verifies .workspace-indicator
+// is defined exactly once with a single hover color. (issue #1072)
+func TestEmbeddedCSSWorkspaceIndicatorSingleDefinition(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	var defs []string
+	for _, r := range parseCSSRules(css) {
+		if strings.HasPrefix(r.selector, "@") {
+			continue
+		}
+		for _, part := range strings.Split(r.selector, ",") {
+			if strings.TrimSpace(part) == ".workspace-indicator" ||
+				strings.TrimSpace(part) == ".workspace-indicator:hover" {
+				defs = append(defs, part+" { "+r.body+" }")
+			}
+		}
+	}
+	if len(defs) != 2 {
+		t.Errorf("expected exactly one .workspace-indicator and one :hover rule, got %d:\n  %s",
+			len(defs), strings.Join(defs, "\n  "))
+	}
+	t.Logf("%d workspace-indicator rule(s) found", len(defs))
+}
+
 func stripCSSComments(s string) string {
 	for {
 		start := strings.Index(s, "/*")
