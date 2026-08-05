@@ -8,7 +8,26 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/glemsom/eitri/internal/session"
+import (
+	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/session"
+)
+
+// isChatBubbleMessage reports whether a session message renders as a chat
+// bubble (user or assistant). Tool messages and empty assistant tool-call
+// messages are shown as sidebar tool cards during the run, not conversation
+// bubbles: rendering them here would surface tool results (e.g. the collect
+// result carrying a sub-agent's response) as user bubbles with the user's
+// own avatar.
+func isChatBubbleMessage(msg message.Message) bool {
+	if msg.Role == "tool" {
+		return false
+	}
+	if msg.Role == "assistant" && msg.Content == "" && len(msg.Components) == 0 && len(msg.QuickReplies) == 0 {
+		return false
+	}
+	return true
+}
 
 // ChatMessages renders the messages container for a session.
 // Used both in ChatView (full page) and for OOB swaps after compaction.
@@ -44,15 +63,17 @@ func ChatMessages(sess *session.UISession, userEmail string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, msg := range sess.Messages {
-			if msg.Role == "assistant" {
-				templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = UserBubble(msg.Content, userEmail).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
+			if isChatBubbleMessage(msg) {
+				if msg.Role == "assistant" {
+					templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = UserBubble(msg.Content, userEmail).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
 			}
 		}
@@ -106,15 +127,17 @@ func ChatView(sess *session.UISession, configValid bool, userEmail string, conte
 			}
 		}
 		for _, msg := range sess.Messages {
-			if msg.Role == "assistant" {
-				templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = UserBubble(msg.Content, userEmail).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
+			if isChatBubbleMessage(msg) {
+				if msg.Role == "assistant" {
+					templ_7745c5c3_Err = AssistantBubble(sess.ID, msg.Content, msg.QuickReplies).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = UserBubble(msg.Content, userEmail).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
 			}
 		}

@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Chat bubbles no longer render tool messages or empty assistant tool-call turns: the live-history sync (per-turn conversation update) puts tool results — including the `collect` result carrying a sub-agent's full response — into the session conversation, and the chat view was rendering every non-assistant message as a user bubble with the user's own avatar. Tool messages and empty tool-call turns now stay out of the conversation (they are shown as sidebar tool cards during the run), so sub-agent responses no longer appear in the main view as if written by the user. Quick-reply chips on empty assistant messages still render.
+
 - The chat-orphan regression test for a failed run start (`TestChatOrphanedMessageOnStartRunFailure`, issue #972) is restored: it now points at a reachable mock provider that passes live config validation (model discovery succeeds), then fails `buildLLMService` on an empty API key so the run start fails synchronously after a successful config save — replacing the unreachable-URL trick that config validation now rejects. (#1025)
 
 - Persona home-directory resolution now runs through an explicit per-server seam (`ServerConfig.HomeDir` / `RunConfig.HomeDir`) instead of reading the process `HOME` env var at every lookup, and api test helpers inject a per-server temp home dir instead of mutating the global `HOME` — parallel api tests no longer race on persona resolution and the suite is stable under `make test-race`. Production behavior is unchanged. (#1023)
