@@ -1690,6 +1690,43 @@ func TestSettingsPage(t *testing.T) {
 	}
 }
 
+// TestPageSelfHostsFonts verifies the page shell references fonts only from
+// /static/fonts/* (embedded in the binary) and never from an external font
+// CDN, plus that the critical latin subsets are preloaded. (issue #970)
+func TestPageSelfHostsFonts(t *testing.T) {
+	server := newTestServer(t)
+
+	// Pages that render the full Base shell without requiring a session.
+	for _, path := range []string{"/settings", "/sessions", "/skills"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := string(body)
+
+		for _, cdn := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
+			if strings.Contains(content, cdn) {
+				t.Errorf("GET %s must not reference %q (fonts must be self-hosted)", path, cdn)
+			}
+		}
+		// Critical latin subsets are preloaded so text renders fast.
+		for _, pre := range []string{
+			`rel="preload" href="/static/fonts/Inter-latin.woff2?v=`,
+			`rel="preload" href="/static/fonts/JetBrainsMono-latin.woff2?v=`,
+			`as="font" type="font/woff2" crossorigin`,
+		} {
+			if !strings.Contains(content, pre) {
+				t.Errorf("GET %s missing font preload %q", path, pre)
+			}
+		}
+	}
+}
+
 func TestStaticAssetsImmutableCacheControl(t *testing.T) {
 	server := newTestServer(t)
 
@@ -1701,6 +1738,8 @@ func TestStaticAssetsImmutableCacheControl(t *testing.T) {
 		"/static/favicon-16.png",
 		"/static/pwa-icon-512.png",
 		"/static/fonts/KaTeX_Main-Regular.woff2",
+		"/static/fonts/Inter-latin.woff2",
+		"/static/fonts/JetBrainsMono-latin.woff2",
 	} {
 		t.Run(path, func(t *testing.T) {
 			resp, err := http.Get(server.URL + path)

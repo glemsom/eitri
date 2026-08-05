@@ -608,12 +608,22 @@ func TestServiceWorker(t *testing.T) {
 			want: `cache.match(event.request)`,
 		},
 		{
-			name: "network-first for Google Fonts",
-			want: `"fonts.googleapis.com"`,
+			name: "precaches self-hosted Inter fonts",
+			want: `"/static/fonts/Inter-latin.woff2?v=__EITRI_VERSION__"`,
 		},
 		{
-			name: "network-first for fonts.gstatic.com",
-			want: `"fonts.gstatic.com"`,
+			name: "precaches self-hosted JetBrains Mono fonts",
+			want: `"/static/fonts/JetBrainsMono-latin.woff2?v=__EITRI_VERSION__"`,
+		},
+		{
+			name:    "no Google Fonts CDN dependency",
+			want:    `url.pathname.startsWith("/static/")`,
+			missing: `fonts.googleapis.com`,
+		},
+		{
+			name:    "no fonts.gstatic.com CDN dependency",
+			want:    `url.pathname.startsWith("/static/")`,
+			missing: `fonts.gstatic.com`,
 		},
 		{
 			name: "navigation fallback to cached shell",

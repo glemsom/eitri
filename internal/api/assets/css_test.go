@@ -120,6 +120,58 @@ func TestEmbeddedCSSContainsCriticalSelectors(t *testing.T) {
 	t.Logf("checked %d critical selectors — all present", len(critical))
 }
 
+// TestEmbeddedCSSSelfHostedFonts verifies Inter and JetBrains Mono are declared
+// via local @font-face rules (served from /static/fonts/*, embedded in the
+// binary) with font-display: swap, and that eitri.css never references an
+// external font CDN. (issue #970)
+func TestEmbeddedCSSSelfHostedFonts(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	for _, tc := range []struct {
+		family string
+		subset string
+		file   string
+	}{
+		{"Inter", "latin", "Inter-latin.woff2"},
+		{"Inter", "latin-ext", "Inter-latin-ext.woff2"},
+		{"JetBrains Mono", "latin", "JetBrainsMono-latin.woff2"},
+		{"JetBrains Mono", "latin-ext", "JetBrainsMono-latin-ext.woff2"},
+	} {
+		if !strings.Contains(css, "@font-face") {
+			t.Fatalf("eitri.css contains no @font-face rules")
+		}
+		if !strings.Contains(css, "font-family: '"+tc.family+"'") {
+			t.Errorf("missing @font-face for %q", tc.family)
+		}
+		// Local file reference resolving under /static/fonts/.
+		if !strings.Contains(css, `url("fonts/`+tc.file+`")`) {
+			t.Errorf("missing local src url for %q subset %q (%s)", tc.family, tc.subset, tc.file)
+		}
+		// Each declared file must exist in the embedded fonts directory.
+		if _, err := Files.Open("fonts/" + tc.file); err != nil {
+			t.Errorf("embedded font file fonts/%s not found: %v", tc.file, err)
+		}
+	}
+
+	// font-display: swap must be applied so text renders before fonts load.
+	if !strings.Contains(css, "font-display: swap") {
+		t.Errorf("eitri.css @font-face rules are missing font-display: swap")
+	}
+
+	// No external font CDN references may remain.
+	for _, cdn := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
+		if strings.Contains(css, cdn) {
+			t.Errorf("eitri.css must not reference external font CDN %q (self-hosted only)", cdn)
+		}
+	}
+}
+
 func stripCSSComments(s string) string {
 	for {
 		start := strings.Index(s, "/*")

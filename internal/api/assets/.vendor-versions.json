@@ -1,4 +1,6 @@
 {
+  "fonts.google.com/inter": "v20",
+  "fonts.google.com/jetbrains-mono": "v24",
   "htmx.org": "2.0.10",
   "katex": "0.18.1",
   "mermaid": "11.16.0",

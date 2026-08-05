@@ -79,6 +79,7 @@ All browser tests live across multiple files in `internal/api/`:
 | `browser_settings_test.go` | Settings page, provider config, model discovery |
 | `browser_skills_test.go` | Skills UI, activation, diagnostics |
 | `browser_workspace_test.go` | Workspace directory browser |
+| `browser_fonts_test.go` | No external font/CDN requests; fonts served from embedded `/static/fonts/*` |
 | `browser_stream_responsiveness_test.go` | Main-thread responsiveness during large reasoning streams |
 
 Browser tests are **not** gated behind a build tag. Chrome-not-found skips at
