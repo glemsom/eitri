@@ -68,7 +68,7 @@ func main() {
 	slog.SetDefault(slog.New(logBuffer))
 
 	versionFlag := flag.Bool("version", false, "Print version and exit")
-	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout")
+	batchPrompt := flag.String("b", "", "Batch mode: run headless with the given prompt and stream output to stdout (reasoning models stream [thinking]...[/thinking] deltas)")
 	personaFlag := flag.String("persona", "", "Persona name to use for batch run (overrides config active_persona)")
 	flag.Parse()
 

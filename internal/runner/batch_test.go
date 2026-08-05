@@ -236,6 +236,160 @@ func TestBatchRun_FeedsDebugRecorderMetrics(t *testing.T) {
 	}
 }
 
+// TestBatchRun_StreamsReasoningToStdout verifies that reasoning-model batch
+// runs stream thinking deltas to stdout alongside ordinary text (issue #1095):
+// the thinking content arrives delimited by [thinking]/[/thinking] markers and
+// the final text remains plain, so the two are distinguishable. The returned
+// content must stay the final text only (reasoning is a stream-side concern).
+func TestBatchRun_StreamsReasoningToStdout(t *testing.T) {
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		// Reasoning deltas, then final text. The two reasoning chunks are
+		// coalesced server-side into one thinking_delta SSE event.
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"reasoning_content":"Let me think"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"reasoning_content":"Let me think carefully"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"Final answer"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   1,
+	}
+
+	var buf bytes.Buffer
+	content, err := svc.BatchRun(context.Background(), "hello", cfg, &buf)
+	if err != nil {
+		t.Fatalf("batch run failed: %v", err)
+	}
+
+	// The returned content is the final text only.
+	if content != "Final answer" {
+		t.Fatalf("content = %q, want %q", content, "Final answer")
+	}
+
+	out := buf.String()
+	// Reasoning is delimited and precedes the final text.
+	thinkingOpen := strings.Index(out, "[thinking]\n")
+	thinkingClose := strings.Index(out, "[/thinking]\n")
+	finalIdx := strings.Index(out, "Final answer")
+	if thinkingOpen < 0 {
+		t.Fatalf("stdout missing [thinking] open marker:\n%s", out)
+	}
+	if thinkingClose < 0 {
+		t.Fatalf("stdout missing [/thinking] close marker:\n%s", out)
+	}
+	if !(thinkingOpen < thinkingClose && thinkingClose < finalIdx) {
+		t.Fatalf("expected [thinking] < [/thinking] < final text, got:\n%s", out)
+	}
+	// The accumulated reasoning content appears inside the delimited block.
+	if !strings.Contains(out[thinkingOpen:thinkingClose], "Let me think carefully") {
+		t.Fatalf("thinking block missing accumulated reasoning content:\n%s", out)
+	}
+	// The final text is streamed plain (no markers around it).
+	if strings.Contains(out[finalIdx:], "[thinking]") || strings.Contains(out[finalIdx:], "[/thinking]") {
+		t.Fatalf("final text should be plain, got:\n%s", out)
+	}
+}
+
+// TestBatchRun_PlainTextOutputUnchanged verifies that models without reasoning
+// produce exactly the same plain-text stdout as before — no thinking markers
+// anywhere in the stream (issue #1095 acceptance criterion).
+func TestBatchRun_PlainTextOutputUnchanged(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    singleTurnLLM(t).URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   1,
+	}
+
+	var buf bytes.Buffer
+	if _, err := svc.BatchRun(context.Background(), "hello", cfg, &buf); err != nil {
+		t.Fatalf("batch run failed: %v", err)
+	}
+
+	out := buf.String()
+	if out != "ok" {
+		t.Fatalf("stdout = %q, want plain %q (no thinking markers)", out, "ok")
+	}
+	if strings.Contains(out, "[thinking]") || strings.Contains(out, "[/thinking]") {
+		t.Fatalf("plain model output must not contain thinking markers: %q", out)
+	}
+}
+
+// TestBatchStreamer exercises the state machine that delimits reasoning
+// content in batch-mode stdout (issue #1095).
+func TestBatchStreamer(t *testing.T) {
+	t.Run("token only", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := &batchStreamer{out: &buf}
+		b.writeToken("hello ")
+		b.writeToken("world")
+		b.closeThinking()
+		if got := buf.String(); got != "hello world" {
+			t.Fatalf("output = %q, want %q", got, "hello world")
+		}
+	})
+	t.Run("thinking then token", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := &batchStreamer{out: &buf}
+		b.writeThinking("reason a ")
+		b.writeThinking("reason b")
+		b.writeToken("answer")
+		b.closeThinking()
+		want := "[thinking]\nreason a reason b[/thinking]\nanswer"
+		if got := buf.String(); got != want {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	})
+	t.Run("token thinking token delimiters each span", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := &batchStreamer{out: &buf}
+		b.writeToken("first")
+		b.writeThinking("r1")
+		b.writeToken("middle")
+		b.writeThinking("r2")
+		b.writeToken("last")
+		b.closeThinking()
+		want := "first[thinking]\nr1[/thinking]\nmiddle[thinking]\nr2[/thinking]\nlast"
+		if got := buf.String(); got != want {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	})
+	t.Run("stream ends during thinking closes block", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := &batchStreamer{out: &buf}
+		b.writeThinking("unfinished")
+		b.closeThinking()
+		want := "[thinking]\nunfinished[/thinking]\n"
+		if got := buf.String(); got != want {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	})
+	t.Run("closeThinking idempotent", func(t *testing.T) {
+		var buf bytes.Buffer
+		b := &batchStreamer{out: &buf}
+		b.writeThinking("r")
+		b.closeThinking()
+		b.closeThinking()
+		want := "[thinking]\nr[/thinking]\n"
+		if got := buf.String(); got != want {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	})
+}
+
 // TestBatchRun_DelegateSpawnsSubAgent verifies that the delegate tool resolves
 // the parent run config in batch mode (issue #1001). BatchRun registers the
 // parent config under the batch ID, so the run context must carry the batch ID
