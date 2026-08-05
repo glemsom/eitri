@@ -1152,20 +1152,33 @@ func (t *NativeBrowserTool) formatDOMSummary(title string, elements []domElement
 	return TextResult(result)
 }
 
+// Pre-compiled regular expressions for DOM parsing and sanitization.
+var (
+	scriptTagRE    = regexp.MustCompile(`(?si)<script[^>]*>.*?</script>`)
+	styleTagRE     = regexp.MustCompile(`(?si)<style[^>]*>.*?</style>`)
+	htmlCommentRE  = regexp.MustCompile(`(?si)<!--.*?-->`)
+	whitespaceRE   = regexp.MustCompile(`\s+`)
+	htmlTagRE      = regexp.MustCompile(`<[^>]*>`)
+	headingREs     = []*regexp.Regexp{
+		regexp.MustCompile(`<h1[^>]*>(.*?)</h1>`),
+		regexp.MustCompile(`<h2[^>]*>(.*?)</h2>`),
+		regexp.MustCompile(`<h3[^>]*>(.*?)</h3>`),
+		regexp.MustCompile(`<h4[^>]*>(.*?)</h4>`),
+		regexp.MustCompile(`<h5[^>]*>(.*?)</h5>`),
+		regexp.MustCompile(`<h6[^>]*>(.*?)</h6>`),
+	}
+)
+
 // cleanDOMHTML removes <script>, <style>, HTML comments, and extra whitespace from HTML.
 func cleanDOMHTML(html string) string {
 	// Remove <script>...</script>
-	re := regexp.MustCompile(`(?si)<script[^>]*>.*?</script>`)
-	html = re.ReplaceAllString(html, "")
+	html = scriptTagRE.ReplaceAllString(html, "")
 	// Remove <style>...</style>
-	re = regexp.MustCompile(`(?si)<style[^>]*>.*?</style>`)
-	html = re.ReplaceAllString(html, "")
+	html = styleTagRE.ReplaceAllString(html, "")
 	// Remove HTML comments
-	re = regexp.MustCompile(`(?si)<!--.*?-->`)
-	html = re.ReplaceAllString(html, "")
+	html = htmlCommentRE.ReplaceAllString(html, "")
 	// Collapse whitespace
-	re = regexp.MustCompile(`\s+`)
-	html = re.ReplaceAllString(html, " ")
+	html = whitespaceRE.ReplaceAllString(html, " ")
 	return strings.TrimSpace(html)
 }
 
@@ -1176,7 +1189,7 @@ func buildDOMSummary(bodyHTML string) string {
 
 	// Extract and count headings using separate regexps for each level
 	for level := 1; level <= 6; level++ {
-		re := regexp.MustCompile(fmt.Sprintf(`<h%d[^>]*>(.*?)</h%d>`, level, level))
+		re := headingREs[level-1]
 		matches := re.FindAllStringSubmatch(bodyHTML, -1)
 		for _, m := range matches {
 			text := stripTags(m[1])
@@ -1214,6 +1227,5 @@ func buildDOMSummary(bodyHTML string) string {
 
 // stripTags removes HTML tags from a string.
 func stripTags(s string) string {
-	re := regexp.MustCompile(`<[^>]*>`)
-	return strings.TrimSpace(re.ReplaceAllString(s, ""))
+	return strings.TrimSpace(htmlTagRE.ReplaceAllString(s, ""))
 }

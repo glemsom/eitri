@@ -15,6 +15,19 @@ import (
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
+var (
+	// Regexes for parsing batch summaries
+	batchSummaryRe = regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*`)
+
+	// Regexes for salience scoring
+	stackTracePattern   = regexp.MustCompile(`(?m)^\s+at\s+\S+\.\S+\(.*:\d+\)`)
+	stackFramePattern   = regexp.MustCompile(`(?m)^\s*(?:at\s+)?[/.\w]+/[\w./-]+\.\w+:\d+`)
+	filePathPattern     = regexp.MustCompile(`(?:/\w+)+/[\w.-]+\.\w+`)
+	funcPattern         = regexp.MustCompile(`\b[a-zA-Z_]\w*\(.*?\)`)
+	numericPattern      = regexp.MustCompile(`\b\d+[.,]?\d*\s*(?:passed|failed|errors?|tests?|coverage|ms|s|bytes?|KB|MB|GB|lines?|files?|%|percent|of|total)\b`)
+	measurementPattern  = regexp.MustCompile(`\b\d+[.,]\d+%?\b`)
+)
+
 // Thresholds controls when compaction triggers and stops.
 // HighWater and LowWater are absolute estimated-token counts.
 type Thresholds struct {
@@ -174,8 +187,7 @@ func batchSummarizationPrompt(candidates []compactableMessage, roles []string, c
 func parseBatchSummaries(response string) map[int]string {
 	summaries := make(map[int]string)
 	// Locate all "MESSAGE N:" markers and their positions.
-	re := regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*`)
-	locs := re.FindAllStringSubmatchIndex(response, -1)
+	locs := batchSummaryRe.FindAllStringSubmatchIndex(response, -1)
 	if len(locs) == 0 {
 		return summaries
 	}
@@ -244,23 +256,19 @@ func salienceScore(content string) int {
 	}
 
 	// Stack traces (lines starting with spaces and containing file paths)
-	stackTracePattern := regexp.MustCompile(`(?m)^\s+at\s+\S+\.\S+\(.*:\d+\)`)
 	if stackTracePattern.MatchString(content) {
 		score += 30
 	}
 	// Generic stack frame pattern: ./path/file.go:123 or /path/file.go:123
-	stackFramePattern := regexp.MustCompile(`(?m)^\s*(?:at\s+)?[/.\w]+/[\w./-]+\.\w+:\d+`)
 	if stackFramePattern.MatchString(content) {
 		score += 20
 	}
 
 	// File paths (paths starting with /, ./ or containing file extensions)
-	filePathPattern := regexp.MustCompile(`(?:/\w+)+/[\w.-]+\.\w+`)
 	filePaths := filePathPattern.FindAllString(content, -1)
 	score += len(filePaths) * 10
 
 	// Function/method names (identifier followed by parentheses)
-	funcPattern := regexp.MustCompile(`\b[a-zA-Z_]\w*\(.*?\)`)
 	funcNames := funcPattern.FindAllString(content, -1)
 	// Filter out common noise words
 	noiseWords := map[string]bool{"if": true, "for": true, "when": true, "with": true, "not": true, "and": true, "or": true, "the": true, "but": true, "has": true, "had": true, "get": true, "got": true, "set": true, "use": true, "used": true, "see": true, "say": true, "says": true, "make": true, "made": true, "take": true, "took": true, "put": true, "run": true, "ran": true, "try": true, "tried": true, "let": true, "log": true, "cat": true, "ls": true}
@@ -275,12 +283,10 @@ func salienceScore(content string) int {
 	score += signalFuncCount * 10
 
 	// Numerical results/measurements (numbers near common units or indicators)
-	numericPattern := regexp.MustCompile(`\b\d+[.,]?\d*\s*(?:passed|failed|errors?|tests?|coverage|ms|s|bytes?|KB|MB|GB|lines?|files?|%|percent|of|total)\b`)
 	numerics := numericPattern.FindAllString(content, -1)
 	score += len(numerics) * 5
 
 	// General numerical values that look like measurements (percentages, large numbers)
-	measurementPattern := regexp.MustCompile(`\b\d+[.,]\d+%?\b`)
 	measurements := measurementPattern.FindAllString(content, -1)
 	score += len(measurements) * 3
 

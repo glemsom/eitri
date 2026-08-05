@@ -477,14 +477,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			}
 
 			// Parse arguments
-			var args json.RawMessage
-			if len(tc.Arguments) > 0 {
-				if err := json.Unmarshal(tc.Arguments, &args); err != nil {
-					args = tc.Arguments
-				} else {
-					args = tc.Arguments
-				}
-			}
+			args := tc.Arguments
 
 			// Broadcast tool call event
 			argsForDisplay := args
