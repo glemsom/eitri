@@ -446,36 +446,16 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 			slog.Any("error", err),
 		)
 	}
-	// Auto-compaction: retrieve the run config from the active RunState.
+	// Auto-compaction: retrieve the run config from the active RunState and
+	// run the shared compaction step (also used by batch parent runs — the
+	// settings in ~/.eitri/config.json are honored identically in both modes).
 	state := s.get(sessionID)
 	if state == nil {
 		return
 	}
 	cfg := state.RunCfg
-	if !cfg.CompactionEnabled || cfg.ContextWindowTokens <= 0 {
-		return
-	}
 
-	highWater := cfg.ContextWindowTokens * cfg.CompactionThresholdPercent / 100
-	lowWater := cfg.ContextWindowTokens * cfg.CompactionLowWaterPercent / 100
-
-	// Build a throwaway LLM service for summarization.
-	client, err := newCompactLLMService(ctx, cfg, s.persistAuth)
-	if err != nil {
-		slog.Warn("compaction skipped: failed to create LLM service",
-			slog.String("session_id", sessionID),
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	// Convert to flat messages for the compactor
-	flatMsgs := make([]message.Message, len(historyMsgs))
-	for i, em := range historyMsgs {
-		flatMsgs[i] = em.ToMessage()
-	}
-
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := compactSessionHistory(ctx, flatMsgs, client, s.calibrationStore, highWater, lowWater, cfg.CompactionMessageSizeThreshold, cfg.CompactionToolCallRetentionTurns, cfg.CompactionSalienceEnabled, cfg.ModelName)
+	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := s.autoCompactAfterTurn(ctx, s.historySessionMgr, sessionID, cfg)
 	if compErr != nil {
 		slog.Warn("compaction failed, will retry on next turn",
 			slog.String("session_id", sessionID),
@@ -493,12 +473,9 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		}
 		return
 	}
-	if compactedMsgs == nil || (compactedCount == 0 && prunedToolCalls == 0) {
+	if compactedMsgs == nil {
 		return
 	}
-
-	// Replace in-memory history with compacted version.
-	s.historySessionMgr.RestoreHistory(sessionID, compactedMsgs)
 
 	// Sync compacted messages to the UI session manager so snapshots reflect
 	// the compacted state. Strip the system prompt (stored separately in UI session).

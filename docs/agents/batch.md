@@ -54,6 +54,22 @@ The only tool differences from a UI run are mode-specific: batch has no
 `render_quick_replies` (no UI to render chips into), confirmations are
 auto-denied, and output is plain text to stdout instead of SSE.
 
+## Auto-compaction
+
+Batch runs compact their conversation history exactly like UI runs. After each
+complete agent turn the batch turn completer persists its per-turn snapshot
+and then runs the same shared auto-compaction step the UI uses, so long batch
+runs stay within the context window instead of overflowing and failing where
+the same prompt would succeed in the UI. The compaction settings in
+`~/.eitri/config.json` (`compaction_enabled`, `compaction_threshold_percent` /
+`compaction_low_water_percent`, `compaction_message_size_threshold`,
+`compaction_tool_call_retention_turns`, `compaction_salience_enabled`) are
+honored identically in both modes. When a batch run's history exceeds the
+high-water mark it is compacted below the low-water mark, and the compacted
+history is reflected in the on-disk `session.json` snapshot (a second snapshot
+is written after compaction). Sub-agent runs spawned from batch mode remain
+snapshot-only — they do not auto-compact.
+
 ## Session persistence
 
 Every batch run leaves the same reviewable trail on disk as a UI session,

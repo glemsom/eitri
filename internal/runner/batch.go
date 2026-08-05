@@ -141,9 +141,11 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	var turns int
 	runID := runstate.GenerateRunID(batchID, batchStartedAt)
 
-	// Per-turn snapshot seam: after each complete agent turn the batch run's
-	// conversation is persisted to disk as session.json (issue #1039), via
-	// the same completion seam the UI path uses — no agent-loop changes.
+	// Per-turn snapshot + auto-compaction seam: after each complete agent turn
+	// the batch run's conversation is persisted to disk as session.json (issue
+	// #1039) and, when the configured high-water mark is exceeded, compacted
+	// via the same shared step as UI runs (issue #1093) — no agent-loop
+	// changes.
 	turnCompleter := &batchTurnCompleter{
 		svc:          s,
 		sessionMgr:   sessionMgr,
@@ -152,6 +154,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		workspace:    workspace,
 		systemPrompt: fullSystemPrompt,
 		createdAt:    batchStartedAt,
+		cfg:          cfg,
 	}
 
 	runErr := loop.RunAgent(runCtx, loop.RunSpec{
