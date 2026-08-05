@@ -177,6 +177,8 @@ Owns all disk persistence under a root data directory (default `~/.eitri/`) with
 
 Enforces a 1 GiB retention cap by default: `Prune` evicts the oldest timeline and trace files across all sessions when total size exceeds the cap. Trace persistence is asynchronous (`SaveTraceAsync`) through a bounded worker queue (256) so disk I/O never blocks the HTTP path; shutdown `Flush` drains the queue and re-scans the debug recorder so nothing is lost. Traces of permanently deleted sessions (no `session.json` on disk) are never written. `QueryTraces` filters by session/provider/model/time with limit/offset pagination and computes aggregates (error rate, p50/p95 latency, token totals) for the debug UI and session reports. See ADR-0016.
 
+Sub-agent runs are persisted as child sessions keyed by their task ID (issue #1041): `SpawnSubAgent` writes an initial `sessions/<taskID>/session.json` (parent linkage, task-derived title) before the run starts — so the sub-agent's HTTP traces, recorded under the same task ID, land under `sessions/<taskID>/traces/` instead of being dropped — then a per-turn snapshot via the `loop.TurnCompleter` seam, and a terminal snapshot + timeline on every exit path (completed / cancelled / max-turns / error), matching the UI exit-path handling. This works in both UI and batch modes; the in-memory sidebar child session is unchanged.
+
 ### `internal/debug/` — Crash dumps, HTTP traces, diagnostics
 
 | File | Responsibility |
@@ -281,7 +283,7 @@ The `generic` persona is the built-in default (its prompt is kept in sync with `
 | `run.go` | `StartRun()` — validates config, snapshot runtime limits, builds LLM service, resolves skill context, builds tool registry (including `skill`, `delegate`, `collect`, `render_quick_replies`), starts agent loop; persists the run timeline on every exit path (completed, cancelled, max-turns, error) via a RunState-free path callable from headless batch runs |
 | `system_prompt.go` | `buildSystemPrompt()`, `buildLLMService()` — assembles system prompt from base prompt + repo instructions + skills catalog + active skills; `buildLLMService()` creates the `*litellm.Client` via `provider.NewLitellmClient` |
 | `skill_context.go` | `resolveSessionSkillContext()` — re-resolves active skill names against current registry |
-| `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()` |
+| `subagent.go` | `SpawnSubAgent()`, `CollectSubAgents()` — sub-agent lifecycle management, `buildBaseToolRegistry()`; persists each sub-agent run as a child session on disk (snapshot + traces + timeline under `~/.eitri/sessions/<taskID>/`) in both UI and batch modes |
 | `subagent_store.go` | Thread-safe sub-agent task storage and cancellation |
 | `context_files.go` | `ScanContextFiles()` — scans workspace for `AGENTS.md` and linked context files loaded into the prompt |
 | `model_api.go` | `resolveModelAPI()` — resolves the GitHub Copilot model API endpoint |
