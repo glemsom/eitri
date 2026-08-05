@@ -23,10 +23,15 @@
 //	                   tool registry, *litellm.Request, and system prompt in
 //	                   one parameterized call; buildRunRequest is shared with
 //	                   sub-agent runs too.
+//	compact.go       — autoCompactAfterTurn: the shared auto-compaction step
+//	                   for UI and batch parent runs (issue #1093); restores
+//	                   the compacted history into the history manager
 //	run.go           — StartRun (agent loop entry point), session persistence
-//	                   after run
+//	                   after run, UI OnTurnComplete (snapshot + compaction)
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
 //	                   loop.NewSessionHistoryManager, io.Writer output)
+//	batch_persist.go — Batch session persistence: per-turn snapshots and the
+//	                   batch turn completer (snapshot + shared compaction)
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
 //	                   helpers used by run.go, batch.go, and subagent.go.
 //	                   buildLLMService assembles auth, LLM service, tool

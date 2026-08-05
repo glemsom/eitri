@@ -68,9 +68,15 @@ func batchTitle(prompt, fallback string) string {
 }
 
 // batchTurnCompleter implements loop.TurnCompleter for headless batch runs.
-// It persists a session.json snapshot after each complete agent turn via the
-// existing per-turn completion seam — the same seam the UI path uses — with
-// no changes to the agent loop.
+// After each complete agent turn it persists a session.json snapshot via the
+// existing per-turn completion seam — the same seam the UI path uses — and
+// then runs the shared auto-compaction step used by UI parent runs (issue
+// #1093), so long batch runs compact their conversation history below the
+// low-water mark instead of overflowing the context window. The compacted
+// history is restored into the session manager and reflected in a follow-up
+// snapshot, so the next turn's LLM request and the on-disk session.json stay
+// within the same thresholds, salience ordering, and tool-call retention as
+// UI runs.
 type batchTurnCompleter struct {
 	svc          *RunService
 	sessionMgr   *history.SessionManager
@@ -79,10 +85,36 @@ type batchTurnCompleter struct {
 	workspace    string
 	systemPrompt string
 	createdAt    time.Time
+	cfg          RunConfig
 }
 
-func (b *batchTurnCompleter) OnTurnComplete(_ context.Context, _ string) {
+func (b *batchTurnCompleter) OnTurnComplete(ctx context.Context, _ string) {
 	b.svc.batchSnapshot(b.sessionMgr, b.sessionID, uisession.StatusRunning, b.title, b.workspace, b.systemPrompt, b.createdAt)
+
+	// Shared auto-compaction: same thresholds, salience ordering, and tool-call
+	// retention as UI runs (the settings come from the same RunConfig). The
+	// compacted history replaces the session manager's history, so the next
+	// turn's LLM request stays within the context window.
+	compactedMsgs, count, freedTokens, prunedToolCalls, err := b.svc.autoCompactAfterTurn(ctx, b.sessionMgr, b.sessionID, b.cfg)
+	if err != nil {
+		slog.Warn("batch compaction failed, will retry on next turn",
+			slog.String("session_id", b.sessionID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if compactedMsgs == nil {
+		return
+	}
+
+	// Re-snapshot so session.json on disk reflects the compacted history.
+	b.svc.batchSnapshot(b.sessionMgr, b.sessionID, uisession.StatusRunning, b.title, b.workspace, b.systemPrompt, b.createdAt)
+	slog.Info("batch run compacted conversation history",
+		slog.String("session_id", b.sessionID),
+		slog.Int("compacted_count", count),
+		slog.Int("freed_tokens", freedTokens),
+		slog.Int("pruned_tool_calls", prunedToolCalls),
+	)
 }
 
 // batchSnapshot writes the current batch run state to disk as a session.json
