@@ -401,7 +401,7 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 
 	browserID := s.browserIDFromRequest(r)
-	if _, ok := s.config.SessionManager.GetValidated(id, browserID); !ok {
+	if meta := s.config.SessionManager.GetMetaShared(id); meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -411,7 +411,7 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := s.config.SessionManager.GetConfig(id)
+	cfg := s.config.SessionManager.GetConfigShared(id)
 	if cfg == nil || cfg.Workspace == "" {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return

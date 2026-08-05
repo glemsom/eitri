@@ -24,7 +24,7 @@ func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -32,7 +32,7 @@ func (s *Server) handleSessionDirectoryBrowser(w http.ResponseWriter, r *http.Re
 
 	pathParam := r.URL.Query().Get("path")
 	if pathParam == "" {
-		cfg := s.config.SessionManager.GetConfig(id)
+		cfg := s.config.SessionManager.GetConfigShared(id)
 		if cfg != nil {
 			pathParam = cfg.Workspace
 		}
@@ -71,7 +71,7 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return

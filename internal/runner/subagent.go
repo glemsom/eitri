@@ -170,12 +170,13 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 
 	var childRunState *RunState
 
-	// Create child UI session if the manager is available
+	// Create child UI session if the manager is available.
+	// Shared read: only the parent's BrowserID is needed to link the child.
 	if s.uiSessionMgr != nil {
-		parentSess := s.uiSessionMgr.Get(sessionID)
-		if parentSess != nil {
+		parentMeta := s.uiSessionMgr.GetMetaShared(sessionID)
+		if parentMeta != nil {
 			title := loop.TruncateText(task, 60)
-			childSess, childErr := s.uiSessionMgr.CreateChild(sessionID, parentSess.BrowserID, title)
+			childSess, childErr := s.uiSessionMgr.CreateChild(sessionID, parentMeta.BrowserID, title)
 			if childErr != nil {
 				slog.Warn("failed to create child session for sub-agent",
 					slog.String("task_id", taskID),
@@ -188,7 +189,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 					slog.String("child_session_id", childSess.ID),
 				)
 				// Broadcast session_status so the child appears in sidebar immediately
-				s.BroadcastToBrowser(parentSess.BrowserID, BrowserEvent{
+				s.BroadcastToBrowser(parentMeta.BrowserID, BrowserEvent{
 					Type: "session_status",
 					Data: map[string]any{
 						"session_id": childSess.ID,

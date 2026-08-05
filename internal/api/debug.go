@@ -122,6 +122,11 @@ func (s *Server) handleDebugSessionByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Keeps the copying getters: this endpoint is a troubleshooting state dump
+	// that is polled concurrently with active agent runs. The run loop mutates
+	// session state in place (e.g. meta.UpdatedAt during run setup, message
+	// content on turn completion), so a shared reference would race with it.
+	// A detached copy gives a consistent point-in-time snapshot.
 	meta := s.config.SessionManager.GetMeta(id)
 	if meta == nil {
 		writeError(w, http.StatusNotFound, "session not found")
@@ -319,6 +324,10 @@ func sessionToSummary(meta *session.SessionMeta, convo *session.Conversation) de
 	return summary
 }
 
+// sessionToSummaryFromID builds a debug summary from the copying getters. The
+// debug endpoints run concurrently with active agent runs whose in-place
+// mutations (meta.UpdatedAt, message content) would race with shared references,
+// so they intentionally stay on the detached-copy path (see handleDebugSessionByID).
 func sessionToSummaryFromID(mgr *session.Manager, id string) *debugSessionSummary {
 	meta := mgr.GetMeta(id)
 	if meta == nil {

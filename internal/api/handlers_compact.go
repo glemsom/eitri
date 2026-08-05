@@ -39,7 +39,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	browserID := s.browserIDFromRequest(r)
 
-	meta := s.config.SessionManager.GetMeta(id)
+	meta := s.config.SessionManager.GetMetaShared(id)
 	if meta == nil || meta.BrowserID != browserID {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -70,7 +70,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	// Allow manual compaction even when auto-compaction is disabled.
 	// The user can still manually compact via the "Compact now" button.
 
-	cfgState := s.config.SessionManager.GetConfig(id)
+	cfgState := s.config.SessionManager.GetConfigShared(id)
 	workspace := ""
 	if cfgState != nil {
 		workspace = cfgState.Workspace
@@ -104,6 +104,10 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	// We render two elements in the response:
 	//   1. The toast (main target, goes to #error-toasts)
 	//   2. The messages container via OOB swap (replaces #messages in-place)
+	// Keeps the copying getter: renderSessionForPage needs the assembled
+	// UISession facade (meta + messages + skills in one struct) to produce the
+	// HTML. The shared accessors expose the sub-stores separately, so this
+	// stays on Get until the contract step (#981) provides a shared facade.
 	sess := s.config.SessionManager.Get(id)
 	if sess != nil {
 		renderedSess := renderSessionForPage(sess)

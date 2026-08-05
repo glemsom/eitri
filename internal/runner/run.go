@@ -343,7 +343,7 @@ func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisess
 	s.uiSessionMgr.UpdateStatus(sessionID, status)
 	s.snapshotSession(sessionID)
 
-	meta := s.uiSessionMgr.GetMeta(sessionID)
+	meta := s.uiSessionMgr.GetMetaShared(sessionID)
 	if meta == nil || meta.BrowserID == "" {
 		return
 	}
@@ -363,7 +363,9 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 	}
 	// If the last message is an empty assistant (created by AppendComponent),
 	// update its content instead of creating a duplicate.
-	convo := s.uiSessionMgr.GetConversation(sessionID)
+	// Shared read: only the last message is inspected; mutations go through the
+	// manager's mutating methods below.
+	convo := s.uiSessionMgr.GetConversationShared(sessionID)
 	if convo != nil && len(convo.Messages) > 0 {
 		last := convo.Messages[len(convo.Messages)-1]
 		if last.Role == "assistant" && last.Content == "" {
@@ -396,6 +398,9 @@ func (s *RunService) snapshotSession(sessionID string) {
 	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
+	// Keeps the copying getter: the persister serializes the session to JSON
+	// and must receive a detached UISession facade (meta + messages + skills)
+	// rather than a shared reference to manager-owned state.
 	sess := s.uiSessionMgr.Get(sessionID)
 	if sess == nil {
 		return
@@ -414,7 +419,7 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	}
 	s.uiSessionMgr.UpdateStatus(sessionID, status)
 
-	meta := s.uiSessionMgr.GetMeta(sessionID)
+	meta := s.uiSessionMgr.GetMetaShared(sessionID)
 	if meta == nil || meta.BrowserID == "" {
 		return
 	}
@@ -435,6 +440,8 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 	if s.persister == nil || s.uiSessionMgr == nil {
 		return
 	}
+	// Keeps the copying getter: the snapshot below serializes the full session
+	// facade to disk and needs a detached copy (see snapshotSession).
 	sess := s.uiSessionMgr.Get(sessionID)
 	if sess == nil {
 		return
@@ -535,7 +542,8 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
 	}
 
-	// Snapshot the compacted history.
+	// Snapshot the compacted history. Keeps the copying getter: the persister
+	// serializes the full session facade and needs a detached copy.
 	sessAfter := s.uiSessionMgr.Get(sessionID)
 	if sessAfter != nil {
 		if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
