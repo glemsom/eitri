@@ -14,6 +14,13 @@ func TestJsFiles(t *testing.T) {
 		"eitri-session-id.js",
 		"eitri-composer.js",
 		"eitri-stream.js",
+		"eitri-stream-common.js",
+		"eitri-stream-toolcards.js",
+		"eitri-stream-announcer.js",
+		"eitri-stream-tokens.js",
+		"eitri-stream-confirmation.js",
+		"eitri-stream-scroll.js",
+		"eitri-stream-render.js",
 		"eitri-renderers.js",
 		"eitri-mermaid.js",
 		"eitri-lazy-load.js",
@@ -102,39 +109,65 @@ func TestJsFiles(t *testing.T) {
 		t.Fatalf("failed to read eitri-stream.js: %v", err)
 	}
 	content2 := string(data2)
+
+	// eitri-stream was split into per-concern modules (issue #1113): the
+	// stream behaviour is spread across eitri-stream-common/toolcards/
+	// announcer/tokens/confirmation/scroll/render.js, each a self-contained
+	// island sharing the window.eitriStream runtime (loaded before the
+	// orchestrator eitri-stream.js in base.templ). Assertions below that
+	// describe cross-cutting stream behaviour run against the concatenated
+	// modules so they stay meaningful regardless of which file owns the code.
+	streamModuleNames := []string{
+		"eitri-stream-common.js",
+		"eitri-stream-toolcards.js",
+		"eitri-stream-announcer.js",
+		"eitri-stream-tokens.js",
+		"eitri-stream-confirmation.js",
+		"eitri-stream-scroll.js",
+		"eitri-stream-render.js",
+		"eitri-stream.js",
+	}
+	streamAll := ""
+	for _, name := range streamModuleNames {
+		modData, err := Files.ReadFile(name)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", name, err)
+		}
+		streamAll += string(modData)
+	}
 	if !strings.Contains(content2, "reenableComposer") {
 		t.Error("eitri-stream.js missing reenableComposer function")
 	}
 
 	// Verify escapeHtml is defined only once (issue #974)
-	escapeHtmlCount := strings.Count(content2, "function escapeHtml(")
+	escapeHtmlCount := strings.Count(streamAll, "function escapeHtml(")
 	if escapeHtmlCount != 1 {
 		t.Errorf("eitri-stream.js should define escapeHtml exactly once, found %d definitions", escapeHtmlCount)
 	}
 
 	// Verify stream JS has insertOptimisticBubble
-	if !strings.Contains(content2, "insertOptimisticBubble") {
+	if !strings.Contains(streamAll, "insertOptimisticBubble") {
 		t.Error("eitri-stream.js missing insertOptimisticBubble function")
 	}
 
 	// Verify stream JS has scrollToLatest
-	if !strings.Contains(content2, "scrollToLatest") {
+	if !strings.Contains(streamAll, "scrollToLatest") {
 		t.Error("eitri-stream.js missing scrollToLatest function")
 	}
 
 	// Verify stream JS has scroll-to-bottom button logic (IntersectionObserver, sentinel, button toggle)
-	if !strings.Contains(content2, "initScrollToBottomButton") {
+	if !strings.Contains(streamAll, "initScrollToBottomButton") {
 		t.Error("eitri-stream.js missing initScrollToBottomButton function")
 	}
-	if !strings.Contains(content2, "scroll-to-bottom-btn") {
+	if !strings.Contains(streamAll, "scroll-to-bottom-btn") {
 		t.Error("eitri-stream.js missing scroll-to-bottom-btn element reference")
 	}
-	if !strings.Contains(content2, "IntersectionObserver") {
+	if !strings.Contains(streamAll, "IntersectionObserver") {
 		t.Error("eitri-stream.js missing IntersectionObserver for scroll detection")
 	}
 
 	// Verify stream JS has removeOptimisticBubbles
-	if !strings.Contains(content2, "removeOptimisticBubbles") {
+	if !strings.Contains(streamAll, "removeOptimisticBubbles") {
 		t.Error("eitri-stream.js missing removeOptimisticBubbles function")
 	}
 
@@ -421,20 +454,20 @@ func TestJsFiles(t *testing.T) {
 
 	// Verify stream JS exports lightweightMarkdown function
 
-	// Verify stream JS es.onerror handler calls cleanup before RECONNECTING
-	if !strings.Contains(content2, "clearToolActivity") {
+	// Verify stream JS has cleanup helpers (clear/thinking/reset activity)
+	if !strings.Contains(streamAll, "clearToolActivity") {
 		t.Error("eitri-stream.js missing clearToolActivity function")
 	}
-	if !strings.Contains(content2, "clearThinkingPanel") {
+	if !strings.Contains(streamAll, "clearThinkingPanel") {
 		t.Error("eitri-stream.js missing clearThinkingPanel function")
 	}
-	if !strings.Contains(content2, "resetActivityTracking") {
+	if !strings.Contains(streamAll, "resetActivityTracking") {
 		t.Error("eitri-stream.js missing resetActivityTracking function")
 	}
 	// Verify es.onerror preserves in-flight tool state instead of clearing it
 	// before RECONNECTING: a transient EventSource error must not wipe tool
 	// activity/elapsed data that resumes after reconnect (issue #1070).
-	errReconnectIdx := strings.Index(content2, "state.status = STATES.RECONNECTING")
+	errReconnectIdx := strings.Index(content2, "state.status = S.STATES.RECONNECTING")
 	if errReconnectIdx < 0 {
 		t.Error("eitri-stream.js missing RECONNECTING state transition")
 	} else {
@@ -457,29 +490,29 @@ func TestJsFiles(t *testing.T) {
 	}
 	// Verify a duplicate/replayed 'done' packet is ignored once the run is
 	// already finalizing or finalized (guard on run status, issue #1070).
-	if !strings.Contains(content2, "state.status === STATES.RENDERING || state.status === STATES.DONE") {
+	if !strings.Contains(content2, "state.status === S.STATES.RENDERING || state.status === S.STATES.DONE") {
 		t.Error("eitri-stream.js done handler missing RENDERING/DONE guard against duplicate/replayed done packets (issue #1070)")
 	}
 	// Verify tool card keys are replay-stable across reconnect replays.
-	if !strings.Contains(content2, "toolKeysByIdentity") {
+	if !strings.Contains(streamAll, "toolKeysByIdentity") {
 		t.Error("eitri-stream.js missing toolKeysByIdentity replay-stable tool card key map (issue #1070)")
 	}
-	if !strings.Contains(content2, "toolIdentityForPacket") {
+	if !strings.Contains(streamAll, "toolIdentityForPacket") {
 		t.Error("eitri-stream.js missing toolIdentityForPacket helper (issue #1070)")
 	}
 	// Verify card timers die with their cards: FIFO eviction/full teardown go
 	// through pruneToolCardState, and the interval self-stops when its card
 	// leaves the DOM.
-	if !strings.Contains(content2, "function pruneToolCardState(") {
+	if !strings.Contains(streamAll, "function pruneToolCardState(") {
 		t.Error("eitri-stream.js missing pruneToolCardState helper (issue #1070)")
 	}
-	if !strings.Contains(content2, "!elapsedSpan || !elapsedSpan.isConnected") {
+	if !strings.Contains(streamAll, "!elapsedSpan || !elapsedSpan.isConnected") {
 		t.Error("eitri-stream.js timer must self-stop when its card is removed from the DOM (issue #1070)")
 	}
-	if !strings.Contains(content2, "window.__activeToolCardTimerKeys") {
+	if !strings.Contains(streamAll, "window.__activeToolCardTimerKeys") {
 		t.Error("eitri-stream.js missing __activeToolCardTimerKeys test hook (issue #1070)")
 	}
-	if !strings.Contains(content2, "lightweightMarkdown") {
+	if !strings.Contains(streamAll, "lightweightMarkdown") {
 		t.Error("eitri-stream.js missing lightweightMarkdown function")
 	}
 
@@ -487,22 +520,22 @@ func TestJsFiles(t *testing.T) {
 	// role="status" live region that receives only *new* stream deltas at a
 	// throttled cadence, so assistive tech announces the reply without
 	// re-reading the full stream on every 80ms flush.
-	if !strings.Contains(content2, "stream-announcer") {
+	if !strings.Contains(streamAll, "stream-announcer") {
 		t.Error("eitri-stream.js missing stream-announcer live-region element")
 	}
-	if !strings.Contains(content2, "role") || !strings.Contains(content2, "'status'") {
+	if !strings.Contains(streamAll, "role") || !strings.Contains(streamAll, "'status'") {
 		t.Error("eitri-stream.js stream announcer missing role=\"status\"")
 	}
-	if !strings.Contains(content2, "aria-live") || !strings.Contains(content2, "'polite'") {
+	if !strings.Contains(streamAll, "aria-live") || !strings.Contains(streamAll, "'polite'") {
 		t.Error("eitri-stream.js stream announcer missing aria-live=\"polite\"")
 	}
-	if !strings.Contains(content2, "accumulateStreamAnnounce") {
+	if !strings.Contains(streamAll, "accumulateStreamAnnounce") {
 		t.Error("eitri-stream.js missing accumulateStreamAnnounce delta bookkeeping")
 	}
-	if !strings.Contains(content2, "ANNOUNCE_INTERVAL_MS") {
+	if !strings.Contains(streamAll, "ANNOUNCE_INTERVAL_MS") {
 		t.Error("eitri-stream.js missing ANNOUNCE_INTERVAL_MS throttle constant")
 	}
-	if !strings.Contains(content2, "flushStreamAnnounce") {
+	if !strings.Contains(streamAll, "flushStreamAnnounce") {
 		t.Error("eitri-stream.js missing flushStreamAnnounce")
 	}
 }
@@ -523,7 +556,10 @@ func TestSharedSessionIdHelper(t *testing.T) {
 	if !strings.Contains(helperSrc, "window.eitriGetSessionId") {
 		t.Fatal("eitri-session-id.js must expose window.eitriGetSessionId")
 	}
-	for _, island := range []string{"eitri-events.js", "eitri-stream.js", "eitri-context.js", "eitri-composer.js"} {
+	// The stream island resolves its session ID via eitri-stream-common.js
+	// (getSessionIdFromUrl calls window.eitriGetSessionId); the orchestrator
+	// eitri-stream.js delegates to that shared helper through the runtime.
+	for _, island := range []string{"eitri-events.js", "eitri-stream-common.js", "eitri-context.js", "eitri-composer.js"} {
 		src, err := Files.ReadFile(island)
 		if err != nil {
 			t.Fatalf("failed to read %s: %v", island, err)
@@ -597,14 +633,14 @@ func TestStreamIslandNoDebugLogging(t *testing.T) {
 }
 
 func TestLightweightMarkdown(t *testing.T) {
-	f, err := Files.Open("eitri-stream.js")
+	f, err := Files.Open("eitri-stream-common.js")
 	if err != nil {
-		t.Fatalf("failed to open eitri-stream.js: %v", err)
+		t.Fatalf("failed to open eitri-stream-common.js: %v", err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
-		t.Fatalf("failed to read eitri-stream.js: %v", err)
+		t.Fatalf("failed to read eitri-stream-common.js: %v", err)
 	}
 	content := string(data)
 
@@ -813,12 +849,12 @@ func TestServiceWorker(t *testing.T) {
 			want: `caches.delete(key)`,
 		},
 		{
-			name:    "network-only for /api/ endpoints",
-			want:    `url.pathname.startsWith("/api/")`,
+			name: "network-only for /api/ endpoints",
+			want: `url.pathname.startsWith("/api/")`,
 		},
 		{
-			name:    "network-only for /stream endpoints",
-			want:    `url.pathname.startsWith("/stream")`,
+			name: "network-only for /stream endpoints",
+			want: `url.pathname.startsWith("/stream")`,
 		},
 		{
 			name: "cache-first for /static/ assets",
@@ -883,17 +919,17 @@ func TestServiceWorker(t *testing.T) {
 // TestStreamJSVersionedAvatar verifies eitri-stream.js builds the streaming
 // bubble avatar URL with the cache-bust version (issue #969).
 func TestStreamJSVersionedAvatar(t *testing.T) {
-	data, err := Files.ReadFile("eitri-stream.js")
+	data, err := Files.ReadFile("eitri-stream-tokens.js")
 	if err != nil {
-		t.Fatalf("failed to read eitri-stream.js: %v", err)
+		t.Fatalf("failed to read eitri-stream-tokens.js: %v", err)
 	}
 	content := string(data)
 
 	if !strings.Contains(content, "data-asset-version") {
-		t.Error("eitri-stream.js should read the page shell's data-asset-version for cache busting")
+		t.Error("eitri-stream-tokens.js should read the page shell's data-asset-version for cache busting")
 	}
 	if !strings.Contains(content, "/static/face.webp?v=") {
-		t.Error("eitri-stream.js should append the cache-bust version to /static/face.webp")
+		t.Error("eitri-stream-tokens.js should append the cache-bust version to /static/face.webp")
 	}
 }
 
@@ -1581,14 +1617,14 @@ func TestRenderersLoadFailureDegradesContent(t *testing.T) {
 // the throttled cadence instead of re-reading the full stream every 80ms flush
 // (issue #1071).
 func TestAccumulateStreamAnnounce(t *testing.T) {
-	f, err := Files.Open("eitri-stream.js")
+	f, err := Files.Open("eitri-stream-announcer.js")
 	if err != nil {
-		t.Fatalf("failed to open eitri-stream.js: %v", err)
+		t.Fatalf("failed to open eitri-stream-announcer.js: %v", err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
-		t.Fatalf("failed to read eitri-stream.js: %v", err)
+		t.Fatalf("failed to read eitri-stream-announcer.js: %v", err)
 	}
 	content := string(data)
 
@@ -1659,4 +1695,70 @@ func TestAccumulateStreamAnnounce(t *testing.T) {
 			t.Errorf("lastAnnouncedLen = %d, want 0", lenOf(got))
 		}
 	})
+}
+
+// TestStreamModulesLoadTogether verifies the eitri-stream module files (issue
+// #1113) boot in dependency order under a minimal DOM stub without throwing —
+// a smoke test for cross-module references on the shared window.eitriStream
+// runtime (the primary regression risk of splitting the single island).
+func TestStreamModulesLoadTogether(t *testing.T) {
+	runtime := goja.New()
+	_, err := runtime.RunString(`
+		globalThis.window = {};
+		// Minimal stubs used only at module-load time (event registration and
+		// the shared session-id helper used by the runtime bootstrap).
+		globalThis.document = {
+			readyState: 'loading',
+			addEventListener: function () {},
+			createElement: function () { return { appendChild: function () {} }; },
+			body: { appendChild: function () {} },
+			querySelector: function () { return null; },
+			querySelectorAll: function () { return []; },
+			getElementById: function () { return null; },
+		};
+		globalThis.window.eitriGetSessionId = function () { return 'sess123'; };
+	`)
+	if err != nil {
+		t.Fatalf("failed to set up DOM stub: %v", err)
+	}
+
+	for _, name := range []string{
+		"eitri-stream-common.js",
+		"eitri-stream-toolcards.js",
+		"eitri-stream-announcer.js",
+		"eitri-stream-tokens.js",
+		"eitri-stream-confirmation.js",
+		"eitri-stream-scroll.js",
+		"eitri-stream-render.js",
+		"eitri-stream.js",
+	} {
+		data, err := Files.ReadFile(name)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", name, err)
+		}
+		if _, err := runtime.RunString(string(data)); err != nil {
+			t.Fatalf("failed to load %s: %v", name, err)
+		}
+	}
+
+	// The runtime must exist and expose the functions the modules share.
+	rt := runtime.Get("window").ToObject(runtime).Get("eitriStream")
+	if rt == nil || rt.ToObject(runtime) == nil {
+		t.Fatal("window.eitriStream runtime not created after loading stream modules")
+	}
+	ru := rt.ToObject(runtime)
+	for _, want := range []string{
+		"STATES", "streams", "createStreamState", "lightweightMarkdown",
+		"injectToolCardSlot", "renderToolCard", "appendToken",
+		"flushStreamBuffer", "flushStreamAnnounce", "showStreamingBubble",
+		"finalizeMessage", "autoScroll", "insertOptimisticBubble",
+	} {
+		if v := ru.Get(want); v == nil || (goja.IsUndefined(v)) {
+			t.Errorf("window.eitriStream.%s missing after module load", want)
+		}
+	}
+	// The scroll module must have wired the orchestrator hooks.
+	if v := ru.Get("onTokenActivity"); v == nil || goja.IsUndefined(v) {
+		t.Error("window.eitriStream.onTokenActivity hook not registered by eitri-stream-scroll.js")
+	}
 }

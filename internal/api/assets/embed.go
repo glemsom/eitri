@@ -16,6 +16,13 @@ import (
 //go:embed eitri.css
 //go:embed eitri-session-id.js
 //go:embed eitri-stream.js
+//go:embed eitri-stream-common.js
+//go:embed eitri-stream-toolcards.js
+//go:embed eitri-stream-announcer.js
+//go:embed eitri-stream-tokens.js
+//go:embed eitri-stream-confirmation.js
+//go:embed eitri-stream-scroll.js
+//go:embed eitri-stream-render.js
 //go:embed eitri-composer.js
 //go:embed eitri-renderers.js
 //go:embed eitri-mermaid.js

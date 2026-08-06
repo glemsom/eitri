@@ -27,6 +27,13 @@ templ Base(title string, chatPath string, sessions []*session.UISession, activeI
 			     needs them is present. (issue #968) -->
 			<script src={ templ.URL(staticAsset("/static/htmx.min.js")) } defer></script>
 			<script src={ templ.URL(staticAsset("/static/eitri-session-id.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-common.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-toolcards.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-announcer.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-tokens.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-confirmation.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-scroll.js")) } defer></script>
+			<script src={ templ.URL(staticAsset("/static/eitri-stream-render.js")) } defer></script>
 			<script src={ templ.URL(staticAsset("/static/eitri-stream.js")) } defer></script>
 			<script src={ templ.URL(staticAsset("/static/eitri-composer.js")) } defer></script>
 			<script src={ templ.URL(staticAsset("/static/eitri-renderers.js")) } defer></script>
