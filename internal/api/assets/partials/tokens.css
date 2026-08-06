@@ -187,6 +187,10 @@
   --on-accent-dim: rgba(255, 255, 255, 0.7);
   --on-warning: #000000;
 
+  /* Canonical focus ring for visible keyboard focus (issue #1116). A soft
+     accent halo that reads on both theme surfaces without a hard outline. */
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+
   --radius: 8px;
   --surface-hover: rgba(255, 255, 255, 0.04);
 
@@ -259,6 +263,9 @@
 
     --radius: 8px;
     --surface-hover: rgba(0, 0, 0, 0.04);
+
+    /* Focus ring — light variant (canonical token, issue #1116) */
+    --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 
     /* Surface tints — light variants */
     --header-bg: rgba(255, 255, 255, 0.97);

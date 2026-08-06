@@ -208,6 +208,16 @@
 .settings-details summary:hover::before {
 }
 
+.settings-details summary:active {
+  color: var(--accent);
+}
+
+.settings-details summary:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
+}
+
 /* Settings page — scrollable container inside main (which has overflow-y:hidden) */
 .settings-view {
   flex: 1;

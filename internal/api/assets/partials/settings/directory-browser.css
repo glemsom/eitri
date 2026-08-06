@@ -41,6 +41,16 @@
   color: var(--text);
 }
 
+.directory-browser-close:active {
+  color: var(--accent);
+}
+
+.directory-browser-close:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
+}
+
 .directory-browser-breadcrumbs {
   display: flex;
   align-items: center;
@@ -65,6 +75,16 @@
 .breadcrumb-link:hover {
   background: var(--surface-alt);
   color: var(--accent-hover);
+}
+
+.breadcrumb-link:active {
+  background: var(--accent);
+  color: white;
+}
+
+.breadcrumb-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .breadcrumb-current {
@@ -98,6 +118,20 @@
 
 .directory-browser-item:hover {
   background: var(--surface-alt);
+}
+
+.directory-browser-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.directory-browser-item:active .dir-name {
+  color: white;
+}
+
+.directory-browser-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .directory-browser-item .dir-icon {

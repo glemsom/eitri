@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The UI now gives every interactive element a full hover, pressed (`:active`) and visible keyboard-focus (`:focus-visible`) treatment, drawn from a canonical `--focus-ring` token (based on the accent colour) so focus feedback reads in both light and dark themes. Interactive controls — sidebar session/activity rows, nav links, quick-reply chips, completion/persona/directory-browser items, buttons, `<summary>` rows and the run selector — now expose all three states. (#1116)
+
+- The narrow-viewport story is now designed and verified for the three surfaces that previously only inherited the single 768px sidebar collapse: the sessions management table scrolls horizontally (`min-width` + scroll container) instead of squashing its columns, the tool-activity list gets a bounded full-width scroll region, and the report page stacks its header chrome and wraps its run-selector/meta bars for tighter gutters. (#1116)
+
 - CI now splits tests into a fast **unit+race** job (`make test-race`, all non-browser packages under the race detector) and a standalone **browser E2E** job (`make test-browser`, chromedp, no `-race`). The chromedp browser suite in `internal/api` is now gated behind the `//go:build e2e` tag, so `go test ./...` and the release gate no longer drag slow browser/DOM tests through `-race` — a browser flake no longer blocks the fast unit gate or every commit, and each result is attributable to its own CI job. Docs updated in `docs/TESTING.md` and `CONTEXT.md`; the verbose `make release-check` still runs both suites. (#1122)
 
 - Tests gains a new `testutil.GoroutineLeakGuard` helper that verifies a service started and stopped repeatedly (compact runs, run start/cancel loops) does not leave a background goroutine running into the next test case, closing the shutdown audit from issue #1127. Registration is one line atop any test; it polls the goroutine count back to baseline at teardown and dumps stacks on a leak. Documented in `docs/TESTING.md`.

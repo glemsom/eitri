@@ -159,6 +159,15 @@ eitri-context {
 .context-compact:hover {
   background: var(--surface-alt);
 }
+
+.context-compact:active {
+  background: var(--accent);
+}
+
+.context-compact:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 .context-bar {
   flex: 1;
   height: 8px;
@@ -271,6 +280,18 @@ eitri-context {
 }
 .compact-btn:hover {
   border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.compact-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.compact-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
   color: var(--text);
 }
 
