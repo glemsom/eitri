@@ -104,10 +104,10 @@ Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path 
 
 | File | Responsibility |
 |------|---------------|
-| `sandbox.go` | `WrapCommand()` — wraps a shell command inside a bubblewrap sandbox; falls back to direct execution if bwrap is unavailable, OS is not Linux, or profile is `"none"` |
-| `sandbox_test.go` | Unit and integration tests for `WrapCommand` (skip if bwrap not on PATH) |
+| `sandbox.go` | `WrapCommand()` / `Manager` — wraps a shell command inside a bubblewrap sandbox; falls back to direct execution if bwrap is unavailable, OS is not Linux, or profile is `"none"` |
+| `sandbox_test.go` | Unit and integration tests for `WrapCommand` and the session-scoped tmpdir `Manager` (skip if bwrap not on PATH) |
 
-Provides `WrapCommand(workspace, command, Config)` which returns the executable, arguments, and a cleanup function for running a command inside a bubblewrap sandbox. The sandbox creates an ephemeral temporary directory under `/tmp` and binds it as `/tmp` inside the sandbox, ensuring temp file isolation between commands. The returned cleanup function removes the ephemeral dir and logs at warn level on failure. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale.
+Provides `Manager.WrapCommand(workspace, command, sessionID)` which returns the executable, arguments, and a cleanup function for running a command inside a bubblewrap sandbox. The sandbox creates a temporary directory and binds it as `/tmp` inside the sandbox. When `sessionID` is non-empty the tmpdir is **session-scoped** (ADR-0026): one host directory per run, mounted at `/tmp` for every sandboxed command of that run, so files written to `/tmp` survive across calls and are removed by `EndSession(sessionID)` at run end — the per-call cleanup is a no-op. When `sessionID` is empty the tmpdir is ephemeral and removed by the returned cleanup, preserving per-command isolation. The session tmpdir is created lazily on first use. Sandbox-disabled execution (bwrap missing/useless, non-Linux, or profile `"none"`) creates no tmpdir and runs the command directly. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale and ADR-0026 for session scoping.
 
 ### `internal/runstate/` — SSE broadcast
 
@@ -380,7 +380,7 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 - Exit code from `cmd.ProcessState.ExitCode()`
 - Per-command timeout via `context.WithTimeout` (default 60s from `command_timeout` config)
 - Output capped at 8 KiB (before pattern compression)
-- No cross-turn shell state — agent must use `&&` chains or explicit env vars
+- No cross-turn shell state (agent must use `&&` chains or explicit env vars), **except** `/tmp`, which is session-scoped (ADR-0026): files written to `/tmp` in one sandboxed call persist for the rest of the run and are removed at run end
 
 **Tool registration** happens in one place, `prepareRun()` in `internal/runner/prepare.go` (ADR-0024/0025): it registers the core tools (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`) plus `skill` when a skills service is wired, and — gated by the `allow_delegate` option — `delegate`/`collect` (parent runs only; delegated runs are leaves). `render_quick_replies` registers only when a UI session exists. Recursion/leaf gating is a config value, not a registry omission (issue #1092, ADR-0013, ADR-0025).
 

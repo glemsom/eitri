@@ -472,15 +472,27 @@ func TestWrapCommand_WorkspaceReadWrite(t *testing.T) {
 	}
 }
 
-// TestWrapCommand_TmpIsolation_CleanedUpBetweenCalls verifies that a file
-// written to /tmp during one sandboxed command is absent in a subsequent
-// call — confirming the ephemeral /tmp directory is cleaned up between
-// invocations.
-func TestWrapCommand_TmpIsolation_CleanedUpBetweenCalls(t *testing.T) {
-	if !BwrapIsUsable() {
-		t.Skip("bwrap not usable, skipping integration test")
+// Helper for the session-scoped manager integration tests: builds a Manager,
+// runs one sandboxed command for the given session, and returns the combined
+// output.
+func managerRunCmd(t *testing.T, m *Manager, workspace, sessionID, command string) string {
+	t.Helper()
+	exe, args, cleanup, err := m.WrapCommand(workspace, command, sessionID)
+	defer cleanup()
+	if err != nil {
+		t.Fatalf("WrapCommand: %v", err)
 	}
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = workspace
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("command failed: %v\noutput: %s", err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
 
+func newBwrapTestWorkspace(t *testing.T) string {
+	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
@@ -489,94 +501,178 @@ func TestWrapCommand_TmpIsolation_CleanedUpBetweenCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating test dir: %v", err)
 	}
-	defer os.RemoveAll(dir)
-	cfg := DefaultConfig()
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
 
-	// Define a unique sentinel filename for this test run.
-	sentinelPath := "/tmp/sentinel-879-cleanup"
-
-	// Step 1: Write the sentinel file to /tmp inside the sandbox.
-	exe1, args1, cleanup1, err := WrapCommand(dir, "touch "+sentinelPath, cfg)
-	defer cleanup1()
-	if err != nil {
-		t.Fatalf("WrapCommand (write): %v", err)
-	}
-	cmd1 := exec.Command(exe1, args1...)
-	cmd1.Dir = dir
-	if out, err := cmd1.CombinedOutput(); err != nil {
-		t.Fatalf("write command failed: %v\noutput: %s", err, out)
+// TestSessionTmpdir_PersistsAcrossCalls verifies that a file written to /tmp
+// in one sandboxed call for a session is readable by a later call for the
+// same session — the session tmpdir is reused, not remade per invocation.
+func TestSessionTmpdir_PersistsAcrossCalls(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	// Step 2: Check that the sentinel file does NOT exist in a new sandbox call.
-	exe2, args2, cleanup2, err := WrapCommand(dir, "test -f "+sentinelPath+" && echo found || echo not-found", cfg)
-	defer cleanup2()
-	if err != nil {
-		t.Fatalf("WrapCommand (check): %v", err)
-	}
-	cmd2 := exec.Command(exe2, args2...)
-	cmd2.Dir = dir
-	out2, err := cmd2.CombinedOutput()
-	if err != nil {
-		t.Fatalf("check command failed: %v\noutput: %s", err, out2)
-	}
-	if got := strings.TrimSpace(string(out2)); got != "not-found" {
-		t.Errorf("sentinel file still present after cleanup: output %q, want %q", got, "not-found")
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(DefaultConfig())
+	const sessionID = "sess-persist"
+	t.Cleanup(func() { m.EndSession(sessionID) })
+
+	// Write a file to /tmp in the first call.
+	managerRunCmd(t, m, dir, sessionID, "echo 'persist-me' > /tmp/session-file")
+
+	// A later call for the same session can read it.
+	got := managerRunCmd(t, m, dir, sessionID, "cat /tmp/session-file")
+	if got != "persist-me" {
+		t.Errorf("/tmp content in later call = %q, want %q", got, "persist-me")
 	}
 }
 
-// TestWrapCommand_TmpIsolation_NotSharedAcrossCalls verifies that files
-// written to /tmp in one sandbox call do not leak into the /tmp of a
-// different sandbox call — i.e. each invocation gets its own ephemeral
-// /tmp.
-func TestWrapCommand_TmpIsolation_NotSharedAcrossCalls(t *testing.T) {
+// TestSessionTmpdir_IsolatedBetweenSessions verifies that /tmp content
+// written for one session is not visible to a different session.
+func TestSessionTmpdir_IsolatedBetweenSessions(t *testing.T) {
 	if !BwrapIsUsable() {
 		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	dir, err := os.MkdirTemp(wd, "sandbox-test-*")
-	if err != nil {
-		t.Fatalf("creating test dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
-	cfg := DefaultConfig()
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(DefaultConfig())
 
-	// Step 1: Write a unique file to /tmp in the first sandbox call.
-	exe1, args1, cleanup1, err := WrapCommand(dir, "echo 'first-call-data' > /tmp/first-call-file", cfg)
-	defer cleanup1()
-	if err != nil {
-		t.Fatalf("WrapCommand (first call): %v", err)
+	managerRunCmd(t, m, dir, "sess-a", "echo 'a-data' > /tmp/a-file")
+	managerRunCmd(t, m, dir, "sess-b", "echo 'b-data' > /tmp/b-file")
+	t.Cleanup(func() {
+		m.EndSession("sess-a")
+		m.EndSession("sess-b")
+	})
+
+	// Session B must not see session A's /tmp file.
+	gotB := managerRunCmd(t, m, dir, "sess-b", "test -f /tmp/a-file && echo LEAKED || echo isolated")
+	if gotB != "isolated" {
+		t.Errorf("session B sees session A's file: output %q, want %q", gotB, "isolated")
 	}
-	cmd1 := exec.Command(exe1, args1...)
-	cmd1.Dir = dir
-	if out, err := cmd1.CombinedOutput(); err != nil {
-		t.Fatalf("first command failed: %v\noutput: %s", err, out)
+	// Session A must not see session B's /tmp file either.
+	gotA := managerRunCmd(t, m, dir, "sess-a", "test -f /tmp/b-file && echo LEAKED || echo isolated")
+	if gotA != "isolated" {
+		t.Errorf("session A sees session B's file: output %q, want %q", gotA, "isolated")
+	}
+}
+
+// TestSessionTmpdir_EndSessionRemovesDir verifies that EndSession deletes the
+// session tmpdir from the host filesystem and that the Manager no longer
+// tracks it.
+func TestSessionTmpdir_EndSessionRemovesDir(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
 	}
 
-	// Step 2: In a second call, write a different file to /tmp and verify
-	// the first call's file is absent.
-	exe2, args2, cleanup2, err := WrapCommand(dir, `
-		echo 'second-call-data' > /tmp/second-call-file
-		if test -f /tmp/first-call-file; then
-			echo "LEAKED"
-		else
-			echo "isolated"
-		fi
-	`, cfg)
-	defer cleanup2()
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(DefaultConfig())
+	const sessionID = "sess-cleanup"
+
+	// Create the session tmpdir by writing a file.
+	exe, args, cleanup, err := m.WrapCommand(dir, "touch /tmp/cleanup-sentinel", sessionID)
+	defer cleanup()
 	if err != nil {
-		t.Fatalf("WrapCommand (second call): %v", err)
+		t.Fatalf("WrapCommand: %v", err)
 	}
-	cmd2 := exec.Command(exe2, args2...)
-	cmd2.Dir = dir
-	out2, err := cmd2.CombinedOutput()
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("command failed: %v\noutput: %s", err, out)
+	}
+
+	tmpdir, tracked := m.TmpdirFor(sessionID)
+	if !tracked {
+		t.Fatal("expected session tmpdir to be tracked after first call")
+	}
+	if _, err := os.Stat(tmpdir); err != nil {
+		t.Fatalf("expected session tmpdir %q to exist on host: %v", tmpdir, err)
+	}
+
+	m.EndSession(sessionID)
+
+	if _, stillTracked := m.TmpdirFor(sessionID); stillTracked {
+		t.Error("session tmpdir still tracked after EndSession")
+	}
+	if _, err := os.Stat(tmpdir); !os.IsNotExist(err) {
+		t.Errorf("session tmpdir %q not removed after EndSession, stat err = %v", tmpdir, err)
+	}
+}
+
+// TestSessionTmpdir_ReusedAndNotCleanedByCall verifies that the returned
+// cleanup from WrapCommand does not delete the session tmpdir — only EndSession
+// removes it.
+func TestSessionTmpdir_ReusedAndNotCleanedByCall(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
+	}
+
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(DefaultConfig())
+	const sessionID = "sess-reuse"
+
+	exe, args, cleanup, err := m.WrapCommand(dir, "touch /tmp/reuse-sentinel", sessionID)
 	if err != nil {
-		t.Fatalf("second command failed: %v\noutput: %s", err, out2)
+		t.Fatalf("WrapCommand: %v", err)
 	}
-	if got := strings.TrimSpace(string(out2)); got != "isolated" {
-		t.Errorf("/tmp is shared across calls: output %q, want %q", got, "isolated")
+	cmd := exec.Command(exe, args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("command failed: %v\noutput: %s", err, out)
+	}
+	cleanup() // simulates BashTool defer'ing the cleanup after the call
+
+	// The session dir must survive the call-scoped cleanup.
+	tmpdir, tracked := m.TmpdirFor(sessionID)
+	if !tracked {
+		t.Fatal("session tmpdir should still be tracked after call cleanup")
+	}
+	if _, err := os.Stat(tmpdir); err != nil {
+		t.Errorf("session tmpdir %q removed by call cleanup, stat err = %v", tmpdir, err)
+	}
+
+	m.EndSession(sessionID)
+}
+
+// TestSessionTmpdir_LazyCreation verifies the tmpdir is created on the first
+// bash call of the session rather than at Manager construction.
+func TestSessionTmpdir_LazyCreation(t *testing.T) {
+	if !BwrapIsUsable() {
+		t.Skip("bwrap not usable, skipping integration test")
+	}
+
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(DefaultConfig())
+	if _, exists := m.TmpdirFor("sess-lazy"); exists {
+		t.Error("tmpdir tracked before any call")
+	}
+
+	managerRunCmd(t, m, dir, "sess-lazy", "true")
+	if _, exists := m.TmpdirFor("sess-lazy"); !exists {
+		t.Error("tmpdir not created after first call")
+	}
+	m.EndSession("sess-lazy")
+}
+
+// TestSessionTmpdir_NoTmpdirWhenSandboxDisabled verifies that sandbox-disabled
+// execution (ProfileNone) creates no session tmpdir and runs directly.
+func TestSessionTmpdir_NoTmpdirWhenSandboxDisabled(t *testing.T) {
+	dir := newBwrapTestWorkspace(t)
+	m := NewManager(Config{Profile: ProfileNone})
+	const sessionID = "sess-none"
+
+	got := managerRunCmd(t, m, dir, sessionID, "echo direct")
+	if got != "direct" {
+		t.Errorf("output = %q, want %q", got, "direct")
+	}
+	if _, exists := m.TmpdirFor(sessionID); exists {
+		t.Error("session tmpdir created for sandbox-disabled profile")
+	}
+	exe, args, _, err := m.WrapCommand(dir, "echo hi", sessionID)
+	if err != nil {
+		t.Fatalf("WrapCommand: %v", err)
+	}
+	if exe != "bash" || len(args) != 2 || args[0] != "-c" {
+		t.Errorf("sandbox-disabled: exe/args = %q %v, want bash -c", exe, args)
 	}
 }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `bash` tool's sandbox `/tmp` is now **session-scoped** (ADR-0026, #1172): one host directory is mounted at `/tmp` for every sandboxed `bash` call of a run, so a file written to `/tmp` in one command survives for the rest of the run instead of vanishing on the next call. Each run's `/tmp` is isolated from other runs and is removed automatically when the run ends, including on error paths. Sandbox-disabled configs are unchanged (no tmpdir created, direct host execution).
+
 - Tool argument schemas now carry hard, JSON-Schema-expressible input bounds so the model validates ranges up front instead of relying on prose defaults: `read.start_line`/`read.end_line` `minimum: 1`, `web_fetch.timeout` `minimum: 1`/`maximum: 120`, browser `navigate.timeout` `minimum: 1`, and `delegate.max_turns` `minimum: 1`. Bounds mirror existing runtime defaults (read 1–100, web_fetch 15s, navigate 30s, delegate 250); runtime behaviour is unchanged. (#1168)
 
 - The UI now gives every interactive element a full hover, pressed (`:active`) and visible keyboard-focus (`:focus-visible`) treatment, drawn from a canonical `--focus-ring` token (based on the accent colour) so focus feedback reads in both light and dark themes. Interactive controls — sidebar session/activity rows, nav links, quick-reply chips, completion/persona/directory-browser items, buttons, `<summary>` rows and the run selector — now expose all three states. (#1116)
