@@ -15,8 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/history"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/testutil"
 )
 
 func TestBuild(t *testing.T) {
@@ -85,10 +87,60 @@ func fakeSlowProvider(t *testing.T, delay time.Duration) *httptest.Server {
 	return server
 }
 
+// fakeBlockingProvider is like fakeSlowProvider but never completes on its own:
+// after the first streaming chunk it blocks until the request's context is
+// cancelled. A run against this provider can only end via cancellation, making
+// the cleanup assertion in TestCleanupRuntimeCancelsRuns depend on behavior
+// rather than on timing.
+func fakeBlockingProvider(t *testing.T) *httptest.Server {
+	t.Helper()
+	return fakeInFlightProvider(t, func(ctx context.Context) { <-ctx.Done() })
+}
+
+// fakeInFlightProvider serves a streaming chat completion that emits its first
+// chunk immediately, then waits for the request context to be done. wait is
+// invoked after the first chunk has been flushed; the handler only returns once
+// wait unblocks (typically when the run is cancelled).
+func fakeInFlightProvider(t *testing.T, wait func(ctx context.Context)) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			fmt.Fprintf(w, `data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`+"\n\n", now)
+			flusher.Flush()
+
+			wait(r.Context())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// TestCleanupRuntimeCancelsRuns verifies that cleanupRuntime cancels an in-flight
+// run. It uses a blocking provider so the only way the run ends is via
+// cancellation, and it waits/polls both the active and inactive transitions so
+// the verdict does not depend on how loaded the runner is (notably under -race).
 func TestCleanupRuntimeCancelsRuns(t *testing.T) {
-	provider := fakeSlowProvider(t, 2*time.Second)
+	provider := fakeBlockingProvider(t)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr: session.NewManager(10, t.TempDir()),
+		UISessionMgr:      session.NewManager(10, t.TempDir()),
+		HistorySessionMgr: history.NewSessionManager(10),
 	})
 
 	runCfg := runner.RunConfig{
@@ -101,22 +153,23 @@ func TestCleanupRuntimeCancelsRuns(t *testing.T) {
 	if _, err := runSvc.StartRun(context.Background(), "session-1", "hello", runCfg); err != nil {
 		t.Fatalf("StartRun = %v", err)
 	}
-	if runSvc.ActiveRun("session-1") == nil {
-		t.Fatal("run did not become active")
-	}
+
+	// Await active-ness rather than asserting immediately: the run registers
+	// as active asynchronously, so on a loaded/race-instrumented runner it may
+	// not have registered by the time StartRun returns.
+	testutil.WaitForCondition(t, 10*time.Millisecond, 5*time.Second, func() bool {
+		return runSvc.ActiveRun("session-1") != nil
+	})
 
 	cleanupRuntime(nil, runSvc)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if runSvc.ActiveRun("session-1") == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if runSvc.ActiveRun("session-1") != nil {
-		t.Fatal("run still active after cleanup")
-	}
+	// Because the provider blocks until its request context is cancelled, this
+	// wait can only be satisfied by an actual cancellation; a run that is not
+	// cancelled can never end on its own. The grace period is comfortably larger
+	// than any realistic cancellation latency.
+	testutil.WaitForCondition(t, 10*time.Millisecond, 5*time.Second, func() bool {
+		return runSvc.ActiveRun("session-1") == nil
+	})
 }
 
 // TestRetentionUsesTimerNotSleep verifies that the run-retention cleanup
