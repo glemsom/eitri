@@ -230,7 +230,7 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `settings_sections_diagnostics.templ` | Settings sub-templates: debug & diagnostics and browser sections |
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
 | `sessions.templ` | `SessionsPage` — full sessions management page (active + persisted on disk) |
-| `personas.templ` | `PersonaList` — persona selector cards |
+| `personas.templ` | `PersonaList`, `PersonaAddForm` (create), `PersonaEditForm` (edit), `PersonaSelector` — persona selector cards |
 | `report_page.templ` | `ReportPage` page shell (plus `ReportNotFound` fragment) |
 | `report_summary.templ` | Report summary strip — `ReportHeader`, `TerminationChip`, `RunSelector` |
 | `report_timeline.templ` | Turn timeline — `ReportTimeline`, `TurnCard`, `ContextBar` |
@@ -283,6 +283,8 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 A persona is a named bundle of a system prompt and optional injected skills. Personas are stored as YAML under `~/.eitri/personas/<name>.yaml` — user-level only, never workspace-scoped (unlike skills, which support workspace overrides): they represent the user's agent behaviour preferences, not project-specific capabilities. Files are written with `0600` permissions in a `0700` directory; names are sanitized for safe filenames.
 
 The `generic` persona is the built-in default; `persona.DefaultPrompt` is the single canonical source for its prompt and `history.DefaultSystemPrompt` aliases it, so the history fallback and the generic persona always resolve to identical text. The `generic` persona is always present; `EnsureGeneric` materializes `generic.yaml` on startup. The Settings "prompt" field is the **generic persona's prompt** (issue #1141): saving it mirrors the value into `generic.yaml` via `SetGenericPromptWithHome`, so the broken-persona fallback honours the settings override instead of silently using a top-precedence built-in/shadow value. A healthy active persona's own prompt always wins over the settings prompt. Up to `MaxCustomPersonas` (10) custom personas may be defined. A persona may also declare an opt-in `visible_skills` list (distinct from `required_skills`): when set, only those skills' name/description entries are injected into the system prompt's `<available_skills>` catalog (see `internal/runner` above), narrowing what the agent sees as available while leaving the `skill()` load mechanism unchanged. When blank, every effective skill is listed. Personas determine the agent's behaviour instructions; tools and the workspace are shared across personas. The API exposes persona list/set endpoints (`handlers_personas.go`) and the UI offers a persona selector (`eitri-persona-selector` island). See ADR-0018.
+
+The persona **add/edit forms** (issue #1140) pre-fill the system-prompt textarea with `persona.DefaultPrompt` as an **editable starting point**, so a user specialising a persona does not silently lose the concise/be-focused/reasoning-budget guardrails. The new-persona form always pre-fills; the edit form pre-fills only when the existing prompt is empty (a non-empty prompt is left verbatim). The value is a plain editable textarea — the user keeps full control and may change or clear it — and it derives from the single canonical `persona.DefaultPrompt` constant rather than a second hand-maintained copy.
 
 ### `internal/runner/` — Run service + agent loop
 

@@ -3,6 +3,7 @@ package templates
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/skills"
@@ -63,8 +64,8 @@ templ PersonaAddForm(availableSkills []*skills.Skill) {
 		</div>
 		<div class="form-group">
 			<label for="system_prompt">System Prompt</label>
-			<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="6" placeholder="You are a specialized agent that..."></textarea>
-			<small class="hint">Leave empty to use the default system prompt.</small>
+			<textarea id="system_prompt" name="system_prompt" class="monospace-textarea" rows="6" title="Editable starting point — pre-filled with the default prompt. You can freely change it or clear it.">{ promptOrDefault("") }</textarea>
+			<small class="hint">Editable starting point: pre-filled with the default prompt below. Change or clear it freely — this is a starting point, not a restriction.</small>
 		</div>
 		<div class="form-group">
 			<label>Required Skills</label>
@@ -130,8 +131,8 @@ templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Sk
 		</div>
 		<div class="form-group">
 			<label for={ "prompt-" + p.Name }>System Prompt</label>
-			<textarea id={ "prompt-" + p.Name } name="system_prompt" class="monospace-textarea" rows="6">{ p.SystemPrompt }</textarea>
-			<small class="hint">Leave empty to use the default system prompt.</small>
+			<textarea id={ "prompt-" + p.Name } name="system_prompt" class="monospace-textarea" rows="6" title="Editable starting point — when empty, the default prompt is shown here for you to edit.">{ promptOrDefault(p.SystemPrompt) }</textarea>
+			<small class="hint">When empty, the field is pre-filled with the default prompt as an editable starting point; a non-empty prompt is left untouched. Change or clear it freely.</small>
 		</div>
 		<div class="form-group">
 			<label>Required Skills</label>
@@ -251,6 +252,19 @@ func previewPrompt(prompt string) string {
 		return prompt
 	}
 	return string(runes[:maxLen]) + "…"
+}
+
+// promptOrDefault returns the user's prompt, or the canonical default prompt
+// (persona.DefaultPrompt) when the user's prompt is empty/blank. New-persona and
+// empty-prompt edit forms pre-fill this as an editable starting point so a user
+// specialising a persona does not silently lose the concise/reasoning guardrails
+// (issue #1140). The value is always freely editable and stays empty-blank if the
+// user clears it.
+func promptOrDefault(prompt string) string {
+	if strings.TrimSpace(prompt) == "" {
+		return persona.DefaultPrompt
+	}
+	return prompt
 }
 
 // isSkillSelected returns true if the given skill name is in the selected list.

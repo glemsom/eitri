@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -485,6 +486,26 @@ func TestHandleDeletePersona_NotFound(t *testing.T) {
 	}
 }
 
+// getHTMLBody fetches the given URL with an HTMX header and returns the body.
+func getHTMLBody(t *testing.T, url string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("HX-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s failed: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s = %d, want 200", url, resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return string(body)
+}
+
 // ————— handleGetPersonaAddForm —————
 
 func TestHandleGetPersonaAddForm(t *testing.T) {
@@ -500,6 +521,94 @@ func TestHandleGetPersonaAddForm(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleGetPersonaAddForm_DefaultPromptPrefilled ensures the new-persona
+// form pre-fills the system prompt field with the canonical default so a user
+// specialising a persona does not silently lose the concise/reasoning guardrails.
+// The starting prompt must be derived from the single canonical source
+// persona.DefaultPrompt (issue #1140).
+func TestHandleGetPersonaAddForm_DefaultPromptPrefilled(t *testing.T) {
+	workspace := t.TempDir()
+	server, _ := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	body := getHTMLBody(t, server.URL+"/api/personas/add-form")
+
+	ej := html.EscapeString(persona.DefaultPrompt)
+	if !strings.Contains(body, ej) {
+		t.Errorf("add form should pre-fill system_prompt with the canonical default; default %q not found in: %s", ej, body)
+	}
+	// The prefill must be a plain editable starting point, not a locked value:
+	// the textarea must be writable.
+	if !strings.Contains(body, `name="system_prompt"`) {
+		t.Errorf("add form missing system_prompt textarea")
+	}
+	if strings.Contains(body, "readonly") {
+		t.Errorf("add-form system_prompt must be freely editable (found readonly)")
+	}
+}
+
+// TestHandleGetPersonaAddForm_DefaultHintDocumented ensures the add form hints
+// that the pre-filled prompt is an editable starting point (issue #1140).
+func TestHandleGetPersonaAddForm_DefaultHintDocumented(t *testing.T) {
+	workspace := t.TempDir()
+	server, _ := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	body := getHTMLBody(t, server.URL+"/api/personas/add-form")
+	lower := strings.ToLower(body)
+	if !strings.Contains(lower, "editable starting point") {
+		t.Errorf("add form should document the prompt as an editable starting point")
+	}
+}
+
+// TestHandleGetPersonaEditForm_DefaultPromptPrefilledWhenEmpty ensures that
+// editing a persona with an empty prompt pre-fills the canonical default, so a
+// user does not silently lose the default guardrails on an empty-prompt persona
+// (issue #1140).
+func TestHandleGetPersonaEditForm_DefaultPromptPrefilledWhenEmpty(t *testing.T) {
+	workspace := t.TempDir()
+	server, homeDir := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	if err := persona.SaveToHome(homeDir, &persona.PersonaDefinition{
+		Name: "empty-prompt",
+	}); err != nil {
+		t.Fatalf("save persona: %v", err)
+	}
+
+	body := getHTMLBody(t, server.URL+"/api/personas/empty-prompt")
+	if !strings.Contains(body, html.EscapeString(persona.DefaultPrompt)) {
+		t.Errorf("edit form for empty-prompt persona should pre-fill the canonical default")
+	}
+	if !strings.Contains(body, `name="system_prompt"`) {
+		t.Errorf("edit form missing system_prompt textarea")
+	}
+}
+
+// TestHandleGetPersonaEditForm_LeavesNonEmptyPromptUntouched ensures editing a
+// persona with a non-empty prompt preserves the user's prompt verbatim (issue #1140).
+func TestHandleGetPersonaEditForm_LeavesNonEmptyPromptUntouched(t *testing.T) {
+	workspace := t.TempDir()
+	server, homeDir := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	custom := "You are my special customer-service agent.\n\nBe friendly and kind."
+	if err := persona.SaveToHome(homeDir, &persona.PersonaDefinition{
+		Name:         "custom-agent",
+		SystemPrompt: custom,
+	}); err != nil {
+		t.Fatalf("save persona: %v", err)
+	}
+
+	body := getHTMLBody(t, server.URL+"/api/personas/custom-agent")
+	if !strings.Contains(body, html.EscapeString(custom)) {
+		t.Errorf("edit form should preserve the user's non-empty prompt verbatim; not found: %s", body)
+	}
+	if strings.Contains(body, html.EscapeString(persona.DefaultPrompt)) {
+		t.Error("edit form replaced a non-empty user prompt with the canonical default")
 	}
 }
 
