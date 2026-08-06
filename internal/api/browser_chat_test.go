@@ -2593,15 +2593,8 @@ func TestBrowser_StreamingMarkdownBold(t *testing.T) {
 			HasBold bool
 		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`(function() {
-				var s = document.getElementById('streaming');
-				if (s) return !!s.querySelector('.message-content strong');
-				var msgs = document.querySelectorAll('.message-assistant');
-				for (var i = 0; i < msgs.length; i++) {
-					if (msgs[i].querySelector('.message-content strong')) return true;
-				}
-				return false;
-			})()`, &result.HasBold),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`eitriRenderedRoot() !== null && (function(){ var r = eitriRenderedRoot(); var c = r.querySelector('.message-content'); return !!c && c.querySelector('strong') !== null; })()`, &result.HasBold),
 		)
 		return err == nil && result.HasBold
 	})
@@ -2614,15 +2607,8 @@ func TestBrowser_StreamingMarkdownItalic(t *testing.T) {
 			HasItalic bool
 		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`(function() {
-				var s = document.getElementById('streaming');
-				if (s) return !!s.querySelector('.message-content em');
-				var msgs = document.querySelectorAll('.message-assistant');
-				for (var i = 0; i < msgs.length; i++) {
-					if (msgs[i].querySelector('.message-content em')) return true;
-				}
-				return false;
-			})()`, &result.HasItalic),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`eitriRenderedRoot() !== null && (function(){ var r = eitriRenderedRoot(); var c = r.querySelector('.message-content'); return !!c && c.querySelector('em') !== null; })()`, &result.HasItalic),
 		)
 		return err == nil && result.HasItalic
 	})
@@ -2633,15 +2619,8 @@ func TestBrowser_StreamingMarkdownInlineCode(t *testing.T) {
 	streamingMarkdownTestHelper(t, "Use the `fmt.Println` function", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var hasCode bool
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`(function() {
-				var s = document.getElementById('streaming');
-				if (s) return s.querySelector('.message-content code') !== null;
-				var msgs = document.querySelectorAll('.message-assistant');
-				for (var i = 0; i < msgs.length; i++) {
-					if (msgs[i].querySelector('.message-content code')) return true;
-				}
-				return false;
-			})()`, &hasCode),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`eitriRenderedRoot() !== null && (function(){ var r = eitriRenderedRoot(); var c = r.querySelector('.message-content'); return !!c && c.querySelector('code') !== null; })()`, &hasCode),
 		)
 		return err == nil && hasCode
 	})
@@ -2718,7 +2697,8 @@ func TestBrowser_StreamingMarkdownParagraphs(t *testing.T) {
 	streamingMarkdownTestHelper(t, "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		var pCount int
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.querySelectorAll('p').length : 0`, &pCount),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`(function(){ var r = eitriRenderedRoot(); if(!r) return 0; var c = r.querySelector('.message-content'); return c ? c.querySelectorAll('p').length : 0; })()`, &pCount),
 		)
 		return pCount >= 1
 	})
@@ -2755,10 +2735,12 @@ func TestBrowser_StreamingMarkdownIncomplete(t *testing.T) {
 	)
 	streamingMarkdownTestHelper(t, "This has **unclosed bold marker", streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`(function(){ var r = eitriRenderedRoot(); if(!r) return ''; var c = r.querySelector('.message-content'); return c ? c.textContent : ''; })()`, &contentText),
 		)
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content strong') !== null`, &hasBold),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`(function(){ var r = eitriRenderedRoot(); if(!r) return false; var c = r.querySelector('.message-content'); return !!c && c.querySelector('strong') !== null; })()`, &hasBold),
 		)
 		return contentText != ""
 	})

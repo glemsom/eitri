@@ -208,7 +208,7 @@ Sub-agent runs are persisted as child sessions keyed by their task ID (issue #10
 | `copilot_device_flow.go` | GitHub Copilot device-flow UI handler |
 | `debug.go` | GUI overlay for crash dump listing, HTTP traces |
 | `markdown.go` | Core rendering pipeline: goldmark setup, render helper functions |
-| `markdown_enhance.go` | Custom AST transformers and renderer enhancements |
+| `markdown_enhance.go` | Custom AST transformers and renderer enhancements. Server-side link handling mirrors the streaming renderer: `http`/`https`/`mailto` links render as `<a ... target="_blank" rel="noopener">` (open in a new tab) and links with any disallowed scheme (`javascript:`, `data:`, `file:`, `vbscript:`) are stripped to plain text, so the committed message always matches the live stream. |
 | `markdown_math.go` | LaTeX math block rendering (KaTeX integration) |
 | `markdown_code.go` | Code block rendering (syntax highlighting via Prism.js) |
 | `render_helpers.go` | Shared message-rendering helpers (mermaid detection, component rendering) |

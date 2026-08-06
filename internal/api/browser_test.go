@@ -431,6 +431,22 @@ type streamingMarkdownTestOptions struct {
 	Timeout time.Duration
 }
 
+// streamingRenderedRootJS returns the current on-screen assistant message.
+// While a run is still streaming this is the live #streaming element; once the
+// final render has swapped it out, it is the latest committed
+// .message-assistant:not(#streaming). Tests assert on this resolved root so
+// they pass whether they observe the in-progress stream or the finished render
+// (on slow/race-instrumented runners the #streaming element may be gone before
+// a poll lands).
+const streamingRenderedRootJS = `
+function eitriRenderedRoot() {
+  var s = document.getElementById('streaming');
+  if (s) return s;
+  var msgs = document.querySelectorAll('.message-assistant:not(#streaming)');
+  return msgs.length ? msgs[msgs.length - 1] : null;
+}
+`
+
 // streamingMarkdownTestHelper is a unified test helper for streaming markdown browser tests.
 // For single-token mode (final-render tests), set SingleToken=true in opts.
 // For multi-token mode (streaming tests), leave opts zero-valued.
@@ -472,15 +488,23 @@ func streamingMarkdownTestHelper(t *testing.T, markdown string, opts streamingMa
 		timeout = opts.Timeout
 	}
 
-	deadline := time.Now().Add(timeout)
+	// Poll the assertion until it passes or the generous fallback deadline is
+	// reached. Checks are content-driven: each resolves the current rendered
+	// stream (see streamingRenderedRootJS) and passes once the content is
+	// actually present, so readiness is observed DOM state rather than a blind
+	// wall-clock wait (see issue #1121). The deadline below is only a fallback
+	// guard, not the primary completion signal. Running the check on every
+	// iteration (rather than gating on a terminal state first) also lets tests
+	// that observe the transient RENDERING state do so while the stream is
+	// still live.
 	var ok bool
-	for time.Now().Before(deadline) {
+	pollForCondition(t, timeout, 100*time.Millisecond, func() bool {
 		if check(ctx) {
 			ok = true
-			break
+			return true
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return false
+	})
 	if !ok {
 		t.Error("assertion never passed")
 	}
@@ -623,50 +647,60 @@ type streamingMarkdownLinkTest struct {
 func streamingMarkdownLinkHelper(t *testing.T, tc streamingMarkdownLinkTest) {
 	t.Helper()
 
-	var contentText string
 	streamingMarkdownTestHelper(t, tc.Markdown, streamingMarkdownTestOptions{}, func(ctx context.Context) bool {
-		var hasLink, streamingExists bool
+		// Resolve the current rendered stream root (#streaming while live, or
+		// the final committed assistant message once the render swap is done)
+		// so the assertion holds whether it lands during streaming or after.
+		var res struct {
+			Found   bool
+			HasLink bool
+			Href    string
+			Target  string
+			Rel     string
+			Content string
+		}
 		err := chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null`, &streamingExists),
-			chromedp.EvaluateAsDevTools(`document.getElementById('streaming') !== null && document.querySelector('#streaming .message-content a') !== null`, &hasLink),
+			chromedp.EvaluateAsDevTools(streamingRenderedRootJS+
+				`(function(){
+					var r = eitriRenderedRoot();
+					if (!r) return {Found:false,HasLink:false,Href:'',Target:'',Rel:'',Content:''};
+					var c = r.querySelector('.message-content');
+					if (!c) return {Found:true,HasLink:false,Href:'',Target:'',Rel:'',Content:''};
+					var a = c.querySelector('a');
+					return {
+						Found:true,
+						HasLink:a!==null,
+						Href:a?(a.getAttribute('href')||''):'',
+						Target:a?(a.getAttribute('target')||''):'',
+						Rel:a?(a.getAttribute('rel')||''):'',
+						Content:c.textContent||''
+					};
+				})()`, &res),
 		)
-		if err != nil || !streamingExists {
+		if err != nil || !res.Found {
 			return false
 		}
 
-		if tc.ExpectLink && !hasLink {
+		if tc.ExpectLink && !res.HasLink {
 			return false
 		}
-		if !tc.ExpectLink && hasLink {
+		if !tc.ExpectLink && res.HasLink {
 			return false
 		}
-
-		// Extract attributes and content text
-		var href, target, rel string
-		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('href') : ''`, &href),
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('target') : ''`, &target),
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content a'); el ? el.getAttribute('rel') : ''`, &rel),
-			chromedp.EvaluateAsDevTools(`var el = document.querySelector('#streaming .message-content'); el ? el.textContent : ''`, &contentText),
-		)
-
-		// For disallowed-scheme tests, wait for text content to appear
-		if tc.ExpectedText != "" && !strings.Contains(contentText, tc.ExpectedText) {
+		// For disallowed-scheme tests, wait for text content to appear.
+		if tc.ExpectedText != "" && !strings.Contains(res.Content, tc.ExpectedText) {
 			return false
 		}
 
-		// All checks passed within the poll loop — now do assertions
-		if tc.ExpectedHref != "" && href != tc.ExpectedHref {
-			t.Errorf("link href should be %q, got %q", tc.ExpectedHref, href)
+		// All checks passed within the poll loop — now do assertions.
+		if tc.ExpectedHref != "" && res.Href != tc.ExpectedHref {
+			t.Errorf("link href should be %q, got %q", tc.ExpectedHref, res.Href)
 		}
-		if tc.ExpectedTarget != "" && target != tc.ExpectedTarget {
-			t.Errorf("link target should be %q, got %q", tc.ExpectedTarget, target)
+		if tc.ExpectedTarget != "" && res.Target != tc.ExpectedTarget {
+			t.Errorf("link target should be %q, got %q", tc.ExpectedTarget, res.Target)
 		}
-		if tc.ExpectedRel != "" && rel != tc.ExpectedRel {
-			t.Errorf("link rel should be %q, got %q", tc.ExpectedRel, rel)
-		}
-		if tc.ExpectedText != "" && !strings.Contains(contentText, tc.ExpectedText) {
-			t.Errorf("expected text %q in content, got %q", tc.ExpectedText, contentText)
+		if tc.ExpectedRel != "" && res.Rel != tc.ExpectedRel {
+			t.Errorf("link rel should be %q, got %q", tc.ExpectedRel, res.Rel)
 		}
 
 		return true
