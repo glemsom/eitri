@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tests gains a new `testutil.GoroutineLeakGuard` helper that verifies a service started and stopped repeatedly (compact runs, run start/cancel loops) does not leave a background goroutine running into the next test case, closing the shutdown audit from issue #1127. Registration is one line atop any test; it polls the goroutine count back to baseline at teardown and dumps stacks on a leak. Documented in `docs/TESTING.md`.
+
 - The persona add/edit forms now pre-fill the system-prompt field with the canonical default prompt as a freely editable **starting point** (issue #1140). The new-persona form always pre-fills; the edit form pre-fills only when the existing prompt is empty (a non-empty prompt is left verbatim). The default is sourced from the single canonical `persona.DefaultPrompt` constant, so a user specialising a persona does not silently lose the concise/be-focused/reasoning-budget guardrails.
 
 - Personas can now declare an opt-in **visible skills** list. A persona that sets `visible_skills` surfaces only those named skills' entries in the agent's `<available_skills>` catalog (narrowing what the agent sees as available) instead of always listing every effective skill; leaving it blank keeps today's behaviour. It is separate from `required_skills`, which remains a first-turn load directive. Distinct and unified with the persona editor UI as a multi-select, mirroring required skills. (#1139)

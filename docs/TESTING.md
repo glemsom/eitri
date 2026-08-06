@@ -135,6 +135,8 @@ model service.
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior, HTTP connection timeouts (stalled-header conn reaping, streaming exempt from write deadlines) |
 | `internal/testutil/condition_test.go` | Reusable polling helpers `WaitForCondition` / `WaitForConditionOr` (deadline + configurable interval) |
+| `internal/testutil/leakguard_test.go` | Goroutine-leak guard `GoroutineLeakGuard` (baseline goroutine count, settle-back detection) |
+| `internal/runner/leakguard_test.go` | Shutdown audit: repeated compact / run-start-cancel loops leave no goroutine accumulation (issue #1127) |
 
 ### Polling async conditions in tests
 
@@ -145,6 +147,42 @@ message on timeout), and `WaitForConditionOr[T](t, interval, timeout, eval)` ret
 the last observed value wrapped in `ErrTimeout` instead of failing directly, for
 call sites that need the final state. The run suite in `internal/api/run_test.go`
 uses these instead of hand-rolled deadline loops.
+
+### Goroutine-leak audit (`GoroutineLeakGuard`)
+
+Issue #1127 hardened service tests against goroutine leaks: a service that is
+started and stopped repeatedly must not leave a background worker running into
+the next test case (which grows the runtime and makes async assertions flaky,
+especially under the CPU-constrained CI reproduce job). Shutdown paths use
+`sync.WaitGroup` + stop/channel-close semantics, not a `context.Cancel` stored
+in a struct.
+
+`testutil.GoroutineLeakGuard` is the enforcement half of that audit. Register it
+**first** in a test so its cleanup runs **last** (cleanups run LIFO), after any
+fixture servers/clients have been closed:
+
+```go
+func TestServiceStartStopLoop(t *testing.T) {
+    testutil.NewGoroutineLeakGuard(t)
+    srv := newFixtureServer(t) // t.Cleanup(srv.Close) → runs before the guard
+    // start/stop the service repeatedly...
+}
+```
+
+At teardown the guard snapshots the goroutine count and polls (default 6s
+window) until the live count settles back to baseline (user-configured
+`WithSettleWindow`, `WithPollInterval`, `WithTolerance` adjust it). On a real
+leak it reports via `Errorf` and dumps the live goroutine stacks for
+attribution; `Errorf` (not `Fatal`) lets deferred shutdown drain any lingering
+goroutine.
+
+**Audit results (issue #1127):** the run service and its worker goroutines
+(`internal/runner/run.go`, `subagent.go`, `batch.go`) already claim their
+shutdown through a per-run `Done` channel closed by `finish()`/`record.finish()`
+plus a retention timer, not a stored `context.Cancel`. Repeated compact-run and
+run-start-cancel loops against a reachable fake LLM server settle back to a
+clean goroutine count (`internal/runner/leakguard_test.go`), so the restart-loop
+scenario is covered by a regression test rather than a one-off audit.
 
 ## Browser tests (chromedp)
 
