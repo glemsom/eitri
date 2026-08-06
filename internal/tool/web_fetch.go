@@ -18,7 +18,7 @@ import (
 
 type webFetchArgs struct {
 	URL     string `json:"url" jsonschema:"URL to fetch and extract text from"`
-	Timeout int    `json:"timeout,omitempty" jsonschema:"Timeout in seconds (default 15)"`
+	Timeout int    `json:"timeout,omitempty" jsonschema:"Timeout in seconds (default 15)" jsonschema_minimum:"1" jsonschema_maximum:"120"`
 }
 
 // WebFetchTool implements ToolHandler for fetching web pages as raw text.

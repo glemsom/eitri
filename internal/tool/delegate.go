@@ -10,7 +10,7 @@ import (
 
 type delegateArgs struct {
 	Task     string `json:"task" jsonschema:"The task to delegate to a sub-agent (required)"`
-	MaxTurns int    `json:"max_turns" jsonschema:"Maximum number of turns for the sub-agent (default: 250)"`
+	MaxTurns int    `json:"max_turns" jsonschema:"Maximum number of turns for the sub-agent (default: 250)" jsonschema_minimum:"1"`
 	Persona  string `json:"persona,omitempty" jsonschema:"Optional persona name to use for the sub-agent (default: generic)"`
 }
 
