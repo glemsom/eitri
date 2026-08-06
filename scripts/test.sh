@@ -10,15 +10,25 @@
 # Usage:
 #   scripts/test.sh            # go test ./...
 #   scripts/test.sh --race     # go test -race ./...
+#   scripts/test.sh --flaky    # cache-cleared, -cpu 1,2, -p 1 (flake reproduce)
+#   scripts/test.sh --race --flaky  # combine both
+#
+# --flaky reproduces the constrained environment CI flakes surface in: it
+# clears the Go test cache and runs with a reduced/controlled CPU set and
+# sequential package execution. See docs/TESTING.md.
 #
 # Exit code mirrors `go test` (0 all pass, 1 failures, 2 build errors).
 set -uo pipefail
 
 RACE=0
-if [ "${1:-}" = "--race" ]; then
-    RACE=1
-    shift
-fi
+FLAKY=0
+while [ "${1:-}" != "" ]; do
+    case "$1" in
+        --race)   RACE=1   ; shift ;;
+        --flaky)  FLAKY=1  ; shift ;;
+        *)        echo "test.sh: unknown option: $1" >&2; exit 2 ;;
+    esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-dist}"
@@ -28,8 +38,22 @@ if [ "$RACE" -eq 1 ]; then
     LOG_NAME="test-race-output.log"
     EXTRA_FLAGS=(-race)
 fi
+if [ "$FLAKY" -eq 1 ]; then
+    if [ "$RACE" -eq 1 ]; then
+        LOG_NAME="test-race-flaky-output.log"
+    else
+        LOG_NAME="test-flaky-output.log"
+    fi
+    EXTRA_FLAGS+=(-cpu 1,2 -p 1)
+fi
 ARTIFACT="$ROOT/$BUILD_DIR/$LOG_NAME"
 mkdir -p "$ROOT/$BUILD_DIR"
+
+if [ "$FLAKY" -eq 1 ]; then
+    # Clear the test cache so successful cached runs cannot mask failures
+    # caused by earlier tests in the constrained run.
+    go clean -testcache
+fi
 
 START=$SECONDS
 set +e

@@ -6,7 +6,7 @@ BUILD_DIR     := dist
 VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
-.PHONY: all build clean test test-race help run templ-generate release release-check \
+.PHONY: all build clean test test-race test-flaky help run templ-generate release release-check \
         release-all release-linux-amd64
 
 all: build
@@ -27,6 +27,10 @@ test:
 ## test-race — run all tests with race detector, compact verdict, full log in dist/
 test-race:
 	./scripts/test.sh --race
+
+## test-flaky — reproduce CI flakes: cache-cleared, -cpu 1,2, -p 1 (compact verdict)
+test-flaky:
+	./scripts/test.sh --flaky
 
 ## release — build linux/amd64 release tarball + checksums (default platform)
 release: _clean-checksums release-linux-amd64
@@ -78,6 +82,7 @@ help:
 	@echo "  make clean              Remove build artifacts (binary + dist/)"
 	@echo "  make test               Run all tests, compact verdict (full log in dist/test-output.log)"
 	@echo "  make test-race          Run all tests with race detector, compact verdict (log in dist/test-race-output.log)"
+	@echo "  make test-flaky         Reproduce CI flakes: cache-cleared, -cpu 1,2, -p 1 (log in dist/test-flaky-output.log)"
 	@echo "  make lint               Run golangci-lint with strict config"
 	@echo "  make release            Build linux/amd64 tarball + checksums"
 	@echo "  make release-all        Build tarball for linux/amd64"
