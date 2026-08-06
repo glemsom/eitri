@@ -364,6 +364,7 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 | `render_mermaid_diagram.go` | `RenderMermaidDiagram` — emit mermaid diagram data for server-side rendering |
 | `render_quick_replies.go` | `RenderQuickReplies` — emit suggestion chips for UI |
 | `web_fetch.go` | `WebFetchTool` — fetch a web page and convert to Markdown |
+| `open_browser.go` | `OpenBrowserTool` — open a single `http`/`https`/`file` URL or bare path in the user's host browser via `xdg-open`, with scheme hard-rejection and sandbox `/tmp/...`-to-host rewriting (ADR-0026); exported `OpenURL` is the shared launcher also used by the `EITRI_OPEN_BROWSER` startup auto-open |
 | `browser.go` | `BrowserTool` (`NativeBrowserTool`) — control a remote Chrome via CDP (`list_targets`, `navigate`, `get_dom`, `click`, `type`, `screenshot`, `new_tab`, `close_tab`, `select`, `get_value`); `get_dom` capped at 32k chars (selector mode) / 24k chars (structural summary) |
 | `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
 | `delegate.go` | `DelegateTool` — spawn a sub-agent in the background, returns task_id immediately |
@@ -382,7 +383,9 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 - Output capped at 8 KiB (before pattern compression)
 - No cross-turn shell state (agent must use `&&` chains or explicit env vars), **except** `/tmp`, which is session-scoped (ADR-0026): files written to `/tmp` in one sandboxed call persist for the rest of the run and are removed at run end
 
-**Tool registration** happens in one place, `prepareRun()` in `internal/runner/prepare.go` (ADR-0024/0025): it registers the core tools (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`) plus `skill` when a skills service is wired, and — gated by the `allow_delegate` option — `delegate`/`collect` (parent runs only; delegated runs are leaves). `render_quick_replies` registers only when a UI session exists. Recursion/leaf gating is a config value, not a registry omission (issue #1092, ADR-0013, ADR-0025).
+**OpenBrowserTool** (`open_in_browser`) runs in-process in the unsandboxed harness, so unlike the bwrap-sandboxed `bash` tool it reaches the host X11/Wayland socket. It opens exactly one `http`, `https`, or `file` URL (or bare path) per call: any other scheme (`javascript:`, `mailto:`, `data:`, …) is hard-rejected before anything is launched; a bare path without a scheme is normalized to `file://`, resolved against the workspace when relative, and must exist on disk; and a path starting with `/tmp/` is rewritten to the matching host file in the run's session-scoped sandbox tmpdir (only when that host path exists, else passed through). It shares the sandbox `Manager` with `BashTool` so the `/tmp` mapping is deterministic. It is silent (no confirmation prompt), visible in the transcript, and registered in the base toolset so sub-agents can open URLs too; Linux-only behind a small per-platform seam. Both the tool and the `EITRI_OPEN_BROWSER` startup auto-open share one launcher (`tool.OpenURL`) detached into its own process group with a ~10s wait cap; missing `DISPLAY`/`WAYLAND_DISPLAY` is a tool error.
+
+**Tool registration** happens in one place, `prepareRun()` in `internal/runner/prepare.go` (ADR-0024/0025): it registers the core tools (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`, `open_in_browser`) plus `skill` when a skills service is wired, and — gated by the `allow_delegate` option — `delegate`/`collect` (parent runs only; delegated runs are leaves). `render_quick_replies` registers only when a UI session exists. Recursion/leaf gating is a config value, not a registry omission (issue #1092, ADR-0013, ADR-0025).
 
 ### `internal/config/` — Configuration
 
@@ -505,7 +508,7 @@ sequenceDiagram
 ### Adding a new built-in tool
 
 1. Define tool in `internal/tool/` implementing the `ToolHandler` interface (`Name()`, `Description()`, `JSONSchema()`, `Call()`) with a struct that embeds `SchemaOf[T]()` for parameter schemas. Multi-action tools (e.g. `browser`) build a discriminated union instead: `SchemaProp.OneOf` holds one typed object schema per action and the action selector is an `enum`, so the model sees per-action required parameters rather than a free-form args blob.
-2. Register with `tool.NewRegistry().Register(...)` in `prepareRun()` (internal/runner/prepare.go) — the single tool-registration seam for parent and delegated runs (ADR-0025); core + `skill` tools are always registered, `delegate`/`collect` are gated by `allow_delegate`.
+2. Register with `tool.NewRegistry().Register(...)` in `buildBaseToolRegistry` (`internal/runner/subagent.go`) for tools available to every run (core + `skill`), or in `prepareRun()` (`internal/runner/prepare.go`) for parent-only tools (`delegate`/`collect`, gated by `allow_delegate`). The base toolset is shared by UI and batch parent runs and delegated (sub-agent) runs.
 3. Tool receives `context.Context` with `tool.SessionIDKey` for session-scoped state
 
 ### Extending Agent Skills support

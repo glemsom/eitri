@@ -30,13 +30,25 @@ type BashTool struct {
 	schema         litellm.Schema
 }
 
-// NewBashTool creates a new BashTool.
+// NewBashTool creates a new BashTool with its own sandbox Manager.
 // Pass zero-value sandbox.Config to use the default profile.
 func NewBashTool(workspace string, timeout time.Duration, sc sandbox.Config) *BashTool {
 	return &BashTool{
 		workspace:      workspace,
 		timeout:        timeout,
 		sandboxManager: sandbox.NewManager(sc),
+		schema:         SchemaOf[bashArgs](),
+	}
+}
+
+// NewBashToolWithManager creates a NewBashTool that shares the provided sandbox
+// Manager, so the session-scoped /tmp it maintains is visible to other tools
+// (e.g. open_in_browser) that read TmpdirFor (ADR-0026).
+func NewBashToolWithManager(workspace string, timeout time.Duration, m *sandbox.Manager) *BashTool {
+	return &BashTool{
+		workspace:      workspace,
+		timeout:        timeout,
+		sandboxManager: m,
 		schema:         SchemaOf[bashArgs](),
 	}
 }

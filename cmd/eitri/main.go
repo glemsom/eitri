@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	runtimeDebug "runtime/debug"
@@ -30,6 +29,7 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tokenizer"
+	"github.com/glemsom/eitri/internal/tool"
 )
 
 type serveOptions struct {
@@ -418,7 +418,7 @@ func main() {
 		Stdout:    os.Stdout,
 		Stderr:    os.Stderr,
 		Getenv:    os.Getenv,
-		OpenURL:   openBrowserURL,
+		OpenURL:   tool.OpenURL,
 	})
 
 	// Flush any pending data to disk before shutting down.
@@ -496,7 +496,7 @@ func serve(ctx context.Context, opts serveOptions) error {
 		opts.Getenv = os.Getenv
 	}
 	if opts.OpenURL == nil {
-		opts.OpenURL = openBrowserURL
+		opts.OpenURL = tool.OpenURL
 	}
 
 	listener, err := net.Listen("tcp", opts.Addr)
@@ -601,20 +601,6 @@ func saveCalibration(store *tokenizer.CalibrationStore, path string) {
 		return
 	}
 	slog.Info("calibration data saved", slog.String("path", path))
-}
-
-func openBrowserURL(url string) error {
-	cmd := exec.Command("xdg-open", url)
-	// Detach xdg-open into its own process group so a SIGINT/SIGTERM to the
-	// foreground group (e.g. Ctrl+C) doesn't kill the freshly-spawned browser.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go func() {
-		_ = cmd.Wait()
-	}()
-	return nil
 }
 
 func isNonLoopbackBind(addr string) bool {

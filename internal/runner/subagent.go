@@ -13,6 +13,7 @@ import (
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/sandbox"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/timeline"
@@ -484,7 +485,10 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 // session exists), so a delegated run never gains them.
 func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
-	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout, cfg.Sandbox))
+	// One sandbox Manager shared by bash and open_in_browser so the session
+	// tmpdir bash maintains is addressable by the browser tool (ADR-0026).
+	sandboxMgr := sandbox.NewManager(cfg.Sandbox)
+	reg.Register(tool.NewBashToolWithManager(cfg.Workspace, cfg.CmdTimeout, sandboxMgr))
 	reg.Register(tool.NewGrepTool(cfg.Workspace))
 	reg.Register(tool.NewReadTool(cfg.Workspace, skillDirs, cfg.AllowedReadPaths))
 	reg.Register(tool.NewWriteTool(cfg.Workspace))
@@ -492,6 +496,7 @@ func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.
 	reg.Register(tool.NewRenderMermaidDiagram())
 	reg.Register(tool.NewWebFetchTool())
 	reg.Register(tool.NewBrowserTool(cfg.BrowserWsUrl, cfg.Workspace))
+	reg.Register(tool.NewOpenBrowserTool(cfg.Workspace, sandboxMgr.TmpdirFor))
 	if skillsSvc != nil {
 		reg.Register(tool.NewSkill(skillsSvc, uiSessionMgr))
 	}
