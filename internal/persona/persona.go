@@ -83,6 +83,12 @@ type PersonaDefinition struct {
 	Name           string   `yaml:"name" json:"name"`
 	SystemPrompt   string   `yaml:"system_prompt" json:"system_prompt"`
 	RequiredSkills []string `yaml:"required_skills,omitempty" json:"required_skills,omitempty"`
+	// VisibleSkills is an opt-in list of skills surfaced in the agent's
+	// <available_skills> catalog for this persona. When empty, all effective
+	// skills are listed (today's behaviour). Distinct from RequiredSkills,
+	// which is a first-turn load directive: VisibleSkills only narrows what
+	// the agent sees as available without changing the skill() load mechanism.
+	VisibleSkills []string `yaml:"visible_skills,omitempty" json:"visible_skills,omitempty"`
 }
 
 // UserDir returns the user-level personas directory under the home .eitri.

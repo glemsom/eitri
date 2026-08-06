@@ -198,7 +198,39 @@ func (s *Service) IsDisabled(name string) bool {
 	return false
 }
 
-// SkillsCatalogXML returns an XML fragment listing effective skills for the system prompt.
+// SkillsCatalogXMLFor returns an XML fragment listing only the named effective
+// skills for the system prompt. Requested names that are not effective (missing
+// or disabled) are silently omitted, so a persona's opt-in list never surfaces
+// skills the agent could not actually load. An empty list yields an empty string.
+func (s *Service) SkillsCatalogXMLFor(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.registry == nil {
+		return ""
+	}
+
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+
+	var b strings.Builder
+	b.WriteString("<available_skills>\n")
+	for _, skill := range s.registry.effective {
+		if want[skill.Name] {
+			b.WriteString("  <skill>\n")
+			b.WriteString("    <name>" + xmlEscape(skill.Name) + "</name>\n")
+			b.WriteString("    <description>" + xmlEscape(skill.Description) + "</description>\n")
+			b.WriteString("  </skill>\n")
+		}
+	}
+	b.WriteString("</available_skills>")
+	return b.String()
+}
+
 // Returns empty string if no effective skills exist.
 func (s *Service) SkillsCatalogXML() string {
 	s.mu.RLock()

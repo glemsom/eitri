@@ -75,13 +75,15 @@ func (s *Server) getAvailableSkills() []*skills.Skill {
 }
 
 // parsePersonaRequest extracts persona fields from either a JSON body or form data.
-func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSkills []string, err error) {
+// It returns the name, system prompt, required skills, and visible skills.
+func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSkills, visibleSkills []string, err error) {
 	ct := r.Header.Get("Content-Type")
 	if strings.Contains(ct, "application/json") {
 		var req struct {
 			Name           string   `json:"name"`
 			SystemPrompt   string   `json:"system_prompt"`
 			RequiredSkills []string `json:"required_skills,omitempty"`
+			VisibleSkills  []string `json:"visible_skills,omitempty"`
 		}
 		body, readErr := io.ReadAll(r.Body)
 		if readErr != nil {
@@ -96,6 +98,7 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 		name = req.Name
 		systemPrompt = req.SystemPrompt
 		injectedSkills = req.RequiredSkills
+		visibleSkills = req.VisibleSkills
 		return
 	}
 
@@ -106,16 +109,25 @@ func parsePersonaRequest(r *http.Request) (name, systemPrompt string, injectedSk
 	}
 	name = r.Form.Get("name")
 	systemPrompt = r.Form.Get("system_prompt")
-	// Skills may come as a comma-separated list or repeated form fields
-	if skillsStr := r.Form.Get("required_skills"); skillsStr != "" {
-		for _, s := range strings.Split(skillsStr, ",") {
+	injectedSkills = listFormField(r, "required_skills")
+	visibleSkills = listFormField(r, "visible_skills")
+	return
+}
+
+// listFormField extracts a multi-valued form field. Checkboxes submitted via
+// repeated fields are gathered directly; a comma-separated single value is
+// also supported.
+func listFormField(r *http.Request, field string) []string {
+	var vals []string
+	for _, raw := range r.Form[field] {
+		for _, s := range strings.Split(raw, ",") {
 			s = strings.TrimSpace(s)
 			if s != "" {
-				injectedSkills = append(injectedSkills, s)
+				vals = append(vals, s)
 			}
 		}
 	}
-	return
+	return vals
 }
 
 // handleCreatePersona creates a new persona.
@@ -123,7 +135,7 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 	workspace := s.config.Workspace
 	homeDir := s.config.HomeDir
 
-	name, systemPrompt, injectedSkills, err := parsePersonaRequest(r)
+	name, systemPrompt, injectedSkills, visibleSkills, err := parsePersonaRequest(r)
 	if err != nil {
 		writeConfigError(w, r, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
@@ -158,6 +170,7 @@ func (s *Server) handleCreatePersona(w http.ResponseWriter, r *http.Request) {
 		Name:           name,
 		SystemPrompt:   systemPrompt,
 		RequiredSkills: injectedSkills,
+		VisibleSkills:  visibleSkills,
 	}
 
 	if err := persona.SaveToHome(homeDir, def); err != nil {
@@ -216,7 +229,7 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, systemPrompt, injectedSkills, err := parsePersonaRequest(r)
+	_, systemPrompt, injectedSkills, visibleSkills, err := parsePersonaRequest(r)
 	if err != nil {
 		writeConfigError(w, r, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
@@ -226,6 +239,7 @@ func (s *Server) handleUpdatePersona(w http.ResponseWriter, r *http.Request) {
 		Name:           name,
 		SystemPrompt:   systemPrompt,
 		RequiredSkills: injectedSkills,
+		VisibleSkills:  visibleSkills,
 	}
 
 	if err := persona.SaveToHome(homeDir, def); err != nil {

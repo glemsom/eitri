@@ -81,6 +81,21 @@ templ PersonaAddForm(availableSkills []*skills.Skill) {
 				}
 			</div>
 		</div>
+		<div class="form-group">
+			<label>Visible Skills</label>
+			<small class="hint">Optional, opt-in: only these skills appear in the agent's available-skills catalog for this persona. Leave blank to list all effective skills.</small>
+			<div class="skills-checkbox-group">
+				for _, s := range availableSkills {
+					<label class="checkbox-label">
+						<input type="checkbox" name="visible_skills" value={ s.Name }/>
+						<span class="skill-name">{ s.Name }</span>
+						if s.Description != "" {
+							<span class="skill-desc"> — { s.Description }</span>
+						}
+					</label>
+				}
+			</div>
+		</div>
 		<div class="form-actions">
 			<button type="button" class="btn btn-primary"
 				hx-post="/api/personas"
@@ -128,6 +143,25 @@ templ PersonaEditForm(p *persona.PersonaDefinition, availableSkills []*skills.Sk
 							<input type="checkbox" name="required_skills" value={ s.Name } checked/>
 						} else {
 							<input type="checkbox" name="required_skills" value={ s.Name }/>
+						}
+						<span class="skill-name">{ s.Name }</span>
+						if s.Description != "" {
+							<span class="skill-desc"> — { s.Description }</span>
+						}
+					</label>
+				}
+			</div>
+		</div>
+		<div class="form-group">
+			<label>Visible Skills</label>
+			<small class="hint">Optional, opt-in: only these skills appear in the agent's available-skills catalog for this persona. Leave blank to list all effective skills.</small>
+			<div class="skills-checkbox-group">
+				for _, s := range availableSkills {
+					<label class="checkbox-label">
+						if isSkillSelected(p.VisibleSkills, s.Name) {
+							<input type="checkbox" name="visible_skills" value={ s.Name } checked/>
+						} else {
+							<input type="checkbox" name="visible_skills" value={ s.Name }/>
 						}
 						<span class="skill-name">{ s.Name }</span>
 						if s.Description != "" {

@@ -764,6 +764,61 @@ func TestService_CatalogXML_OmitDisabled(t *testing.T) {
 	}
 }
 
+func TestService_CatalogXMLFor_Narrows(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "alpha"), "alpha", "# Alpha")
+	writeSkill(t, filepath.Join(rootDir, "beta"), "beta", "# Beta")
+	writeSkill(t, filepath.Join(rootDir, "gamma"), "gamma", "# Gamma")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	xml := svc.SkillsCatalogXMLFor([]string{"alpha", "gamma"})
+	if !strings.Contains(xml, "alpha") {
+		t.Error("SkillsCatalogXMLFor should include selected skill alpha")
+	}
+	if strings.Contains(xml, "beta") {
+		t.Error("SkillsCatalogXMLFor should omit unselected skill beta")
+	}
+	if !strings.Contains(xml, "gamma") {
+		t.Error("SkillsCatalogXMLFor should include selected skill gamma")
+	}
+}
+
+func TestService_CatalogXMLFor_MissingAndDisabledSkipped(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "present"), "present", "# Present")
+	writeSkill(t, filepath.Join(rootDir, "disabled"), "disabled", "# Disabled")
+
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+	svc.SetDisabled("disabled", true, nil)
+	svc.Refresh()
+
+	// Request present, disabled, and a non-existent skill.
+	xml := svc.SkillsCatalogXMLFor([]string{"present", "disabled", "nothing-here"})
+	if !strings.Contains(xml, "present") {
+		t.Error("SkillsCatalogXMLFor should include present skill")
+	}
+	if strings.Contains(xml, "disabled") {
+		t.Error("SkillsCatalogXMLFor should omit disabled skill")
+	}
+	if strings.Contains(xml, "nothing-here") {
+		t.Error("SkillsCatalogXMLFor should omit non-existent skill")
+	}
+}
+
+func TestService_CatalogXMLFor_EmptyNames(t *testing.T) {
+	rootDir := t.TempDir()
+	writeSkill(t, filepath.Join(rootDir, "alpha"), "alpha", "# Alpha")
+	svc := NewServiceWithRoots([]Root{{Path: rootDir, Scope: ScopeProjectEitri}})
+
+	if got := svc.SkillsCatalogXMLFor(nil); got != "" {
+		t.Errorf("SkillsCatalogXMLFor(nil) = %q, want empty", got)
+	}
+	if got := svc.SkillsCatalogXMLFor([]string{}); got != "" {
+		t.Errorf("SkillsCatalogXMLFor(empty) = %q, want empty", got)
+	}
+}
+
 func TestService_Summary_OmitDisabled(t *testing.T) {
 	rootDir := t.TempDir()
 	writeSkill(t, filepath.Join(rootDir, "visible"), "visible", "# Visible")
