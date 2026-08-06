@@ -18,11 +18,15 @@
 //
 //	service.go       — RunService type, constructor, subscribe/unsubscribe,
 //	                   cancel, confirm path, browser SSE broadcast
-//	prepare.go       — prepareRun: the unified parent-run preparation seam
-//	                   shared by run.go and batch.go (ADR-0024). Produces the
-//	                   tool registry, *litellm.Request, and system prompt in
+//	prepare.go       — prepareRun: the unified run-preparation seam shared
+//	                   by run.go, batch.go, and subagent.go (ADR-0024). Takes
+//	                   an allow_delegate option: UI/batch parents set it true
+//	                   (registering delegate/collect, plus render_quick_replies
+//	                   when a UI session exists); delegated runs set it false
+//	                   (leaf toolset, no recursion). Produces the tool
+//	                   registry, *litellm.Request, and the system prompt in
 //	                   one parameterized call; buildRunRequest is shared with
-//	                   sub-agent runs too.
+//	                   all run kinds.
 //	compact.go       — autoCompactAfterTurn: the shared auto-compaction step
 //	                   for UI, batch, and sub-agent runs (issues #1093, #1096);
 //	                   replaces the run's history with the compacted version
@@ -34,9 +38,9 @@
 //	batch_persist.go — Batch session persistence: per-turn snapshots and the
 //	                   batch turn completer (snapshot + shared compaction)
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
-//	                   helpers used by run.go, batch.go, and subagent.go.
+//	                   helpers used by the prepareRun seam (prepare.go).
 //	                   buildLLMService assembles auth, LLM service, tool
-//	                   registry, and the system prompt in one seam call.
+//	                   registry, and the system prompt in one call.
 //	subagent.go      — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
 //	                   sub-agent record tracking, restricted tool registry,
 //	                   per-turn child-session snapshots, and sub-agent

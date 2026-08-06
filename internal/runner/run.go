@@ -73,9 +73,10 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	// system prompt contract as batch mode (issue #1091). render_quick_replies
 	// is registered only because a UI session exists here.
 	prep, err := s.prepareRun(ctx, cfg, runPrepOptions{
-		sessionID:    sessionID,
-		skillCtx:     skillCtx,
-		uiSessionMgr: s.uiSessionMgr,
+		sessionID:     sessionID,
+		skillCtx:      skillCtx,
+		uiSessionMgr:  s.uiSessionMgr,
+		allowDelegate: true,
 	})
 	if err != nil {
 		return nil, err

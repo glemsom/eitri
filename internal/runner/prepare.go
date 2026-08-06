@@ -23,32 +23,42 @@ type runPrep struct {
 }
 
 // runPrepOptions carries the genuinely mode-specific differences between a UI
-// parent run and a batch parent run. Everything else in run preparation is
-// shared by the seam.
+// parent run, a batch parent run, and a delegated (sub-agent) run. Everything
+// else in run preparation is shared by the seam.
 type runPrepOptions struct {
 	// sessionID is the run-scoped session identifier: the UI session ID for
-	// browser runs, the batch session ID for headless runs. It keys the
-	// prompt cache, HTTP trace recording, and EndSession cleanup.
+	// browser runs, the batch session ID for headless runs, the task ID for
+	// sub-agent runs. It keys the prompt cache, HTTP trace recording, and
+	// EndSession cleanup.
 	sessionID string
-	// skillCtx carries the session's active skill activations. Batch runs
-	// have no persisted activations and pass an empty context; the system
-	// prompt still emits the skills catalog and the persona-required
+	// skillCtx carries the session's active skill activations. Batch and
+	// sub-agent runs have no persisted activations and pass an empty context;
+	// the system prompt still emits the skills catalog and the persona-required
 	// <required_skills> directive.
 	skillCtx sessionSkillContext
-	// uiSessionMgr is nil for batch runs. When non-nil, the UI-only
-	// render_quick_replies tool is registered.
+	// uiSessionMgr is nil for batch runs. When non-nil and allowDelegate is
+	// true (i.e. a UI parent run), the UI-only render_quick_replies tool is
+	// registered. Delegated runs never register it, even in a UI session.
 	uiSessionMgr *uisession.Manager
+	// allowDelegate gates the parent-agent tools. UI and batch parent runs set
+	// it true, which registers delegate and collect (and render_quick_replies
+	// when a UI session exists). A delegated (sub-agent) run sets it false and
+	// gets only the leaf base toolset — bash, grep, read, write, edit,
+	// render_mermaid_diagram, web_fetch, browser, and skill. Recursion is thus
+	// gated on the seam: a leaf has no delegate tool, so it cannot recurse.
+	allowDelegate bool
 }
 
 // prepareRun is the single run-preparation seam shared by the UI parent run
-// (startRunWithConfig) and the batch parent run (BatchRun). For the same
-// config and prompt it produces:
+// (startRunWithConfig), the batch parent run (BatchRun), and delegated runs
+// (SpawnSubAgent). For the same config and prompt it produces:
 //
-//   - the same tool registry (bash, grep, read, write, edit,
-//     render_mermaid_diagram, web_fetch, browser, and — via the shared base
-//     registry — skill when a skills service is wired; delegate and collect
-//     are registered here; render_quick_replies is registered only when a UI
-//     session exists),
+//   - the same tool registry. UI/batch parents get bash, grep, read, write,
+//     edit, render_mermaid_diagram, web_fetch, browser, skill (when a skills
+//     service is wired), plus delegate and collect; render_quick_replies is
+//     registered only when a UI session exists. Delegated runs get only the
+//     leaf base toolset — no delegate, no collect, and never
+//     render_quick_replies.
 //   - the same system prompt contract (skills catalog + <required_skills>
 //     directive when the persona requires skills),
 //   - the same LLM request behavior (max_output_tokens from config,
@@ -64,12 +74,18 @@ func (s *RunService) prepareRun(ctx context.Context, cfg RunConfig, opts runPrep
 		return runPrep{}, err
 	}
 
-	// Parent-agent tools shared by UI and batch runs.
-	toolReg.Register(tool.NewDelegate(s))
-	toolReg.Register(tool.NewCollect(s))
-	// UI-only: quick-reply chips render into the browser DOM.
-	if opts.uiSessionMgr != nil {
-		toolReg.Register(tool.NewRenderQuickReplies())
+	// Parent-agent tools shared by UI and batch parent runs. A delegated run
+	// (allowDelegate false) is a leaf: it must not register delegate/collect,
+	// so it cannot recurse. Recursion gating is a config value on this seam,
+	// not an implicit toolset difference.
+	if opts.allowDelegate {
+		toolReg.Register(tool.NewDelegate(s))
+		toolReg.Register(tool.NewCollect(s))
+		// UI-only: quick-reply chips render into the browser DOM. Never on a
+		// delegated run, even when the parent has a UI session.
+		if opts.uiSessionMgr != nil {
+			toolReg.Register(tool.NewRenderQuickReplies())
+		}
 	}
 
 	return runPrep{

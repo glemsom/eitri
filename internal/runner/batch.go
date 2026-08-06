@@ -66,9 +66,10 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// catalog, the <required_skills> directive, and the skill() tool exactly
 	// like the UI.
 	prep, err := s.prepareRun(ctx, cfg, runPrepOptions{
-		sessionID:    batchID,
-		skillCtx:     sessionSkillContext{},
-		uiSessionMgr: nil,
+		sessionID:     batchID,
+		skillCtx:      sessionSkillContext{},
+		uiSessionMgr:  nil,
+		allowDelegate: true,
 	})
 	if err != nil {
 		return "", err
