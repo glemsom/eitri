@@ -43,6 +43,16 @@
   color: var(--accent);
 }
 
+.workspace-indicator:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 3px;
+}
+
+.workspace-indicator:active {
+  color: var(--accent-hover);
+}
+
 /* Persona selector in header (issue #770) — custom dark dropdown */
 .persona-selector {
   position: relative;
@@ -71,6 +81,17 @@
   color: var(--text);
   border-color: var(--accent);
   background: var(--surface-alt);
+}
+
+.persona-trigger:active {
+  color: var(--text);
+  background: var(--surface-alt);
+  filter: brightness(0.95);
+}
+
+.persona-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .persona-chevron {
@@ -119,6 +140,16 @@
 .persona-option:focus {
   background: var(--surface-alt);
   outline: none;
+}
+
+.persona-option:active {
+  background: var(--accent);
+  color: white;
+}
+
+.persona-option:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .persona-option-active {
@@ -197,6 +228,18 @@ pre:hover .code-btn {
   color: white;
 }
 
+.copy-btn:active,
+.code-btn:active {
+  filter: brightness(0.9);
+}
+
+.copy-btn:focus-visible,
+.code-btn:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Inline quick replies inside assistant message bubble */
 .message-quick-replies {
   width: 100%;
@@ -231,6 +274,17 @@ pre:hover .code-btn {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+
+.quick-reply-chip:active {
+  filter: brightness(0.9);
+  border-color: var(--accent-hover);
+}
+
+.quick-reply-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--border);
 }
 
 /* Mermaid diagram */
@@ -290,6 +344,16 @@ pre.mermaid.mermaid-error {
   background: var(--surface-alt);
 }
 
+.completion-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.completion-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .completion-item[aria-selected="true"] {
   background: var(--accent);
   color: white;
@@ -331,6 +395,17 @@ pre.mermaid.mermaid-error {
 }
 
 .show-all-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.show-all-btn:active {
+  filter: brightness(0.9);
+}
+
+.show-all-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
   background: var(--accent);
   color: white;
 }
@@ -381,6 +456,18 @@ pre.code-wrapped code {
 
 .scroll-to-bottom-btn:hover {
   background: var(--accent-hover);
+}
+
+.scroll-to-bottom-btn:active {
+  filter: brightness(0.9);
+}
+
+.scroll-to-bottom-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 /* eitri-composer lives in the grid so no extra positioning needed */

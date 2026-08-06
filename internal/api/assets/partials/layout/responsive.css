@@ -99,5 +99,81 @@
   .form-actions-sticky {
     position: static;
   }
+
+  /* --- Narrow-viewport layouts (issue #1116) --- */
+
+  /* Sessions management table: let rows scroll horizontally instead of
+     squashing every column; the wide action strip stays reachable by swipe. */
+  .sessions-table-container {
+    overflow-x: auto;
+  }
+
+  .sessions-table {
+    min-width: 640px;
+  }
+
+  .session-title-cell {
+    max-width: 220px;
+  }
+
+  .session-actions-cell {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .sessions-view {
+    padding: 16px;
+  }
+
+  /* Tool activity: when shown on mobile it must not hit the collapsed
+     160px sidebar band — give it its own full-width scroll region. */
+  #tool-activity {
+    max-height: 120px;
+  }
+
+  .tool-activity-list,
+  .thinking-panel .thinking-content {
+    font-size: 0.78rem;
+  }
+
+  /* Report page: tighter gutters, stacking header chrome, wrapping run
+     selector and metadata so the timeline uses the full width. */
+  .report-view {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .report-header {
+    padding: 12px;
+  }
+
+  .report-header-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .report-title {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .report-meta-item {
+    min-width: 0;
+  }
+
+  .report-run-selector {
+    flex-wrap: wrap;
+  }
+
+  .turn-llm-meta {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 4px 12px;
+  }
+
+  .turn-content {
+    padding: 10px 12px;
+  }
 }
 

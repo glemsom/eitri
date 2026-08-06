@@ -73,6 +73,15 @@
   border-color: var(--accent);
 }
 
+.sidebar-header .new-session-btn:active {
+  filter: brightness(0.9);
+}
+
+.sidebar-header .new-session-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
@@ -127,6 +136,21 @@
 
 .tool-entry:hover {
   background: var(--surface-alt);
+}
+
+.tool-entry:active {
+  background: var(--accent);
+  color: white;
+}
+
+.tool-entry:active .tool-status-label,
+.tool-entry:active .tool-elapsed {
+  color: var(--on-accent-dim);
+}
+
+.tool-entry:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .tool-entry .tool-icon {
@@ -259,6 +283,20 @@ details.tool-entry-wrapper .tool-result {
   background: var(--surface-alt);
 }
 
+.session-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.session-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.session-item:focus-visible .session-title {
+  color: var(--text);
+}
+
 .session-item.active {
   background: var(--surface-raised);
   border-left: 3px solid var(--accent);
@@ -320,6 +358,20 @@ details.tool-entry-wrapper .tool-result {
   opacity: 1;
 }
 
+.session-close:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.session-close:active {
+  color: var(--accent-hover);
+}
+
+.session-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Child sessions keep their nesting indent. margin-left/border-left stay at
    class specificity so the .active accent border still wins on active
    children, exactly as before (issue #1079). */
@@ -357,5 +409,16 @@ details.tool-entry-wrapper .tool-result {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+
+.new-session-btn:active {
+  filter: brightness(0.9);
+  border-color: var(--accent-hover);
+}
+
+.new-session-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--border);
 }
 

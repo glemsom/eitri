@@ -100,6 +100,17 @@
   background: var(--success-hover);
 }
 
+.confirm-allow:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.confirm-allow:focus-visible,
+.confirm-deny:focus-visible,
+.undo-toast-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .confirm-deny {
   background: var(--error);
   color: white;
@@ -107,6 +118,10 @@
 
 .confirm-deny:hover:not(:disabled) {
   background: var(--error-hover);
+}
+
+.confirm-deny:active:not(:disabled) {
+  filter: brightness(0.9);
 }
 
 /* ============================================
@@ -147,6 +162,10 @@
 
 .undo-toast-btn:hover {
   opacity: 0.9;
+}
+
+.undo-toast-btn:active {
+  filter: brightness(0.85);
 }
 
 @keyframes undoShrink {
@@ -241,6 +260,12 @@
 .checkbox-label input[type="checkbox"] {
   width: auto;
   cursor: pointer;
+}
+
+.checkbox-label:has(input[type="checkbox"]:focus-visible) {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
 }
 
 /* Range slider wrapper (settings compaction) */

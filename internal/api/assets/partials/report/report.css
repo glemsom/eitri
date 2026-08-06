@@ -179,9 +179,16 @@
   cursor: pointer;
 }
 
-.run-select:focus {
+.run-select:hover {
+  border-color: var(--text-muted);
+  background: var(--surface);
+}
+
+.run-select:active,
+.run-select:focus-visible {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 /* System Prompt section */
@@ -205,6 +212,16 @@
 .report-system-prompt summary:hover {
   color: var(--text);
   background: var(--surface-hover);
+}
+
+.report-system-prompt summary:active {
+  background: var(--accent);
+  color: white;
+}
+
+.report-system-prompt summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .report-system-prompt-content {

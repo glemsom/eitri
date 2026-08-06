@@ -190,6 +190,10 @@
   --on-accent-dim: rgba(255, 255, 255, 0.7);
   --on-warning: #000000;
 
+  /* Canonical focus ring for visible keyboard focus (issue #1116). A soft
+     accent halo that reads on both theme surfaces without a hard outline. */
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+
   --radius: 8px;
   --surface-hover: rgba(255, 255, 255, 0.04);
 
@@ -262,6 +266,9 @@
 
     --radius: 8px;
     --surface-hover: rgba(0, 0, 0, 0.04);
+
+    /* Focus ring — light variant (canonical token, issue #1116) */
+    --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 
     /* Surface tints — light variants */
     --header-bg: rgba(255, 255, 255, 0.97);
@@ -621,6 +628,15 @@ header h1 {
   border-color: var(--accent);
 }
 
+.sidebar-header .new-session-btn:active {
+  filter: brightness(0.9);
+}
+
+.sidebar-header .new-session-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
@@ -675,6 +691,21 @@ header h1 {
 
 .tool-entry:hover {
   background: var(--surface-alt);
+}
+
+.tool-entry:active {
+  background: var(--accent);
+  color: white;
+}
+
+.tool-entry:active .tool-status-label,
+.tool-entry:active .tool-elapsed {
+  color: var(--on-accent-dim);
+}
+
+.tool-entry:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .tool-entry .tool-icon {
@@ -807,6 +838,20 @@ details.tool-entry-wrapper .tool-result {
   background: var(--surface-alt);
 }
 
+.session-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.session-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.session-item:focus-visible .session-title {
+  color: var(--text);
+}
+
 .session-item.active {
   background: var(--surface-raised);
   border-left: 3px solid var(--accent);
@@ -868,6 +913,20 @@ details.tool-entry-wrapper .tool-result {
   opacity: 1;
 }
 
+.session-close:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.session-close:active {
+  color: var(--accent-hover);
+}
+
+.session-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Child sessions keep their nesting indent. margin-left/border-left stay at
    class specificity so the .active accent border still wins on active
    children, exactly as before (issue #1079). */
@@ -905,6 +964,17 @@ details.tool-entry-wrapper .tool-result {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+
+.new-session-btn:active {
+  filter: brightness(0.9);
+  border-color: var(--accent-hover);
+}
+
+.new-session-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--border);
 }
 
 
@@ -970,6 +1040,15 @@ eitri-composer {
   color: white;
 }
 
+.gear-btn:active {
+  filter: brightness(0.9);
+}
+
+.gear-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .dropdown-content {
   display: none;
   position: absolute;
@@ -1002,6 +1081,16 @@ eitri-composer {
 
 .nav-link:hover {
   background: var(--surface-alt);
+}
+
+.nav-link:active {
+  background: var(--accent);
+  color: white;
+}
+
+.nav-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .nav-link.active {
@@ -1698,6 +1787,16 @@ details[open] .tool-chevron {
   color: var(--accent);
 }
 
+.workspace-indicator:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 3px;
+}
+
+.workspace-indicator:active {
+  color: var(--accent-hover);
+}
+
 /* Persona selector in header (issue #770) — custom dark dropdown */
 .persona-selector {
   position: relative;
@@ -1726,6 +1825,17 @@ details[open] .tool-chevron {
   color: var(--text);
   border-color: var(--accent);
   background: var(--surface-alt);
+}
+
+.persona-trigger:active {
+  color: var(--text);
+  background: var(--surface-alt);
+  filter: brightness(0.95);
+}
+
+.persona-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .persona-chevron {
@@ -1774,6 +1884,16 @@ details[open] .tool-chevron {
 .persona-option:focus {
   background: var(--surface-alt);
   outline: none;
+}
+
+.persona-option:active {
+  background: var(--accent);
+  color: white;
+}
+
+.persona-option:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .persona-option-active {
@@ -1852,6 +1972,18 @@ pre:hover .code-btn {
   color: white;
 }
 
+.copy-btn:active,
+.code-btn:active {
+  filter: brightness(0.9);
+}
+
+.copy-btn:focus-visible,
+.code-btn:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Inline quick replies inside assistant message bubble */
 .message-quick-replies {
   width: 100%;
@@ -1886,6 +2018,17 @@ pre:hover .code-btn {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
+}
+
+.quick-reply-chip:active {
+  filter: brightness(0.9);
+  border-color: var(--accent-hover);
+}
+
+.quick-reply-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--border);
 }
 
 /* Mermaid diagram */
@@ -1945,6 +2088,16 @@ pre.mermaid.mermaid-error {
   background: var(--surface-alt);
 }
 
+.completion-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.completion-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .completion-item[aria-selected="true"] {
   background: var(--accent);
   color: white;
@@ -1986,6 +2139,17 @@ pre.mermaid.mermaid-error {
 }
 
 .show-all-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.show-all-btn:active {
+  filter: brightness(0.9);
+}
+
+.show-all-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
   background: var(--accent);
   color: white;
 }
@@ -2036,6 +2200,18 @@ pre.code-wrapped code {
 
 .scroll-to-bottom-btn:hover {
   background: var(--accent-hover);
+}
+
+.scroll-to-bottom-btn:active {
+  filter: brightness(0.9);
+}
+
+.scroll-to-bottom-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 /* eitri-composer lives in the grid so no extra positioning needed */
@@ -2160,6 +2336,82 @@ eitri-composer {
   .form-actions,
   .form-actions-sticky {
     position: static;
+  }
+
+  /* --- Narrow-viewport layouts (issue #1116) --- */
+
+  /* Sessions management table: let rows scroll horizontally instead of
+     squashing every column; the wide action strip stays reachable by swipe. */
+  .sessions-table-container {
+    overflow-x: auto;
+  }
+
+  .sessions-table {
+    min-width: 640px;
+  }
+
+  .session-title-cell {
+    max-width: 220px;
+  }
+
+  .session-actions-cell {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .sessions-view {
+    padding: 16px;
+  }
+
+  /* Tool activity: when shown on mobile it must not hit the collapsed
+     160px sidebar band — give it its own full-width scroll region. */
+  #tool-activity {
+    max-height: 120px;
+  }
+
+  .tool-activity-list,
+  .thinking-panel .thinking-content {
+    font-size: 0.78rem;
+  }
+
+  /* Report page: tighter gutters, stacking header chrome, wrapping run
+     selector and metadata so the timeline uses the full width. */
+  .report-view {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .report-header {
+    padding: 12px;
+  }
+
+  .report-header-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .report-title {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .report-meta-item {
+    min-width: 0;
+  }
+
+  .report-run-selector {
+    flex-wrap: wrap;
+  }
+
+  .turn-llm-meta {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 4px 12px;
+  }
+
+  .turn-content {
+    padding: 10px 12px;
   }
 }
 
@@ -2372,6 +2624,16 @@ eitri-composer {
 }
 
 .settings-details summary:hover::before {
+}
+
+.settings-details summary:active {
+  color: var(--accent);
+}
+
+.settings-details summary:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
 }
 
 /* Settings page — scrollable container inside main (which has overflow-y:hidden) */
@@ -2613,6 +2875,17 @@ eitri-composer {
   background: var(--success-hover);
 }
 
+.confirm-allow:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.confirm-allow:focus-visible,
+.confirm-deny:focus-visible,
+.undo-toast-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .confirm-deny {
   background: var(--error);
   color: white;
@@ -2620,6 +2893,10 @@ eitri-composer {
 
 .confirm-deny:hover:not(:disabled) {
   background: var(--error-hover);
+}
+
+.confirm-deny:active:not(:disabled) {
+  filter: brightness(0.9);
 }
 
 /* ============================================
@@ -2660,6 +2937,10 @@ eitri-composer {
 
 .undo-toast-btn:hover {
   opacity: 0.9;
+}
+
+.undo-toast-btn:active {
+  filter: brightness(0.85);
 }
 
 @keyframes undoShrink {
@@ -2754,6 +3035,12 @@ eitri-composer {
 .checkbox-label input[type="checkbox"] {
   width: auto;
   cursor: pointer;
+}
+
+.checkbox-label:has(input[type="checkbox"]:focus-visible) {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
 }
 
 /* Range slider wrapper (settings compaction) */
@@ -2965,6 +3252,15 @@ eitri-context {
 .context-compact:hover {
   background: var(--surface-alt);
 }
+
+.context-compact:active {
+  background: var(--accent);
+}
+
+.context-compact:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 .context-bar {
   flex: 1;
   height: 8px;
@@ -3080,6 +3376,18 @@ eitri-context {
   color: var(--text);
 }
 
+.compact-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.compact-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  color: var(--text);
+}
+
 /* Context warning banner (Issue #724) */
 .context-warning {
   display: none;
@@ -3151,6 +3459,16 @@ eitri-context {
   color: var(--text);
 }
 
+.directory-browser-close:active {
+  color: var(--accent);
+}
+
+.directory-browser-close:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
+}
+
 .directory-browser-breadcrumbs {
   display: flex;
   align-items: center;
@@ -3175,6 +3493,16 @@ eitri-context {
 .breadcrumb-link:hover {
   background: var(--surface-alt);
   color: var(--accent-hover);
+}
+
+.breadcrumb-link:active {
+  background: var(--accent);
+  color: white;
+}
+
+.breadcrumb-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .breadcrumb-current {
@@ -3208,6 +3536,20 @@ eitri-context {
 
 .directory-browser-item:hover {
   background: var(--surface-alt);
+}
+
+.directory-browser-item:active {
+  background: var(--accent);
+  color: white;
+}
+
+.directory-browser-item:active .dir-name {
+  color: white;
+}
+
+.directory-browser-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .directory-browser-item .dir-icon {
@@ -3550,9 +3892,16 @@ eitri-context {
   cursor: pointer;
 }
 
-.run-select:focus {
+.run-select:hover {
+  border-color: var(--text-muted);
+  background: var(--surface);
+}
+
+.run-select:active,
+.run-select:focus-visible {
   outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 /* System Prompt section */
@@ -3576,6 +3925,16 @@ eitri-context {
 .report-system-prompt summary:hover {
   color: var(--text);
   background: var(--surface-hover);
+}
+
+.report-system-prompt summary:active {
+  background: var(--accent);
+  color: white;
+}
+
+.report-system-prompt summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .report-system-prompt-content {
@@ -3750,6 +4109,20 @@ eitri-context {
   color: var(--text-muted);
 }
 
+.turn-reasoning summary:hover {
+  color: var(--text);
+}
+
+.turn-reasoning summary:active {
+  color: var(--accent);
+}
+
+.turn-reasoning summary:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
+}
+
 .turn-reasoning-content {
   padding: 8px 12px;
   font-size: var(--text-sm);
@@ -3831,6 +4204,19 @@ eitri-context {
   font-size: var(--text-sm);
   font-weight: 500;
   user-select: none;
+}
+
+.tool-call-summary:hover {
+  background: var(--surface-hover);
+}
+
+.tool-call-summary:active {
+  background: var(--surface-alt);
+}
+
+.tool-call-summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .tool-call-summary::-webkit-details-marker {
@@ -3915,6 +4301,16 @@ eitri-context {
 
 .tool-call-result-toggle summary:hover {
   color: var(--accent-hover);
+}
+
+.tool-call-result-toggle summary:active {
+  color: var(--accent-hover);
+}
+
+.tool-call-result-toggle summary:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: var(--focus-ring);
 }
 
 /* Sub-agents section */
