@@ -2328,3 +2328,43 @@ func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {
 		t.Errorf("UI session roles = %v, want %v", roles, want)
 	}
 }
+
+// TestAppendToSession_MultiTurnRunEndNoDuplicate guards against a regression
+// where refreshing the chat page showed the last message twice. For a
+// multi-turn run the final assistant message is synced into the UI session by
+// OnTurnComplete's live-history sync; at run completion appendToSession is
+// called again with the run's *accumulated* SSE buffer (all turns' text
+// concatenated), which differs from the last single message. The dedup check
+// compared last.Content to that whole accumulated buffer, so it never matched
+// and a duplicate assistant message was appended.
+func TestAppendToSession_MultiTurnRunEndNoDuplicate(t *testing.T) {
+	svc, uiMgr := newRunServiceForTest(t)
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+
+	// Seed the UI session exactly as OnTurnComplete's live-history sync leaves
+	// it after the final turn of a multi-turn run.
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "Question"})
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Turn 1 reply"})
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "tool", Content: `{"task_id":"t1"}`})
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Turn 2 reply"})
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "tool", Content: `{"t1":{"status":"completed"}}`})
+	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Final reply"})
+
+	before := len(uiMgr.GetConversationShared(sess.ID).Messages)
+
+	// appendToSession is invoked at run completion with the SSE buffer, which
+	// for a multi-turn run contains *all* turns' text concatenated — the exact
+	// shape that produced the duplicate in the wild.
+	accumulated := "Turn 1 reply" + "Turn 2 reply" + "Final reply"
+	svc.appendToSession(sess.ID, accumulated, "")
+
+	after := uiMgr.GetConversationShared(sess.ID).Messages
+	if len(after) != before {
+		t.Fatalf("appendToSession appended a duplicate at run end: messages %d -> %d",
+			before, len(after))
+	}
+}

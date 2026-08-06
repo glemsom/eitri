@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	runtimeDebug "runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -354,8 +355,16 @@ func (s *RunService) appendToSession(sessionID, content, reasoningContent string
 		}
 		// The final assistant message may already have been synced into the UI
 		// session by OnTurnComplete's live-history sync. Avoid appending a
-		// duplicate of the same content at run completion.
-		if last.Role == "assistant" && last.Content == content {
+		// duplicate at run completion. OnTurnComplete replaces the UI
+		// conversation with each turn's messages, so after a multi-turn run the
+		// last UI message is the final assistant reply while `content` is the
+		// run's *accumulated* SSE buffer (all turns' text concatenated). The
+		// final reply is present as the buffer's tail, so a plain equality check
+		// only dedups single-turn runs. Match the suffix instead: when the last
+		// assistant message equals the tail of the buffer, the final reply is
+		// already in the session — appending again produces a duplicate that
+		// surfaces as the last message repeating after a page refresh.
+		if last.Role == "assistant" && last.Content != "" && strings.HasSuffix(content, last.Content) {
 			if reasoningContent != "" && last.ReasoningContent == "" {
 				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
 			}
