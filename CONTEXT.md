@@ -108,8 +108,9 @@ The release script:
 Pushing a `v*` tag triggers `.github/workflows/release.yml`:
 
 1. Verifies the tag matches `VERSION` (safety check)
-2. Builds release tarballs for all supported platforms via `make release-all`
-3. Generates a GitHub Release with attached tarballs and checksums
+2. Runs `make test-race` (the noise-stripping test wrapper) as a test gate
+3. Builds release tarballs for all supported platforms via `make release-all`
+4. Generates a GitHub Release with attached tarballs and checksums
 
 | Target platform | Tarball |
 |----------------|---------|

@@ -26,8 +26,16 @@ jobs:
       - name: Install sandbox dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
 
-      - name: Run tests (including browser E2E)
-        run: make release-check
+      - name: Run tests (compact verdict, including browser E2E)
+        run: make test-race
+
+      - name: Upload test log artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-race-output.log
+          path: dist/test-race-output.log
+          if-no-files-found: ignore
 
       - name: Build binary (with embedded version)
         run: make build
