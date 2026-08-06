@@ -302,7 +302,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 		if history == nil {
 			return
 		}
-		update := runstate.ComputeContext(toFlatMessages(history), opts.ContextWindow, opts.CalibrationStore, opts.ModelName)
+		update := tokenizer.ComputeContext(toFlatMessages(history), opts.ContextWindow, opts.CalibrationStore, opts.ModelName)
 		if actualUsage != nil {
 			update.ActualPromptTokens = actualUsage.InputTokens
 			update.ActualCompletionTokens = actualUsage.OutputTokens
@@ -974,19 +974,19 @@ func debugUsageFromLitellm(u *litellm.Usage) *debug.UsageTotals {
 // the done SSE event when the provider reported any. When the provider returned
 // no usage, it falls back to the text-length estimate. This guarantees the
 // provider-reported value is never shadowed by the estimate on the done path.
-func usageForDone(usage *litellm.Usage, text string, store *tokenizer.CalibrationStore, model string) *runstate.TokenUsage {
+func usageForDone(usage *litellm.Usage, text string, store *tokenizer.CalibrationStore, model string) *tokenizer.TokenUsage {
 	if usage != nil && usage.HasTokens() {
 		total := usage.TotalTokens
 		if total == 0 {
 			total = usage.InputTokens + usage.OutputTokens
 		}
-		return &runstate.TokenUsage{
+		return &tokenizer.TokenUsage{
 			TotalTokens:      total,
 			PromptTokens:     usage.InputTokens,
 			CompletionTokens: usage.OutputTokens,
 		}
 	}
-	return runstate.EstimateUsage(text, store, model)
+	return tokenizer.EstimateUsage(text, store, model)
 }
 
 // updateCalibration feeds provider usage data from a completed LLM response

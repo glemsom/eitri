@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
+
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 // TerminationReason describes why a run ended.
@@ -50,9 +52,9 @@ type TimelineEvent struct {
 	ConfirmMessage string `json:"confirm_message,omitempty"`
 
 	// Done / Error
-	Message   string      `json:"message,omitempty"`
-	MessageID string      `json:"message_id,omitempty"`
-	Usage     *TokenUsage `json:"usage,omitempty"`
+	Message   string                `json:"message,omitempty"`
+	MessageID string                `json:"message_id,omitempty"`
+	Usage     *tokenizer.TokenUsage `json:"usage,omitempty"`
 
 	// LLM call correlation (llm_call events): the HTTP trace ID of the
 	// successful attempt plus retry count and timing, so the session report
@@ -135,7 +137,7 @@ func (s *State) CondensedEvents() []TimelineEvent {
 			}
 
 		case "context_update":
-			if cu, ok := evt.Data.(*ContextUpdate); ok {
+			if cu, ok := evt.Data.(*tokenizer.ContextUpdate); ok {
 				timelineEvt.TotalTokens = cu.TotalTokens
 				timelineEvt.PromptTokens = cu.PromptTokens
 				timelineEvt.ContextWindow = cu.ContextWindow

@@ -1,6 +1,6 @@
 // Package runstate provides SSE event broadcast infrastructure for active
-// agent runs. It owns subscriber fan-out, event history, typed SSE event
-// writing via Writer, and context window estimation.
+// agent runs. It owns subscriber fan-out, event history, and typed SSE event
+// writing via Writer.
 //
 // It is network-agnostic — State manages Go channels, not HTTP connections.
 // Each active run has one State instance. Subscribers register via Subscribe(),
@@ -22,28 +22,24 @@
 // a subscriber connecting mid-run or on reconnect replays the recent tail
 // instead of the entire run, keeping long streaming runs memory-bounded.
 //
-// ComputeContext estimates token counts for the current conversation using a
-// configurable chars-per-token ratio (from CalibrationStore, default 4.0),
-// broken down by category (system, skill, history).
+// Token counting lives in internal/tokenizer. runstate imports it for the token
+// types it carries on SSE events (TokenUsage on the done event, ContextUpdate
+// on the context_update event).
 //
 // Key types:
 //   - State — SSE subscriber fan-out and event history
 //   - Writer — typed SSE event broadcaster, wraps a State
 //   - SSEEvent — one SSE data packet sent to the browser
-//   - TokenUsage — token counts for a completed run
-//   - ContextUpdate — estimated token counts by category
 //
 // Key functions:
 //   - New — create a new State
 //   - NewWriter — create a Writer wrapping a State
-//   - ComputeContext — estimate token counts from messages
-//   - EstimateUsage — rough token estimate from text length
 //
 // User-facing string helpers (FormatErrorMessage, MaxTurnsMessage) live in
 // internal/uixt.
 //
 // Dependencies:
-//   - internal/message — message.Message type for context computation
+//   - internal/tokenizer — token accounting types carried on SSE events
 //
 // Extension points:
 //   - Add new SSE event types by adding fields to SSEEvent or creating new

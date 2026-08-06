@@ -586,26 +586,6 @@ func TestCompact_EmptyToolContentSkipped(t *testing.T) {
 	}
 }
 
-func TestTokenEstimate(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"", 0},
-		{"a", 1},
-		{"hello", 1},               // 5 chars / 4 = 1
-		{"hello world", 2},         // 11 chars / 4 = 2
-		{"a b c d e f g h i j", 4}, // 19 chars / 4 = 4
-		{"1234567890", 2},          // 10/4=2
-	}
-	for _, tt := range tests {
-		got := tokenEstimate(tt.input, nil, "")
-		if got != tt.want {
-			t.Errorf("tokenEstimate(%q) = %d, want %d", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestMessagesTokenEstimate(t *testing.T) {
 	msgs := []message.Message{
 		{Content: "hello world"}, // 11/4=2

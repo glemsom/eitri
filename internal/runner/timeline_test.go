@@ -7,6 +7,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 // TestPersistRunTimeline_NoRunState verifies the timeline-writing path is
@@ -25,7 +26,7 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 	w.SetTurn(1)
 	w.ToolCall("grep", map[string]any{"pattern": "foo"})
 	w.ToolResult("grep", "some output")
-	w.Done("msg_1", runstate.EstimateUsage("hi", nil, "test-model"))
+	w.Done("msg_1", tokenizer.EstimateUsage("hi", nil, "test-model"))
 
 	startedAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	svc.persistRunTimeline("session-1", "run-abc", startedAt, sseState, RunConfig{

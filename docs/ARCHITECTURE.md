@@ -107,21 +107,22 @@ Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path 
 
 Provides `WrapCommand(workspace, command, Config)` which returns the executable, arguments, and a cleanup function for running a command inside a bubblewrap sandbox. The sandbox creates an ephemeral temporary directory under `/tmp` and binds it as `/tmp` inside the sandbox, ensuring temp file isolation between commands. The returned cleanup function removes the ephemeral dir and logs at warn level on failure. Falls back to direct execution if bwrap is not installed or the profile is `"none"`. Configurable via the global config (`sandbox.profile`, `sandbox.network`, `sandbox.extra_writable_paths`). See ADR-0017 for the full argument rationale.
 
-### `internal/runstate/` — SSE broadcast + context tracking
+### `internal/runstate/` — SSE broadcast
 
 | File | Responsibility |
 |------|---------------|
-| `runstate.go` | `State` — subscriber fan-out, event history, text buffer, `SSEEvent`, `TokenUsage` types; `ComputeContext()` / `EstimateUsage()` — token estimation |
+| `runstate.go` | `State` — subscriber fan-out, event history, text buffer, `SSEEvent` types; `Writer` — typed SSE event helpers |
 | `timeline.go` | `TimelineEvent`, `TerminationReason` — condensed per-event timeline entries persisted for session reports |
-| `runstate_test.go` | Tests for SSE broadcast and context computation |
-| `compute_context_test.go` | Tests for token estimation |
+| `runstate_test.go` | Tests for SSE broadcast |
 | `timeline_test.go` | Tests for timeline serialization |
 
 Network-agnostic: manages channels, not HTTP connections. Each active runner run creates one `State` via `runstate.New()`. The runner broadcasts `SSEEvent` values; `api.Server` connects subscribers to SSE HTTP streams.
 
 `Writer.Token` and `Writer.ThinkingDelta` batch stream text server-side: consecutive deltas are flushed as a single SSE event on a ~50ms interval or a 4096-char budget (also on type/turn changes, non-token events, subscribe, and stream close), so the client receives the same text with far fewer network frames. Run-state event history is bounded by event count (4096) and a 1 MiB byte budget for high-volume token/thinking content, so a long reasoning stream stays memory-bounded and replay-on-reconnect delivers only the recent tail.
 
-**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios. The live call sites pass the active store and model name: `ComputeContext` is fed by the run loop's `CalibrationStore`/`ModelName` options, and the auto-compaction high-water gate (`compactSessionHistory`) estimates with the same store so threshold checks track the calibrated ratio for the current model.
+Token accounting types carried on SSE events (`TokenUsage` on the done event, `ContextUpdate` on `context_update`) live in `internal/tokenizer`; runstate imports them rather than defining its own.
+
+**Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `tokenizer.ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` live in `internal/tokenizer` and accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios. The live call sites pass the active store and model name: `tokenizer.ComputeContext` is fed by the run loop's `CalibrationStore`/`ModelName` options, and the auto-compaction high-water gate (`compactSessionHistory`) estimates with the same store so threshold checks track the calibrated ratio for the current model.
 
 ### `internal/uixt/` — User-facing string helpers
 
@@ -132,9 +133,14 @@ A standalone package for human-friendly outcome messages that render identically
 | File | Responsibility |
 |------|---------------|
 | `calibration_store.go` | `CalibrationStore` — per-model chars-per-token (CPT) exponential moving average with thread-safe access; `Save`/`Load` JSON persistence under the Eitri data dir (`~/.eitri/calibration.json` by default) |
+| `estimate.go` | `Estimate` — the single canonical chars-per-token estimator; `EstimateUsage` / `ComputeContext` — token-usage and context breakdown types |
 | `calibration_store_test.go` | Unit tests for EMA math, concurrent access, default fallback, reset, and save/load round-trips |
+| `estimate_test.go` | Equivalence-table and calibrated-CPT tests for `Estimate` |
+| `estimate_usage_test.go` | Tests for `EstimateUsage` and `ComputeContext` |
 
 The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The input length counts all message text the provider tokenizes — including tool-result content — so the measurement matches the prompt-token count; observations below 1.0 chars/token are rejected as implausible (measurement mismatch) and never enter the EMA. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns. Calibration data is restored from disk on startup and saved on shutdown (server mode) and at the end of batch runs, so observations survive restarts; an absent or empty file falls back to current defaults.
+
+Every token count in the system routes through the single `Estimate(text, store, model)` primitive — the Context panel breakdown (system/history/skill tokens via `ComputeContext`), per-run usage figures via `EstimateUsage`, compactor thresholds, and the bash-output inflation guard. It runs on the allocation-free hot path (bare int return).
 
 ### `internal/compactor/` — Message compaction
 
@@ -472,7 +478,7 @@ sequenceDiagram
             RunSvc->>Tool: WebFetchTool fetches URL
             Tool-->>RunSvc: Markdown content
         end
-        RunSvc->>runstate.State: Broadcast context_update (ComputeContext)
+        RunSvc->>runstate.State: Broadcast context_update (tokenizer.ComputeContext)
         RunSvc-->>Browser: SSE: tool_result
         Browser->>API: POST /api/sessions/{id}/render {kind: "tool_card"}
     end
@@ -554,7 +560,7 @@ eitri/
 │   │   ├── runconfig.go       # Runtime configuration snapshot
 │   │   ├── broadcast.go       # Fan-out event distribution
 │   │   └── ...                # Flat files (service.go, run.go, subagent.go, system_prompt.go, etc.)
-│   ├── runstate/              # SSE broadcast infrastructure + context tracking
+│   ├── runstate/              # SSE broadcast infrastructure
 │   ├── sandbox/               # bwrap sandbox wrapper
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation

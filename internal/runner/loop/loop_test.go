@@ -2546,10 +2546,10 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 	}
 
 	events := collectSSE(sseState)
-	var ctxUpdate *runstate.ContextUpdate
+	var ctxUpdate *tokenizer.ContextUpdate
 	for _, evt := range events {
 		if evt.Type == "context_update" {
-			if data, ok := evt.Data.(*runstate.ContextUpdate); ok {
+			if data, ok := evt.Data.(*tokenizer.ContextUpdate); ok {
 				ctxUpdate = data
 				break
 			}
@@ -2587,7 +2587,7 @@ func TestContextUpdate_UsesCalibratedStore(t *testing.T) {
 		store.Update("test-model", 8.0)
 	}
 
-	run := func(useCalibration bool) *runstate.ContextUpdate {
+	run := func(useCalibration bool) *tokenizer.ContextUpdate {
 		t.Helper()
 		sseState := runstate.New()
 		w := runstate.NewWriter(sseState)
@@ -2633,7 +2633,7 @@ func TestContextUpdate_UsesCalibratedStore(t *testing.T) {
 		events := collectSSE(sseState)
 		for _, evt := range events {
 			if evt.Type == "context_update" {
-				if data, ok := evt.Data.(*runstate.ContextUpdate); ok {
+				if data, ok := evt.Data.(*tokenizer.ContextUpdate); ok {
 					return data
 				}
 			}
