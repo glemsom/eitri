@@ -186,18 +186,6 @@
   --on-accent-dim: rgba(255, 255, 255, 0.7);
   --on-warning: #000000;
 
-  /* Component aliases — complete the half-migrated token set (issue #1068).
-     These were referenced by components but never declared, so persona cards,
-     the sessions table, form errors, and typing dots rendered unstyled. */
-  --muted: var(--text-muted);
-  --border-muted: var(--border);
-  --danger: var(--error);
-  --text-secondary: var(--text-muted);
-  --bg-secondary: var(--surface-alt);
-  --bg-tertiary: var(--surface);
-  --fg: var(--text);
-  --fg-muted: var(--text-muted);
-  --mono-font: var(--font-code);
   --radius: 8px;
   --surface-hover: rgba(255, 255, 255, 0.04);
 
@@ -268,16 +256,6 @@
     --on-accent-dim: rgba(255, 255, 255, 0.7);
     --on-warning: #000000;
 
-    /* Component aliases */
-    --muted: var(--text-muted);
-    --border-muted: var(--border);
-    --danger: var(--error);
-    --text-secondary: var(--text-muted);
-    --bg-secondary: var(--surface-alt);
-    --bg-tertiary: var(--surface);
-    --fg: var(--text);
-    --fg-muted: var(--text-muted);
-    --mono-font: var(--font-code);
     --radius: 8px;
     --surface-hover: rgba(0, 0, 0, 0.04);
 
@@ -514,7 +492,7 @@ header h1 {
   animation: dot-bounce 1.4s ease-in-out infinite;
   font-size: 1.2em;
   line-height: 1;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .typing-dots span:nth-child(1) {
@@ -1413,7 +1391,7 @@ details[open] .tool-chevron {
   align-items: center;
   gap: 0.3rem;
   background: var(--surface);
-  border: 1px solid var(--border-muted);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.2rem 0.65rem 0.2rem 0.45rem;
   font-size: 0.8rem;
@@ -2197,7 +2175,7 @@ eitri-composer {
 }
 
 .endpoint-required {
-  color: var(--danger);
+  color: var(--error);
 }
 
 .required-marker {
@@ -2464,7 +2442,7 @@ eitri-composer {
   padding: 0.25rem 1rem 0;
   margin: 0;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .skill-path {
@@ -3281,7 +3259,7 @@ eitri-context {
 
 /* — Personas section — */
 .persona-card {
-  background: var(--bg-secondary);
+  background: var(--surface-alt);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px;
@@ -3298,7 +3276,7 @@ eitri-context {
 .persona-name {
   font-weight: 600;
   font-size: 14px;
-  color: var(--fg);
+  color: var(--text);
 }
 
 .persona-active-badge {
@@ -3314,8 +3292,8 @@ eitri-context {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 10px;
-  background: var(--bg-tertiary);
-  color: var(--fg-muted);
+  background: var(--surface);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -3327,14 +3305,14 @@ eitri-context {
 
 .persona-prompt-preview {
   font-size: 12px;
-  color: var(--fg-muted);
+  color: var(--text-muted);
   margin: 4px 0 0 0;
   line-height: 1.4;
   word-break: break-word;
 }
 
 .persona-form {
-  background: var(--bg-secondary);
+  background: var(--surface-alt);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
@@ -3344,7 +3322,7 @@ eitri-context {
 .persona-form h4 {
   margin: 0 0 12px 0;
   font-size: 14px;
-  color: var(--fg);
+  color: var(--text);
 }
 
 .disabled-input {
@@ -3353,14 +3331,14 @@ eitri-context {
 }
 
 .form-error {
-  color: var(--danger);
+  color: var(--error);
   font-size: 13px;
   margin-top: 8px;
 }
 
 .htmx-indicator {
   font-size: 12px;
-  color: var(--fg-muted);
+  color: var(--text-muted);
   margin-left: 8px;
 }
 
@@ -4053,19 +4031,19 @@ eitri-context {
 .session-count-cell {
   width: 60px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .session-date-cell {
   width: 130px;
   white-space: nowrap;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .session-duration-cell {
   width: 70px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -4100,12 +4078,12 @@ eitri-context {
 
 .cleanup-label {
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .cleanup-value {
   font-weight: 600;
-  font-family: var(--mono-font);
+  font-family: var(--font-code);
   color: var(--text);
 }
 
