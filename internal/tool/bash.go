@@ -24,25 +24,31 @@ type bashArgs struct {
 
 // BashTool implements ToolHandler for running shell commands.
 type BashTool struct {
-	workspace     string
-	timeout       time.Duration
-	sandboxConfig sandbox.Config
-	schema        litellm.Schema
+	workspace      string
+	timeout        time.Duration
+	sandboxManager *sandbox.Manager
+	schema         litellm.Schema
 }
 
 // NewBashTool creates a new BashTool.
 // Pass zero-value sandbox.Config to use the default profile.
 func NewBashTool(workspace string, timeout time.Duration, sc sandbox.Config) *BashTool {
 	return &BashTool{
-		workspace:     workspace,
-		timeout:       timeout,
-		sandboxConfig: sc,
-		schema:        SchemaOf[bashArgs](),
+		workspace:      workspace,
+		timeout:        timeout,
+		sandboxManager: sandbox.NewManager(sc),
+		schema:         SchemaOf[bashArgs](),
 	}
 }
 
 func (t *BashTool) Name() string {
 	return "bash"
+}
+
+// EndSession removes the session-scoped sandbox tmpdir for sessionID (ADR-0026).
+// It is called by the Registry when a run ends, including on error paths.
+func (t *BashTool) EndSession(sessionID string) {
+	t.sandboxManager.EndSession(sessionID)
 }
 
 func (t *BashTool) Description() string {
@@ -71,8 +77,13 @@ func (t *BashTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		defer cancel()
 	}
 
+	// Resolve the run's session ID from context so /tmp is session-scoped
+	// (ADR-0026): files written to /tmp persist across bash calls of the same
+	// run and are isolated between runs.
+	sessionID, _ := ctx.Value(SessionIDKey).(string)
+
 	// Build command through sandbox wrapper
-	execPath, execArgs, cleanup, err := sandbox.WrapCommand(t.workspace, parsed.Command, t.sandboxConfig)
+	execPath, execArgs, cleanup, err := t.sandboxManager.WrapCommand(t.workspace, parsed.Command, sessionID)
 	defer cleanup()
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: sandbox setup failed: %v", err))), nil

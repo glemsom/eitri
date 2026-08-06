@@ -145,6 +145,11 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 
 	sseState := runstate.New()
 	subCtx, cancel := context.WithCancel(ctx)
+	// Key the sub-agent's tools (bash /tmp namespace, browser allocator) by its
+	// own task ID so its /tmp namespace is isolated from the parent's and matches
+	// the EndSession(taskID) cleanup below. The parent's session ID would
+	// otherwise leak through the inherited context (ADR-0026).
+	subCtx = context.WithValue(subCtx, tool.SessionIDKey, taskID)
 
 	record := &subAgentRecord{
 		TaskID:    taskID,
