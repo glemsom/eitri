@@ -266,8 +266,13 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *timeline.Timel
 		}
 	}
 
-	// Build turns from events
+	// Build turns from events. turnsOrder records the first-seen emission
+	// sequence of turn numbers so the report can order cards by timeline
+	// emission order instead of re-sorting by turn number (issue #1158): turn
+	// numbering and emission order can diverge after compaction, trimmed
+	// history, or sub-agent runs.
 	turnsMap := make(map[int]*Turn)
+	turnsOrder := make([]int, 0)
 	var lastContextBefore *ContextInfo
 
 	for _, evt := range tl.Events {
@@ -281,6 +286,7 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *timeline.Timel
 				Turn:      turn,
 				Timestamp: evt.Timestamp,
 			}
+			turnsOrder = append(turnsOrder, turn)
 		}
 		t := turnsMap[turn]
 
@@ -334,14 +340,12 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *timeline.Timel
 		}
 	}
 
-	// Convert to sorted slice
-	turns := make([]Turn, 0, len(turnsMap))
-	for _, t := range turnsMap {
-		turns = append(turns, *t)
+	// Convert to a slice in timeline emission order (first-seen sequence),
+	// rather than sorting by turn number.
+	turns := make([]Turn, 0, len(turnsOrder))
+	for _, turn := range turnsOrder {
+		turns = append(turns, *turnsMap[turn])
 	}
-	sort.Slice(turns, func(i, j int) bool {
-		return turns[i].Turn < turns[j].Turn
-	})
 
 	// Interleave user messages — since timeline only captures tool calls,
 	// we insert placeholder user messages at turn boundaries.
