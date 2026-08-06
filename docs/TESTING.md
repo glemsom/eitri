@@ -75,6 +75,28 @@ is teed to `dist/test-flaky-output.log`. Combine with the race detector via
 Use it when a test fails on CI but passes locally; if the flake surfaces here,
 you can iterate until it stops before pushing.
 
+### CI reproduce job (diagnostic, non-blocking)
+
+In addition to the mandatory `make test-race` gate, CI runs a diagnostic
+**`reproduce-flaky`** job on every push/PR (issue #1126). It runs the same
+constrained harness as `make test-flaky` — with the race detector enabled —
+so environment-driven flakes are flagged before they reach the main gate
+without failing the workflow:
+
+- **Non-blocking.** The job has `continue-on-error: true`, so a flake surfaces
+  as a warning on the push/PR (and in the run log) without blocking a green
+  merge.
+- **Artifact.** The raw log is uploaded as the **`test-race-flaky-output.log`**
+  artifact on every run (success or failure) for offline inspection, via
+  `scripts/test.sh --race --flaky` (log: `dist/test-race-flaky-output.log`).
+
+**Promoting to a hard gate.** Once the job has demonstrably caught a real
+flake and the underlying tests have been de-flaked, promote it to mandatory
+gating by flipping `continue-on-error: true` to `continue-on-error: false` on
+the `reproduce-flaky` job in `.github/workflows/ci.yml`. The job's step
+semantics and artifact upload are unchanged—only the blocking behaviour
+flips.
+
 
 ## Test layers
 
