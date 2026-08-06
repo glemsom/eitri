@@ -1,3 +1,7 @@
+/* This file is generated from the CSS partials under partials/ by
+   `go generate ./internal/api/assets`. Do not edit eitri.css directly —
+   edit the partials and regenerate. See css_partials_test.go. */
+/* partials/tokens.css — self-hosted UI fonts and canonical design tokens (:root dark + light). Splice of internal/api/assets/eitri.css. */
 /* Eitri — Custom CSS */
 /* v2: sidebar + main layout */
 
@@ -370,6 +374,8 @@ a:hover {
   color: var(--accent-hover);
 }
 
+
+/* partials/layout.css — page chrome: sidebar|main layout, resize handle, header, typing dots, avatar glow, face breathing. */
 /* Layout: sidebar | main */
 #app {
   display: grid;
@@ -539,6 +545,8 @@ header h1 {
   object-fit: cover;
 }
 
+
+/* partials/sidebar.css — sidebar, three-panel flex, session items, tool activity list. */
 /* Sidebar */
 #sidebar {
   grid-area: sidebar;
@@ -899,6 +907,8 @@ details.tool-entry-wrapper .tool-result {
   border-color: var(--accent);
 }
 
+
+/* partials/chat.css — main content area, chat view grid, dropdown, noscript, base message rules. */
 /* Main content area */
 main {
   grid-area: main;
@@ -1285,6 +1295,8 @@ details[open] .tool-chevron {
   white-space: pre-wrap;
 }
 
+
+/* partials/chat-stream.css — streaming message chrome, collapsibles, status/toast, active skills bar. */
 /* Status text in header h1 (issue #451) */
 .stream-status-text {
   font-size: 0.8rem;
@@ -1463,6 +1475,8 @@ details[open] .tool-chevron {
   opacity: 0.8;
 }
 
+
+/* partials/composer.css — composer form, overlay positioning, base button class, hierarchy + send/stop toggles. */
 /* Composer */
 .composer {
   position: relative;
@@ -1638,6 +1652,8 @@ details[open] .tool-chevron {
   line-height: 2;
 }
 
+
+/* partials/composer/editor.css — workspace indicator, persona selector, scrollbar, quick replies, mermaid, completion menu, session rename. */
 /* System message (used for setup banner prepended to message list) */
 .message-system {
   align-self: flex-start;
@@ -2043,6 +2059,8 @@ eitri-composer {
   outline: none;
 }
 
+
+/* partials/layout/responsive.css — narrow-viewport responsive collapses. */
 /* Responsive: narrow viewport collapses sidebar to icon strip */
 @media (max-width: 768px) {
   .scroll-to-bottom-btn {
@@ -2145,6 +2163,8 @@ eitri-composer {
   }
 }
 
+
+/* partials/settings.css — settings page: base URL, model refresh, test connection, save hint, sections. */
 /* ============================================
    Settings page: Issue #115
    Provider-aware Base URL, model refresh, Test Connection
@@ -2490,6 +2510,8 @@ eitri-composer {
   }
 }
 
+
+/* partials/settings/overlays.css — confirmation modal, undo toast, form layout classes, base element resets. */
 /* ============================================
    Confirmation modal: Issue #314
    Blocked-read path confirmation overlay
@@ -2781,6 +2803,8 @@ eitri-composer {
   font-size: 0.95rem;
 }
 
+
+/* partials/settings/context.css — base form resets tail, context window panel. */
 /* ============================================
    Base element resets (form controls)
    ============================================
@@ -3083,6 +3107,8 @@ eitri-context {
   flex-shrink: 0;
 }
 
+
+/* partials/settings/directory-browser.css — directory browser overlay and personas section. */
 /* ============================================
    Directory browser overlay: Issue #628
    Modal overlay for browsing directory tree
@@ -3342,6 +3368,8 @@ eitri-context {
   margin-left: 8px;
 }
 
+
+/* partials/report/report.css — session report page, termination chips, run selector, system prompt, timeline. */
 /* ============= Session Report Page ============= */
 
 .report-view {
@@ -3638,6 +3666,8 @@ eitri-context {
 }
 
 .turn-content pre {
+
+/* partials/report/report-parts.css — turn cards, LLM metadata, reasoning, context bar, tool call cards, sub-agents. */
   background: var(--surface-alt);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -3939,6 +3969,8 @@ eitri-context {
 
 /* === Sessions Management Page (issue #800) === */
 
+/* partials/utilities/sessions.css — sessions management page and cleanup section. */
+
 .sessions-view {
   margin: 0 auto;
   padding: 24px;
@@ -4117,6 +4149,8 @@ eitri-context {
 }
 
 
+
+/* partials/utilities/accessibility.css — prefers-reduced-motion / prefers-reduced-transparency. */
 /* ============================================
    Accessibility preferences: Issue #1075
    Collapse decorative/infinite animations under
@@ -4185,3 +4219,4 @@ eitri-context {
     -webkit-backdrop-filter: none;
   }
 }
+

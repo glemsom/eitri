@@ -1,0 +1,180 @@
+/* partials/utilities/sessions.css — sessions management page and cleanup section. */
+
+.sessions-view {
+  margin: 0 auto;
+  padding: 24px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sessions-view h2 {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.sessions-view > .text-muted {
+  margin: 0 0 24px 0;
+  color: var(--text-muted);
+}
+
+.sessions-table-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.sessions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.sessions-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+
+.sessions-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.sessions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sessions-table tr:hover {
+  background: var(--surface-hover);
+}
+
+.session-status-cell {
+  width: 80px;
+  white-space: nowrap;
+}
+
+.status-badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.status-active {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.status-closed {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+}
+
+.session-title-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.session-count-cell {
+  width: 60px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.session-date-cell {
+  width: 130px;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.session-duration-cell {
+  width: 70px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.session-actions-cell {
+  width: 300px;
+  white-space: nowrap;
+}
+
+.session-actions-cell .btn {
+  margin-right: 4px;
+}
+
+.session-actions-cell .btn:last-child {
+  margin-right: 0;
+}
+
+/* Cleanup section */
+
+.cleanup-section {
+  padding: 16px 0;
+}
+
+.cleanup-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--surface-alt);
+  border-radius: 8px;
+}
+
+.cleanup-label {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.cleanup-value {
+  font-weight: 600;
+  font-family: var(--font-code);
+  color: var(--text);
+}
+
+.cleanup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--surface-alt);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.cleanup-actions .btn-danger {
+  padding: 8px 16px;
+}
+
+.cleanup-prune {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface-alt);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.cleanup-prune input[type="number"] {
+  width: 72px;
+  text-align: center;
+}
+
+

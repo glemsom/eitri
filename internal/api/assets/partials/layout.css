@@ -1,0 +1,170 @@
+/* partials/layout.css — page chrome: sidebar|main layout, resize handle, header, typing dots, avatar glow, face breathing. */
+/* Layout: sidebar | main */
+#app {
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 240px) 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main";
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Resize handle between sidebar and main */
+#sidebar-resize-handle {
+  position: fixed;
+  left: calc(var(--sidebar-width, 240px) - 3px);
+  top: 0;
+  width: 6px;
+  height: 100vh;
+  cursor: col-resize;
+  z-index: 100;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+#sidebar-resize-handle:hover,
+#sidebar-resize-handle.dragging {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* Disable text selection during drag */
+#app.resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: col-resize;
+}
+
+header {
+  grid-area: header;
+  position: relative;
+  /* Above the confirmation overlay (z-index:1000) so the global nav / gear
+     stays clickable while a blocked-read confirmation is pending mid-run.
+     Also keeps the gear dropdown above chat content (stacking-context fix). */
+  z-index: 1100;
+  /* Solid (near-opaque) bar rather than backdrop-filter blur: the header spans
+     the full width and backdrop-filtered repaints on every scroll/animation
+     during streaming, which contributes to main-thread jank on long sessions. */
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-border);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.header-face-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+/* Streaming message avatar container — receives the same glow that was on the header face */
+.message-avatar-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  line-height: 0;
+  align-self: flex-start;
+}
+
+.streaming-message .message-avatar-container[data-stream-status="connecting"],
+.streaming-message .message-avatar-container[data-stream-status="tool-running"] {
+  animation: glow-pulse-amber 1.5s ease-in-out infinite;
+}
+
+.streaming-message .message-avatar-container[data-stream-status="streaming"] {
+  animation: glow-pulse-green 1.5s ease-in-out infinite;
+}
+
+.streaming-message .message-avatar-container[data-stream-status="error"] {
+  box-shadow: 0 0 12px 4px color-mix(in srgb, var(--error) 50%, transparent);
+}
+
+.streaming-message .message-avatar-container[data-stream-status="done"] {
+  box-shadow: 0 0 8px 3px color-mix(in srgb, var(--success) 35%, transparent);
+}
+
+.streaming-message .message-avatar-container[data-stream-status="streaming"] .message-avatar,
+.streaming-message .message-avatar-container[data-stream-status="tool-running"] .message-avatar {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* Typing dots next to header face (issue #450) */
+.typing-dots {
+  display: inline-flex;
+  gap: 1px;
+  visibility: hidden;
+  margin-left: 2px;
+}
+
+.typing-dots:not([hidden]) {
+  visibility: visible;
+}
+
+.typing-dots span {
+  display: inline-block;
+  animation: dot-bounce 1.4s ease-in-out infinite;
+  font-size: 1.2em;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
+@keyframes glow-pulse-amber {
+  0%, 100% { box-shadow: 0 0 4px 2px color-mix(in srgb, var(--warning) 30%, transparent); }
+  50% { box-shadow: 0 0 14px 6px color-mix(in srgb, var(--warning) 60%, transparent); }
+}
+
+@keyframes glow-pulse-green {
+  0%, 100% { box-shadow: 0 0 4px 2px color-mix(in srgb, var(--success) 30%, transparent); }
+  50% { box-shadow: 0 0 14px 6px color-mix(in srgb, var(--success) 60%, transparent); }
+}
+
+/* Face breathing animation (issue #449) */
+@keyframes breathe {
+  0% { transform: scale(1.0); opacity: 1.0; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+  100% { transform: scale(1.0); opacity: 1.0; }
+}
+
+.header-face-container[data-stream-status="streaming"] .header-face,
+.header-face-container[data-stream-status="tool-running"] .header-face {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.header-face {
+  border-radius: 50%;
+  object-fit: cover;
+}
+

@@ -4,6 +4,11 @@ import (
 	"embed"
 )
 
+// The single embedded stylesheet eitri.css is generated from the per-area CSS
+// partials under partials/ (see gen_eitri_css.go and css_partials_test.go).
+//
+//go:generate go run gen_eitri_css.go
+
 //go:embed htmx.min.js
 //go:embed prism-core.min.js
 //go:embed prism-go.min.js
@@ -41,3 +46,12 @@ import (
 //go:embed manifest.json
 //go:embed sw.js
 var Files embed.FS
+
+// CSSPartials exposes the per-area CSS partial files for the lint-guard test
+// (css_partials_test.go) so it can verify the generated aggregate eitri.css is
+// in sync with its sources without relying on the working directory. These are
+// deliberately NOT part of Files: only the assembled eitri.css is served, so
+// /static/ never exposes the partials.
+//
+//go:embed partials
+var CSSPartials embed.FS

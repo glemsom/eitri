@@ -1,0 +1,346 @@
+/* partials/settings.css — settings page: base URL, model refresh, test connection, save hint, sections. */
+/* ============================================
+   Settings page: Issue #115
+   Provider-aware Base URL, model refresh, Test Connection
+   ============================================ */
+
+/* Provider endpoint */
+.base-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.base-url-row input {
+  flex: 1;
+}
+
+#base-url-reset {
+  white-space: nowrap;
+}
+
+.endpoint-default {
+  color: var(--success);
+}
+
+.endpoint-override,
+.endpoint-custom {
+  color: var(--warning);
+}
+
+.endpoint-required {
+  color: var(--error);
+}
+
+.required-marker {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+/* Model refresh spinner */
+.model-refresh-spinner {
+  visibility: hidden;
+  display: inline;
+  animation: spin 1s linear infinite;
+  font-size: 1rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.model-refresh-notice {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: var(--success);
+  margin-left: 0.5rem;
+  transition: opacity 0.5s ease;
+}
+
+.model-refresh-notice.fade-out {
+  opacity: 0;
+}
+
+/* Test Connection */
+.test-connection-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#test-connection-btn {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#test-connection-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+#test-connection-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-connection-result {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.test-connection-pending {
+  color: var(--text-muted);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.connection-ok {
+  color: var(--success);
+}
+
+.connection-err {
+  color: var(--error);
+}
+
+/* Save success indicator */
+.save-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  animation: saveSlideIn 0.3s ease;
+}
+
+.save-success.fade-out {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+@keyframes saveSlideIn {
+  from {
+    transform: translateY(-5px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Save hint */
+.save-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+}
+
+.settings-dirty-indicator {
+  font-size: 0.85rem;
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Settings collapsible sections */
+.settings-details {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  padding: 0.5rem 1rem;
+  box-shadow: var(--shadow-md);
+}
+
+.settings-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.4rem 0;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.settings-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-details summary::before {
+  content: "\25B6";
+  font-size: 0.7rem;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  color: var(--text-muted);
+}
+
+.settings-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.settings-details summary:hover {
+  color: var(--text);
+}
+
+.settings-details summary:hover::before {
+}
+
+/* Settings page — scrollable container inside main (which has overflow-y:hidden) */
+.settings-view {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Skills page — scrollable container inside main (which has overflow-y:hidden) */
+.skills-view {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Sandbox status badges in settings */
+.sandbox-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.sandbox-badge--ok {
+  color: var(--sandbox-ok);
+}
+
+.sandbox-badge--warn {
+  color: var(--sandbox-warn);
+}
+
+/* Skill cards */
+.skill-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.skill-card.skill-effective {
+  border-left: 3px solid var(--success);
+}
+
+.skill-card.skill-disabled {
+  background: var(--surface);
+  opacity: 0.75;
+  border-left: 3px solid var(--warning);
+}
+
+.skill-card.skill-shadowed {
+  background: var(--surface);
+  opacity: 0.65;
+  border-left: 3px dashed var(--text-muted);
+}
+
+.skill-card.skill-invalid {
+  border-left: 3px solid var(--error);
+}
+
+.skill-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 0.25rem;
+}
+
+.skill-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.skill-scope-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.skill-status-dot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  line-height: 0;
+}
+
+.skill-description {
+  padding: 0.25rem 1rem 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.skill-path {
+  padding: 0.25rem 1rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: var(--font-code);
+}
+
+
+
+/* System prompt textarea: monospace + pre-wrap */
+.monospace-textarea {
+  font-family: var(--font-code);
+  font-size: 0.9rem;
+  resize: vertical;
+  white-space: pre-wrap;
+  min-height: 120px;
+}
+
+/* Char count below textarea */
+.char-count-wrapper {
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
+.char-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+}
+
+/* Form-actions sticky on desktop: scoped to form-actions-sticky so device-flow
+   buttons (also .form-actions) do not inherit sticky positioning. */
+@media (min-width: 769px) {
+  .form-actions-sticky {
+    position: sticky;
+    bottom: 0;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 1rem;
+    margin: 1rem -1rem -1rem -1rem;
+    border-top: 1px solid var(--glass-border);
+    z-index: 10;
+  }
+}
+

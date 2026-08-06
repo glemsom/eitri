@@ -1,0 +1,103 @@
+/* partials/layout/responsive.css — narrow-viewport responsive collapses. */
+/* Responsive: narrow viewport collapses sidebar to icon strip */
+@media (max-width: 768px) {
+  .scroll-to-bottom-btn {
+    right: 1rem;
+    bottom: calc(var(--composer-bottom, var(--composer-height, 130px)) + 0.75rem);
+  }
+
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "header"
+      "sidebar"
+      "main";
+  }
+
+  #sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 160px;
+    flex-direction: row;
+    overflow-x: auto;
+    align-items: stretch;
+  }
+
+  #sidebar .sidebar-panel,
+  #sidebar .sidebar-divider,
+  #sidebar #tool-activity,
+  #sidebar #thinking-panel {
+    display: none;
+  }
+
+  #sidebar #session-tabs {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: none;
+    width: auto;
+    overflow: visible;
+  }
+
+  #sidebar .sidebar-header {
+    display: flex;
+    padding: 0.35rem 0.5rem;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 0.35rem;
+  }
+
+  #sidebar .sidebar-header .sidebar-title {
+    display: none;
+  }
+
+  #sidebar .sidebar-header .new-session-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #sidebar .sidebar-header .new-session-btn:hover {
+    background: transparent;
+    color: var(--accent-hover);
+  }
+
+  #sidebar .sidebar-list {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.15rem 0.35rem;
+    flex: none;
+  }
+
+  .session-item {
+    flex-shrink: 0;
+    padding: 0.3rem 0.5rem;
+    margin: 0.1rem 0.2rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  main {
+    padding: 0.75rem;
+  }
+
+  /* Mobile: form-actions not sticky. The sticky variant is only defined in
+     the min-width media query below, so a plain override suffices (no
+     !important needed; issue #1079). */
+  .form-actions,
+  .form-actions-sticky {
+    position: static;
+  }
+}
+
