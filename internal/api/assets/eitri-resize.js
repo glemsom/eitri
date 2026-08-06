@@ -43,7 +43,10 @@
     let newWidth = startWidth + delta;
     // Clamp to min/max
     newWidth = Math.max(120, Math.min(600, newWidth));
-    app.style.setProperty("--sidebar-width", newWidth + "px");
+    // Set on <html> (not #app): the resize handle lives outside #app, so an
+    // inline value on #app would never reach it, leaving the handle stranded
+    // at the original width after the first drag.
+    document.documentElement.style.setProperty("--sidebar-width", newWidth + "px");
   }
 
   function onMouseUp() {
