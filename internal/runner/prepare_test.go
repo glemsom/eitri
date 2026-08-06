@@ -94,18 +94,20 @@ func TestPrepareRun_UIAndBatchParity(t *testing.T) {
 	}
 
 	uiPrep, err := svc.prepareRun(context.Background(), cfg, runPrepOptions{
-		sessionID:    uiSess.ID,
-		skillCtx:     svc.resolveSessionSkillContext(uiSess.ID),
-		uiSessionMgr: uiSessionMgr,
+		sessionID:     uiSess.ID,
+		skillCtx:      svc.resolveSessionSkillContext(uiSess.ID),
+		uiSessionMgr:  uiSessionMgr,
+		allowDelegate: true,
 	})
 	if err != nil {
 		t.Fatalf("prepareRun (UI): %v", err)
 	}
 
 	batchPrep, err := svc.prepareRun(context.Background(), cfg, runPrepOptions{
-		sessionID:    "batch-1",
-		skillCtx:     sessionSkillContext{},
-		uiSessionMgr: nil,
+		sessionID:     "batch-1",
+		skillCtx:      sessionSkillContext{},
+		uiSessionMgr:  nil,
+		allowDelegate: true,
 	})
 	if err != nil {
 		t.Fatalf("prepareRun (batch): %v", err)
@@ -185,6 +187,63 @@ func TestPrepareRun_UIAndBatchParity(t *testing.T) {
 		} else if key != want.sessionID {
 			t.Errorf("%s request prompt_cache_key = %v, want %q", name, key, want.sessionID)
 		}
+	}
+}
+
+// TestPrepareRun_DelegatedLeafToolset verifies that a delegated (sub-agent)
+// run prepared through the seam with allowDelegate false gets the leaf base
+// toolset — bash, grep, read, write, edit, render_mermaid_diagram, web_fetch,
+// browser, skill — and none of the parent/UI-only tools (delegate, collect,
+// render_quick_replies), even when the parent has a UI session (issue #1106).
+func TestPrepareRun_DelegatedLeafToolset(t *testing.T) {
+	workspace, homeDir, skillsSvc := testPersonaWithRequiredSkill(t)
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: history.NewSessionManager(50),
+		SkillsService:     skillsSvc,
+	})
+	cfg := RunConfig{
+		ProviderID:    "opencode_go",
+		BaseURL:       "http://127.0.0.1:1",
+		APIKey:        "test-key",
+		ModelName:     "test-model",
+		Workspace:     workspace,
+		HomeDir:       homeDir,
+		ActivePersona: "test-reviewer",
+	}
+
+	// Leaf prep: allowDelegate false but a UI session present — the hardest
+	// case, checking render_quick_replies is NOT leaked onto the sub-agent.
+	prep, err := svc.prepareRun(context.Background(), cfg, runPrepOptions{
+		sessionID:     "task-1",
+		skillCtx:      sessionSkillContext{},
+		uiSessionMgr:  uiSessionMgr,
+		allowDelegate: false,
+	})
+	if err != nil {
+		t.Fatalf("prepareRun (delegated): %v", err)
+	}
+
+	names := prep.toolReg.Names()
+	leafTools := []string{
+		"bash", "browser", "edit", "grep", "read",
+		"render_mermaid_diagram", "skill", "web_fetch", "write",
+	}
+	for _, name := range leafTools {
+		if !containsStr(names, name) {
+			t.Errorf("leaf registry missing tool %q (got %v)", name, names)
+		}
+	}
+	for _, name := range []string{"delegate", "collect", "render_quick_replies"} {
+		if containsStr(names, name) {
+			t.Errorf("leaf registry must not contain %q (got %v)", name, names)
+		}
+	}
+
+	// The system prompt still carries the skills catalog (skills service wired).
+	if !strings.Contains(prep.systemPrompt, "Available skills:") {
+		t.Errorf("leaf system prompt missing skills catalog:\n%s", prep.systemPrompt)
 	}
 }
 
@@ -381,9 +440,10 @@ func TestPrepareRun_BatchRegistryEndsBrowserSession(t *testing.T) {
 	}
 
 	prep, err := svc.prepareRun(context.Background(), cfg, runPrepOptions{
-		sessionID:    "batch-1",
-		skillCtx:     sessionSkillContext{},
-		uiSessionMgr: nil,
+		sessionID:     "batch-1",
+		skillCtx:      sessionSkillContext{},
+		uiSessionMgr:  nil,
+		allowDelegate: true,
 	})
 	if err != nil {
 		t.Fatalf("prepareRun: %v", err)

@@ -213,22 +213,31 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		slog.Int("max_turns", maxTurns),
 	)
 
-	// Build LLM service, tool registry, and system prompt (same provider/model
-	// as parent; sub-agent toolset = base + skill). The task ID and recorder
-	// are passed so sub-agent LLM calls feed the same trace recorder and
-	// interaction metrics as their parent (issue #987).
-	llmSvc, toolReg, basePrompt, err := buildLLMService(ctx, parentCfg, taskID, s.debugRecorder, s.persistAuth, s.skillDirectories(), s.skillsSvc, s.uiSessionMgr, sessionSkillContext{})
+	// Prepare the delegated run through the same run-preparation seam as UI and
+	// batch parent runs, but as a leaf (allowDelegate false): the toolset is
+	// the base registry + skill — no delegate, no collect, and never
+	// render_quick_replies. The task ID and recorder are passed so sub-agent
+	// LLM calls feed the same trace recorder and interaction metrics as their
+	// parent (issue #987).
+	prep, err := s.prepareRun(ctx, parentCfg, runPrepOptions{
+		sessionID:     taskID,
+		skillCtx:      sessionSkillContext{},
+		uiSessionMgr:  s.uiSessionMgr,
+		allowDelegate: false,
+	})
 	if err != nil {
-		return "", fmt.Errorf("sub-agent LLM service: %w", err)
+		return "", fmt.Errorf("sub-agent run prep: %w", err)
 	}
+	llmSvc := prep.llmSvc
+	toolReg := prep.toolReg
 
-	// Append task-specific suffix to the base system prompt
-	systemPrompt := basePrompt + "\n\nYou are performing the following task: " + task
+	// Append task-specific suffix to the base system prompt.
+	systemPrompt := prep.systemPrompt + "\n\nYou are performing the following task: " + task
 
 	// Create request and set up messages. The request (model, max_output_tokens,
 	// prompt-cache key, thinking level) is assembled by the same shared builder
 	// the UI and batch parent runs use (issue #1091).
-	req := buildRunRequest(parentCfg, taskID)
+	req := prep.req
 	req.Messages = []litellm.Message{
 		{Role: litellm.Role("system"), Blocks: []litellm.Block{litellm.TextBlock{Text: systemPrompt}}},
 		{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: task}}},
@@ -561,10 +570,11 @@ func (s *RunService) CancelSubAgents(sessionID string) {
 }
 
 // buildBaseToolRegistry creates a tool registry with the standard tools plus
-// the skill tool (when a skills service is wired) — the sub-agent toolset
-// (issue #1092). delegate, collect, and render_quick_replies are parent-only
-// / UI-only: delegate and collect are registered by the parent-run
-// preparation seam, render_quick_replies only when a UI session exists.
+// the skill tool (when a skills service is wired) — the leaf/delegated toolset
+// (issue #1092). delegate, collect, and render_quick_replies are parent-only /
+// UI-only and are registered by the run-preparation seam only when
+// allowDelegate is true (render_quick_replies additionally only when a UI
+// session exists), so a delegated run never gains them.
 func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.Service, uiSessionMgr *uisession.Manager) *tool.Registry {
 	reg := tool.NewRegistry()
 	reg.Register(tool.NewBashTool(cfg.Workspace, cfg.CmdTimeout, cfg.Sandbox))
