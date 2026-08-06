@@ -18,8 +18,8 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
-	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -331,22 +331,19 @@ func TestBrowser_OptimisticUserBubble(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Check for user bubble immediately — the optimistic insert happens
-	// before the HTMX request completes, so it should be visible even
-	// though the slow LLM server delays the response.
-	time.Sleep(100 * time.Millisecond)
-
+	// Wait for the optimistic user bubble — it should appear even though the
+	// slow LLM server delays the response — rather than sleeping a fixed time.
 	var bubbleFound bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`document.querySelector('.message-user .message-content') !== null &&
-			 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
-			&bubbleFound,
-		),
-	)
-	if err != nil {
-		t.Fatalf("bubble check failed: %v", err)
-	}
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(
+				`document.querySelector('.message-user .message-content') !== null &&
+				 document.querySelector('.message-user .message-content').textContent === "`+messageText+`"`,
+				&bubbleFound,
+			),
+		)
+		return err == nil && bubbleFound
+	})
 
 	if !bubbleFound {
 		t.Error("optimistic user bubble should appear before SSE stream starts")
@@ -1197,8 +1194,8 @@ func TestBrowser_LazyLoadsHeavyLibraries(t *testing.T) {
 
 	// Track every heavy asset the page actually requests on the wire.
 	var (
-		mu                  sync.Mutex
-		heavyRequests       []string
+		mu            sync.Mutex
+		heavyRequests []string
 	)
 	chromedp.ListenTarget(ctx, func(ev any) {
 		req, ok := ev.(*network.EventRequestWillBeSent)
@@ -1338,16 +1335,23 @@ func TestBrowser_RunStatusChrome_ShowsNoDeadAirAndDone(t *testing.T) {
 		t.Fatalf("start run failed: %v", err)
 	}
 
-	time.Sleep(150 * time.Millisecond)
-
-	var midStatus string
-	err = chromedp.Run(ctx,
-		chromedp.Text(".stream-status-text", &midStatus, chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("read status failed: %v", err)
-	}
-	midStatus = strings.TrimSpace(midStatus)
+	// Wait until the run transitions into an active (Connecting/Streaming)
+	// state rather than sleeping a fixed time, so a busy CI VM does not flap.
+	midStatus := ""
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var status string
+		if err := chromedp.Run(ctx,
+			chromedp.Text(".stream-status-text", &status, chromedp.ByQuery),
+		); err != nil {
+			return false
+		}
+		status = strings.TrimSpace(status)
+		if status == "Connecting" || status == "Streaming" {
+			midStatus = status
+			return true
+		}
+		return false
+	})
 	if midStatus != "Connecting" && midStatus != "Streaming" {
 		t.Fatalf("run status during active run = %q, want Connecting or Streaming", midStatus)
 	}
@@ -1549,29 +1553,34 @@ func TestBrowser_InputDisabledDuringRun(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait a bit for HTMX to process and update the DOM
-	time.Sleep(500 * time.Millisecond)
-
+	// Wait until the active-run state is reflected in the DOM (input/send
+	// disabled, stop button visible) instead of sleeping a fixed time.
 	var inputDisabled bool
 	var sendBtnDisabled bool
 	var stopBtnVisible bool
-
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === true", &inputDisabled),
-		chromedp.EvaluateAsDevTools("document.querySelector('#send-btn').disabled === true", &sendBtnDisabled),
-		chromedp.EvaluateAsDevTools(
-			`(function() {
-				var btn = document.getElementById('stop-btn');
-				if (!btn) return false;
-				var style = window.getComputedStyle(btn);
-				return style.display !== 'none';
-			})()`,
-			&stopBtnVisible,
-		),
-	)
-	if err != nil {
-		t.Fatalf("run state check failed: %v", err)
-	}
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var inD bool
+		var sD bool
+		var stop bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === true", &inD),
+			chromedp.EvaluateAsDevTools("document.querySelector('#send-btn').disabled === true", &sD),
+			chromedp.EvaluateAsDevTools(
+				`(function() {
+					var btn = document.getElementById('stop-btn');
+					if (!btn) return false;
+					var style = window.getComputedStyle(btn);
+					return style.display !== 'none';
+				})()`,
+				&stop,
+			),
+		)
+		if err != nil {
+			return false
+		}
+		inputDisabled, sendBtnDisabled, stopBtnVisible = inD, sD, stop
+		return inD && sD && stop
+	})
 
 	if !inputDisabled {
 		t.Error("#chat-input should be disabled during active run")
@@ -1605,8 +1614,8 @@ func TestBrowser_CancelRun(t *testing.T) {
 		t.Fatalf("navigation/send failed: %v", err)
 	}
 
-	// Wait for OOB swap to update composer
-	time.Sleep(300 * time.Millisecond)
+	// The poll loop below waits for the stop button to appear, so there is no
+	// need for a fixed pre-wait; the DOM condition is polled directly.
 
 	// Wait for stop button to appear (may take a moment for HTMX swap)
 	var stopBtnExists bool
@@ -1647,35 +1656,32 @@ func TestBrowser_CancelRun(t *testing.T) {
 		t.Log("no .message-assistant found after cancel — stream may have ended before any chunk rendered")
 	}
 
-	// Allow HTMX settle time
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify input is re-enabled
+	// Poll for the cancel-side effects (input re-enabled, stop button hidden)
+	// rather than sleeping a fixed HTMX-settle time.
 	var inputEnabled bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === false", &inputEnabled),
-	)
-	if err != nil {
-		t.Fatalf("input state check failed: %v", err)
-	}
+	var stopBtnHidden bool
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var input bool
+		var stopHidden bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools("document.querySelector('#chat-input').disabled === false", &input),
+			chromedp.EvaluateAsDevTools(
+				`(function() {
+					var btn = document.getElementById('stop-btn');
+					if (!btn) return true;
+					return window.getComputedStyle(btn).display === 'none';
+				})()`,
+				&stopHidden,
+			),
+		)
+		if err != nil {
+			return false
+		}
+		inputEnabled, stopBtnHidden = input, stopHidden
+		return input && stopHidden
+	})
 	if !inputEnabled {
 		t.Error("#chat-input should be re-enabled after cancel")
-	}
-
-	// Verify stop button is hidden
-	var stopBtnHidden bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(
-			`(function() {
-				var btn = document.getElementById('stop-btn');
-				if (!btn) return true;
-				return window.getComputedStyle(btn).display === 'none';
-			})()`,
-			&stopBtnHidden,
-		),
-	)
-	if err != nil {
-		t.Fatalf("stop button state check failed: %v", err)
 	}
 	if !stopBtnHidden {
 		// Debug: check the actual style attribute
@@ -1711,7 +1717,21 @@ func TestBrowser_EscapeCancelsActiveRun(t *testing.T) {
 		t.Fatalf("start run failed: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	// Wait for the run to become active (stop button visible) before sending
+	// Escape, rather than sleeping a fixed time.
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var active bool
+		if err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var btn = document.getElementById('stop-btn');
+				if (!btn) return false;
+				return window.getComputedStyle(btn).display !== 'none';
+			})()`, &active),
+		); err != nil {
+			return false
+		}
+		return active
+	})
 
 	var cancelled bool
 	err = chromedp.Run(ctx,
@@ -1827,37 +1847,34 @@ func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// 30 tokens * 40ms each = 1200ms. Check at 500ms to catch mid-stream.
-	time.Sleep(500 * time.Millisecond)
-	// Verify streaming element exists inside #messages
+	// Wait until streaming has begun with token content in #messages (mid-stream),
+	// rather than sleeping to a fixed 500ms check that can miss on a busy CI VM.
+	// Both the parent placement and content are polled so the assertion is on
+	// observed state, not elapsed time.
 	var streamingInMessages bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var el = document.getElementById('streaming');
-			if (!el) return false;
-			return el.parentElement && el.parentElement.id === 'messages';
-		})()`, &streamingInMessages),
-	)
-	if err != nil {
-		t.Fatalf("check streaming parent failed: %v", err)
-	}
+	var hasTokenContent bool
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var inMsgs bool
+		var hasContent bool
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('streaming');
+				if (!el) return false;
+				return !!(el.parentElement && el.parentElement.id === 'messages');
+			})()`, &inMsgs),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('streaming');
+				if (!el) return false;
+				var content = el.querySelector('.message-content');
+				if (!content) return false;
+				return content.children.length > 0 || (content.textContent || '').trim().length > 0;
+			})()`, &hasContent),
+		)
+		streamingInMessages, hasTokenContent = inMsgs, hasContent
+		return err == nil && inMsgs && hasContent
+	})
 	if !streamingInMessages {
 		t.Error("streaming element should be a child of #messages")
-	}
-
-	// Verify streaming has some token content
-	var hasTokenContent bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var el = document.getElementById('streaming');
-			if (!el) return false;
-			var content = el.querySelector('.message-content');
-			if (!content) return false;
-			return content.children.length > 0 || (content.textContent || '').trim().length > 0;
-		})()`, &hasTokenContent),
-	)
-	if err != nil {
-		t.Fatalf("check streaming content failed: %v", err)
 	}
 	if !hasTokenContent {
 		t.Error("streaming tokens should have content in #messages scroll container")
@@ -2061,8 +2078,23 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait for streaming tokens to accumulate
-	time.Sleep(2 * time.Second)
+	// Wait until streaming has actually begun (some token content present)
+	// before scrolling, rather than sleeping a fixed time.
+	pollForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
+		var started bool
+		if err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('streaming');
+				if (!el) return false;
+				var content = el.querySelector('.message-content');
+				if (!content) return false;
+				return content.children.length > 0 || (content.textContent || '').trim().length > 0;
+			})()`, &started),
+		); err != nil {
+			return false
+		}
+		return started
+	})
 
 	// Scroll up in #messages to force scroll position away from bottom
 	err = chromedp.Run(ctx,
@@ -2072,8 +2104,17 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 		t.Fatalf("scroll up failed: %v", err)
 	}
 
-	// Wait for IntersectionObserver to detect sentinel is not visible
-	time.Sleep(600 * time.Millisecond)
+	// Wait for the IntersectionObserver to detect the sentinel is off-screen
+	// (button becomes visible) rather than sleeping a fixed time.
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		var visible bool
+		if err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('scroll-to-bottom-btn').classList.contains('visible')`, &visible),
+		); err != nil {
+			return false
+		}
+		return visible
+	})
 
 	// Verify scroll-to-bottom button is now visible
 	var btnVisible bool
@@ -2095,8 +2136,17 @@ func TestBrowser_AutoScrollDuringStreaming(t *testing.T) {
 		t.Fatalf("click scroll-to-bottom failed: %v", err)
 	}
 
-	// Wait for smooth scroll
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the smooth scroll to settle (button hidden once back at bottom)
+	// rather than sleeping a fixed time.
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		var hidden bool
+		if err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`!document.getElementById('scroll-to-bottom-btn').classList.contains('visible')`, &hidden),
+		); err != nil {
+			return false
+		}
+		return hidden
+	})
 
 	// Verify button is hidden again after scrolling to bottom
 	var btnHiddenAfterClick bool
@@ -2258,21 +2308,25 @@ func TestBrowser_ComposerMobileKeyboard(t *testing.T) {
 		t.Fatalf("emulate viewport failed: %v", err)
 	}
 
-	// Give resize observer time to fire
-	time.Sleep(300 * time.Millisecond)
+	// Wait for the resize observer to settle and the composer to render rather
+	// than sleeping a fixed time after the viewport change.
+	var composerDisplay string
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		var display string
+		if err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('composer');
+				if (!el) return 'no-composer';
+				return window.getComputedStyle(el).display;
+			})()`, &display),
+		); err != nil {
+			return false
+		}
+		composerDisplay = display
+		return display != "no-composer"
+	})
 
 	// Verify composer element exists and has the flex-shrink-0 styling
-	var composerDisplay string
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var el = document.getElementById('composer');
-			if (!el) return 'no-composer';
-			return window.getComputedStyle(el).display;
-		})()`, &composerDisplay),
-	)
-	if err != nil {
-		t.Fatalf("get composer display failed: %v", err)
-	}
 	if composerDisplay != "block" && composerDisplay != "no-composer" {
 		t.Errorf("composer display = %q, want block", composerDisplay)
 	}
@@ -2996,7 +3050,9 @@ func TestBrowser_StreamingKeepsMainThreadResponsive(t *testing.T) {
 		time.Sleep(30 * time.Millisecond)
 	}
 
-	// Let the flush loop reach steady state, then measure frame gaps mid-stream.
+	// Pacing sleep: allow the flush loop to reach steady state before starting
+	// the frame-gap measurement. Deliberate for the responsiveness assertion —
+	// the test measures frame gaps over a wall-clock window, not a single state.
 	time.Sleep(250 * time.Millisecond)
 	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
 		window.__jankRec = { maxGap: 0, count: 0, last: 0 };
@@ -3011,6 +3067,9 @@ func TestBrowser_StreamingKeepsMainThreadResponsive(t *testing.T) {
 		})(0);
 	})()`, nil))
 
+	// Pacing sleep: hold the measurement window open while the JS raf loop
+	// collects 120 frames (~900ms at 60fps). Deliberate to the responsiveness
+	// assertion; the measurement depends on this wall-clock measurement window.
 	time.Sleep(900 * time.Millisecond)
 	chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`window.__jankDone = true`, nil))
 
@@ -3089,12 +3148,12 @@ func TestBrowser_StreamingScreenReaderAnnouncer(t *testing.T) {
 	// and (b) strictly shorter than the full reply — proving new-text deltas are
 	// announced rather than the whole stream being re-read.
 	var announcer struct {
-		Exists   bool
-		Role     string
-		Live     string
-		Hidden   bool
-		TextLen  int
-		Text     string
+		Exists  bool
+		Role    string
+		Live    string
+		Hidden  bool
+		TextLen int
+		Text    string
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	sawPartial := false

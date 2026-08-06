@@ -525,21 +525,19 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Fatalf("emit token failed: %v", err)
 	}
 
-	// Give time for streaming bubble to appear
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify streaming bubble is inside #messages
+	// Wait for the streaming bubble to appear inside #messages rather than
+	// sleeping a fixed time.
 	var streamingInMessages bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var el = document.getElementById('streaming');
-			if (!el) return false;
-			return el.parentElement && el.parentElement.id === 'messages';
-		})()`, &streamingInMessages),
-	)
-	if err != nil {
-		t.Fatalf("check streaming parent failed: %v", err)
-	}
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.getElementById('streaming');
+				if (!el) return false;
+				return el.parentElement && el.parentElement.id === 'messages';
+			})()`, &streamingInMessages),
+		)
+		return err == nil && streamingInMessages
+	})
 	if !streamingInMessages {
 		t.Error("streaming element should be inside #messages")
 	}
@@ -552,21 +550,19 @@ func TestBrowser_ToolCardsInScrollContainer(t *testing.T) {
 		t.Fatalf("emit tool_call failed: %v", err)
 	}
 
-	// Wait for tool entry to appear
-	time.Sleep(500 * time.Millisecond)
-
-	// Verify tool entry exists in sidebar tool-activity-list
+	// Wait for the tool entry to appear in the sidebar list rather than
+	// sleeping a fixed time.
 	var toolEntryInSidebar bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var entry = document.querySelector('#tool-activity .tool-entry-wrapper');
-			if (!entry) return false;
-			return entry.parentElement && entry.parentElement.matches('#tool-activity .tool-activity-list');
-		})()`, &toolEntryInSidebar),
-	)
-	if err != nil {
-		t.Fatalf("check tool entry parent failed: %v", err)
-	}
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var entry = document.querySelector('#tool-activity .tool-entry-wrapper');
+				if (!entry) return false;
+				return entry.parentElement && entry.parentElement.matches('#tool-activity .tool-activity-list');
+			})()`, &toolEntryInSidebar),
+		)
+		return err == nil && toolEntryInSidebar
+	})
 	if !toolEntryInSidebar {
 		t.Error("tool entry should be in sidebar tool-activity-list")
 	}
