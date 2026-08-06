@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/timeline"
@@ -447,29 +448,84 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 	report.Workspace = snap.Workspace
 	report.SystemPrompt = snap.SystemPrompt
 
-	// Map messages into turns by looking at timestamps
-	msgIdx := 0
+	// Collect the user-role placeholder cards and the assistant turns in report
+	// order, so a user message can be attributed to the turn that follows it in
+	// chronological terms by timestamp (issue #1159). Pulling user content with a
+	// single advancing index across the whole snapshot misattributes messages and
+	// corrupts displayed timestamps whenever snapshot order and turn order
+	// diverge (e.g. after compaction, sub-agent runs, or trimmed history).
+	userCardIdx := make([]int, 0, len(report.Turns))
+	turnTimes := make([]time.Time, 0, len(report.Turns))
 	for i, t := range report.Turns {
-		if t.Role == "user" {
-			// Find the next user message from snapshot
-			for msgIdx < len(snap.Messages) && snap.Messages[msgIdx].Role != "user" {
-				msgIdx++
+		switch t.Role {
+		case "user":
+			userCardIdx = append(userCardIdx, i)
+		case "assistant":
+			turnTimes = append(turnTimes, t.Timestamp)
+		}
+	}
+
+	// Extract the user messages from the snapshot, preserving their array
+	// order. Snapshot array order is the tie-break when a user message and its
+	// turn share (or invert) timestamps.
+	var userMsgs []message.Message
+	// Assistant messages are matched independently below, preserving the prior
+	// sequential behavior without a shared cursor corrupting the user match.
+	var assistantMsgs []*message.Message
+	for i := range snap.Messages {
+		m := &snap.Messages[i]
+		if m.Role == "user" {
+			userMsgs = append(userMsgs, *m)
+		} else if m.Role == "assistant" {
+			assistantMsgs = append(assistantMsgs, m)
+		}
+	}
+
+	// Attribute each user message (in array order) to the earliest assistant
+	// turn whose emitted time is at/after the message's created_at. When no
+	// such turn is left (inverted timestamps, or every later turn already
+	// matched), fall back to the earliest unassigned turn's card — which is the
+	// snapshot array-order tie-break required by the acceptance criteria.
+	matched := make([]bool, len(turnTimes))
+	for _, um := range userMsgs {
+		slot := -1
+		for j, ts := range turnTimes {
+			if !matched[j] && !ts.Before(um.CreatedAt) {
+				slot = j
+				break
 			}
-			if msgIdx < len(snap.Messages) {
-				report.Turns[i].Content = snap.Messages[msgIdx].Content
-				report.Turns[i].Timestamp = snap.Messages[msgIdx].CreatedAt
-				msgIdx++
+		}
+		if slot == -1 {
+			// Fallback: earliest unassigned turn (array-order tie-break).
+			for j := range turnTimes {
+				if !matched[j] {
+					slot = j
+					break
+				}
 			}
-		} else if t.Role == "assistant" {
-			// Match assistant message content and reasoning
-			for msgIdx < len(snap.Messages) && snap.Messages[msgIdx].Role != "assistant" {
-				msgIdx++
-			}
-			if msgIdx < len(snap.Messages) {
-				report.Turns[i].Content = snap.Messages[msgIdx].Content
-				report.Turns[i].ReasoningContent = snap.Messages[msgIdx].ReasoningContent
-				msgIdx++
-			}
+		}
+		if slot == -1 {
+			break
+		}
+		matched[slot] = true
+		ci := userCardIdx[slot]
+		report.Turns[ci].Content = um.Content
+		report.Turns[ci].Timestamp = um.CreatedAt
+	}
+
+	// Assistant content and reasoning are matched independently, in snapshot
+	// array order, onto assistant cards in report order. This decouples the
+	// assistant match from the user attribution so a divergence in one role's
+	// order never shifts the other (the prior shared cursor allowed that).
+	astSlot := 0
+	for i, t := range report.Turns {
+		if t.Role != "assistant" {
+			continue
+		}
+		if astSlot < len(assistantMsgs) {
+			report.Turns[i].Content = assistantMsgs[astSlot].Content
+			report.Turns[i].ReasoningContent = assistantMsgs[astSlot].ReasoningContent
+			astSlot++
 		}
 	}
 

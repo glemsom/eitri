@@ -11,6 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/timeline"
 )
 
@@ -960,5 +961,239 @@ func TestGetReport_TimestampHeuristicRemainsFallback(t *testing.T) {
 	}
 	if assistant.LLMDurationMs != 500 {
 		t.Errorf("LLMDurationMs = %d, want 500", assistant.LLMDurationMs)
+	}
+}
+
+// writeTestSessionSnapshot writes a session snapshot file (UISession schema) with
+// the given messages and a session.json symlink, so GetReport can enrich the report.
+func writeTestSessionSnapshot(t *testing.T, dir, sessionID string, msgs []message.Message) {
+	t.Helper()
+	now := time.Now().UTC()
+	snap := session.UISession{
+		ID:        sessionID,
+		Title:     "Test Session",
+		Workspace: "/tmp/test",
+		Messages:  msgs,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	data, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatalf("failed to marshal session snapshot: %v", err)
+	}
+	fp := filepath.Join(dir, "sessions", sessionID, "2025-01-01T00-00-00.json")
+	if err := os.MkdirAll(filepath.Dir(fp), 0o700); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	if err := os.WriteFile(fp, data, 0o600); err != nil {
+		t.Fatalf("failed to write session snapshot: %v", err)
+	}
+	symlink := filepath.Join(dir, "sessions", sessionID, "session.json")
+	os.Remove(symlink)
+	if err := os.Symlink("2025-01-01T00-00-00.json", symlink); err != nil {
+		t.Fatalf("failed to create session symlink: %v", err)
+	}
+}
+
+// userTurnContents returns the content of every user-role card in report order.
+func userTurnContents(t *testing.T, rep *SessionReport) []string {
+	t.Helper()
+	var out []string
+	for _, turn := range rep.Turns {
+		if turn.Role == "user" {
+			out = append(out, turn.Content)
+		}
+	}
+	return out
+}
+
+// assistantTurnContents returns {turn number, content} pairs for assistant cards in order.
+func assistantTurnContents(t *testing.T, rep *SessionReport) []int {
+	t.Helper()
+	var out []int
+	for _, turn := range rep.Turns {
+		if turn.Role == "assistant" {
+			out = append(out, turn.Turn)
+		}
+	}
+	return out
+}
+
+func TestGetReport_UserMessagesAttributedByTimestamp(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-user-ts"
+	now := time.Now().UTC()
+
+	// Two assistant turns emitted at t=15 and t=25. The snapshot stores the
+	// user messages in a different array order than the chronological turn
+	// order (e.g. after re-compaction): "Q2"@20 appears before "Q1"@10.
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-user-ts",
+		SessionID: sessionID,
+		StartedAt: now.Add(-1 * time.Minute),
+		EndedAt:   now,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "llm_call", Timestamp: now.Add(15 * time.Second), Turn: 1, DurationMs: 100, TraceID: "t1"},
+			{Type: "tool_call", Timestamp: now.Add(15 * time.Second), Turn: 1, Tool: "read"},
+			{Type: "tool_result", Timestamp: now.Add(15 * time.Second), Turn: 1, Tool: "read", Output: "a", Error: false},
+			{Type: "llm_call", Timestamp: now.Add(25 * time.Second), Turn: 2, DurationMs: 100, TraceID: "t2"},
+			{Type: "tool_call", Timestamp: now.Add(25 * time.Second), Turn: 2, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now.Add(25 * time.Second), Turn: 2, Tool: "grep", Output: "b", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// Snapshot array order diverges from turn chronology: Q1@10 belongs to
+	// turn 1 (emitted 15s), Q2@20 belongs to turn 2 (emitted 25s).
+	writeTestSessionSnapshot(t, dir, sessionID, []message.Message{
+		{Role: "user", Content: "Q2", CreatedAt: now.Add(20 * time.Second)},
+		{Role: "assistant", Content: "Answer 2", CreatedAt: now.Add(26 * time.Second)},
+		{Role: "user", Content: "Q1", CreatedAt: now.Add(10 * time.Second)},
+		{Role: "assistant", Content: "Answer 1", CreatedAt: now.Add(16 * time.Second)},
+	})
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Report emission order is turn 1 then turn 2.
+	if got := assistantTurnContents(t, rep); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("expected assistant turns [1 2], got %v", got)
+	}
+
+	// User message must be attributed by timestamp to the turn that
+	// immediately follows it chronologically, not by snapshot array order.
+	users := userTurnContents(t, rep)
+	if len(users) != 2 {
+		t.Fatalf("expected 2 user cards, got %d: %v", len(users), users)
+	}
+	if users[0] != "Q1" {
+		t.Errorf("first user card content = %q, want %q (Q1 precedes turn 1)", users[0], "Q1")
+	}
+	if users[1] != "Q2" {
+		t.Errorf("second user card content = %q, want %q (Q2 precedes turn 2)", users[1], "Q2")
+	}
+}
+
+func TestGetReport_UserCardTimestampComesFromMatchedMessage(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-user-ts-flip"
+	now := time.Now().UTC()
+
+	// Two assistant turns emitted at 10s and 20s. A user message "Q-late" has a
+	// created_at (30s) that inverts — it is later than every turn's emitted time
+	// (e.g. a sub-agent collect timestamped after the run). No turn is at/after
+	// it, so snapshot array order is the tie-break and it lands on the earliest
+	// remaining card. Its displayed timestamp must be its own created_at, not
+	// the turn's emitted time.
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-user-flip",
+		SessionID: sessionID,
+		StartedAt: now.Add(-1 * time.Minute),
+		EndedAt:   now,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "llm_call", Timestamp: now.Add(10 * time.Second), Turn: 1, DurationMs: 100, TraceID: "t1"},
+			{Type: "tool_call", Timestamp: now.Add(10 * time.Second), Turn: 1, Tool: "read"},
+			{Type: "tool_result", Timestamp: now.Add(10 * time.Second), Turn: 1, Tool: "read", Output: "a", Error: false},
+			{Type: "llm_call", Timestamp: now.Add(20 * time.Second), Turn: 2, DurationMs: 100, TraceID: "t2"},
+			{Type: "tool_call", Timestamp: now.Add(20 * time.Second), Turn: 2, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now.Add(20 * time.Second), Turn: 2, Tool: "grep", Output: "b", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// Q-late@30s is later than every turn; Q-norm@15s pairs cleanly with turn
+	// 2 (20s). Array order tie-break places Q-late (first in the snapshot) on
+	// the earliest remaining turn, turn 1.
+	writeTestSessionSnapshot(t, dir, sessionID, []message.Message{
+		{Role: "user", Content: "Q-late", CreatedAt: now.Add(30 * time.Second)},
+		{Role: "assistant", Content: "Answer 1", CreatedAt: now.Add(11 * time.Second)},
+		{Role: "user", Content: "Q-norm", CreatedAt: now.Add(15 * time.Second)},
+		{Role: "assistant", Content: "Answer 2", CreatedAt: now.Add(21 * time.Second)},
+	})
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	users := userTurnContents(t, rep)
+	if len(users) != 2 {
+		t.Fatalf("expected 2 user cards, got %d: %v", len(users), users)
+	}
+	if users[0] != "Q-late" {
+		t.Errorf("first user card content = %q, want Q-late (array-order tie-break for inverted timestamp)", users[0])
+	}
+	if users[1] != "Q-norm" {
+		t.Errorf("second user card content = %q, want Q-norm", users[1])
+	}
+
+	// The displayed timestamp on the first user card must be the matched
+	// message's created_at (30s), not the turn's emitted time (10s).
+	u1 := rep.Turns[0]
+	if u1.Content != "Q-late" || !u1.Timestamp.Equal(now.Add(30*time.Second)) {
+		t.Errorf("turn 1 user card timestamp = %v, want 30s (from matched message)", u1.Timestamp)
+	}
+}
+
+func TestGetReport_UserTimestampTieBrokenByArrayOrder(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-user-tie"
+	now := time.Now().UTC()
+
+	// Two user messages share identical created_at timestamps (a tie). Snapshot
+	// array order must win: first Q appears on turn 1's card, second on turn 2's.
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-user-tie",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "llm_call", Timestamp: now.Add(1 * time.Second), Turn: 1, DurationMs: 100, TraceID: "a"},
+			{Type: "tool_call", Timestamp: now.Add(1 * time.Second), Turn: 1, Tool: "read"},
+			{Type: "tool_result", Timestamp: now.Add(1 * time.Second), Turn: 1, Tool: "read", Output: "a", Error: false},
+			{Type: "llm_call", Timestamp: now.Add(2 * time.Second), Turn: 2, DurationMs: 100, TraceID: "b"},
+			{Type: "tool_call", Timestamp: now.Add(2 * time.Second), Turn: 2, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now.Add(2 * time.Second), Turn: 2, Tool: "grep", Output: "b", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// Both user messages created_at = 1s, a tie with turn 1's emission. Array
+	// order decides: the first goes to turn 1, the second to turn 2.
+	writeTestSessionSnapshot(t, dir, sessionID, []message.Message{
+		{Role: "user", Content: "First", CreatedAt: now.Add(1 * time.Second)},
+		{Role: "assistant", Content: "Answer 1", CreatedAt: now.Add(1 * time.Second)},
+		{Role: "user", Content: "Second", CreatedAt: now.Add(1 * time.Second)},
+		{Role: "assistant", Content: "Answer 2", CreatedAt: now.Add(2 * time.Second)},
+	})
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	users := userTurnContents(t, rep)
+	if len(users) != 2 {
+		t.Fatalf("expected 2 user cards, got %d: %v", len(users), users)
+	}
+	if users[0] != "First" {
+		t.Errorf("first user card = %q, want First (array-order tie-break)", users[0])
+	}
+	if users[1] != "Second" {
+		t.Errorf("second user card = %q, want Second", users[1])
 	}
 }
