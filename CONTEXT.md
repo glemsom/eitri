@@ -63,7 +63,7 @@ Eitri follows [Semantic Versioning 2.0](https://semver.org/). The canonical vers
 flowchart LR
     A["Open an issue or\nstart coding"] --> B["Make changes\non main"]
     B --> C["Push"]
-    C --> D["GitHub Actions CI:\ngo test ./...\nmake build\nversion check"]
+    C --> D["GitHub Actions CI:\ngo test ./...\nmake build\nversion check\ndiagnostic flaky reproduce job"]
 ```
 
 There is **no required branch strategy** — you can push directly to `main` or use PRs. CI runs on both.

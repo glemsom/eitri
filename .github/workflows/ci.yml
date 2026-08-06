@@ -10,6 +10,47 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+
+  # Diagnostic, non-blocking job that reproduces environment-driven test
+  # flakes on the constrained (cache-cleared, CPU-restricted, sequential)
+  # configuration before they reach the main gate. Runs in addition to the
+  # mandatory `test` job; failures surface here as a warning without failing
+  # the push/PR (issue #1126).
+  reproduce-flaky:
+    name: Reproduce environment-driven flakes
+    runs-on: ubuntu-latest
+    # Non-blocking initially: flake findings are diagnostics, not a gate.
+    # Flip this to `continue-on-error: false` to promote this job to a
+    # mandatory (blocking) gate once it has demonstrably caught a real flake.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install sandbox dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+
+      - name: Run constrained reproduce harness (cache-cleared, CPU-restricted, sequential)
+        # Mirrors `make test-race` but under the constrained environment that
+        # flakes surface in: clears the Go test cache, runs each test under
+        # GOMAXPROCS 1 and 2, and forces sequential package execution. Log is
+        # teed to dist/test-race-flaky-output.log for the artifact below.
+        run: scripts/test.sh --race --flaky
+
+      - name: Upload flaky-reproduce log artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          # Log is always produced (even on success), so always upload it.
+          name: test-race-flaky-output.log
+          path: dist/test-race-flaky-output.log
+          if-no-files-found: ignore
   test:
     name: Test and build
     runs-on: ubuntu-latest
