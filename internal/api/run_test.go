@@ -26,6 +26,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/testutil"
 )
 
 type testServerWithRuns struct {
@@ -313,32 +314,27 @@ func startChatRun(t *testing.T, serverURL, sessionID string, browserCookie *http
 
 func waitForRunToFinish(t *testing.T, runSvc *runner.RunService, sessionID string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if runSvc.ActiveRun(sessionID) == nil {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("run %s did not finish", sessionID)
+	testutil.WaitForCondition(t, 10*time.Millisecond, 5*time.Second, func() bool {
+		return runSvc.ActiveRun(sessionID) == nil
+	})
 }
 
 func waitForSessionMessageCount(t *testing.T, sessionMgr *session.Manager, sessionID string, want int) *session.UISession {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		sess := sessionMgr.Get(sessionID)
-		if sess != nil && len(sess.Messages) >= want {
-			return sess
+	sess, err := testutil.WaitForConditionOr(t, 10*time.Millisecond, 2*time.Second, func() (*session.UISession, bool) {
+		s := sessionMgr.Get(sessionID)
+		if s != nil && len(s.Messages) >= want {
+			return s, true
 		}
-		time.Sleep(10 * time.Millisecond)
+		return s, false
+	})
+	if err != nil {
+		t.Fatalf("wait for session %s message count %d: %v", sessionID, want, err)
 	}
-	sess := sessionMgr.Get(sessionID)
 	if sess == nil {
 		t.Fatalf("session %s missing", sessionID)
 	}
-	t.Fatalf("messages = %d, want at least %d", len(sess.Messages), want)
-	return nil
+	return sess
 }
 
 func fakeTwoTurnToolChatServer(t *testing.T, waitBeforeSecondTurn <-chan struct{}) (*httptest.Server, *atomic.Int32) {
@@ -828,14 +824,9 @@ func newCapturePromptLLMServer(t *testing.T, promptCh chan<- string, blockCh <-c
 // or the timeout expires, at which point it fails the test.
 func waitForNoActiveRun(t *testing.T, runSvc *runner.RunService, sessionID string, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if runSvc.ActiveRun(sessionID) == nil {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("run did not finish within %v", timeout)
+	testutil.WaitForCondition(t, 10*time.Millisecond, timeout, func() bool {
+		return runSvc.ActiveRun(sessionID) == nil
+	})
 }
 
 type capturedChatRequest struct {
