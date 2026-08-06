@@ -17,6 +17,7 @@ flowchart LR
         UISess["session/ (UI sessions + messages)"]
         LLMHist["history/ (LLM history)"]
         RunSt["runstate/ (SSE broadcast)"]
+        Timeline["timeline/ (per-run timeline)"]
         FileUtil["fileutil/ (file operations)"]
         Skills["skills/ (Agent Skills registry)"]
         Tools["tool/ (built-in tools)"]
@@ -40,6 +41,7 @@ flowchart LR
     API --> Provider
     RunSvc --> LLMHist
     RunSvc --> RunSt
+    RunSvc --> Timeline
     RunSvc --> FileUtil
     RunSvc --> Skills
     RunSvc --> UISess
@@ -112,9 +114,7 @@ Provides `WrapCommand(workspace, command, Config)` which returns the executable,
 | File | Responsibility |
 |------|---------------|
 | `runstate.go` | `State` — subscriber fan-out, event history, text buffer, `SSEEvent` types; `Writer` — typed SSE event helpers |
-| `timeline.go` | `TimelineEvent`, `TerminationReason` — condensed per-event timeline entries persisted for session reports |
 | `runstate_test.go` | Tests for SSE broadcast |
-| `timeline_test.go` | Tests for timeline serialization |
 
 Network-agnostic: manages channels, not HTTP connections. Each active runner run creates one `State` via `runstate.New()`. The runner broadcasts `SSEEvent` values; `api.Server` connects subscribers to SSE HTTP streams.
 
@@ -141,6 +141,17 @@ A standalone package for human-friendly outcome messages that render identically
 The `CalibrationStore` starts each model at a default CPT of 4.0. After each streaming LLM response completes, the agent loop feeds provider usage data (`PromptTokens`, input text length) into the store to compute `observedCPT = inputLen / PromptTokens`. The input length counts all message text the provider tokenizes — including tool-result content — so the measurement matches the prompt-token count; observations below 1.0 chars/token are rejected as implausible (measurement mismatch) and never enter the EMA. The store updates its smoothed average using an exponential moving average (α = 0.3) so estimates gradually become model-accurate over multiple turns. Calibration data is restored from disk on startup and saved on shutdown (server mode) and at the end of batch runs, so observations survive restarts; an absent or empty file falls back to current defaults.
 
 Every token count in the system routes through the single `Estimate(text, store, model)` primitive — the Context panel breakdown (system/history/skill tokens via `ComputeContext`), per-run usage figures via `EstimateUsage`, compactor thresholds, and the bash-output inflation guard. It runs on the allocation-free hot path (bare int return).
+
+The persisted per-run timeline no longer lives here: the condensed timeline domain (`TimelineEvent`, `TerminationReason`, `CondensedEvents`, `Timeline`) was extracted into `internal/timeline` (issue #1155). `runstate` is now a pure SSE broadcast seam — see the internal/timeline section below.
+
+### `internal/timeline/` — Persisted per-run timeline
+
+| File | Responsibility |
+|------|---------------|
+| `timeline.go` | `TimelineEvent`, `TerminationReason`, `Timeline`, `CondensedEvents` — the per-run timeline domain: condensed event derivation and persisted types |
+| `timeline_test.go` | Tests for timeline serialization and condensation |
+
+A pure seam describing a single run's event history. It reads SSE event history (from `internal/runstate`) and token accounting types (from `internal/tokenizer`) and produces the condensed semantic event stream persisted to disk and consumed by the Session Report. It neither broadcasts events nor persists them itself — broadcast stays in `internal/runstate`, and on-disk writes live in `internal/persist`. `runner` derives and persists a run timeline on every exit path (completed, cancelled, max-turns, error).
 
 ### `internal/compactor/` — Message compaction
 
@@ -562,6 +573,7 @@ eitri/
 │   │   └── ...                # Flat files (service.go, run.go, subagent.go, system_prompt.go, etc.)
 │   ├── runstate/              # SSE broadcast infrastructure
 │   ├── sandbox/               # bwrap sandbox wrapper
+│   ├── timeline/              # Persisted per-run timeline domain
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
 │   ├── tokenizer/             # Token estimation and calibration
