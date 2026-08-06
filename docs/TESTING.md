@@ -14,6 +14,9 @@ make test-race
 # Full release readiness gate (includes race + browser tests, verbose output)
 make release-check
 
+# Reproduce a CI flake locally (cache-cleared, CPU-constrained, sequential; see below)
+make test-flaky
+
 # Run a specific package
 cd internal/api && go test -v -run TestHealth
 ```
@@ -45,6 +48,33 @@ VERDICT: FAIL 1/15 packages failed (14 passed, 2 failed test(s): TestLogin,TestW
   `dist/test-output.log` (or `dist/test-race-output.log` for `--race`) so
   details can be grepped on demand. The file is overwritten on each run.
 - **Exit code** — mirrors `go test` (0 all pass, 1 test/build failures).
+
+## Reproducing a CI flake locally (`make test-flaky`)
+
+Your dev box is usually faster than the `ubuntu-latest` CI runner, so tests
+that pass locally can flake only on the gate. `make test-flaky` reproduces the
+constrained environment CI flakes surface in, to catch them locally instead of
+burning a CI re-run:
+
+```bash
+make test-flaky
+```
+
+It runs `scripts/test.sh --flaky`, which before the run:
+
+- **clears the Go test cache** (`go clean -testcache`) so a previously
+  successful cached run cannot mask a failure caused by earlier tests, then
+- invokes `go test` with **`-cpu 1,2`** (runs each test under GOMAXPROCS 1 and
+  2, varying core count) and **`-p 1`** (forces sequential package execution).
+
+The output still uses the same compact verdict line as `make test` / `make
+test-race`, so it plugs straight into the existing tooling; the full raw log
+is teed to `dist/test-flaky-output.log`. Combine with the race detector via
+`scripts/test.sh --race --flaky` (log: `dist/test-race-flaky-output.log`).
+
+Use it when a test fails on CI but passes locally; if the flake surfaces here,
+you can iterate until it stops before pushing.
+
 
 ## Test layers
 
