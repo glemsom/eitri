@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/glemsom/eitri/internal/uixt"
 )
@@ -187,7 +188,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// cancellation before it could broadcast a done/error event), close them
 	// now so the subscriber goroutine terminates.
 	if !sseState.Closed() {
-		w.Done("batch_complete", runstate.EstimateUsage(sseState.BufferString(), s.calibrationStore, cfg.ModelName))
+		w.Done("batch_complete", tokenizer.EstimateUsage(sseState.BufferString(), s.calibrationStore, cfg.ModelName))
 	}
 
 	// Wait for subscriber goroutine to finish streaming remaining tokens

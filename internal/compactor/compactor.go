@@ -20,12 +20,12 @@ var (
 	batchSummaryRe = regexp.MustCompile(`(?m)^MESSAGE\s+(\d+):[ \t]*`)
 
 	// Regexes for salience scoring
-	stackTracePattern   = regexp.MustCompile(`(?m)^\s+at\s+\S+\.\S+\(.*:\d+\)`)
-	stackFramePattern   = regexp.MustCompile(`(?m)^\s*(?:at\s+)?[/.\w]+/[\w./-]+\.\w+:\d+`)
-	filePathPattern     = regexp.MustCompile(`(?:/\w+)+/[\w.-]+\.\w+`)
-	funcPattern         = regexp.MustCompile(`\b[a-zA-Z_]\w*\(.*?\)`)
-	numericPattern      = regexp.MustCompile(`\b\d+[.,]?\d*\s*(?:passed|failed|errors?|tests?|coverage|ms|s|bytes?|KB|MB|GB|lines?|files?|%|percent|of|total)\b`)
-	measurementPattern  = regexp.MustCompile(`\b\d+[.,]\d+%?\b`)
+	stackTracePattern  = regexp.MustCompile(`(?m)^\s+at\s+\S+\.\S+\(.*:\d+\)`)
+	stackFramePattern  = regexp.MustCompile(`(?m)^\s*(?:at\s+)?[/.\w]+/[\w./-]+\.\w+:\d+`)
+	filePathPattern    = regexp.MustCompile(`(?:/\w+)+/[\w.-]+\.\w+`)
+	funcPattern        = regexp.MustCompile(`\b[a-zA-Z_]\w*\(.*?\)`)
+	numericPattern     = regexp.MustCompile(`\b\d+[.,]?\d*\s*(?:passed|failed|errors?|tests?|coverage|ms|s|bytes?|KB|MB|GB|lines?|files?|%|percent|of|total)\b`)
+	measurementPattern = regexp.MustCompile(`\b\d+[.,]\d+%?\b`)
 )
 
 // Thresholds controls when compaction triggers and stops.
@@ -69,33 +69,16 @@ type Thresholds struct {
 	Model string
 }
 
-// tokenEstimate returns a rough estimate of the number of tokens in s.
-// Uses the CalibrationStore's chars-per-token ratio for the given model,
-// falling back to 4.0 (the default) when store is nil.
-func tokenEstimate(s string, store *tokenizer.CalibrationStore, model string) int {
-	if len(s) == 0 {
-		return 0
-	}
-	cpt := 4.0
-	if store != nil {
-		cpt = store.Lookup(model)
-	}
-	n := int(float64(len(s)) / cpt)
-	if n < 1 {
-		return 1
-	}
-	return n
-}
-
-// messagesTokenEstimate returns the sum of estimated tokens across all messages.
+// messagesTokenEstimate returns the sum of estimated tokens across all messages,
+// routing each measurement through the canonical tokenizer.Estimate primitive.
 func messagesTokenEstimate(msgs []message.Message, store *tokenizer.CalibrationStore, model string) int {
 	var total int
 	for _, m := range msgs {
-		total += tokenEstimate(m.Content, store, model)
+		total += tokenizer.Estimate(m.Content, store, model)
 		// Also account for tool call payloads
 		for _, tc := range m.ToolCalls {
-			total += tokenEstimate(tc.Function.Name, store, model)
-			total += tokenEstimate(tc.Function.Arguments, store, model)
+			total += tokenizer.Estimate(tc.Function.Name, store, model)
+			total += tokenizer.Estimate(tc.Function.Arguments, store, model)
 		}
 	}
 	return total
@@ -392,9 +375,9 @@ func (c *Compactor) Compact(ctx context.Context, messages []message.Message, cli
 					}
 					// Replace arguments with compact placeholder.
 					placeholder := fmt.Sprintf(`{"pruned": "~%d chars"}`, len(args))
-					prunedTokens := tokenEstimate(args, nil, "")
+					prunedTokens := tokenizer.Estimate(args, nil, "")
 					tc.Function.Arguments = placeholder
-					freedTokens += prunedTokens - tokenEstimate(placeholder, nil, "")
+					freedTokens += prunedTokens - tokenizer.Estimate(placeholder, nil, "")
 					prunedToolCalls++
 				}
 			}
@@ -453,9 +436,9 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 		}
 		// Apply per-message size threshold.
 		if thresholds.MessageSizeThreshold > 0 {
-			est := tokenEstimate(result[i].Content, nil, "")
+			est := tokenizer.Estimate(result[i].Content, nil, "")
 			for _, tc := range result[i].ToolCalls {
-				est += tokenEstimate(tc.Function.Arguments, nil, "")
+				est += tokenizer.Estimate(tc.Function.Arguments, nil, "")
 			}
 			if est < thresholds.MessageSizeThreshold {
 				continue
@@ -473,7 +456,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 			index:           i,
 			score:           score,
 			originalContent: result[i].Content,
-			originalTokens:  tokenEstimate(result[i].Content, nil, ""),
+			originalTokens:  tokenizer.Estimate(result[i].Content, nil, ""),
 		})
 	}
 
@@ -491,7 +474,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 		}
 
 		originalContent := result[cand.index].Content
-		originalTokens := tokenEstimate(originalContent, nil, "")
+		originalTokens := tokenizer.Estimate(originalContent, nil, "")
 
 		// Call LLM to summarise.
 		prompt := summarizationPrompt(result[cand.index].Role, originalContent)
@@ -523,7 +506,7 @@ func (c *Compactor) compactBySalience(ctx context.Context, messages []message.Me
 			result[cand.index].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		}
 		compactedCount++
-		freedTokens += originalTokens - tokenEstimate(result[cand.index].Content, nil, "")
+		freedTokens += originalTokens - tokenizer.Estimate(result[cand.index].Content, nil, "")
 
 		// Re-estimate total.
 		totalEst = messagesTokenEstimate(result, nil, "")
@@ -554,9 +537,9 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 		}
 		// Apply per-message size threshold.
 		if thresholds.MessageSizeThreshold > 0 {
-			est := tokenEstimate(result[i].Content, nil, "")
+			est := tokenizer.Estimate(result[i].Content, nil, "")
 			for _, tc := range result[i].ToolCalls {
-				est += tokenEstimate(tc.Function.Arguments, nil, "")
+				est += tokenizer.Estimate(tc.Function.Arguments, nil, "")
 			}
 			if est < thresholds.MessageSizeThreshold {
 				continue
@@ -568,7 +551,7 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 		}
 
 		originalContent := result[i].Content
-		originalTokens := tokenEstimate(originalContent, nil, "")
+		originalTokens := tokenizer.Estimate(originalContent, nil, "")
 
 		prompt := summarizationPrompt(result[i].Role, originalContent)
 		modelName := thresholds.Model
@@ -597,7 +580,7 @@ func (c *Compactor) compactOldestFirst(ctx context.Context, messages []message.M
 			result[i].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		}
 		compactedCount++
-		freedTokens += originalTokens - tokenEstimate(result[i].Content, nil, "")
+		freedTokens += originalTokens - tokenizer.Estimate(result[i].Content, nil, "")
 
 		totalEst = messagesTokenEstimate(result, nil, "")
 		if totalEst <= thresholds.LowWater {
@@ -634,9 +617,9 @@ func (c *Compactor) compactBatch(ctx context.Context, messages []message.Message
 			continue
 		}
 		if thresholds.MessageSizeThreshold > 0 {
-			est := tokenEstimate(result[i].Content, nil, "")
+			est := tokenizer.Estimate(result[i].Content, nil, "")
 			for _, tc := range result[i].ToolCalls {
-				est += tokenEstimate(tc.Function.Arguments, nil, "")
+				est += tokenizer.Estimate(tc.Function.Arguments, nil, "")
 			}
 			if est < thresholds.MessageSizeThreshold {
 				continue
@@ -646,7 +629,7 @@ func (c *Compactor) compactBatch(ctx context.Context, messages []message.Message
 			index:           i,
 			score:           0,
 			originalContent: result[i].Content,
-			originalTokens:  tokenEstimate(result[i].Content, nil, ""),
+			originalTokens:  tokenizer.Estimate(result[i].Content, nil, ""),
 		})
 	}
 
@@ -693,14 +676,14 @@ func (c *Compactor) compactBatch(ctx context.Context, messages []message.Message
 		if !ok || summary == "" {
 			continue
 		}
-		originalTokens := tokenEstimate(cand.originalContent, nil, "")
+		originalTokens := tokenizer.Estimate(cand.originalContent, nil, "")
 		if result[cand.index].Role == "tool" {
 			result[cand.index].Content = fmt.Sprintf("[TOOL RESULT COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		} else {
 			result[cand.index].Content = fmt.Sprintf("[MESSAGE COMPACTED - originally %d tokens] %s", originalTokens, summary)
 		}
 		compactedCount++
-		freedTokens += originalTokens - tokenEstimate(result[cand.index].Content, nil, "")
+		freedTokens += originalTokens - tokenizer.Estimate(result[cand.index].Content, nil, "")
 	}
 
 	return result, compactedCount, freedTokens

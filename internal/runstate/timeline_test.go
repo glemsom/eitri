@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 func TestCondensedEvents_FiltersTokenAndThinkingDelta(t *testing.T) {
@@ -77,7 +79,7 @@ func TestCondensedEvents_ContextUpdate(t *testing.T) {
 	s := New()
 	w := NewWriter(s)
 
-	w.ContextUpdate(&ContextUpdate{
+	w.ContextUpdate(&tokenizer.ContextUpdate{
 		TotalTokens:   5000,
 		PromptTokens:  4000,
 		ContextWindow: 128000,

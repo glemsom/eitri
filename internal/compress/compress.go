@@ -8,7 +8,11 @@
 // unchanged.
 package compress
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/glemsom/eitri/internal/tokenizer"
+)
 
 // Compress applies deterministic pattern compression to bash tool output.
 // Returns the compressed text when a pattern matches and compression is
@@ -47,17 +51,12 @@ func Compress(command, output string) string {
 	}
 
 	// Anti-inflation guard: only use compressed output if it actually
-	// reduces estimated tokens (chars/4 heuristic).
-	origTokens := len(output) / 4
-	compTokens := len(*compressed) / 4
+	// reduces estimated tokens (default chars/token heuristic).
+	origTokens := tokenizer.Estimate(output, nil, "")
+	compTokens := tokenizer.Estimate(*compressed, nil, "")
 	if compTokens >= origTokens {
 		return output
 	}
 
 	return *compressed
-}
-
-// tokenEstimate returns a rough token count using 4 chars per token.
-func tokenEstimate(s string) int {
-	return len(s) / 4
 }

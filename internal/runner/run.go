@@ -217,7 +217,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					content += "\n\n" + limitMsg
 				}
 				reasoningContent := sseState.ReasoningBufferString()
-				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), runstate.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
+				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), tokenizer.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
 				s.appendToSession(sessionID, content, reasoningContent)
 				s.setSessionIdleAndSnapshot(sessionID)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &runstate.TimelineTermination{

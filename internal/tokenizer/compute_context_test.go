@@ -1,11 +1,10 @@
-package runstate
+package tokenizer
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/message"
-	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 func TestComputeContext_EmptyInput(t *testing.T) {
@@ -290,7 +289,7 @@ func TestComputeContext_CompletionTokensZero(t *testing.T) {
 func TestComputeContext_CalibratedCPT(t *testing.T) {
 	t.Parallel()
 
-	store := tokenizer.NewCalibrationStore()
+	store := NewCalibrationStore()
 	// Converge the calibrated chars-per-token ratio toward 8.0 (default is 4.0).
 	for i := 0; i < 50; i++ {
 		store.Update("calibrated-model", 8.0)

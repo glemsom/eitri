@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -25,19 +24,19 @@ const (
 
 // SSEEvent represents one SSE data packet sent to the browser.
 type SSEEvent struct {
-	Type      string      `json:"type"`
-	Kind      RenderKind  `json:"kind,omitempty"`
-	Content   string      `json:"content,omitempty"`
-	Name      string      `json:"name,omitempty"`
-	Tool      string      `json:"tool,omitempty"`
-	Args      any         `json:"args,omitempty"`
-	Output    any         `json:"output,omitempty"`
-	Data      any         `json:"data,omitempty"`
-	Message   string      `json:"message,omitempty"`
-	MessageID string      `json:"message_id,omitempty"`
-	Usage     *TokenUsage `json:"usage,omitempty"`
-	Timestamp time.Time   `json:"timestamp,omitempty"`
-	Turn      int         `json:"turn,omitempty"`
+	Type      string                `json:"type"`
+	Kind      RenderKind            `json:"kind,omitempty"`
+	Content   string                `json:"content,omitempty"`
+	Name      string                `json:"name,omitempty"`
+	Tool      string                `json:"tool,omitempty"`
+	Args      any                   `json:"args,omitempty"`
+	Output    any                   `json:"output,omitempty"`
+	Data      any                   `json:"data,omitempty"`
+	Message   string                `json:"message,omitempty"`
+	MessageID string                `json:"message_id,omitempty"`
+	Usage     *tokenizer.TokenUsage `json:"usage,omitempty"`
+	Timestamp time.Time             `json:"timestamp,omitempty"`
+	Turn      int                   `json:"turn,omitempty"`
 	// Replayed marks an event delivered from run-state history to a subscriber
 	// joining mid-run (or reconnecting), as opposed to a live broadcast. The
 	// browser island skips replayed token/component events: committed messages
@@ -46,13 +45,6 @@ type SSEEvent struct {
 	// session switch-back. The flag is set on the per-subscriber copy only —
 	// the stored history and the persisted timeline keep Replayed=false.
 	Replayed bool `json:"replayed,omitempty"`
-}
-
-// TokenUsage holds token count information for a completed run.
-type TokenUsage struct {
-	TotalTokens      int `json:"total_tokens"`
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
 }
 
 // LLMCallInfo carries per-turn LLM call correlation data on the llm_call SSE
@@ -375,7 +367,7 @@ func (s *State) flushBatch() {
 }
 
 // BroadcastDone sends a done event with kind "markdown", closes all subscriber streams, and marks the state as closed.
-func (s *State) BroadcastDone(messageID string, usage *TokenUsage) {
+func (s *State) BroadcastDone(messageID string, usage *tokenizer.TokenUsage) {
 	s.closeStreams(&SSEEvent{Type: "done", Kind: RenderKindMarkdown, MessageID: messageID, Usage: usage})
 }
 
@@ -545,7 +537,7 @@ func (w *Writer) ToolResult(name string, output any) {
 }
 
 // Done sends a done event with optional token usage and closes streams.
-func (w *Writer) Done(messageID string, usage *TokenUsage) {
+func (w *Writer) Done(messageID string, usage *tokenizer.TokenUsage) {
 	w.state.BroadcastDone(messageID, usage)
 }
 
@@ -555,7 +547,7 @@ func (w *Writer) Component(data any) {
 }
 
 // ContextUpdate broadcasts a context_update SSE event with token estimates.
-func (w *Writer) ContextUpdate(update *ContextUpdate) {
+func (w *Writer) ContextUpdate(update *tokenizer.ContextUpdate) {
 	w.state.Broadcast(SSEEvent{Type: "context_update", Data: update, Turn: w.currentTurn})
 }
 
@@ -582,105 +574,4 @@ func (w *Writer) Error(msg string) {
 func (w *Writer) ThinkingDelta(content string) {
 	w.state.AppendReasoningBuffer(content)
 	w.state.addBatch("thinking_delta", content, w.currentTurn)
-}
-
-// ContextUpdate holds estimated token counts broken down by category.
-type ContextUpdate struct {
-	TotalTokens      int `json:"total_tokens"`
-	ContextWindow    int `json:"context_window"`
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	SystemTokens     int `json:"system_tokens"`
-	HistoryTokens    int `json:"history_tokens"`
-	SkillTokens      int `json:"skill_tokens"`
-	// Actual provider token usage from the LLM response (if available).
-	ActualPromptTokens     int `json:"actual_prompt_tokens,omitempty"`
-	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
-}
-
-// ComputeContext estimates token counts for the given messages using a
-// configurable chars-per-token ratio (from CalibrationStore, default 4.0).
-//
-// Token breakdown:
-//   - System tokens: sum of content lengths for messages with role "system"
-//   - Skill tokens: portion of system prompt after the last "Activated skill" substring
-//   - History tokens: sum of all non-system messages (user + assistant + tool)
-//   - Prompt tokens: system + history (skill tokens are part of system)
-//   - Completion tokens: 0 (set by caller when known)
-//   - Total tokens: prompt + completion
-func ComputeContext(messages []message.Message, contextWindow int, store *tokenizer.CalibrationStore, model string) *ContextUpdate {
-	cpt := 4.0
-	if store != nil {
-		cpt = store.Lookup(model)
-	}
-
-	var historyLen int
-	var systemBuilder strings.Builder
-
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			systemBuilder.WriteString(msg.Content)
-		default:
-			historyLen += len(msg.Content)
-		}
-	}
-
-	systemContent := systemBuilder.String()
-	systemTokens := int(float64(len(systemContent)) / cpt)
-	if systemTokens < 1 && len(systemContent) > 0 {
-		systemTokens = 1
-	}
-
-	// Skill tokens: content after last "Activated skill" in system prompt
-	var skillTokens int
-	if idx := strings.LastIndex(systemContent, "Activated skill"); idx >= 0 {
-		skillContent := systemContent[idx+len("Activated skill"):]
-		skillTokens = int(float64(len(skillContent)) / cpt)
-	}
-
-	historyTokens := int(float64(historyLen) / cpt)
-	if historyTokens < 1 && historyLen > 0 {
-		historyTokens = 1
-	}
-
-	promptTokens := systemTokens + historyTokens
-	completionTokens := 0
-	totalTokens := promptTokens + completionTokens
-
-	return &ContextUpdate{
-		TotalTokens:      totalTokens,
-		ContextWindow:    contextWindow,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		SystemTokens:     systemTokens,
-		HistoryTokens:    historyTokens,
-		SkillTokens:      skillTokens,
-	}
-}
-
-// EstimateUsage estimates token counts from text length.
-// Uses the CalibrationStore's chars-per-token ratio for the given model,
-// falling back to 4.0 (the default) when store is nil.
-// This is a fallback when the provider doesn't return usage data.
-func EstimateUsage(text string, store *tokenizer.CalibrationStore, model string) *TokenUsage {
-	cpt := 4.0
-	if store != nil {
-		cpt = store.Lookup(model)
-	}
-	totalTokens := int(float64(len(text)) / cpt)
-	if totalTokens < 1 {
-		totalTokens = 1
-	}
-	// Rough split: ~2/3 prompt tokens, ~1/3 completion tokens
-	completionTokens := totalTokens / 3
-	if completionTokens < 1 {
-		completionTokens = 1
-	}
-	promptTokens := totalTokens - completionTokens
-	return &TokenUsage{
-		TotalTokens:      totalTokens,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-	}
 }
