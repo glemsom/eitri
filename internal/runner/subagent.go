@@ -15,6 +15,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
+	"github.com/glemsom/eitri/internal/timeline"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/glemsom/eitri/internal/uixt"
 )
@@ -269,7 +270,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			Confirmer:        nil,
 			UISessionMgr:     s.uiSessionMgr,
 			SessionID:        "",
-			RunID:            runstate.GenerateRunID(taskID, record.StartedAt),
+			RunID:            timeline.GenerateRunID(taskID, record.StartedAt),
 			ContextWindow:    parentCfg.ContextWindowTokens,
 			CrashDumpFunc:    nil,
 			Turns:            nil,
@@ -297,8 +298,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			// matching the UI path's cancelled exit.
 			if subCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 				record.Status = subAgentCancelled
-				completer.terminal(sseState, runCompleterTerminalStatus(runstate.TerminationCancelled), &runstate.TimelineTermination{
-					Reason:  runstate.TerminationCancelled,
+				completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationCancelled), &timeline.TimelineTermination{
+					Reason:  timeline.TerminationCancelled,
 					Message: "Run cancelled by user or context deadline exceeded",
 				})
 				slog.Info("sub-agent cancelled", slog.String("task_id", taskID))
@@ -310,8 +311,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			if errors.As(runErr, &maxTurnsErr) {
 				record.Status = subAgentError
 				record.Err = runErr
-				completer.terminal(sseState, runCompleterTerminalStatus(runstate.TerminationMaxTurns), &runstate.TimelineTermination{
-					Reason:  runstate.TerminationMaxTurns,
+				completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationMaxTurns), &timeline.TimelineTermination{
+					Reason:  timeline.TerminationMaxTurns,
 					Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
 				})
 				slog.Warn("sub-agent max turns exceeded",
@@ -323,8 +324,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 
 			record.Status = subAgentError
 			record.Err = runErr
-			completer.terminal(sseState, runCompleterTerminalStatus(runstate.TerminationError), &runstate.TimelineTermination{
-				Reason:  runstate.TerminationError,
+			completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationError), &timeline.TimelineTermination{
+				Reason:  timeline.TerminationError,
 				Message: runErr.Error(),
 			})
 			slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
@@ -332,8 +333,8 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}
 
 		record.Status = subAgentCompleted
-		completer.terminal(sseState, runCompleterTerminalStatus(runstate.TerminationCompleted), &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCompleted,
+		completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationCompleted), &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
 			Message: "",
 		})
 		slog.Info("sub-agent completed",

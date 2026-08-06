@@ -10,6 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -62,7 +63,7 @@ func TestRunCompleter_SharedBehavior(t *testing.T) {
 			t.Errorf("session-manager snapshot first message = %+v, want user 'hello'", sess.Messages[0])
 		}
 
-		c.terminal(runstate.New(), runCompleterTerminalStatus(runstate.TerminationCompleted), &runstate.TimelineTermination{Reason: runstate.TerminationCompleted})
+		c.terminal(runstate.New(), runCompleterTerminalStatus(timeline.TerminationCompleted), &timeline.TimelineTermination{Reason: timeline.TerminationCompleted})
 		sess2 := loadSubAgentSessionSnapshot(t, persister, id)
 		if sess2.Status != uisession.StatusIdle {
 			t.Errorf("session-manager terminal snapshot Status = %q, want %q", sess2.Status, uisession.StatusIdle)
@@ -111,7 +112,7 @@ func TestRunCompleter_SharedBehavior(t *testing.T) {
 		c.id = id
 		c.historyMgr = loop.NewRequestHistoryManager(req)
 
-		c.terminal(runstate.New(), runCompleterTerminalStatus(runstate.TerminationError), &runstate.TimelineTermination{Reason: runstate.TerminationError})
+		c.terminal(runstate.New(), runCompleterTerminalStatus(timeline.TerminationError), &timeline.TimelineTermination{Reason: timeline.TerminationError})
 		sess := loadSubAgentSessionSnapshot(t, persister, id)
 		if sess.Status != uisession.StatusError {
 			t.Errorf("error terminal snapshot Status = %q, want %q", sess.Status, uisession.StatusError)

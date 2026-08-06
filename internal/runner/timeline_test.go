@@ -7,6 +7,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -32,8 +33,8 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 	svc.persistRunTimeline("session-1", "run-abc", startedAt, sseState, RunConfig{
 		ModelName:  "test-model",
 		ProviderID: "opencode_go",
-	}, &runstate.TimelineTermination{
-		Reason:  runstate.TerminationCompleted,
+	}, &timeline.TimelineTermination{
+		Reason:  timeline.TerminationCompleted,
 		Message: "",
 	})
 
@@ -49,7 +50,7 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(data, &tl); err != nil {
 		t.Fatalf("unmarshal timeline: %v", err)
 	}
@@ -69,8 +70,8 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 	if tl.Provider.ProviderID != "opencode_go" {
 		t.Errorf("Provider.ProviderID = %q, want %q", tl.Provider.ProviderID, "opencode_go")
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCompleted {
-		t.Errorf("Termination = %+v, want reason %q", tl.Termination, runstate.TerminationCompleted)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCompleted {
+		t.Errorf("Termination = %+v, want reason %q", tl.Termination, timeline.TerminationCompleted)
 	}
 	if len(tl.Events) != 3 {
 		t.Fatalf("got %d timeline events, want 3", len(tl.Events))
@@ -86,11 +87,11 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 // TestPersistRunTimeline_AllTerminationReasons verifies the timeline path
 // records the correct termination reason on each exit path without a RunState.
 func TestPersistRunTimeline_AllTerminationReasons(t *testing.T) {
-	reasons := []runstate.TerminationReason{
-		runstate.TerminationCompleted,
-		runstate.TerminationCancelled,
-		runstate.TerminationMaxTurns,
-		runstate.TerminationError,
+	reasons := []timeline.TerminationReason{
+		timeline.TerminationCompleted,
+		timeline.TerminationCancelled,
+		timeline.TerminationMaxTurns,
+		timeline.TerminationError,
 	}
 
 	for _, reason := range reasons {
@@ -105,7 +106,7 @@ func TestPersistRunTimeline_AllTerminationReasons(t *testing.T) {
 			svc.persistRunTimeline("session-1", "run-1", time.Now(), sseState, RunConfig{
 				ModelName:  "test-model",
 				ProviderID: "opencode_go",
-			}, &runstate.TimelineTermination{Reason: reason})
+			}, &timeline.TimelineTermination{Reason: reason})
 
 			metas, err := persister.ListTimelines("session-1")
 			if err != nil {
@@ -118,7 +119,7 @@ func TestPersistRunTimeline_AllTerminationReasons(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadTimeline: %v", err)
 			}
-			var tl runstate.Timeline
+			var tl timeline.Timeline
 			if err := json.Unmarshal(data, &tl); err != nil {
 				t.Fatalf("unmarshal timeline: %v", err)
 			}
@@ -138,5 +139,5 @@ func TestPersistRunTimeline_NilPersisterIsNoop(t *testing.T) {
 	svc.persistRunTimeline("session-1", "run-1", time.Now(), sseState, RunConfig{
 		ModelName:  "test-model",
 		ProviderID: "opencode_go",
-	}, &runstate.TimelineTermination{Reason: runstate.TerminationCompleted})
+	}, &timeline.TimelineTermination{Reason: timeline.TerminationCompleted})
 }

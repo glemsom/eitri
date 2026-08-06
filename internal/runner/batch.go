@@ -14,6 +14,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/glemsom/eitri/internal/uixt"
@@ -172,7 +173,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        batchID,
-		RunID:            runstate.GenerateRunID(batchID, batchStartedAt),
+		RunID:            timeline.GenerateRunID(batchID, batchStartedAt),
 		ContextWindow:    cfg.ContextWindowTokens,
 		CrashDumpFunc:    s.crashDumpFunc,
 		Turns:            &turns,
@@ -274,27 +275,27 @@ func (b *batchStreamer) closeThinking() {
 
 // batchTermination classifies a batch run's outcome into the timeline
 // termination reason, matching the UI exit paths (issue #1039).
-func batchTermination(runErr error, runCtx context.Context) *runstate.TimelineTermination {
+func batchTermination(runErr error, runCtx context.Context) *timeline.TimelineTermination {
 	switch {
 	case runErr == nil:
-		return &runstate.TimelineTermination{Reason: runstate.TerminationCompleted}
+		return &timeline.TimelineTermination{Reason: timeline.TerminationCompleted}
 
 	case runCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded):
-		return &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCancelled,
+		return &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCancelled,
 			Message: "Run cancelled by user or context deadline exceeded",
 		}
 
 	default:
 		var maxTurnsErr *loop.MaxTurnsExceededError
 		if errors.As(runErr, &maxTurnsErr) {
-			return &runstate.TimelineTermination{
-				Reason:  runstate.TerminationMaxTurns,
+			return &timeline.TimelineTermination{
+				Reason:  timeline.TerminationMaxTurns,
 				Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
 			}
 		}
-		return &runstate.TimelineTermination{
-			Reason:  runstate.TerminationError,
+		return &timeline.TimelineTermination{
+			Reason:  timeline.TerminationError,
 			Message: runErr.Error(),
 		}
 	}

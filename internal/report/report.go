@@ -12,13 +12,13 @@ import (
 
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // TerminationInfo describes why a run ended.
 type TerminationInfo struct {
-	Reason  runstate.TerminationReason `json:"reason"`
+	Reason  timeline.TerminationReason `json:"reason"`
 	Message string                     `json:"message"`
 }
 
@@ -147,8 +147,8 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 			continue
 		}
 		var tl struct {
-			Termination *runstate.TimelineTermination `json:"termination"`
-			Events      []runstate.TimelineEvent      `json:"events"`
+			Termination *timeline.TimelineTermination `json:"termination"`
+			Events      []timeline.TimelineEvent      `json:"events"`
 		}
 		if err := json.Unmarshal(data, &tl); err != nil {
 			continue
@@ -161,7 +161,7 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 			}
 		}
 
-		reason := runstate.TerminationCompleted
+		reason := timeline.TerminationCompleted
 		message := ""
 		if tl.Termination != nil {
 			reason = tl.Termination.Reason
@@ -195,7 +195,7 @@ func (svc *Service) listRunsFromHistory(sessionID string) ([]RunInfo, error) {
 			StartedAt: time.Now(),
 			Turns:     0,
 			Termination: TerminationInfo{
-				Reason:  runstate.TerminationCompleted,
+				Reason:  timeline.TerminationCompleted,
 				Message: "",
 			},
 		},
@@ -228,7 +228,7 @@ func (svc *Service) GetReport(sessionID string, runIndex int) (*SessionReport, e
 		return nil, fmt.Errorf("load timeline: %w", err)
 	}
 
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(data, &tl); err != nil {
 		return nil, fmt.Errorf("unmarshal timeline: %w", err)
 	}
@@ -246,7 +246,7 @@ func (svc *Service) GetReport(sessionID string, runIndex int) (*SessionReport, e
 }
 
 // buildReportFromTimeline assembles a report from timeline data.
-func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timeline, allMetas []persist.TimelineMeta) *SessionReport {
+func (svc *Service) buildReportFromTimeline(sessionID string, tl *timeline.Timeline, allMetas []persist.TimelineMeta) *SessionReport {
 	report := &SessionReport{
 		SessionID:     sessionID,
 		RunID:         tl.RunID,
@@ -365,7 +365,7 @@ func (svc *Service) buildReportFromTimeline(sessionID string, tl *runstate.Timel
 }
 
 // computeSummary calculates aggregate statistics from a timeline.
-func (svc *Service) computeSummary(tl *runstate.Timeline, turns []Turn) Summary {
+func (svc *Service) computeSummary(tl *timeline.Timeline, turns []Turn) Summary {
 	summary := Summary{
 		TotalTurns:      len(turns),
 		TotalDurationMs: tl.EndedAt.Sub(tl.StartedAt).Milliseconds(),

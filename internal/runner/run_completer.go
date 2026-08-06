@@ -23,6 +23,7 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // runCompleter implements loop.TurnCompleter for batch and sub-agent runs.
@@ -99,16 +100,16 @@ func (c *runCompleter) persist(status uisession.Status) {
 // cancellation / max-turns and error on failure, while batch runs end error on
 // any non-nil run error (including cancellation) — matching UI exit paths and
 // the pre-unification behaviour (issue #1107).
-func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Status, termination *runstate.TimelineTermination) {
+func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Status, termination *timeline.TimelineTermination) {
 	c.persist(status)
-	c.svc.persistRunTimeline(c.id, runstate.GenerateRunID(c.id, c.startedAt), c.startedAt, sseState, c.cfg, termination)
+	c.svc.persistRunTimeline(c.id, timeline.GenerateRunID(c.id, c.startedAt), c.startedAt, sseState, c.cfg, termination)
 }
 
 // runCompleterTerminalStatus maps a termination reason to the sub-agent terminal
 // snapshot status: idle on completion / cancellation / max-turns and error on
 // failure. Batch runs supply their own status (error on any non-nil run error).
-func runCompleterTerminalStatus(reason runstate.TerminationReason) uisession.Status {
-	if reason == runstate.TerminationError {
+func runCompleterTerminalStatus(reason timeline.TerminationReason) uisession.Status {
+	if reason == timeline.TerminationError {
 		return uisession.StatusError
 	}
 	return uisession.StatusIdle

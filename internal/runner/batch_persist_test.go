@@ -17,7 +17,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
-	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -229,15 +229,15 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(tlData, &tl); err != nil {
 		t.Fatalf("unmarshal timeline: %v", err)
 	}
 	if tl.SessionID != "test-batch" {
 		t.Errorf("timeline SessionID = %q, want %q", tl.SessionID, "test-batch")
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCompleted {
-		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, runstate.TerminationCompleted)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCompleted {
+		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationCompleted)
 	}
 	// The timeline must carry the turn↔trace correlation events (issue #988).
 	var llmCalls, toolCalls int
@@ -342,12 +342,12 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(tlData, &tl); err != nil {
 		t.Fatalf("unmarshal timeline: %v", err)
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationError {
-		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, runstate.TerminationError)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationError {
+		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationError)
 	}
 }
 
@@ -387,12 +387,12 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(tlData, &tl); err != nil {
 		t.Fatalf("unmarshal timeline: %v", err)
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCancelled {
-		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, runstate.TerminationCancelled)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCancelled {
+		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationCancelled)
 	}
 
 	// The terminal snapshot reflects the failure with error status.
@@ -451,12 +451,12 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(tlData, &tl); err != nil {
 		t.Fatalf("unmarshal timeline: %v", err)
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationMaxTurns {
-		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, runstate.TerminationMaxTurns)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationMaxTurns {
+		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationMaxTurns)
 	}
 }
 
@@ -547,28 +547,28 @@ func TestBatchSession_RetentionInteraction(t *testing.T) {
 func TestBatchTermination(t *testing.T) {
 	t.Run("completed", func(t *testing.T) {
 		term := batchTermination(nil, context.Background())
-		if term.Reason != runstate.TerminationCompleted {
-			t.Errorf("reason = %q, want %q", term.Reason, runstate.TerminationCompleted)
+		if term.Reason != timeline.TerminationCompleted {
+			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCompleted)
 		}
 	})
 	t.Run("cancelled via error", func(t *testing.T) {
 		term := batchTermination(context.Canceled, context.Background())
-		if term.Reason != runstate.TerminationCancelled {
-			t.Errorf("reason = %q, want %q", term.Reason, runstate.TerminationCancelled)
+		if term.Reason != timeline.TerminationCancelled {
+			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCancelled)
 		}
 	})
 	t.Run("cancelled via context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		term := batchTermination(errors.New("boom"), ctx)
-		if term.Reason != runstate.TerminationCancelled {
-			t.Errorf("reason = %q, want %q", term.Reason, runstate.TerminationCancelled)
+		if term.Reason != timeline.TerminationCancelled {
+			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCancelled)
 		}
 	})
 	t.Run("max turns", func(t *testing.T) {
 		term := batchTermination(&loop.MaxTurnsExceededError{Limit: 3}, context.Background())
-		if term.Reason != runstate.TerminationMaxTurns {
-			t.Errorf("reason = %q, want %q", term.Reason, runstate.TerminationMaxTurns)
+		if term.Reason != timeline.TerminationMaxTurns {
+			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationMaxTurns)
 		}
 		if term.Message == "" {
 			t.Error("message is empty, want max-turns message")
@@ -576,8 +576,8 @@ func TestBatchTermination(t *testing.T) {
 	})
 	t.Run("error", func(t *testing.T) {
 		term := batchTermination(errors.New("boom"), context.Background())
-		if term.Reason != runstate.TerminationError {
-			t.Errorf("reason = %q, want %q", term.Reason, runstate.TerminationError)
+		if term.Reason != timeline.TerminationError {
+			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationError)
 		}
 		if term.Message != "boom" {
 			t.Errorf("message = %q, want %q", term.Message, "boom")

@@ -1,16 +1,17 @@
-package runstate
+package timeline
 
 import (
 	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 func TestCondensedEvents_FiltersTokenAndThinkingDelta(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.Token("hello")
 	w.ToolCall("grep", json.RawMessage(`{"pattern":"test"}`))
@@ -18,7 +19,7 @@ func TestCondensedEvents_FiltersTokenAndThinkingDelta(t *testing.T) {
 	w.ToolResult("grep", "found 3 matches")
 	w.Done("msg_1", nil)
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	// Should exclude token and thinking_delta
 	for _, evt := range events {
@@ -53,8 +54,8 @@ func TestCondensedEvents_FiltersTokenAndThinkingDelta(t *testing.T) {
 }
 
 func TestCondensedEvents_IncludesTurnNumber(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.SetTurn(1)
 	w.ToolCall("grep", nil)
@@ -62,7 +63,7 @@ func TestCondensedEvents_IncludesTurnNumber(t *testing.T) {
 	w.SetTurn(2)
 	w.ToolCall("read", nil)
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
@@ -76,8 +77,8 @@ func TestCondensedEvents_IncludesTurnNumber(t *testing.T) {
 }
 
 func TestCondensedEvents_ContextUpdate(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.ContextUpdate(&tokenizer.ContextUpdate{
 		TotalTokens:   5000,
@@ -85,7 +86,7 @@ func TestCondensedEvents_ContextUpdate(t *testing.T) {
 		ContextWindow: 128000,
 	})
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -105,22 +106,21 @@ func TestCondensedEvents_ContextUpdate(t *testing.T) {
 }
 
 func TestCondensedEvents_EmptyState(t *testing.T) {
-	s := New()
-	events := s.CondensedEvents()
+	events := CondensedEvents(nil)
 
 	if len(events) != 0 {
-		t.Errorf("expected 0 events from empty state, got %d", len(events))
+		t.Errorf("expected 0 events from empty history, got %d", len(events))
 	}
 }
 
 func TestCondensedEvents_ToolResultErrorDetection(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	// Simulate a tool dispatch error
 	w.ToolResult("read", "Tool error: unknown tool: \"read\"")
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -131,12 +131,12 @@ func TestCondensedEvents_ToolResultErrorDetection(t *testing.T) {
 }
 
 func TestCondensedEvents_ToolResultNoError(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.ToolResult("grep", "found 10 results")
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -147,12 +147,12 @@ func TestCondensedEvents_ToolResultNoError(t *testing.T) {
 }
 
 func TestCondensedEvents_SkillActivated(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.SkillActivated("my-skill")
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -166,8 +166,8 @@ func TestCondensedEvents_SkillActivated(t *testing.T) {
 }
 
 func TestCondensedEvents_NeedsConfirmation(t *testing.T) {
-	s := New()
-	s.Broadcast(SSEEvent{
+	s := runstate.New()
+	s.Broadcast(runstate.SSEEvent{
 		Type:    "needs_confirmation",
 		Content: "Allow access to /etc/passwd?",
 		Data: map[string]any{
@@ -176,7 +176,7 @@ func TestCondensedEvents_NeedsConfirmation(t *testing.T) {
 		},
 	})
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -193,11 +193,11 @@ func TestCondensedEvents_NeedsConfirmation(t *testing.T) {
 }
 
 func TestCondensedEvents_LLMCallCorrelation(t *testing.T) {
-	s := New()
-	w := NewWriter(s)
+	s := runstate.New()
+	w := runstate.NewWriter(s)
 
 	w.SetTurn(2)
-	w.LLMCall(LLMCallInfo{
+	w.LLMCall(runstate.LLMCallInfo{
 		TraceID:    "trace_abc",
 		Attempt:    2,
 		Attempts:   3,
@@ -207,7 +207,7 @@ func TestCondensedEvents_LLMCallCorrelation(t *testing.T) {
 	})
 	w.ToolCall("bash", json.RawMessage(`{"cmd":"ls"}`))
 
-	events := s.CondensedEvents()
+	events := CondensedEvents(s.History())
 
 	if len(events) != 2 {
 		t.Fatalf("expected 2 events, got %d", len(events))
@@ -269,7 +269,7 @@ func TestGenerateRunID_Format(t *testing.T) {
 
 func TestTimelineJSON_Marshal(t *testing.T) {
 	now := time.Date(2026, 7, 25, 17, 46, 46, 0, time.UTC)
-	timeline := Timeline{
+	tl := Timeline{
 		Version:   1,
 		RunID:     "abc123def456",
 		SessionID: "session-1",
@@ -294,7 +294,7 @@ func TestTimelineJSON_Marshal(t *testing.T) {
 		},
 	}
 
-	data, err := json.Marshal(timeline)
+	data, err := json.Marshal(tl)
 	if err != nil {
 		t.Fatalf("failed to marshal timeline: %v", err)
 	}
