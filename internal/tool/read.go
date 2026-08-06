@@ -12,8 +12,8 @@ import (
 
 type readArgs struct {
 	Path      string `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace."`
-	StartLine int    `json:"start_line,omitempty" jsonschema:"1-indexed line number to start reading from (default: 1)."`
-	EndLine   int    `json:"end_line,omitempty" jsonschema:"1-indexed line number to stop reading at (default: 100)."`
+	StartLine int    `json:"start_line,omitempty" jsonschema:"1-indexed line number to start reading from (default: 1)." jsonschema_minimum:"1"`
+	EndLine   int    `json:"end_line,omitempty" jsonschema:"1-indexed line number to stop reading at (default: 100)." jsonschema_minimum:"1"`
 }
 
 // ReadTool implements ToolHandler for reading files with line-range support.

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tool argument schemas now carry hard, JSON-Schema-expressible input bounds so the model validates ranges up front instead of relying on prose defaults: `read.start_line`/`read.end_line` `minimum: 1`, `web_fetch.timeout` `minimum: 1`/`maximum: 120`, browser `navigate.timeout` `minimum: 1`, and `delegate.max_turns` `minimum: 1`. Bounds mirror existing runtime defaults (read 1–100, web_fetch 15s, navigate 30s, delegate 250); runtime behaviour is unchanged. (#1168)
+
 - The UI now gives every interactive element a full hover, pressed (`:active`) and visible keyboard-focus (`:focus-visible`) treatment, drawn from a canonical `--focus-ring` token (based on the accent colour) so focus feedback reads in both light and dark themes. Interactive controls — sidebar session/activity rows, nav links, quick-reply chips, completion/persona/directory-browser items, buttons, `<summary>` rows and the run selector — now expose all three states. (#1116)
 
 - The narrow-viewport story is now designed and verified for the three surfaces that previously only inherited the single 768px sidebar collapse: the sessions management table scrolls horizontally (`min-width` + scroll container) instead of squashing its columns, the tool-activity list gets a bounded full-width scroll region, and the report page stacks its header chrome and wraps its run-selector/meta bars for tighter gutters. (#1116)

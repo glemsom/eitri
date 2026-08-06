@@ -50,7 +50,7 @@ var browserActions = []string{
 type navigateArgs struct {
 	TargetID string `json:"target_id" jsonschema:"Target tab ID to navigate"`
 	URL      string `json:"url" jsonschema:"Full URL to navigate to"`
-	Timeout  int    `json:"timeout,omitempty" jsonschema:"Navigation timeout in seconds, default 30"`
+	Timeout  int    `json:"timeout,omitempty" jsonschema:"Navigation timeout in seconds, default 30" jsonschema_minimum:"1"`
 }
 
 // typeArgs defines the JSON schema for the type action.
