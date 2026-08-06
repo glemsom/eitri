@@ -165,7 +165,7 @@ func (p *Persister) drainTraceQueue() {
 }
 
 // TimelineSchema is the canonical JSON schema marker for timeline files.
-// The actual schema is defined in the runstate package as runstate.Timeline.
+// The actual schema is defined in the timeline package as timeline.Timeline.
 
 // TimelineMeta holds metadata about a persisted timeline file.
 type TimelineMeta struct {

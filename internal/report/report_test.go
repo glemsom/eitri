@@ -11,7 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // newTestService creates a report Service backed by a temp directory.
@@ -31,7 +31,7 @@ func newTestService(t *testing.T) (*Service, string) {
 }
 
 // writeTestTimeline writes a timeline file for testing.
-func writeTestTimeline(t *testing.T, dir, sessionID string, tl *runstate.Timeline) {
+func writeTestTimeline(t *testing.T, dir, sessionID string, tl *timeline.Timeline) {
 	t.Helper()
 	p, err := persist.New(dir)
 	if err != nil {
@@ -58,17 +58,17 @@ func TestListRuns_SingleTimeline(t *testing.T) {
 	sessionID := "sess-1"
 	now := time.Now().UTC()
 
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-1",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
 			Message: "",
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "OK", Error: false},
 			{Type: "tool_call", Timestamp: now, Turn: 2, Tool: "read"},
@@ -90,7 +90,7 @@ func TestListRuns_SingleTimeline(t *testing.T) {
 	if runs[0].Turns != 2 {
 		t.Errorf("expected 2 turns, got %d", runs[0].Turns)
 	}
-	if runs[0].Termination.Reason != runstate.TerminationCompleted {
+	if runs[0].Termination.Reason != timeline.TerminationCompleted {
 		t.Errorf("expected completed, got %s", runs[0].Termination.Reason)
 	}
 }
@@ -101,30 +101,30 @@ func TestListRuns_MultipleTimelines(t *testing.T) {
 	now := time.Now().UTC()
 
 	// Write two timelines with different start times
-	tl1 := &runstate.Timeline{
+	tl1 := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-1",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
 		},
 	}
-	tl2 := &runstate.Timeline{
+	tl2 := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-2",
 		SessionID: sessionID,
 		StartedAt: now.Add(30 * time.Second),
 		EndedAt:   now.Add(45 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCancelled,
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCancelled,
 			Message: "user cancelled",
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now.Add(30 * time.Second), Turn: 1, Tool: "read"},
 		},
 	}
@@ -138,10 +138,10 @@ func TestListRuns_MultipleTimelines(t *testing.T) {
 	if len(runs) != 2 {
 		t.Fatalf("expected 2 runs, got %d", len(runs))
 	}
-	if runs[0].Termination.Reason != runstate.TerminationCompleted {
+	if runs[0].Termination.Reason != timeline.TerminationCompleted {
 		t.Errorf("expected first run completed, got %s", runs[0].Termination.Reason)
 	}
-	if runs[1].Termination.Reason != runstate.TerminationCancelled {
+	if runs[1].Termination.Reason != timeline.TerminationCancelled {
 		t.Errorf("expected second run cancelled, got %s", runs[1].Termination.Reason)
 	}
 }
@@ -151,21 +151,21 @@ func TestGetReport_FullTimeline(t *testing.T) {
 	sessionID := "sess-full"
 	now := time.Now().UTC()
 
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-full",
 		SessionID: sessionID,
-		Provider: runstate.TimelineProvider{
+		Provider: timeline.TimelineProvider{
 			Model:      "test-model",
 			ProviderID: "test-provider",
 		},
 		StartedAt: now,
 		EndedAt:   now.Add(30 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason:  runstate.TerminationError,
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationError,
 			Message: "something went wrong",
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"ls"}`)},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "file.txt", Error: false},
 			{Type: "context_update", Timestamp: now, Turn: 1, TotalTokens: 500, PromptTokens: 400, ContextWindow: 128000},
@@ -190,7 +190,7 @@ func TestGetReport_FullTimeline(t *testing.T) {
 	if rep.Provider != "test-provider" {
 		t.Errorf("expected provider 'test-provider', got %q", rep.Provider)
 	}
-	if rep.Termination == nil || rep.Termination.Reason != runstate.TerminationError {
+	if rep.Termination == nil || rep.Termination.Reason != timeline.TerminationError {
 		t.Errorf("expected termination reason 'error', got %v", rep.Termination)
 	}
 	if rep.DurationMs != 30000 {
@@ -378,13 +378,13 @@ func TestGetReport_RunIndexOutOfRange(t *testing.T) {
 	sessionID := "sess-range"
 	now := time.Now().UTC()
 
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-1",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Events:    []runstate.TimelineEvent{},
+		Events:    []timeline.TimelineEvent{},
 	}
 	writeTestTimeline(t, dir, sessionID, tl)
 
@@ -399,16 +399,16 @@ func TestSummary_FailedTools(t *testing.T) {
 	sessionID := "sess-fail"
 	now := time.Now().UTC()
 
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-fail",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(30 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "read"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "read", Output: "Tool error: file not found", Error: true},
 			{Type: "tool_call", Timestamp: now, Turn: 2, Tool: "grep"},
@@ -452,20 +452,20 @@ func TestGetReport_TurnsReflectEnrichedTraceFields(t *testing.T) {
 	sessionID := "sess-trace-enrich"
 	now := time.Now().UTC()
 
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-trace-enrich",
 		SessionID: sessionID,
-		Provider: runstate.TimelineProvider{
+		Provider: timeline.TimelineProvider{
 			Model:      "test-model",
 			ProviderID: "test-provider",
 		},
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"ls"}`)},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "file.txt", Error: false},
 			{Type: "context_update", Timestamp: now, Turn: 1, TotalTokens: 500, PromptTokens: 400, ContextWindow: 128000},
@@ -563,20 +563,20 @@ func TestGetReport_JoinsTurnToTraceByID(t *testing.T) {
 	// far outside the old ±30s window. Only the trace_id recorded on the
 	// timeline (at write time) can join them.
 	turnStart := now.Add(-2 * time.Minute)
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-join-id",
 		SessionID: sessionID,
-		Provider: runstate.TimelineProvider{
+		Provider: timeline.TimelineProvider{
 			Model:      "test-model",
 			ProviderID: "test-provider",
 		},
 		StartedAt: turnStart,
 		EndedAt:   now,
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "llm_call", Timestamp: turnStart, Turn: 1, TraceID: "trace_join", Attempt: 0, Attempts: 1, DurationMs: 900, TTFBMs: 40, TTFTMs: 120},
 			{Type: "tool_call", Timestamp: turnStart, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"sleep 120"}`)},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "done", Error: false},
@@ -649,16 +649,16 @@ func TestGetReport_RetryAttemptsSurfaced(t *testing.T) {
 
 	// The timeline records the successful attempt: it succeeded on the third
 	// attempt (zero-based attempt 2), with 3 total attempts for the turn.
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-retry",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "llm_call", Timestamp: now, Turn: 1, TraceID: "trace_ok", Attempt: 2, Attempts: 3, DurationMs: 800, TTFBMs: 30, TTFTMs: 90},
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "ok", Error: false},
@@ -736,16 +736,16 @@ func TestGetReport_TraceRunTurnGroupFallback(t *testing.T) {
 
 	// No llm_call event in the timeline (e.g. persisted before the feature),
 	// but the traces carry run/turn IDs that match this run.
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-group",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "found", Error: false},
 		},
@@ -804,16 +804,16 @@ func TestGetReport_TimestampHeuristicRemainsFallback(t *testing.T) {
 
 	// No llm_call events and traces without run/turn IDs: only the legacy
 	// ±30s timestamp heuristic can join them.
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-ts",
 		SessionID: sessionID,
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason: runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "ok", Error: false},
 		},

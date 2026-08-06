@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // testHelper creates a test server with a temp persister directory.
@@ -78,21 +78,21 @@ func TestHandleListReports_WithTimeline(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-abc",
 		SessionID: sessionID,
-		Provider: runstate.TimelineProvider{
+		Provider: timeline.TimelineProvider{
 			Model:      "test-model",
 			ProviderID: "test-provider",
 		},
 		StartedAt: now,
 		EndedAt:   now.Add(5 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
 			Message: "",
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "results", Error: false},
 		},
@@ -141,21 +141,21 @@ func TestHandleGetReport_Full(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	tl := &runstate.Timeline{
+	tl := &timeline.Timeline{
 		Version:   1,
 		RunID:     "run-xyz",
 		SessionID: sessionID,
-		Provider: runstate.TimelineProvider{
+		Provider: timeline.TimelineProvider{
 			Model:      "gold-model",
 			ProviderID: "openai",
 		},
 		StartedAt: now,
 		EndedAt:   now.Add(10 * time.Second),
-		Termination: &runstate.TimelineTermination{
-			Reason:  runstate.TerminationCompleted,
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
 			Message: "",
 		},
-		Events: []runstate.TimelineEvent{
+		Events: []timeline.TimelineEvent{
 			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"ls"}`)},
 			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "file.txt", Error: false},
 		},

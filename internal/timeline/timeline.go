@@ -1,4 +1,12 @@
-package runstate
+// Package timeline owns the persisted per-run timeline domain: its types and
+// the derivation of condensed timeline events from the SSE broadcast history.
+//
+// It is a pure seam. It reads SSE event history (from internal/runstate) and
+// token accounting types (from internal/tokenizer) and produces the condensed
+// semantic event stream persisted to disk and consumed by the Session Report.
+// It neither broadcasts events nor persists them itself; those responsibilities
+// live in internal/runstate and internal/persist respectively.
+package timeline
 
 import (
 	"crypto/sha256"
@@ -6,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
@@ -93,14 +102,14 @@ type Timeline struct {
 
 // shouldExcludeFromTimeline returns true for high-volume event types that
 // should not be included in the condensed timeline.
-func shouldExcludeFromTimeline(evt SSEEvent) bool {
+func shouldExcludeFromTimeline(evt runstate.SSEEvent) bool {
 	return evt.Type == "token" || evt.Type == "thinking_delta"
 }
 
 // CondensedEvents filters the SSE history to only semantic events (excludes
-// token and thinking_delta events). Returns a copy.
-func (s *State) CondensedEvents() []TimelineEvent {
-	history := s.History()
+// token and thinking_delta events). It is callers' responsibility to supply a
+// complete, ordered history; the returned slice is a copy. Returns a copy.
+func CondensedEvents(history []runstate.SSEEvent) []TimelineEvent {
 	events := make([]TimelineEvent, 0, len(history))
 
 	var turn int
@@ -150,7 +159,7 @@ func (s *State) CondensedEvents() []TimelineEvent {
 			timelineEvt.Name = evt.Name
 
 		case "llm_call":
-			if li, ok := evt.Data.(*LLMCallInfo); ok {
+			if li, ok := evt.Data.(*runstate.LLMCallInfo); ok {
 				timelineEvt.TraceID = li.TraceID
 				timelineEvt.Attempt = li.Attempt
 				timelineEvt.Attempts = li.Attempts

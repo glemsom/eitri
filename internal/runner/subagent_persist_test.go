@@ -16,7 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/runstate"
+	"github.com/glemsom/eitri/internal/timeline"
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
@@ -75,7 +75,7 @@ func loadSubAgentSessionSnapshot(t *testing.T, p *persist.Persister, taskID stri
 
 // loadSubAgentTimeline reads the single persisted timeline for a sub-agent
 // task ID and returns it, failing if not exactly one timeline exists.
-func loadSubAgentTimeline(t *testing.T, p *persist.Persister, taskID string) *runstate.Timeline {
+func loadSubAgentTimeline(t *testing.T, p *persist.Persister, taskID string) *timeline.Timeline {
 	t.Helper()
 	metas, err := p.ListTimelines(taskID)
 	if err != nil {
@@ -88,7 +88,7 @@ func loadSubAgentTimeline(t *testing.T, p *persist.Persister, taskID string) *ru
 	if err != nil {
 		t.Fatalf("LoadTimeline(%s): %v", taskID, err)
 	}
-	var tl runstate.Timeline
+	var tl timeline.Timeline
 	if err := json.Unmarshal(data, &tl); err != nil {
 		t.Fatalf("unmarshal sub-agent timeline: %v", err)
 	}
@@ -190,8 +190,8 @@ func TestSubAgentPersistsChildSession(t *testing.T) {
 	if tl.Provider.Model != "test-model" || tl.Provider.ProviderID != "opencode_go" {
 		t.Errorf("timeline Provider = %+v, want test-model/opencode_go", tl.Provider)
 	}
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCompleted {
-		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, runstate.TerminationCompleted)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCompleted {
+		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, timeline.TerminationCompleted)
 	}
 }
 
@@ -241,8 +241,8 @@ func TestSubAgentPersistsChildSession_Error(t *testing.T) {
 	}
 
 	tl := loadSubAgentTimeline(t, persister, taskID)
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationError {
-		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, runstate.TerminationError)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationError {
+		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, timeline.TerminationError)
 	}
 }
 
@@ -310,8 +310,8 @@ func TestSubAgentPersistsChildSession_Cancelled(t *testing.T) {
 	}
 
 	tl := loadSubAgentTimeline(t, persister, taskID)
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCancelled {
-		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, runstate.TerminationCancelled)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCancelled {
+		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, timeline.TerminationCancelled)
 	}
 }
 
@@ -484,8 +484,8 @@ func TestBatchRun_SubAgentPersistence(t *testing.T) {
 
 	// Timeline with completed termination.
 	tl := loadSubAgentTimeline(t, persister, taskID)
-	if tl.Termination == nil || tl.Termination.Reason != runstate.TerminationCompleted {
-		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, runstate.TerminationCompleted)
+	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCompleted {
+		t.Errorf("timeline Termination = %+v, want reason %q", tl.Termination, timeline.TerminationCompleted)
 	}
 }
 
