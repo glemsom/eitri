@@ -719,7 +719,13 @@ func fakeJoinMidRunChatServer(t *testing.T, releaseThirdTurn <-chan struct{}) *h
 // bubbles the page already rendered.
 func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
 	releaseThirdTurn := make(chan struct{})
-	defer close(releaseThirdTurn)
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseThirdTurn) }) }
+	// Cleanup safety net: if an assertion aborts via t.Fatal before the inline
+	// release below, still unblock the fake server so its run goroutine does
+	// not linger. The inline close+wait also keeps the run's on-disk snapshot
+	// ahead of the TempDir cleanups (issue #1122).
+	t.Cleanup(release)
 
 	llmURL := fakeJoinMidRunChatServer(t, releaseThirdTurn).URL
 
@@ -875,6 +881,13 @@ func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
 		)
 		t.Logf("messages after rejoin: text=%q child=%q", dump.Text, dump.Child)
 	}
+	// Let the blocked third turn complete, then wait for the run to fully
+	// finish. The run's terminal snapshot is written synchronously before Done
+	// is closed, so once ActiveRun is nil the on-disk session file exists and
+	// the subsequent t.TempDir() cleanups no longer race the writer goroutine
+	// (issue #1122).
+	release()
+	waitForRunToFinish(t, runSvc, sessionID)
 }
 
 func mustSessionID(t *testing.T, ctx context.Context) string {
