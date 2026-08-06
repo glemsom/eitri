@@ -1,6 +1,6 @@
 # 0023 — Batch runs persist like UI sessions
 
-**Status**: Accepted
+**Status**: Accepted (amended — batch session IDs are auto-generated; the `EITRI_BATCH_SESSION_ID` env override was removed by ADR-0025)
 **Date**: 2026-08-05
 
 ## Context

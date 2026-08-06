@@ -26,5 +26,6 @@ Architecture decisions are documented as ADRs in `docs/adr/`. This file is the c
 | [0020](adr/0020-browser-tool-newremoteallocator.md) | `browser` tool via chromedp NewRemoteAllocator | Accepted |
 | [0021](adr/0021-pattern-compression-for-bash-output.md) | Deterministic pattern compression for bash tool output | Accepted |
 | [0022](adr/0022-save-only-settings-drafts.md) | Save-only settings drafts | Accepted |
-| [0023](adr/0023-batch-runs-persist-like-ui-sessions.md) | Batch runs persist like UI sessions | Accepted |
+| [0023](adr/0023-batch-runs-persist-like-ui-sessions.md) | Batch runs persist like UI sessions | Accepted (amended by 0025) |
 | [0024](adr/0024-unified-parent-run-preparation.md) | Unified parent-run preparation across UI and batch modes | Accepted |
+| [0025](adr/0025-unified-run-engine-across-subagent-and-batch.md) | Unified run engine across sub-agents and batch | Accepted |
