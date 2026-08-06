@@ -282,7 +282,7 @@ func (s *Service) Activate(ctx context.Context, sessionID, name string) (*Activa
 
 A persona is a named bundle of a system prompt and optional injected skills. Personas are stored as YAML under `~/.eitri/personas/<name>.yaml` — user-level only, never workspace-scoped (unlike skills, which support workspace overrides): they represent the user's agent behaviour preferences, not project-specific capabilities. Files are written with `0600` permissions in a `0700` directory; names are sanitized for safe filenames.
 
-The `generic` persona is the built-in default (its prompt is kept in sync with `history.DefaultSystemPrompt`) and is always present; `EnsureGeneric` materializes `generic.yaml` on startup. Up to `MaxCustomPersonas` (10) custom personas may be defined. Personas determine the agent's behaviour instructions; tools and the workspace are shared across personas. The API exposes persona list/set endpoints (`handlers_personas.go`) and the UI offers a persona selector (`eitri-persona-selector` island). See ADR-0018.
+The `generic` persona is the built-in default; `persona.DefaultPrompt` is the single canonical source for its prompt and `history.DefaultSystemPrompt` aliases it, so the history fallback and the generic persona always resolve to identical text. The `generic` persona is always present; `EnsureGeneric` materializes `generic.yaml` on startup. Up to `MaxCustomPersonas` (10) custom personas may be defined. Personas determine the agent's behaviour instructions; tools and the workspace are shared across personas. The API exposes persona list/set endpoints (`handlers_personas.go`) and the UI offers a persona selector (`eitri-persona-selector` island). See ADR-0018.
 
 ### `internal/runner/` — Run service + agent loop
 

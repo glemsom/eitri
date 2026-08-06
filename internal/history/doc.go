@@ -16,7 +16,7 @@
 //
 // Key constants:
 //   - DefaultMaxExchanges — default sliding window cap (150)
-//   - DefaultSystemPrompt — fallback system prompt
+//   - DefaultSystemPrompt — fallback system prompt (aliases persona.DefaultPrompt)
 //
 // Dependencies:
 //   - github.com/voocel/litellm — litellm.Message type for conversation messages
