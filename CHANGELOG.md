@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The persona add/edit forms now pre-fill the system-prompt field with the canonical default prompt as a freely editable **starting point** (issue #1140). The new-persona form always pre-fills; the edit form pre-fills only when the existing prompt is empty (a non-empty prompt is left verbatim). The default is sourced from the single canonical `persona.DefaultPrompt` constant, so a user specialising a persona does not silently lose the concise/be-focused/reasoning-budget guardrails.
+
 - Personas can now declare an opt-in **visible skills** list. A persona that sets `visible_skills` surfaces only those named skills' entries in the agent's `<available_skills>` catalog (narrowing what the agent sees as available) instead of always listing every effective skill; leaving it blank keeps today's behaviour. It is separate from `required_skills`, which remains a first-turn load directive. Distinct and unified with the persona editor UI as a multi-select, mirroring required skills. (#1139)
 
 - Batch and sub-agent runs now share one per-turn run-completer (`runCompleter`): the batch turn-completer and the sub-agent snapshotter are merged into a single implementation (ADR-0025). Both wire the same completer through the `loop.HistoryManager` conversation-source seam (session-manager-backed for batch/UI, request-based for sub-agents), so per-turn running-status snapshots, the shared auto-compaction step, and the terminal snapshot + timeline on every exit path (completed / cancelled / max-turns / error) are each written by one implementation. Behaviour is unchanged for every run kind; this is a pure internal consolidation. (#1107)
