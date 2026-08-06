@@ -1,0 +1,94 @@
+package templates
+
+import (
+	"strconv"
+
+	"github.com/glemsom/eitri/internal/report"
+)
+
+// ReportTimeline renders the scrollable vertical list of turn cards.
+templ ReportTimeline(turnViews []TurnView) {
+	<div id="report-timeline" class="report-timeline">
+		for _, turn := range turnViews {
+			@TurnCard(turn)
+		}
+	</div>
+}
+
+// TurnCard renders a single turn in the timeline.
+templ TurnCard(turn TurnView) {
+	<div class={ "turn-card", templ.KV("turn-user", turn.Role == "user"), templ.KV("turn-assistant", turn.Role == "assistant") }>
+		if turn.Role == "user" {
+			<div class="turn-header">
+				<span class="turn-role-icon">👤</span>
+				<span class="turn-role-label">User</span>
+				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
+				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
+			</div>
+			<div class="turn-content turn-user-content">
+				@templ.Raw(turn.ContentHTML)
+			</div>
+		} else if turn.Role == "assistant" {
+			<div class="turn-header">
+				<span class="turn-role-icon">🤖</span>
+				<span class="turn-role-label">Assistant</span>
+				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
+				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
+			</div>
+			if turnHasLLMMeta(turn) {
+				@LLMMetaSection(turn)
+			}
+			<div class="turn-content turn-assistant-content">
+				@templ.Raw(turn.ContentHTML)
+			</div>
+			if turn.ReasoningHTML != "" {
+				<details class="turn-reasoning">
+					<summary>Reasoning</summary>
+					<div class="turn-reasoning-content">@templ.Raw(turn.ReasoningHTML)</div>
+				</details>
+			}
+			@ContextBar(turn.ContextBefore, turn.ContextAfter)
+			if len(turn.ToolCalls) > 0 {
+				<div class="turn-tool-calls">
+					for _, tc := range turn.ToolCalls {
+						@ToolCallCard(tc)
+					}
+				</div>
+			}
+		}
+	</div>
+}
+
+// ContextBar renders a thin progress bar showing token usage vs context window.
+templ ContextBar(before *report.ContextInfo, after *report.ContextInfo) {
+	if before != nil || after != nil {
+		<div class="turn-context-bar">
+			if before != nil {
+				<div class="context-bar-segment">
+					<span class="context-bar-label">Before</span>
+					<div class="context-bar-track">
+						<div
+							class="context-bar-fill"
+							style={ "width:" + strconv.Itoa(contextPercent(before)) + "%" }
+							title={ strconv.Itoa(before.TotalTokens) + " / " + strconv.Itoa(before.ContextWindow) + " tokens" }
+						></div>
+					</div>
+					<span class="context-bar-value">{ strconv.Itoa(before.TotalTokens) }</span>
+				</div>
+			}
+			if after != nil {
+				<div class="context-bar-segment">
+					<span class="context-bar-label">After</span>
+					<div class="context-bar-track">
+						<div
+							class="context-bar-fill"
+							style={ "width:" + strconv.Itoa(contextPercent(after)) + "%" }
+							title={ strconv.Itoa(after.TotalTokens) + " / " + strconv.Itoa(after.ContextWindow) + " tokens" }
+						></div>
+					</div>
+					<span class="context-bar-value">{ strconv.Itoa(after.TotalTokens) }</span>
+				</div>
+			}
+		</div>
+	}
+}

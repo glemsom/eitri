@@ -1,0 +1,45 @@
+package templates
+
+import (
+	"strconv"
+)
+
+// LLMMetaSection renders the LLM telemetry strip for an assistant turn.
+templ LLMMetaSection(turn TurnView) {
+	<div class="turn-llm-meta">
+		if turn.LLMDurationMs > 0 {
+			<span class="llm-meta-item">⏱ { formatDurationSmall(turn.LLMDurationMs) }</span>
+		}
+		if turn.LLMTTFBMs > 0 {
+			<span class="llm-meta-item" title="Time to first byte">⚡ { formatDurationSmall(turn.LLMTTFBMs) }</span>
+		}
+		if turn.LLMTTFTMs > 0 {
+			<span class="llm-meta-item" title="Time to first token">✍️ { formatDurationSmall(turn.LLMTTFTMs) }</span>
+		}
+		if turn.LLMRequestBytes > 0 {
+			<span class="llm-meta-item">↑ { formatBytes(turn.LLMRequestBytes) }</span>
+		}
+		if turn.LLMResponseBytes > 0 {
+			<span class="llm-meta-item">↓ { formatBytes(turn.LLMResponseBytes) }</span>
+		}
+		if turn.LLMUsage != nil && turn.LLMUsage.PromptTokens > 0 && turn.LLMUsage.CompletionTokens > 0 {
+			<span class="llm-meta-item" title="Provider-reported tokens: prompt + completion{ cacheTokenSuffix(turn.LLMUsage) }">🧮 { formatNumber(turn.LLMUsage.PromptTokens) } + { formatNumber(turn.LLMUsage.CompletionTokens) } tok</span>
+		}
+		if turn.LLMFinishReason != "" {
+			<span class="llm-meta-item" title="Finish reason">🏁 { turn.LLMFinishReason }</span>
+		}
+		if turn.LLMModel != "" {
+			<span class="llm-meta-item" title="Model">🤖 { turn.LLMModel }</span>
+		}
+		if turn.LLMAttemptCount > 0 {
+			<span class="llm-meta-item" title="Total LLM call attempts and retries before success">🔁 { strconv.Itoa(turn.LLMAttemptCount) } attempts ({ retryLabel(turn.LLMFailedAttempts) })</span>
+		} else if turn.LLMAttempt > 0 {
+			<span class="llm-meta-item" title="Retry attempt">🔁 attempt { strconv.Itoa(turn.LLMAttempt + 1) }</span>
+		}
+		if turn.LLMTraceID != "" {
+			<span class="llm-meta-item">
+				<a href={ templ.URL("/api/debug/http/" + turn.LLMTraceID) } class="trace-link" title="View HTTP trace">🔍 Trace</a>
+			</span>
+		}
+	</div>
+}
