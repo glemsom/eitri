@@ -1,0 +1,35 @@
+package templates
+
+import (
+	"github.com/glemsom/eitri/internal/report"
+	"github.com/glemsom/eitri/internal/session"
+)
+
+// ReportPage renders the full Session Report page.
+templ ReportPage(sessions []*session.UISession, activeID string, sess *session.UISession, workspace string, currentPath string, contextWindow int, reasoningContent string, compactionEnabled bool, contextWarningThreshold int, rep *report.SessionReport, runs []report.RunInfo, selectedRun int, turnViews []TurnView) {
+	@Base("Eitri — Report", currentPath, sessions, activeID, currentPath, workspace, contextWindow, reasoningContent, compactionEnabled, contextWarningThreshold) {
+		if rep == nil {
+			<div id="report-view" class="report-view">
+				<div class="report-not-found">
+					<h2>Session data not found</h2>
+					<p>The session data for this report could not be found on disk.</p>
+					<a href={ templ.URL("/sessions/" + activeID) } class="btn-primary">Back to chat</a>
+				</div>
+			</div>
+		} else {
+			<div id="report-view" class="report-view">
+				@ReportHeader(rep, activeID)
+				@RunSelector(runs, sessionIDFromReport(rep), selectedRun)
+				@ReportTimeline(turnViews)
+				@ReportSubAgents(rep)
+			</div>
+		}
+	}
+}
+
+// ReportNotFound renders the "not found" message for HTMX fragment swaps.
+templ ReportNotFound() {
+	<div class="report-timeline-empty">
+		<p>Session data not found</p>
+	</div>
+}

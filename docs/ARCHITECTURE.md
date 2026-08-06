@@ -224,11 +224,18 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `base.templ` | HTML document shell + embedded pinned assets + browser island scripts. Sidebar is a four-panel flex column: `#session-panel` (sessions list, fixed height), `#tool-activity` (tool activity cards, max 6 entries), `#thinking-panel` (LLM reasoning content, flex-grows), `#context-panel` (context window progress bars) |
 | `chat.templ` | `ChatView` — workspace indicator, setup banner for invalid provider config, message list, input, visible Stop button, completion menu container, SSE target for selected session |
 | `session_tabs.templ` | `SessionTabs` — session list with title, status dot, close button, and new-session button in header |
-| `settings.templ` | `SettingsView` — config form, provider + model selectors, custom system prompt |
+| `settings.templ` | `SettingsView` — config form wrapper that composes the per-section sub-templates (profile, provider/auth, model, prompt, limits, compaction, sandbox, diagnostics, browser) |
+| `settings_sections_auth.templ` | Settings sub-templates: profile, provider & server-auth, and model sections |
+| `settings_sections_runtime.templ` | Settings sub-templates: system-prompt, timeouts & limits, compaction, and sandbox sections |
+| `settings_sections_diagnostics.templ` | Settings sub-templates: debug & diagnostics and browser sections |
 | `skills.templ` | `SkillsView` — detected Agent Skills table, refresh action, diagnostics |
 | `sessions.templ` | `SessionsPage` — full sessions management page (active + persisted on disk) |
 | `personas.templ` | `PersonaList` — persona selector cards |
-| `report.templ` | Session report view (per-turn breakdowns) |
+| `report_page.templ` | `ReportPage` page shell (plus `ReportNotFound` fragment) |
+| `report_summary.templ` | Report summary strip — `ReportHeader`, `TerminationChip`, `RunSelector` |
+| `report_timeline.templ` | Turn timeline — `ReportTimeline`, `TurnCard`, `ContextBar` |
+| `report_turn_metrics.templ` | Per-turn LLM telemetry strip — `LLMMetaSection` |
+| `report_artifacts.templ` | Report artifacts — `ToolCallCard`, `ReportSubAgents` |
 | `screenshot_display.templ` | `ScreenshotDisplay` — browser screenshot `<img>` block with caption |
 | `message_input.templ` | `MessageInput` — textarea with skill `/` and file `@` completion |
 | `chat_bubble.templ` | User/assistant message bubbles |
@@ -237,6 +244,8 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `quick_replies.templ` | Suggestion chip buttons |
 | `directory_browser.templ` | Workspace file browser view |
 | `settings_view_model.go` | View model helpers for settings page rendering |
+| `report_view_model.go` | `TurnView` report turn model + telemetry-presence helper |
+| `report_helpers.go` | Pure formatting helpers for report rendering (durations, numbers, bytes, cache tokens, context %) |
 | `helpers.go` | Shared template rendering helpers |
 
 ### `internal/skills/` — Agent Skills discovery + activation

@@ -1,0 +1,106 @@
+package templates
+
+import "github.com/glemsom/eitri/internal/config"
+
+// profileSection renders the Profile settings group.
+templ profileSection(cfg *config.Config) {
+	<details class="settings-details">
+		<summary><span>Profile</span></summary>
+
+		<div class="form-group">
+			<label for="user_email">Email (used for Gravatar avatar lookup only)</label>
+			<input type="email" id="user_email" name="user_email" value={ cfg.UserEmail } placeholder="you@example.com" autocomplete="email"/>
+			<small class="hint">Only used to display your Gravatar avatar in chat bubbles. Your email is never shared.</small>
+		</div>
+	</details>
+}
+
+// providerSection renders the Provider & Authentication settings group.
+templ providerSection(cfg *config.Config, deviceFlow *CopilotDeviceFlowView) {
+	<details class="settings-details" open>
+		<summary><span>Provider &amp; Authentication</span></summary>
+
+		<div class="form-group">
+			<label for="provider">Provider</label>
+			<select id="provider" name="provider" required>
+				<option value="opencode_go" if cfg.Provider == "opencode_go" { selected }>OpenCode Go</option>
+				<option value="github_copilot" if cfg.Provider == "github_copilot" { selected }>GitHub Copilot</option>
+				<option value="custom_openai" if cfg.Provider == "custom_openai" { selected }>Custom OpenAI (advanced/best-effort)</option>
+			</select>
+		</div>
+
+		<div class="form-group base-url-group">
+			<label for="base_url">Base URL <span class="required-marker">*</span></label>
+			<div class="base-url-row">
+				<input type="url" id="base_url" name="base_url" value={ cfg.BaseURL } placeholder="https://opencode.ai/zen/go/v1" required/>
+				<button type="button" id="base-url-reset">Reset to provider default</button>
+			</div>
+			<small id="base-url-status" class="hint">{ baseURLStatus(cfg.Provider, cfg.BaseURL) }</small>
+			<small id="base-url-required-hint" class="hint" hidden={ cfg.Provider != "custom_openai" || cfg.BaseURL != "" }>Custom OpenAI requires an endpoint before Save or Test Connection.</small>
+		</div>
+
+		<div class="form-group">
+			<label for="api_key">API key / token</label>
+			<div class="api-key-row">
+				<input type="password" id="api_key" name="api_key" value={ cfg.APIKey } placeholder="API key or bearer token" autocomplete="off"/>
+				<label class="checkbox-label">
+					<input type="checkbox" name="clear_api_key" value="true"/>
+					Clear stored credential
+				</label>
+			</div>
+			<small class="hint">OpenCode Go: API key required. GitHub Copilot: bearer token required. Custom OpenAI: credentials optional.</small>
+		</div>
+
+		<div class="device-flow-section">
+			if deviceFlow != nil {
+				<div class="device-flow-panel">
+					<p>Authenticate with GitHub device flow.</p>
+					<p class="device-flow-code-wrapper">Open <a href={ deviceFlow.VerificationURI } target="_blank" rel="noreferrer noopener">{ deviceFlow.VerificationURI }</a> and enter code <code class="device-flow-code">{ deviceFlow.UserCode }</code>.</p>
+					<div id={ "copilot-device-flow-status-" + deviceFlow.ID } hx-get={ deviceFlow.PollURL } hx-trigger={ deviceFlow.PollTrigger } hx-target="#settings-form" hx-swap="outerHTML">
+						<small class="hint">Waiting for GitHub approval…</small>
+					</div>
+					<div class="form-actions">
+						<button type="button" hx-delete={ deviceFlow.CancelURL } hx-target="#settings-form" hx-swap="outerHTML">Cancel GitHub auth</button>
+					</div>
+				</div>
+			} else {
+				<div class="device-flow-panel">
+					<div class="form-actions">
+						<button type="button" hx-post="/api/providers/github_copilot/device-flow/start" hx-include="closest form" hx-target="#settings-form" hx-swap="outerHTML">Authenticate with GitHub</button>
+					</div>
+					<small class="hint">For GitHub Copilot. Select provider above, start device flow, then models refresh automatically.</small>
+				</div>
+			}
+		</div>
+	</details>
+}
+
+// modelSection renders the Model settings group.
+templ modelSection(cfg *config.Config, models []string, supportedLevels []string) {
+	<details class="settings-details">
+		<summary><span>Model <span id="model-refresh-spinner" class="model-refresh-spinner" style="visibility:hidden;">&#9696;</span></span></summary>
+
+		<div class="form-group">
+			<select id="model" name="model">
+				<option value="" disabled selected={ cfg.Model == "" }>Select a model...</option>
+				for _, m := range models {
+					<option value={ m } if cfg.Model == m { selected }>{ m }</option>
+				}
+			</select>
+			<small class="hint">Models are discovered from current provider settings on load and save.</small>
+		</div>
+
+		<div class="form-group">
+			<label for="thinking_level">Thinking Level</label>
+			<select id="thinking_level" name="thinking_level">
+				<option value="" if cfg.ThinkingLevel == "" { selected }>Default (off)</option>
+				if len(supportedLevels) > 0 {
+					for _, level := range supportedLevels {
+						<option value={ level } if cfg.ThinkingLevel == level { selected }>{ capitalize(level) }</option>
+					}
+				}
+			</select>
+			<small class="hint">Controls reasoning depth. Supported by DeepSeek, O-series, and other reasoning models. Requires provider support.</small>
+		</div>
+	</details>
+}

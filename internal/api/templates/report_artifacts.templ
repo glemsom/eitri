@@ -1,0 +1,62 @@
+package templates
+
+import (
+	"github.com/glemsom/eitri/internal/report"
+)
+
+// ToolCallCard renders one tool call in a collapsible card.
+templ ToolCallCard(tc report.ToolCallInfo) {
+	<div class={ "tool-call-card", templ.KV("tool-call-error", tc.Error) }>
+		<details class="tool-call-details">
+			<summary class="tool-call-summary">
+				<span class="tool-call-name">{ tc.Name }</span>
+				if tc.Error {
+					<span class="tool-call-badge tool-call-badge-error">❌</span>
+				} else {
+					<span class="tool-call-badge tool-call-badge-success">✅</span>
+				}
+				if tc.DurationMs > 0 {
+					<span class="tool-call-duration">{ formatDurationSmall(tc.DurationMs) }</span>
+				}
+			</summary>
+			<div class="tool-call-body">
+				<div class="tool-call-section">
+					<span class="tool-call-section-label">Arguments</span>
+					<div class="tool-call-args">
+						<pre><code class="language-json">{ renderJSON(tc.Arguments) }</code></pre>
+					</div>
+				</div>
+				<div class="tool-call-section">
+					<span class="tool-call-section-label">Result</span>
+					<div class="tool-call-result">
+						if tc.ResultTruncated {
+							<details class="tool-call-result-toggle">
+								<summary>Preview (truncated)</summary>
+								<pre><code>{ tc.ResultPreview }</code></pre>
+							</details>
+						} else {
+							<pre><code>{ tc.ResultPreview }</code></pre>
+						}
+					</div>
+				</div>
+			</div>
+		</details>
+	</div>
+}
+
+// ReportSubAgents renders links to child session reports.
+templ ReportSubAgents(rep *report.SessionReport) {
+	if len(rep.SubAgents) > 0 {
+		<div class="report-sub-agents">
+			<h3>Sub-agents</h3>
+			<ul class="sub-agent-list">
+				for _, childID := range rep.SubAgents {
+					<li class="sub-agent-item">
+						<span class="sub-agent-id">{ childID }</span>
+						<a href={ templ.URL("/report/" + childID) } class="sub-agent-link">📊 Report</a>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}

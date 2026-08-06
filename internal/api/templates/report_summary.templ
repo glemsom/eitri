@@ -1,0 +1,129 @@
+package templates
+
+import (
+	"strconv"
+
+	"github.com/glemsom/eitri/internal/report"
+)
+
+// ReportHeader renders the summary strip at the top of the report.
+templ ReportHeader(rep *report.SessionReport, sessionID string) {
+	<div class="report-header">
+		<div class="report-header-top">
+			<h2 class="report-title">
+				<span class="report-title-text">{ rep.Title }</span>
+				<a href={ templ.URL("/sessions/" + sessionID) } class="report-back-link" title="Back to chat">← Back to chat</a>
+			</h2>
+		</div>
+		if rep.SystemPrompt != "" {
+			<details class="report-system-prompt">
+				<summary>System Prompt</summary>
+				<pre class="report-system-prompt-content">{ rep.SystemPrompt }</pre>
+			</details>
+		}
+		<div class="report-header-meta">
+			<div class="report-meta-item">
+				<span class="report-meta-label">Model</span>
+				<span class="report-meta-value">{ rep.Model }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Provider</span>
+				<span class="report-meta-value">{ rep.Provider }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Workspace</span>
+				<span class="report-meta-value report-workspace-path" title={ rep.Workspace }>{ shortWorkspacePath(rep.Workspace) }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Turns</span>
+				<span class="report-meta-value">{ strconv.Itoa(rep.Summary.TotalTurns) }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Tool calls</span>
+				<span class="report-meta-value">{ strconv.Itoa(rep.Summary.TotalToolCalls) }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Failed tools</span>
+				if rep.Summary.FailedToolCalls > 0 {
+					<span class="report-meta-value report-meta-badge-error">{ strconv.Itoa(rep.Summary.FailedToolCalls) }</span>
+				} else {
+					<span class="report-meta-value">0</span>
+				}
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Estimated tokens</span>
+				<span class="report-meta-value">{ formatNumber(rep.Summary.EstimatedTotalTokens) }</span>
+			</div>
+			if rep.Summary.TotalRetries > 0 {
+				<div class="report-meta-item">
+					<span class="report-meta-label">Retries</span>
+					<span class="report-meta-value">{ strconv.Itoa(rep.Summary.TotalRetries) }</span>
+				</div>
+			}
+			if rep.Summary.TotalCacheReadTokens > 0 || rep.Summary.TotalCacheWriteTokens > 0 {
+				<div class="report-meta-item">
+					<span class="report-meta-label">Cache tokens</span>
+					<span class="report-meta-value">{ cacheSummary(rep.Summary) }</span>
+				</div>
+			}
+			<div class="report-meta-item">
+				<span class="report-meta-label">Duration</span>
+				<span class="report-meta-value">{ formatDuration(rep.DurationMs) }</span>
+			</div>
+			<div class="report-meta-item">
+				<span class="report-meta-label">Status</span>
+				<span class="report-meta-value">
+					@TerminationChip(rep.Termination)
+				</span>
+			</div>
+			if rep.ReportVersion == "reconstructed" {
+				<div class="report-version-notice">⚠ Limited data — no timeline persisted for this session</div>
+			}
+		</div>
+	</div>
+}
+
+// TerminationChip renders a badge showing how the run ended.
+templ TerminationChip(t *report.TerminationInfo) {
+	if t != nil {
+		switch t.Reason {
+		case "completed":
+			<span class="termination-chip termination-completed" title={ t.Message }>✅ Completed</span>
+		case "max_turns":
+			<span class="termination-chip termination-max-turns" title={ t.Message }>⛔ Max turns</span>
+		case "cancelled":
+			<span class="termination-chip termination-cancelled" title={ t.Message }>🚫 Cancelled</span>
+		case "error":
+			<span class="termination-chip termination-error" title={ t.Message }>⚠️ Error</span>
+		default:
+			<span class="termination-chip" title={ t.Message }>{ t.Reason }</span>
+		}
+	} else {
+		<span class="termination-chip">—</span>
+	}
+}
+
+// RunSelector renders a dropdown to switch between runs.
+templ RunSelector(runs []report.RunInfo, sessionID string, selectedRun int) {
+	if len(runs) > 1 {
+		<div class="report-run-selector">
+			<label for="run-select">Run:</label>
+			<select
+				id="run-select"
+				class="run-select"
+				name="run"
+				hx-get={ "/api/report/" + sessionID + "/fragment" }
+				hx-target="#report-timeline"
+				hx-trigger="change"
+				hx-swap="innerHTML"
+				hx-vals="js:{run: document.getElementById('run-select').value}"
+			>
+				for i, r := range runs {
+					<option value={ strconv.Itoa(r.Run) } selected={ i == selectedRun }>
+						{ "Run #" + strconv.Itoa(r.Run+1) + " — " + strconv.Itoa(r.Turns) + " turns — " + string(r.Termination.Reason) }
+					</option>
+				}
+			</select>
+		</div>
+	}
+}
