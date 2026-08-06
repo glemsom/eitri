@@ -431,6 +431,117 @@ func TestSummary_FailedTools(t *testing.T) {
 	}
 }
 
+func TestGetReport_TurnsFollowEmissionOrder(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-emission-order"
+	now := time.Now().UTC()
+
+	// Emission order differs from turn-number order: turn 2 is emitted before
+	// turn 1 (e.g. after compaction or trimmed history). The report must follow
+	// the timeline's emission order, not re-sort by turn number.
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-emission-order",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 2, Tool: "read"},
+			{Type: "tool_result", Timestamp: now, Turn: 2, Tool: "read", Output: "later", Error: false},
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "earlier", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Collect assistant turns in report order.
+	assistants := make([]Turn, 0)
+	for _, turn := range rep.Turns {
+		if turn.Role == "assistant" {
+			assistants = append(assistants, turn)
+		}
+	}
+	if len(assistants) != 2 {
+		t.Fatalf("expected 2 assistant turns, got %d", len(assistants))
+	}
+
+	// First emitted assistant turn (turn 2) must come first.
+	if assistants[0].Turn != 2 {
+		t.Errorf("expected first assistant turn to be turn 2 (emission order), got %d", assistants[0].Turn)
+	}
+	if assistants[1].Turn != 1 {
+		t.Errorf("expected second assistant turn to be turn 1 (emission order), got %d", assistants[1].Turn)
+	}
+
+	// The emitted-first turn 2 kept its tool call (read) attached.
+	if len(assistants[0].ToolCalls) != 1 || assistants[0].ToolCalls[0].Name != "read" {
+		t.Errorf("expected emitted-first turn 2 to hold its 'read' tool call, got %d calls", len(assistants[0].ToolCalls))
+	}
+	if len(assistants[1].ToolCalls) != 1 || assistants[1].ToolCalls[0].Name != "grep" {
+		t.Errorf("expected second turn 1 to hold its 'grep' tool call, got %d calls", len(assistants[1].ToolCalls))
+	}
+}
+
+func TestGetReport_ToolCallsKeepEmissionOrder(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-tool-order"
+	now := time.Now().UTC()
+
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-tool-order",
+		SessionID: sessionID,
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "llm_call", Timestamp: now, Turn: 1, DurationMs: 100},
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "a", Error: false},
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "b", Error: false},
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "read"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "read", Output: "c", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Turn
+	for i := range rep.Turns {
+		if rep.Turns[i].Role == "assistant" {
+			assistant = &rep.Turns[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected an assistant turn")
+	}
+	if len(assistant.ToolCalls) != 3 {
+		t.Fatalf("expected 3 tool calls, got %d", len(assistant.ToolCalls))
+	}
+	wantNames := []string{"bash", "grep", "read"}
+	for i, tc := range assistant.ToolCalls {
+		if tc.Name != wantNames[i] {
+			t.Errorf("tool call %d name = %q, want %q (emission order)", i, tc.Name, wantNames[i])
+		}
+	}
+}
+
 // writeTestTrace writes an HTTP trace file for testing.
 func writeTestTrace(t *testing.T, dir, sessionID string, trace *debug.HTTPTrace) {
 	t.Helper()
