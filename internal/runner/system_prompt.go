@@ -42,7 +42,7 @@ import (
 // startup directive instructing the agent to call skill() for each one,
 // establishing commitment through the tool-call result.
 func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
-	systemPrompt, personaRequiredSkills := resolveBasePrompt(cfg)
+	systemPrompt, personaRequiredSkills, visibleSkills := resolveBasePrompt(cfg)
 
 	var fullSystemPrompt strings.Builder
 	fullSystemPrompt.WriteString(systemPrompt)
@@ -56,7 +56,13 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 	}
 
 	if skillsSvc != nil {
+		// A persona may opt in to surfacing only a named subset of skills in
+		// the <available_skills> catalog. When the list is empty, keep today's
+		// behaviour: list every effective skill.
 		catalog := skillsSvc.SkillsCatalogXML()
+		if len(visibleSkills) > 0 {
+			catalog = skillsSvc.SkillsCatalogXMLFor(visibleSkills)
+		}
 		if catalog != "" {
 			fullSystemPrompt.WriteString("\n\nAvailable skills:\n" + catalog + "\n\nWhen a task matches a skill description, call skill with the skill name before proceeding. This loads the skill's instructions, references, and scripts into context. After loading a skill, check its instructions for references to other skills — if any are mentioned, load them too.")
 		}
@@ -127,7 +133,7 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 // mirrored to ~/.eitri/personas/generic.yaml — so the config's system_prompt
 // override is honoured consistently instead of being bypassed by a bare
 // built-in constant.
-func resolveBasePrompt(cfg RunConfig) (systemPrompt string, requiredSkills []string) {
+func resolveBasePrompt(cfg RunConfig) (systemPrompt string, requiredSkills, visibleSkills []string) {
 	// A healthy active persona's prompt wins over everything (including any
 	// settings prompt).
 	if cfg.ActivePersona != "" {
@@ -142,11 +148,11 @@ func resolveBasePrompt(cfg RunConfig) (systemPrompt string, requiredSkills []str
 			)
 		} else {
 			if def.SystemPrompt != "" {
-				return def.SystemPrompt, def.RequiredSkills
+				return def.SystemPrompt, def.RequiredSkills, def.VisibleSkills
 			}
 			// Healthy persona with an empty prompt: use the built-in default but
-			// keep its required skills.
-			return persona.DefaultPrompt, def.RequiredSkills
+			// keep its required skills and visible skills.
+			return persona.DefaultPrompt, def.RequiredSkills, def.VisibleSkills
 		}
 	}
 
@@ -154,17 +160,18 @@ func resolveBasePrompt(cfg RunConfig) (systemPrompt string, requiredSkills []str
 	// prompt is the settings prompt; if unavailable (file missing/corrupt and
 	// no legacy config value), fall back to the built-in default.
 	def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(cfg.HomeDir), persona.GenericName)
-	var genericSkills []string
+	var genericSkills, genericVisible []string
 	if err == nil {
 		genericSkills = def.RequiredSkills
+		genericVisible = def.VisibleSkills
 		if def.SystemPrompt != "" {
-			return def.SystemPrompt, def.RequiredSkills
+			return def.SystemPrompt, def.RequiredSkills, def.VisibleSkills
 		}
 	}
 	if cfg.SystemPrompt != "" {
-		return cfg.SystemPrompt, genericSkills
+		return cfg.SystemPrompt, genericSkills, genericVisible
 	}
-	return persona.DefaultPrompt, genericSkills
+	return persona.DefaultPrompt, genericSkills, genericVisible
 }
 
 // buildLLMService resolves provider authentication, constructs an LLM service,

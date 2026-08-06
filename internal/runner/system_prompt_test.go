@@ -56,6 +56,18 @@ func newSkillsServiceWithSkills(t *testing.T, skillMap map[string]string) *skill
 	})
 }
 
+// assertCatalogSkill asserts whether the given skill name appears as a catalog
+// entry (<name>...) in the rendered system prompt. present=true requires it,
+// present=false requires it to be absent.
+func assertCatalogSkill(t *testing.T, sysPrompt, name string, present bool) {
+	t.Helper()
+	tag := "<name>" + name + "</name>"
+	got := strings.Contains(sysPrompt, tag)
+	if got != present {
+		t.Fatalf("skill %q catalog presence = %v, want %v; prompt:\n%s", name, got, present, sysPrompt)
+	}
+}
+
 func TestBuildSystemPrompt_NoRequiredSkills(t *testing.T) {
 	// When persona has no RequiredSkills, no required-skills directive should appear.
 	workspace := t.TempDir()
@@ -352,6 +364,93 @@ func TestBuildSystemPrompt_SkillsCatalogPresent(t *testing.T) {
 	if !strings.Contains(sysPrompt, "Required skills for this persona: required-skill") {
 		t.Fatalf("system prompt should contain required skills directive, got:\n%s", sysPrompt)
 	}
+}
+
+func TestBuildSystemPrompt_VisibleSkillsNarrowsCatalog(t *testing.T) {
+	// When a persona declares VisibleSkills, only those skills appear in the
+	// <available_skills> catalog; other effective skills are hidden.
+	workspace := t.TempDir()
+	skillsSvc := newSkillsServiceWithSkills(t, map[string]string{
+		"alpha": "# Alpha\n\nAlpha skill.",
+		"beta":  "# Beta\n\nBeta skill.",
+		"gamma": "# Gamma\n\nGamma skill.",
+	})
+
+	if err := persona.Save(workspace, &persona.PersonaDefinition{
+		Name:          "scoped-agent",
+		SystemPrompt:  "You are a scoped agent.",
+		VisibleSkills: []string{"alpha", "beta"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := RunConfig{Workspace: workspace, ActivePersona: "scoped-agent"}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, skillsSvc)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	assertCatalogSkill(t, sysPrompt, "alpha", true)
+	assertCatalogSkill(t, sysPrompt, "beta", true)
+	assertCatalogSkill(t, sysPrompt, "gamma", false)
+}
+
+func TestBuildSystemPrompt_VisibleSkillsBlankListsAll(t *testing.T) {
+	// With VisibleSkills blank (the default), behaviour is unchanged: every
+	// effective skill is listed in the catalog. No regression for existing
+	// personas.
+	workspace := t.TempDir()
+	skillsSvc := newSkillsServiceWithSkills(t, map[string]string{
+		"alpha": "# Alpha\n\nAlpha skill.",
+		"beta":  "# Beta\n\nBeta skill.",
+	})
+
+	if err := persona.Save(workspace, &persona.PersonaDefinition{
+		Name:         "full-agent",
+		SystemPrompt: "You are a full agent.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := RunConfig{Workspace: workspace, ActivePersona: "full-agent"}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, skillsSvc)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	assertCatalogSkill(t, sysPrompt, "alpha", true)
+	assertCatalogSkill(t, sysPrompt, "beta", true)
+}
+
+func TestBuildSystemPrompt_VisibleSkillsMissingHandledGracefully(t *testing.T) {
+	// Non-existent / disabled names in VisibleSkills are handled gracefully:
+	// they are omitted from the catalog (never surfaced), and the build does
+	// not fail.
+	workspace := t.TempDir()
+	skillsSvc := newSkillsServiceWithSkills(t, map[string]string{
+		"present": "# Present\n\nPresent skill.",
+		"gone":    "# Gone\n\nGone skill.",
+	})
+	skillsSvc.SetDisabled("gone", true, nil)
+	skillsSvc.Refresh()
+
+	if err := persona.Save(workspace, &persona.PersonaDefinition{
+		Name:          "requested-agent",
+		SystemPrompt:  "You are a requested agent.",
+		VisibleSkills: []string{"present", "gone", "nothing-here"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := RunConfig{Workspace: workspace, ActivePersona: "requested-agent"}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, skillsSvc)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	assertCatalogSkill(t, sysPrompt, "present", true)
+	assertCatalogSkill(t, sysPrompt, "gone", false)
+	assertCatalogSkill(t, sysPrompt, "nothing-here", false)
 }
 
 func TestBuildSystemPrompt_ActivePersonaWinsOverSettingsPrompt(t *testing.T) {

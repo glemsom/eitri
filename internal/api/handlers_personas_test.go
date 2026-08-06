@@ -193,6 +193,108 @@ func TestHandleCreatePersona_FormEncoded(t *testing.T) {
 
 // ————— handleGetPersona —————
 
+func TestHandleCreatePersona_VisibleSkillsJSON(t *testing.T) {
+	workspace := t.TempDir()
+	server, homeDir := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	body := `{"name":"scoped","system_prompt":"You are scoped.","required_skills":["read"],"visible_skills":["alpha","beta"]}`
+	resp, err := http.Post(server.URL+"/api/personas", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /api/personas failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("expected status 201, got %d", resp.StatusCode)
+	}
+
+	def, err := persona.LoadWithHome(workspace, homeDir, "scoped")
+	if err != nil {
+		t.Fatalf("load created persona: %v", err)
+	}
+	if len(def.VisibleSkills) != 2 || def.VisibleSkills[0] != "alpha" || def.VisibleSkills[1] != "beta" {
+		t.Errorf("VisibleSkills = %v, want [alpha beta]", def.VisibleSkills)
+	}
+	if len(def.RequiredSkills) != 1 || def.RequiredSkills[0] != "read" {
+		t.Errorf("RequiredSkills = %v, want [read]", def.RequiredSkills)
+	}
+}
+
+func TestHandleCreatePersona_VisibleSkillsForm(t *testing.T) {
+	workspace := t.TempDir()
+	server, homeDir := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	formBody := "name=form-scoped&system_prompt=Form+scoped&visible_skills=alpha&visible_skills=beta&visible_skills=gamma"
+	resp, err := http.Post(server.URL+"/api/personas", "application/x-www-form-urlencoded", strings.NewReader(formBody))
+	if err != nil {
+		t.Fatalf("POST /api/personas (form) failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("expected status 201, got %d", resp.StatusCode)
+	}
+
+	def, err := persona.LoadWithHome(workspace, homeDir, "form-scoped")
+	if err != nil {
+		t.Fatalf("load form-created persona: %v", err)
+	}
+	if len(def.VisibleSkills) != 3 {
+		t.Errorf("VisibleSkills = %v, want 3 entries", def.VisibleSkills)
+	}
+
+	// Create with a comma-separated single value is also supported by listFormField.
+	formBody2 := "name=comma-scoped&system_prompt=Comma&visible_skills=alpha,beta"
+	resp2, err := http.Post(server.URL+"/api/personas", "application/x-www-form-urlencoded", strings.NewReader(formBody2))
+	if err != nil {
+		t.Fatalf("POST (comma form) failed: %v", err)
+	}
+	defer resp2.Body.Close()
+
+	def2, err := persona.LoadWithHome(workspace, homeDir, "comma-scoped")
+	if err != nil {
+		t.Fatalf("load comma persona: %v", err)
+	}
+	if len(def2.VisibleSkills) != 2 {
+		t.Errorf("VisibleSkills = %v, want 2 entries", def2.VisibleSkills)
+	}
+}
+
+func TestHandleUpdatePersona_VisibleSkills(t *testing.T) {
+	workspace := t.TempDir()
+	server, homeDir := newPersonaTestServer(t, workspace)
+	defer server.Close()
+
+	persona.SaveToHome(homeDir, &persona.PersonaDefinition{
+		Name:         "updatable-scoped",
+		SystemPrompt: "Original prompt.",
+	})
+
+	body := `{"system_prompt":"Updated.","visible_skills":["gamma"]}`
+	req, _ := http.NewRequest(http.MethodPut, server.URL+"/api/personas/updatable-scoped", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	def, err := persona.LoadWithHome(workspace, homeDir, "updatable-scoped")
+	if err != nil {
+		t.Fatalf("load after update: %v", err)
+	}
+	if len(def.VisibleSkills) != 1 || def.VisibleSkills[0] != "gamma" {
+		t.Errorf("VisibleSkills = %v, want [gamma]", def.VisibleSkills)
+	}
+}
+
 func TestHandleGetPersona_Single(t *testing.T) {
 	workspace := t.TempDir()
 	server, homeDir := newPersonaTestServer(t, workspace)

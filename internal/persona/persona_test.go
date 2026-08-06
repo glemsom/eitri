@@ -24,6 +24,7 @@ func TestSaveAndLoad(t *testing.T) {
 		Name:           "test-persona",
 		SystemPrompt:   "You are a test agent.",
 		RequiredSkills: []string{"skill1", "skill2"},
+		VisibleSkills:  []string{"alpha", "beta"},
 	}
 
 	if err := Save(workspace, def); err != nil {
@@ -43,6 +44,9 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if len(loaded.RequiredSkills) != 2 || loaded.RequiredSkills[0] != "skill1" {
 		t.Errorf("RequiredSkills = %v, want [skill1 skill2]", loaded.RequiredSkills)
+	}
+	if len(loaded.VisibleSkills) != 2 || loaded.VisibleSkills[0] != "alpha" || loaded.VisibleSkills[1] != "beta" {
+		t.Errorf("VisibleSkills = %v, want [alpha beta]", loaded.VisibleSkills)
 	}
 }
 
