@@ -464,6 +464,62 @@ func TestEmbeddedCSSTokensAllUsed(t *testing.T) {
 	t.Logf("all %d declared tokens are referenced", len(referenced))
 }
 
+// TestEmbeddedCSSNoAliasTokens verifies there is exactly one canonical token
+// per semantic role: the half-migrated aliases (issue #1068) that duplicated a
+// canonical token value have been removed. Each semantic role now maps to one
+// canonical token name in :root with no alias counterparts pointing at the
+// same value. (issue #1112)
+func TestEmbeddedCSSNoAliasTokens(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	// Roles whose alias name must no longer be declared in :root; the
+	// canonical name migrates all usages.
+	canonical := map[string]string{
+		"--muted":          "--text-muted",
+		"--border-muted":   "--border",
+		"--danger":         "--error",
+		"--text-secondary": "--text-muted",
+		"--bg-secondary":   "--surface-alt",
+		"--bg-tertiary":    "--surface",
+		"--fg":             "--text",
+		"--fg-muted":       "--text-muted",
+		"--mono-font":      "--font-code",
+	}
+
+	declared := map[string]bool{}
+	for _, r := range tokenRoots(css) {
+		for _, name := range tokenNames(r.body) {
+			declared[name] = true
+		}
+	}
+
+	var stillDeclared []string
+	for alias := range canonical {
+		if declared[alias] {
+			stillDeclared = append(stillDeclared, alias)
+		}
+	}
+	sort.Strings(stillDeclared)
+	if len(stillDeclared) > 0 {
+		t.Errorf("duplicate-value alias token(s) still declared in :root (should migrate to canonical names): %s",
+			strings.Join(stillDeclared, ", "))
+	}
+
+	// The canonical token must exist so the migrated rules stay resolvable.
+	for alias, canonicalName := range canonical {
+		if !declared[canonicalName] {
+			t.Errorf("canonical token %s (replacing alias %s) is not declared in :root", canonicalName, alias)
+		}
+	}
+	t.Logf("checked %d semantic roles — no alias tokens remain, all canonical names declared", len(canonical))
+}
+
 // TestEmbeddedCSSNoOrphanSelectors verifies that no rule targets classes that
 // no template, JS, or Go code emits. Orphaned selectors are dead CSS that
 // drift out of sync with the UI. (issue #1072)
