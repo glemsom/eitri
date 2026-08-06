@@ -29,3 +29,4 @@ Architecture decisions are documented as ADRs in `docs/adr/`. This file is the c
 | [0023](adr/0023-batch-runs-persist-like-ui-sessions.md) | Batch runs persist like UI sessions | Accepted (amended by 0025) |
 | [0024](adr/0024-unified-parent-run-preparation.md) | Unified parent-run preparation across UI and batch modes | Accepted |
 | [0025](adr/0025-unified-run-engine-across-subagent-and-batch.md) | Unified run engine across sub-agents and batch | Accepted |
+| [0026](adr/0026-session-scoped-tmpdir-and-open-in-browser-tool.md) | Session-scoped sandbox tmpdir + `open_in_browser` tool | Accepted |

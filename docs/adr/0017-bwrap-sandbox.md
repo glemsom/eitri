@@ -1,6 +1,6 @@
 # 0017 — bwrap sandbox for bash tool
 
-**Status**: Accepted (amended ADR-0017a — startup detection and caching)
+**Status**: Accepted (amended ADR-0017a — startup detection and caching; ADR-0026 — session-scoped tmpdir)
 
 ## Context
 
@@ -36,7 +36,7 @@ bwrap \
 - `--unshare-net` — only when `Config.Network` is `false` (default `true`, since most workflows need network: `go build`, `npm install`, `gh`, `curl`).
 - `--ro-bind / /` — entire root filesystem read-only; simpler and more robust than enumerating specific paths.
 - `--bind <workspace> <workspace>` — workspace writable so code writes, build artifacts, and file tool outputs land on disk.
-- `--bind <ephemeral-tmpdir> /tmp` — a fresh temp dir under `/tmp` mounted as `/tmp` inside the sandbox, giving temp-file isolation between commands.
+- `--bind <session-tmpdir> /tmp` — a per-session temp dir under `/tmp` (`/tmp/eitri-sandbox-<session-id>`) mounted as `/tmp` inside the sandbox, giving temp-file isolation between runs. Originally a fresh ephemeral dir per command; amended by ADR-0026 to be session-scoped so `open_in_browser` can map sandbox `/tmp` paths to the host.
 - `--dev /dev`, `--proc /proc` — minimal `devtmpfs` device nodes (`null`, `zero`, `random`, `urandom`, `fd`, stdio); procfs scoped to the sandbox's PID namespace.
 - `--bind <extra> <extra> ...` — user-configured `extra_writable_paths` (toolchains, caches, shared directories).
 - `--chdir <workspace>` — initial working directory matches tool-caller expectations.
@@ -59,7 +59,8 @@ Limitations at time of writing:
 - **File tools are NOT sandboxed** — `read`, `write`, `edit`, `grep` operate on the host directly with path validation but no isolation.
 - **Environment variables leak** (no `--clearenv`); a `$TMPDIR` pointing at a read-only path breaks tools that rely on temp files.
 - **No seccomp filtering** — all syscalls allowed.
-- **Network on by default**, reducing isolation; per-session sandbox configuration unsupported (setting is global); per-invocation bwrap process, no session reuse.
+- **Network on by default**, reducing isolation; per-session sandbox configuration unsupported (setting is global).
+- **Per-session bwrap process, no session reuse** — except the tmpdir, which is session-scoped since ADR-0026.
 
 ## References
 
