@@ -82,6 +82,17 @@ model service.
 | `internal/runstate/timeline_test.go` | Timeline condensation, `llm_call` correlation events, run ID generation |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior, HTTP connection timeouts (stalled-header conn reaping, streaming exempt from write deadlines) |
+| `internal/testutil/condition_test.go` | Reusable polling helpers `WaitForCondition` / `WaitForConditionOr` (deadline + configurable interval) |
+
+### Polling async conditions in tests
+
+Never count on a fixed `time.Sleep` to wait for a background condition. Use the
+shared helpers in `internal/testutil`: `WaitForCondition(t, interval, timeout, eval)`
+polls `eval()` until true or the deadline passes (failing the test with a useful
+message on timeout), and `WaitForConditionOr[T](t, interval, timeout, eval)` returns
+the last observed value wrapped in `ErrTimeout` instead of failing directly, for
+call sites that need the final state. The run suite in `internal/api/run_test.go`
+uses these instead of hand-rolled deadline loops.
 
 ## Browser tests (chromedp)
 
