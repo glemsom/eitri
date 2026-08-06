@@ -21,7 +21,12 @@ cd internal/api && go test -v -run TestHealth
 ### Compact test summary
 
 `make test` and `make test-race` route `go test` through `scripts/test.sh`,
-which replaces the per-package boilerplate with a single verdict line:
+which replaces the per-package boilerplate with a single verdict line.
+
+CI (`ci.yml`) and releases (`release.yml`) use `make test-race`, so a pushed
+branch/PR and a release-tag build both surface the same compact verdict and
+cache the full log in `dist/test-race-output.log` as a task artifact. The less
+common `make release-check` remains the documented verbose/full release gate.
 
 ```
 VERDICT: FAIL 1/15 packages failed (14 passed, 2 failed test(s): TestLogin,TestWorkspace) in 47s — full log: dist/test-output.log
