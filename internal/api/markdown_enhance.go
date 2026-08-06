@@ -117,8 +117,10 @@ func transformTaskListItem(li *htmlnode.Node) bool {
 // sanitizeLink removes the <a> element if its href uses a disallowed URL scheme
 // (javascript:, data:, file:, vbscript:), replacing it with its text content.
 // Also handles empty href (goldmark strips dangerous schemes but leaves an empty
-// <a> element). Only http:, https:, and mailto: are allowed. This matches the
-// client-side lightweightMarkdown() behaviour and prevents XSS via injected links.
+// <a> element). For allowed schemes it adds target="_blank" rel="noopener" so
+// the committed (final) render matches the client-side streaming renderer, which
+// already opens http/https/mailto links in a new tab (see eitri-stream.js). This
+// prevents XSS via injected links and keeps streamed vs committed output identical.
 func sanitizeLink(node *htmlnode.Node) {
 	if node == nil || node.Type != htmlnode.ElementNode {
 		return
@@ -148,7 +150,10 @@ func sanitizeLink(node *htmlnode.Node) {
 	scheme := strings.ToLower(href[:schemeEnd])
 	switch scheme {
 	case "http", "https", "mailto":
-		// Allowed — leave the link intact
+		// Allowed — open in a new tab with noopener, matching the streaming
+		// renderer so the committed message looks identical to the live stream.
+		setAttr(node, "target", "_blank")
+		setAttr(node, "rel", "noopener")
 		return
 	default:
 		replaceLinkWithText(node)

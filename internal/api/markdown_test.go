@@ -219,3 +219,41 @@ func TestStripMermaidCodeBlocks(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderMarkdownToHTML_ExternalLinkTarget verifies that http/https/mailto
+// links in the committed (server-rendered) message open in a new tab with
+// rel="noopener", matching the client-side streaming renderer (issue #1121).
+// This keeps the streamed and committed views identical so tests that assert on
+// the finished render pass deterministically.
+func TestRenderMarkdownToHTML_ExternalLinkTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantEnds bool // output should contain an <a> with target+rel
+	}{
+		{name: "http link", input: "Check [example](http://example.com) here", wantEnds: true},
+		{name: "https link", input: "Check [example](https://example.com) details", wantEnds: true},
+		{name: "mailto link", input: "Email [me](mailto:user@example.com) now", wantEnds: true},
+		{name: "javascript link stripped", input: "Click [here](javascript:alert(1)) for more", wantEnds: false},
+		{name: "data link stripped", input: "Check [bad](data:text/html,<b>XSS</b>) here", wantEnds: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderMarkdownToHTML(tc.input)
+			if tc.wantEnds {
+				if !strings.Contains(got, `target="_blank"`) || !strings.Contains(got, `rel="noopener"`) {
+					t.Errorf("expected link to carry target=\"_blank\" rel=\"noopener\", got: %s", got)
+				}
+			} else if strings.Contains(got, "<a") {
+				t.Errorf("expected dangerous link to be stripped to plain text, got: %s", got)
+			}
+		})
+	}
+
+	// Concretely verify the produced anchor for an http link.
+	got := renderMarkdownToHTML("Check [example](http://example.com) here")
+	if !strings.Contains(got, `<a href="http://example.com" target="_blank" rel="noopener">`) {
+		t.Errorf("http link should render with target+rel, got: %s", got)
+	}
+}
