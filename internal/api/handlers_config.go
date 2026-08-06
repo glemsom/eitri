@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/sandbox"
 )
@@ -202,6 +204,17 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 	if err := s.saveProviderConfig(newCfg); err != nil {
 		http.Error(w, "Failed to save config: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// The Settings "prompt" field is the generic persona's prompt (issue
+	// #1141): when it was edited in this save, mirror it into
+	// ~/.eitri/personas/generic.yaml so the persona layer and the broken-persona
+	// fallback honour the same override. Editing the prompt does not shadow a
+	// healthy active persona — a persona's own prompt still wins at run time.
+	if _, ok := patch["system_prompt"]; ok {
+		if err := persona.SetGenericPromptWithHome(s.config.HomeDir, newCfg.SystemPrompt); err != nil {
+			slog.Warn("failed to sync settings prompt to generic persona", slog.Any("error", err))
+		}
 	}
 
 	// Render form with success indicator (and notice if thinking_level was cleared)

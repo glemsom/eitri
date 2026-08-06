@@ -138,6 +138,27 @@ func LoadWithHome(workspace, homeDir, name string) (*PersonaDefinition, error) {
 	return &def, nil
 }
 
+// SetGenericPromptWithHome updates the system prompt of the generic persona,
+// syncing the "settings prompt" into ~/.eitri/personas/generic.yaml while
+// preserving any required skills. The Settings UI's Prompt field is
+// re-interpreted as the generic persona's prompt (issue #1141), so saving it
+// here — not as a top-precedence override — makes the override consistent
+// with the persona layer and with the broken-persona fallback.
+func SetGenericPromptWithHome(homeDir, systemPrompt string) error {
+	if strings.TrimSpace(homeDir) == "" {
+		return fmt.Errorf("home dir must not be empty")
+	}
+	if err := EnsureGenericWithHome(homeDir); err != nil {
+		return fmt.Errorf("ensure generic persona: %w", err)
+	}
+	def, err := LoadWithHome("", homeDir, GenericName)
+	if err != nil {
+		return fmt.Errorf("load generic persona: %w", err)
+	}
+	def.SystemPrompt = systemPrompt
+	return SaveToHome(homeDir, def)
+}
+
 // Delete removes a persona file from the user-level home directory.
 // The workspace parameter is accepted for API compatibility but is ignored.
 func Delete(workspace, name string) error {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -1161,5 +1162,133 @@ func TestHandleGetModels_ReturnsModelsForSameProvider(t *testing.T) {
 	}
 	if loaded.Provider != "custom_openai" {
 		t.Errorf("saved provider was corrupted: got %q, want %q", loaded.Provider, "custom_openai")
+	}
+}
+
+func TestHandlePutConfig_SettingsPromptMirrorsToGenericPersona(t *testing.T) {
+	// Issue #1141: PUT /api/config with a system_prompt must mirror it into the
+	// generic persona file (~/.eitri/personas/generic.yaml) so the settings
+	// prompt is honoured as the generic persona's prompt (and by the broken-
+	// persona fallback), not as a top-precedence override.
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	homeDir := t.TempDir()
+	srv := NewServer(ServerConfig{
+		ConfigPath: t.TempDir() + "/config.json",
+		Workspace:  t.TempDir(),
+		HomeDir:    homeDir,
+	})
+
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             providerSrv.URL,
+		APIKey:              "sk-test",
+		Model:               "gpt-4o",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"system_prompt":"You are the generic persona prompt.","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, raw)
+	}
+
+	// The generic persona file must carry the settings prompt.
+	def, err := persona.LoadWithHome("", homeDir, persona.GenericName)
+	if err != nil {
+		t.Fatalf("load generic persona: %v", err)
+	}
+	if def.SystemPrompt != "You are the generic persona prompt." {
+		t.Errorf("generic persona SystemPrompt = %q, want the settings prompt", def.SystemPrompt)
+	}
+
+	// And the config keeps system_prompt for the settings UI.
+	loaded, err := config.Load(srv.config.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.SystemPrompt != "You are the generic persona prompt." {
+		t.Errorf("config SystemPrompt = %q, want the settings prompt", loaded.SystemPrompt)
+	}
+}
+
+// TestHandlePutConfig_SettingsPromptClearsGenericPersona verifies that clearing
+// the settings prompt also clears the generic persona's prompt.
+func TestHandlePutConfig_SettingsPromptClearsGenericPersona(t *testing.T) {
+	providerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4o"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer providerSrv.Close()
+
+	homeDir := t.TempDir()
+	srv := NewServer(ServerConfig{
+		ConfigPath: t.TempDir() + "/config.json",
+		Workspace:  t.TempDir(),
+		HomeDir:    homeDir,
+	})
+
+	cfg := &config.Config{
+		Provider:            "custom_openai",
+		BaseURL:             providerSrv.URL,
+		APIKey:              "sk-test",
+		Model:               "gpt-4o",
+		SessionTimeout:      30 * 60_000_000_000,
+		CommandTimeout:      60 * 1_000_000_000,
+		MaxTurns:            25,
+		ContextWindowTokens: 256000,
+		SystemPrompt:        "You are an existing generic prompt.",
+	}
+	if err := config.Save(srv.config.ConfigPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT cleaning system_prompt to empty.
+	body := `{"system_prompt":"","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.handlePutConfig(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, raw)
+	}
+
+	def, err := persona.LoadWithHome("", homeDir, persona.GenericName)
+	if err != nil {
+		t.Fatalf("load generic persona: %v", err)
+	}
+	if def.SystemPrompt != "" {
+		t.Errorf("generic persona SystemPrompt = %q, want empty after clearing settings prompt", def.SystemPrompt)
 	}
 }

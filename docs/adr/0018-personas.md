@@ -28,14 +28,14 @@ The `generic` persona is always present, auto-created at startup from the built-
 
 ### Config
 
-The config object adds `active_persona` and a `persona_catalog` of references (`"reviewer": ".eitri/personas/reviewer.yaml"`); the existing `system_prompt` field is kept as a temporary per-session override that takes precedence over the persona's prompt.
+The config object adds `active_persona` and a `persona_catalog` of references (`"reviewer": ".eitri/personas/reviewer.yaml"`). The existing `system_prompt` field is **not** a top-precedence override: it is re-interpreted as the **generic persona's prompt** (issue #1141). Saving it mirrors the value into `~/.eitri/personas/generic.yaml` (preserving any required skills); the field is kept in the config only so the Settings UI can render/edit it.
 
 ### System prompt assembly
 
-When a persona is active, the system prompt is assembled in this order:
+Persona resolution runs first; then the fixed content is appended:
 
-1. **Persona system prompt** (from the persona file)
-2. **User override** (`cfg.SystemPrompt` — temporary inline override, one session)
+1. **Active persona's prompt** (from the persona file) — a healthy active persona always wins.
+2. **Generic persona prompt** — used when no persona is active, or the active persona is missing/corrupt (broken-persona fallback). Resolved from `~/.eitri/personas/generic.yaml`, whose prompt is the Settings "prompt" field. If that file is unavailable/empty, the legacy `cfg.SystemPrompt` value is used, falling back to the built-in `persona.DefaultPrompt`.
 3. **Repository instructions** (`CONTEXT.md` / repository instructions file)
 4. **Skills catalog** (available skills)
 5. **Required skills** — a `<required_skills>` startup directive instructing the agent to call `skill("name")` for each required skill on its first turn. Skills are NOT pre-injected with content; the agent loads them via the `skill()` tool, establishing commitment through the tool-call result.

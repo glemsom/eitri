@@ -190,6 +190,58 @@ func TestEnsureGeneric_DoesNotWriteToWorkspace(t *testing.T) {
 	}
 }
 
+func TestSetGenericPromptWithHome(t *testing.T) {
+	home := t.TempDir()
+
+	// Setting the prompt creates/updates the generic persona and updates its
+	// SystemPrompt while keeping default Name/RequiredSkills.
+	if err := SetGenericPromptWithHome(home, "You are the settings prompt."); err != nil {
+		t.Fatalf("SetGenericPromptWithHome: %v", err)
+	}
+	def, err := LoadWithHome("", home, GenericName)
+	if err != nil {
+		t.Fatalf("LoadWithHome generic: %v", err)
+	}
+	if def.Name != GenericName {
+		t.Errorf("Name = %q, want %q", def.Name, GenericName)
+	}
+	if def.SystemPrompt != "You are the settings prompt." {
+		t.Errorf("SystemPrompt = %q, want the settings prompt", def.SystemPrompt)
+	}
+
+	// Updating again replaces the prompt.
+	if err := SetGenericPromptWithHome(home, "A newer prompt."); err != nil {
+		t.Fatalf("SetGenericPromptWithHome (update): %v", err)
+	}
+	def, err = LoadWithHome("", home, GenericName)
+	if err != nil {
+		t.Fatalf("LoadWithHome generic: %v", err)
+	}
+	if def.SystemPrompt != "A newer prompt." {
+		t.Errorf("SystemPrompt = %q, want the updated prompt", def.SystemPrompt)
+	}
+
+	// Clearing the prompt still leaves a well-formed generic persona.
+	if err := SetGenericPromptWithHome(home, ""); err != nil {
+		t.Fatalf("SetGenericPromptWithHome (clear): %v", err)
+	}
+	def, err = LoadWithHome("", home, GenericName)
+	if err != nil {
+		t.Fatalf("LoadWithHome generic: %v", err)
+	}
+	if def.Name != GenericName {
+		t.Errorf("Name = %q, want %q", def.Name, GenericName)
+	}
+}
+
+// TestSetGenericPromptWithHome_RejectsEmptyHome guards SetGenericPromptWithHome
+// against silent fallback to a real user home dir.
+func TestSetGenericPromptWithHome_RejectsEmptyHome(t *testing.T) {
+	if err := SetGenericPromptWithHome("", "prompt"); err == nil {
+		t.Fatal("expected error for empty home dir, got nil")
+	}
+}
+
 // TestEnsureGeneric_RejectsEmptyHome guards EnsureGenericWithHome against
 // silent fallback to a real user home dir.
 func TestEnsureGeneric_RejectsEmptyHome(t *testing.T) {

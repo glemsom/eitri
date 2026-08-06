@@ -354,41 +354,112 @@ func TestBuildSystemPrompt_SkillsCatalogPresent(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPrompt_UserOverrideSkipsDirective(t *testing.T) {
-	// When the user provides a system prompt override (cfg.SystemPrompt != ""),
-	// persona-injected skills are not loaded at all, so no directive should appear.
+func TestBuildSystemPrompt_ActivePersonaWinsOverSettingsPrompt(t *testing.T) {
+	// A healthy active persona's prompt wins over the settings prompt
+	// (cfg.SystemPrompt, which edits the generic persona). This pins the
+	// semantics that the settings prompt is NOT a top-precedence override
+	// that shadows every persona (issue #1141).
 	workspace := t.TempDir()
 	skillsSvc := newSkillsServiceWithSkill(t, "some-skill", "# Some Skill\n\nContent.")
 
 	if err := persona.Save(workspace, &persona.PersonaDefinition{
-		Name:           "ignored-persona",
-		SystemPrompt:   "You are an ignored persona.",
+		Name:           "active-persona",
+		SystemPrompt:   "You are the active persona prompt.",
 		RequiredSkills: []string{"some-skill"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	cfg := RunConfig{
-		Workspace:      workspace,
-		ActivePersona:  "ignored-persona",
-		SystemPrompt:   "You are the user override prompt.",
+		Workspace:     workspace,
+		ActivePersona: "active-persona",
+		SystemPrompt:  "You are the generic settings prompt.",
 	}
 	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, skillsSvc)
 	if err != nil {
 		t.Fatalf("buildSystemPrompt: %v", err)
 	}
 
-	// Should use the user override, not the persona prompt
-	if !strings.Contains(sysPrompt, "You are the user override prompt.") {
-		t.Fatalf("system prompt should contain user override, got:\n%s", sysPrompt)
+	// The active persona prompt wins, not the settings prompt.
+	if !strings.Contains(sysPrompt, "You are the active persona prompt.") {
+		t.Fatalf("system prompt should contain active persona prompt, got:\n%s", sysPrompt)
 	}
-	if strings.Contains(sysPrompt, "You are an ignored persona.") {
-		t.Fatalf("system prompt should NOT contain persona prompt when override given, got:\n%s", sysPrompt)
+	if strings.Contains(sysPrompt, "You are the generic settings prompt.") {
+		t.Fatalf("settings prompt must not shadow a healthy active persona, got:\n%s", sysPrompt)
 	}
 
-	// No required skills directive since persona was bypassed
-	if strings.Contains(sysPrompt, "Required skills for this persona:") {
-		t.Fatalf("system prompt should NOT contain required skills directive with user override, got:\n%s", sysPrompt)
+	// The active persona's required skills still feed the directive.
+	if !strings.Contains(sysPrompt, "Required skills for this persona: some-skill") {
+		t.Fatalf("system prompt should contain active persona's required skills directive, got:\n%s", sysPrompt)
+	}
+}
+
+func TestBuildSystemPrompt_BrokenPersonaFallsBackToGenericPrompt(t *testing.T) {
+	// AC#1: a missing/corrupt active persona falls back to the generic persona
+	// + its prompt (the settings prompt), not a bare built-in constant.
+	workspace := t.TempDir()
+	homeDir := t.TempDir()
+	if err := persona.SetGenericPromptWithHome(homeDir, "You are the generic fallback prompt."); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := RunConfig{
+		Workspace:     workspace,
+		HomeDir:       homeDir,
+		ActivePersona: "deleted-persona", // file was removed/corrupt
+	}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	if !strings.Contains(sysPrompt, "You are the generic fallback prompt.") {
+		t.Fatalf("broken persona should fall back to the generic persona's prompt, got:\n%s", sysPrompt)
+	}
+}
+
+func TestBuildSystemPrompt_BrokenPersonaFallsBackToSettingsPrompt(t *testing.T) {
+	// When a broken active persona has no generic persona file available either,
+	// the legacy cfg.SystemPrompt (settings prompt) is used as the fallback.
+	workspace := t.TempDir()
+	homeDir := t.TempDir() // no generic.yaml written
+
+	cfg := RunConfig{
+		Workspace:     workspace,
+		HomeDir:       homeDir,
+		ActivePersona: "missing-persona",
+		SystemPrompt:  "You are the settings fallback prompt.",
+	}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	if !strings.Contains(sysPrompt, "You are the settings fallback prompt.") {
+		t.Fatalf("broken persona + no generic file should fall back to settings prompt, got:\n%s", sysPrompt)
+	}
+}
+
+func TestBuildSystemPrompt_GenericPromptFromDiskWhenNoActivePersona(t *testing.T) {
+	// With no active persona, the settings prompt (mirrored to the generic
+	// persona on disk) is used.
+	workspace := t.TempDir()
+	homeDir := t.TempDir()
+	if err := persona.SetGenericPromptWithHome(homeDir, "You are the generic settings prompt."); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := RunConfig{
+		Workspace: workspace,
+		HomeDir:   homeDir,
+	}
+	sysPrompt, err := buildSystemPrompt(cfg, sessionSkillContext{}, nil)
+	if err != nil {
+		t.Fatalf("buildSystemPrompt: %v", err)
+	}
+
+	if !strings.Contains(sysPrompt, "You are the generic settings prompt.") {
+		t.Fatalf("no active persona should use the generic persona's prompt, got:\n%s", sysPrompt)
 	}
 }
 
