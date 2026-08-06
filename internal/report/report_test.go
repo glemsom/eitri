@@ -1197,3 +1197,67 @@ func TestGetReport_UserTimestampTieBrokenByArrayOrder(t *testing.T) {
 		t.Errorf("second user card = %q, want Second", users[1])
 	}
 }
+
+func TestGetReport_DropsEmptyPlaceholderUserCards(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-drop-empty-user"
+	now := time.Now().UTC()
+
+	// Two assistant turns emitted at t=10 and t=20. The snapshot stores only
+	// ONE user message ("Q1"), matching turn 1. There is no user message to
+	// attribute to turn 2 (e.g. after compaction or a turn with no preceding
+	// prompt), so turn 2's synthetic placeholder card must be dropped instead
+	// of rendering as an empty one-line card.
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-drop-user",
+		SessionID: sessionID,
+		StartedAt: now.Add(-1 * time.Minute),
+		EndedAt:   now,
+		Termination: &timeline.TimelineTermination{
+			Reason: timeline.TerminationCompleted,
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "llm_call", Timestamp: now.Add(10 * time.Second), Turn: 1, DurationMs: 100, TraceID: "t1"},
+			{Type: "tool_call", Timestamp: now.Add(10 * time.Second), Turn: 1, Tool: "read"},
+			{Type: "tool_result", Timestamp: now.Add(10 * time.Second), Turn: 1, Tool: "read", Output: "a", Error: false},
+			{Type: "llm_call", Timestamp: now.Add(20 * time.Second), Turn: 2, DurationMs: 100, TraceID: "t2"},
+			{Type: "tool_call", Timestamp: now.Add(20 * time.Second), Turn: 2, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now.Add(20 * time.Second), Turn: 2, Tool: "grep", Output: "b", Error: false},
+		},
+	}
+	writeTestTimeline(t, dir, sessionID, tl)
+
+	// Only one user message exists; it pairs with turn 1 (emitted 10s).
+	writeTestSessionSnapshot(t, dir, sessionID, []message.Message{
+		{Role: "user", Content: "Q1", CreatedAt: now.Add(5 * time.Second)},
+		{Role: "assistant", Content: "Answer 1", CreatedAt: now.Add(11 * time.Second)},
+		{Role: "assistant", Content: "Answer 2", CreatedAt: now.Add(21 * time.Second)},
+	})
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Only one user card may remain, and it must carry real matched content.
+	users := userTurnContents(t, rep)
+	if len(users) != 1 {
+		t.Fatalf("expected 1 rendered user card, got %d: %v", len(users), users)
+	}
+	if users[0] != "Q1" {
+		t.Errorf("rendered user card content = %q, want Q1", users[0])
+	}
+
+	// Every rendered user card must contain real, non-empty content.
+	for _, turn := range rep.Turns {
+		if turn.Role == "user" && turn.Content == "" {
+			t.Errorf("rendered empty user card on turn %d", turn.Turn)
+		}
+	}
+
+	// Both assistant cards must still be present after the placeholder drop.
+	if got := assistantTurnContents(t, rep); len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Errorf("expected assistant turns [1 2] after drop, got %v", got)
+	}
+}

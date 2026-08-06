@@ -64,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Session Report no longer renders the synthetic, empty placeholder user card it inserted before every assistant turn — when no user message could be attributed to a turn (e.g. after compaction or a turn with no preceding prompt), that card rendered as an empty one-line card that read as noise. Only user cards with real, matched content now render. (issue #1160)
+
 - The sidebar can now be resized repeatedly: the first drag previously set `--sidebar-width` inline on `#app`, but the resize handle lives outside `#app` (appended to `body`) and only inherits the variable from `:root` — so after the first resize the handle stayed pinned at the original width and a second drag at the sidebar edge did nothing. The width is now set on `<html>`, which both the layout and the handle inherit from. A browser regression test (`TestBrowser_SidebarResizeHandleFollowsWidth`) drags the handle twice with real mouse events and asserts the sidebar resizes both times.
 
 - The chromedp browser E2E tests now wait on observed state instead of fixed `time.Sleep` waits for background/DOM conditions, so a busy CI runner no longer makes them flake. Top-level fixed waits for streaming, tool-entry, undo-toast, overlay-close, theme-apply, and run-status conditions were converted to `pollForCondition` (the deterministic polling helper in `browser_test.go`), and the waits that genuinely assert on wall-clock time (streaming-responsiveness frame-gap measurement, live-tool-timer ticks, the escape-must-not-fire negative assertion, and slow-fake-server pacing) are now explicitly commented as deliberate pacing sleeps. `docs/TESTING.md` documents the polling-vs-pacing policy. (#1125)
