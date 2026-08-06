@@ -16,6 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,7 +41,10 @@ import (
 // post-compaction point.
 func batchCompactLLMServer(t *testing.T, onTurn2 func(turn2Body string)) *httptest.Server {
 	t.Helper()
-	var mu int
+	// mu tracks the agent request ordinal (turn). Handlers run on httptest's
+	// server goroutines concurrently with the test goroutine, so the counter
+	// must be accessed atomically.
+	var mu atomic.Int32
 	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ := io.ReadAll(r.Body)
 		body := string(bodyBytes)
@@ -51,10 +56,10 @@ func batchCompactLLMServer(t *testing.T, onTurn2 func(turn2Body string)) *httpte
 			return
 		}
 
-		mu++
+		requestN := mu.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		switch mu {
+		switch requestN {
 		case 1:
 			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read","arguments":"{\"path\":\"huge.txt\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
 			fmt.Fprint(w, "data: [DONE]\n\n")
@@ -514,12 +519,24 @@ func TestSubAgentRun_AutoCompaction(t *testing.T) {
 	workspace := t.TempDir()
 	bigLinePrefix := writeHugeFile(t, workspace)
 
+	// taskIDCh publishes the generated task ID to the server-handler goroutine.
+	// SpawnSubAgent starts the sub-agent (and thus its HTTP turns) before it
+	// returns the ID, so the onTurn2 callback must receive the ID through this
+	// channel to get a happens-before edge instead of racing the test goroutine's
+	// write below. turn2Body and midRun are produced on the server goroutine and
+	// consumed on the test goroutine, so they are guarded by a mutex.
+	taskIDCh := make(chan string, 1)
+	var capMu sync.Mutex
 	var taskID string
 	var turn2Body string
 	var midRun *uisession.UISession
 	persister, rec := newSubAgentPersistWiring(t)
 	llm := batchCompactLLMServer(t, func(body string) {
+		taskID := <-taskIDCh // blocks until SpawnSubAgent has published the ID
+		capMu.Lock()
 		turn2Body = body
+		capMu.Unlock()
+
 		data, err := persister.LoadSession(taskID)
 		if err != nil || data == nil {
 			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", data, err)
@@ -530,7 +547,9 @@ func TestSubAgentRun_AutoCompaction(t *testing.T) {
 			t.Errorf("mid-run: unmarshal snapshot: %v", err)
 			return
 		}
+		capMu.Lock()
 		midRun = &s
+		capMu.Unlock()
 	})
 
 	svc := NewRunService(RunServiceDeps{
@@ -553,28 +572,33 @@ func TestSubAgentRun_AutoCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SpawnSubAgent: %v", err)
 	}
+	taskIDCh <- taskID // publish to onTurn2 before waiting for completion
 	waitForSubAgentDone(t, svc, taskID)
 
 	// Turn 2's LLM request must be built from the compacted history: the huge
 	// tool output is gone, replaced by a compacted marker.
-	if turn2Body == "" {
+	capMu.Lock()
+	capturedBody := turn2Body
+	capturedMidRun := midRun
+	capMu.Unlock()
+	if capturedBody == "" {
 		t.Fatal("turn-2 request body was never captured")
 	}
-	if strings.Contains(turn2Body, bigLinePrefix) {
+	if strings.Contains(capturedBody, bigLinePrefix) {
 		t.Error("turn-2 request still contains the huge tool output; history was not compacted")
 	}
-	if !strings.Contains(turn2Body, "[TOOL RESULT COMPACTED") {
-		t.Errorf("turn-2 request missing compacted tool result (body %d bytes)", len(turn2Body))
+	if !strings.Contains(capturedBody, "[TOOL RESULT COMPACTED") {
+		t.Errorf("turn-2 request missing compacted tool result (body %d bytes)", len(capturedBody))
 	}
 
 	// The on-disk snapshot at turn-2 time must already reflect the compacted
 	// history (the per-turn snapshot runs before compaction, the re-snapshot
 	// after it — both before the next turn's request).
-	if midRun == nil {
+	if capturedMidRun == nil {
 		t.Fatal("mid-run snapshot was never captured")
 	}
-	if !hasCompactedMessage(midRun.Messages) {
-		t.Errorf("mid-run snapshot has no compacted message; got %d messages", len(midRun.Messages))
+	if !hasCompactedMessage(capturedMidRun.Messages) {
+		t.Errorf("mid-run snapshot has no compacted message; got %d messages", len(capturedMidRun.Messages))
 	}
 
 	// The terminal snapshot also reflects the compacted history, and the child
