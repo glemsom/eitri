@@ -211,6 +211,8 @@ func TestBrowser_ToolCardTimerStopsWhenCardRemoved(t *testing.T) {
 	); err != nil {
 		t.Fatalf("read elapsed before failed: %v", err)
 	}
+	// Deliberate pacing (live-timer assertion): let the ticking timer elapse so
+	// the test can verify the elapsed span updates over wall-clock time.
 	time.Sleep(300 * time.Millisecond)
 	if err := chromedp.Run(ctx,
 		chromedp.Text(`#tool-activity [data-tool-elapsed]`, &elapsedAfter, chromedp.ByQuery),

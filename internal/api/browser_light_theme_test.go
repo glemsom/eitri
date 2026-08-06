@@ -29,20 +29,22 @@ func TestLightTheme(t *testing.T) {
 	}
 
 	// Wait for styles to apply
-	time.Sleep(200 * time.Millisecond)
+	// Wait until the light theme CSS variables are applied rather than
+	// sleeping a fixed time for styles to settle.
+	var bgColor, textColor, surfaceColor, borderColor string
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		if err := chromedp.Run(ctx,
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()`, &bgColor),
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--text').trim()`, &textColor),
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()`, &surfaceColor),
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--border').trim()`, &borderColor),
+		); err != nil {
+			return false
+		}
+		return bgColor == "#f5f5f7" && textColor == "#1d1d1f" && surfaceColor == "#ffffff" && borderColor == "#d2d2d7"
+	})
 
 	// Verify light theme CSS variables are applied
-	var bgColor, textColor, surfaceColor, borderColor string
-	err := chromedp.Run(ctx,
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()`, &bgColor),
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--text').trim()`, &textColor),
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()`, &surfaceColor),
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--border').trim()`, &borderColor),
-	)
-	if err != nil {
-		t.Fatalf("get computed styles: %v", err)
-	}
-
 	// Light theme values from eitri.css
 	if bgColor != "#f5f5f7" {
 		t.Errorf("--bg = %q, want %q", bgColor, "#f5f5f7")
@@ -80,19 +82,20 @@ func TestDarkThemeDefault(t *testing.T) {
 		t.Fatalf("navigate: %v", err)
 	}
 
-	// Wait for styles to apply
-	time.Sleep(200 * time.Millisecond)
+	// Wait until the dark theme CSS variables are applied rather than
+	// sleeping a fixed time for styles to settle.
+	var bgColor, textColor string
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		if err := chromedp.Run(ctx,
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()`, &bgColor),
+			chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--text').trim()`, &textColor),
+		); err != nil {
+			return false
+		}
+		return bgColor == "#1a1a2e" && textColor == "#e0e0e0"
+	})
 
 	// Verify dark theme CSS variables are applied
-	var bgColor, textColor string
-	err := chromedp.Run(ctx,
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()`, &bgColor),
-		chromedp.Evaluate(`window.getComputedStyle(document.documentElement).getPropertyValue('--text').trim()`, &textColor),
-	)
-	if err != nil {
-		t.Fatalf("get computed styles: %v", err)
-	}
-
 	// Dark theme values from eitri.css
 	if bgColor != "#1a1a2e" {
 		t.Errorf("--bg = %q, want %q", bgColor, "#1a1a2e")

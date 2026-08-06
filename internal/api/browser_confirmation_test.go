@@ -90,18 +90,19 @@ func TestBrowser_ConfirmationDenyShowsUndoToast(t *testing.T) {
 		t.Fatalf("click Deny failed: %v", err)
 	}
 
-	// Allow a brief moment for the undo toast to render
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify undo toast is visible, not the original modal buttons
+	// Wait for the undo toast to render rather than sleeping a fixed time.
+	// (Also asserts the original modal buttons are gone.)
 	var undoToastVisible bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`(function() {
-			var toast = document.querySelector('.undo-toast');
-			return toast !== null && toast.offsetParent !== null;
-		})()`, &undoToastVisible),
-	)
-	if err != nil || !undoToastVisible {
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var toast = document.querySelector('.undo-toast');
+				return toast !== null && toast.offsetParent !== null;
+			})()`, &undoToastVisible),
+		)
+		return err == nil && undoToastVisible
+	})
+	if !undoToastVisible {
 		t.Fatalf("undo toast not visible after Deny click")
 	}
 
@@ -130,15 +131,15 @@ func TestBrowser_ConfirmationDenyShowsUndoToast(t *testing.T) {
 		t.Fatalf("click Undo failed: %v", err)
 	}
 
-	// Allow brief moment for modal to close
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify modal/overlay is removed
+	// Wait for the modal/overlay to close rather than sleeping a fixed time.
 	var overlayGone bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') === null`, &overlayGone),
-	)
-	if err != nil || !overlayGone {
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.getElementById('confirmation-overlay') === null`, &overlayGone),
+		)
+		return err == nil && overlayGone
+	})
+	if !overlayGone {
 		t.Fatalf("confirmation overlay still visible after Undo click")
 	}
 }
@@ -213,13 +214,15 @@ func TestBrowser_ConfirmationDenyTimeoutClosesModal(t *testing.T) {
 		t.Fatalf("click Deny failed: %v", err)
 	}
 
-	// Verify undo toast appears
-	time.Sleep(200 * time.Millisecond)
+	// Wait for the undo toast to appear rather than sleeping a fixed time.
 	var toastVisible bool
-	err = chromedp.Run(ctx,
-		chromedp.EvaluateAsDevTools(`document.querySelector('.undo-toast') !== null`, &toastVisible),
-	)
-	if err != nil || !toastVisible {
+	pollForCondition(t, 3*time.Second, 50*time.Millisecond, func() bool {
+		err := chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`document.querySelector('.undo-toast') !== null`, &toastVisible),
+		)
+		return err == nil && toastVisible
+	})
+	if !toastVisible {
 		t.Fatalf("undo toast not visible after Deny")
 	}
 
@@ -1346,7 +1349,8 @@ func TestBrowser_ConfirmationUndoToastEscapeDoesNotRerunDeny(t *testing.T) {
 		t.Fatalf("dispatch Escape failed: %v", err)
 	}
 
-	// Give any (unexpected) async deny flow time to fire
+	// Deliberate pacing (negative assertion): give any unexpected async deny
+	// flow time to fire so the test can assert no confirm request was issued.
 	time.Sleep(200 * time.Millisecond)
 
 	var fetchAfter int

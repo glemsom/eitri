@@ -203,6 +203,21 @@ make test-race
 3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions.
 4. Prefer `chromedp.SendKeys` over `SetValue` (triggers HTMX events).
 
+### Deterministic timing in browser tests
+
+Browser E2E tests run against a real Chrome on a shared CI runner, so fixed
+`time.Sleep` waits for a background condition are flaky under CPU contention.
+Wait on observed state instead, using the `pollForCondition(t, timeout,
+interval, check)` helper defined in `browser_test.go` (evaluates `check()` until
+it returns true or the deadline passes) or chromedp's own `WaitVisible` /
+`WaitEnabled`. Always assert on *readiness*, not literally elapsed time.
+
+A fixed sleep is acceptable only when it is the *point of the test* — e.g.
+measuring streaming responsiveness over a wall-clock window, verifying a live
+elapsed timer ticks forward, asserting that an async flow *does not* fire, or
+pacing a deliberately slow fake server. Such pacing sleeps must be
+commented as deliberate so they are not mistaken for accidental fixed waits.
+
 For manual testing against a real server:
 
 ```bash
