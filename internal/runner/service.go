@@ -67,6 +67,10 @@ type RunServiceDeps struct {
 	CrashDumpFunc    func(err error, stack []byte) // optional; called on fatal agent error
 	Persister        *persist.Persister            // optional; writes session snapshots & traces to disk
 	CalibrationStore *tokenizer.CalibrationStore   // optional; per-model CPT calibration
+	// NewRunID optionally overrides run/session job ID generation for tests.
+	// Nil in production, in which case the unified runJobID helper generates
+	// auto, path-safety-validated IDs (issue #1108).
+	NewRunID func(role runJobRole) string
 }
 
 // RunService owns the run lifecycle: agent loop execution,
@@ -93,8 +97,9 @@ type RunService struct {
 	homeDir           string // persona home directory; empty falls back to os.UserHomeDir()
 	persistAuth       PersistAuthFunc
 	crashDumpFunc     func(err error, stack []byte)
-	persister         *persist.Persister          // optional; writes session snapshots & traces to disk
-	calibrationStore  *tokenizer.CalibrationStore // optional; per-model CPT calibration
+	persister         *persist.Persister           // optional; writes session snapshots & traces to disk
+	calibrationStore  *tokenizer.CalibrationStore  // optional; per-model CPT calibration
+	newRunIDFn        func(role runJobRole) string // injectable ID generator; nil → runJobID
 }
 
 const completedRunRetention = 5 * time.Second
@@ -114,7 +119,18 @@ func NewRunService(deps RunServiceDeps) *RunService {
 		crashDumpFunc:     deps.CrashDumpFunc,
 		persister:         deps.Persister,
 		calibrationStore:  deps.CalibrationStore,
+		newRunIDFn:        deps.NewRunID,
 	}
+}
+
+// newRunID returns a run/session job ID for the given role, using the
+// injected generator when present (tests) and the unified runJobID helper
+// otherwise. The result is always auto-generated and path-safety validated.
+func (s *RunService) newRunID(role runJobRole) string {
+	if s.newRunIDFn != nil {
+		return s.newRunIDFn(role)
+	}
+	return runJobID(role)
 }
 
 // SetHomeDir sets the persona home directory for the run service. It is used

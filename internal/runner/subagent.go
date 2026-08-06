@@ -100,8 +100,9 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		}
 	}
 
-	// Generate task ID
-	taskID = s.subagents.nextID()
+	// Generate the sub-agent task ID through the unified run-job ID helper
+	// (ADR-0025, issue #1108): auto-generated, unique, and path-safe.
+	taskID = s.newRunID(runJobRoleSubagent)
 
 	slog.Info("spawning sub-agent",
 		slog.String("task_id", taskID),

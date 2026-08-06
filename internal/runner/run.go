@@ -29,6 +29,12 @@ func (s *RunService) StartRun(ctx context.Context, sessionID, userMessage string
 }
 
 func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMessage string, cfg RunConfig) ([]string, error) {
+	// The session ID names this run's on-disk review trail; guard it against
+	// path traversal through the shared run-job ID validator (issue #1108).
+	if err := validateRunJobID(sessionID); err != nil {
+		return nil, fmt.Errorf("invalid session ID: %w", err)
+	}
+
 	if s.exchangeIfDone(sessionID) {
 		// Previous run was done; clean slate
 	}

@@ -13,27 +13,6 @@ func TestNewSubagentStore(t *testing.T) {
 	}
 }
 
-func TestSubagentStore_NextID(t *testing.T) {
-	ss := newSubagentStore()
-
-	id1 := ss.nextID()
-	id2 := ss.nextID()
-	id3 := ss.nextID()
-
-	if id1 == id2 || id2 == id3 {
-		t.Fatal("expected unique task IDs")
-	}
-	if id1 != "task_1" {
-		t.Fatalf("first ID = %q, want %q", id1, "task_1")
-	}
-	if id2 != "task_2" {
-		t.Fatalf("second ID = %q, want %q", id2, "task_2")
-	}
-	if id3 != "task_3" {
-		t.Fatalf("third ID = %q, want %q", id3, "task_3")
-	}
-}
-
 func TestSubagentStore_StoreAndGetRecord(t *testing.T) {
 	ss := newSubagentStore()
 
@@ -245,7 +224,7 @@ func TestSubagentStore_ConcurrentAccess(t *testing.T) {
 
 	for range 10 {
 		wg.Go(func() {
-			id := ss.nextID()
+			id := runJobID(runJobRoleSubagent)
 			rec := &subAgentRecord{
 				TaskID:    id,
 				SessionID: "sess-1",

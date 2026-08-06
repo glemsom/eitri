@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-
 )
 
 // subagentStore manages sub-agent lifecycle — spawning records, collection,
 // cancellation, and TTL reaping.
 type subagentStore struct {
-	mu         sync.Mutex
-	agents     map[string]*subAgentRecord
-	nextTaskID uint64
+	mu     sync.Mutex
+	agents map[string]*subAgentRecord
 
 	// Parent run configs per session (for sub-agent setup)
 	parentCfgMu sync.Mutex
@@ -24,14 +22,6 @@ func newSubagentStore() *subagentStore {
 		agents:     make(map[string]*subAgentRecord),
 		parentCfgs: make(map[string]RunConfig),
 	}
-}
-
-// nextID generates a unique task ID.
-func (ss *subagentStore) nextID() string {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	ss.nextTaskID++
-	return fmt.Sprintf("task_%d", ss.nextTaskID)
 }
 
 // storeRecord stores a sub-agent record.
