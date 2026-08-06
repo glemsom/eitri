@@ -16,6 +16,7 @@ import (
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tool"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // subAgentStatus tracks the lifecycle of a sub-agent task.
@@ -311,7 +312,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 				record.Err = runErr
 				completer.terminal(sseState, runCompleterTerminalStatus(runstate.TerminationMaxTurns), &runstate.TimelineTermination{
 					Reason:  runstate.TerminationMaxTurns,
-					Message: runstate.MaxTurnsMessage(maxTurnsErr.Limit),
+					Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
 				})
 				slog.Warn("sub-agent max turns exceeded",
 					slog.String("task_id", taskID),

@@ -38,8 +38,9 @@
 //   - NewWriter — create a Writer wrapping a State
 //   - ComputeContext — estimate token counts from messages
 //   - EstimateUsage — rough token estimate from text length
-//   - FormatErrorMessage — convert provider errors to user-friendly messages
-//   - MaxTurnsMessage — user-facing max-turns message
+//
+// User-facing string helpers (FormatErrorMessage, MaxTurnsMessage) live in
+// internal/uixt.
 //
 // Dependencies:
 //   - internal/message — message.Message type for context computation

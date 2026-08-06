@@ -27,6 +27,7 @@ import (
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/tokenizer"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
@@ -332,7 +333,7 @@ func TestRunService_Cancel_ReturnsFalseForNoActiveRun(t *testing.T) {
 }
 
 func TestRunService_MaxTurnsMessage(t *testing.T) {
-	msg := runstate.MaxTurnsMessage(1)
+	msg := uixt.MaxTurnsMessage(1)
 	if !strings.Contains(msg, "max turns") {
 		t.Fatalf("max turns message = %q, want max turns mention", msg)
 	}
