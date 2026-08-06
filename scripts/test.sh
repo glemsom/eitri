@@ -10,8 +10,14 @@
 # Usage:
 #   scripts/test.sh            # go test ./...
 #   scripts/test.sh --race     # go test -race ./...
+#   scripts/test.sh --e2e      # browser E2E only: go test -tags e2e -run '^TestBrowser' ./internal/api/
 #   scripts/test.sh --flaky    # cache-cleared, -cpu 1,2, -p 1 (flake reproduce)
 #   scripts/test.sh --race --flaky  # combine both
+#
+# --e2e runs the slow chromedp browser E2E suite in internal/api, which is now
+# gated behind the `e2e` build tag (see docs/TESTING.md). It runs without the
+# race detector: -race adds no value for DOM/E2E assertions and slows streams
+# (issue #1122).
 #
 # --flaky reproduces the constrained environment CI flakes surface in: it
 # clears the Go test cache and runs with a reduced/controlled CPU set and
@@ -22,9 +28,11 @@ set -uo pipefail
 
 RACE=0
 FLAKY=0
+E2E=0
 while [ "${1:-}" != "" ]; do
     case "$1" in
         --race)   RACE=1   ; shift ;;
+        --e2e)    E2E=1    ; shift ;;
         --flaky)  FLAKY=1  ; shift ;;
         *)        echo "test.sh: unknown option: $1" >&2; exit 2 ;;
     esac
@@ -34,9 +42,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-dist}"
 LOG_NAME="test-output.log"
 EXTRA_FLAGS=()
+PKG="./..."
 if [ "$RACE" -eq 1 ]; then
     LOG_NAME="test-race-output.log"
     EXTRA_FLAGS=(-race)
+fi
+if [ "$E2E" -eq 1 ]; then
+    # Browser E2E lives behind the `e2e` build tag in internal/api; -race is
+    # intentionally omitted (see header comment). Restrict -run to ^TestBrowser
+    # so the slow browser DOM tests are the only ones selected, and the job
+    # stays quick (issue #1122).
+    LOG_NAME="test-e2e-output.log"
+    EXTRA_FLAGS+=(-tags e2e -run "^TestBrowser")
+    PKG="./internal/api/"
 fi
 if [ "$FLAKY" -eq 1 ]; then
     if [ "$RACE" -eq 1 ]; then
@@ -57,7 +75,7 @@ fi
 
 START=$SECONDS
 set +e
-go test "${EXTRA_FLAGS[@]}" ./... 2>&1 | tee "$ARTIFACT"
+go test "${EXTRA_FLAGS[@]}" "$PKG" 2>&1 | tee "$ARTIFACT"
 GOEXIT=${PIPESTATUS[0]}
 set -e
 ELAPSED=$((SECONDS - START))

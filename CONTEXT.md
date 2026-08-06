@@ -63,7 +63,7 @@ Eitri follows [Semantic Versioning 2.0](https://semver.org/). The canonical vers
 flowchart LR
     A["Open an issue or\nstart coding"] --> B["Make changes\non main"]
     B --> C["Push"]
-    C --> D["GitHub Actions CI:\ngo test ./...\nmake build\nversion check\ndiagnostic flaky reproduce job"]
+    C --> D["GitHub Actions CI:\nfast unit+race job\nbrowser E2E job\nmake build\nversion check\ndiagnostic flaky reproduce job"]
 ```
 
 There is **no required branch strategy** — you can push directly to `main` or use PRs. CI runs on both.
@@ -73,7 +73,8 @@ There is **no required branch strategy** — you can push directly to `main` or 
 Optional developer tools:
 
 - `make run` — build and start the server locally
-- `make test` — run all unit tests
+- `make test` — run all unit tests (fast, browser E2E excluded)
+- `make test-browser` — run the standalone browser E2E suite
 - `make build` — compile the binary with embedded version
 - `./eitri --version` — print the compiled version
 
@@ -108,7 +109,7 @@ The release script:
 Pushing a `v*` tag triggers `.github/workflows/release.yml`:
 
 1. Verifies the tag matches `VERSION` (safety check)
-2. Runs `make test-race` (the noise-stripping test wrapper) as a test gate
+2. Runs `make test-race` (the noise-stripping test wrapper) as the fast unit test gate. The browser E2E suite is `e2e`-build-tagged and excluded from `-race` (issue #1122).
 3. Builds release tarballs for all supported platforms via `make release-all`
 4. Generates a GitHub Release with attached tarballs and checksums
 

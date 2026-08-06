@@ -51,8 +51,11 @@ jobs:
           name: test-race-flaky-output.log
           path: dist/test-race-flaky-output.log
           if-no-files-found: ignore
-  test:
-    name: Test and build
+  # Fast gate: all non-browser packages under the race detector. The browser
+  # E2E suite is build-tagged `e2e` (internal/api/browser_*.go) and excluded
+  # here, so a slow browser flake no longer blocks every commit (issue #1122).
+  unit-test:
+    name: Unit tests + race detector
     runs-on: ubuntu-latest
 
     steps:
@@ -67,7 +70,7 @@ jobs:
       - name: Install sandbox dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
 
-      - name: Run tests (compact verdict, including browser E2E)
+      - name: Run unit tests with race detector (browser E2E excluded)
         run: make test-race
 
       - name: Upload test log artifact
@@ -90,3 +93,36 @@ jobs:
             exit 1
           fi
           echo "Binary version: $BINARY_VER ✓"
+
+  # Slow browser E2E suite (chromedp) runs independently, without the race
+  # detector (-race adds no value for DOM assertions and slows streams). A
+  # failure here is attributable to this job and does not make the fast
+  # unit-test job appear failed.
+  browser-e2e:
+    name: Browser E2E (chromedp)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq google-chrome-stable
+
+      - name: Run browser E2E tests
+        run: ./scripts/test.sh --e2e
+
+      - name: Upload browser E2E log artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-e2e-output.log
+          path: dist/test-e2e-output.log
+          if-no-files-found: ignore

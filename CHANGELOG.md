@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CI now splits tests into a fast **unit+race** job (`make test-race`, all non-browser packages under the race detector) and a standalone **browser E2E** job (`make test-browser`, chromedp, no `-race`). The chromedp browser suite in `internal/api` is now gated behind the `//go:build e2e` tag, so `go test ./...` and the release gate no longer drag slow browser/DOM tests through `-race` — a browser flake no longer blocks the fast unit gate or every commit, and each result is attributable to its own CI job. Docs updated in `docs/TESTING.md` and `CONTEXT.md`; the verbose `make release-check` still runs both suites. (#1122)
+
 - Tests gains a new `testutil.GoroutineLeakGuard` helper that verifies a service started and stopped repeatedly (compact runs, run start/cancel loops) does not leave a background goroutine running into the next test case, closing the shutdown audit from issue #1127. Registration is one line atop any test; it polls the goroutine count back to baseline at teardown and dumps stacks on a leak. Documented in `docs/TESTING.md`.
 
 - The persona add/edit forms now pre-fill the system-prompt field with the canonical default prompt as a freely editable **starting point** (issue #1140). The new-persona form always pre-fills; the edit form pre-fills only when the existing prompt is empty (a non-empty prompt is left verbatim). The default is sourced from the single canonical `persona.DefaultPrompt` constant, so a user specialising a persona does not silently lose the concise/be-focused/reasoning-budget guardrails.

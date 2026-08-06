@@ -6,7 +6,7 @@ BUILD_DIR     := dist
 VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
-.PHONY: all build clean test test-race test-flaky help run templ-generate css-generate release release-check \
+.PHONY: all build clean test test-race test-browser test-flaky help run templ-generate css-generate release release-check \
         release-all release-linux-amd64
 
 all: build
@@ -20,13 +20,18 @@ clean:
 	rm -f $(BINARY)
 	rm -rf $(BUILD_DIR)
 
-## test — run all tests (fast, no race detector), compact verdict, full log in dist/
+## test — run all non-browser tests (fast, no race detector), compact verdict, full log in dist/
+# Browser E2E is build-tagged `e2e` and excluded; run `make test-browser` for it.
 test:
 	./scripts/test.sh
 
-## test-race — run all tests with race detector, compact verdict, full log in dist/
+## test-race — run all non-browser tests with race detector, compact verdict, full log in dist/
 test-race:
 	./scripts/test.sh --race
+
+## test-browser — run the standalone browser E2E suite (chromedp, no race detector)
+test-browser:
+	./scripts/test.sh --e2e
 
 ## test-flaky — reproduce CI flakes: cache-cleared, -cpu 1,2, -p 1 (compact verdict)
 test-flaky:
@@ -59,9 +64,8 @@ release-tarball: templ-generate
 	cd $(BUILD_DIR) && sha256sum $(notdir $(TARBALL)) >> checksums.txt
 	rm -f $(BUILD_DIR)/$(BINARY)
 
-## release-check — release readiness test gates (includes race detector)
-release-check:
-	$(GO) test -race ./...
+## release-check — release readiness test gates (race unit suite + browser E2E)
+release-check: test-race test-browser
 
 ## run — build and start server
 run: build

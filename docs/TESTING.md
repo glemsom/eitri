@@ -5,13 +5,16 @@ Eitri uses Go unit/integration tests and browser-based E2E tests (via chromedp).
 ## Quick start
 
 ```bash
-# Run all tests with compact summary (browser tests skip gracefully if Chrome not found)
+# Run all non-browser tests with compact summary
 make test
 
-# Run with race detector (same compact summary; DATA RACE warnings surfaced)
+# Run non-browser tests with race detector (same compact summary; DATA RACE warnings surfaced)
 make test-race
 
-# Full release readiness gate (includes race + browser tests, verbose output)
+# Run the standalone browser E2E suite (chromedp, no race detector)
+make test-browser
+
+# Full release readiness gate (race unit suite + browser E2E)
 make release-check
 
 # Reproduce a CI flake locally (cache-cleared, CPU-constrained, sequential; see below)
@@ -21,15 +24,24 @@ make test-flaky
 cd internal/api && go test -v -run TestHealth
 ```
 
+Browser E2E and the fast non-browser suites are split (issue #1122). The
+chromedp browser tests live behind the `e2e` build tag, so `go test ./...`
+(and `make test` / `make test-race`) run only the fast unit/integration
+suite — a slow browser flake no longer blocks every commit. Run the browser
+suite separately with `make test-browser` (`go test -tags e2e -run '^TestBrowser' ./internal/api/`).
+
 ### Compact test summary
 
 `make test` and `make test-race` route `go test` through `scripts/test.sh`,
 which replaces the per-package boilerplate with a single verdict line.
 
-CI (`ci.yml`) and releases (`release.yml`) use `make test-race`, so a pushed
-branch/PR and a release-tag build both surface the same compact verdict and
-cache the full log in `dist/test-race-output.log` as a task artifact. The less
-common `make release-check` remains the documented verbose/full release gate.
+CI (`ci.yml`) runs two independent jobs (issue #1122): a fast `unit-test` job
+using `make test-race` and a standalone `browser-e2e` job using
+`make test-browser`. Releases (`release.yml`) use `make test-race` as the fast
+test gate, so a pushed branch/PR and a release-tag build both surface the same
+compact verdict and cache their full logs as task artifacts
+(`dist/test-race-output.log` / `dist/test-e2e-output.log`). The less common
+`make release-check` remains the documented full release gate (both suites).
 
 ```
 VERDICT: FAIL 1/15 packages failed (14 passed, 2 failed test(s): TestLogin,TestWorkspace) in 47s — full log: dist/test-output.log
@@ -108,7 +120,7 @@ model service.
 |-------|------|-------------|----------|
 | Unit + non-browser integration | `go test` | `go test ./...` | Nothing |
 | API integration | `httptest` | `go test ./internal/api/` | Nothing |
-| Browser E2E | chromedp | `go test ./internal/api/` | Chrome on Linux |
+| Browser E2E | chromedp | `go test -tags e2e -run '^TestBrowser' ./internal/api/` | Chrome on Linux |
 
 ## Unit & integration tests (no browser)
 
@@ -218,25 +230,31 @@ All browser tests live across multiple files in `internal/api/`:
 | `browser_stream_responsiveness_test.go` | Main-thread responsiveness during large reasoning streams |
 | `browser_persona_keyboard_test.go` | Persona dropdown keyboard accessibility (arrow navigation, Enter/Space activation, Escape focus return, ARIA wiring) |
 
-Browser tests are **not** gated behind a build tag. Chrome-not-found skips at
-runtime with `t.Skip`.
+Browser tests are gated behind the `//go:build e2e` tag so they stay out of the
+fast `go test ./...` and `make test-race` unit gate. Chrome-not-found still
+skips at runtime with `t.Skip`. They run in a standalone CI job via
+`make test-browser`.
 
 ### Running
 
 ```bash
-# All tests (browser skipped if no Chrome)
+# All non-browser tests (browser E2E excluded via the e2e tag)
 go test ./...
 
-# API tests including browser
-go test ./internal/api/ -run TestBrowser_SendMessage -v
+# Run the browser E2E suite (requires Chrome on Linux)
+make test-browser
+# or: go test -tags e2e -run '^TestBrowser' ./internal/api/
 
-# With race detector
+# A single browser test
+# or: go test -tags e2e -run 'TestBrowser_SendMessage$' ./internal/api/ -v
+
+# Non-browser tests with race detector
 make test-race
 ```
 
 ### Adding a new browser test
 
-1. Add `func TestBrowser_YourFeature(t *testing.T)` to the appropriate `internal/api/browser_*.go` file (or create a new one if it tests a new feature area).
+1. Add `func TestBrowser_YourFeature(t *testing.T)` to the appropriate `internal/api/browser_*.go` file (or create a new one if it tests a new feature area). Every `browser_*.go` file carries a `//go:build e2e` header so the test stays out of the fast unit gate.
 2. Use `newTestServer` / `newTestServerWithRuns` + `newBrowserCtx` helpers.
 3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions.
 4. Prefer `chromedp.SendKeys` over `SetValue` (triggers HTMX events).
