@@ -6,13 +6,13 @@ BUILD_DIR     := dist
 VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
-.PHONY: all build clean test test-race test-flaky help run templ-generate release release-check \
+.PHONY: all build clean test test-race test-flaky help run templ-generate css-generate release release-check \
         release-all release-linux-amd64
 
 all: build
 
-## build — compile binary (generate templ, then go build, embed version)
-build: templ-generate
+## build — compile binary (generate templ + css aggregate, then go build, embed version)
+build: templ-generate css-generate
 	$(GO) build $(GOFLAGS) -o $(BINARY) ./cmd/eitri
 
 ## clean — remove build artifacts (binary + dist/)
@@ -66,6 +66,10 @@ release-check:
 ## run — build and start server
 run: build
 	./$(BINARY)
+
+## css-generate — regenerate the embedded eitri.css aggregate from partials/
+css-generate:
+	cd internal/api/assets && $(GO) run gen_eitri_css.go
 
 ## templ-generate — recompile .templ files to Go (skip if templ not installed)
 templ-generate:

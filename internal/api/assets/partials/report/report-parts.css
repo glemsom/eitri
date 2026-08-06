@@ -1,0 +1,301 @@
+/* partials/report/report-parts.css — turn cards, LLM metadata, reasoning, context bar, tool call cards, sub-agents. */
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: var(--text-sm);
+  font-family: var(--font-code);
+  margin: 8px 0;
+}
+
+.turn-content code {
+  font-family: var(--font-code);
+  font-size: var(--text-sm);
+}
+
+.turn-content ul, .turn-content ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.turn-content li {
+  margin-bottom: 4px;
+}
+
+.turn-content h1, .turn-content h2, .turn-content h3, .turn-content h4 {
+  margin: 12px 0 6px;
+  color: var(--text);
+}
+
+.turn-content th,
+.turn-content td {
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+}
+
+.turn-content th {
+  font-weight: 600;
+}
+
+/* LLM metadata bar */
+.turn-llm-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px;
+  background: var(--llm-meta-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.llm-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.trace-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.trace-link:hover {
+  text-decoration: underline;
+}
+
+/* Reasoning details */
+.turn-reasoning {
+  margin: 0 16px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+}
+
+.turn-reasoning summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.turn-reasoning-content {
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  line-height: 1.6;
+}
+
+/* Context bar */
+.turn-context-bar {
+  display: flex;
+  gap: 16px;
+  padding: 6px 16px;
+  background: var(--turn-context-bg);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+
+.context-bar-segment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.context-bar-label {
+  color: var(--text-muted);
+  min-width: 36px;
+}
+
+.context-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-alt);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.context-bar-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.context-bar-value {
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+  font-family: var(--font-code);
+}
+
+/* Tool call cards */
+.turn-tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+
+.tool-call-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.tool-call-card.tool-call-error {
+  border-color: var(--error);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+}
+
+.tool-call-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  user-select: none;
+}
+
+.tool-call-summary::-webkit-details-marker {
+  color: var(--text-muted);
+}
+
+.tool-call-name {
+  font-family: var(--font-code);
+  color: var(--text);
+}
+
+.tool-call-badge {
+  font-size: 12px;
+}
+
+.tool-call-duration {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-code);
+}
+
+.tool-call-body {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.tool-call-section {
+  margin-bottom: 8px;
+}
+
+.tool-call-section:last-child {
+  margin-bottom: 0;
+}
+
+.tool-call-section-label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.tool-call-args pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  font-size: var(--text-xs);
+  font-family: var(--font-code);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tool-call-args code {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+}
+
+.tool-call-result pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  font-size: var(--text-xs);
+  font-family: var(--font-code);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-call-result-toggle summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  padding: 4px 0;
+}
+
+.tool-call-result-toggle summary:hover {
+  color: var(--accent-hover);
+}
+
+/* Sub-agents section */
+.report-sub-agents {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.report-sub-agents h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.sub-agent-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sub-agent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--text-sm);
+}
+
+.sub-agent-id {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-agent-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.sub-agent-link:hover {
+  text-decoration: underline;
+}
+
+/* === Sessions Management Page (issue #800) === */
