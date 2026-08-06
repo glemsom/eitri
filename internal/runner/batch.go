@@ -14,8 +14,8 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
-
 	"github.com/glemsom/eitri/internal/tool"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // BatchRun runs a single prompt in headless batch mode.
@@ -289,7 +289,7 @@ func batchTermination(runErr error, runCtx context.Context) *runstate.TimelineTe
 		if errors.As(runErr, &maxTurnsErr) {
 			return &runstate.TimelineTermination{
 				Reason:  runstate.TerminationMaxTurns,
-				Message: runstate.MaxTurnsMessage(maxTurnsErr.Limit),
+				Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
 			}
 		}
 		return &runstate.TimelineTermination{

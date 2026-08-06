@@ -20,6 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // StartRun starts a new agent run for a session with an explicit RunConfig.
@@ -207,7 +208,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			var maxTurnsErr *loop.MaxTurnsExceededError
 			if errors.As(err, &maxTurnsErr) {
 				content := sseState.BufferString()
-				limitMsg := runstate.MaxTurnsMessage(maxTurnsErr.Limit)
+				limitMsg := uixt.MaxTurnsMessage(maxTurnsErr.Limit)
 				if content == "" {
 					sseState.AppendBuffer(limitMsg)
 					content = limitMsg

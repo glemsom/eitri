@@ -25,6 +25,7 @@ import (
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // RunSpec holds the transport/config fields for RunAgent.
@@ -407,7 +408,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				// reasoning. Mirrors the FinishReasonLength handling above.
 				if opts.TurnTimeout > 0 && ctx.Err() == nil && errors.Is(streamErr, context.DeadlineExceeded) {
 					streamErr = &TurnTimeoutError{Timeout: opts.TurnTimeout}
-					spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+					spec.SSEWriter.Error(uixt.FormatErrorMessage(streamErr))
 					dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
 					return fmt.Errorf("chat stream: %w", streamErr)
 				}
@@ -430,7 +431,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				}
 				// Non-retryable stream error
 				dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
-				msg := runstate.FormatErrorMessage(streamErr)
+				msg := uixt.FormatErrorMessage(streamErr)
 				spec.SSEWriter.Error(msg)
 				return fmt.Errorf("chat stream: %w", streamErr)
 			}
@@ -443,7 +444,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// context was also cancelled.
 			if opts.TurnTimeout > 0 && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
 				streamErr = &TurnTimeoutError{Timeout: opts.TurnTimeout}
-				spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+				spec.SSEWriter.Error(uixt.FormatErrorMessage(streamErr))
 				dumpRequestOnError(litellmReq, streamErr, maxRetries+1, opts.DebugLLMDir)
 				return fmt.Errorf("chat stream: %w", streamErr)
 			}
@@ -464,7 +465,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				continue
 			}
 			dumpRequestOnError(litellmReq, err, maxRetries+1, opts.DebugLLMDir)
-			msg := runstate.FormatErrorMessage(err)
+			msg := uixt.FormatErrorMessage(err)
 			spec.SSEWriter.Error(msg)
 			return fmt.Errorf("chat stream: %w", err)
 		}
@@ -493,10 +494,10 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 						trimMessages(spec.Request, spec.MaxHistory)
 					}
 				}
-				spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+				spec.SSEWriter.Error(uixt.FormatErrorMessage(streamErr))
 				return streamErr
 			}
-			spec.SSEWriter.Error(runstate.FormatErrorMessage(streamErr))
+			spec.SSEWriter.Error(uixt.FormatErrorMessage(streamErr))
 			return streamErr
 		}
 
@@ -703,7 +704,7 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 
 	// Max turns exceeded
 	broadcastContextUpdate(nil)
-	msg := runstate.MaxTurnsMessage(maxTurns)
+	msg := uixt.MaxTurnsMessage(maxTurns)
 	spec.SSEWriter.Error(msg)
 	return &MaxTurnsExceededError{Limit: maxTurns}
 }

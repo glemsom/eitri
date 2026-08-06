@@ -123,6 +123,10 @@ Network-agnostic: manages channels, not HTTP connections. Each active runner run
 
 **Context panel**: runner broadcasts `context_update` SSE events after each agent turn. Browser island `eitri-context` renders per-category progress bars using data from `ComputeContext()`. Falls back to 256k context window when provider metadata lacks context length. Both `ComputeContext()` and `EstimateUsage()` accept an optional `*tokenizer.CalibrationStore` for model-specific chars-per-token ratios. The live call sites pass the active store and model name: `ComputeContext` is fed by the run loop's `CalibrationStore`/`ModelName` options, and the auto-compaction high-water gate (`compactSessionHistory`) estimates with the same store so threshold checks track the calibrated ratio for the current model.
 
+### `internal/uixt/` — User-facing string helpers
+
+A standalone package for human-friendly outcome messages that render identically in the UI and batch output. `FormatErrorMessage(error)` maps provider/ADK errors to user-facing messages (connection-refused, auth, rate-limit, context-length, model unavailable, streaming, timeout, port-in-use, host lookups); `MaxTurnsMessage(int)` returns the max-turns message. HTML-strip regexes/helpers behind `FormatErrorMessage`'s fallback are unexported members of this package. Keeping these here means changing "how an error reads" never touches SSE fan-out (`internal/runstate`) code.
+
 ### `internal/tokenizer/` — Token estimation and calibration
 
 | File | Responsibility |
@@ -555,7 +559,8 @@ eitri/
 │   ├── session/               # UI session management (browser-facing)
 │   ├── skills/                # Agent Skills discovery, registry, activation
 │   ├── tokenizer/             # Token estimation and calibration
-│   └── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, browser, render, skill, delegate, collect)
+│   ├── tool/                  # Built-in tools (bash, read, write, edit, grep, web_fetch, browser, render, skill, delegate, collect)
+│   └── uixt/                  # User-facing string helpers (error/max-turns messages)
 ├── scripts/
 ├── docs/
 │   ├── ADRs.md
