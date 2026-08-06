@@ -9,7 +9,6 @@ import (
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -18,13 +17,24 @@ import (
 )
 
 // buildSystemPrompt assembles the full system prompt from the active persona
-// (or user override or default), repository instructions, skills catalog,
-// and skill activations — including skills required by the persona.
+// (or the generic persona / built-in fallback), repository instructions,
+// skills catalog, and skill activations — including skills required by the
+// persona.
 //
-// Precedence:
-//  1. cfg.SystemPrompt (user override) — if non-empty, used directly
-//  2. cfg.ActivePersona — resolved from disk, its SystemPrompt used as base
-//  3. history.DefaultSystemPrompt — built-in fallback
+// Persona resolution:
+//  1. cfg.ActivePersona — a healthy persona's SystemPrompt wins; its required
+//     skills feed the <required_skills> directive.
+//  2. The generic persona — when no persona is active, or the active persona is
+//     missing/corrupt. The generic persona's prompt is the "settings prompt":
+//     the Settings UI's Prompt field mirrors into
+//     ~/.eitri/personas/generic.yaml, and it is resolved from disk so broken
+//     active personas fall back to it (not a bare built-in constant).
+//  3. cfg.SystemPrompt then persona.DefaultPrompt — legacy settings value and
+//     built-in defaults when the generic persona file is unavailable/empty.
+//
+// cfg.SystemPrompt is NOT a top-precedence override: a healthy active persona
+// always wins over it, matching the semantics that the settings prompt edits
+// the generic persona instead of shadowing every persona.
 //
 // Manually activated skills (loaded by the agent via skill()) are injected
 // with their full content under the "Activated skill" label.
@@ -32,33 +42,7 @@ import (
 // startup directive instructing the agent to call skill() for each one,
 // establishing commitment through the tool-call result.
 func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *skills.Service) (string, error) {
-	systemPrompt := cfg.SystemPrompt
-	var personaRequiredSkills []string
-	if systemPrompt == "" {
-		// No user override; try active persona.
-		if cfg.ActivePersona != "" {
-			def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(cfg.HomeDir), cfg.ActivePersona)
-			if err != nil {
-				// Persona file missing or unreadable — warn and fall back to default.
-				// This handles the case where active_persona was set in config but the
-				// file was deleted later (e.g. UI mode). Batch mode validates the persona
-				// explicitly before calling StartRun/BatchRun.
-				slog.Warn("persona not found, falling back to default",
-					slog.String("persona", cfg.ActivePersona),
-					slog.Any("error", err),
-				)
-			} else {
-				if def.SystemPrompt != "" {
-					systemPrompt = def.SystemPrompt
-				}
-				personaRequiredSkills = def.RequiredSkills
-			}
-		}
-		// Fallback to built-in default.
-		if systemPrompt == "" {
-			systemPrompt = history.DefaultSystemPrompt
-		}
-	}
+	systemPrompt, personaRequiredSkills := resolveBasePrompt(cfg)
 
 	var fullSystemPrompt strings.Builder
 	fullSystemPrompt.WriteString(systemPrompt)
@@ -132,6 +116,55 @@ func buildSystemPrompt(cfg RunConfig, skillCtx sessionSkillContext, skillsSvc *s
 	}
 
 	return fullSystemPrompt.String(), nil
+}
+
+// resolveBasePrompt resolves the base (pre-appendix) system prompt and any
+// persona-required skills.
+//
+// A healthy active persona's prompt wins. When no persona is active, or the
+// active persona file is missing/corrupt (broken-persona fallback), the
+// generic persona is resolved from disk — its prompt is the "settings prompt"
+// mirrored to ~/.eitri/personas/generic.yaml — so the config's system_prompt
+// override is honoured consistently instead of being bypassed by a bare
+// built-in constant.
+func resolveBasePrompt(cfg RunConfig) (systemPrompt string, requiredSkills []string) {
+	// A healthy active persona's prompt wins over everything (including any
+	// settings prompt).
+	if cfg.ActivePersona != "" {
+		def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(cfg.HomeDir), cfg.ActivePersona)
+		if err != nil {
+			// Persona file missing or unreadable — warn and fall back to generic.
+			// This handles the case where active_persona was set in config but the
+			// file was deleted later (e.g. UI mode) or is corrupt.
+			slog.Warn("persona not found, falling back to generic",
+				slog.String("persona", cfg.ActivePersona),
+				slog.Any("error", err),
+			)
+		} else {
+			if def.SystemPrompt != "" {
+				return def.SystemPrompt, def.RequiredSkills
+			}
+			// Healthy persona with an empty prompt: use the built-in default but
+			// keep its required skills.
+			return persona.DefaultPrompt, def.RequiredSkills
+		}
+	}
+
+	// No valid active persona — resolve the generic persona from disk. Its
+	// prompt is the settings prompt; if unavailable (file missing/corrupt and
+	// no legacy config value), fall back to the built-in default.
+	def, err := persona.LoadWithHome(cfg.Workspace, resolveHomeDir(cfg.HomeDir), persona.GenericName)
+	var genericSkills []string
+	if err == nil {
+		genericSkills = def.RequiredSkills
+		if def.SystemPrompt != "" {
+			return def.SystemPrompt, def.RequiredSkills
+		}
+	}
+	if cfg.SystemPrompt != "" {
+		return cfg.SystemPrompt, genericSkills
+	}
+	return persona.DefaultPrompt, genericSkills
 }
 
 // buildLLMService resolves provider authentication, constructs an LLM service,

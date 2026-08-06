@@ -45,7 +45,7 @@ func promptSection(cfg *config.Config) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">System Prompt (session override)</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use the active persona's prompt.\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " / 4096 chars</span></summary><div class=\"form-group\"><label for=\"system_prompt\">Generic Persona Prompt</label> <textarea id=\"system_prompt\" name=\"system_prompt\" class=\"monospace-textarea\" rows=\"8\" placeholder=\"Leave empty to use the built-in default prompt.\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -71,7 +71,7 @@ func promptSection(cfg *config.Config) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " / 4096 chars</small></div><small class=\"hint\">Leave empty to use the active persona's prompt. This overrides the persona's system prompt for all sessions.</small></div></details>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " / 4096 chars</small></div><small class=\"hint\">The default prompt used when no persona is active, or when the active persona is missing or broken. Editing it updates the generic persona. When a custom persona is active, that persona's own prompt takes precedence.</small></div></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
