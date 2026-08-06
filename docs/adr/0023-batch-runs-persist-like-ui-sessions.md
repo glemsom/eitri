@@ -65,12 +65,14 @@ with the initial snapshot, every LLM call's trace is persisted.
 
 ### Session ID and title
 
-The session directory defaults to `batch-<unixnano>`. `EITRI_BATCH_SESSION_ID`
-overrides it so callers like the agent loop can name sessions meaningfully;
-the value is validated (non-empty, no path separators, no `..`) so it can
-never escape the sessions directory. Titles derive from the prompt with the
-same `session.TitlePreview` rule as UI sessions (issue #1038), falling back to
-the session ID for blank prompts.
+The batch session ID is auto-generated (like the UI) by the unified run-job
+ID helper — `runJobID` — which produces and path-safety-validates a
+`batch-<hex>` ID (no path separators, no `..`) for the on-disk sessions
+directory. The former `EITRI_BATCH_SESSION_ID` env override was removed by
+ADR-0025 (issue #1108); callers locate a batch session by the run's auto-
+generated `session_id`. Titles derive from the prompt with the same
+`session.TitlePreview` rule as UI sessions (issue #1038), falling back to the
+session ID for blank prompts.
 
 ### Retention and opt-out
 

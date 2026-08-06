@@ -21,25 +21,6 @@ import (
 	uisession "github.com/glemsom/eitri/internal/session"
 )
 
-// unsetEnv removes an environment variable for the duration of a test,
-// restoring the previous value (or absence) afterwards. Unlike t.Setenv it
-// can express "variable unset" (vs "set to empty"), which matters for
-// EITRI_BATCH_SESSION_ID where unset means default.
-func unsetEnv(t *testing.T, key string) {
-	t.Helper()
-	old, had := os.LookupEnv(key)
-	if err := os.Unsetenv(key); err != nil {
-		t.Fatalf("Unsetenv(%s): %v", key, err)
-	}
-	t.Cleanup(func() {
-		if had {
-			_ = os.Setenv(key, old)
-		} else {
-			_ = os.Unsetenv(key)
-		}
-	})
-}
-
 // batchTestPersister builds a Persister on a temp dir wired to the debug
 // recorder exactly as cmd/eitri/main.go does in batch mode.
 func batchTestPersister(t *testing.T, rec *debug.Recorder) *persist.Persister {
@@ -117,7 +98,8 @@ func batchRunConfig(baseURL, workspace string) RunConfig {
 // running status), a terminal snapshot with idle status, per-call HTTP
 // traces, and a completed timeline — all in the existing UI session shape.
 func TestBatchRun_PersistsSessionTrail(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-batch")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-batch"
 	workspace := t.TempDir()
 
 	rec := debug.NewRecorder(20)
@@ -126,6 +108,7 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	// Capture the snapshot at a deterministic mid-run point: the moment the
@@ -282,7 +265,8 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 // async trace queue is drained (as main.go's failure path now does) so no
 // queued traces are dropped. The timeline records the error termination.
 func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-fail")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-fail"
 	workspace := t.TempDir()
 
 	rec := debug.NewRecorder(20)
@@ -291,6 +275,7 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	var reqs int
@@ -371,7 +356,8 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 // the run starts so the agent loop aborts on its very first ctx.Err() check —
 // deterministic, no hanging-stream timing involved.
 func TestBatchRun_CancelledTermination(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-cancel")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-cancel"
 	workspace := t.TempDir()
 
 	rec := debug.NewRecorder(20)
@@ -380,6 +366,7 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	cfg := batchRunConfig(unreachableURL(t), workspace)
@@ -425,7 +412,8 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 // TestBatchRun_MaxTurnsTermination verifies a batch run that exhausts its
 // turn budget records the max_turns termination reason.
 func TestBatchRun_MaxTurnsTermination(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-maxturns")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-maxturns"
 	workspace := t.TempDir()
 
 	rec := debug.NewRecorder(20)
@@ -434,6 +422,7 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	// Every turn requests another tool call, so the run always hits the cap.
@@ -471,62 +460,6 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	}
 }
 
-// TestBatchSessionID verifies the session ID resolution: default
-// batch-<unixnano>, valid env override, and rejection of path separators and
-// ".." in the override.
-func TestBatchSessionID(t *testing.T) {
-	t.Run("defaults to batch-unixnano", func(t *testing.T) {
-		unsetEnv(t, "EITRI_BATCH_SESSION_ID")
-		id, err := batchSessionID()
-		if err != nil {
-			t.Fatalf("batchSessionID: %v", err)
-		}
-		if !strings.HasPrefix(id, "batch-") {
-			t.Errorf("id = %q, want batch- prefix", id)
-		}
-	})
-
-	t.Run("valid override", func(t *testing.T) {
-		t.Setenv("EITRI_BATCH_SESSION_ID", "issue-42")
-		id, err := batchSessionID()
-		if err != nil {
-			t.Fatalf("batchSessionID: %v", err)
-		}
-		if id != "issue-42" {
-			t.Errorf("id = %q, want %q", id, "issue-42")
-		}
-	})
-
-	t.Run("explicitly empty override rejected", func(t *testing.T) {
-		t.Setenv("EITRI_BATCH_SESSION_ID", "")
-		if _, err := batchSessionID(); err == nil {
-			t.Error("batchSessionID() with set-but-empty override succeeded, want validation error")
-		}
-	})
-
-	for _, bad := range []string{"a/b", `a\b`, "..", "../escape", "a..b"} {
-		t.Run("invalid "+bad, func(t *testing.T) {
-			t.Setenv("EITRI_BATCH_SESSION_ID", bad)
-			if _, err := batchSessionID(); err == nil {
-				t.Errorf("batchSessionID(%q) succeeded, want validation error", bad)
-			}
-		})
-	}
-}
-
-// TestBatchRun_InvalidSessionIDEnvRejected verifies BatchRun surfaces the
-// validation error for an invalid EITRI_BATCH_SESSION_ID before any LLM call.
-func TestBatchRun_InvalidSessionIDEnvRejected(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "a/b")
-	svc, _ := newRunServiceForTest(t)
-	cfg := RunConfig{ProviderID: "opencode_go", ModelName: "m", BaseURL: "http://127.0.0.1:1"}
-	if _, err := svc.BatchRun(context.Background(), "hello", cfg, &bytes.Buffer{}); err == nil {
-		t.Fatal("expected validation error for invalid EITRI_BATCH_SESSION_ID")
-	} else if !strings.Contains(err.Error(), "EITRI_BATCH_SESSION_ID") {
-		t.Fatalf("error = %v, want EITRI_BATCH_SESSION_ID validation error", err)
-	}
-}
-
 // TestBatchTitle verifies title derivation uses the UI rule (session.TitlePreview)
 // with a fallback to the session ID for blank prompts.
 func TestBatchTitle(t *testing.T) {
@@ -557,7 +490,8 @@ func TestBatchTitle(t *testing.T) {
 // existing retention policy: session.json is never pruned while traces and
 // timelines are evicted under the global cap.
 func TestBatchSession_RetentionInteraction(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-retention")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-retention"
 	workspace := t.TempDir()
 
 	rec := debug.NewRecorder(20)
@@ -566,6 +500,7 @@ func TestBatchSession_RetentionInteraction(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	llm := twoTurnLLM(t, nil)

@@ -298,7 +298,6 @@ func TestBuildRunRequest_MaxOutputTokensAndPromptCacheKey(t *testing.T) {
 // prompt_cache_key to the LLM — previously ignored by batch mode (issue #1091).
 func TestBatchRun_AppliesMaxOutputTokensAndPromptCacheKey(t *testing.T) {
 	const batchID = "test-batch-max-tokens"
-	t.Setenv(batchSessionIDEnv, batchID)
 
 	var sawMaxTokens, sawPromptCacheKey bool
 	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +317,7 @@ func TestBatchRun_AppliesMaxOutputTokensAndPromptCacheKey(t *testing.T) {
 
 	svc := NewRunService(RunServiceDeps{
 		HistorySessionMgr: history.NewSessionManager(50),
+		NewRunID:          fixedRunID(batchID),
 	})
 	cfg := RunConfig{
 		ProviderID:      "opencode_go",

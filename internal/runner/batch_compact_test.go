@@ -112,7 +112,8 @@ func hasCompactedMessage(msgs []message.Message) bool {
 // summary before the next LLM request, and the session.json snapshot reflects
 // the compacted history on disk (issue #1093).
 func TestBatchRun_AutoCompaction(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-batch-compact")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-batch-compact"
 	workspace := t.TempDir()
 	bigLinePrefix := writeHugeFile(t, workspace)
 
@@ -122,13 +123,14 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	var turn2Body string
 	var midRun *uisession.UISession
 	llm := batchCompactLLMServer(t, func(body string) {
 		turn2Body = body
-		data, err := persister.LoadSession("test-batch-compact")
+		data, err := persister.LoadSession(batchID)
 		if err != nil || data == nil {
 			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", data, err)
 			return
@@ -181,7 +183,7 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 	}
 
 	// The terminal snapshot also reflects the compacted history.
-	data, err := persister.LoadSession("test-batch-compact")
+	data, err := persister.LoadSession(batchID)
 	if err != nil || data == nil {
 		t.Fatalf("LoadSession: %v, %v", data, err)
 	}
@@ -199,7 +201,8 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 // blows past the context window keeps its full tool output in the next LLM
 // request and in the snapshot.
 func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
-	t.Setenv("EITRI_BATCH_SESSION_ID", "test-batch-nocompact")
+	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
+	const batchID = "test-batch-nocompact"
 	workspace := t.TempDir()
 	bigLinePrefix := writeHugeFile(t, workspace)
 
@@ -209,6 +212,7 @@ func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
 		HistorySessionMgr: history.NewSessionManager(50),
 		DebugRecorder:     rec,
 		Persister:         persister,
+		NewRunID:          fixedRunID(batchID),
 	})
 
 	var turn2Body string
@@ -230,7 +234,7 @@ func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
 	if strings.Contains(turn2Body, "[TOOL RESULT COMPACTED") {
 		t.Error("turn-2 request contains a compacted marker despite compaction being disabled")
 	}
-	data, err := persister.LoadSession("test-batch-nocompact")
+	data, err := persister.LoadSession(batchID)
 	if err != nil || data == nil {
 		t.Fatalf("LoadSession: %v, %v", data, err)
 	}

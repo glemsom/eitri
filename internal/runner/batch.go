@@ -36,14 +36,11 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		return "", errors.New("provider not configured: set base_url and model in settings")
 	}
 
-	// Resolve the session ID for this batch run: default batch-<unixnano>,
-	// overridable via EITRI_BATCH_SESSION_ID (validated so it cannot escape
-	// the sessions directory). The ID names the persisted session directory
-	// (~/.eitri/sessions/<id>/) and the in-memory history session.
-	batchID, err := batchSessionID()
-	if err != nil {
-		return "", err
-	}
+	// Auto-generate the session ID for this batch run through the unified
+	// run-job ID helper (ADR-0025, issue #1108). The ID is path-safety validated
+	// and names the persisted session directory (~/.eitri/sessions/<id>/) and the
+	// in-memory history session. EITRI_BATCH_SESSION_ID is no longer honoured.
+	batchID := s.newRunID(runJobRoleBatch)
 	batchStartedAt := time.Now()
 	rootDir := "~/.eitri"
 	if s.persister != nil {
