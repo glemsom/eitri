@@ -34,7 +34,11 @@ jobs:
           fi
           echo "Version verified: v$FILE_VERSION"
 
-      - name: Run tests (test gate before publishing)
+      # Test gate before publishing: fast unit suite under the race detector.
+      # Browser E2E is build-tagged `e2e` and excluded from `make test-race`, so
+      # the release gate no longer drags slow browser tests through -race
+      # (issue #1122).
+      - name: Run unit tests (test gate before publishing)
         run: make test-race
 
       - name: Build release tarballs

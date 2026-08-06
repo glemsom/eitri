@@ -1,3 +1,5 @@
+//go:build e2e
+
 package api_test
 
 import (
@@ -8,9 +10,9 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// TestLightTheme verifies that prefers-color-scheme: light activates the light
+// TestBrowser_LightTheme verifies that prefers-color-scheme: light activates the light
 // theme — CSS custom properties are overridden to light palette values (issue #977).
-func TestLightTheme(t *testing.T) {
+func TestBrowser_LightTheme(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := newBrowserCtx(t, srv.URL)
 	defer cancel()
@@ -64,7 +66,7 @@ func TestLightTheme(t *testing.T) {
 // prefers-color-scheme: dark is active (issue #977).
 // The CSS defines dark values in :root (base) and light values in
 // @media (prefers-color-scheme: light), so dark is the default.
-func TestDarkThemeDefault(t *testing.T) {
+func TestBrowser_DarkThemeDefault(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := newBrowserCtx(t, srv.URL)
 	defer cancel()
@@ -108,7 +110,7 @@ func TestDarkThemeDefault(t *testing.T) {
 // TestLightThemeColorSchemeMeta verifies that the page sets the color-scheme
 // meta tag so native controls (scrollbars, form inputs) follow the OS theme
 // (issue #977).
-func TestLightThemeColorSchemeMeta(t *testing.T) {
+func TestBrowser_LightThemeColorSchemeMeta(t *testing.T) {
 	srv := newTestServer(t)
 	ctx, cancel := newBrowserCtx(t, srv.URL)
 	defer cancel()
