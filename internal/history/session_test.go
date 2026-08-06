@@ -7,6 +7,7 @@ import (
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persona"
 )
 
 func TestSessionManager_CreateAndGet(t *testing.T) {
@@ -353,6 +354,15 @@ func TestSessionManager_AppendUserMultiblock(t *testing.T) {
 }
 
 // helpers
+
+// TestDefaultSystemPromptIsGenericPersona guards against re-introducing a
+// second, divergent default system prompt. history.DefaultSystemPrompt must
+// resolve to the single canonical source in the persona package.
+func TestDefaultSystemPromptIsGenericPersona(t *testing.T) {
+	if DefaultSystemPrompt != persona.DefaultPrompt {
+		t.Error("history.DefaultSystemPrompt diverged from persona.DefaultPrompt; keep a single canonical default")
+	}
+}
 
 func TestRepairPendingToolUse_ClosesTrailingAssistantToolCall(t *testing.T) {
 	msgs := []message.EitriMessage{
