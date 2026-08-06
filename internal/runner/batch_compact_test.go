@@ -383,14 +383,15 @@ func TestSubAgentTurnCompletion_Compaction(t *testing.T) {
 	cfg.CompactionThresholdPercent = 50 // high-water 500 < ~1250-token tool result
 	cfg.CompactionLowWaterPercent = 10
 
-	sn := &subAgentSnapshotter{
-		svc:       svc,
-		taskID:    "sub-compact",
-		parentID:  "parent-1",
-		title:     "task",
-		startedAt: time.Now(),
-		cfg:       cfg,
-		req:       req,
+	sn := &runCompleter{
+		svc:        svc,
+		historyMgr: loop.NewRequestHistoryManager(req),
+		id:         "sub-compact",
+		parentID:   "parent-1",
+		title:      "task",
+		workspace:  cfg.Workspace,
+		startedAt:  time.Now(),
+		cfg:        cfg,
 	}
 
 	sn.OnTurnComplete(context.Background(), "sub-compact")
@@ -469,14 +470,15 @@ func TestSubAgentTurnCompletion_NoCompactionWhenDisabled(t *testing.T) {
 	cfg.ContextWindowTokens = 1000
 	cfg.CompactionThresholdPercent = 50
 
-	sn := &subAgentSnapshotter{
-		svc:       svc,
-		taskID:    "sub-nocompact",
-		parentID:  "parent-1",
-		title:     "task",
-		startedAt: time.Now(),
-		cfg:       cfg,
-		req:       req,
+	sn := &runCompleter{
+		svc:        svc,
+		historyMgr: loop.NewRequestHistoryManager(req),
+		id:         "sub-nocompact",
+		parentID:   "parent-1",
+		title:      "task",
+		workspace:  cfg.Workspace,
+		startedAt:  time.Now(),
+		cfg:        cfg,
 	}
 
 	sn.OnTurnComplete(context.Background(), "sub-nocompact")

@@ -93,18 +93,31 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	sessionMgr.AppendUser(batchID, prompt)
 	defer sessionMgr.Close(batchID)
 
+	// Build the unified run-completer and its conversation source (the shared
+	// loop.HistoryManager seam, session-manager-backed for batch/UI runs). It
+	// drives per-turn snapshots + auto-compaction, the initial snapshot, the
+	// terminal snapshot, and the run timeline (issue #1107).
+	historyMgr := loop.NewSessionHistoryManager(sessionMgr, batchID)
+	completer := &runCompleter{
+		svc:          s,
+		historyMgr:   historyMgr,
+		id:           batchID,
+		title:        title,
+		systemPrompt: fullSystemPrompt,
+		workspace:    workspace,
+		startedAt:    batchStartedAt,
+		cfg:          cfg,
+	}
+
 	// Initial snapshot so the batch session's session.json exists before the
 	// first LLM call completes. SaveTrace skips sessions without a snapshot
 	// (treated as permanently deleted), so without this the first turn's HTTP
 	// traces would be silently dropped (issue #1039).
-	s.batchSnapshot(sessionMgr, batchID, uisession.StatusRunning, title, workspace, fullSystemPrompt, batchStartedAt)
+	completer.persist(uisession.StatusRunning)
 
 	// Store parent config so sub-agents can look up provider/model settings
 	s.subagents.StoreParentCfg(batchID, cfg)
 	defer s.subagents.DeleteParentCfg(batchID)
-
-	// Wrap in a sessionHistoryManager (same adapter the UI path uses)
-	historyAdapter := loop.NewSessionHistoryManager(sessionMgr, batchID)
 
 	// Create SSE state and writer (for use by RunAgent)
 	sseState := runstate.New()
@@ -148,23 +161,6 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 
 	// Track turns for conversation context
 	var turns int
-	runID := runstate.GenerateRunID(batchID, batchStartedAt)
-
-	// Per-turn snapshot + auto-compaction seam: after each complete agent turn
-	// the batch run's conversation is persisted to disk as session.json (issue
-	// #1039) and, when the configured high-water mark is exceeded, compacted
-	// via the same shared step as UI runs (issue #1093) — no agent-loop
-	// changes.
-	turnCompleter := &batchTurnCompleter{
-		svc:          s,
-		sessionMgr:   sessionMgr,
-		sessionID:    batchID,
-		title:        title,
-		workspace:    workspace,
-		systemPrompt: fullSystemPrompt,
-		createdAt:    batchStartedAt,
-		cfg:          cfg,
-	}
 
 	runErr := loop.RunAgent(runCtx, loop.RunSpec{
 		Client:     llmSvc,
@@ -174,11 +170,11 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		SSEWriter:  w,
 		Tools:      toolReg,
 	}, loop.RunOpts{
-		HistoryMgr:       historyAdapter,
+		HistoryMgr:       historyMgr,
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        batchID,
-		RunID:            runID,
+		RunID:            runstate.GenerateRunID(batchID, batchStartedAt),
 		ContextWindow:    cfg.ContextWindowTokens,
 		CrashDumpFunc:    s.crashDumpFunc,
 		Turns:            &turns,
@@ -187,7 +183,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		CalibrationStore: s.calibrationStore,
 		ModelName:        cfg.ModelName,
 		RetryPolicy:      &cfg.RetryPolicy,
-		TurnCompleter:    turnCompleter,
+		TurnCompleter:    completer,
 	})
 
 	// If streams are still open (e.g., RunAgent returned early due to context
@@ -229,8 +225,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	if runErr != nil {
 		status = uisession.StatusError
 	}
-	s.batchSnapshot(sessionMgr, batchID, status, title, workspace, fullSystemPrompt, batchStartedAt)
-	s.persistRunTimeline(batchID, runID, batchStartedAt, sseState, cfg, batchTermination(runErr, runCtx))
+	completer.terminal(sseState, status, batchTermination(runErr, runCtx))
 
 	return content, runErr
 }
