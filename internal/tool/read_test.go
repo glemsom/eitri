@@ -20,6 +20,13 @@ func TestRead_Schema(t *testing.T) {
 	if tool.Description() == "" {
 		t.Error("Description should not be empty")
 	}
+	desc := tool.Description()
+	if !strings.Contains(desc, "capped at") {
+		t.Errorf("Description should state an explicit output cap, got %q", desc)
+	}
+	if !strings.Contains(desc, "1-100") {
+		t.Errorf("Description should state the default line range (1-100), got %q", desc)
+	}
 	schema := tool.JSONSchema()
 	if schema == nil {
 		t.Fatal("JSONSchema is nil")

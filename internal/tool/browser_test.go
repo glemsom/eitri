@@ -464,6 +464,19 @@ func TestBrowser_TypeAction_NoSessionID(t *testing.T) {
 	}
 }
 
+func TestBrowser_GetDomCapsInDescription(t *testing.T) {
+	t.Parallel()
+	tool := NewBrowserTool("ws://test", "/tmp")
+	desc := tool.Description()
+	if !strings.Contains(desc, "get_dom") {
+		t.Error("Description should mention the get_dom action")
+	}
+	schemaJSON := string(tool.JSONSchema())
+	if !strings.Contains(schemaJSON, "32k") || !strings.Contains(schemaJSON, "24k") {
+		t.Errorf("schema should state get_dom char caps (32k/24k), got %q", schemaJSON)
+	}
+}
+
 func TestBrowser_TypeAction_ActionNameInDescription(t *testing.T) {
 	t.Parallel()
 	tool := NewBrowserTool("ws://test", "/tmp")
