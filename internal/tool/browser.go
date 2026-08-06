@@ -385,27 +385,32 @@ func (t *NativeBrowserTool) getOrCreateAllocator(sessionID string) (context.Cont
 	return allocCtx, nil
 }
 
-// EndSession closes the allocator connection for the given session ID,
-// and releases all cached target contexts (without closing the target tabs).
-// Called by the agent loop when a session ends.
+// EndSession forgets the CDP allocator and per-tab contexts for the given
+// session ID. It deliberately does NOT cancel any of the underlying chromedp
+// contexts: in chromedp, cancelling a context closes the browser tab it owns
+// (NewContext's cancel goroutine issues target.CloseTarget, and the remote
+// allocator cascades Cancel on ctx.Done). EndSession must therefore only drop
+// the references so the session's tabs stay open across run boundaries, for
+// both newly-opened tabs and pre-existing tabs attached via WithTargetID.
+//
+// Trade-off: the Chrome DevTools websocket stays connected until the tool
+// instance is torn down, so a browser-using run leaves one connection open
+// while that run's tool is alive (the far lighter concern than closing tabs;
+// if tab-preservation across run end were not required, cancelling here would
+// free that connection). Called by the agent loop when a session ends.
 func (t *NativeBrowserTool) EndSession(sessionID string) {
-	// Release all cached target contexts for this session
+	// Forget all cached target contexts for this session without cancelling
+	// them, so tabs (whether newly opened or pre-existing ones attached via
+	// WithTargetID) are not closed.
 	t.targetsMu.Lock()
-	if targets, ok := t.targets[sessionID]; ok {
-		for _, tc := range targets {
-			tc.cancel()
-		}
-		delete(t.targets, sessionID)
-	}
+	delete(t.targets, sessionID)
 	t.targetsMu.Unlock()
 
+	// Drop the allocator reference without calling conn.cancel(), which
+	// would cascade through chromedp and close every tab under the allocator.
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if conn, exists := t.conns[sessionID]; exists {
-		conn.cancel()
-		delete(t.conns, sessionID)
-	}
+	delete(t.conns, sessionID)
+	t.mu.Unlock()
 }
 
 // getOrCreateTargetCtx returns a cached chromedp context for the given target
