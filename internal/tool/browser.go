@@ -125,7 +125,8 @@ func actionSchema[T any]() JSONSchema {
 // {"action": ..., "args": {...}} is unchanged.
 func buildBrowserSchema() (litellm.Schema, error) {
 	argsDesc := "Action-specific parameters. The required fields depend on 'action' — each action has its own typed schema: " +
-		"list_targets (none), navigate {target_id, url, timeout?}, get_dom {target_id, selector?}, click {target_id, selector}, " +
+		"list_targets (none), navigate {target_id, url, timeout?}, get_dom {target_id, selector?} (selector mode capped at 32k chars; " +
+		"structural summary capped at 24k chars), click {target_id, selector}, " +
 		"type {target_id, selector, text}, screenshot {target_id}, new_tab (none), close_tab {target_id}, select {target_id, selector, value}, " +
 		"get_value {target_id, selector}. The selector field is called 'selector', not 'query'."
 

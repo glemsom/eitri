@@ -51,7 +51,7 @@ func (t *ReadTool) AppendAllowedPaths(paths ...string) {
 }
 
 func (t *ReadTool) Description() string {
-	return "Read a file from workspace. Use start_line/end_line from grep output. Defaults to lines 1-100. Metadata prefix shows total lines when truncated; continue reading with adjusted range."
+	return "Read a file from workspace. Use start_line/end_line from grep output. Defaults to lines 1-100; output is capped at the requested end_line range (max 100 lines unless overridden). Metadata prefix shows total lines when truncated; continue reading with adjusted range."
 }
 
 func (t *ReadTool) JSONSchema() litellm.Schema {

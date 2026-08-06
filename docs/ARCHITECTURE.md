@@ -358,13 +358,13 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 | `dispatch.go` | `NewRegistry()` — registry of tool handlers registered by name |
 | `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 8 KiB output cap (before pattern compression) |
 | `grep.go` | `GrepTool` — workspace-scoped grep with context lines |
-| `read.go` | `ReadTool` — read file with line info and hashes |
+| `read.go` | `ReadTool` — read file with line info and hashes; output capped at the requested line range (default 1-100) |
 | `write.go` | `WriteTool` — write file with workspace validation |
 | `edit.go` | `EditTool` — edit file with line-hash anchors |
 | `render_mermaid_diagram.go` | `RenderMermaidDiagram` — emit mermaid diagram data for server-side rendering |
 | `render_quick_replies.go` | `RenderQuickReplies` — emit suggestion chips for UI |
 | `web_fetch.go` | `WebFetchTool` — fetch a web page and convert to Markdown |
-| `browser.go` | `BrowserTool` (`NativeBrowserTool`) — control a remote Chrome via CDP (`list_targets`, `navigate`, `get_dom`, `click`, `type`, `screenshot`, `new_tab`, `close_tab`, `select`, `get_value`) |
+| `browser.go` | `BrowserTool` (`NativeBrowserTool`) — control a remote Chrome via CDP (`list_targets`, `navigate`, `get_dom`, `click`, `type`, `screenshot`, `new_tab`, `close_tab`, `select`, `get_value`); `get_dom` capped at 32k chars (selector mode) / 24k chars (structural summary) |
 | `skill.go` | `SkillTool` — delegate to `skills.Service` for Agent Skills activation |
 | `delegate.go` | `DelegateTool` — spawn a sub-agent in the background, returns task_id immediately |
 | `collect.go` | `CollectTool` — block until sub-agent tasks complete, returns structured JSON results |
