@@ -142,7 +142,7 @@ model service.
 | `internal/sandbox/sandbox_test.go` | Sandbox `BwrapIsUsable`, `WrapCommand` unit tests and integration tests (`TestWrapCommand_*` skip if bwrap not usable) |
 | `internal/runner/service_test.go`, `runconfig_test.go`, `loop_test.go`, `batch_test.go`, `batch_persist_test.go`, etc. | Runner service, run config, run loop, batch runs (incl. session snapshot/trace/timeline persistence, run-ID generation/validation), broadcasts |
 | `internal/debug/recorder_test.go`, `tracemeta_test.go` | HTTP trace recording/enrichment; run/turn correlation IDs, time-to-first-token, round-tripper stamping |
-| `internal/report/report_test.go` | Session report assembly, emission-order turn cards, user-message→turn attribution by timestamp (incl. array-order tie-break), turn↔trace ID joins, retry attempt surfacing, timestamp-heuristic fallback |
+| `internal/report/report_test.go` | Session report assembly, emission-order turn cards, user-message→turn attribution by timestamp (incl. array-order tie-break), empty-placeholder user-card removal, turn↔trace ID joins, retry attempt surfacing, timestamp-heuristic fallback |
 | `internal/timeline/timeline_test.go` | Timeline condensation, `llm_call` correlation events, run ID generation |
 | `internal/skills/skills_test.go` | Agent Skills discovery, shadowing, validation, resource caps |
 | `cmd/eitri/main_test.go` | CLI entry point, bind/warning behavior, HTTP connection timeouts (stalled-header conn reaping, streaming exempt from write deadlines) |

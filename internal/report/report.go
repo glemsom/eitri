@@ -545,6 +545,21 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 		}
 	}
 
+	// Drop empty placeholder user cards. buildReportFromTimeline inserts a
+	// synthetic user card before every assistant turn; when no real user
+	// message could be attributed to a turn (e.g. after compaction, or a turn
+	// with no preceding prompt), that card stays empty and renders as noise.
+	// Remove such cards so only user messages with actual matched content
+	// render (issue #1160).
+	turns := make([]Turn, 0, len(report.Turns))
+	for _, t := range report.Turns {
+		if t.Role == "user" && t.Content == "" {
+			continue
+		}
+		turns = append(turns, t)
+	}
+	report.Turns = turns
+
 	return report
 }
 
