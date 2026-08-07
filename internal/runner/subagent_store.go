@@ -1,9 +1,9 @@
 package runner
 
 import (
-	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 )
 
 // subagentStore manages sub-agent lifecycle — spawning records, collection,
@@ -12,15 +12,35 @@ type subagentStore struct {
 	mu     sync.Mutex
 	agents map[string]*subAgentRecord
 
+	// reapTTL is how long after a sub-agent finishes its in-memory record is
+	// retained before being reaped. Defaults to subAgentReapTTL; tests shrink it
+	// to exercise the post-reap collect path (issue #1200).
+	reapTTL time.Duration
+
+	// completed holds the durable result of every sub-agent that reached a
+	// terminal state. Unlike agents, entries here are NOT deleted by the TTL
+	// reap, so a parent may collect a completed sub-agent's result even after
+	// its in-memory record has been reaped (issue #1200).
+	completed map[string]completedResult
+
 	// Parent run configs per session (for sub-agent setup)
 	parentCfgMu sync.Mutex
 	parentCfgs  map[string]RunConfig
 }
 
+// completedResult is a durable terminal sub-agent result, retaining the
+// parent session so session-scoped cleanup can reclaim it.
+type completedResult struct {
+	sessionID string
+	result    SubAgentResult
+}
+
 func newSubagentStore() *subagentStore {
 	return &subagentStore{
 		agents:     make(map[string]*subAgentRecord),
+		completed:  make(map[string]completedResult),
 		parentCfgs: make(map[string]RunConfig),
+		reapTTL:    subAgentReapTTL,
 	}
 }
 
@@ -38,19 +58,22 @@ func (ss *subagentStore) getRecord(taskID string) *subAgentRecord {
 	return ss.agents[taskID]
 }
 
-// getRecords returns sub-agent records for the given task IDs.
-func (ss *subagentStore) getRecords(taskIDs []string) (map[string]*subAgentRecord, error) {
+// storeCompletedResult records the durable result of a terminal sub-agent
+// alongside its parent session. It survives the TTL reap so a later collect
+// still returns the result (issue #1200).
+func (ss *subagentStore) storeCompletedResult(sessionID, taskID string, result SubAgentResult) {
+	ss.mu.Lock()
+	ss.completed[taskID] = completedResult{sessionID: sessionID, result: result}
+	ss.mu.Unlock()
+}
+
+// getCompletedResult returns a previously-committed terminal sub-agent result
+// and whether one exists (i.e. the task was a real sub-agent that has finished).
+func (ss *subagentStore) getCompletedResult(taskID string) (SubAgentResult, bool) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	records := make(map[string]*subAgentRecord, len(taskIDs))
-	for _, tid := range taskIDs {
-		rec, exists := ss.agents[tid]
-		if !exists {
-			return nil, fmt.Errorf("unknown task_id: %s", tid)
-		}
-		records[tid] = rec
-	}
-	return records, nil
+	res, ok := ss.completed[taskID]
+	return res.result, ok
 }
 
 // CancelForSession cancels all in-flight sub-agents for a given parent session.
@@ -93,11 +116,20 @@ func (ss *subagentStore) GetParentCfg(sessionID string) (RunConfig, bool) {
 	return cfg, ok
 }
 
-// DeleteParentCfg removes the parent run config for a session.
+// DeleteParentCfg removes the parent run config for a session and reclaims
+// that session's completed sub-agent results.
 func (ss *subagentStore) DeleteParentCfg(sessionID string) {
 	ss.parentCfgMu.Lock()
 	delete(ss.parentCfgs, sessionID)
 	ss.parentCfgMu.Unlock()
+
+	ss.mu.Lock()
+	for taskID, cr := range ss.completed {
+		if cr.sessionID == sessionID {
+			delete(ss.completed, taskID)
+		}
+	}
+	ss.mu.Unlock()
 }
 
 // CollectResults wraps subAgentRecordToResult for a found record.

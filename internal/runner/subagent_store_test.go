@@ -44,33 +44,61 @@ func TestSubagentStore_StoreAndGetRecord(t *testing.T) {
 	}
 }
 
-func TestSubagentStore_GetRecords(t *testing.T) {
+func TestSubagentStore_CompletedResult(t *testing.T) {
 	ss := newSubagentStore()
 
-	// getRecords returns error for unknown task ID
-	_, err := ss.getRecords([]string{"unknown"})
-	if err == nil {
-		t.Fatal("expected error for unknown task ID")
+	// getCompletedResult returns absent for unknown task
+	if _, ok := ss.getCompletedResult("unknown"); ok {
+		t.Fatal("getCompletedResult should return absent for unknown task")
 	}
 
-	// getRecords returns all known records
-	rec1 := &subAgentRecord{TaskID: "task_1", SessionID: "sess-1", Done: make(chan struct{})}
-	rec2 := &subAgentRecord{TaskID: "task_2", SessionID: "sess-1", Done: make(chan struct{})}
-	ss.storeRecord("task_1", rec1)
-	ss.storeRecord("task_2", rec2)
+	res := SubAgentResult{Status: "completed", Result: "fact", TurnCount: 3}
+	ss.storeCompletedResult("sess-1", "task_1", res)
 
-	records, err := ss.getRecords([]string{"task_1", "task_2"})
-	if err != nil {
-		t.Fatalf("getRecords: %v", err)
+	got, ok := ss.getCompletedResult("task_1")
+	if !ok {
+		t.Fatal("getCompletedResult should return present after store")
 	}
-	if len(records) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(records))
+	if got != res {
+		t.Fatalf("completed result = %+v, want %+v", got, res)
 	}
+}
 
-	// Error if one is unknown
-	_, err = ss.getRecords([]string{"task_1", "unknown"})
-	if err == nil {
-		t.Fatal("expected error when one task ID is unknown")
+func TestSubagentStore_CompletedResult_SurvivesReap(t *testing.T) {
+	ss := newSubagentStore()
+
+	rec := &subAgentRecord{TaskID: "task_1", SessionID: "sess-1", Status: subAgentCompleted,
+		Result: "done", TurnCount: 2, Done: make(chan struct{})}
+	rec.finish()
+	ss.storeRecord("task_1", rec)
+	ss.storeCompletedResult("sess-1", "task_1", subAgentRecordToResult(rec))
+
+	// Reap removes the live record but not the durable completed result.
+	ss.reapAfterTTL("task_1")
+	if ss.getRecord("task_1") != nil {
+		t.Fatal("record should be removed after reap")
+	}
+	got, ok := ss.getCompletedResult("task_1")
+	if !ok {
+		t.Fatal("completed result should survive the reap")
+	}
+	if got.Status != "completed" || got.Result != "done" || got.TurnCount != 2 {
+		t.Fatalf("completed result = %+v, want completed/done/2", got)
+	}
+}
+
+func TestSubagentStore_DeleteParentCfgCleansCompleted(t *testing.T) {
+	ss := newSubagentStore()
+
+	ss.storeCompletedResult("sess-1", "task_1", SubAgentResult{Status: "completed"})
+	ss.storeCompletedResult("sess-2", "task_2", SubAgentResult{Status: "completed"})
+
+	ss.DeleteParentCfg("sess-1")
+	if _, ok := ss.getCompletedResult("task_1"); ok {
+		t.Fatal("completed result for sess-1 should be cleaned up")
+	}
+	if _, ok := ss.getCompletedResult("task_2"); !ok {
+		t.Fatal("completed result for sess-2 should be retained")
 	}
 }
 
