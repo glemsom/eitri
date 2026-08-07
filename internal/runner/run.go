@@ -22,7 +22,6 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tool"
-	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // StartRun starts a new agent run for a session with an explicit RunConfig.
@@ -206,25 +205,27 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			RetryPolicy:      &cfg.RetryPolicy,
 		})
 		if err != nil {
-			if runCtx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Terminal status and termination reason come from the single exit
+			// taxonomy shared with the batch and sub-agent paths (ADR-0029):
+			// idle on cancellation / max-turns, error on true failure. The
+			// per-reason branches below keep only the transport-specific work
+			// (message appending, SSE events, crash dumps).
+			outcome := classifyRunExit(err, runCtx)
+			switch outcome.Termination.Reason {
+			case timeline.TerminationCancelled:
 				content := sseState.BufferString()
 				reasoningContent := sseState.ReasoningBufferString()
 				if content != "" {
 					s.appendToSession(sessionID, content, reasoningContent)
 				}
-				s.setSessionIdleAndSnapshot(sessionID)
-				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &timeline.TimelineTermination{
-					Reason:  timeline.TerminationCancelled,
-					Message: "Run cancelled by user or context deadline exceeded",
-				})
+				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
+				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				w.Error("Run cancelled")
 				return
-			}
 
-			var maxTurnsErr *loop.MaxTurnsExceededError
-			if errors.As(err, &maxTurnsErr) {
+			case timeline.TerminationMaxTurns:
 				content := sseState.BufferString()
-				limitMsg := uixt.MaxTurnsMessage(maxTurnsErr.Limit)
+				limitMsg := outcome.Termination.Message
 				if content == "" {
 					sseState.AppendBuffer(limitMsg)
 					content = limitMsg
@@ -235,38 +236,31 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				reasoningContent := sseState.ReasoningBufferString()
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), tokenizer.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
 				s.appendToSession(sessionID, content, reasoningContent)
-				s.setSessionIdleAndSnapshot(sessionID)
-				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &timeline.TimelineTermination{
-					Reason:  timeline.TerminationMaxTurns,
-					Message: limitMsg,
-				})
+				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
+				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
+				return
+
+			default:
+				// Fatal error — mark the session failed before persisting
+				// diagnostics so UI and disk snapshots do not stay running.
+				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
+				w.Error(err.Error())
+				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
+				if s.crashDumpFunc != nil {
+					s.crashDumpFunc(err, runtimeDebug.Stack())
+				}
 				return
 			}
-
-			// Fatal error not covered above — mark the session failed before
-			// persisting diagnostics so UI and disk snapshots do not stay running.
-			s.setSessionErrorAndSnapshot(sessionID)
-			w.Error(err.Error())
-			s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &timeline.TimelineTermination{
-				Reason:  timeline.TerminationError,
-				Message: err.Error(),
-			})
-			if s.crashDumpFunc != nil {
-				s.crashDumpFunc(err, runtimeDebug.Stack())
-			}
-			return
 		}
 
+		outcome := classifyRunExit(nil, runCtx)
 		content := sseState.BufferString()
 		reasoningContent := sseState.ReasoningBufferString()
 		if content != "" {
 			s.appendToSession(sessionID, content, reasoningContent)
 		}
-		s.setSessionIdleAndSnapshot(sessionID)
-		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, &timeline.TimelineTermination{
-			Reason:  timeline.TerminationCompleted,
-			Message: "",
-		})
+		s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
+		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 	}()
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
@@ -308,25 +302,11 @@ func (s *RunService) persistRunTimeline(sessionID, runID string, startedAt time.
 	}
 }
 
-// setSessionIdleAndSnapshot sets the session status to idle, persists
-// a snapshot to disk with the updated status, and broadcasts the status
-// change to browser subscribers. Must be called on every exit path that
-// persists the terminal state.
-//
-// This ensures the on-disk snapshot reflects the idle state (not "running")
-// which would otherwise happen if snapshotSession runs before the deferred
-// broadcastSessionStatusUpdate.
-func (s *RunService) setSessionIdleAndSnapshot(sessionID string) {
-	s.setSessionStatusAndSnapshot(sessionID, uisession.StatusIdle)
-}
-
-// setSessionErrorAndSnapshot sets the session status to error, persists
-// a snapshot to disk with the updated status, and broadcasts the status
-// change to browser subscribers.
-func (s *RunService) setSessionErrorAndSnapshot(sessionID string) {
-	s.setSessionStatusAndSnapshot(sessionID, uisession.StatusError)
-}
-
+// setSessionStatusAndSnapshot sets the session status, persists a snapshot to
+// disk with the updated status, and broadcasts the status change to browser
+// subscribers. The status comes from the shared exit taxonomy (ADR-0029); on
+// the UI exit paths it must be called before snapshotSession so the on-disk
+// snapshot reflects the terminal state (idle/error) instead of "running".
 func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisession.Status) {
 	if s.uiSessionMgr == nil {
 		s.snapshotSession(sessionID)

@@ -17,7 +17,6 @@ import (
 	"github.com/glemsom/eitri/internal/timeline"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
-	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // BatchRun runs a single prompt in headless batch mode.
@@ -217,14 +216,13 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	}
 
 	// Terminal snapshot + timeline on every exit path (success and failure).
-	// The snapshot reflects the final status: idle on success, error on any
-	// failure. The timeline carries the specific termination reason
-	// (completed / cancelled / max-turns / error) matching UI behaviour.
-	status := uisession.StatusIdle
-	if runErr != nil {
-		status = uisession.StatusError
-	}
-	completer.terminal(sseState, status, batchTermination(runErr, runCtx))
+	// The status and termination come from the single exit taxonomy shared by
+	// the UI, batch, and sub-agent transports (ADR-0029): idle on completion /
+	// cancellation / max-turns and error on true failure. The batch CLI exit
+	// code is unaffected — it is driven by the returned runErr, not the
+	// snapshot status.
+	outcome := classifyRunExit(runErr, runCtx)
+	completer.terminal(sseState, outcome.Status, outcome.Termination)
 
 	return content, runErr
 }
@@ -271,34 +269,6 @@ func (b *batchStreamer) closeThinking() {
 	}
 	_, _ = fmt.Fprint(b.out, thinkingCloseMarker)
 	b.inThinking = false
-}
-
-// batchTermination classifies a batch run's outcome into the timeline
-// termination reason, matching the UI exit paths (issue #1039).
-func batchTermination(runErr error, runCtx context.Context) *timeline.TimelineTermination {
-	switch {
-	case runErr == nil:
-		return &timeline.TimelineTermination{Reason: timeline.TerminationCompleted}
-
-	case runCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded):
-		return &timeline.TimelineTermination{
-			Reason:  timeline.TerminationCancelled,
-			Message: "Run cancelled by user or context deadline exceeded",
-		}
-
-	default:
-		var maxTurnsErr *loop.MaxTurnsExceededError
-		if errors.As(runErr, &maxTurnsErr) {
-			return &timeline.TimelineTermination{
-				Reason:  timeline.TerminationMaxTurns,
-				Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
-			}
-		}
-		return &timeline.TimelineTermination{
-			Reason:  timeline.TerminationError,
-			Message: runErr.Error(),
-		}
-	}
 }
 
 // extractLastMessages extracts the last user and assistant messages from the

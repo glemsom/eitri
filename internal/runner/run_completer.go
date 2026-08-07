@@ -4,7 +4,10 @@
 // snapshot of the run's conversation, runs the shared auto-compaction step,
 // and re-persists when compaction rewrites the history. On every exit path
 // (completed / cancelled / max-turns / error) it writes a terminal snapshot
-// and the run timeline.
+// and the run timeline. Terminal status is classified by the single exit
+// taxonomy in this file (classifyRunExit, ADR-0029), shared by the UI,
+// batch, and sub-agent transports: only true failures produce StatusError,
+// while cancellation, max-turns, and success produce StatusIdle.
 //
 // The conversation source is parameterized through the loop.HistoryManager
 // seam: session-manager-backed history for UI/batch runs
@@ -21,6 +24,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -30,6 +34,7 @@ import (
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/timeline"
+	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // runCompleter implements loop.TurnCompleter for UI, batch, and sub-agent
@@ -185,24 +190,72 @@ func stripLeadingSystemMessage(msgs []message.Message) []message.Message {
 }
 
 // terminal writes the terminal snapshot and the run timeline for the given
-// termination. The snapshot status is supplied by the caller so each run kind
-// keeps its established exit mapping: sub-agent runs end idle on
-// cancellation / max-turns and error on failure, while batch runs end error on
-// any non-nil run error (including cancellation) — matching UI exit paths and
-// the pre-unification behaviour (issue #1107).
+// termination. The status and termination come from the shared exit taxonomy
+// (classifyRunExit, ADR-0029) so every run kind — UI, batch, sub-agent — ends
+// with the same semantics: idle on completion / cancellation / max-turns and
+// error on failure.
 func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Status, termination *timeline.TimelineTermination) {
 	c.persist(status)
 	c.svc.persistRunTimeline(c.id, timeline.GenerateRunID(c.id, c.startedAt), c.startedAt, sseState, c.cfg, termination)
 }
 
-// runCompleterTerminalStatus maps a termination reason to the sub-agent terminal
-// snapshot status: idle on completion / cancellation / max-turns and error on
-// failure. Batch runs supply their own status (error on any non-nil run error).
-func runCompleterTerminalStatus(reason timeline.TerminationReason) uisession.Status {
-	if reason == timeline.TerminationError {
-		return uisession.StatusError
+// exitOutcome is the result of the single exit taxonomy (ADR-0029): a run's
+// terminal snapshot status paired with its timeline termination reason. The
+// UI, batch, and sub-agent transports all derive their terminal state from
+// classifyRunExit, so the same outcome classification is used everywhere.
+type exitOutcome struct {
+	Status      uisession.Status
+	Termination *timeline.TimelineTermination
+}
+
+// classifyRunExit is the single exit taxonomy shared by the UI, batch, and
+// sub-agent transports (ADR-0029). It classifies a finished run's error and
+// run context into the terminal snapshot status and the timeline termination
+// reason. Only true failures produce StatusError; cancellation, max-turns,
+// and success produce StatusIdle — aligning batch with the UI/sub-agent
+// semantics that previously diverged (issue #1107 introduced a batch-only
+// error status for cancelled / max-turns runs; #1202 realigns them).
+//
+// The classification order matches the pre-unification exit paths: a run
+// whose context was cancelled is reported as cancelled even when the returned
+// error is a different (wrapped) error; otherwise max-turns is recognized
+// before falling through to a generic error.
+func classifyRunExit(runErr error, runCtx context.Context) exitOutcome {
+	switch {
+	case runErr == nil:
+		return exitOutcome{
+			Status:      uisession.StatusIdle,
+			Termination: &timeline.TimelineTermination{Reason: timeline.TerminationCompleted},
+		}
+
+	case runCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded):
+		return exitOutcome{
+			Status: uisession.StatusIdle,
+			Termination: &timeline.TimelineTermination{
+				Reason:  timeline.TerminationCancelled,
+				Message: "Run cancelled by user or context deadline exceeded",
+			},
+		}
+
+	default:
+		var maxTurnsErr *loop.MaxTurnsExceededError
+		if errors.As(runErr, &maxTurnsErr) {
+			return exitOutcome{
+				Status: uisession.StatusIdle,
+				Termination: &timeline.TimelineTermination{
+					Reason:  timeline.TerminationMaxTurns,
+					Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
+				},
+			}
+		}
+		return exitOutcome{
+			Status: uisession.StatusError,
+			Termination: &timeline.TimelineTermination{
+				Reason:  timeline.TerminationError,
+				Message: runErr.Error(),
+			},
+		}
 	}
-	return uisession.StatusIdle
 }
 
 // buildUISession assembles the UISession facade from the conversation source's

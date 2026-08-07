@@ -395,7 +395,9 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationCancelled)
 	}
 
-	// The terminal snapshot reflects the failure with error status.
+	// The terminal snapshot reflects the cancellation as idle, matching the
+	// UI/sub-agent exit taxonomy — only true failures persist error status
+	// (ADR-0029, issue #1202).
 	data, err := persister.LoadSession("test-cancel")
 	if err != nil || data == nil {
 		t.Fatalf("LoadSession: %v, %v", data, err)
@@ -404,13 +406,14 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 	if err := json.Unmarshal(data, &final); err != nil {
 		t.Fatalf("unmarshal terminal snapshot: %v", err)
 	}
-	if final.Status != uisession.StatusError {
-		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusError)
+	if final.Status != uisession.StatusIdle {
+		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusIdle)
 	}
 }
 
 // TestBatchRun_MaxTurnsTermination verifies a batch run that exhausts its
-// turn budget records the max_turns termination reason.
+// turn budget records the max_turns termination reason and persists an idle
+// terminal snapshot (ADR-0029, issue #1202).
 func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	// Fixed ID via the injectable NewRunID seam (replaces EITRI_BATCH_SESSION_ID).
 	const batchID = "test-maxturns"
@@ -457,6 +460,21 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	}
 	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationMaxTurns {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationMaxTurns)
+	}
+
+	// The terminal snapshot reflects the max-turns stop as idle, matching the
+	// UI/sub-agent exit taxonomy — only true failures persist error status
+	// (ADR-0029, issue #1202).
+	data, loadErr := persister.LoadSession("test-maxturns")
+	if loadErr != nil || data == nil {
+		t.Fatalf("LoadSession: %v, %v", data, loadErr)
+	}
+	var final uisession.UISession
+	if err := json.Unmarshal(data, &final); err != nil {
+		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	}
+	if final.Status != uisession.StatusIdle {
+		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusIdle)
 	}
 }
 
@@ -542,45 +560,63 @@ func TestBatchSession_RetentionInteraction(t *testing.T) {
 	}
 }
 
-// TestBatchTermination verifies the exit-path classification for the batch
-// timeline matches UI behaviour (completed / cancelled / max-turns / error).
-func TestBatchTermination(t *testing.T) {
+// TestClassifyRunExit verifies the single exit taxonomy (ADR-0029, issue
+// #1202) shared by the UI, batch, and sub-agent transports: it classifies a
+// run outcome into the terminal snapshot status and the timeline termination
+// reason. Only true failures produce StatusError; cancellation, max-turns,
+// and success produce StatusIdle.
+func TestClassifyRunExit(t *testing.T) {
 	t.Run("completed", func(t *testing.T) {
-		term := batchTermination(nil, context.Background())
-		if term.Reason != timeline.TerminationCompleted {
-			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCompleted)
+		outcome := classifyRunExit(nil, context.Background())
+		if outcome.Status != uisession.StatusIdle {
+			t.Errorf("status = %q, want %q", outcome.Status, uisession.StatusIdle)
+		}
+		if outcome.Termination == nil || outcome.Termination.Reason != timeline.TerminationCompleted {
+			t.Errorf("termination = %+v, want reason %q", outcome.Termination, timeline.TerminationCompleted)
 		}
 	})
 	t.Run("cancelled via error", func(t *testing.T) {
-		term := batchTermination(context.Canceled, context.Background())
-		if term.Reason != timeline.TerminationCancelled {
-			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCancelled)
+		outcome := classifyRunExit(context.Canceled, context.Background())
+		if outcome.Status != uisession.StatusIdle {
+			t.Errorf("status = %q, want %q", outcome.Status, uisession.StatusIdle)
+		}
+		if outcome.Termination == nil || outcome.Termination.Reason != timeline.TerminationCancelled {
+			t.Errorf("termination = %+v, want reason %q", outcome.Termination, timeline.TerminationCancelled)
 		}
 	})
 	t.Run("cancelled via context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		term := batchTermination(errors.New("boom"), ctx)
-		if term.Reason != timeline.TerminationCancelled {
-			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationCancelled)
+		outcome := classifyRunExit(errors.New("boom"), ctx)
+		if outcome.Status != uisession.StatusIdle {
+			t.Errorf("status = %q, want %q", outcome.Status, uisession.StatusIdle)
+		}
+		if outcome.Termination == nil || outcome.Termination.Reason != timeline.TerminationCancelled {
+			t.Errorf("termination = %+v, want reason %q", outcome.Termination, timeline.TerminationCancelled)
 		}
 	})
 	t.Run("max turns", func(t *testing.T) {
-		term := batchTermination(&loop.MaxTurnsExceededError{Limit: 3}, context.Background())
-		if term.Reason != timeline.TerminationMaxTurns {
-			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationMaxTurns)
+		outcome := classifyRunExit(&loop.MaxTurnsExceededError{Limit: 3}, context.Background())
+		if outcome.Status != uisession.StatusIdle {
+			t.Errorf("status = %q, want %q", outcome.Status, uisession.StatusIdle)
 		}
-		if term.Message == "" {
+		if outcome.Termination == nil || outcome.Termination.Reason != timeline.TerminationMaxTurns {
+			t.Errorf("termination = %+v, want reason %q", outcome.Termination, timeline.TerminationMaxTurns)
+		}
+		if outcome.Termination.Message == "" {
 			t.Error("message is empty, want max-turns message")
 		}
 	})
 	t.Run("error", func(t *testing.T) {
-		term := batchTermination(errors.New("boom"), context.Background())
-		if term.Reason != timeline.TerminationError {
-			t.Errorf("reason = %q, want %q", term.Reason, timeline.TerminationError)
+		outcome := classifyRunExit(errors.New("boom"), context.Background())
+		if outcome.Status != uisession.StatusError {
+			t.Errorf("status = %q, want %q", outcome.Status, uisession.StatusError)
 		}
-		if term.Message != "boom" {
-			t.Errorf("message = %q, want %q", term.Message, "boom")
+		if outcome.Termination == nil || outcome.Termination.Reason != timeline.TerminationError {
+			t.Errorf("termination = %+v, want reason %q", outcome.Termination, timeline.TerminationError)
+		}
+		if outcome.Termination.Message != "boom" {
+			t.Errorf("message = %q, want %q", outcome.Termination.Message, "boom")
 		}
 	})
 }
