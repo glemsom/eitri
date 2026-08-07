@@ -13,6 +13,7 @@
 #   scripts/test.sh --e2e      # browser E2E only: go test -tags e2e -run '^TestBrowser' ./internal/api/
 #   scripts/test.sh --flaky    # cache-cleared, -cpu 1,2, -p 1 (flake reproduce)
 #   scripts/test.sh --race --flaky  # combine both
+#   scripts/test.sh --e2e --shuffle --repeat 2  # browser E2E regression gate: shuffled + repeated
 #
 # --e2e runs the slow chromedp browser E2E suite in internal/api, which is now
 # gated behind the `e2e` build tag (see docs/TESTING.md). It runs without the
@@ -23,17 +24,36 @@
 # clears the Go test cache and runs with a reduced/controlled CPU set and
 # sequential package execution. See docs/TESTING.md.
 #
+# --shuffle / --repeat form the browser-E2E regression gate (issue #1219):
+# --shuffle passes `-shuffle=on` (randomised test order) and --repeat N passes
+# `-count N` (each test runs N times), so single-test wall-clock races surface
+# on a PR instead of randomly breaking `main` after merge. Both flags combine
+# with --e2e and with each other; the browser-e2e CI job runs
+# `--e2e --shuffle --repeat 2`.
+#
 # Exit code mirrors `go test` (0 all pass, 1 failures, 2 build errors).
 set -uo pipefail
 
 RACE=0
 FLAKY=0
 E2E=0
+SHUFFLE=0
+REPEAT=0
 while [ "${1:-}" != "" ]; do
     case "$1" in
         --race)   RACE=1   ; shift ;;
         --e2e)    E2E=1    ; shift ;;
         --flaky)  FLAKY=1  ; shift ;;
+        --shuffle) SHUFFLE=1; shift ;;
+        --repeat)
+            case "${2:-}" in
+                ''|*[!0-9]*)
+                    echo "test.sh: --repeat requires a positive integer count (e.g. --repeat 2)" >&2
+                    exit 2
+                    ;;
+                *) REPEAT="$2"; shift 2 ;;
+            esac
+            ;;
         *)        echo "test.sh: unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -63,6 +83,16 @@ if [ "$FLAKY" -eq 1 ]; then
         LOG_NAME="test-flaky-output.log"
     fi
     EXTRA_FLAGS+=(-cpu 1,2 -p 1)
+fi
+if [ "$SHUFFLE" -eq 1 ]; then
+    # Randomise test order so order-dependent / wall-clock races surface
+    # (regression gate, issue #1219).
+    EXTRA_FLAGS+=(-shuffle=on)
+fi
+if [ "$REPEAT" -gt 0 ]; then
+    # Run each test N times so a single flaky pass cannot mask a timing race
+    # (regression gate, issue #1219).
+    EXTRA_FLAGS+=(-count "$REPEAT")
 fi
 ARTIFACT="$ROOT/$BUILD_DIR/$LOG_NAME"
 mkdir -p "$ROOT/$BUILD_DIR"

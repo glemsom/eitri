@@ -14,6 +14,9 @@ make test-race
 # Run the standalone browser E2E suite (chromedp, no race detector)
 make test-browser
 
+# Run the browser E2E regression gate (shuffled + repeated, matches CI)
+make test-browser-gate
+
 # Full release readiness gate (race unit suite + browser E2E)
 make release-check
 
@@ -36,12 +39,17 @@ suite separately with `make test-browser` (`go test -tags e2e -run '^TestBrowser
 which replaces the per-package boilerplate with a single verdict line.
 
 CI (`ci.yml`) runs two independent jobs (issue #1122): a fast `unit-test` job
-using `make test-race` and a standalone `browser-e2e` job using
-`make test-browser`. Releases (`release.yml`) use `make test-race` as the fast
-test gate, so a pushed branch/PR and a release-tag build both surface the same
-compact verdict and cache their full logs as task artifacts
-(`dist/test-race-output.log` / `dist/test-e2e-output.log`). The less common
-`make release-check` remains the documented full release gate (both suites).
+using `make test-race` and a standalone `browser-e2e` job. Since issue #1219
+the `browser-e2e` job is a **regression gate**: it runs the browser suite
+shuffled and repeated (`make test-browser-gate` =
+`scripts/test.sh --e2e --shuffle --repeat 2`, i.e. `-shuffle=on -count 2`) so
+a single-test wall-clock race surfaces on the PR instead of passing once and
+randomly breaking `main` after merge. Releases (`release.yml`) use
+`make test-race` as the fast test gate, so a pushed branch/PR and a
+release-tag build both surface the same compact verdict and cache their full
+logs as task artifacts (`dist/test-race-output.log` /
+`dist/test-e2e-output.log`). The less common `make release-check` remains the
+documented full release gate (both suites).
 
 ```
 VERDICT: FAIL 1/15 packages failed (14 passed, 2 failed test(s): TestLogin,TestWorkspace) in 47s — full log: dist/test-output.log
@@ -87,27 +95,49 @@ is teed to `dist/test-flaky-output.log`. Combine with the race detector via
 Use it when a test fails on CI but passes locally; if the flake surfaces here,
 you can iterate until it stops before pushing.
 
-### CI reproduce job (diagnostic, non-blocking)
+### CI reproduce job (mandatory, blocking)
 
-In addition to the mandatory `make test-race` gate, CI runs a diagnostic
-**`reproduce-flaky`** job on every push/PR (issue #1126). It runs the same
-constrained harness as `make test-flaky` — with the race detector enabled —
-so environment-driven flakes are flagged before they reach the main gate
-without failing the workflow:
+In addition to the mandatory `make test-race` gate, CI runs a mandatory
+**`reproduce-flaky`** job on every push/PR (issue #1126, promoted to a hard
+gate in #1219). It runs the same constrained harness as `make test-flaky` —
+with the race detector enabled — so environment-driven flakes block the merge
+instead of surfacing as a warning:
 
-- **Non-blocking.** The job has `continue-on-error: true`, so a flake surfaces
-  as a warning on the push/PR (and in the run log) without blocking a green
-  merge.
+- **Blocking.** The job has `continue-on-error: false`, so a flake fails the
+  push/PR. It was promoted from `continue-on-error: true` once the constrained
+  harness had provably caught environment-driven flakes (the #1127 audit's
+  leak/flake symptoms and the #1217/#1218 constrained-harness reproductions);
+  the step semantics and artifact upload are unchanged — only the blocking
+  behaviour flipped.
 - **Artifact.** The raw log is uploaded as the **`test-race-flaky-output.log`**
   artifact on every run (success or failure) for offline inspection, via
   `scripts/test.sh --race --flaky` (log: `dist/test-race-flaky-output.log`).
 
-**Promoting to a hard gate.** Once the job has demonstrably caught a real
-flake and the underlying tests have been de-flaked, promote it to mandatory
-gating by flipping `continue-on-error: true` to `continue-on-error: false` on
-the `reproduce-flaky` job in `.github/workflows/ci.yml`. The job's step
-semantics and artifact upload are unchanged—only the blocking behaviour
-flips.
+### Browser E2E regression gate (`make test-browser-gate`)
+
+The `browser-e2e` CI job is the deterministic gate for the browser E2E timing
+flakes (lazy-lib deadline expiry, stale CDP node, unrendered response) that
+repeatedly broke `main` after merge (issue #1219). Reproduce the gate locally
+with:
+
+```bash
+make test-browser-gate   # scripts/test.sh --e2e --shuffle --repeat 2
+```
+
+It runs the suite exactly as CI does: `scripts/test.sh --e2e --shuffle
+--repeat 2`, which passes `-shuffle=on` (randomised test order) and `-count 2`
+(each test runs twice) to `go test -tags e2e -run '^TestBrowser'
+./internal/api/`. Running the suite shuffled and repeated makes a
+single-test wall-clock race — a test that passes in isolation once but
+intermittently times out or hits a stale node under load — surface on the PR
+rather than slip past one green pass and break `main` later. The gate is
+meaningful only when the underlying tests are already deterministic (the
+polling-driven de-flaking of #1217/#1218); a flaky test that is caught here is
+a regression to fix, not a reason to relax the gate.
+
+The `--shuffle`/`--repeat` flags are also available standalone (e.g.
+`scripts/test.sh --e2e --shuffle` for a single shuffled pass) and are covered
+by the behavior test `scripts/flaky_test.sh`.
 
 
 ## Test layers
@@ -244,6 +274,9 @@ go test ./...
 # Run the browser E2E suite (requires Chrome on Linux)
 make test-browser
 # or: go test -tags e2e -run '^TestBrowser' ./internal/api/
+
+# Run the browser E2E regression gate (shuffled + repeated, matches CI)
+make test-browser-gate
 
 # A single browser test
 # or: go test -tags e2e -run 'TestBrowser_SendMessage$' ./internal/api/ -v

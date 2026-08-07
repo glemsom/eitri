@@ -11,18 +11,20 @@ env:
 
 jobs:
 
-  # Diagnostic, non-blocking job that reproduces environment-driven test
-  # flakes on the constrained (cache-cleared, CPU-restricted, sequential)
-  # configuration before they reach the main gate. Runs in addition to the
-  # mandatory `test` job; failures surface here as a warning without failing
-  # the push/PR (issue #1126).
+  # Mandatory, blocking job that reproduces environment-driven test flakes on
+  # the constrained (cache-cleared, CPU-restricted, sequential) configuration
+  # before they reach the main gate. Runs in addition to the mandatory
+  # `unit-test` job; a failure here fails the push/PR. Promoted from a
+  # diagnostic (non-blocking) job once the constrained harness had provably
+  # caught environment-driven flakes (issues #1126 → #1219).
   reproduce-flaky:
     name: Reproduce environment-driven flakes
     runs-on: ubuntu-latest
-    # Non-blocking initially: flake findings are diagnostics, not a gate.
-    # Flip this to `continue-on-error: false` to promote this job to a
-    # mandatory (blocking) gate once it has demonstrably caught a real flake.
-    continue-on-error: true
+    # Hard gate since issue #1219: the constrained harness has provably caught
+    # environment-driven flakes (the #1127 audit's leak/flake symptoms and the
+    # #1217/#1218 constrained-harness reproductions), so flake findings now
+    # block the merge instead of surfacing as a warning.
+    continue-on-error: false
 
     steps:
       - name: Checkout
@@ -116,8 +118,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq google-chrome-stable
 
-      - name: Run browser E2E tests
-        run: ./scripts/test.sh --e2e
+      - name: Run browser E2E tests (shuffled + repeated regression gate)
+        # The gate runs the suite shuffled (`-shuffle=on`) and repeated
+        # (`-count 2`) so a single-test wall-clock race (lazy-lib deadline
+        # expiry, stale CDP node, unrendered response) surfaces on the PR
+        # instead of passing once and later breaking `main` (issue #1219).
+        run: ./scripts/test.sh --e2e --shuffle --repeat 2
 
       - name: Upload browser E2E log artifact
         uses: actions/upload-artifact@v4
