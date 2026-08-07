@@ -434,6 +434,88 @@ func TestRunService_MaxTurnsMessage(t *testing.T) {
 	}
 }
 
+// TestRunService_MaxTurnsLeavesSSEUnmutatedAfterClose guards the dead
+// max-turns special-case removal in the UI exit path (issue #1233): the agent
+// loop already emits the max-turns error and closes the SSE stream itself, so
+// the exit path must not append the max-turns message to the SSE buffer or
+// emit a done event after close (both are no-ops — the event is silently
+// dropped and the appended text is neither broadcast nor persisted). The run
+// must still end with the error message visible in the SSE history and the
+// session idle.
+func TestRunService_MaxTurnsLeavesSSEUnmutatedAfterClose(t *testing.T) {
+	svc, uiSessionMgr := newRunServiceForTest(t)
+
+	// Every turn requests a tool call so the loop never completes on its own;
+	// with max_turns=1 the run exhausts the turn budget after the first turn
+	// and the loop broadcasts the max-turns error before closing the stream.
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"grep","arguments":"{\"pattern\":\"foo\"}"}}]},"finish_reason":"tool_calls"}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	uiSess, err := uiSessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create UI session: %v", err)
+	}
+	sessionID := uiSess.ID
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		MaxTurns:   1,
+		Workspace:  t.TempDir(),
+	}
+	if _, err := svc.StartRun(context.Background(), sessionID, "hello", cfg); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Join the run goroutine so terminal persistence has landed before the
+	// assertions read the run state.
+	svc.WaitForRunsToFinish(5 * time.Second)
+
+	state := svc.get(sessionID)
+	if state == nil {
+		t.Fatal("run state missing after run finished")
+	}
+
+	// The max-turns explanation is delivered over the SSE stream as the error
+	// event the loop broadcasts before closing the stream — the last event in
+	// the history, with no done event following the close.
+	history := state.SSE.History()
+	if len(history) == 0 {
+		t.Fatal("SSE history empty")
+	}
+	last := history[len(history)-1]
+	if last.Type != "error" || !strings.Contains(last.Message, "max turns") {
+		t.Errorf("last SSE event = %+v, want error event with the max-turns message", last)
+	}
+	for _, evt := range history {
+		if evt.Type == "done" {
+			t.Errorf("SSE history contains a done event after stream close: %+v", evt)
+		}
+	}
+
+	// The max-turns message is NOT appended to the SSE text buffer: the
+	// run-end append after stream close is a no-op (issue #1233).
+	if buf := state.SSE.BufferString(); strings.Contains(buf, "max turns") {
+		t.Errorf("SSE buffer contains the max-turns message, want stream-only delivery: %q", buf)
+	}
+
+	// The run still ends idle (terminal snapshot status, ADR-0029).
+	sess := uiSessionMgr.Get(sessionID)
+	if sess == nil {
+		t.Fatal("UI session missing after run finished")
+	}
+	if sess.Status != uisession.StatusIdle {
+		t.Errorf("terminal status = %q, want %q", sess.Status, uisession.StatusIdle)
+	}
+}
+
 func TestRunService_NotifySessionClosed_BroadcastsClosedEvent(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}

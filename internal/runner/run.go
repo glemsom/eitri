@@ -225,21 +225,16 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 				return
 
 			case timeline.TerminationMaxTurns:
-				// Stream the max-turns message to live subscribers (SSE) but do
-				// not append it to the UI conversation — the completed turns,
-				// including the final assistant message, are already there via
-				// the run-completer's per-turn live-sync (issue #1203).
-				limitMsg := outcome.Termination.Message
-				content := sseState.BufferString()
-				if content == "" {
-					sseState.AppendBuffer(limitMsg)
-					content = limitMsg
-				} else {
-					sseState.AppendBuffer("\n\n" + limitMsg)
-					content += "\n\n" + limitMsg
-				}
-				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), tokenizer.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
-				s.syncRunResultToUISession(sessionID, content, sseState.ReasoningBufferString())
+				// The agent loop already handles max-turns itself: it emits
+				// the max-turns error and closes the SSE stream
+				// (loop.RunAgent broadcasts SSEWriter.Error before returning
+				// MaxTurnsExceededError), so there is nothing left to
+				// broadcast or append here. Emitting a done event after
+				// stream close is a no-op (the event is silently dropped) and
+				// appending the message to the SSE buffer is neither broadcast
+				// nor persisted (issue #1233). Keep the terminal status
+				// snapshot and the timeline write; the run ends idle with the
+				// error message visible over SSE.
 				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				return
@@ -288,8 +283,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 //
 // When a persister IS attached the final reply is already in the UI
 // conversation via the per-turn sync, and the suffix-match dedup below makes
-// the append a no-op — so calling this unconditionally on every exit path is
-// safe (issue #1203).
+// the append a no-op — so calling this on the completion and cancellation
+// exit paths is safe (issue #1203). The max-turns exit path does not call it:
+// the loop itself broadcasts the max-turns error over SSE and closes the
+// stream, so the run ends with the error visible over the stream (issue
+// #1233).
 func (s *RunService) syncRunResultToUISession(sessionID, content, reasoningContent string) {
 	if s.persister != nil || s.uiSessionMgr == nil || content == "" {
 		return
