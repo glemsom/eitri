@@ -145,6 +145,98 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 	}
 }
 
+// TestWaitForRunsToFinish_BlocksUntilTerminalPersistence guards the teardown
+// race behind issue #1219's persister wiring: the run goroutine writes the
+// terminal session snapshot and run timeline to the persister *after* the SSE
+// "done" event is delivered. A test that returns as soon as it observes
+// "done" would race that write with t.TempDir removal unless it joins the run
+// goroutine first. WaitForRunsToFinish is that join point: once it returns the
+// done run's timeline file must be on disk.
+func TestWaitForRunsToFinish_BlocksUntilTerminalPersistence(t *testing.T) {
+	persister, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	uiSessionMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiSessionMgr,
+		HistorySessionMgr: historyMgr,
+		Persister:         persister,
+	})
+
+	// A fake LLM that streams one assistant token then stops, so the run
+	// completes the normal path (terminal snapshot + timeline persisted).
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"hello"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	uiSess, err := uiSessionMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create UI session: %v", err)
+	}
+	sessionID := uiSess.ID
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+	}
+	if _, err := svc.StartRun(context.Background(), sessionID, "hello", cfg); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Observe the run's "done" SSE, mirroring how the browser/API tests detect
+	// a finished run. WaitForRunsToFinish must still be required before the
+	// persister TempDir is torn down.
+	_, ch, ok := svc.Subscribe(sessionID)
+	if !ok {
+		t.Fatalf("Subscribe: not ok")
+	}
+	deadline := time.After(3 * time.Second)
+	sawDone := false
+	for !sawDone {
+		select {
+		case evt, open := <-ch:
+			if !open {
+				t.Fatal("SSE stream closed before done")
+			}
+			sawDone = evt.Type == "done"
+		case <-deadline:
+			t.Fatal("timed out waiting for done")
+		}
+	}
+
+	// The join point under test: after it returns, the run goroutine's terminal
+	// persistence has landed, so both the session snapshot and the run timeline
+	// exist under the persister root. Before this fix there was no such barrier
+	// and a TempDir RemoveAll racing this write failed with "directory not
+	// empty".
+	svc.WaitForRunsToFinish(5 * time.Second)
+
+	persisted, err := persister.ListTimelines(sessionID)
+	if err != nil {
+		t.Fatalf("ListTimelines: %v", err)
+	}
+	snap, err := persister.LoadSession(sessionID)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	if snap == nil {
+		t.Fatal("terminal session snapshot not persisted after WaitForRunsToFinish")
+	}
+	if len(persisted) != 1 {
+		t.Fatalf("run timeline files = %d, want 1", len(persisted))
+	}
+}
+
 func TestRunService_StartRun_RejectsDuplicateActiveRun(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}

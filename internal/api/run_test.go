@@ -101,6 +101,16 @@ func newManagedTestServerWithRunsOpts(t *testing.T, opts testServerWithRunsOptio
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
 	t.Cleanup(server.Close)
+	// Registered after server.Close so it runs (LIFO) before the persister's
+	// t.TempDir is removed: the run goroutine writes the terminal snapshot and
+	// timeline to the persister after the SSE "done" event, so a test that
+	// returns on that event would otherwise race TempDir teardown with an
+	// in-flight persistence write ("directory not empty"). WaitForRunsToFinish
+	// joins those goroutines; a timeout keeps a still-streaming run from
+	// blocking teardown forever.
+	t.Cleanup(func() {
+		runSvc.WaitForRunsToFinish(5 * time.Second)
+	})
 	return &testServerWithRuns{
 		server:     server,
 		configPath: configPath,
