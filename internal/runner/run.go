@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	runtimeDebug "runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -214,10 +215,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			case timeline.TerminationCancelled:
 				// The final turn is already in the UI conversation: the
 				// UI-mode run-completer live-syncs each completed turn,
-				// including the last one (ADR-0028). No run-end append of the
-				// SSE buffer happens on any exit path (issue #1203) — appending
-				// the accumulated buffer here would duplicate the final
-				// assistant message.
+				// including the last one (ADR-0028). When the run-completer's
+				// live-sync cannot run (no disk persister attached), the
+				// run-end append below is the sole path that puts the streamed
+				// reply into the UI conversation (issue #1217).
+				s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
 				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				w.Error("Run cancelled")
@@ -238,6 +240,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					content += "\n\n" + limitMsg
 				}
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), tokenizer.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
+				s.syncRunResultToUISession(sessionID, content, sseState.ReasoningBufferString())
 				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				return
@@ -257,9 +260,14 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 		// Normal completion: the final assistant message is already in the UI
 		// conversation via the run-completer's live-history sync of the last
-		// completed turn (ADR-0028); appending the accumulated SSE buffer here
-		// would duplicate it (issue #1203).
+		// completed turn (ADR-0028) when a disk persister is attached. Without
+		// a persister the per-turn live-sync cannot run, so the run-end append
+		// below is the sole path that puts the streamed reply into the UI
+		// conversation — the browser's final-render POST reads it (issue
+		// #1217). The append dedups against the per-turn sync, so it is safe
+		// to call unconditionally on both configurations (issue #1203).
 		outcome := classifyRunExit(nil, runCtx)
+		s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
 		s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 	}()
@@ -267,6 +275,59 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
 
 	return skillCtx.Warnings, nil
+}
+
+// syncRunResultToUISession appends the run's streamed reply to the UI session
+// conversation (in-memory). It is the run-end counterpart to the
+// run-completer's per-turn live-sync (ADR-0028): the per-turn sync only runs
+// when a disk persister is attached, so on persister-less configurations —
+// browser E2E test servers and any embedded run service without persistence —
+// this append is what makes the final assistant message reach the UI
+// conversation that the browser's final-render POST reads. Without it the
+// streaming-markdown final-render browser tests fail with an empty bubble
+// (issue #1217).
+//
+// When a persister IS attached the final reply is already in the UI
+// conversation via the per-turn sync, and the suffix-match dedup below makes
+// the append a no-op — so calling this unconditionally on every exit path is
+// safe (issue #1203).
+func (s *RunService) syncRunResultToUISession(sessionID, content, reasoningContent string) {
+	if s.persister != nil || s.uiSessionMgr == nil || content == "" {
+		return
+	}
+	// If the last message is an empty assistant (created by AppendComponent /
+	// SetQuickReplies during tool execution), update its content instead of
+	// creating a duplicate — preserving the UI-only fields (components,
+	// quick replies) attached to it.
+	convo := s.uiSessionMgr.GetConversationShared(sessionID)
+	if convo != nil && len(convo.Messages) > 0 {
+		last := convo.Messages[len(convo.Messages)-1]
+		if last.Role == "assistant" && last.Content == "" {
+			s.uiSessionMgr.UpdateLastAssistantContent(sessionID, content)
+			if reasoningContent != "" {
+				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
+			}
+			return
+		}
+		// The final assistant message may already have been synced into the UI
+		// session by the run-completer's per-turn live-history sync. Avoid
+		// appending a duplicate at run completion: the last UI message is the
+		// final assistant reply while `content` is the run's *accumulated* SSE
+		// buffer (all turns' text concatenated), so match the suffix rather
+		// than the whole buffer.
+		if last.Role == "assistant" && last.Content != "" && strings.HasSuffix(content, last.Content) {
+			if reasoningContent != "" && last.ReasoningContent == "" {
+				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
+			}
+			return
+		}
+	}
+	s.uiSessionMgr.AppendMessage(sessionID, message.Message{
+		Role:             "assistant",
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		CreatedAt:        time.Now(),
+	})
 }
 
 // persistRunTimeline builds and persists a condensed timeline for the run.

@@ -3,12 +3,17 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -166,10 +171,10 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	// UI-mode run-completer: the same per-turn path batch and sub-agent runs
 	// use, wired with the UI snapshot source.
 	c := &runCompleter{
-		svc:          svc,
-		historyMgr:   loop.NewSessionHistoryManager(historyMgr, sess.ID),
-		id:           sess.ID,
-		cfg:          RunConfig{},
+		svc:        svc,
+		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		id:         sess.ID,
+		cfg:        RunConfig{},
 	}
 	c.snapshotSource = c.uiSnapshotSource
 
@@ -203,6 +208,178 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	}
 	if len(snap.Messages) != 2 || snap.Messages[0].Content != "Do the work" || snap.Messages[1].Content != "Mid-run reply." {
 		t.Errorf("snapshot Messages = %+v, want live history (user + assistant)", snap.Messages)
+	}
+}
+
+// TestRunService_SyncRunResultToUISession verifies the persister-less run-end
+// UI sync (issue #1217): when no disk persister is attached, the per-turn
+// run-completer live-sync cannot run, so the run-end append is the sole path
+// that puts the streamed reply into the UI conversation the browser renders.
+func TestRunService_SyncRunResultToUISession(t *testing.T) {
+	t.Run("appends assistant reply when conversation has only the user message", func(t *testing.T) {
+		svc, uiMgr := newRunServiceForTest(t)
+		sess, err := uiMgr.Create("browser-1")
+		if err != nil {
+			t.Fatalf("Create session: %v", err)
+		}
+		uiMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "test"})
+
+		svc.syncRunResultToUISession(sess.ID, "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", "")
+
+		convo := uiMgr.GetConversationShared(sess.ID)
+		if convo == nil || len(convo.Messages) != 2 {
+			t.Fatalf("UI conversation = %+v, want 2 messages (user + assistant)", convo)
+		}
+		last := convo.Messages[1]
+		if last.Role != "assistant" || last.Content != "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```" {
+			t.Errorf("last message = %+v, want assistant with the streamed reply", last)
+		}
+	})
+
+	t.Run("updates placeholder created by tool execution without losing UI-only fields", func(t *testing.T) {
+		svc, uiMgr := newRunServiceForTest(t)
+		sess, err := uiMgr.Create("browser-1")
+		if err != nil {
+			t.Fatalf("Create session: %v", err)
+		}
+		uiMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "Show components"})
+		// Tool execution created an empty assistant placeholder carrying
+		// UI-only fields (quick replies + a component).
+		if err := uiMgr.SetQuickReplies(sess.ID, []string{"yes", "no"}); err != nil {
+			t.Fatalf("SetQuickReplies: %v", err)
+		}
+		if err := uiMgr.AppendComponent(sess.ID, message.ComponentData{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}}); err != nil {
+			t.Fatalf("AppendComponent: %v", err)
+		}
+
+		svc.syncRunResultToUISession(sess.ID, "done", "")
+
+		convo := uiMgr.GetConversationShared(sess.ID)
+		if convo == nil || len(convo.Messages) != 2 {
+			t.Fatalf("UI conversation = %+v, want 2 messages (no duplicate)", convo)
+		}
+		last := convo.Messages[1]
+		if last.Content != "done" {
+			t.Errorf("placeholder content = %q, want %q (updated in place)", last.Content, "done")
+		}
+		if len(last.QuickReplies) != 2 || last.QuickReplies[0] != "yes" || last.QuickReplies[1] != "no" {
+			t.Errorf("QuickReplies = %v, want [yes no] (preserved)", last.QuickReplies)
+		}
+		if len(last.Components) != 1 || last.Components[0].Name != "MermaidDiagram" {
+			t.Errorf("Components = %+v, want [MermaidDiagram] (preserved)", last.Components)
+		}
+	})
+
+	t.Run("does not duplicate a reply the per-turn sync already added", func(t *testing.T) {
+		svc, uiMgr := newRunServiceForTest(t)
+		sess, err := uiMgr.Create("browser-1")
+		if err != nil {
+			t.Fatalf("Create session: %v", err)
+		}
+		uiMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "test"})
+		uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "final answer"})
+
+		// The accumulated SSE buffer is all turns' text; the final reply is its
+		// suffix — appending again must be a no-op (issue #1203).
+		svc.syncRunResultToUISession(sess.ID, "first turn\n\nfinal answer", "")
+
+		convo := uiMgr.GetConversationShared(sess.ID)
+		if convo == nil || len(convo.Messages) != 2 {
+			t.Fatalf("UI conversation = %+v, want 2 messages (no duplicate)", convo)
+		}
+	})
+}
+
+// TestRunService_StartRun_PopulatesUIConversationWithoutPersister is the
+// end-to-end regression test for the streaming-markdown final-render browser
+// failures (issue #1217): a run started against a persister-less RunService —
+// the exact configuration browser E2E test servers use — must put its final
+// assistant reply into the in-memory UI conversation. Without the run-end
+// sync, the browser's final-render POST reads an empty conversation and the
+// tests fail with "assertion never passed".
+func TestRunService_StartRun_PopulatesUIConversationWithoutPersister(t *testing.T) {
+	const reply = "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```"
+
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"role":"assistant","content":""},"index":0}]}`, "\n\n")
+			flusher, _ := w.(http.Flusher)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			fmt.Fprintf(w, "data: "+`{"choices":[{"delta":{"content":%q},"index":0}]}`+"\n\n", reply)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			if flusher != nil {
+				flusher.Flush()
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llm.Close()
+
+	svc, uiMgr := newRunServiceForTest(t)
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   5,
+	}
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+
+	if _, err := svc.StartRun(context.Background(), sess.ID, "test", cfg); err != nil {
+		t.Fatalf("StartRun: %v", err)
+	}
+
+	// Wait for the run to complete (the retained state is removed after the
+	// 5s retention window; poll the live state's Done channel first).
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		state := svc.get(sess.ID)
+		if state == nil {
+			break // already past retention — conversation must be populated
+		}
+		select {
+		case <-state.Done:
+			goto done
+		case <-time.After(20 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("run did not complete within deadline")
+		}
+	}
+done:
+
+	convo := uiMgr.GetConversationShared(sess.ID)
+	if convo == nil {
+		t.Fatal("UI conversation is nil after run completion")
+	}
+	var sawAssistant bool
+	for _, m := range convo.Messages {
+		if m.Role == "assistant" && m.Content == reply {
+			sawAssistant = true
+		}
+	}
+	if !sawAssistant {
+		t.Errorf("UI conversation missing the run's assistant reply; got %d messages: %+v",
+			len(convo.Messages), convo.Messages)
 	}
 }
 

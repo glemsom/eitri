@@ -274,6 +274,16 @@ elapsed timer ticks forward, asserting that an async flow *does not* fire, or
 pacing a deliberately slow fake server. Such pacing sleeps must be
 commented as deliberate so they are not mistaken for accidental fixed waits.
 
+Single-token final-render tests (`streamingMarkdownTestOptions.SingleToken`)
+assert on output produced by the heavy on-demand rendering libraries (Prism /
+KaTeX / Mermaid, loaded lazily since #968). Before polling the render
+assertion, the helper waits for the declared library to actually arrive in the
+browser (`opts.LazyLibs`, via `waitForLazyLibraries`), so a slow on-demand
+fetch on a constrained runner cannot expire the poll fallback deadline and
+fail a render that is correct. The `Timeout` option is only a generous
+fallback guard (default 30s) against a genuinely broken render — readiness is
+observed DOM state, never a wall-clock guess (issue #1217).
+
 For manual testing against a real server:
 
 ```bash

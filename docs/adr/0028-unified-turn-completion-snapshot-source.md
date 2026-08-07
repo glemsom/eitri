@@ -65,3 +65,12 @@ Negative:
 - The UI per-turn snapshot now carries the post-sync conversation (it
   previously serialized the pre-sync facade), so on-disk `session.json`
   reflects the current turn rather than lagging one turn.
+- The per-turn live-sync is gated on a disk persister (snapshot writes and the
+  sync share `runCompleter.persist`). On persister-less configurations — the
+  embedded run service browser E2E test servers use, and any host that
+  disables persistence — the live-sync never runs, so `startRunWithConfig`
+  restores a run-end fallback (`syncRunResultToUISession`) that appends the
+  run's streamed reply to the UI conversation at completion, preserving
+  components/quick replies attached to the last assistant message during tool
+  execution and suffix-deduping against the per-turn sync when a persister IS
+  present (issue #1217).

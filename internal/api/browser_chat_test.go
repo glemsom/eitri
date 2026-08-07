@@ -2843,7 +2843,7 @@ func TestBrowser_StreamingMarkdownRenderingPhaseCSS(t *testing.T) {
 // TestBrowser_StreamingMarkdownFinalRenderCodeBlock verifies ```go fenced code block renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderCodeBlock(t *testing.T) {
 	markdown := "Here is a Go program:\n\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```"
-	streamingMarkdownTestHelper(t, markdown, streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, markdown, streamingMarkdownTestOptions{SingleToken: true, LazyLibs: []string{"Prism"}}, func(ctx context.Context) bool {
 		var finalCodeBlock bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`var msgs = document.querySelectorAll('.message-assistant:not(#streaming)'); if (msgs.length === 0) false; else msgs[msgs.length-1].querySelector('pre code') !== null`, &finalCodeBlock),
@@ -2865,7 +2865,7 @@ func TestBrowser_StreamingMarkdownFinalRenderCodeBlock(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownFinalRenderMath verifies $$a+b$$ renders with KaTeX after done.
 func TestBrowser_StreamingMarkdownFinalRenderMath(t *testing.T) {
-	streamingMarkdownTestHelper(t, "The formula: $$a+b$$ is simple", streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
+	streamingMarkdownTestHelper(t, "The formula: $$a+b$$ is simple", streamingMarkdownTestOptions{SingleToken: true, LazyLibs: []string{"katex"}}, func(ctx context.Context) bool {
 		var hasMath bool
 		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`document.querySelector('.katex') !== null || document.querySelector('.katex-html') !== null`, &hasMath),
@@ -2876,12 +2876,18 @@ func TestBrowser_StreamingMarkdownFinalRenderMath(t *testing.T) {
 
 // TestBrowser_StreamingMarkdownFinalRenderMermaid verifies ```mermaid diagram renders after done.
 func TestBrowser_StreamingMarkdownFinalRenderMermaid(t *testing.T) {
-	streamingMarkdownTestHelper(t, "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", streamingMarkdownTestOptions{SingleToken: true, Timeout: 8 * time.Second}, func(ctx context.Context) bool {
-		var hasMermaid bool
+	streamingMarkdownTestHelper(t, "Flow:\n\n```mermaid\ngraph TD;\nA-->B;\n```", streamingMarkdownTestOptions{SingleToken: true, LazyLibs: []string{"mermaid"}}, func(ctx context.Context) bool {
+		// Require the diagram's actual SVG output, not merely the raw
+		// pre.mermaid source block: a mermaid load/render regression must
+		// genuinely fail this test (issue #1217).
+		var hasMermaidSVG bool
 		_ = chromedp.Run(ctx,
-			chromedp.EvaluateAsDevTools(`document.querySelector('.mermaid') !== null || document.querySelector('[id^="mermaid"]') !== null`, &hasMermaid),
+			chromedp.EvaluateAsDevTools(`(function() {
+				var svg = document.querySelector('pre.mermaid svg, [id^="mermaid"]');
+				return svg !== null;
+			})()`, &hasMermaidSVG),
 		)
-		return hasMermaid
+		return hasMermaidSVG
 	})
 }
 
