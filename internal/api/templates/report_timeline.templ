@@ -23,7 +23,7 @@ templ TurnCard(turn TurnView) {
 				<span class="turn-role-icon">👤</span>
 				<span class="turn-role-label">User</span>
 				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
-				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
+				<span class="turn-number">Turn #{ strconv.Itoa(turn.TurnNumber()) }</span>
 			</div>
 			<div class="turn-content turn-user-content">
 				@templ.Raw(turn.ContentHTML)
@@ -33,9 +33,9 @@ templ TurnCard(turn TurnView) {
 				<span class="turn-role-icon">🤖</span>
 				<span class="turn-role-label">Assistant</span>
 				<span class="turn-timestamp">{ turn.Timestamp.Format("15:04:05") }</span>
-				<span class="turn-number">Turn #{ strconv.Itoa(turn.Turn) }</span>
+				<span class="turn-number">Turn #{ strconv.Itoa(turn.TurnNumber()) }</span>
 			</div>
-			if turnHasLLMMeta(turn) {
+			if turn.HasLLMMeta() {
 				@LLMMetaSection(turn)
 			}
 			<div class="turn-content turn-assistant-content">
@@ -69,7 +69,7 @@ templ ContextBar(before *report.ContextInfo, after *report.ContextInfo) {
 					<div class="context-bar-track">
 						<div
 							class="context-bar-fill"
-							style={ "width:" + strconv.Itoa(contextPercent(before)) + "%" }
+							style={ "width:" + strconv.Itoa(report.ContextPercent(before)) + "%" }
 							title={ strconv.Itoa(before.TotalTokens) + " / " + strconv.Itoa(before.ContextWindow) + " tokens" }
 						></div>
 					</div>
@@ -82,7 +82,7 @@ templ ContextBar(before *report.ContextInfo, after *report.ContextInfo) {
 					<div class="context-bar-track">
 						<div
 							class="context-bar-fill"
-							style={ "width:" + strconv.Itoa(contextPercent(after)) + "%" }
+							style={ "width:" + strconv.Itoa(report.ContextPercent(after)) + "%" }
 							title={ strconv.Itoa(after.TotalTokens) + " / " + strconv.Itoa(after.ContextWindow) + " tokens" }
 						></div>
 					</div>

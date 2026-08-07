@@ -117,9 +117,9 @@ func TurnCard(turn TurnView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
-			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(turn.Turn))
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(turn.TurnNumber()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 26, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 26, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -156,9 +156,9 @@ func TurnCard(turn TurnView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(turn.Turn))
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(turn.TurnNumber()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 36, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 36, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -168,7 +168,7 @@ func TurnCard(turn TurnView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if turnHasLLMMeta(turn) {
+			if turn.HasLLMMeta() {
 				templ_7745c5c3_Err = LLMMetaSection(turn).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -270,9 +270,9 @@ func ContextBar(before *report.ContextInfo, after *report.ContextInfo) templ.Com
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
-				templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:" + strconv.Itoa(contextPercent(before)) + "%")
+				templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:" + strconv.Itoa(report.ContextPercent(before)) + "%")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 72, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 72, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -315,9 +315,9 @@ func ContextBar(before *report.ContextInfo, after *report.ContextInfo) templ.Com
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
-				templ_7745c5c3_Var13, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:" + strconv.Itoa(contextPercent(after)) + "%")
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues("width:" + strconv.Itoa(report.ContextPercent(after)) + "%")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 85, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/report_timeline.templ`, Line: 85, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {

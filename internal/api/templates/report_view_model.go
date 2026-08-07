@@ -1,49 +1,24 @@
 package templates
 
 import (
-	"time"
-
-	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/report"
 )
 
-// TurnView holds pre-rendered HTML for a report turn, so the template
-// doesn't need to import the api package's markdown renderer.
+// TurnView is the template-side edge projection of a report.Turn. It embeds
+// the canonical report model — all model fields are promoted, so templates
+// consume report.Turn itself — and adds only the pre-rendered HTML the
+// templates render (templates never format markdown; handlers pre-render it
+// via makeTurnViews). The duplicated field declarations of the former view
+// model are deleted: TurnView derives from the model.
 type TurnView struct {
-	Turn              int
-	Role              string
-	ContentHTML       string // pre-rendered Markdown → HTML
-	ReasoningHTML     string // pre-rendered Markdown → HTML
-	Timestamp         time.Time
-	LLMDurationMs     int64
-	LLMTraceID        string
-	LLMRequestBytes   int
-	LLMResponseBytes  int
-	LLMTTFBMs         int64
-	LLMTTFTMs         int64
-	LLMAttempt        int
-	LLMAttemptCount   int
-	LLMFailedAttempts int
-	LLMModel          string
-	LLMFinishReason   string
-	LLMUsage          *debug.UsageTotals
-	ContextBefore     *report.ContextInfo
-	ContextAfter      *report.ContextInfo
-	ToolCalls         []report.ToolCallInfo
+	report.Turn
+	ContentHTML   string // pre-rendered Markdown → HTML
+	ReasoningHTML string // pre-rendered Markdown → HTML
 }
 
-// turnHasLLMMeta reports whether a turn carries any LLM telemetry worth
-// rendering in its metrics strip.
-func turnHasLLMMeta(turn TurnView) bool {
-	return turn.LLMDurationMs > 0 ||
-		turn.LLMTraceID != "" ||
-		turn.LLMRequestBytes > 0 ||
-		turn.LLMResponseBytes > 0 ||
-		turn.LLMTTFBMs > 0 ||
-		turn.LLMTTFTMs > 0 ||
-		turn.LLMAttemptCount > 0 ||
-		turn.LLMAttempt > 0 ||
-		turn.LLMModel != "" ||
-		turn.LLMFinishReason != "" ||
-		turn.LLMUsage != nil
+// TurnNumber returns the turn's ordinal. The embedded report.Turn field
+// shadows the promoted Turn int field of the same name, so expose it
+// explicitly for templates.
+func (v TurnView) TurnNumber() int {
+	return v.Turn.Turn
 }
