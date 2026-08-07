@@ -799,7 +799,11 @@ func TestSessionExistsOnDisk(t *testing.T) {
 	}
 
 	// A session that was never created does not exist on disk.
-	if p.sessionExistsOnDisk("ghost") {
+	exists, err := p.sessionExistsOnDisk("ghost")
+	if err != nil {
+		t.Errorf("sessionExistsOnDisk(ghost) error = %v, want nil", err)
+	}
+	if exists {
 		t.Error("sessionExistsOnDisk(ghost) = true, want false for a never-created session")
 	}
 
@@ -808,7 +812,11 @@ func TestSessionExistsOnDisk(t *testing.T) {
 	if err := p.SnapshotSession(live, &session.UISession{ID: live}); err != nil {
 		t.Fatalf("SnapshotSession: %v", err)
 	}
-	if !p.sessionExistsOnDisk(live) {
+	exists, err = p.sessionExistsOnDisk(live)
+	if err != nil {
+		t.Errorf("sessionExistsOnDisk(live-session) error = %v, want nil", err)
+	}
+	if !exists {
 		t.Error("sessionExistsOnDisk(live-session) = false, want true after SnapshotSession")
 	}
 
@@ -816,8 +824,67 @@ func TestSessionExistsOnDisk(t *testing.T) {
 	if err := p.DeleteSession(live); err != nil {
 		t.Fatalf("DeleteSession: %v", err)
 	}
-	if p.sessionExistsOnDisk(live) {
+	exists, err = p.sessionExistsOnDisk(live)
+	if err != nil {
+		t.Errorf("sessionExistsOnDisk(live-session) error = %v, want nil", err)
+	}
+	if exists {
 		t.Error("sessionExistsOnDisk(live-session) = true, want false after DeleteSession")
+	}
+}
+
+// TestSessionExistsOnDisk_StatErrorIsNotDeleted pins the error semantics of
+// the consolidated check (issue #1237 review finding 1): a stat failure that
+// is NOT "file does not exist" must not be reported as "session permanently
+// deleted". Each of the four call sites keeps its pre-consolidation behaviour
+// — surfacing the underlying I/O failure instead of silently treating the
+// session as gone.
+func TestSessionExistsOnDisk_StatErrorIsNotDeleted(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A regular file where the session directory should be makes every
+	// session.json lookup fail with ENOTDIR — a stat error that is
+	// definitively not "the session was deleted".
+	blocked := "blocked-session"
+	if err := os.WriteFile(filepath.Join(rootDir, "sessions", blocked), []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The helper must report the error, not a clean "does not exist".
+	exists, err := p.sessionExistsOnDisk(blocked)
+	if err == nil {
+		t.Fatal("sessionExistsOnDisk(blocked-session) error = nil, want a stat error")
+	}
+	if exists {
+		t.Error("sessionExistsOnDisk(blocked-session) = true, want false alongside the error")
+	}
+
+	// LoadSession must surface the I/O failure rather than report "no session".
+	if _, err := p.LoadSession(blocked); err == nil {
+		t.Error("LoadSession(blocked-session) error = nil, want wrapped stat error")
+	}
+
+	// QueryTraces must surface the I/O failure rather than silently drop the
+	// session's traces.
+	if _, err := p.QueryTraces(TraceFilter{SessionID: blocked}); err == nil {
+		t.Error("QueryTraces(blocked-session) error = nil, want wrapped stat error")
+	}
+
+	// SaveTrace must fall through to the write path and surface the I/O
+	// failure rather than silently dropping the trace.
+	trace := &debug.HTTPTrace{ID: "trace_blocked", SessionID: blocked, Method: "GET", URL: "/x"}
+	if err := p.SaveTrace(blocked, trace); err == nil {
+		t.Error("SaveTrace(blocked-session) error = nil, want wrapped write error")
+	}
+
+	// Flush must surface the same failure through flushErr rather than
+	// silently skipping the trace.
+	if err := p.Flush(nil, []*debug.HTTPTrace{trace}); err == nil {
+		t.Error("Flush(blocked-session trace) error = nil, want wrapped write error")
 	}
 }
 
