@@ -226,6 +226,38 @@ test_pr() {
 	printf '%s\n%s\n%s\n' "$verdict" "$st" "$log"
 }
 
+# Run the review gate (T5, #1190): run the `code-review` persona as a fresh
+# batch against an issue's worktree/PR and map its outcome to the review gate's
+# verdict. The build→test→review order guarantees this gate only ever sees a
+# test-passing PR. Delegates to run_persona_batch (stage `review`, persona
+# `code-review`); the persona loads the `code-review` skill (Standards + Spec
+# axes), decides APPROVED / CHANGES_REQUIRED / BLOCKED, and writes the currently-
+# open review findings to `$wt/.review.md`. The gate only maps the review verbs
+# through: APPROVED / CHANGES_REQUIRED / BLOCKED pass to the caller, and a
+# missing verdict, a non-zero exit, or a non-review verdict (e.g. a stray test
+# verb) becomes `hard-fail` (never a blind retry). The gate does NOT decide loop
+# policy — the shared 3-round cap / re-entry / merge precondition land in T6
+# (#1192).
+#
+# args: <wt> <prompt>
+#
+# Emits the same three lines as run_persona_batch:
+#   1. APPROVED | CHANGES_REQUIRED | BLOCKED | hard-fail
+#   2. the batch's exit status
+#   3. the per-stage log path
+review_pr() {
+	local wt="$1" prompt="$2" result verdict st log
+	result=$(run_persona_batch "$wt" review code-review "$prompt")
+	verdict=$(printf '%s\n' "$result" | sed -n '1p')
+	st=$(printf '%s\n' "$result" | sed -n '2p')
+	log=$(printf '%s\n' "$result" | sed -n '3p')
+	case "$verdict" in
+		APPROVED|CHANGES_REQUIRED|BLOCKED) : ;; # acceptable review-gate verdicts
+		*) verdict="hard-fail" ;; # missing/unknown verdict or hard-fail
+	esac
+	printf '%s\n%s\n%s\n' "$verdict" "$st" "$log"
+}
+
 
 # --- Sandbox check ---------------------------------------------------------
 

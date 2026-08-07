@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/agent-loop.sh` gains the `review_pr` gate (T5, #1190): it runs the
+  `code-review` persona as a fresh batch via the shared verdict plumbing and
+  maps its outcome to `APPROVED`/`CHANGES_REQUIRED`/`BLOCKED`/`hard-fail`. The
+  `code-review` persona (`docs/personas/code-review.yaml`) loads the
+  `code-review` skill (Standards + Spec axes) and writes currently-open review
+  findings to `.review.md` before emitting its verdict line. The gate only ever
+  sees test-passing PRs (the build→test→review order guarantees it) and decides
+  nothing about loop policy (cap / re-entry / merge land in T6, #1192).
+  `docs/agents/batch.md` documents the gate.
+
 - `scripts/agent-loop.sh` gains the `test_pr` gate (T4, #1191): it runs the
   `code-test` persona as a fresh batch via the shared verdict plumbing and maps
   its outcome to `PASS`/`REJECT`/`hard-fail`. The `code-test` persona (`docs/personas/code-test.yaml`) now emits an explicit `VERDICT: PASS`/`VERDICT: REJECT` line and writes currently-open findings to `.test.md`, noting the no-test-suite downgrade when applied; `extract_verdict` recognises `PASS`/`REJECT` beside the review verbs. The gate decides nothing about loop policy (cap / re-entry / merge land in T6, #1192). `docs/agents/batch.md` documents the gate and the expanded verdict verbs.
