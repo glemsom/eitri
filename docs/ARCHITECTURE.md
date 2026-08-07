@@ -505,7 +505,7 @@ sequenceDiagram
             RunSvc->>Tool: BashTool executes (exec.Command)
             Tool-->>RunSvc: result (stdout, stderr, exit code)
         else write / edit
-            RunSvc->>RunSvc: validate workspace path, write or modify file via fileutil
+            RunSvc->>RunSvc: resolve target (workspace + writable roots, /tmp rewrite), write or modify file via fileutil
         else web_fetch
             RunSvc->>Tool: WebFetchTool fetches URL
             Tool-->>RunSvc: Markdown content

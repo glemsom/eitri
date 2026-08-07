@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmation prompt). Pure prefactor — no tool behavior changes until the
   follow-up wiring ticket lands; resolver behavior is fully unit-tested.
 
+- `docs/ARCHITECTURE.md` no longer describes `write`/`edit` as strictly
+  workspace-only (#1211): the `internal/tool/` file-map entries for `write.go`
+  and `edit.go`, the tool-registration prose, the run sequence diagram, and the
+  resource-access invariant now state that byte-tools validate targets against
+  the workspace root **and** the configured writable roots (allowed write
+  paths, ADR-0031), with `/tmp/...` targets rewritten to the run's session
+  sandbox tmpdir (ADR-0026) — matching the ADR and glossary terminology.
+  Docs-only.
+
 - `scripts/agent-loop.sh` wires the build→test→review pipeline into the per-issue
   worker phase (T6, #1192): each issue now runs a bounded fix loop driven by pure
   bash — the `code-build` persona implements/opens the PR (via `build_pr`), the
