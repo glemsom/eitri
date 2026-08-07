@@ -468,6 +468,214 @@ func TestSaveTrace_CreatesTracesDir(t *testing.T) {
 	}
 }
 
+// TestSaveTrace_DoesNotOverwriteExistingTrace is the acceptance test for issue
+// #1236: persisted traces are single-owner — a trace file already on disk is
+// never overwritten. A freshly generated trace_N that collides with a restored
+// archive file after a restart must not silently clobber it.
+func TestSaveTrace_DoesNotOverwriteExistingTrace(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "trace-session"
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	original := &debug.HTTPTrace{
+		ID:        "trace_1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/original",
+		Status:    200,
+	}
+	if err := p.SaveTrace(sessionID, original); err != nil {
+		t.Fatalf("SaveTrace: %v", err)
+	}
+
+	// A second save of the same ID — the restart collision scenario — must be
+	// rejected, not written over the archived trace.
+	clobber := &debug.HTTPTrace{
+		ID:        "trace_1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/clobber",
+		Status:    500,
+	}
+	if err := p.SaveTrace(sessionID, clobber); !errors.Is(err, ErrTraceExists) {
+		t.Fatalf("SaveTrace error = %v, want ErrTraceExists", err)
+	}
+
+	traceFile := filepath.Join(rootDir, "sessions", sessionID, "traces", "trace_1.json")
+	data, err := os.ReadFile(traceFile)
+	if err != nil {
+		t.Fatalf("cannot read trace file: %v", err)
+	}
+	var restored debug.HTTPTrace
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatalf("cannot unmarshal trace file: %v", err)
+	}
+	if restored.URL != "/original" {
+		t.Errorf("trace file was overwritten: URL = %q, want %q", restored.URL, "/original")
+	}
+}
+
+// TestRestore_SeedsPersistedTraces is the acceptance test for issue #1236:
+// traces restored from the archive are already owned by their on-disk files,
+// so Flush must never re-write them after a restart. The restored file is
+// tampered with on disk before Flush: a flush that re-wrote restored traces
+// would overwrite the marker and restore the original content.
+func TestRestore_SeedsPersistedTraces(t *testing.T) {
+	rootDir := t.TempDir()
+
+	// First process persists a trace.
+	p1, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := "restore-session"
+	if err := p1.SnapshotSession(sessionID, &session.UISession{ID: sessionID}); err != nil {
+		t.Fatal(err)
+	}
+	trace := &debug.HTTPTrace{
+		ID:        "trace_1",
+		SessionID: sessionID,
+		Method:    "POST",
+		URL:       "/original",
+		Status:    200,
+	}
+	if err := p1.SaveTrace(sessionID, trace); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulated restart: a fresh persister over the same data dir.
+	p2, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := p2.Restore()
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if len(restored.Traces) != 1 {
+		t.Fatalf("restored %d traces, want 1", len(restored.Traces))
+	}
+
+	// Tamper with the restored trace file on disk.
+	traceFile := filepath.Join(rootDir, "sessions", sessionID, "traces", "trace_1.json")
+	tampered := []byte(`{"tampered":true}`)
+	if err := os.WriteFile(traceFile, tampered, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush with the restored traces in hand — exactly like main.go passes
+	// debugRecorder.List(), which includes restored traces after LoadAll.
+	if err := p2.Flush(nil, restored.Traces); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	data, err := os.ReadFile(traceFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(tampered) {
+		t.Errorf("Flush re-wrote a restored trace file; on-disk content = %s, want tampered marker %s", data, tampered)
+	}
+}
+
+// TestTraceIdentity_SurvivesRestart is the end-to-end acceptance test for issue
+// #1236: after a simulated restart (restore archive + new run, wired exactly
+// like main.go), no trace file is overwritten by a fresh ID, fresh IDs advance
+// past the restored archive, and nothing is lost or duplicated.
+func TestTraceIdentity_SurvivesRestart(t *testing.T) {
+	rootDir := t.TempDir()
+
+	// First process: record a run's traces through the async persistence path.
+	p1, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := "restart-session"
+	if err := p1.SnapshotSession(sessionID, &session.UISession{ID: sessionID}); err != nil {
+		t.Fatal(err)
+	}
+	r1 := debug.NewRecorder(100)
+	r1.OnComplete = func(tr *debug.HTTPTrace) { p1.SaveTraceAsync(tr.SessionID, tr) }
+	for i := 0; i < 3; i++ {
+		r1.Record(sessionID, "p1", "POST", "/v1/chat", nil, nil, 200, 0, "", nil)
+	}
+	if err := p1.Flush(nil, r1.List(0, "", "")); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Snapshot the archive: trace_1..trace_3 on disk.
+	archiveDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	before := make(map[string]string)
+	for _, id := range []string{"trace_1", "trace_2", "trace_3"} {
+		data, err := os.ReadFile(filepath.Join(archiveDir, id+".json"))
+		if err != nil {
+			t.Fatalf("archive trace %s missing: %v", id, err)
+		}
+		before[id] = string(data)
+	}
+
+	// Simulated restart: fresh recorder + persister over the same data dir,
+	// hydrated from the restored archive exactly like main.go.
+	p2, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := p2.Restore()
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if len(restored.Traces) != 3 {
+		t.Fatalf("restored %d traces, want 3", len(restored.Traces))
+	}
+	r2 := debug.NewRecorder(100)
+	r2.OnComplete = func(tr *debug.HTTPTrace) { p2.SaveTraceAsync(tr.SessionID, tr) }
+	r2.LoadAll(restored.Traces)
+
+	// New run after restart, then the shutdown flush.
+	for i := 0; i < 2; i++ {
+		r2.Record(sessionID, "p1", "POST", "/v1/chat", nil, nil, 200, 0, "", nil)
+	}
+	allTraces := append(r2.List(0, "", ""), r2.InFlight()...)
+	if err := p2.Flush(nil, allTraces); err != nil {
+		t.Fatalf("Flush after restart: %v", err)
+	}
+
+	// The archived files are byte-identical — none was overwritten by a fresh ID.
+	for id, want := range before {
+		got, err := os.ReadFile(filepath.Join(archiveDir, id+".json"))
+		if err != nil {
+			t.Fatalf("archive trace %s lost after restart: %v", id, err)
+		}
+		if string(got) != want {
+			t.Errorf("archive trace %s was overwritten after restart", id)
+		}
+	}
+
+	// The new run's traces landed with fresh IDs past the archive (trace_4, trace_5).
+	for _, id := range []string{"trace_4", "trace_5"} {
+		if _, err := os.Stat(filepath.Join(archiveDir, id+".json")); err != nil {
+			t.Errorf("new trace %s missing after restart: %v", id, err)
+		}
+	}
+
+	// Exactly five files on disk — no loss, no duplication.
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		t.Fatalf("cannot read archive dir: %v", err)
+	}
+	if len(entries) != 5 {
+		t.Errorf("trace dir has %d files, want 5 (3 archived + 2 new)", len(entries))
+	}
+}
+
 func TestDeleteSession_RemovesDirectory(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
@@ -522,10 +730,10 @@ func TestLoadSession_ReturnsSessionData(t *testing.T) {
 	sessionID := "load-test"
 	now := time.Now().Truncate(time.Second)
 	s := &session.UISession{
-		ID:        sessionID,
-		Title:     "Load Test",
-		Status:    session.StatusIdle,
-		Messages:  []message.Message{
+		ID:     sessionID,
+		Title:  "Load Test",
+		Status: session.StatusIdle,
+		Messages: []message.Message{
 			{Role: "user", Content: "hi", CreatedAt: now},
 			{Role: "assistant", Content: "hello", CreatedAt: now, ToolCalls: []message.ToolCall{
 				{ID: "call-1", Type: "function", Function: message.FunctionCall{Name: "test", Arguments: `{}`}},
@@ -990,9 +1198,9 @@ func TestRestore_ReturnsSessionsAndTraces(t *testing.T) {
 
 	// Create two sessions and a trace
 	s1 := &session.UISession{
-		ID:      "sess-a",
-		Title:   "Session A",
-		Status:  session.StatusIdle,
+		ID:     "sess-a",
+		Title:  "Session A",
+		Status: session.StatusIdle,
 		Messages: []message.Message{
 			{Role: "user", Content: "hi"},
 			{Role: "assistant", Content: "hello"},
@@ -1001,9 +1209,9 @@ func TestRestore_ReturnsSessionsAndTraces(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	s2 := &session.UISession{
-		ID:      "sess-b",
-		Title:   "Session B",
-		Status:  session.StatusIdle,
+		ID:     "sess-b",
+		Title:  "Session B",
+		Status: session.StatusIdle,
 		Messages: []message.Message{
 			{Role: "user", Content: "hey"},
 		},
@@ -1096,9 +1304,9 @@ func TestPrune_UnderCapDoesNothing(t *testing.T) {
 
 	// Create a small session
 	s := &session.UISession{
-		ID:      "prune-test",
-		Title:   "Prune Test",
-		Status:  session.StatusIdle,
+		ID:       "prune-test",
+		Title:    "Prune Test",
+		Status:   session.StatusIdle,
 		Messages: []message.Message{{Role: "user", Content: "hello"}},
 	}
 	if err := p.SnapshotSession("prune-test", s); err != nil {
@@ -1133,9 +1341,9 @@ func TestPrune_RemovesOldTraceFiles(t *testing.T) {
 
 	sessionID := "prune-traces"
 	s := &session.UISession{
-		ID:      sessionID,
-		Title:   "Prune Traces",
-		Status:  session.StatusIdle,
+		ID:     sessionID,
+		Title:  "Prune Traces",
+		Status: session.StatusIdle,
 	}
 	if err := p.SnapshotSession(sessionID, s); err != nil {
 		t.Fatal(err)
@@ -1144,7 +1352,7 @@ func TestPrune_RemovesOldTraceFiles(t *testing.T) {
 	// Add trace files
 	for i := 0; i < 3; i++ {
 		trace := &debug.HTTPTrace{
-			ID:        debug.TraceID("trace-" + itoa(i)),
+			ID:        debug.TraceID(fmt.Sprintf("trace-%d", i)),
 			SessionID: sessionID,
 			Method:    "GET",
 			URL:       "/test",
@@ -1198,18 +1406,4 @@ func TestHistorySchema_BackwardCompat(t *testing.T) {
 	if len(decoded.Messages) != 1 {
 		t.Errorf("Messages count = %d", len(decoded.Messages))
 	}
-}
-
-// itoa is a simple int-to-string for test helpers.
-func itoa(i int) string {
-	return strings.TrimSpace(strings.Replace(
-		strings.Replace(
-			strings.Replace(
-				strings.Replace("0", "0", "", 1),
-				"0", "", 1,
-			),
-			"", "", 1,
-		),
-		"", "", 1,
-	))
 }

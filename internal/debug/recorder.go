@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -443,10 +445,17 @@ func (r *Recorder) RecordWithMeta(sessionID, providerID, method, url string, req
 // directly without calling OnComplete. Traces beyond capacity evict oldest.
 // Restored traces also feed the interaction metrics, so the metrics endpoint
 // reflects archived calls after a restart.
+//
+// Trace identity is single-owner (issue #1236): a restored trace_N is already
+// owned by its archive file, so the recorder's generator is advanced past the
+// largest restored sequence number. Fresh IDs always advance past the archive,
+// and a newly generated ID can never collide with — and silently overwrite — a
+// restored trace file after a restart.
 func (r *Recorder) LoadAll(traces []*HTTPTrace) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	var maxArchiveID uint64
 	for _, trace := range traces {
 		if len(r.traces) >= r.capacity {
 			// Evict oldest
@@ -459,7 +468,33 @@ func (r *Recorder) LoadAll(traces []*HTTPTrace) {
 			r.lastFailingTrace = trace
 		}
 		r.aggregateLocked(trace)
+
+		if n := traceIDSequence(trace.ID); n > maxArchiveID {
+			maxArchiveID = n
+		}
 	}
+	// Only ever advance the generator — never move it backwards if the
+	// recorder has already issued IDs beyond the restored archive.
+	if maxArchiveID > r.nextID {
+		r.nextID = maxArchiveID
+	}
+}
+
+// traceIDSequence parses the numeric sequence from a generated trace ID of the
+// form trace_<n>. IDs that do not follow the recorder's generated format (e.g.
+// hand-assigned IDs in tests or older archives) return 0, since they can never
+// collide with a freshly generated trace_N.
+func traceIDSequence(id TraceID) uint64 {
+	const prefix = "trace_"
+	s := string(id)
+	if !strings.HasPrefix(s, prefix) {
+		return 0
+	}
+	n, err := strconv.ParseUint(s[len(prefix):], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // List returns completed traces, optionally filtered.
