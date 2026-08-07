@@ -255,8 +255,9 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			// Clean up child session's RunState from active runs
 			if record.ChildSessionID != "" {
 				s.remove(record.ChildSessionID, childRunState)
-				// Update child session status to idle
-				s.broadcastSessionStatusUpdate(record.ChildSessionID, uisession.StatusIdle)
+				// Update child session status to idle and broadcast it via the
+				// single session-status broadcast helper.
+				s.broadcastStatusUpdate(record.ChildSessionID, uisession.StatusIdle, s.uiSessionMgr, s.broadcast)
 			}
 			// Reap after TTL (configurable for tests; defaults to subAgentReapTTL)
 			time.AfterFunc(s.subagents.reapTTL, func() {

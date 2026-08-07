@@ -126,7 +126,6 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		StartedAt: time.Now(),
 		Done:      make(chan struct{}),
 		SSE:       sseState,
-		RunCfg:    cfg,
 	}
 	// Generate the run ID once at run start so the persisted timeline, SSE
 	// events, and HTTP traces all share the same identifier and turns can be
@@ -368,7 +367,9 @@ func (s *RunService) persistRunTimeline(sessionID, runID string, startedAt time.
 // disk with the updated status, and broadcasts the status change to browser
 // subscribers. The status comes from the shared exit taxonomy (ADR-0029); on
 // the UI exit paths it must be called before snapshotSession so the on-disk
-// snapshot reflects the terminal state (idle/error) instead of "running".
+// snapshot reflects the terminal state (idle/error) instead of "running". The
+// broadcast flows through broadcastStatusUpdate, the single session-status
+// broadcast helper shared with the sub-agent path.
 func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisession.Status) {
 	if s.uiSessionMgr == nil {
 		s.snapshotSession(sessionID)
@@ -377,17 +378,9 @@ func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisess
 	s.uiSessionMgr.UpdateStatus(sessionID, status)
 	s.snapshotSession(sessionID)
 
-	meta := s.uiSessionMgr.GetMetaShared(sessionID)
-	if meta == nil || meta.BrowserID == "" {
-		return
-	}
-	s.broadcast.Broadcast(meta.BrowserID, BrowserEvent{
-		Type: "session_status",
-		Data: map[string]any{
-			"session_id": sessionID,
-			"status":     string(status),
-		},
-	})
+	// broadcastStatusUpdate re-applies the (idempotent) status update so the
+	// session_status broadcast goes through the single shared helper.
+	s.broadcastStatusUpdate(sessionID, status, s.uiSessionMgr, s.broadcast)
 }
 
 // appendToSession no longer exists (issue #1203): the run-end append of the
@@ -414,25 +407,6 @@ func (s *RunService) snapshotSession(sessionID string) {
 			slog.Any("error", err),
 		)
 	}
-}
-
-func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uisession.Status) {
-	if s.uiSessionMgr == nil {
-		return
-	}
-	s.uiSessionMgr.UpdateStatus(sessionID, status)
-
-	meta := s.uiSessionMgr.GetMetaShared(sessionID)
-	if meta == nil || meta.BrowserID == "" {
-		return
-	}
-	s.broadcast.Broadcast(meta.BrowserID, BrowserEvent{
-		Type: "session_status",
-		Data: map[string]any{
-			"session_id": sessionID,
-			"status":     string(meta.Status),
-		},
-	})
 }
 
 // Per-turn completion for UI runs moved into the unified runCompleter

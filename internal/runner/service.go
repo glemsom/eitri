@@ -38,10 +38,6 @@ type RunState struct {
 	Done      chan struct{}
 	doneOnce  sync.Once
 
-	// RunCfg holds the configuration for this run, used by the TurnCompleter
-	// for auto-compaction and other post-turn tasks.
-	RunCfg RunConfig
-
 	SSE   *runstate.State
 	Turns int // turns consumed so far, updated by agent loop
 }
@@ -192,15 +188,10 @@ func (s *RunService) ActiveRun(sessionID string) *RunState {
 	return s.getActive(sessionID)
 }
 
-// lookupRun returns the run state without checking if done.
-func (s *RunService) lookupRun(sessionID string) *RunState {
-	return s.get(sessionID)
-}
-
 // Subscribe attaches an SSE subscriber for an active run.
 // Returns (subscriberID, channel, ok).
 func (s *RunService) Subscribe(sessionID string) (uint64, <-chan runstate.SSEEvent, bool) {
-	state := s.lookupRun(sessionID)
+	state := s.get(sessionID)
 	if state == nil {
 		return 0, nil, false
 	}
@@ -209,17 +200,11 @@ func (s *RunService) Subscribe(sessionID string) (uint64, <-chan runstate.SSEEve
 
 // Unsubscribe removes an SSE subscriber.
 func (s *RunService) Unsubscribe(sessionID string, id uint64) {
-	state := s.lookupRun(sessionID)
+	state := s.get(sessionID)
 	if state == nil {
 		return
 	}
 	state.SSE.Unsubscribe(id)
-}
-
-// AppendEvent is no longer used. The agent loop owns SSE broadcast directly.
-// Deprecated: kept for backward compatibility in tests; always returns "".
-func (s *RunService) AppendEvent(state *RunState) string {
-	return ""
 }
 
 func (s *RunService) Cancel(sessionID string) bool {
@@ -420,7 +405,7 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 
 // NotifySessionClosed broadcasts a closed event for a session.
 func (s *RunService) NotifySessionClosed(sessionID, message string) {
-	state := s.lookupRun(sessionID)
+	state := s.get(sessionID)
 	if state == nil {
 		return
 	}
@@ -609,7 +594,13 @@ func (s *RunService) notifyAllClosed(message string) {
 	}
 }
 
-// broadcastStatusUpdate broadcasts a session status change to browser-level subscribers.
+// broadcastStatusUpdate is the single helper through which session-status
+// broadcasting flows: it sets the session's status on the UI session manager
+// and broadcasts a session_status event to the session's browser-level SSE
+// subscribers. The UI run-exit paths (setSessionStatusAndSnapshot), the
+// sub-agent completion path, and tests all funnel through it. The status is
+// re-read from the manager after UpdateStatus so the payload always reflects
+// the manager's live state.
 func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *BrowserBroadcaster) {
 	if uiSessionMgr == nil {
 		return
