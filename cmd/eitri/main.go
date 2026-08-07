@@ -23,6 +23,7 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
+	"github.com/glemsom/eitri/internal/report"
 	"github.com/glemsom/eitri/internal/sandbox"
 
 	runner "github.com/glemsom/eitri/internal/runner"
@@ -363,6 +364,14 @@ func main() {
 	}
 	runSvc.SetSkillsService(skillsSvc)
 
+	// The report service is constructed once at startup and injected via
+	// ServerConfig; report handlers consume it instead of building a
+	// per-request service (issue #1206).
+	var reportSvc *report.Service
+	if persister != nil {
+		reportSvc = report.New(persister)
+	}
+
 	runSvc.SetCrashDumpFunc(func(err error, stack []byte) {
 		crashCfg, cfgErr := config.Load(configPath)
 		if cfgErr != nil {
@@ -404,6 +413,7 @@ func main() {
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
+		ReportService:  reportSvc,
 		Logger:         slog.Default(),
 		Version:        Version,
 		DebugRecorder:  debugRecorder,

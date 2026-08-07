@@ -64,7 +64,8 @@ Orchestrates startup:
 5. **LLM history service** (`internal/history/`) — stores LLM conversation history with sliding window
 6. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
 7. **Run service** (`runner.RunService`) — run lifecycle, agent loop, SSE broadcast via `runstate.State`
-8. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `config.Manager`, and `skills.Service`
+8. **Report service** (`report.Service`) — constructed once from the persister and injected via `ServerConfig.ReportService`; the report handlers consume it instead of building a per-request service (issue #1206)
+9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `report.Service`, `config.Manager`, and `skills.Service`
 
 Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, then shuts down HTTP. On crash, `RunService` writes a crash dump via `debug.WriteCrashDump` capturing config summary, sessions, HTTP traces, logs, and system diagnostics.
 
@@ -234,7 +235,7 @@ Sub-agent runs are persisted as child sessions keyed by their task ID (issue #10
 | `handlers_compact.go` | Conversation compaction endpoint |
 | `handlers_personas.go` | Persona list/set endpoints |
 | `handlers_report.go` | Session report generation endpoint |
-| `handlers_report_page.go` | Session Report page renderer |
+| `handlers_report_page.go` | Session Report page renderer (page + HTMX run-swap fragment) |
 | `handlers_workspace.go` | Workspace file browser |
 | `handlers_browse_directory.go` | Directory listing with breadcrumbs |
 | `copilot_device_flow.go` | GitHub Copilot device-flow UI handler |
@@ -246,6 +247,8 @@ Sub-agent runs are persisted as child sessions keyed by their task ID (issue #10
 | `render_helpers.go` | Shared message-rendering helpers (mermaid detection, component rendering) |
 | `templates/` | Templ source files (`.templ` → Go via `templ generate`) |
 | `assets/` | Pinned frontend assets served from `embed.FS` (HTMX, Prism, KaTeX, Mermaid, and stylesheet assets) |
+
+The four report handlers (list reports, get report, report page, report fragment) all consume the `report.Service` injected once at startup via `ServerConfig.ReportService` — per-request `report.New(persister)` construction is gone (issue #1206). A nil service (no persister) yields the same empty/404 responses as before.
 
 Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets are JSON-enveloped events with `event`, `data`, and optional `id` fields. Settings page load/save and `/api/models` cross model-discovery seam: `provider.DiscoverModels()`, then persist returned auth refresh. GitHub Copilot device-flow UI polls through provider-owned `PollGitHubCopilotDeviceFlow()` status + `AuthUpdate`. `RunService.StartRun()` builds LLM service via `buildLLMService()` in `runner/system_prompt.go` (creates a `litellm.Client` through provider config) and persists auth refresh via `PersistAuth` callback. `/api/sessions/{id}/stream` subscribes to active run state via `RunService.Subscribe()` after validating `browser_id` ownership. Active runs own `runstate.State` subscriber set, making multiple EventSource clients and reconnects fan-out safe. Run start snapshots user-configured runtime limits (e.g., `max_turns`) — later Settings changes affect only later runs. Completion endpoints under `/api/sessions/{id}/complete/*` validate `browser_id` ownership and return JSON for the composer island. The top-level HTTP handler owns cross-cutting middleware: 1MB POST/PUT body limits and structured per-request logging (`method`, `path`, `status`, `duration_ms`, `session_id`).
 

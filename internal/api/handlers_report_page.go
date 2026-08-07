@@ -43,12 +43,10 @@ func (s *Server) handleReportPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if s.config.Persister != nil {
-		svc := report.New(s.config.Persister)
-
+	if s.config.ReportService != nil {
 		// List available runs
 		var listErr error
-		runs, listErr = svc.ListRuns(sessionID)
+		runs, listErr = s.config.ReportService.ListRuns(sessionID)
 		if listErr != nil {
 			s.logger.Warn("failed to list runs for report page",
 				slog.String("session_id", sessionID),
@@ -60,7 +58,7 @@ func (s *Server) handleReportPage(w http.ResponseWriter, r *http.Request) {
 
 		// Get full report for the selected run
 		var getErr error
-		rep, getErr = svc.GetReport(sessionID, selectedRun)
+		rep, getErr = s.config.ReportService.GetReport(sessionID, selectedRun)
 		if getErr != nil {
 			s.logger.Warn("failed to get report for page",
 				slog.String("session_id", sessionID),
@@ -124,13 +122,12 @@ func (s *Server) handleReportFragment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if s.config.Persister == nil {
+	if s.config.ReportService == nil {
 		http.Error(w, "Persistence not configured", http.StatusNotFound)
 		return
 	}
 
-	svc := report.New(s.config.Persister)
-	rep, err := svc.GetReport(sessionID, selectedRun)
+	rep, err := s.config.ReportService.GetReport(sessionID, selectedRun)
 	if err != nil || rep == nil {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusNotFound)

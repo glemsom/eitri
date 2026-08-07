@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/report"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -35,6 +36,7 @@ type ServerConfig struct {
 	SessionManager *session.Manager
 	RunService     *runner.RunService
 	SkillsService  *skills.Service
+	ReportService  *report.Service // constructed once at startup; report handlers consume it
 	Logger         *slog.Logger
 	CopilotOAuth   GitHubCopilotOAuthConfig
 	Version        string             // injected at build time

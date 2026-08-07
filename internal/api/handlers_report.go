@@ -15,8 +15,9 @@ func (s *Server) handleListReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build a report service from the persister
-	if s.config.Persister == nil {
+	// The report service is constructed once at startup and injected via
+	// ServerConfig; per-request construction is gone (issue #1206).
+	if s.config.ReportService == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"session_id": sessionID,
 			"runs":       []any{},
@@ -24,8 +25,7 @@ func (s *Server) handleListReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc := report.New(s.config.Persister)
-	runs, err := svc.ListRuns(sessionID)
+	runs, err := s.config.ReportService.ListRuns(sessionID)
 	if err != nil {
 		s.logger.Error("failed to list reports", "session_id", sessionID, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -59,13 +59,12 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if s.config.Persister == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "persistence not configured"})
+	if s.config.ReportService == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "report service not configured"})
 		return
 	}
 
-	svc := report.New(s.config.Persister)
-	rep, err := svc.GetReport(sessionID, runIndex)
+	rep, err := s.config.ReportService.GetReport(sessionID, runIndex)
 	if err != nil {
 		s.logger.Error("failed to get report", "session_id", sessionID, "run", runIndex, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
