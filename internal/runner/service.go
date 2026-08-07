@@ -259,6 +259,50 @@ func (s *RunService) ActiveRunCount() int {
 	return s.count()
 }
 
+// WaitForRunsToFinish blocks until every run that exists at call time has
+// completed its run goroutine (RunState.Done closed) or the timeout elapses.
+//
+// The run goroutine writes the terminal session snapshot and run timeline to
+// the persister *after* the SSE "done" event is delivered to a subscriber.
+// Tests that assert on that event therefore return before the persistence
+// writes land; if they then let t.TempDir remove the persister root, RemoveAll
+// races the write and fails with "directory not empty". Draining here —
+// after all awaited runs have been started — gives teardown a deterministic
+// join point before the TempDirs are removed.
+//
+// A timeout prevents a still-running run (e.g. a long fake LLM stream) from
+// blocking test teardown indefinitely; a run whose Done never closes is left
+// for Cancel/CancelAll.
+func (s *RunService) WaitForRunsToFinish(timeout time.Duration) {
+	// Snapshot every state tracked at this instant. allActiveStates() skips
+	// done runs, so iterate the raw map once; the run goroutine closes Done
+	// only after its terminal persistence, so waiting on Done is sufficient.
+	s.mu.Lock()
+	states := make([]*RunState, 0, len(s.active))
+	for _, st := range s.active {
+		states = append(states, st)
+	}
+	s.mu.Unlock()
+
+	if len(states) == 0 {
+		return
+	}
+
+	deadline := time.Now().Add(timeout)
+	var wg sync.WaitGroup
+	for _, st := range states {
+		wg.Add(1)
+		go func(done <-chan struct{}) {
+			defer wg.Done()
+			select {
+			case <-done:
+			case <-time.After(time.Until(deadline)):
+			}
+		}(st.Done)
+	}
+	wg.Wait()
+}
+
 func (s *RunService) LastBatchConversationContext() *debug.ConversationContext {
 	ctx := s.getBatchCtx()
 	if ctx == nil {
