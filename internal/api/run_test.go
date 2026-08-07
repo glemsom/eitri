@@ -1342,22 +1342,22 @@ func TestChatRun_MaxTurnsStopsAfterToolTurn(t *testing.T) {
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
+
+	// Subscribe to the run's SSE stream: the max-turns explanation is
+	// delivered to live subscribers over the stream (and replayed from run
+	// history), not appended to the session conversation — the run-end append
+	// was removed (issue #1203).
+	stream := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	defer stream.Close()
+
+	stream.waitFor(t, func(data string) bool {
+		return strings.Contains(data, "max turns") && strings.Contains(data, "1")
+	}, 5*time.Second)
+
 	waitForRunToFinish(t, h.runSvc, sessionID)
 
 	if got := chatCalls.Load(); got != 1 {
 		t.Fatalf("chat completion calls = %d, want 1", got)
-	}
-
-	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
-	assistant := sess.Messages[1]
-	if assistant.Role != "assistant" {
-		t.Fatalf("assistant role = %q, want assistant", assistant.Role)
-	}
-	if !strings.Contains(assistant.Content, "max turns") {
-		t.Fatalf("assistant message = %q, want max-turn explanation", assistant.Content)
-	}
-	if !strings.Contains(assistant.Content, "1") {
-		t.Fatalf("assistant message = %q, want configured limit", assistant.Content)
 	}
 }
 
@@ -1368,7 +1368,14 @@ func TestChatRun_MaxTurnsConfigChangesOnlyAffectLaterRuns(t *testing.T) {
 	putBrowserConfig(t, h.server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","max_turns":2}`, llmSrv.URL))
 
 	sessionID, browserCookie := createSessionAndCookie(t, h.server.URL)
+
+	// Run 1 (max_turns=2): subscribe to the stream so the completed run's
+	// final answer is observable — with the run-end append removed (issue
+	// #1203), the final assistant message reaches the conversation via the
+	// per-turn live-sync / SSE stream rather than a terminal session append.
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	stream1 := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	defer stream1.Close()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1385,24 +1392,27 @@ func TestChatRun_MaxTurnsConfigChangesOnlyAffectLaterRuns(t *testing.T) {
 	close(secondTurnGate)
 	waitForRunToFinish(t, h.runSvc, sessionID)
 
-	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
-	if got := sess.Messages[1].Content; !strings.Contains(got, "final answer after tool") {
-		t.Fatalf("first run assistant message = %q, want final answer", got)
-	}
-	if strings.Contains(sess.Messages[1].Content, "max turns") {
-		t.Fatalf("first run assistant message = %q, want no max-turn warning", sess.Messages[1].Content)
-	}
+	// Run 1 completed its two turns with the in-flight max_turns=2: the final
+	// answer is streamed with no max-turn warning (the config change must not
+	// affect the already-running run).
+	stream1.waitFor(t, func(data string) bool {
+		return strings.Contains(data, "final answer after tool")
+	}, 5*time.Second)
 
+	// Run 2 starts with the new max_turns=1 and stops after the first tool
+	// turn: the max-turn explanation is streamed to live subscribers.
 	startChatRun(t, h.server.URL, sessionID, browserCookie)
+	stream2 := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	defer stream2.Close()
+
 	waitForRunToFinish(t, h.runSvc, sessionID)
 	if got := chatCalls.Load(); got != 3 {
 		t.Fatalf("chat completion calls after second run = %d, want 3", got)
 	}
 
-	sess = waitForSessionMessageCount(t, h.sessionMgr, sessionID, 4)
-	if got := sess.Messages[3].Content; !strings.Contains(got, "max turns") {
-		t.Fatalf("second run assistant message = %q, want max-turn explanation", got)
-	}
+	stream2.waitFor(t, func(data string) bool {
+		return strings.Contains(data, "max turns")
+	}, 5*time.Second)
 }
 
 func openStreamWithRetry(t *testing.T, serverURL, sessionID string, browserCookie *http.Cookie) *http.Response {
@@ -2612,15 +2622,38 @@ func TestComponentReplay_NoComponentOnToolError(t *testing.T) {
 		t.Fatalf("chat status = %d, want 200", chatResp.StatusCode)
 	}
 
+	// Subscribe to the run's SSE stream. With the run-end append removed
+	// (issue #1203), the run's content reaches the UI over the stream rather
+	// than through a terminal session append — and the erroring tool must not
+	// have emitted a component event (the loop only emits components for
+	// successful render tool calls).
+	stream := newSSEStream(openStreamWithRetry(t, h.server.URL, sessionID, browserCookie))
+	defer stream.Close()
+
 	waitForRunToFinish(t, h.runSvc, sessionID)
 
-	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
-
-	if len(sess.Messages) < 2 {
-		t.Fatal("expected at least 2 messages")
+	foundFinal := false
+	componentEvent := false
+	for stream.scanner.Scan() {
+		line := stream.scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if strings.Contains(data, "ok error handled") {
+			foundFinal = true
+		}
+		if strings.Contains(data, `"type":"component"`) {
+			componentEvent = true
+		}
 	}
-	assistantMsg := sess.Messages[1]
-	if len(assistantMsg.Components) > 0 {
-		t.Errorf("expected no components on error, got %v", assistantMsg.Components)
+	if err := stream.scanner.Err(); err != nil {
+		t.Fatalf("read SSE stream: %v", err)
+	}
+	if !foundFinal {
+		t.Fatal("stream never delivered the final assistant answer")
+	}
+	if componentEvent {
+		t.Fatal("erroring tool emitted a component event; expected none")
 	}
 }

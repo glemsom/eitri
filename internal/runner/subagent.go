@@ -10,6 +10,7 @@ import (
 
 	"github.com/voocel/litellm"
 
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
@@ -289,12 +290,22 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			RetryPolicy:      &parentCfg.RetryPolicy,
 		})
 
-		// Persist sub-agent response to child UI session
+		// Persist sub-agent response to child UI session. The child session's
+		// conversation is populated only here — sub-agent runs do not live-sync
+		// per turn (their run-completer snapshots under the task ID, ADR-0025),
+		// so a plain append is exact: the child session starts empty and the
+		// accumulated SSE buffer is the whole transcript. No dedup is needed
+		// (the old appendToSession suffix-match hack was removed, issue #1203).
 		if record.ChildSessionID != "" {
 			content := sseState.BufferString()
 			reasoningContent := sseState.ReasoningBufferString()
-			if content != "" {
-				s.appendToSession(record.ChildSessionID, content, reasoningContent)
+			if content != "" && s.uiSessionMgr != nil {
+				s.uiSessionMgr.AppendMessage(record.ChildSessionID, message.Message{
+					Role:             "assistant",
+					Content:          content,
+					ReasoningContent: reasoningContent,
+					CreatedAt:        time.Now(),
+				})
 			}
 		}
 
