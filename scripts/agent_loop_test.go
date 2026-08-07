@@ -31,6 +31,8 @@ func TestExtractVerdict(t *testing.T) {
 		{"blank line prefix accepted", "VERDICT: APPROVED\n", "APPROVED"},
 		{"changes required", "VERDICT: CHANGES_REQUIRED\n", "CHANGES_REQUIRED"},
 		{"blocked", "VERDICT: BLOCKED\n", "BLOCKED"},
+		{"test pass", "VERDICT: PASS\n", "PASS"},
+		{"test reject", "VERDICT: REJECT\n", "REJECT"},
 		{"latest wins", "VERDICT: APPROVED\nVERDICT: BLOCKED\n", "BLOCKED"},
 		{"missing verdict file", "", ""},
 		{"no verdict line", "build succeeded\n", ""},
@@ -121,6 +123,85 @@ func TestRunPersonaBatch_Verdicts(t *testing.T) {
 				t.Fatalf("log path = %q, want %q", lines[2], filepath.Join(wt, "log.test"))
 			}
 			// per-stage log must exist and contain the stub's output
+			if _, err := os.Stat(lines[2]); err != nil {
+				t.Fatalf("stage log missing: %v", err)
+			}
+		})
+	}
+}
+
+func TestTestPr(t *testing.T) {
+	cases := []struct {
+		name        string
+		eitriBody   string
+		writeTestMD bool
+		wantVerdict string
+		wantStatus  string
+	}{
+		{
+			name:        "pass when code-test approves",
+			eitriBody:   `echo "VERDICT: PASS"; touch .test.md`,
+			writeTestMD: true,
+			wantVerdict: "PASS",
+			wantStatus:  "0",
+		},
+		{
+			name:        "reject when code-test rejects",
+			eitriBody:   `echo "VERDICT: REJECT"; touch .test.md`,
+			writeTestMD: true,
+			wantVerdict: "REJECT",
+			wantStatus:  "0",
+		},
+		{
+			name:        "hard-fail on non-zero exit",
+			eitriBody:   `echo "VERDICT: PASS"; exit 3`,
+			wantVerdict: "hard-fail",
+			wantStatus:  "3",
+		},
+		{
+			name:        "no-test-suite downgrade yields pass",
+			eitriBody:   `echo "VERDICT: PASS"; echo "no test suite found; admitted because the project builds" > .test.md`,
+			writeTestMD: true,
+			wantVerdict: "PASS",
+			wantStatus:  "0",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wt := t.TempDir()
+			shim := t.TempDir()
+			writeExecutable(t, filepath.Join(shim, "eitri"),
+				"#!/usr/bin/env bash\n"+tc.eitriBody+"\n")
+
+			wtQuoted := strings.ReplaceAll(wt, "'", "'\"'\"'")
+			script := `test_pr '` + wtQuoted + `' "run the tests"`
+			cmd := exec.Command("bash", "-c", "source agent-loop.sh; "+script)
+			cmd.Dir = "."
+			cmd.Env = append(os.Environ(), "PATH="+shim+string(os.PathListSeparator)+os.Getenv("PATH"))
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("test_pr failed: %v\n%s", err, out)
+			}
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+			if len(lines) != 3 {
+				t.Fatalf("want 3 result lines, got %d:\n%s", len(lines), out)
+			}
+			if lines[0] != tc.wantVerdict {
+				t.Fatalf("verdict = %q, want %q (full:\n%s)", lines[0], tc.wantVerdict, out)
+			}
+			if lines[1] != tc.wantStatus {
+				t.Fatalf("status = %q, want %q", lines[1], tc.wantStatus)
+			}
+			if lines[2] != filepath.Join(wt, "log.test") {
+				t.Fatalf("log path = %q, want %q", lines[2], filepath.Join(wt, "log.test"))
+			}
+			// .test.md must be written into the worktree when the persona did so
+			if tc.writeTestMD {
+				if _, err := os.Stat(filepath.Join(wt, ".test.md")); err != nil {
+					t.Fatalf(".test.md missing in worktree: %v", err)
+				}
+			}
+			// per-stage log must exist
 			if _, err := os.Stat(lines[2]); err != nil {
 				t.Fatalf("stage log missing: %v", err)
 			}
