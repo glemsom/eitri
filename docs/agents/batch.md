@@ -165,6 +165,14 @@ Two gates consume this plumbing (`test_pr` from T4, #1191; `review_pr` from T5,
   downgrade when it admits a project that builds but has no suite). `test_pr`
   maps that to `PASS`/`REJECT`, or `hard-fail` on a missing/unknown verdict or
   non-zero exit. It gates before any review; the fix loop (cap / re-entry) is T6.
+- `review_pr <wt> <prompt>` runs the `code-review` persona as a fresh batch
+  (stage `review`), which loads the `code-review` skill (Standards + Spec axes)
+  and decides `APPROVED` / `CHANGES_REQUIRED` / `BLOCKED`, writing the
+  **currently-open** review findings to `$wt/.review.md`. `review_pr` passes the
+  three review verbs through, or maps to `hard-fail` on a missing/unknown
+  verdict (e.g. a stray test verb) or a non-zero exit. The build→test→review
+  order means it only ever sees a test-passing PR; it decides nothing about the
+  fix loop.
 
 A non-zero exit **or** a missing `VERDICT:` line both surface as `hard-fail` —
 a missing verdict or an auth/config/lock error never becomes a blind retry. The

@@ -209,6 +209,97 @@ func TestTestPr(t *testing.T) {
 	}
 }
 
+func TestReviewPr(t *testing.T) {
+	cases := []struct {
+		name          string
+		eitriBody     string
+		writeReviewMD bool
+		wantVerdict   string
+		wantStatus    string
+	}{
+		{
+			name:          "approved when code-review approves",
+			eitriBody:     `echo "VERDICT: APPROVED"; touch .review.md`,
+			writeReviewMD: true,
+			wantVerdict:   "APPROVED",
+			wantStatus:    "0",
+		},
+		{
+			name:          "changes required when code-review asks for changes",
+			eitriBody:     `echo "VERDICT: CHANGES_REQUIRED"; touch .review.md`,
+			writeReviewMD: true,
+			wantVerdict:   "CHANGES_REQUIRED",
+			wantStatus:    "0",
+		},
+		{
+			name:          "blocked when code-review blocks",
+			eitriBody:     `echo "VERDICT: BLOCKED"; touch .review.md`,
+			writeReviewMD: true,
+			wantVerdict:   "BLOCKED",
+			wantStatus:    "0",
+		},
+		{
+			name:        "hard-fail on non-zero exit",
+			eitriBody:   `echo "VERDICT: APPROVED"; exit 3`,
+			wantVerdict: "hard-fail",
+			wantStatus:  "3",
+		},
+		{
+			name:        "hard-fail on non-review verdict",
+			eitriBody:   `echo "VERDICT: PASS"`,
+			wantVerdict: "hard-fail",
+			wantStatus:  "0",
+		},
+		{
+			name:        "hard-fail on missing verdict",
+			eitriBody:   `echo "no verdict"`,
+			wantVerdict: "hard-fail",
+			wantStatus:  "0",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wt := t.TempDir()
+			shim := t.TempDir()
+			writeExecutable(t, filepath.Join(shim, "eitri"),
+				"#!/usr/bin/env bash\n"+tc.eitriBody+"\n")
+
+			wtQuoted := strings.ReplaceAll(wt, "'", "'\"'\"")
+			script := `review_pr '` + wtQuoted + `' "review the pr"`
+			cmd := exec.Command("bash", "-c", "source agent-loop.sh; "+script)
+			cmd.Dir = "."
+			cmd.Env = append(os.Environ(), "PATH="+shim+string(os.PathListSeparator)+os.Getenv("PATH"))
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("review_pr failed: %v\n%s", err, out)
+			}
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+			if len(lines) != 3 {
+				t.Fatalf("want 3 result lines, got %d:\n%s", len(lines), out)
+			}
+			if lines[0] != tc.wantVerdict {
+				t.Fatalf("verdict = %q, want %q (full:\n%s)", lines[0], tc.wantVerdict, out)
+			}
+			if lines[1] != tc.wantStatus {
+				t.Fatalf("status = %q, want %q", lines[1], tc.wantStatus)
+			}
+			if lines[2] != filepath.Join(wt, "log.review") {
+				t.Fatalf("log path = %q, want %q", lines[2], filepath.Join(wt, "log.review"))
+			}
+			// .review.md must be written into the worktree when the persona did so
+			if tc.writeReviewMD {
+				if _, err := os.Stat(filepath.Join(wt, ".review.md")); err != nil {
+					t.Fatalf(".review.md missing in worktree: %v", err)
+				}
+			}
+			// per-stage log must exist
+			if _, err := os.Stat(lines[2]); err != nil {
+				t.Fatalf("stage log missing: %v", err)
+			}
+		})
+	}
+}
+
 // runSourcedBash sources scripts/agent-loop.sh (helper definitions only) then
 // runs the given snippet, returning its stdout.
 func runSourcedBash(t *testing.T, snippet string) string {
