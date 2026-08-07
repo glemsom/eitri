@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/agent-loop.sh` gains the `test_pr` gate (T4, #1191): it runs the
+  `code-test` persona as a fresh batch via the shared verdict plumbing and maps
+  its outcome to `PASS`/`REJECT`/`hard-fail`. The `code-test` persona (`docs/personas/code-test.yaml`) now emits an explicit `VERDICT: PASS`/`VERDICT: REJECT` line and writes currently-open findings to `.test.md`, noting the no-test-suite downgrade when applied; `extract_verdict` recognises `PASS`/`REJECT` beside the review verbs. The gate decides nothing about loop policy (cap / re-entry / merge land in T6, #1192). `docs/agents/batch.md` documents the gate and the expanded verdict verbs.
+
+### Added
+
 - Ships three adaptable **example** personas for the review-gated issue loop under `docs/personas/`: `code-build` (the implementer), `code-test` (the verifier gate), and `code-review` (the reviewer gate), each a named system-prompt bundle with accurate `required_skills` (per ADR-0018). They are templates — copy to `~/.eitri/personas/<name>.yaml`, not auto-installed. `docs/agents/batch.md` now documents the user-level-only persona resolution (the runner ignores a workspace `.eitri/personas/` directory) and links the examples. (#1189)
 
 - `scripts/agent-loop.sh` gains two reusable verdict-plumbing helpers for the review-gated pipeline (T3, #1188): `run_persona_batch <wt> <stage> <persona> <prompt>` runs one persona as a fresh batch in a worktree (streaming to `log.$stage`, with the worker-phase `setsid --wait` shield and 130/143 Ctrl+C loop) and prints the verdict / exit status / log path, and `extract_verdict <log>` parses the latest `VERDICT: ...` line out of a log. A non-zero exit or a missing verdict both surface as a distinguished `hard-fail` (never a blind retry); the helper only runs a batch and reports a verdict — the shared cap / re-entry / merge policy will land in T6 (#1192). The script is now sourceable (its dispatcher entry point is guard-claused) so T4/T5 and tests can reuse the helpers without starting the loop. `docs/agents/batch.md` documents both.

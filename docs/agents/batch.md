@@ -150,13 +150,25 @@ invocation path:
   context = objective evaluation), streaming output to `$wt/log.$stage` with the
   same `setsid --wait` shield and 130/143 Ctrl+C loop the worker phase uses. It
   prints three lines: the verdict (`APPROVED | CHANGES_REQUIRED | BLOCKED |
-  hard-fail`), the batch's exit status, and the stage log path.
+  hard-fail` for review, or `PASS | REJECT | hard-fail` for test), the batch's
+  exit status, and the stage log path.
 - `extract_verdict <log>` parses the **latest** `VERDICT: ...` line out of a log,
-  returning just the verdict name, or empty when there is none.
+  returning just the verdict name (`APPROVED | CHANGES_REQUIRED | BLOCKED |
+  PASS | REJECT`), or empty when there is none.
+
+Two gates consume this plumbing (`test_pr` from T4, #1191; `review_pr` from T5,
+#1190), each mapping its persona's batch outcome to the gate's own verdict:
+
+- `test_pr <wt> <prompt>` runs the `code-test` persona as a fresh batch (stage
+  `test`), which runs the project's tests, emits `VERDICT: PASS`/`REJECT`, and
+  writes **currently-open** findings to `$wt/.test.md` (noting the no-test-suite
+  downgrade when it admits a project that builds but has no suite). `test_pr`
+  maps that to `PASS`/`REJECT`, or `hard-fail` on a missing/unknown verdict or
+  non-zero exit. It gates before any review; the fix loop (cap / re-entry) is T6.
 
 A non-zero exit **or** a missing `VERDICT:` line both surface as `hard-fail` —
 a missing verdict or an auth/config/lock error never becomes a blind retry. The
-helper only runs a batch and reports a verdict; it does not decide loop policy
+helpers only run a batch and report a verdict; they do not decide loop policy
 (the shared 3-round cap / re-entry / merge precondition live in T6). Both
 functions live in `agent-loop.sh`, which is guard-claused so sourcing it (e.g.
 from a Go test, or from T4/T5) defines the helpers without starting the

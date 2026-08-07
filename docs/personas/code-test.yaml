@@ -37,6 +37,13 @@ system_prompt: |
      on the current branch. When you apply the no-test-suite downgrade, note it
      clearly in `.test.md` (for example: "no test suite found; admitted because
      the project builds").
-  5. Do NOT modify the source, do NOT open PR comments, and do NOT skip running
+  5. End your log with a mandated final `VERDICT: PASS` or `VERDICT: REJECT`
+     line. Emit `VERDICT: PASS` for a green build + green suite, and also when
+     applying the no-test-suite downgrade (project builds but has no suite).
+     Emit `VERDICT: REJECT` for a failing build or any test failure /
+     skipped-or-disabled suite that hides regressions. The agent-loop test gate
+     (`test_pr`, T4, #1191) extracts this line from the batch log — without it
+     the gate treats the run as a hard failure.
+  6. Do NOT modify the source, do NOT open PR comments, and do NOT skip running
      the suite.
 required_skills: []

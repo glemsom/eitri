@@ -138,22 +138,26 @@ fi
 
 # --- Verdict plumbing ---------------------------------------------------
 
-# Extract the latest `VERDICT: APPROVED | CHANGES_REQUIRED | BLOCKED` line from
-# a batch log. Returns just the verdict name, or an empty string when the log
-# has no verdict line (or is missing). A missing verdict is always treated by
-# callers as a hard failure — genuinely no verdict (logger cut short, the persona
-# refused to emit one) must never be mistaken for a result or a retry.
+# Extract the latest `VERDICT: APPROVED | CHANGES_REQUIRED | BLOCKED` line
+# (the review gate) — or `VERDICT: PASS | REJECT` (the test gate) — from a batch
+# log. Returns just the verdict name, or an empty string when the log has no
+# verdict line (or is missing). A missing verdict is always treated by callers as
+# a hard failure — genuinely no verdict (logger cut short, the persona refused to
+# emit one) must never be mistaken for a result or a retry.
 extract_verdict() {
 	local log="$1" v=""
-	v=$(grep -oE 'VERDICT:[[:space:]]*(APPROVED|CHANGES_REQUIRED|BLOCKED)' "$log" 2>/dev/null | tail -1 || true)
+	v=$(grep -oE 'VERDICT:[[:space:]]*(APPROVED|CHANGES_REQUIRED|BLOCKED|PASS|REJECT)' "$log" 2>/dev/null | tail -1 || true)
 	case "$v" in
 		*APPROVED) printf '%s' 'APPROVED' ;;
 		*CHANGES_REQUIRED) printf '%s' 'CHANGES_REQUIRED' ;;
 		*BLOCKED) printf '%s' 'BLOCKED' ;;
+		*PASS) printf '%s' 'PASS' ;;
+		*REJECT) printf '%s' 'REJECT' ;;
 	esac
 }
 
-# Run one persona batch in a worktree and surface its review verdict.
+# Run one persona batch in a worktree and surface its persona verdict (review
+# verbs for the code-review gate, PASS/REJECT for the code-test gate).
 #
 # args: <wt> <stage> <persona> <prompt>
 #
@@ -163,7 +167,7 @@ extract_verdict() {
 # fresh context, so a gate evaluates the current tree objectively.
 #
 # Emits three lines to stdout (the caller captures and consumes them):
-#   1. verdict: APPROVED | CHANGES_REQUIRED | BLOCKED | hard-fail
+#   1. verdict: APPROVED | CHANGES_REQUIRED | BLOCKED | PASS | REJECT | hard-fail
 #   2. the batch's exit status (hard-fail is only set when status != 0 or the
 #      verdict is missing)
 #   3. the per-stage log path
@@ -189,6 +193,36 @@ run_persona_batch() {
 	if [ "$st" -ne 0 ] || [ -z "$verdict" ]; then
 		verdict="hard-fail"
 	fi
+	printf '%s\n%s\n%s\n' "$verdict" "$st" "$log"
+}
+
+# Run the test gate (T4, #1191): run the `code-test` persona as a fresh batch
+# against an issue's worktree/PR and map its outcome to the test gate's verdict.
+# Delegates to run_persona_batch (stage `test`, persona `code-test`); the persona
+# runs the project's tests, decides PASS/REJECT (applying the no-test-suite
+# downgrade when the project builds but has no suite), and writes the currently-
+# open findings to `$wt/.test.md`. The gate only maps the verdict to
+# PASS / REJECT / hard-fail: code-test `PASS`/`REJECT` pass through; a missing
+# verdict, a non-zero exit, or a non-test verdict (e.g. a stray review verb)
+# becomes `hard-fail` (never a blind retry). The gate does NOT decide loop policy
+# — the shared 3-round cap / re-entry / merge precondition land in T6 (#1192).
+#
+# args: <wt> <prompt>
+#
+# Emits the same three lines as run_persona_batch:
+#   1. PASS | REJECT | hard-fail
+#   2. the batch's exit status
+#   3. the per-stage log path
+test_pr() {
+	local wt="$1" prompt="$2" result verdict st log
+	result=$(run_persona_batch "$wt" test code-test "$prompt")
+	verdict=$(printf '%s\n' "$result" | sed -n '1p')
+	st=$(printf '%s\n' "$result" | sed -n '2p')
+	log=$(printf '%s\n' "$result" | sed -n '3p')
+	case "$verdict" in
+		PASS|REJECT) : ;; # acceptable test-gate verdicts
+		*) verdict="hard-fail" ;; # missing/unknown verdict or hard-fail
+	esac
 	printf '%s\n%s\n%s\n' "$verdict" "$st" "$log"
 }
 
