@@ -98,5 +98,6 @@ type Manager struct {
 	browserSessions  map[string][]string       // browserID → ordered session IDs
 	nextSessionNum   map[string]int            // browserID → next session number
 	maxSessions      int
+	maxExchanges     int    // per-session exchange-cap sliding window (message.DefaultMaxExchanges)
 	defaultWorkspace string // filesystem root for new sessions
 }

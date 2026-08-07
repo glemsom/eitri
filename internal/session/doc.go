@@ -82,6 +82,11 @@
 //   - UpdateTitle / UpdateStatus — mutate session metadata
 //   - ActivateSkill / DeactivateSkill — manage active skills per session
 //   - AddRenderedMessageID / HasRenderedMessageID — dedup ring buffer
+//   - WithMaxExchanges / RepairPendingToolUse — the history behaviours the
+//     canonical store shares with the old LLM-history store (issue #1239):
+//     the per-session exchange-cap sliding window (append paths trim to the
+//     cap exactly like history's append paths) and the repair that closes a
+//     trailing unresolved assistant tool call before a resume.
 //
 // Dependencies: internal/message (Message and ComponentData types)
 //

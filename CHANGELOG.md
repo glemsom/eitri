@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The canonical UI session store (`internal/session`) gains the two history
+  behaviours only the old LLM-history store had (issue #1239): the
+  **exchange-cap sliding window** and **pending-tool-use repair**. The shared
+  logic lives in `internal/message/exchange.go` as pure functions over the flat
+  canonical `Message` shape — `TrimExchanges` (drops the oldest exchanges when
+  the user-message count exceeds the cap, keeping the trailing assistant/tool
+  tail — exactly the history store's sliding-window semantics) and
+  `RepairPendingToolUse` (closes a trailing unresolved assistant tool call with
+  a synthetic tool error result so a resume never appends a user message after
+  an unclosed tool use) — with `DefaultMaxExchanges` (150) as the single
+  canonical default both stores resolve to (`history.DefaultMaxExchanges` now
+  aliases it). The `session.Manager` trims on every append path
+  (`AppendMessage`, `AppendToConversation`) and gains a `RepairPendingToolUse`
+  method; `ReplaceConversationMessages` does **not** trim, matching the history
+  store's `RestoreHistory` (compaction / live-sync write-back is never
+  trimmed). The cap is configured via the new `session.WithMaxExchanges`
+  constructor option (non-positive → default, like
+  `history.NewSessionManager`); production wires `cfg.MaxHistory` to both
+  stores in `cmd/eitri/main.go`, so they work side by side with the same cap.
+  **Parity tests** (`internal/session/exchange_parity_test.go`) drive both
+  stores through identical inputs and assert identical conversation shapes for
+  trim and repair, so both stores behave identically before the history store
+  is contracted away (umbrella #1231).
+
 - The `write` and `edit` tools can now target configured **writable roots** —
   the same `sandbox.extra_writable_paths` paths the `bash` tool may write to —
   outside the workspace root (#1210). Both tools accept targets relative to the

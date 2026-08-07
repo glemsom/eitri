@@ -11,7 +11,9 @@ import (
 )
 
 // AppendMessage appends a message to a session. No-op if session not found.
-// Title is updated to the latest user message's preview.
+// Title is updated to the latest user message's preview. The conversation is
+// then trimmed to the session's exchange-cap sliding window (the same
+// semantics as the history store's append paths — issue #1239).
 func (m *Manager) AppendMessage(id string, msg message.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -24,6 +26,7 @@ func (m *Manager) AppendMessage(id string, msg message.Message) {
 			}
 		}
 		convo.Messages = append(convo.Messages, msg)
+		convo.Messages = message.TrimExchanges(convo.Messages, m.maxExchanges)
 		if meta := m.metaStore[id]; meta != nil {
 			meta.UpdatedAt = time.Now()
 		}
@@ -253,7 +256,8 @@ func (m *Manager) GetConversationShared(id string) *Conversation {
 }
 
 // AppendToConversation appends a message to the session's conversation.
-// No-op if the session does not exist.
+// No-op if the session does not exist. The conversation is then trimmed to
+// the session's exchange-cap sliding window (issue #1239).
 func (m *Manager) AppendToConversation(id string, msg message.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -262,6 +266,7 @@ func (m *Manager) AppendToConversation(id string, msg message.Message) {
 		return
 	}
 	convo.Messages = append(convo.Messages, msg)
+	convo.Messages = message.TrimExchanges(convo.Messages, m.maxExchanges)
 	if meta := m.metaStore[id]; meta != nil {
 		meta.UpdatedAt = time.Now()
 	}
@@ -290,6 +295,31 @@ func (m *Manager) SetSystemPrompt(id, prompt string) {
 	defer m.mu.Unlock()
 	if convo := m.convoStore[id]; convo != nil {
 		convo.SystemPrompt = prompt
+		if meta := m.metaStore[id]; meta != nil {
+			meta.UpdatedAt = time.Now()
+		}
+	}
+}
+
+// RepairPendingToolUse repairs this session's conversation if it ends in an
+// unresolved assistant tool call, closing the pending tool use with a
+// synthetic tool error result (see message.RepairPendingToolUse). No-op if
+// the session does not exist or no repair is needed. Should be called before
+// appending a fresh user message on resume — a run that is cancelled while a
+// tool is executing can leave the conversation ending in an assistant message
+// with a tool call but no matching tool result, and appending a user message
+// directly after that produces an invalid sequence the provider rejects.
+// Behaviour matches the history store's RepairPendingToolUse (issue #1239).
+func (m *Manager) RepairPendingToolUse(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	convo := m.convoStore[id]
+	if convo == nil {
+		return
+	}
+	repaired := message.RepairPendingToolUse(convo.Messages)
+	if len(repaired) != len(convo.Messages) {
+		convo.Messages = repaired
 		if meta := m.metaStore[id]; meta != nil {
 			meta.UpdatedAt = time.Now()
 		}
