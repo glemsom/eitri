@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `write` and `edit` tools can now target configured **writable roots** —
+  the same `sandbox.extra_writable_paths` paths the `bash` tool may write to —
+  outside the workspace root (#1210). Both tools accept targets relative to the
+  workspace, absolute within it, or absolute within any writable root, and a
+  `/tmp/...` target is rewritten to the run's session-scoped sandbox tmpdir on
+  the host (the same file `bash` sees at that path, ADR-0026), passing through
+  to host `/tmp` when no sandbox shadow is tracked. A target outside the
+  workspace and all writable roots is a hard error (no confirmation prompt).
+  Both tools' `path` JSON-schema descriptions document the writable-root and
+  `/tmp` behaviour. The writable roots and sandbox-manager `TmpdirFor` callback
+  are threaded at the single base-tool-registry construction site, so UI,
+  batch, and sub-agent runs behave identically.
+
 - New ADR-0031 records the decision to let the `write` and `edit` tools target
   configured **allowed write paths** — the same `sandbox.extra_writable_paths`
   roots the `bash` tool can already write to — outside the workspace root, with

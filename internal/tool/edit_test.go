@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestEdit_Schema(t *testing.T) {
-	tool := NewEditTool("/tmp/workspace")
+	tool := NewEditTool("/tmp/workspace", nil, nil)
 	if tool.Name() != "edit" {
 		t.Errorf("Name = %q, want 'edit'", tool.Name())
 	}
@@ -29,7 +30,7 @@ func TestEdit_Schema(t *testing.T) {
 }
 
 func TestEdit_InvalidArgs(t *testing.T) {
-	tool := NewEditTool("/tmp/workspace")
+	tool := NewEditTool("/tmp/workspace", nil, nil)
 	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
@@ -37,7 +38,7 @@ func TestEdit_InvalidArgs(t *testing.T) {
 }
 
 func TestEdit_EmptyPath(t *testing.T) {
-	tool := NewEditTool("/tmp/workspace")
+	tool := NewEditTool("/tmp/workspace", nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"old_text":"foo","new_text":"bar"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -61,7 +62,7 @@ func TestEdit_SuccessfulEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewEditTool(dir)
+	tool := NewEditTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -92,7 +93,7 @@ func TestEdit_NoMatch_IncludesContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewEditTool(dir)
+	tool := NewEditTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,7 +132,7 @@ func TestEdit_NoMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewEditTool(dir)
+	tool := NewEditTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"nonexistent","new_text":"replacement"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -159,7 +160,7 @@ func TestEdit_MultipleMatches(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewEditTool(dir)
+	tool := NewEditTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"repeat","new_text":"unique"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -187,7 +188,7 @@ func TestEdit_SuccessfulEdit_ReturnsSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewEditTool(dir)
+	tool := NewEditTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt","old_text":"foo bar","new_text":"FOO BAR"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -223,7 +224,7 @@ func TestEdit_SuccessfulEdit_ReturnsSummary(t *testing.T) {
 }
 
 func TestEdit_PathOutsideWorkspace(t *testing.T) {
-	tool := NewEditTool("/tmp/workspace")
+	tool := NewEditTool("/tmp/workspace", nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -279,5 +280,158 @@ func TestCountLineDiffs_EmptySlices(t *testing.T) {
 	}
 	if got := countLineDiffs([]string{}, []string{}); got != 0 {
 		t.Errorf("countLineDiffs = %d, want 0", got)
+	}
+}
+
+// ── writable-root targets (issue #1210) ─────────────────────────────────────
+
+func TestEdit_WritableRootTarget(t *testing.T) {
+	workspace := t.TempDir()
+	writableRoot := t.TempDir()
+	target := filepath.Join(writableRoot, "report.txt")
+	if err := os.WriteFile(target, []byte("old content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(workspace, []string{writableRoot}, nil)
+	result, err := tool.Call(context.Background(),
+		json.RawMessage(fmt.Sprintf(`{"path":%q,"old_text":"old content","new_text":"new content"}`, target)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new content" {
+		t.Errorf("file content = %q, want %q", string(data), "new content")
+	}
+}
+
+func TestEdit_OutsideAllRootsHardError(t *testing.T) {
+	workspace := t.TempDir()
+	writableRoot := t.TempDir()
+
+	tool := NewEditTool(workspace, []string{writableRoot}, nil)
+	result, err := tool.Call(context.Background(),
+		json.RawMessage(`{"path":"/etc/passwd","old_text":"root","new_text":"hacker"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (hard error for out-of-policy edit)")
+	}
+	if result.NeedsConfirm {
+		t.Error("result.NeedsConfirm = true, want false (out-of-policy edit must not prompt)")
+	}
+	if len(result.Blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(block.Text, "outside allowed directories") {
+		t.Errorf("expected hard error about outside allowed directories, got %q", block.Text)
+	}
+}
+
+func TestEdit_TmpRewrittenWhenSandboxed(t *testing.T) {
+	workspace := t.TempDir()
+	hostDir := t.TempDir() // the session-scoped sandbox tmpdir on the host (ADR-0026)
+	target := filepath.Join(hostDir, "report.txt")
+	if err := os.WriteFile(target, []byte("old content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tool := NewEditTool(workspace, []string{hostDir}, func(sessionID string) (string, bool) {
+		if sessionID != "sess-tmp" {
+			t.Fatalf("unexpected session ID %q", sessionID)
+		}
+		return hostDir, true
+	})
+	ctx := context.WithValue(context.Background(), SessionIDKey, "sess-tmp")
+
+	result, err := tool.Call(ctx,
+		json.RawMessage(`{"path":"/tmp/report.txt","old_text":"old content","new_text":"edited in shadow"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "edited in shadow" {
+		t.Errorf("file content = %q, want %q", string(data), "edited in shadow")
+	}
+}
+
+func TestEdit_TmpPassthroughWhenUnsandboxed(t *testing.T) {
+	workspace := t.TempDir()
+	hostTmp, err := os.MkdirTemp("/tmp", "eitri-edit-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(hostTmp) })
+	target := filepath.Join(hostTmp, "note.txt")
+	if err := os.WriteFile(target, []byte("old content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A genuine /tmp/... target. No tmpdir lookup (sandbox none / bwrap
+	// unavailable) → the path passes through unchanged to host /tmp.
+	rel := strings.TrimPrefix(hostTmp, "/tmp/")
+	tmpTarget := filepath.Join("/tmp", rel, "note.txt")
+
+	tool := NewEditTool(workspace, []string{"/tmp"}, nil)
+	result, err := tool.Call(context.Background(),
+		json.RawMessage(fmt.Sprintf(`{"path":%q,"old_text":"old content","new_text":"edited on host"}`, tmpTarget)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "edited on host" {
+		t.Errorf("file content = %q, want %q", string(data), "edited on host")
+	}
+}
+
+func TestEdit_SchemaDescribesWritableRoots(t *testing.T) {
+	tool := NewEditTool("/tmp", nil, nil)
+	var schemaMap map[string]any
+	if err := json.Unmarshal(tool.JSONSchema(), &schemaMap); err != nil {
+		t.Fatal(err)
+	}
+	props, ok := schemaMap["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	pathProp, ok := props["path"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing path property")
+	}
+	desc, ok := pathProp["description"].(string)
+	if !ok {
+		t.Fatal("path property missing description")
+	}
+	if !strings.Contains(desc, "writable") {
+		t.Errorf("path description should mention writable roots, got %q", desc)
+	}
+	if !strings.Contains(desc, "/tmp") {
+		t.Errorf("path description should mention the /tmp mapping, got %q", desc)
 	}
 }

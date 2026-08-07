@@ -13,21 +13,29 @@ import (
 )
 
 type writeArgs struct {
-	Path    string  `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace."`
+	Path    string  `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace, or an absolute path within any configured writable root (sandbox.extra_writable_paths). A /tmp/... target maps to the run's session sandbox tmpdir (host /tmp when not sandboxed)."`
 	Content *string `json:"content" jsonschema:"File content as UTF-8 text. For new files, parent directories are created automatically."`
 }
 
 // WriteTool implements ToolHandler for creating and overwriting files.
 type WriteTool struct {
-	workspace string
-	schema    litellm.Schema
+	workspace     string
+	writableRoots []string
+	tmpdirFor     fileutil.TmpdirFor
+	schema        litellm.Schema
 }
 
 // NewWriteTool creates a new WriteTool.
-func NewWriteTool(workspace string) *WriteTool {
+// writableRoots may be nil — behavior is workspace-only validation, with
+// /tmp targets rewritten to the session sandbox tmpdir when tmpdirFor tracks
+// one (ADR-0026). tmpdirFor may be nil (sandbox none / bwrap unavailable) —
+// /tmp targets then pass through unchanged.
+func NewWriteTool(workspace string, writableRoots []string, tmpdirFor fileutil.TmpdirFor) *WriteTool {
 	return &WriteTool{
-		workspace: workspace,
-		schema:    SchemaOf[writeArgs](),
+		workspace:     workspace,
+		writableRoots: writableRoots,
+		tmpdirFor:     tmpdirFor,
+		schema:        SchemaOf[writeArgs](),
 	}
 }
 
@@ -57,7 +65,8 @@ func (t *WriteTool) Call(ctx context.Context, args json.RawMessage) (ToolResult,
 		return ToolError(TextBlocks("Error: content is required")), nil
 	}
 
-	absPath, err := fileutil.ValidateWorkspacePath(parsed.Path, t.workspace)
+	sessionID, _ := ctx.Value(SessionIDKey).(string)
+	absPath, err := fileutil.ResolveWritablePath(parsed.Path, t.workspace, t.writableRoots, sessionID, t.tmpdirFor)
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}
