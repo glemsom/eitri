@@ -240,15 +240,24 @@ func (p *Persister) LoadTimeline(sessionID, filename string) (*timeline.Timeline
 	return &tl, nil
 }
 
+// sessionExistsOnDisk reports whether the session has a session.json snapshot
+// on disk. A session whose session.json is gone has been permanently deleted:
+// this is the single owner of that check, used by the snapshot loader and every
+// trace save / flush / query site (issue #1237).
+func (p *Persister) sessionExistsOnDisk(sessionID string) bool {
+	_, err := os.Stat(filepath.Join(p.rootDir, "sessions", sessionID, "session.json"))
+	return err == nil
+}
+
 // readSessionSnapshot returns the raw bytes of a session's session.json
 // snapshot file. Returns nil, nil when no snapshot exists for the session.
 func (p *Persister) readSessionSnapshot(sessionID string) ([]byte, error) {
+	if !p.sessionExistsOnDisk(sessionID) {
+		return nil, nil
+	}
 	sessionFile := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
 	data, err := os.ReadFile(sessionFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("cannot read session file %s: %w", sessionFile, err)
 	}
 	return data, nil
@@ -446,12 +455,11 @@ func (p *Persister) SnapshotSession(sessionID string, s *session.UISession) erro
 func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	// If session.json is gone the session was permanently deleted — do not
 	// recreate the directory by writing a trace.
-	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
-	sessionFile := filepath.Join(sessionDir, "session.json")
-	if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
+	if !p.sessionExistsOnDisk(sessionID) {
 		return nil
 	}
 
+	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
 	tracesDir := filepath.Join(sessionDir, "traces")
 	if err := os.MkdirAll(tracesDir, 0700); err != nil {
 		return fmt.Errorf("cannot create traces dir %s: %w", tracesDir, err)
@@ -557,11 +565,8 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 		}
 		// If the session isn't live and its session.json is gone,
 		// the session was permanently deleted — skip its traces.
-		if !liveIDs[trace.SessionID] {
-			sessionFile := filepath.Join(p.rootDir, "sessions", trace.SessionID, "session.json")
-			if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
-				continue
-			}
+		if !liveIDs[trace.SessionID] && !p.sessionExistsOnDisk(trace.SessionID) {
+			continue
 		}
 		if err := p.SaveTrace(trace.SessionID, trace); err != nil {
 			slog.Warn("flush: failed to save trace",

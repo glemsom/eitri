@@ -786,6 +786,41 @@ func TestLoadSession_ReturnsNilOnMissing(t *testing.T) {
 	}
 }
 
+// TestSessionExistsOnDisk pins the single session-exists check (issue #1237):
+// a session is considered present on disk exactly when its session.json
+// snapshot exists. Every trace save / flush / query site and the snapshot
+// loader route through this one helper, so "permanently deleted" means the
+// same thing everywhere.
+func TestSessionExistsOnDisk(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A session that was never created does not exist on disk.
+	if p.sessionExistsOnDisk("ghost") {
+		t.Error("sessionExistsOnDisk(ghost) = true, want false for a never-created session")
+	}
+
+	// Once a snapshot is written, the session exists on disk.
+	live := "live-session"
+	if err := p.SnapshotSession(live, &session.UISession{ID: live}); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+	if !p.sessionExistsOnDisk(live) {
+		t.Error("sessionExistsOnDisk(live-session) = false, want true after SnapshotSession")
+	}
+
+	// A permanently deleted session (no session.json on disk) does not exist.
+	if err := p.DeleteSession(live); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	if p.sessionExistsOnDisk(live) {
+		t.Error("sessionExistsOnDisk(live-session) = true, want false after DeleteSession")
+	}
+}
+
 func TestLoadSession_CorruptSnapshot_ReturnsCorruptError(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
