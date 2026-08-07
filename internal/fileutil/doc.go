@@ -13,6 +13,9 @@
 //
 // Key functions:
 //   - ValidateWorkspacePath / ValidatePathWithAllowed — path safety checks
+//   - ResolveWritablePath — shared write/edit target resolution: rewrites
+//     /tmp/... targets to the session sandbox tmpdir (ADR-0026) and validates
+//     against the workspace + writable roots
 //   - ReadFile — read file at offset with line hash
 //   - EditFile — replace text anchored by line hash
 //   - InsertLine — insert text anchored by line hash

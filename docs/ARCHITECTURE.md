@@ -84,12 +84,14 @@ Stores per-session LLM message history with configurable exchange cap. System pr
 |------|---------------|
 | `path.go` | `ValidateWorkspacePath`, `ValidatePathWithAllowed` — workspace path validation |
 | `path_test.go` | Unit tests for path validation |
+| `writable.go` | `ResolveWritablePath`, `TmpdirFor` — shared write/edit target resolution: rewrites `/tmp/...` targets to the session sandbox tmpdir on the host when tracked (ADR-0026), then validates against the workspace root and configured writable roots; a target outside all roots is a hard error |
+| `writable_test.go` | Unit tests for writable-path resolution |
 | `filetools.go` | `ReadFile`, `ReadFileWithLineInfo`, `LineHash`, `EditFile`, `InsertLine`, `WriteFile`, `ListDirectory`, `FileViewerResult` |
 | `filetools_test.go` | Unit tests for file operations |
 | `walk.go` | `WalkFiles` — directory walking for file exploration |
 | `walk_test.go` | Tests for directory walking |
 
-Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories.
+Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories. `ResolveWritablePath` is the seam the `write`/`edit` tools will use to write to configured writable paths outside the workspace root — it shares the `/tmp` → session-sandbox-tmpdir mapping that `open_in_browser` uses (ADR-0026), with identical fallback semantics (untracked sessions pass `/tmp/` through unchanged), and hard-errors on targets outside all roots without a confirmation prompt.
 
 ### `internal/provider/` — Provider profiles + auth seams
 
