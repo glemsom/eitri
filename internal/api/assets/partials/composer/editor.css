@@ -31,28 +31,6 @@
   color: var(--accent-hover);
 }
 
-/* Workspace indicator in header — clickable, opens the directory browser */
-.workspace-indicator {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  padding: 0;
-  cursor: pointer;
-}
-
-.workspace-indicator:hover {
-  color: var(--accent);
-}
-
-.workspace-indicator:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: 3px;
-}
-
-.workspace-indicator:active {
-  color: var(--accent-hover);
-}
-
 /* Persona selector in header (issue #770) — custom dark dropdown */
 .persona-selector {
   position: relative;

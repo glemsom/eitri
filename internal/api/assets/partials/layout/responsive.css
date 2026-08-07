@@ -6,6 +6,24 @@
     bottom: calc(var(--composer-bottom, var(--composer-height, 130px)) + 0.75rem);
   }
 
+  /* Header stays in a single row on narrow viewports: tighten the gap and
+     let the workspace chip truncate rather than push chrome off-screen
+     (issue #1180). */
+  header {
+    gap: 0.75rem;
+  }
+
+  header h1,
+  header #workspace-indicator {
+    min-width: 0;
+  }
+
+  #workspace-indicator {
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   #app {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
