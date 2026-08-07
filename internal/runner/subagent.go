@@ -321,53 +321,58 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		// Extract result from last assistant message
 		record.Result, record.TurnCount = extractSubAgentResult(req.Messages)
 
-		if runErr != nil {
-			// Terminal status and termination reason come from the single exit
-			// taxonomy shared with the UI and batch paths (ADR-0029): idle on
-			// cancellation / max-turns, error on true failure.
-			outcome := classifyRunExit(runErr, subCtx)
-			switch outcome.Termination.Reason {
-			case timeline.TerminationCancelled:
-				record.Status = subAgentCancelled
-				completer.terminal(sseState, outcome.Status, outcome.Termination)
-				slog.Info("sub-agent cancelled", slog.String("task_id", taskID))
-				return
-
-			case timeline.TerminationMaxTurns:
-				record.Status = subAgentError
-				record.Err = runErr
-				var maxTurnsErr *loop.MaxTurnsExceededError
-				limit := 0
-				if errors.As(runErr, &maxTurnsErr) {
-					limit = maxTurnsErr.Limit
-				}
-				completer.terminal(sseState, outcome.Status, outcome.Termination)
-				slog.Warn("sub-agent max turns exceeded",
-					slog.String("task_id", taskID),
-					slog.Int("limit", limit),
-				)
-				return
-
-			default:
-				record.Status = subAgentError
-				record.Err = runErr
-				completer.terminal(sseState, outcome.Status, outcome.Termination)
-				slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
-				return
-			}
-		}
-
-		record.Status = subAgentCompleted
-		outcome := classifyRunExit(nil, subCtx)
-		completer.terminal(sseState, outcome.Status, outcome.Termination)
-		slog.Info("sub-agent completed",
-			slog.String("task_id", taskID),
-			slog.Int("turn_count", record.TurnCount),
-			slog.Int("result_len", len(record.Result)),
-		)
+		// The run ends through the single terminal seam shared with the UI and
+		// batch transports (runExit, run_exit.go, issue #1238): it classifies
+		// the exit (ADR-0029 — idle on cancellation / max-turns, error on true
+		// failure), runs the sub-agent's per-reason work through the single
+		// exit switch, and writes the terminal snapshot + timeline.
+		completer.runExit(sseState, runErr, subCtx, subagentExitWork(record, runErr))
 	}()
 
 	return taskID, nil
+}
+
+// subagentExitWork builds the sub-agent transport's per-reason exit work for
+// the single run-end seam (runExit, run_exit.go, issue #1238): each handler
+// records the terminal sub-agent record status (and the run error for the
+// failure reasons) plus the transport's log line. The exit switch itself
+// lives in exactly one place (exitWork.run); adding a termination reason
+// touches the taxonomy (classifyRunExit) and the switch, not this wiring. The
+// handlers capture runErr so the record carries the raw error (collected by
+// CollectSubAgents → subAgentRecordToResult), including the max-turns limit.
+func subagentExitWork(record *subAgentRecord, runErr error) *exitWork {
+	return &exitWork{
+		completed: func(exitOutcome) {
+			record.Status = subAgentCompleted
+			slog.Info("sub-agent completed",
+				slog.String("task_id", record.TaskID),
+				slog.Int("turn_count", record.TurnCount),
+				slog.Int("result_len", len(record.Result)),
+			)
+		},
+		cancelled: func(exitOutcome) {
+			record.Status = subAgentCancelled
+			slog.Info("sub-agent cancelled", slog.String("task_id", record.TaskID))
+		},
+		maxTurns: func(exitOutcome) {
+			record.Status = subAgentError
+			record.Err = runErr
+			var maxTurnsErr *loop.MaxTurnsExceededError
+			limit := 0
+			if errors.As(runErr, &maxTurnsErr) {
+				limit = maxTurnsErr.Limit
+			}
+			slog.Warn("sub-agent max turns exceeded",
+				slog.String("task_id", record.TaskID),
+				slog.Int("limit", limit),
+			)
+		},
+		error: func(exitOutcome) {
+			record.Status = subAgentError
+			record.Err = runErr
+			slog.Warn("sub-agent error", slog.String("task_id", record.TaskID), slog.Any("error", runErr))
+		},
+	}
 }
 
 // CollectSubAgents blocks until all specified tasks complete or the context is cancelled.

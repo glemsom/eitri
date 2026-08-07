@@ -597,10 +597,10 @@ func (s *RunService) notifyAllClosed(message string) {
 // broadcastStatusUpdate is the single helper through which session-status
 // broadcasting flows: it sets the session's status on the UI session manager
 // and broadcasts a session_status event to the session's browser-level SSE
-// subscribers. The UI run-exit paths (setSessionStatusAndSnapshot), the
-// sub-agent completion path, and tests all funnel through it. The status is
-// re-read from the manager after UpdateStatus so the payload always reflects
-// the manager's live state.
+// subscribers. The UI transport's run-end exit work (uiExitWork, run.go) and
+// the sub-agent completion path both funnel through it, and tests call it
+// directly. The status is re-read from the manager after UpdateStatus so the
+// payload always reflects the manager's live state.
 func (s *RunService) broadcastStatusUpdate(sessionID string, status uisession.Status, uiSessionMgr *uisession.Manager, bb *BrowserBroadcaster) {
 	if uiSessionMgr == nil {
 		return

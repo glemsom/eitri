@@ -32,7 +32,11 @@
 //	                   replaces the run's history with the compacted version
 //	                   via the history manager's replace-history capability
 //	run.go           — StartRun (agent loop entry point), session persistence
-//	                   after run, exit-path status snapshots + timelines
+//	                   after run, and the UI transport's per-reason exit work
+//	                   (uiExitWork: run-end append, SSE closing events, crash
+//	                   dump, session-status broadcast). Terminal status
+//	                   snapshot + timeline writes live in the run-end seam
+//	                   (run_exit.go), not here.
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
 //	                   loop.NewSessionHistoryManager, io.Writer output)
 //	batch_persist.go — Batch-run title derivation (batchTitle). Batch session
@@ -47,15 +51,23 @@
 //	                   the run timeline under the run ID plumbed in at
 //	                   construction (runID, generated once per run at run
 //	                   start — issue #1234), never a recomputed ID.
+//	run_exit.go      — the single run-end terminal seam shared by the UI,
+//	                   batch, and sub-agent transports (issue #1238,
+//	                   ADR-0028/0029): exit classification (classifyRunExit),
+//	                   the single per-reason exit switch (exitWork), and the
+//	                   terminal snapshot + timeline write (runExit →
+//	                   runCompleter.terminal). runExit is directly callable,
+//	                   so exit paths are unit-testable without a full run.
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
 //	                   helpers used by the prepareRun seam (prepare.go).
 //	                   buildLLMService assembles auth, LLM service, tool
 //	                   registry, and the system prompt in one call.
 //	subagent.go      — SpawnSubAgent, CollectSubAgents, CancelSubAgents,
 //	                   sub-agent record tracking, restricted tool registry,
-//	                   per-turn child-session snapshots, and sub-agent
+//	                   per-turn child-session snapshots, sub-agent
 //	                   auto-compaction (via the shared autoCompactAfterTurn
-//	                   step, issue #1096)
+//	                   step, issue #1096), and the sub-agent transport's
+//	                   per-reason exit work (subagentExitWork)
 //	skill_context.go — sessionSkillContext resolution, stale skill
 //	                   detection, skill directory enumeration
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)

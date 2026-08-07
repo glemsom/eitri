@@ -2686,8 +2686,21 @@ func TestRunEndNoDuplicateFinalAssistantMessage(t *testing.T) {
 
 	// Run end: the terminal flow (status + snapshot + timeline) must not touch
 	// the conversation — the same sequence run.go's completion branch runs
-	// after the agent loop returns.
-	svc.setSessionStatusAndSnapshot(sess.ID, uisession.StatusIdle)
+	// after the agent loop returns. It now flows through the single run-end
+	// seam (runExit, issue #1238): classify the completed exit, run the UI
+	// transport's per-reason work, then write the terminal snapshot + timeline
+	// through the completer's plain-CopySession terminal snapshot source (the
+	// same source run.go wires for UI runs), which copies the conversation
+	// exactly instead of re-running the live-sync.
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+	completer.terminalSnapshotSource = func(uisession.Status) *uisession.UISession {
+		if svc.uiSessionMgr == nil {
+			return nil
+		}
+		return svc.uiSessionMgr.CopySession(sess.ID)
+	}
+	completer.runExit(sseState, nil, context.Background(), svc.uiExitWork(sess.ID, sseState, w, nil))
 
 	convo := uiMgr.GetConversationShared(sess.ID)
 	if convo == nil {
