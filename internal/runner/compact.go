@@ -1,8 +1,8 @@
-// Shared auto-compaction for runs. UI turn completion (run.go), batch turn
-// completion (batch_persist.go), and sub-agent turn completion (subagent.go)
-// all call autoCompactAfterTurn so compaction settings in ~/.eitri/config.json
-// are honored identically across parent and sub-agent runs (issues #1093,
-// #1096).
+// Shared auto-compaction for runs. UI, batch, and sub-agent turn completion
+// all route through the unified runCompleter (run_completer.go), whose
+// OnTurnComplete calls autoCompactAfterTurn so compaction settings in
+// ~/.eitri/config.json are honored identically across parent and sub-agent
+// runs (issues #1093, #1096, #1201).
 
 package runner
 

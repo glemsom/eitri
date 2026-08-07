@@ -679,13 +679,10 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 	// on-disk persistence reflect the compacted state. Compaction survives
 	// server restart only if the persisted snapshot contains compacted messages.
 	// compactedMsgs includes the system prompt at [0]; the UI session stores
-	// it separately, so skip it when replacing conversation messages.
+	// it separately, so skip it when replacing conversation messages (the
+	// strip-system-message invariant lives in stripLeadingSystemMessage).
 	if s.uiSessionMgr != nil {
-		uiMsgs := compactedMsgs
-		if len(uiMsgs) > 0 && uiMsgs[0].Role == "system" {
-			uiMsgs = uiMsgs[1:]
-		}
-		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
+		s.uiSessionMgr.ReplaceConversationMessages(sessionID, stripLeadingSystemMessage(compactedMsgs))
 	}
 
 	// Snapshot the compacted history if persister is available.
