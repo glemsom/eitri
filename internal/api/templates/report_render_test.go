@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/report"
 )
 
@@ -16,23 +15,27 @@ import (
 func TestReportTimeline_RendersTurnCards(t *testing.T) {
 	views := []TurnView{
 		{
-			Turn:        0,
-			Role:        "user",
+			Turn: report.Turn{
+				Turn:      0,
+				Role:      "user",
+				Timestamp: time.Unix(0, 0),
+			},
 			ContentHTML: "<p>hello</p>",
-			Timestamp:   time.Unix(0, 0),
 		},
 		{
-			Turn:          1,
-			Role:          "assistant",
+			Turn: report.Turn{
+				Turn:          1,
+				Role:          "assistant",
+				Timestamp:     time.Unix(0, 0),
+				LLMDurationMs: 1500,
+				LLMModel:      "test-model",
+				ContextBefore: &report.ContextInfo{TotalTokens: 100, ContextWindow: 1000},
+				ToolCalls: []report.ToolCallInfo{
+					{Name: "bash", Arguments: map[string]any{"cmd": "ls"}, ResultPreview: "out", DurationMs: 5},
+				},
+			},
 			ContentHTML:   "<p>hi there</p>",
 			ReasoningHTML: "<p>thinking</p>",
-			Timestamp:     time.Unix(0, 0),
-			LLMDurationMs: 1500,
-			LLMModel:      "test-model",
-			ContextBefore: &report.ContextInfo{TotalTokens: 100, ContextWindow: 1000},
-			ToolCalls: []report.ToolCallInfo{
-				{Name: "bash", Arguments: map[string]any{"cmd": "ls"}, ResultPreview: "out", DurationMs: 5},
-			},
 		},
 	}
 
@@ -114,12 +117,5 @@ func TestReportNotFound(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Session data not found") {
 		t.Errorf("ReportNotFound missing message: %s", buf.String())
-	}
-}
-
-// TestTurnHasLLMMetaUsesUsage verifies a nil usage pointer alone counts as meta.
-func TestTurnHasLLMMetaUsesUsage(t *testing.T) {
-	if turnHasLLMMeta(TurnView{LLMUsage: &debug.UsageTotals{TotalTokens: 1}}) != true {
-		t.Error("turn with non-nil usage should have LLM meta")
 	}
 }

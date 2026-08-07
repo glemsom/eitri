@@ -106,19 +106,6 @@ func cacheSummary(s report.Summary) string {
 	return strings.Join(parts, " / ")
 }
 
-// contextPercent returns the rounded percentage of the context window in use,
-// clamped to 100.
-func contextPercent(ci *report.ContextInfo) int {
-	if ci == nil || ci.ContextWindow == 0 {
-		return 0
-	}
-	pct := ci.TotalTokens * 100 / ci.ContextWindow
-	if pct > 100 {
-		pct = 100
-	}
-	return pct
-}
-
 // renderJSON pretty-prints an arbitrary value as indented JSON for display.
 func renderJSON(v any) string {
 	if v == nil {

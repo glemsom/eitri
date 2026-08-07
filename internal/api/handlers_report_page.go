@@ -145,30 +145,16 @@ func (s *Server) handleReportFragment(w http.ResponseWriter, r *http.Request) {
 }
 
 // makeTurnViews pre-renders markdown content for each turn in the report.
+// TurnView embeds the canonical report.Turn, so the view inherits every model
+// field; only the pre-rendered HTML is added here (templates never format
+// markdown).
 func makeTurnViews(rep *report.SessionReport) []templates.TurnView {
 	views := make([]templates.TurnView, 0, len(rep.Turns))
 	for _, turn := range rep.Turns {
 		view := templates.TurnView{
-			Turn:              turn.Turn,
-			Role:              turn.Role,
-			ContentHTML:       renderMarkdownToHTML(turn.Content),
-			ReasoningHTML:     renderMarkdownToHTML(turn.ReasoningContent),
-			Timestamp:         turn.Timestamp,
-			LLMDurationMs:     turn.LLMDurationMs,
-			LLMTraceID:        turn.LLMTraceID,
-			LLMRequestBytes:   turn.LLMRequestBytes,
-			LLMResponseBytes:  turn.LLMResponseBytes,
-			LLMTTFBMs:         turn.LLMTTFBMs,
-			LLMTTFTMs:         turn.LLMTTFTMs,
-			LLMAttempt:        turn.LLMAttempt,
-			LLMAttemptCount:   turn.LLMAttemptCount,
-			LLMFailedAttempts: turn.LLMFailedAttempts,
-			LLMModel:          turn.LLMModel,
-			LLMFinishReason:   turn.LLMFinishReason,
-			LLMUsage:          turn.LLMUsage,
-			ContextBefore:     turn.ContextBefore,
-			ContextAfter:      turn.ContextAfter,
-			ToolCalls:         turn.ToolCalls,
+			Turn:          turn,
+			ContentHTML:   renderMarkdownToHTML(turn.Content),
+			ReasoningHTML: renderMarkdownToHTML(turn.ReasoningContent),
 		}
 		views = append(views, view)
 	}

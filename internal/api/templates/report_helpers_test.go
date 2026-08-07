@@ -138,25 +138,6 @@ func TestCacheSummary(t *testing.T) {
 	}
 }
 
-// TestContextPercent verifies the context usage percentage helper.
-func TestContextPercent(t *testing.T) {
-	if got := contextPercent(nil); got != 0 {
-		t.Errorf("contextPercent(nil) = %d, want 0", got)
-	}
-	if got := contextPercent(&report.ContextInfo{ContextWindow: 0}); got != 0 {
-		t.Errorf("contextPercent(zero window) = %d, want 0", got)
-	}
-	if got := contextPercent(&report.ContextInfo{TotalTokens: 50000, ContextWindow: 100000}); got != 50 {
-		t.Errorf("contextPercent(50%%) = %d, want 50", got)
-	}
-	if got := contextPercent(&report.ContextInfo{TotalTokens: 150000, ContextWindow: 100000}); got != 100 {
-		t.Errorf("contextPercent(over) = %d, want 100", got)
-	}
-	if got := contextPercent(&report.ContextInfo{TotalTokens: 1234, ContextWindow: 10000}); got != 12 {
-		t.Errorf("contextPercent(truncated) = %d, want 12", got)
-	}
-}
-
 // TestRenderJSON verifies the pretty-print JSON helper.
 func TestRenderJSON(t *testing.T) {
 	if got := renderJSON(nil); got != "null" {
@@ -167,24 +148,5 @@ func TestRenderJSON(t *testing.T) {
 	}
 	if got := renderJSON([]any{"x"}); got != "[\n  \"x\"\n]" {
 		t.Errorf("renderJSON(slice) = %q", got)
-	}
-}
-
-// TestTurnHasLLMMeta verifies the telemetry-presence predicate for a turn.
-func TestTurnHasLLMMeta(t *testing.T) {
-	if turnHasLLMMeta(TurnView{}) {
-		t.Error("empty turn should have no LLM meta")
-	}
-	if !turnHasLLMMeta(TurnView{LLMDurationMs: 100}) {
-		t.Error("turn with duration should have LLM meta")
-	}
-	if !turnHasLLMMeta(TurnView{LLMModel: "gpt-4"}) {
-		t.Error("turn with model should have LLM meta")
-	}
-	if !turnHasLLMMeta(TurnView{LLMUsage: &debug.UsageTotals{}}) {
-		t.Error("turn with usage should have LLM meta")
-	}
-	if !turnHasLLMMeta(TurnView{LLMTraceID: "abc"}) {
-		t.Error("turn with trace id should have LLM meta")
 	}
 }

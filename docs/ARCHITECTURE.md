@@ -202,6 +202,15 @@ The read side returns typed artifacts instead of raw bytes: `LoadTimeline` → `
 
 Sub-agent runs are persisted as child sessions keyed by their task ID (issue #1041): `SpawnSubAgent` writes an initial `sessions/<taskID>/session.json` (parent linkage, task-derived title) before the run starts — so the sub-agent's HTTP traces, recorded under the same task ID, land under `sessions/<taskID>/traces/` instead of being dropped — then a per-turn snapshot via the unified `runCompleter` (the same `loop.TurnCompleter` seam UI and batch runs use, parameterized with a request-based history source — issues #1107, #1201), and a terminal snapshot + timeline on every exit path (completed / cancelled / max-turns / error), with the terminal status and termination reason classified by the single exit taxonomy shared with the UI and batch paths (ADR-0029). Sub-agent turn completion also runs the shared auto-compaction step (issue #1096), so a long task compacts its request-based history below the low-water mark and the follow-up snapshot reflects it. This works in both UI and batch modes; the in-memory sidebar child session is unchanged.
 
+### `internal/report/` — Session Report model + assembly
+
+| File | Responsibility |
+|------|---------------|
+| `report.go` | `Service` — assembles `SessionReport`s from persisted timelines, snapshots, and HTTP traces; owns the canonical `Turn` model and the attribution heuristics |
+| `report_test.go`, `report_derivations_test.go` | Unit tests (no browser) |
+
+`internal/report` is the single owner of the Session Report model and behavior (ADR-0030): the canonical turn representation is `report.Turn` (consumed by the report routes and templates), and the timeline's own persisted artifact stays `timeline.TimelineEvent`. Assembly is layered: `buildReportFromTimeline` projects timeline events into turns in emission order (issue #1158), `enrichFromSnapshot` attributes real user messages by timestamp with snapshot-array-order tie-break and drops empty placeholder user cards (issues #1159/#1160), and `enrichFromTraces` joins assistant turns to their HTTP traces by ID with (run, turn) group and ±30s timestamp fallbacks, refining per-call measurements and summary retry/cache totals (issue #988). The turn derivations `Turn.HasLLMMeta` and `ContextPercent` are report-module behavior, so they are testable without a browser. Templates never re-derive model behavior: `TurnView` embeds `report.Turn` and only adds pre-rendered HTML.
+
 ### `internal/debug/` — Crash dumps, HTTP traces, diagnostics
 
 | File | Responsibility |
@@ -267,8 +276,8 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 | `quick_replies.templ` | Suggestion chip buttons |
 | `directory_browser.templ` | Workspace file browser view |
 | `settings_view_model.go` | View model helpers for settings page rendering |
-| `report_view_model.go` | `TurnView` report turn model + telemetry-presence helper |
-| `report_helpers.go` | Pure formatting helpers for report rendering (durations, numbers, bytes, cache tokens, context %) |
+| `report_view_model.go` | `TurnView` — thin template edge projection embedding `report.Turn` + pre-rendered HTML |
+| `report_helpers.go` | Pure formatting helpers for report rendering (durations, numbers, bytes, cache tokens, JSON) |
 | `helpers.go` | Shared template rendering helpers |
 
 ### `internal/skills/` — Agent Skills discovery + activation

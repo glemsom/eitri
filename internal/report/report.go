@@ -40,6 +40,20 @@ type ContextInfo struct {
 	ActualCompletionTokens int `json:"actual_completion_tokens,omitempty"`
 }
 
+// ContextPercent returns the rounded percentage of the context window in use,
+// clamped to 100. It is report-module behavior (not a template helper) so the
+// derivation is testable without a browser.
+func ContextPercent(ci *ContextInfo) int {
+	if ci == nil || ci.ContextWindow == 0 {
+		return 0
+	}
+	pct := ci.TotalTokens * 100 / ci.ContextWindow
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
 // ToolCallInfo represents one tool call in a turn.
 type ToolCallInfo struct {
 	Name            string `json:"name"`
@@ -73,6 +87,23 @@ type Turn struct {
 	ContextBefore     *ContextInfo       `json:"context_before,omitempty"`
 	ContextAfter      *ContextInfo       `json:"context_after,omitempty"`
 	ToolCalls         []ToolCallInfo     `json:"tool_calls,omitempty"`
+}
+
+// HasLLMMeta reports whether a turn carries any LLM telemetry worth rendering
+// in its metrics strip. It is report-module behavior (not a template helper)
+// so the derivation is testable without a browser.
+func (t Turn) HasLLMMeta() bool {
+	return t.LLMDurationMs > 0 ||
+		t.LLMTraceID != "" ||
+		t.LLMRequestBytes > 0 ||
+		t.LLMResponseBytes > 0 ||
+		t.LLMTTFBMs > 0 ||
+		t.LLMTTFTMs > 0 ||
+		t.LLMAttemptCount > 0 ||
+		t.LLMAttempt > 0 ||
+		t.LLMModel != "" ||
+		t.LLMFinishReason != "" ||
+		t.LLMUsage != nil
 }
 
 // Summary holds aggregate statistics for a run.
