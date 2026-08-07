@@ -6,7 +6,7 @@ BUILD_DIR     := dist
 VERSION       := $(shell cat VERSION 2>/dev/null || echo dev)
 GOFLAGS       := -ldflags="-s -w -X main.Version=$(VERSION)"
 
-.PHONY: all build clean test test-race test-browser test-flaky help run templ-generate css-generate release release-check \
+.PHONY: all build clean test test-race test-browser test-browser-gate test-flaky help run templ-generate css-generate release release-check \
         release-all release-linux-amd64
 
 all: build
@@ -32,6 +32,10 @@ test-race:
 ## test-browser — run the standalone browser E2E suite (chromedp, no race detector)
 test-browser:
 	./scripts/test.sh --e2e
+
+## test-browser-gate — browser E2E regression gate: shuffled + repeated (matches CI's browser-e2e job)
+test-browser-gate:
+	./scripts/test.sh --e2e --shuffle --repeat 2
 
 ## test-flaky — reproduce CI flakes: cache-cleared, -cpu 1,2, -p 1 (compact verdict)
 test-flaky:
@@ -90,6 +94,8 @@ help:
 	@echo "  make clean              Remove build artifacts (binary + dist/)"
 	@echo "  make test               Run all tests, compact verdict (full log in dist/test-output.log)"
 	@echo "  make test-race          Run all tests with race detector, compact verdict (log in dist/test-race-output.log)"
+	@echo "  make test-browser       Run the browser E2E suite (chromedp, log in dist/test-e2e-output.log)"
+	@echo "  make test-browser-gate  Browser E2E regression gate: shuffled + repeated (matches CI browser-e2e job)"
 	@echo "  make test-flaky         Reproduce CI flakes: cache-cleared, -cpu 1,2, -p 1 (log in dist/test-flaky-output.log)"
 	@echo "  make lint               Run golangci-lint with strict config"
 	@echo "  make release            Build linux/amd64 tarball + checksums"

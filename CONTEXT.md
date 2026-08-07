@@ -66,7 +66,7 @@ Eitri follows [Semantic Versioning 2.0](https://semver.org/). The canonical vers
 flowchart LR
     A["Open an issue or\nstart coding"] --> B["Make changes\non main"]
     B --> C["Push"]
-    C --> D["GitHub Actions CI:\nfast unit+race job\nbrowser E2E job\nmake build\nversion check\ndiagnostic flaky reproduce job"]
+    C --> D["GitHub Actions CI:\nfast unit+race job\nbrowser E2E gate (shuffled + repeated)\nmake build\nversion check\nblocking flaky reproduce job"]
 ```
 
 There is **no required branch strategy** — you can push directly to `main` or use PRs. CI runs on both.
@@ -78,6 +78,7 @@ Optional developer tools:
 - `make run` — build and start the server locally
 - `make test` — run all unit tests (fast, browser E2E excluded)
 - `make test-browser` — run the standalone browser E2E suite
+- `make test-browser-gate` — run the browser E2E regression gate (shuffled + repeated, matches CI)
 - `make build` — compile the binary with embedded version
 - `./eitri --version` — print the compiled version
 

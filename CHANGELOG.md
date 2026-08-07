@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CI's `browser-e2e` job is now a deterministic **regression gate** for browser E2E timing flakes (issue #1219): it runs the chromedp suite shuffled and repeated (`scripts/test.sh --e2e --shuffle --repeat 2` → `go test -shuffle=on -count 2 ./internal/api/`), so a single-test wall-clock race (lazy-lib deadline expiry, stale CDP node, unrendered response) surfaces on the PR instead of passing once and randomly breaking `main` after merge. The diagnostic `reproduce-flaky` job is promoted from non-blocking to a mandatory blocking gate (`continue-on-error: false`), so constrained-environment flake reproductions now fail the push/PR; the fast `unit-test` job is unchanged. Reproduce the gate locally with `make test-browser-gate`; `scripts/test.sh` gains `--shuffle` / `--repeat N` flags covered by `scripts/flaky_test.sh`.
+
 - The report module now gets a single service identity wired through `ServerConfig` (issue #1206): `report.Service` is constructed once at startup in `cmd/eitri/main.go` and injected as `ServerConfig.ReportService`, and the four report handlers — list reports, get report, report page (HTML), and report fragment (HTMX run-swap) — consume the injected service instead of calling `report.New(persister)` per request. Handler behavior is unchanged; servers without a report service (no persister) keep returning the same empty run list and 404 responses (the nil-service 404 body now reads `report service not configured`).
 - `internal/report` is now the single owner of the Session Report model and behavior (ADR-0030): `report.Turn` is the canonical turn representation consumed by the report routes and templates, `TimelineEvent` stays the timeline's own persisted artifact, and the attribution heuristics (`enrichFromSnapshot` timestamp / array-order user joining, `enrichFromTraces` ID → (run, turn) group → ±30s fallback) live solely in `internal/report`. The derivations `turnHasLLMMeta` and `contextPercent` moved out of the templates into `report` as `Turn.HasLLMMeta` and `ContextPercent`, testable without a browser. `templates.TurnView` is now a thin edge projection that embeds `report.Turn` and adds only pre-rendered `ContentHTML`/`ReasoningHTML` — its duplicated field declarations are deleted, and `makeTurnViews` no longer copies every model field. No user-visible behavior change. (#1205)
 
@@ -160,6 +162,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make test` and `make test-race` now print a single compact verdict line (packages passed/failed, failing test names, and DATA RACE warnings with `-race`) plus only the failing tests' error excerpts, instead of one boilerplate line per package. Full raw output is teed to `dist/test-output.log` / `dist/test-race-output.log` for on-demand grepping, and the exit code mirrors `go test`. (#1032, #1033)
 
 ### Fixed
+
+- The browser E2E persona-selector keyboard test
+  (`TestBrowser_PersonaDropdownKeyboard`) no longer flakes on the #1219
+  regression gate. The header selector is fetched into the empty
+  `#persona-selector-container` via an htmx `hx-trigger="load"` request, and
+  htmx attaches each option's `hx-post` activation listener in a **deferred
+  settle task after the swap** — so a selector that is merely *visible* can
+  still be missing its click listeners. The test used to start keying as soon
+  as the selector appeared, so the Enter activation's synthetic click could
+  land on an option with no htmx listener attached yet and silently do nothing
+  (dropdown stayed open, label unchanged; ~30% failure rate under the gate's
+  `-shuffle=on -count 2`). It now waits for the selector's options to be
+  htmx-wired — each option's `htmx-internal-data.listenerInfos` carries a
+  `click` trigger — before interacting, the same content-driven readiness
+  pattern as the #1217/#1218 de-flakes. (#1219)
 
 - The browser E2E composer test (`TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline`)
   no longer flakes with `No node with given id found (-32000)`: it used to chain
