@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/tmp` targets rewritten to the run's sandbox shadow dir (extending ADR-0026).
   Docs-only: the tool code changes ship in a follow-up. (#1208)
 
+- `internal/fileutil` gains a shared writable-path resolver for the `write`/`edit`
+  tools (#1209): `ResolveWritablePath` rewrites a `/tmp/...` target to the run's
+  session-scoped sandbox tmpdir on the host when tracked (the same
+  `open_in_browser`/`sandbox.Manager.TmpdirFor` mapping per ADR-0026, with
+  identical pass-through fallback when untracked), then validates the result
+  against the workspace root and configured writable roots via
+  `ValidatePathWithAllowed`, hard-erroring on targets outside all roots (no
+  confirmation prompt). Pure prefactor — no tool behavior changes until the
+  follow-up wiring ticket lands; resolver behavior is fully unit-tested.
+
 - `scripts/agent-loop.sh` wires the build→test→review pipeline into the per-issue
   worker phase (T6, #1192): each issue now runs a bounded fix loop driven by pure
   bash — the `code-build` persona implements/opens the PR (via `build_pr`), the
