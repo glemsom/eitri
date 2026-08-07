@@ -252,6 +252,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Sub-agent child sessions append their transcript exactly once as before.
   (#1203)
 
+- Multi-turn UI runs no longer drop intermediate assistant messages from the
+  live chat view. With each completed turn now committed as its own message
+  (ADR-0028 per-turn live-sync), the run's `done` final render emits a separate
+  bubble for **every** assistant turn since the last user message — not just the
+  last one — so prose the agent wrote in earlier turns (breakdowns, intermediate
+  answers) stays visible without needing a page refresh, which previously
+  re-rendered the full history and made the missing turns reappear.
+
 - `scripts/agent-loop.sh` now extracts real batch session IDs for the per-issue
   trail: it parses the JSON slog attribute from the run's stdout
   (`"session_id":"<id>"`) instead of a bare `session_id=<value>` that never

@@ -1957,7 +1957,7 @@ func TestRenderMarkdown_DedupByMessageID(t *testing.T) {
 		}
 	}
 
-	sessionID := loc[1:]
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
 	ts.sessionMgr.AppendMessage(sessionID, message.Message{
 		Role:    "assistant",
 		Content: "Hello world",
@@ -2025,7 +2025,7 @@ func TestRenderMarkdown_DedupSkipsNoMessageID(t *testing.T) {
 		}
 	}
 
-	sessionID := loc[1:]
+	sessionID := strings.TrimPrefix(loc, "/sessions/")
 	ts.sessionMgr.AppendMessage(sessionID, message.Message{
 		Role:    "assistant",
 		Content: "Hello world",

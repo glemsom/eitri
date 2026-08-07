@@ -6,11 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"time"
+	"strings"
 
 	"github.com/glemsom/eitri/internal/api/templates"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/message"
 )
 
 // unifiedRenderRequest is the JSON body for the unified render route.
@@ -162,52 +161,62 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		component.Render(r.Context(), w)
 
 	case "markdown":
-		var content string
-		var components []message.ComponentData
-		var quickReplies []string
-		var lastAssistantCreatedAt time.Time
-		// Shared read: only the values needed for the bubble are copied out of
+		// Shared read: only the values needed for the bubbles are copied out of
 		// the conversation; components/quickReplies are rendered read-only.
 		convo := s.config.SessionManager.GetConversationShared(id)
 		if convo != nil {
-			// Find the last user message time so we can detect stale assistant content.
-			// A run that produced no text output (e.g. tool-only run) still fires a
-			// "done" SSE event. The render handler must NOT render the previous run's
-			// assistant bubble just because no new assistant message exists.
-			var lastUserCreatedAt time.Time
+			// Collect every assistant message since the last user message that has
+			// user-visible content. A multi-turn run commits one message per turn
+			// (ADR-0028 per-turn live-sync), so the final render must reproduce ALL
+			// of them as separate bubbles — not just the last one — or intermediate
+			// turns disappear from the live view until a page refresh. Tool-call-only
+			// assistant messages (empty content, no components, no quick replies) are
+			// mid-run tool commands, not user-visible replies, and are skipped.
+			//
+			// Keying off "after the last user message" also guards stale content: a
+			// run that produced no text (e.g. a tool-only run) still fires a "done"
+			// SSE event, and here it simply produces zero bubbles instead of
+			// re-rendering the previous run's assistant bubble.
+			lastUserIdx := -1
 			for i := len(convo.Messages) - 1; i >= 0; i-- {
-				if convo.Messages[i].Role == "user" && lastUserCreatedAt.IsZero() {
-					lastUserCreatedAt = convo.Messages[i].CreatedAt
-				}
-				if convo.Messages[i].Role == "assistant" && lastAssistantCreatedAt.IsZero() {
-					lastAssistantCreatedAt = convo.Messages[i].CreatedAt
-					content = convo.Messages[i].Content
-					components = convo.Messages[i].Components
-					quickReplies = convo.Messages[i].QuickReplies
-				}
-				if !lastUserCreatedAt.IsZero() && !lastAssistantCreatedAt.IsZero() {
+				if convo.Messages[i].Role == "user" {
+					lastUserIdx = i
 					break
 				}
 			}
-			// If the last assistant message was created before the last user message,
-			// it is stale content from a previous run — skip rendering.
-			if !lastAssistantCreatedAt.IsZero() && !lastUserCreatedAt.IsZero() && lastAssistantCreatedAt.Before(lastUserCreatedAt) {
+
+			renderedAny := false
+			for i := lastUserIdx + 1; i < len(convo.Messages); i++ {
+				m := convo.Messages[i]
+				if m.Role != "assistant" {
+					continue
+				}
+				// Skip tool-call-only assistant messages (no user-visible output).
+				if strings.TrimSpace(m.Content) == "" && len(m.Components) == 0 && len(m.QuickReplies) == 0 {
+					continue
+				}
+				content := m.Content
+				if hasMermaidComponent(m.Components) {
+					content = stripMermaidCodeBlocks(content)
+				}
+				contentHTML := renderMarkdownToHTML(content)
+				// Only inline components that belong inside the assistant bubble.
+				// MermaidDiagram is the visual output of the LLM response and belongs inline.
+				componentsHTML := renderInlineComponentsToHTML(r.Context(), id, m.Components)
+				if componentsHTML != "" {
+					contentHTML += "\n" + componentsHTML
+				}
+				component := templates.AssistantBubble(id, contentHTML, m.QuickReplies)
+				component.Render(r.Context(), w)
+				renderedAny = true
+			}
+			// No visible assistant output since the last user message — nothing to
+			// render (tool-only run). Return an empty response.
+			if !renderedAny {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
 		}
-		if hasMermaidComponent(components) {
-			content = stripMermaidCodeBlocks(content)
-		}
-		contentHTML := renderMarkdownToHTML(content)
-		// Only inline components that belong inside the assistant bubble.
-		// MermaidDiagram is the visual output of the LLM response and belongs inline.
-		componentsHTML := renderInlineComponentsToHTML(r.Context(), id, components)
-		if componentsHTML != "" {
-			contentHTML += "\n" + componentsHTML
-		}
-		component := templates.AssistantBubble(id, contentHTML, quickReplies)
-		component.Render(r.Context(), w)
 
 		// Track rendered message_id for dedup
 		if req.MessageID != "" {
