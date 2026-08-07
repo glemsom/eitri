@@ -252,20 +252,23 @@ details.tool-entry-wrapper .tool-result {
   word-break: break-word;
 }
 
-/* Thinking panel content */
+/* Thinking panel content — styled as a readable code panel: tinted
+   background, relaxed line-height, muted contrast (not a raw monospace
+   dump). (issue #1177) */
 .thinking-content {
   flex: 1;
-  margin: 0;
+  margin: 0.25rem 0.5rem 0.5rem;
   padding: 0.5rem 0.75rem;
   font-family: var(--font-code);
   font-size: 0.78rem;
-  line-height: 1.4;
+  line-height: 1.5;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-muted);
-  background: transparent;
-  border: none;
+  background: var(--turn-context-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 /* Session items in sidebar */

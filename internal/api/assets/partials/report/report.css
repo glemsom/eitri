@@ -47,6 +47,7 @@
 .report-title {
   font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 12px;

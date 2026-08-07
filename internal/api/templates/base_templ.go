@@ -62,7 +62,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 templ.SafeURL
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(staticAsset("/static/fonts/Inter-latin.woff2")))
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(staticAsset("/static/fonts/Geist-latin.woff2")))
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/api/templates/base.templ`, Line: 22, Col: 87}
 		}

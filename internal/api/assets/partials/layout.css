@@ -58,6 +58,7 @@ header {
 header h1 {
   font-size: 1.1rem;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--accent);
   display: flex;
   align-items: center;

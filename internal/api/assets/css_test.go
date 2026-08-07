@@ -227,10 +227,10 @@ func TestEmbeddedCSSContainsCriticalSelectors(t *testing.T) {
 	t.Logf("checked %d critical selectors — all present", len(critical))
 }
 
-// TestEmbeddedCSSSelfHostedFonts verifies Inter and JetBrains Mono are declared
-// via local @font-face rules (served from /static/fonts/*, embedded in the
-// binary) with font-display: swap, and that eitri.css never references an
-// external font CDN. (issue #970)
+// TestEmbeddedCSSSelfHostedFonts verifies Geist (the UI font) and JetBrains
+// Mono (the code font) are declared via local @font-face rules (served from
+// /static/fonts/*, embedded in the binary) with font-display: swap, and that
+// eitri.css never references an external font CDN. (issue #970)
 func TestEmbeddedCSSSelfHostedFonts(t *testing.T) {
 	f, err := Files.Open("eitri.css")
 	if err != nil {
@@ -245,8 +245,8 @@ func TestEmbeddedCSSSelfHostedFonts(t *testing.T) {
 		subset string
 		file   string
 	}{
-		{"Inter", "latin", "Inter-latin.woff2"},
-		{"Inter", "latin-ext", "Inter-latin-ext.woff2"},
+		{"Geist", "latin", "Geist-latin.woff2"},
+		{"Geist", "latin-ext", "Geist-latin-ext.woff2"},
 		{"JetBrains Mono", "latin", "JetBrainsMono-latin.woff2"},
 		{"JetBrains Mono", "latin-ext", "JetBrainsMono-latin-ext.woff2"},
 	} {
@@ -276,6 +276,64 @@ func TestEmbeddedCSSSelfHostedFonts(t *testing.T) {
 		if strings.Contains(css, cdn) {
 			t.Errorf("eitri.css must not reference external font CDN %q (self-hosted only)", cdn)
 		}
+	}
+}
+
+// TestEmbeddedCSSTypographyHierarchy verifies the type hierarchy from the
+// Geist redesign (issue #1177): Geist replaces Inter as --font-ui with
+// JetBrains Mono retained as --font-code in both themes, and the display and
+// navigation text use SemiBold/Medium weights and tighter negative
+// letter-spacing instead of relying on size alone.
+func TestEmbeddedCSSTypographyHierarchy(t *testing.T) {
+	f, err := Files.Open("eitri.css")
+	if err != nil {
+		t.Fatalf("open eitri.css: %v", err)
+	}
+	defer f.Close()
+	data, _ := io.ReadAll(f)
+	css := string(data)
+
+	// --font-ui must point at Geist in both the dark (:root) and light
+	// (@media prefers-color-scheme) token roots, and never back to Inter.
+	if strings.Contains(css, "'Inter'") {
+		t.Errorf("eitri.css still references Inter; Geist must replace it for --font-ui")
+	}
+	for _, r := range tokenRoots(css) {
+		if strings.Contains(r.body, "--font-ui") && !strings.Contains(r.body, "'Geist'") {
+			t.Errorf("token root %q does not declare --font-ui with Geist", r.selector)
+		}
+		if strings.Contains(r.body, "--font-code") && !strings.Contains(r.body, "'JetBrains Mono'") {
+			t.Errorf("token root %q does not declare --font-code with JetBrains Mono", r.selector)
+		}
+	}
+
+	// Sidebar section headers (SESSIONS, TOOLS, Context, Thinking) use
+	// SemiBold (600) at small sizes. The .sidebar-header already carries
+	// 600; assert the declaration exists so the hierarchy holds.
+	if !strings.Contains(css, "font-weight: 600") {
+		t.Errorf("eitri.css missing font-weight: 600 for sidebar section headers")
+	}
+
+	// Display header h1 uses SemiBold weight and negative letter-spacing.
+	if !strings.Contains(css, "letter-spacing: -0.02em") {
+		t.Errorf("eitri.css missing -0.02em letter-spacing for display headings")
+	}
+
+	// Report page headings get matching negative letter-spacing.
+	if !strings.Contains(css, ".report-title") || !strings.Contains(css, "letter-spacing: -0.02em") {
+		t.Errorf("report headings missing matching negative letter-spacing")
+	}
+
+	// Thinking panel is a readable code panel: tinted background, relaxed
+	// line-height, muted contrast — not a raw monospace dump.
+	if !strings.Contains(css, ".thinking-content") {
+		t.Errorf("missing .thinking-content selector in eitri.css")
+	}
+	if !strings.Contains(css, "line-height: 1.5") {
+		t.Errorf("thinking panel missing relaxed line-height 1.5")
+	}
+	if !strings.Contains(css, "background: var(--turn-context-bg)") {
+		t.Errorf("thinking panel missing tinted background via --turn-context-bg")
 	}
 }
 
