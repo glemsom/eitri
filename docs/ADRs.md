@@ -34,3 +34,4 @@ Architecture decisions are documented as ADRs in `docs/adr/`. This file is the c
 | [0028](adr/0028-unified-turn-completion-snapshot-source.md) | Fold UI per-turn completion into the unified runCompleter | Accepted |
 | [0029](adr/0029-unified-exit-taxonomy.md) | Unified exit taxonomy across UI, batch, and sub-agent runs | Accepted |
 | [0030](adr/0030-internal-report-owns-session-report-model.md) | `internal/report` owns the Session Report model | Accepted |
+| [0031](adr/0031-allowed-write-paths-for-byte-tools.md) | Allowed write paths for byte-tools (`write`/`edit`) | Accepted |
