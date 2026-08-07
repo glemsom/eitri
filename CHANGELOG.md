@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New ADR-0031 records the decision to let the `write` and `edit` tools target
+  configured **allowed write paths** — the same `sandbox.extra_writable_paths`
+  roots the `bash` tool can already write to — outside the workspace root, with
+  `/tmp` targets rewritten to the run's sandbox shadow dir (extending ADR-0026).
+  Docs-only: the tool code changes ship in a follow-up. (#1208)
+
 - `scripts/agent-loop.sh` wires the build→test→review pipeline into the per-issue
   worker phase (T6, #1192): each issue now runs a bounded fix loop driven by pure
   bash — the `code-build` persona implements/opens the PR (via `build_pr`), the
