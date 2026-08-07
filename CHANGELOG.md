@@ -161,6 +161,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The streaming-markdown **final-render browser E2E tests**
+  (`TestBrowser_StreamingMarkdownFinalRender*`) no longer fail on slow/CI
+  runners. The shared `streamingMarkdownTestHelper` now first waits for the
+  heavy on-demand rendering library the final-render content needs (Prism /
+  KaTeX / Mermaid, loaded lazily since #968) to actually arrive in the browser
+  before it starts polling the render assertion, and the tight 8-second poll
+  deadline is replaced by a generous 30-second fallback guard — the lazy-lib
+  wait plus the content-driven checks are the real completion signal, so a slow
+  on-demand lib fetch or stream flush can no longer expire the deadline and
+  fail a correct render. The Mermaid assertion now requires the diagram's
+  rendered SVG (not merely the raw `pre.mermaid` source block), so a mermaid
+  load/render regression genuinely fails the test. (#1217)
+
+- UI runs on a **persister-less RunService** (the exact configuration browser
+  E2E test servers use) now put the run's streamed reply into the in-memory UI
+  conversation the browser renders. The unified run-completer's per-turn
+  live-sync (ADR-0028) is gated on a disk persister, so removing the run-end
+  append (#1203) left those configurations with an empty UI conversation and
+  the browser's final-render POST rendered an empty bubble — the
+  streaming-markdown final-render tests failed with "assertion never passed".
+  The run-end sync is restored for the persister-less path only: it updates the
+  last assistant message in place when one exists (preserving the components /
+  quick replies tool execution attached to it) and suffix-dedups against the
+  per-turn live-sync, so configurations with a persister stay duplicate-free.
+  (#1217)
+
 - Multi-turn UI runs no longer duplicate the final assistant message when the
   run ends. The run-end append of the run's accumulated stream buffer is gone:
   each completed turn — including the final one — reaches the UI conversation

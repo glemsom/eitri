@@ -84,9 +84,9 @@ func newBrowserCtx(t *testing.T, srvURL string) (context.Context, context.Cancel
 	// is the most common failure mode on resource-constrained GitHub runners.
 	const maxRetries = 3
 	var (
-		ctx                       context.Context
-		ctxCancel                 context.CancelFunc
-		err                       error
+		ctx       context.Context
+		ctxCancel context.CancelFunc
+		err       error
 	)
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		ctx, ctxCancel = chromedp.NewContext(sharedAllocCtx)
@@ -340,8 +340,18 @@ type streamingMarkdownTestOptions struct {
 	// SingleToken sets whether the fake LLM server emits the full reply as one token.
 	// Used for final-render regression tests (code blocks, math, mermaid).
 	SingleToken bool
-	// Timeout overrides the default 4s deadline for the render assertion.
-	// Used when SingleToken=true (tests need longer for Prism/KaTeX/Mermaid).
+	// LazyLibs lists the heavy on-demand rendering libraries the final-render
+	// content needs (Prism, katex, mermaid — the globals eitri-lazy-load.js
+	// defines, issue #968). The helper waits for these to actually load before
+	// it starts polling the render assertion, so a slow on-demand lib fetch on
+	// a constrained CI runner cannot expire the fallback deadline and fail a
+	// correct render (issue #1217).
+	LazyLibs []string
+	// Timeout overrides the generous fallback deadline for the render assertion
+	// (default 30s). It is only a fallback guard against a genuinely broken
+	// render, never the primary completion signal — the lazy-lib wait above and
+	// the content-driven check are what actually determine readiness. Tighter
+	// values are used by tests that observe transient streaming states.
 	Timeout time.Duration
 }
 
@@ -397,7 +407,24 @@ func streamingMarkdownTestHelper(t *testing.T, markdown string, opts streamingMa
 		t.Fatalf("send failed: %v", err)
 	}
 
-	timeout := 8 * time.Second
+	// Single-token final-render tests assert on content produced by the heavy
+	// on-demand rendering libraries (Prism/KaTeX/Mermaid), which eitri-lazy-load.js
+	// fetches only when the page contains matching content (issue #968). Wait
+	// for the declared library to actually arrive in the browser BEFORE polling
+	// the render assertion: on a slow/CI runner the on-demand load or stream
+	// flush can otherwise outrun the fallback deadline and fail a render that
+	// is actually correct (issue #1217).
+	if len(opts.LazyLibs) > 0 {
+		waitForLazyLibraries(t, ctx, opts.LazyLibs...)
+	}
+
+	// Fallback deadline guarding the content-driven check below. It is not the
+	// primary completion signal — readiness is observed DOM state (see
+	// streamingRenderedRootJS and the check closures), and the lazy-lib wait
+	// above has already ensured the renderer is present. The deadline only
+	// bounds the wait when a render genuinely regresses, so it is generous
+	// rather than a tight 8s budget that flakes on slow runners (issue #1217).
+	timeout := 30 * time.Second
 	if opts.Timeout > 0 {
 		timeout = opts.Timeout
 	}
