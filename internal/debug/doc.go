@@ -36,6 +36,8 @@
 //   - SanitizeConfig — redact secrets from config for dump safety
 //   - CollectSystemDiagnostics — gather system diagnostics for crash dumps
 //   - ClassifyError — classify an LLM call failure from status + message at capture time
+//   - AggregateTraces — the single window-aggregate implementation shared by
+//     the persisted archive aggregate endpoint (issue #1240)
 //   - WithAttempt / AttemptFromContext — thread the retry attempt number to the recorder
 //
 // Dependencies:
