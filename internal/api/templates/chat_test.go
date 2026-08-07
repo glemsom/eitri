@@ -56,6 +56,50 @@ func TestChatView_ToolMessagesDoNotRenderAsUserBubbles(t *testing.T) {
 	}
 }
 
+// TestUserBubble_AvatarRightOfBody verifies the user-message redesign (issue
+// #1179): the user's avatar sits on the right side of the bubble, after the
+// message body, while the assistant keeps its avatar on the left. The avatar
+// is the visual anchor distinguishing who is speaking, so its position is
+// asserted against the rendered DOM order, not presentation-only CSS.
+func TestUserBubble_AvatarRightOfBody(t *testing.T) {
+	var buf bytes.Buffer
+	if err := ChatView(&session.UISession{
+		ID: "sess-1",
+		Messages: []message.Message{
+			{Role: "user", Content: "<p>hello</p>", CreatedAt: time.Now()},
+			{Role: "assistant", Content: "<p>hi</p>", CreatedAt: time.Now()},
+		},
+	}, true, "user@example.com", nil).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("ChatView render: %v", err)
+	}
+	html := buf.String()
+
+	// User bubble: message body must precede the avatar within the bubble.
+	userBubbleStart := strings.Index(html, `class="message message-user"`)
+	userBody := strings.Index(html[userBubbleStart:], `class="message-body"`)
+	userAvatar := strings.Index(html[userBubbleStart:], `class="message-avatar"`)
+	if userBody < 0 {
+		t.Fatalf("user bubble missing message-body")
+	}
+	if userAvatar < 0 {
+		t.Fatalf("user bubble missing message-avatar")
+	}
+	if userAvatar < userBody {
+		t.Errorf("user avatar renders before message body; want avatar on the right (after body)")
+	}
+
+	// Assistant bubble: avatar must precede the message body (left anchor).
+	astBubbleStart := strings.Index(html, `class="message message-assistant"`)
+	astAvatar := strings.Index(html[astBubbleStart:], `class="message-avatar"`)
+	astBody := strings.Index(html[astBubbleStart:], `class="message-body"`)
+	if astAvatar < 0 || astBody < 0 {
+		t.Fatalf("assistant bubble missing avatar or body")
+	}
+	if astAvatar > astBody {
+		t.Errorf("assistant avatar renders after message body; want avatar on the left")
+	}
+}
+
 // TestChatView_EmptyAssistantWithQuickRepliesStillRenders ensures the bubble
 // filter does not hide quick-reply chips: an assistant message with no text
 // but inline quick replies is a real UI element (render_quick_replies).

@@ -1,18 +1,19 @@
 package templates
 
-// UserBubble renders a user chat message bubble.
+// UserBubble renders a user chat message bubble (issue #1179).
 // htmlContent is pre-rendered Markdown HTML, safe to inject.
-// If userEmail is non-empty, shows the user's Gravatar image; otherwise shows "U" fallback.
+// If userEmail is non-empty, shows the user's Gravatar image; otherwise shows "U"
+// fallback. The avatar anchors the right edge of the bubble (after the body).
 templ UserBubble(htmlContent string, userEmail string) {
 	<div class="message message-user">
+		<div class="message-body">
+			<div class="message-content">@templ.Raw(htmlContent)</div>
+		</div>
 		if userEmail != "" {
 			<img class="message-avatar" src={ templ.URL(gravatarURL(userEmail)) } alt="User" width="32" height="32"/>
 		} else {
 			<div class="message-avatar">U</div>
 		}
-		<div class="message-body">
-			<div class="message-content">@templ.Raw(htmlContent)</div>
-		</div>
 	</div>
 }
 
