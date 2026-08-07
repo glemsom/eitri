@@ -171,6 +171,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Trace identity is now single-owner across restarts (#1236): fresh trace IDs
+  always advance past the restored archive — `Recorder.LoadAll` reseeds the
+  ID generator from the largest restored `trace_N` (never moving it backwards)
+  — the persister marks restored traces as already persisted so the shutdown
+  `Flush` never re-writes them, and `SaveTrace` refuses to overwrite an
+  existing trace file (`ErrTraceExists`) instead of silently clobbering an
+  archived trace with a colliding fresh ID.
+
 - The browser E2E persona-selector keyboard test
   (`TestBrowser_PersonaDropdownKeyboard`) no longer flakes on the #1219
   regression gate. The header selector is fetched into the empty

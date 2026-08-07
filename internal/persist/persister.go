@@ -64,6 +64,12 @@ type RestoredState struct {
 // from hard I/O failures with errors.Is.
 var ErrCorruptSnapshot = errors.New("persist: corrupt session snapshot")
 
+// ErrTraceExists indicates SaveTrace was asked to write a trace whose ID is
+// already owned by an existing trace file on disk. Persisted traces are
+// single-owner (issue #1236): a saved trace is never overwritten, so a
+// collision is a hard error rather than a silent clobber.
+var ErrTraceExists = errors.New("persist: trace already exists on disk")
+
 // Persister manages disk I/O for session snapshots, conversation history,
 // and HTTP traces under a root data directory.
 type Persister struct {
@@ -431,6 +437,12 @@ func (p *Persister) SnapshotSession(sessionID string, s *session.UISession) erro
 // SaveTrace is a no-op — it returns nil without writing anything. This
 // prevents both shutdown Flush and asynchronous OnComplete callbacks from
 // recreating deleted session directories.
+//
+// Trace identity is single-owner (issue #1236): a trace file already on disk
+// is never overwritten. If <trace_id>.json exists, SaveTrace returns
+// ErrTraceExists without touching it — a freshly generated ID that collides
+// with a restored archive file after a restart must not silently clobber the
+// archived trace.
 func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	// If session.json is gone the session was permanently deleted — do not
 	// recreate the directory by writing a trace.
@@ -451,6 +463,9 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	}
 
 	traceFile := filepath.Join(tracesDir, traceFilename(string(trace.ID)))
+	if _, err := os.Stat(traceFile); err == nil {
+		return ErrTraceExists
+	}
 	if err := atomicWrite(traceFile, data, 0600); err != nil {
 		return fmt.Errorf("cannot write trace file: %w", err)
 	}
@@ -828,6 +843,13 @@ func (p *Persister) Restore() (*RestoredState, error) {
 				return nil, fmt.Errorf("cannot unmarshal trace %s: %w", tracePath, err)
 			}
 			state.Traces = append(state.Traces, &trace)
+
+			// Restored traces are already owned by their on-disk files: mark
+			// them persisted so the shutdown Flush never re-writes them after
+			// a restart (single-owner trace identity, issue #1236).
+			p.mu.Lock()
+			p.persistedTraces[trace.ID] = true
+			p.mu.Unlock()
 		}
 	}
 
