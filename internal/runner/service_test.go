@@ -2430,10 +2430,10 @@ func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
 	// batch and sub-agent runs use, wired with the UI snapshot source so the
 	// live conversation is synced into the UI session on each complete turn.
 	completer := &runCompleter{
-		svc:          svc,
-		historyMgr:   loop.NewSessionHistoryManager(historyMgr, sess.ID),
-		id:           sess.ID,
-		cfg:          RunConfig{},
+		svc:        svc,
+		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		id:         sess.ID,
+		cfg:        RunConfig{},
 	}
 	completer.snapshotSource = completer.uiSnapshotSource
 
@@ -2457,42 +2457,87 @@ func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
 	}
 }
 
-// TestAppendToSession_MultiTurnRunEndNoDuplicate guards against a regression
-// where refreshing the chat page showed the last message twice. For a
-// multi-turn run the final assistant message is synced into the UI session by
-// OnTurnComplete's live-history sync; at run completion appendToSession is
-// called again with the run's *accumulated* SSE buffer (all turns' text
-// concatenated), which differs from the last single message. The dedup check
-// compared last.Content to that whole accumulated buffer, so it never matched
-// and a duplicate assistant message was appended.
-func TestAppendToSession_MultiTurnRunEndNoDuplicate(t *testing.T) {
-	svc, uiMgr := newRunServiceForTest(t)
+// TestRunEndNoDuplicateFinalAssistantMessage proves the invariant that
+// replaced the run-end append-dedup hack (issue #1203): for a multi-turn UI
+// run, the final assistant message appears exactly once in the UI conversation
+// at run end. The run-end append of the accumulated SSE buffer is gone — the
+// final turn reaches the conversation exactly once through the unified
+// completion path's per-turn live-history sync (ADR-0028) — so the old
+// suffix-match dedup is no longer needed. Previously the run-end append could
+// surface the last message twice after a page refresh.
+func TestRunEndNoDuplicateFinalAssistantMessage(t *testing.T) {
+	uiMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	persister, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiMgr,
+		HistorySessionMgr: historyMgr,
+		Persister:         persister,
+	})
 
 	sess, err := uiMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("Create session: %v", err)
 	}
 
-	// Seed the UI session exactly as OnTurnComplete's live-history sync leaves
-	// it after the final turn of a multi-turn run.
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "Question"})
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Turn 1 reply"})
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "tool", Content: `{"task_id":"t1"}`})
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Turn 2 reply"})
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "tool", Content: `{"t1":{"status":"completed"}}`})
-	uiMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "Final reply"})
+	// Populate the run's live history as the agent loop leaves it after the
+	// final turn of a multi-turn run: two tool-using turns, then the final
+	// assistant answer.
+	historyMgr.Create(sess.ID)
+	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
+	historyMgr.AppendUser(sess.ID, "Do the work")
+	historyMgr.AppendAssistant(sess.ID, "Turn 1 reply", []message.ToolCall{
+		{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}},
+	})
+	historyMgr.AppendTool(sess.ID, "call_1", `{"task_id":"t1"}`, "", false)
+	historyMgr.AppendAssistant(sess.ID, "Turn 2 reply", []message.ToolCall{
+		{ID: "call_2", Function: message.FunctionCall{Name: "read", Arguments: "again"}},
+	})
+	historyMgr.AppendTool(sess.ID, "call_2", `{"t1":{"status":"completed"}}`, "", false)
+	historyMgr.AppendAssistant(sess.ID, "Final reply", nil)
 
-	before := len(uiMgr.GetConversationShared(sess.ID).Messages)
+	// The unified completion path (ADR-0028): after the final turn the UI-mode
+	// run-completer live-syncs the run history into the UI session. At run end
+	// run.go no longer appends the accumulated SSE buffer (issue #1203), so the
+	// final assistant message must appear exactly once — once per turn would be
+	// the duplicate the old append-dedup hack papered over.
+	completer := &runCompleter{
+		svc:        svc,
+		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		id:         sess.ID,
+		cfg:        RunConfig{},
+	}
+	completer.snapshotSource = completer.uiSnapshotSource
+	completer.OnTurnComplete(context.Background(), sess.ID)
 
-	// appendToSession is invoked at run completion with the SSE buffer, which
-	// for a multi-turn run contains *all* turns' text concatenated — the exact
-	// shape that produced the duplicate in the wild.
-	accumulated := "Turn 1 reply" + "Turn 2 reply" + "Final reply"
-	svc.appendToSession(sess.ID, accumulated, "")
+	// Run end: the terminal flow (status + snapshot + timeline) must not touch
+	// the conversation — the same sequence run.go's completion branch runs
+	// after the agent loop returns.
+	svc.setSessionStatusAndSnapshot(sess.ID, uisession.StatusIdle)
 
-	after := uiMgr.GetConversationShared(sess.ID).Messages
-	if len(after) != before {
-		t.Fatalf("appendToSession appended a duplicate at run end: messages %d -> %d",
-			before, len(after))
+	convo := uiMgr.GetConversationShared(sess.ID)
+	if convo == nil {
+		t.Fatal("expected a conversation in the UI session")
+	}
+
+	roles := make([]string, 0, len(convo.Messages))
+	finalCount := 0
+	for i := range convo.Messages {
+		roles = append(roles, string(convo.Messages[i].Role))
+		if convo.Messages[i].Role == "assistant" && convo.Messages[i].Content == "Final reply" {
+			finalCount++
+		}
+	}
+	wantRoles := []string{"user", "assistant", "tool", "assistant", "tool", "assistant"}
+	if !reflect.DeepEqual(roles, wantRoles) {
+		t.Errorf("UI session roles = %v, want %v", roles, wantRoles)
+	}
+	if finalCount != 1 {
+		t.Fatalf("final assistant message appears %d times in the UI conversation at run end, want exactly 1",
+			finalCount)
 	}
 }

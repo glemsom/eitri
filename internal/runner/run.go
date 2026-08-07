@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	runtimeDebug "runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/voocel/litellm"
@@ -213,19 +212,24 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			outcome := classifyRunExit(err, runCtx)
 			switch outcome.Termination.Reason {
 			case timeline.TerminationCancelled:
-				content := sseState.BufferString()
-				reasoningContent := sseState.ReasoningBufferString()
-				if content != "" {
-					s.appendToSession(sessionID, content, reasoningContent)
-				}
+				// The final turn is already in the UI conversation: the
+				// UI-mode run-completer live-syncs each completed turn,
+				// including the last one (ADR-0028). No run-end append of the
+				// SSE buffer happens on any exit path (issue #1203) — appending
+				// the accumulated buffer here would duplicate the final
+				// assistant message.
 				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				w.Error("Run cancelled")
 				return
 
 			case timeline.TerminationMaxTurns:
-				content := sseState.BufferString()
+				// Stream the max-turns message to live subscribers (SSE) but do
+				// not append it to the UI conversation — the completed turns,
+				// including the final assistant message, are already there via
+				// the run-completer's per-turn live-sync (issue #1203).
 				limitMsg := outcome.Termination.Message
+				content := sseState.BufferString()
 				if content == "" {
 					sseState.AppendBuffer(limitMsg)
 					content = limitMsg
@@ -233,9 +237,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 					sseState.AppendBuffer("\n\n" + limitMsg)
 					content += "\n\n" + limitMsg
 				}
-				reasoningContent := sseState.ReasoningBufferString()
 				w.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), tokenizer.EstimateUsage(content, s.calibrationStore, cfg.ModelName))
-				s.appendToSession(sessionID, content, reasoningContent)
 				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 				return
@@ -253,12 +255,11 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			}
 		}
 
+		// Normal completion: the final assistant message is already in the UI
+		// conversation via the run-completer's live-history sync of the last
+		// completed turn (ADR-0028); appending the accumulated SSE buffer here
+		// would duplicate it (issue #1203).
 		outcome := classifyRunExit(nil, runCtx)
-		content := sseState.BufferString()
-		reasoningContent := sseState.ReasoningBufferString()
-		if content != "" {
-			s.appendToSession(sessionID, content, reasoningContent)
-		}
 		s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
 		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
 	}()
@@ -328,50 +329,11 @@ func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisess
 	})
 }
 
-// appendToSession persists an assistant message to the UI session.
-func (s *RunService) appendToSession(sessionID, content, reasoningContent string) {
-	if s.uiSessionMgr == nil || content == "" {
-		return
-	}
-	// If the last message is an empty assistant (created by AppendComponent),
-	// update its content instead of creating a duplicate.
-	// Shared read: only the last message is inspected; mutations go through the
-	// manager's mutating methods below.
-	convo := s.uiSessionMgr.GetConversationShared(sessionID)
-	if convo != nil && len(convo.Messages) > 0 {
-		last := convo.Messages[len(convo.Messages)-1]
-		if last.Role == "assistant" && last.Content == "" {
-			s.uiSessionMgr.UpdateLastAssistantContent(sessionID, content)
-			if reasoningContent != "" {
-				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
-			}
-			return
-		}
-		// The final assistant message may already have been synced into the UI
-		// session by OnTurnComplete's live-history sync. Avoid appending a
-		// duplicate at run completion. OnTurnComplete replaces the UI
-		// conversation with each turn's messages, so after a multi-turn run the
-		// last UI message is the final assistant reply while `content` is the
-		// run's *accumulated* SSE buffer (all turns' text concatenated). The
-		// final reply is present as the buffer's tail, so a plain equality check
-		// only dedups single-turn runs. Match the suffix instead: when the last
-		// assistant message equals the tail of the buffer, the final reply is
-		// already in the session — appending again produces a duplicate that
-		// surfaces as the last message repeating after a page refresh.
-		if last.Role == "assistant" && last.Content != "" && strings.HasSuffix(content, last.Content) {
-			if reasoningContent != "" && last.ReasoningContent == "" {
-				s.uiSessionMgr.SetLastReasoningContent(sessionID, reasoningContent)
-			}
-			return
-		}
-	}
-	s.uiSessionMgr.AppendMessage(sessionID, message.Message{
-		Role:             "assistant",
-		Content:          content,
-		ReasoningContent: reasoningContent,
-		CreatedAt:        time.Now(),
-	})
-}
+// appendToSession no longer exists (issue #1203): the run-end append of the
+// accumulated SSE buffer was removed — each completed turn, including the
+// final one, reaches the UI conversation exactly once through the unified
+// completion path's live-history sync (run_completer.go, ADR-0028). Sub-agent
+// child sessions append their transcript directly in subagent.go.
 
 // snapshotSession persists the current UI session to disk.
 func (s *RunService) snapshotSession(sessionID string) {

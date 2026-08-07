@@ -118,6 +118,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Multi-turn UI runs no longer duplicate the final assistant message when the
+  run ends. The run-end append of the run's accumulated stream buffer is gone:
+  each completed turn — including the final one — reaches the UI conversation
+  exactly once through the unified completion path's per-turn live-sync
+  (ADR-0028), so the old suffix-match append-dedup hack is removed. This also
+  fixes runs that stop at the max-turn limit, which previously appended the
+  entire accumulated conversation a second time alongside the limit notice.
+  Sub-agent child sessions append their transcript exactly once as before.
+  (#1203)
+
 - `scripts/agent-loop.sh` now extracts real batch session IDs for the per-issue
   trail: it parses the JSON slog attribute from the run's stdout
   (`"session_id":"<id>"`) instead of a bare `session_id=<value>` that never
