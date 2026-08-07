@@ -516,8 +516,11 @@ func buildBaseToolRegistry(cfg RunConfig, skillDirs []string, skillsSvc *skills.
 	reg.Register(tool.NewBashToolWithManager(cfg.Workspace, cfg.CmdTimeout, sandboxMgr))
 	reg.Register(tool.NewGrepTool(cfg.Workspace))
 	reg.Register(tool.NewReadTool(cfg.Workspace, skillDirs, cfg.AllowedReadPaths))
-	reg.Register(tool.NewWriteTool(cfg.Workspace))
-	reg.Register(tool.NewEditTool(cfg.Workspace))
+	// write/edit share bash's writable roots (sandbox.extra_writable_paths)
+	// and the sandbox Manager's TmpdirFor so /tmp targets map to the same
+	// session-scoped shadow dir bash writes to (issue #1210, ADR-0026/0031).
+	reg.Register(tool.NewWriteTool(cfg.Workspace, cfg.Sandbox.ExtraWritablePaths, sandboxMgr.TmpdirFor))
+	reg.Register(tool.NewEditTool(cfg.Workspace, cfg.Sandbox.ExtraWritablePaths, sandboxMgr.TmpdirFor))
 	reg.Register(tool.NewRenderMermaidDiagram())
 	reg.Register(tool.NewWebFetchTool())
 	reg.Register(tool.NewBrowserTool(cfg.BrowserWsUrl, cfg.Workspace))

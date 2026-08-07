@@ -13,22 +13,30 @@ import (
 )
 
 type editArgs struct {
-	Path    string `json:"path" jsonschema:"File path relative to workspace root"`
+	Path    string `json:"path" jsonschema:"File path relative to workspace root, or an absolute path within the workspace, or an absolute path within any configured writable root (sandbox.extra_writable_paths). A /tmp/... target maps to the run's session sandbox tmpdir (host /tmp when not sandboxed)."`
 	OldText string `json:"old_text" jsonschema:"Exact text block to find (use surrounding lines as context anchors for uniqueness)"`
 	NewText string `json:"new_text" jsonschema:"Replacement text for the matched block"`
 }
 
 // EditTool implements ToolHandler for precise search-and-replace on existing files.
 type EditTool struct {
-	workspace string
-	schema    litellm.Schema
+	workspace     string
+	writableRoots []string
+	tmpdirFor     fileutil.TmpdirFor
+	schema        litellm.Schema
 }
 
 // NewEditTool creates a new EditTool.
-func NewEditTool(workspace string) *EditTool {
+// writableRoots may be nil — behavior is workspace-only validation, with
+// /tmp targets rewritten to the session sandbox tmpdir when tmpdirFor tracks
+// one (ADR-0026). tmpdirFor may be nil (sandbox none / bwrap unavailable) —
+// /tmp targets then pass through unchanged.
+func NewEditTool(workspace string, writableRoots []string, tmpdirFor fileutil.TmpdirFor) *EditTool {
 	return &EditTool{
-		workspace: workspace,
-		schema:    SchemaOf[editArgs](),
+		workspace:     workspace,
+		writableRoots: writableRoots,
+		tmpdirFor:     tmpdirFor,
+		schema:        SchemaOf[editArgs](),
 	}
 }
 
@@ -54,7 +62,8 @@ func (t *EditTool) Call(ctx context.Context, args json.RawMessage) (ToolResult, 
 		return ToolError(TextBlocks("Error: path is required")), nil
 	}
 
-	absPath, err := fileutil.ValidateWorkspacePath(parsed.Path, t.workspace)
+	sessionID, _ := ctx.Value(SessionIDKey).(string)
+	absPath, err := fileutil.ResolveWritablePath(parsed.Path, t.workspace, t.writableRoots, sessionID, t.tmpdirFor)
 	if err != nil {
 		return ToolError(TextBlocks(fmt.Sprintf("Error: %v", err))), nil
 	}

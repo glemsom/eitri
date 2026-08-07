@@ -91,7 +91,7 @@ Stores per-session LLM message history with configurable exchange cap. System pr
 | `walk.go` | `WalkFiles` — directory walking for file exploration |
 | `walk_test.go` | Tests for directory walking |
 
-Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories. `ResolveWritablePath` is the seam the `write`/`edit` tools will use to write to configured writable paths outside the workspace root — it shares the `/tmp` → session-sandbox-tmpdir mapping that `open_in_browser` uses (ADR-0026), with identical fallback semantics (untracked sessions pass `/tmp/` through unchanged), and hard-errors on targets outside all roots without a confirmation prompt.
+Used by the `read`, `write`, `edit`, and `grep` tools for all file I/O and path validation. Workspace-aware: all path operations validate against allowed directories. `ResolveWritablePath` is the seam the `write`/`edit` tools use to write to configured writable paths outside the workspace root — it shares the `/tmp` → session-sandbox-tmpdir mapping that `open_in_browser` uses (ADR-0026), with identical fallback semantics (untracked sessions pass `/tmp/` through unchanged), and hard-errors on targets outside all roots without a confirmation prompt.
 
 ### `internal/provider/` — Provider profiles + auth seams
 
@@ -375,8 +375,8 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 | `bash.go` | `BashTool` — direct `exec.Command` execution with stdout/stderr capture, exit code, timeout via `context.WithTimeout`, 8 KiB output cap (before pattern compression) |
 | `grep.go` | `GrepTool` — workspace-scoped grep with context lines |
 | `read.go` | `ReadTool` — read file with line info and hashes; output capped at the requested line range (default 1-100) |
-| `write.go` | `WriteTool` — write file with workspace validation |
-| `edit.go` | `EditTool` — edit file with line-hash anchors |
+| `write.go` | `WriteTool` — create/overwrite files with workspace validation; may also target configured writable roots (`sandbox.extra_writable_paths`) and rewrites `/tmp/...` targets to the session sandbox tmpdir (ADR-0026/0031) |
+| `edit.go` | `EditTool` — precise search-and-replace on existing files; same writable-root and `/tmp` target rules as `write` |
 | `render_mermaid_diagram.go` | `RenderMermaidDiagram` — emit mermaid diagram data for server-side rendering |
 | `render_quick_replies.go` | `RenderQuickReplies` — emit suggestion chips for UI |
 | `web_fetch.go` | `WebFetchTool` — fetch a web page and convert to Markdown |
@@ -401,7 +401,9 @@ Wired into `BashTool` (see `internal/tool/`): raw output is capped at 8 KiB befo
 
 **OpenBrowserTool** (`open_in_browser`) runs in-process in the unsandboxed harness, so unlike the bwrap-sandboxed `bash` tool it reaches the host X11/Wayland socket. It opens exactly one `http`, `https`, or `file` URL (or bare path) per call: any other scheme (`javascript:`, `mailto:`, `data:`, …) is hard-rejected before anything is launched; a bare path without a scheme is normalized to `file://`, resolved against the workspace when relative, and must exist on disk; and a path starting with `/tmp/` is rewritten to the matching host file in the run's session-scoped sandbox tmpdir (only when that host path exists, else passed through). It shares the sandbox `Manager` with `BashTool` so the `/tmp` mapping is deterministic. It is silent (no confirmation prompt), visible in the transcript, and registered in the base toolset so sub-agents can open URLs too; Linux-only behind a small per-platform seam. Both the tool and the `EITRI_OPEN_BROWSER` startup auto-open share one launcher (`tool.OpenURL`) detached into its own process group with a ~10s wait cap; missing `DISPLAY`/`WAYLAND_DISPLAY` is a tool error.
 
-**Tool registration** happens in one place, `prepareRun()` in `internal/runner/prepare.go` (ADR-0024/0025): it registers the core tools (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`, `open_in_browser`) plus `skill` when a skills service is wired, and — gated by the `allow_delegate` option — `delegate`/`collect` (parent runs only; delegated runs are leaves). `render_quick_replies` registers only when a UI session exists. Recursion/leaf gating is a config value, not a registry omission (issue #1092, ADR-0013, ADR-0025).
+**WriteTool** (`write`) and **EditTool** (`edit`) are the byte-level counterparts to bash for creating and modifying files. They run in the unsandboxed harness and target (a) paths relative to the workspace root, (b) absolute paths within the workspace, or (c) absolute paths within any configured writable root — the same `sandbox.extra_writable_paths` list the bwrap sandbox bind-mounts read-write for `bash` (ADR-0031). A target starting with `/tmp/` is rewritten to the run's session-scoped sandbox tmpdir via the shared `sandbox.Manager.TmpdirFor` callback (ADR-0026), so `/tmp/x` names the same host file to `bash`, `write`/`edit`, and `open_in_browser`; when no session tmpdir is tracked (sandbox profile `none`, or bwrap missing/unusable) the `/tmp/` path passes through unchanged to host `/tmp`. A target outside the workspace and all writable roots is a hard `ToolError` — no confirmation prompt, unlike `read`'s out-of-cover prompt. Both tools receive their writable roots and the `TmpdirFor` callback at the single base-tool-registry construction site (`buildBaseToolRegistry`), so UI, batch, and sub-agent runs share identical write policy.
+
+**Tool registration** happens in one place, `prepareRun()` in `internal/runner/prepare.go` (ADR-0024/0025): it registers the core tools (`bash`, `grep`, `read`, `write`, `edit`, `render_mermaid_diagram`, `web_fetch`, `browser`, `open_in_browser`) plus `skill` when a skills service is wired, and — gated by the `allow_delegate` option — `delegate`/`collect` (parent runs only; delegated runs are leaves). `render_quick_replies` registers only when a UI session exists. Recursion/leaf gating is a config value, not a registry omission (issue #1092, ADR-0013, ADR-0025). `write`/`edit` are constructed at the same single site (`buildBaseToolRegistry`) with the run's writable roots and the shared sandbox `Manager`'s `TmpdirFor` callback, so UI, batch, and sub-agent runs get identical write policy (issue #1210, ADR-0031).
 
 ### `internal/config/` — Configuration
 
@@ -532,7 +534,7 @@ sequenceDiagram
 1. Keep discovery/parsing/precedence logic in `internal/skills`; API and agent packages should consume the service API rather than scanning files directly.
 2. Add new skill roots only through a documented precedence change and ADR update.
 3. Keep `allowed-tools` advisory until Eitri has a real approval/permission model.
-4. Preserve resource access invariant: `read` can read workspace and skill directories; `write` and `edit` remain workspace-only.
+4. Preserve resource access invariant: `read` can read workspace and skill directories; `write` and `edit` target the workspace plus configured writable roots (`sandbox.extra_writable_paths`), never arbitrary host paths.
 
 ### Adding a new API route
 

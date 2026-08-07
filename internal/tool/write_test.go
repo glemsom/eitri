@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestWrite_Schema(t *testing.T) {
-	tool := NewWriteTool("/tmp")
+	tool := NewWriteTool("/tmp", nil, nil)
 	if tool.Name() != "write" {
 		t.Errorf("Name = %q, want 'write'", tool.Name())
 	}
@@ -45,7 +46,7 @@ func TestWrite_Schema(t *testing.T) {
 }
 
 func TestWrite_InvalidArgs(t *testing.T) {
-	tool := NewWriteTool("/tmp")
+	tool := NewWriteTool("/tmp", nil, nil)
 	_, err := tool.Call(context.Background(), json.RawMessage(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid args")
@@ -53,7 +54,7 @@ func TestWrite_InvalidArgs(t *testing.T) {
 }
 
 func TestWrite_EmptyPath(t *testing.T) {
-	tool := NewWriteTool("/tmp")
+	tool := NewWriteTool("/tmp", nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"","content":"hello"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -75,7 +76,7 @@ func TestWrite_EmptyPath(t *testing.T) {
 
 func TestWrite_PathTraversalRejected(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"../../etc/passwd","content":"hack"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -102,7 +103,7 @@ func TestWrite_CreateNewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"sub/hello.txt","content":"hello world"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -135,7 +136,7 @@ func TestWrite_CreateNewFile(t *testing.T) {
 
 func TestWrite_AutoCreateParentDirectories(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"a/b/c/d/deep.txt","content":"deep content"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -173,7 +174,7 @@ func TestWrite_OverwriteExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"existing.txt","content":"new content"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -206,7 +207,7 @@ func TestWrite_OverwriteExistingFile(t *testing.T) {
 
 func TestWrite_MissingContent(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"test.txt"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -228,7 +229,7 @@ func TestWrite_MissingContent(t *testing.T) {
 
 func TestWrite_EmptyContentCreatesZeroByteFile(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"empty.txt","content":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -260,7 +261,7 @@ func TestWrite_EmptyContentTruncatesExistingFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("old content"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"existing.txt","content":""}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -286,7 +287,7 @@ func TestWrite_EmptyContentTruncatesExistingFile(t *testing.T) {
 
 func TestWrite_ReportsDirectoriesCreated(t *testing.T) {
 	dir := t.TempDir()
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 
 	// Writing to a deeply nested path should report directories created
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"a/b/c/d/newfile.txt","content":"content"}`))
@@ -317,7 +318,7 @@ func TestWrite_NoDirectoriesCreatedOnExistingPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"existing/file.txt","content":"hello"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -346,7 +347,7 @@ func TestWrite_PartialDirectoriesCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tool := NewWriteTool(dir)
+	tool := NewWriteTool(dir, nil, nil)
 	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"a/b/c/d/partial.txt","content":"partial"}`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -390,5 +391,146 @@ func TestCountNewDirs_MultipleNewDirs(t *testing.T) {
 	newPath := filepath.Join(dir, "a", "b", "c")
 	if got := countNewDirs(newPath); got != 3 {
 		t.Errorf("countNewDirs(%q) = %d, want 3", newPath, got)
+	}
+}
+
+// ── writable-root targets (issue #1210) ─────────────────────────────────────
+
+func TestWrite_WritableRootTarget(t *testing.T) {
+	workspace := t.TempDir()
+	writableRoot := t.TempDir()
+
+	tool := NewWriteTool(workspace, []string{writableRoot}, nil)
+	target := filepath.Join(writableRoot, "out", "report.txt")
+	result, err := tool.Call(context.Background(),
+		json.RawMessage(fmt.Sprintf(`{"path":%q,"content":"from writable root"}`, target)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "from writable root" {
+		t.Errorf("file content = %q, want %q", string(data), "from writable root")
+	}
+}
+
+func TestWrite_OutsideAllRootsHardError(t *testing.T) {
+	workspace := t.TempDir()
+	writableRoot := t.TempDir()
+
+	tool := NewWriteTool(workspace, []string{writableRoot}, nil)
+	result, err := tool.Call(context.Background(), json.RawMessage(`{"path":"/etc/passwd","content":"hack"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("result.IsError = false, want true (hard error for out-of-policy write)")
+	}
+	if result.NeedsConfirm {
+		t.Error("result.NeedsConfirm = true, want false (out-of-policy write must not prompt)")
+	}
+	if len(result.Blocks) == 0 {
+		t.Fatal("expected blocks")
+	}
+	block, ok := result.Blocks[0].(litellm.TextBlock)
+	if !ok {
+		t.Fatalf("block is %T, want TextBlock", result.Blocks[0])
+	}
+	if !strings.Contains(block.Text, "outside allowed directories") {
+		t.Errorf("expected hard error about outside allowed directories, got %q", block.Text)
+	}
+}
+
+func TestWrite_TmpRewrittenWhenSandboxed(t *testing.T) {
+	workspace := t.TempDir()
+	hostDir := t.TempDir() // the session-scoped sandbox tmpdir on the host (ADR-0026)
+
+	tool := NewWriteTool(workspace, []string{hostDir}, func(sessionID string) (string, bool) {
+		if sessionID != "sess-tmp" {
+			t.Fatalf("unexpected session ID %q", sessionID)
+		}
+		return hostDir, true
+	})
+	ctx := context.WithValue(context.Background(), SessionIDKey, "sess-tmp")
+
+	result, err := tool.Call(ctx, json.RawMessage(`{"path":"/tmp/out/report.txt","content":"shadow content"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	want := filepath.Join(hostDir, "out", "report.txt")
+	data, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "shadow content" {
+		t.Errorf("file content = %q, want %q", string(data), "shadow content")
+	}
+}
+
+func TestWrite_TmpPassthroughWhenUnsandboxed(t *testing.T) {
+	workspace := t.TempDir()
+	hostTmp, err := os.MkdirTemp("/tmp", "eitri-write-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(hostTmp) })
+
+	// A genuine /tmp/... target. No tmpdir lookup (sandbox none / bwrap
+	// unavailable) → the path passes through unchanged to host /tmp.
+	rel := strings.TrimPrefix(hostTmp, "/tmp/")
+	target := filepath.Join("/tmp", rel, "note.txt")
+
+	tool := NewWriteTool(workspace, []string{"/tmp"}, nil)
+	result, err := tool.Call(context.Background(),
+		json.RawMessage(fmt.Sprintf(`{"path":%q,"content":"host tmp"}`, target)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("result.IsError = true, want false: %#v", result.Blocks)
+	}
+
+	data, err := os.ReadFile(filepath.Join(hostTmp, "note.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "host tmp" {
+		t.Errorf("file content = %q, want %q", string(data), "host tmp")
+	}
+}
+
+func TestWrite_SchemaDescribesWritableRoots(t *testing.T) {
+	tool := NewWriteTool("/tmp", nil, nil)
+	var schemaMap map[string]any
+	if err := json.Unmarshal(tool.JSONSchema(), &schemaMap); err != nil {
+		t.Fatal(err)
+	}
+	props, ok := schemaMap["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	pathProp, ok := props["path"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing path property")
+	}
+	desc, ok := pathProp["description"].(string)
+	if !ok {
+		t.Fatal("path property missing description")
+	}
+	if !strings.Contains(desc, "writable") {
+		t.Errorf("path description should mention writable roots, got %q", desc)
+	}
+	if !strings.Contains(desc, "/tmp") {
+		t.Errorf("path description should mention the /tmp mapping, got %q", desc)
 	}
 }
