@@ -18,6 +18,9 @@
 //   - HTTPTrace — one recorded LLM provider request/response (includes ResponseHeaders,
 //     Usage, FinishReason, Model, Attempt, TTFBMs, ErrorClass)
 //   - MetricsSnapshot / ModelMetrics — JSON shape of the interaction metrics aggregate
+//   - TraceAggregate / AggregateTraces — the single window-aggregation
+//     implementation (count, error rate, p50/p95 latency, token totals, window
+//     bounds) shared by the persisted archive aggregate endpoint (issue #1240)
 //   - ErrorClass — structured capture-time error classification (ClassifyError)
 //   - TraceMeta — per-LLM-call bridge between the run loop and the recorder;
 //     carried on the request context, populated with parsed usage/finish_reason/
@@ -33,6 +36,8 @@
 //   - SanitizeConfig — redact secrets from config for dump safety
 //   - CollectSystemDiagnostics — gather system diagnostics for crash dumps
 //   - ClassifyError — classify an LLM call failure from status + message at capture time
+//   - AggregateTraces — the single window-aggregate implementation shared by
+//     the persisted archive aggregate endpoint (issue #1240)
 //   - WithAttempt / AttemptFromContext — thread the retry attempt number to the recorder
 //
 // Dependencies:

@@ -192,17 +192,18 @@ func (s *Server) handleDebugSessionHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	limit := 0
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
-			limit = n
-			if limit > 100 {
-				limit = 100
-			}
-		}
+	// The in-memory endpoint reads a bounded ring buffer: no limit parameter
+	// means "return everything the recorder holds" (0 = no limit) and the cap
+	// is the in-memory ceiling, not the archive's. Parsing goes through the
+	// shared trace-filter parser (issue #1240); model/time/offset parameters
+	// are accepted and ignored, mirroring the persisted endpoints' surface.
+	filter, errMsg := parseTraceFilter(r, 0, maxInMemoryTraceLimit)
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, errMsg)
+		return
 	}
 
-	traces := s.config.DebugRecorder.List(limit, sessionID, "")
+	traces := s.config.DebugRecorder.List(filter.Limit, sessionID, filter.ProviderID)
 	inFlight := s.config.DebugRecorder.InFlight()
 
 	writeJSON(w, http.StatusOK, struct {
@@ -357,20 +358,18 @@ func (s *Server) handleDebugHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limitStr := r.URL.Query().Get("limit")
-	limit := 0
-	if limitStr != "" {
-		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
-			limit = n
-			if limit > 100 {
-				limit = 100
-			}
-		}
+	// The in-memory endpoint reads a bounded ring buffer: no limit parameter
+	// means "return everything the recorder holds" (0 = no limit) and the cap
+	// is the in-memory ceiling, not the archive's. Parsing goes through the
+	// shared trace-filter parser (issue #1240); model/time/offset parameters
+	// are accepted and ignored, mirroring the persisted endpoints' surface.
+	filter, errMsg := parseTraceFilter(r, 0, maxInMemoryTraceLimit)
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, errMsg)
+		return
 	}
-	sessionID := r.URL.Query().Get("session_id")
-	providerID := r.URL.Query().Get("provider_id")
 
-	traces := s.config.DebugRecorder.List(limit, sessionID, providerID)
+	traces := s.config.DebugRecorder.List(filter.Limit, filter.SessionID, filter.ProviderID)
 	inFlight := s.config.DebugRecorder.InFlight()
 
 	result := struct {
@@ -404,16 +403,25 @@ func (s *Server) handleDebugHTTPByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, trace)
 }
 
+// maxInMemoryTraceLimit caps the limit parameter of the in-memory trace
+// endpoints (/api/debug/http and /api/debug/sessions/{id}/http), which read a
+// bounded ring buffer.
+const maxInMemoryTraceLimit = 100
+
 // maxPersistedTraceLimit caps the limit parameter of the persisted-trace
 // query endpoints. The in-memory endpoints cap at 100 because they read a
 // bounded ring buffer; the persisted archive can be much larger, so callers
 // get more headroom (pagination via offset covers the rest).
 const maxPersistedTraceLimit = 1000
 
-// parseTraceFilter parses the shared query parameters of the persisted-trace
-// endpoints: session_id, provider_id, model, from, to, limit and offset.
-// Returns a 400-style error message when a parameter is malformed.
-func parseTraceFilter(r *http.Request) (persist.TraceFilter, string) {
+// parseTraceFilter parses the shared query parameters of the trace endpoints:
+// session_id, provider_id, model, from, to, limit and offset. defaultLimit is
+// applied when no limit parameter is present (0 = no limit); maxLimit caps it.
+// Returns a 400-style error message when a parameter is malformed. Every
+// debug trace endpoint — the persisted archive query, its aggregate, and the
+// in-memory recorder lists — parses its filters through this one function
+// (issue #1240).
+func parseTraceFilter(r *http.Request, defaultLimit, maxLimit int) (persist.TraceFilter, string) {
 	q := r.URL.Query()
 	filter := persist.TraceFilter{
 		SessionID:  q.Get("session_id"),
@@ -440,12 +448,12 @@ func parseTraceFilter(r *http.Request) (persist.TraceFilter, string) {
 		if err != nil || n < 0 {
 			return persist.TraceFilter{}, "invalid limit: expected a non-negative integer"
 		}
-		if n > maxPersistedTraceLimit {
-			n = maxPersistedTraceLimit
+		if n > maxLimit {
+			n = maxLimit
 		}
 		filter.Limit = n
 	} else {
-		filter.Limit = 20 // default page size
+		filter.Limit = defaultLimit
 	}
 	if v := q.Get("offset"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -478,7 +486,7 @@ func (s *Server) handleDebugTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filter, errMsg := parseTraceFilter(r)
+	filter, errMsg := parseTraceFilter(r, 20, maxPersistedTraceLimit)
 	if errMsg != "" {
 		writeError(w, http.StatusBadRequest, errMsg)
 		return
@@ -507,7 +515,7 @@ func (s *Server) handleDebugTracesAggregate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	filter, errMsg := parseTraceFilter(r)
+	filter, errMsg := parseTraceFilter(r, 20, maxPersistedTraceLimit)
 	if errMsg != "" {
 		writeError(w, http.StatusBadRequest, errMsg)
 		return

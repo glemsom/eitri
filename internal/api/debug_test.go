@@ -665,6 +665,55 @@ func TestDebugHTTP_NoRecorder_New(t *testing.T) {
 	}
 }
 
+// TestDebugHTTP_SharedFilterParsing verifies the in-memory trace endpoints
+// parse their filters through the same parser as the persisted endpoints
+// (issue #1240): malformed shared parameters are rejected with 400 (not
+// silently ignored), and the archive-only parameters (model/from/to/offset)
+// are accepted and ignored — the recorder list filters only on
+// session/provider/limit.
+func TestDebugHTTP_SharedFilterParsing(t *testing.T) {
+	rec := debug.NewRecorder(10)
+	sessionMgr := session.NewManager(10, t.TempDir())
+	sess, err := sessionMgr.Create("browser1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Record(sess.ID, "p1", "POST", "/v1/chat", []byte(`{"model":"m1"}`), []byte("resp"), 200, time.Second, "", nil)
+
+	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{
+		debugRecorder:  rec,
+		sessionManager: sessionMgr,
+	})
+	defer server.Close()
+
+	for _, q := range []string{
+		"?limit=abc",
+		"?limit=-5",
+		"?offset=-1",
+		"?from=not-a-time",
+		"?to=oops",
+	} {
+		_, status := getJSON(t, server.URL+"/api/debug/http"+q)
+		if status != http.StatusBadRequest {
+			t.Errorf("GET /api/debug/http%s status = %d, want 400", q, status)
+		}
+		_, status = getJSON(t, server.URL+"/api/debug/sessions/"+sess.ID+"/http"+q)
+		if status != http.StatusBadRequest {
+			t.Errorf("GET /api/debug/sessions/%s/http%s status = %d, want 400", sess.ID, q, status)
+		}
+	}
+
+	// Archive-only parameters are accepted and ignored by the in-memory list:
+	// a query carrying them still returns the matching trace.
+	body, status := getJSON(t, server.URL+"/api/debug/http?model=m1&from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&offset=5")
+	if status != http.StatusOK {
+		t.Fatalf("filtered status = %d, want 200", status)
+	}
+	if traces := body["traces"].([]any); len(traces) != 1 {
+		t.Errorf("traces with archive-only filters = %d, want 1 (params accepted and ignored)", len(traces))
+	}
+}
+
 func TestDebugHTTPByID_EmptyID(t *testing.T) {
 	rec := debug.NewRecorder(10)
 	server := newTestServerWithOptions(t, t.TempDir(), testServerOptions{

@@ -42,6 +42,26 @@ func TestClassifyError(t *testing.T) {
 	}
 }
 
+// TestUsageTotalsTokenTotal pins the derived-total derivation shared by the
+// recorder's metrics snapshot and the window aggregate (issue #1240): the sum
+// of the four usage components, not each trace's stored total (which may be
+// zero on traces recorded before provider-usage enrichment).
+func TestUsageTotalsTokenTotal(t *testing.T) {
+	u := UsageTotals{
+		PromptTokens:     10,
+		CompletionTokens: 20,
+		CacheReadTokens:  5,
+		CacheWriteTokens: 2,
+	}
+	if got, want := u.TokenTotal(), 37; got != want {
+		t.Fatalf("TokenTotal() = %d, want %d (sum of the four components)", got, want)
+	}
+	var zero UsageTotals
+	if got := zero.TokenTotal(); got != 0 {
+		t.Fatalf("zero UsageTotals TokenTotal() = %d, want 0", got)
+	}
+}
+
 // TestErrorClassJSON ensures error classes serialize with stable string names
 // so consumers of /api/debug/metrics do not depend on Go type spelling.
 func TestErrorClassJSON(t *testing.T) {

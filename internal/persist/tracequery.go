@@ -3,7 +3,6 @@ package persist
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,20 +35,10 @@ type TracePage struct {
 }
 
 // TraceAggregate is a window aggregate over persisted traces matching a
-// TraceFilter. ErrorRate is the fraction of calls that failed (non-2xx status
-// or transport error), in [0,1]. P50LatencyMs and P95LatencyMs are computed
-// over all matching call durations. Tokens sum provider-reported usage. From
-// and To bound the actual matching window (oldest/newest trace timestamps).
-type TraceAggregate struct {
-	Count        int               `json:"count"`
-	ErrorCount   int               `json:"error_count"`
-	ErrorRate    float64           `json:"error_rate"`
-	P50LatencyMs int64             `json:"p50_latency_ms"`
-	P95LatencyMs int64             `json:"p95_latency_ms"`
-	Tokens       debug.UsageTotals `json:"tokens"`
-	From         time.Time         `json:"from,omitempty"`
-	To           time.Time         `json:"to,omitempty"`
-}
+// TraceFilter. The type and its fold live in the debug package — the single
+// owner of trace aggregation (issue #1240) — and are aliased here so the
+// persisted archive query surface keeps its original vocabulary.
+type TraceAggregate = debug.TraceAggregate
 
 // Matches reports whether the trace satisfies the filter's constraints.
 func (f TraceFilter) Matches(t *debug.HTTPTrace) bool {
@@ -101,13 +90,15 @@ func (p *Persister) QueryTraces(filter TraceFilter) (*TracePage, error) {
 }
 
 // AggregateTraces returns window aggregates over the persisted traces matching
-// the filter (Limit and Offset are ignored).
+// the filter (Limit and Offset are ignored). The aggregation itself is owned
+// by the debug package — the single aggregation implementation shared by the
+// trace endpoints (issue #1240).
 func (p *Persister) AggregateTraces(filter TraceFilter) (*TraceAggregate, error) {
 	matches, err := p.scanTraces(filter)
 	if err != nil {
 		return nil, err
 	}
-	return aggregateTraces(matches), nil
+	return debug.AggregateTraces(matches), nil
 }
 
 // scanTraces walks the on-disk trace archive and returns every trace matching
@@ -181,62 +172,4 @@ func (p *Persister) scanTraces(filter TraceFilter) ([]*debug.HTTPTrace, error) {
 		return matches[i].Timestamp.After(matches[j].Timestamp)
 	})
 	return matches, nil
-}
-
-// aggregateTraces folds a set of traces (already matching a filter, sorted
-// most-recent-first) into a window aggregate.
-func aggregateTraces(traces []*debug.HTTPTrace) *TraceAggregate {
-	agg := &TraceAggregate{Count: len(traces)}
-	if len(traces) == 0 {
-		return agg
-	}
-
-	// traces are sorted most-recent-first, so the last is the oldest.
-	agg.From = traces[len(traces)-1].Timestamp
-	agg.To = traces[0].Timestamp
-
-	durations := make([]int64, 0, len(traces))
-	for _, tr := range traces {
-		if tr.Status < 200 || tr.Status >= 300 || tr.Error != "" {
-			agg.ErrorCount++
-		}
-		durations = append(durations, tr.DurationMs)
-		if u := tr.Usage; u != nil {
-			agg.Tokens.PromptTokens += u.PromptTokens
-			agg.Tokens.CompletionTokens += u.CompletionTokens
-			agg.Tokens.CacheReadTokens += u.CacheReadTokens
-			agg.Tokens.CacheWriteTokens += u.CacheWriteTokens
-			agg.Tokens.ReasoningTokens += u.ReasoningTokens
-		}
-	}
-	// TotalTokens mirrors the recorder's metrics aggregation: the sum of the
-	// four components, not each trace's stored total (which may be zero on
-	// traces recorded before provider-usage enrichment).
-	agg.Tokens.TotalTokens = agg.Tokens.PromptTokens + agg.Tokens.CompletionTokens +
-		agg.Tokens.CacheReadTokens + agg.Tokens.CacheWriteTokens
-	agg.ErrorRate = float64(agg.ErrorCount) / float64(len(traces))
-
-	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-	agg.P50LatencyMs = percentile(durations, 0.50)
-	agg.P95LatencyMs = percentile(durations, 0.95)
-	return agg
-}
-
-// percentile returns the p-th percentile (0 < p < 1) of sorted values using
-// linear interpolation (the R-7 method used by numpy/Excel).
-func percentile(sorted []int64, p float64) int64 {
-	n := len(sorted)
-	if n == 0 {
-		return 0
-	}
-	if n == 1 {
-		return sorted[0]
-	}
-	h := p * float64(n-1)
-	lower := int(math.Floor(h))
-	if lower >= n-1 {
-		return sorted[n-1]
-	}
-	weight := h - float64(lower)
-	return sorted[lower] + int64(math.Round(weight*float64(sorted[lower+1]-sorted[lower])))
 }

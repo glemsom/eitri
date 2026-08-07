@@ -381,3 +381,54 @@ func TestAttemptContext(t *testing.T) {
 		t.Fatalf("AttemptFromContext(empty) = %d, want 0", got)
 	}
 }
+
+// TestAggregateTraces_WindowFold verifies the single window-aggregate
+// implementation (issue #1240): the same fold that serves the persisted
+// archive aggregate endpoint computes count, error rate, p50/p95 latency,
+// token totals, and the window bounds from a trace set. It is the one owner
+// of the fold — the persisted archive query delegates to it instead of
+// re-implementing the aggregation.
+func TestAggregateTraces_WindowFold(t *testing.T) {
+	base := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	// The fold expects traces sorted most-recent-first (as the archive query
+	// produces); it derives the window bounds from that ordering.
+	traces := []*HTTPTrace{
+		{ID: "t4", Timestamp: base.Add(3 * time.Hour), DurationMs: 400, Status: 200},
+		{ID: "t3", Timestamp: base.Add(2 * time.Hour), DurationMs: 300, Status: 500, Error: "boom"},
+		{ID: "t2", Timestamp: base.Add(time.Hour), DurationMs: 200, Status: 200, Usage: &UsageTotals{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}},
+		{ID: "t1", Timestamp: base, DurationMs: 100, Status: 200, Usage: &UsageTotals{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}},
+	}
+
+	agg := AggregateTraces(traces)
+
+	if agg.Count != 4 {
+		t.Fatalf("Count = %d, want 4", agg.Count)
+	}
+	if agg.ErrorCount != 1 {
+		t.Fatalf("ErrorCount = %d, want 1", agg.ErrorCount)
+	}
+	if agg.ErrorRate != 0.25 {
+		t.Fatalf("ErrorRate = %v, want 0.25", agg.ErrorRate)
+	}
+	if agg.P50LatencyMs != 250 {
+		t.Fatalf("P50LatencyMs = %d, want 250", agg.P50LatencyMs)
+	}
+	if agg.P95LatencyMs != 385 {
+		t.Fatalf("P95LatencyMs = %d, want 385", agg.P95LatencyMs)
+	}
+	if agg.Tokens.PromptTokens != 20 || agg.Tokens.CompletionTokens != 10 {
+		t.Fatalf("tokens = %+v, want prompt 20 completion 10", agg.Tokens)
+	}
+	if agg.Tokens.TotalTokens != 30 {
+		t.Fatalf("total tokens = %d, want 30 (sum of components, not stored totals)", agg.Tokens.TotalTokens)
+	}
+	if !agg.From.Equal(base) || !agg.To.Equal(base.Add(3*time.Hour)) {
+		t.Fatalf("window = [%v %v], want [%v %v]", agg.From, agg.To, base, base.Add(3*time.Hour))
+	}
+
+	// Empty set: zero aggregate with no window.
+	empty := AggregateTraces(nil)
+	if empty.Count != 0 || empty.ErrorRate != 0 || empty.P50LatencyMs != 0 || empty.P95LatencyMs != 0 {
+		t.Fatalf("empty aggregate = %+v", empty)
+	}
+}

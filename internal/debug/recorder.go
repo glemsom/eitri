@@ -618,19 +618,21 @@ func (r *Recorder) Metrics() MetricsSnapshot {
 			errorTotal += n
 		}
 
+		tokens := UsageTotals{
+			PromptTokens:     m.promptTokens,
+			CompletionTokens: m.completionTokens,
+			CacheReadTokens:  m.cacheReadTokens,
+			CacheWriteTokens: m.cacheWriteTokens,
+		}
+		tokens.TotalTokens = tokens.TokenTotal()
+
 		mm := ModelMetrics{
-			Model:   key.Model,
-			Calls:   m.calls,
-			Retries: m.retries,
-			Errors:  errors,
-			Latency: latency,
-			Tokens: UsageTotals{
-				PromptTokens:     m.promptTokens,
-				CompletionTokens: m.completionTokens,
-				CacheReadTokens:  m.cacheReadTokens,
-				CacheWriteTokens: m.cacheWriteTokens,
-				TotalTokens:      m.promptTokens + m.completionTokens + m.cacheReadTokens + m.cacheWriteTokens,
-			},
+			Model:      key.Model,
+			Calls:      m.calls,
+			Retries:    m.retries,
+			Errors:     errors,
+			Latency:    latency,
+			Tokens:     tokens,
 			Cache:      CacheCounts{Hits: m.cacheHits, Misses: m.cacheMisses},
 			LastCalled: m.lastCalled,
 			LastError:  m.lastErrorClass,
