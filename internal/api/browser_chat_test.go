@@ -3232,3 +3232,192 @@ func TestBrowser_StreamingScreenReaderAnnouncer(t *testing.T) {
 		t.Errorf("announcer never carried a delta shorter than the full reply (%d chars) — it must announce new text only, not re-read the whole stream", len(full))
 	}
 }
+
+// fakeMultiTurnTextChatServer streams a multi-turn run where more than one turn
+// carries visible assistant text before the run finalizes. Turn 1 issues a
+// tool call, turn 2 streams INTERMEDIATE_TEXT and issues another tool call,
+// turn 3 streams FINAL_TEXT and stops. This mirrors a real agent run that
+// interleaves prose with tool calls across several turns (e.g. a planning or
+// ticket-breakdown task that emits an intermediate "here's my breakdown"
+// message before a final "waiting on your call" reply).
+func fakeMultiTurnTextChatServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	var mu sync.Mutex
+	assistantTurn := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"object":"list","data":[{"id":"test-model"}]}`)
+		case "/v1/chat/completions":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			now := time.Now().Unix()
+			emitContent := func(content string) {
+				fmt.Fprintf(w, `data: {"id":"chatcmpl","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"content":%q},"finish_reason":null}]}`+"\n\n", now, content)
+			}
+			emitToolCall := func(callID, args string) {
+				fmt.Fprintf(w, `data: {"id":"chatcmpl","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":"bash","arguments":%q}}]},"finish_reason":"tool_calls"}]}`+"\n\n", now, callID, args)
+			}
+			emitStop := func() {
+				fmt.Fprintf(w, `data: {"id":"chatcmpl","object":"chat.completion.chunk","created":%d,"model":"test-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", now)
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			}
+
+			mu.Lock()
+			assistantTurn++
+			turn := assistantTurn
+			mu.Unlock()
+
+			switch turn {
+			case 1:
+				// Tool-only turn: no visible text.
+				emitToolCall("call_t1", `{"command":"echo t1"}`)
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			case 2:
+				// Visible intermediate text PLUS a tool call (keeps the run alive
+				// for a third turn and leaves an intermediate assistant message).
+				emitContent("INTERMEDIATE_TEXT_MARKER ")
+				emitToolCall("call_t2", `{"command":"echo t2"}`)
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			default:
+				// Final turn: visible text, no tool call -> run completes.
+				emitContent("FINAL_TEXT_MARKER")
+				emitStop()
+			}
+			flusher.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestBrowser_MultiTurnIntermediateMessageSurvivesFinalize is a regression
+// test for a UI bug where a multi-turn agent run dropped all intermediate
+// assistant turns from the live view: each turn's text accumulated into the
+// single streaming bubble, and the 'done' finalize then swapped that whole
+// bubble for ONLY the last assistant message's render — so turns before the
+// final one vanished until a page refresh (which re-renders the full committed
+// history from the session). A refresh restoring the messages while the store
+// already had them is the fingerprint of this bug.
+func TestBrowser_MultiTurnIntermediateMessageSurvivesFinalize(t *testing.T) {
+	llmURL := fakeMultiTurnTextChatServer(t).URL
+
+	// A UI-mode runCompleter only live-syncs commits turns into the UI session
+	// when a persister is configured (ADR-0028). Build the server with one so the
+	// run's intermediate messages reach the session manager, mirroring the
+	// production setup the /to-tickets bug surfaced in.
+	homeDir := t.TempDir()
+	eitriDir := t.TempDir()
+	workspace := t.TempDir()
+	p := mustPersister(t, eitriDir)
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
+	sessionMgr := session.NewManager(10, workspace)
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: history.NewSessionManager(50),
+		Persister:         p,
+		HomeDir:           homeDir,
+	})
+	runSvc.SetSkillsService(skillsSvc)
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
+	srv := api.NewServer(api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		HomeDir:        homeDir,
+		SessionManager: sessionMgr,
+		RunService:     runSvc,
+		SkillsService:  skillsSvc,
+		Persister:      p,
+	})
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
+	// Disable the bwrap sandbox: the session-scoped sandbox tmpdir collides with
+	// the test's t.TempDir() cleanup and makes the bash tool fail with a "Can't
+	// chdir" error, aborting the run before the final turn. Direct execution is
+	// fine here — the test asserts render behaviour, not sandboxing.
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"test-model","sandbox_enabled":false}`, llmURL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/"),
+		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("navigate chat failed: %v", err)
+	}
+	waitForComposerReady(t, ctx)
+
+	// Start the run. Turn 1 is tool-only; turn 2 streams INTERMEDIATE_TEXT_MARKER
+	// and calls a tool; turn 3 streams FINAL_TEXT_MARKER and completes.
+	if err := chromedp.Run(ctx,
+		chromedp.SendKeys("#chat-input", "Hello", chromedp.ByQuery),
+		chromedp.Click("#send-btn", chromedp.ByQuery),
+	); err != nil {
+		t.Fatalf("send message failed: %v", err)
+	}
+
+	// Wait for the run to reach Done.
+	pollForCondition(t, 10*time.Second, 150*time.Millisecond, func() bool {
+		var status string
+		_ = chromedp.Run(ctx, chromedp.Text(".stream-status-text", &status, chromedp.ByQuery))
+		return strings.TrimSpace(status) == "Done"
+	})
+
+	// The intermediate turn's text must survive the finalize and be visible in
+	// the live DOM — not just after a refresh. Count committed assistant bubbles
+	// and total message-container text.
+	var dom struct {
+		BubbleCount int    `json:"bubbleCount"`
+		FullText    string `json:"fullText"`
+	}
+	if err := chromedp.Run(ctx,
+		chromedp.EvaluateAsDevTools(`(function() {
+			var msgs = document.getElementById('messages');
+			var bubbles = document.querySelectorAll('#messages .message-assistant');
+			return { bubbleCount: bubbles.length, fullText: msgs ? msgs.textContent : '' };
+		})()`, &dom),
+	); err != nil {
+		t.Fatalf("read live DOM failed: %v", err)
+	}
+
+	if !strings.Contains(dom.FullText, "INTERMEDIATE_TEXT_MARKER") {
+		t.Errorf("intermediate turn text lost after finalize: DOM=%q", dom.FullText)
+	}
+	if !strings.Contains(dom.FullText, "FINAL_TEXT_MARKER") {
+		t.Errorf("final turn text missing after finalize: DOM=%q", dom.FullText)
+	}
+
+	// The intermediate and final turns must each be their own committed bubble
+	// (matching what a page refresh shows), not one merged bubble that only
+	// happens to contain both markers.
+	if dom.BubbleCount < 2 {
+		t.Errorf("expected >= 2 committed assistant bubbles, got %d (DOM=%q)", dom.BubbleCount, dom.FullText)
+	}
+}
+
+// mustPersister is a test helper returning a fresh in-memory-tempdir persister.
+func mustPersister(t *testing.T, eitriDir string) *persist.Persister {
+	t.Helper()
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	return p
+}
+

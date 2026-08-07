@@ -353,6 +353,71 @@ func TestHandleRender_MarkdownKind(t *testing.T) {
 	}
 }
 
+// TestHandleRender_MarkdownKind_MultiTurnRendersAllBubbles is a regression test
+// for the multi-turn UI bug where the 'done' finalize rendered only the LAST
+// assistant message, dropping every intermediate turn from the live view until
+// a page refresh re-rendered the full committed history. The render handler must
+// emit a separate bubble for each assistant message (with visible content) since
+// the last user message — matching what a refresh shows.
+func TestHandleRender_MarkdownKind_MultiTurnRendersAllBubbles(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	browserID := "test-browser-render-multiturn"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// One user message followed by two assistant messages with visible content
+	// (an intermediate turn and a final turn). A tool-call-only assistant message
+	// between them must NOT render (it is mid-run, not user-visible).
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "user", Content: "go"})
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "INTERMEDIATE **bold**"})
+	sessionMgr.AppendMessage(sess.ID, message.Message{
+		Role:      "assistant",
+		ToolCalls: []message.ToolCall{{ID: "call", Type: "function", Function: message.FunctionCall{Name: "bash"}}},
+	})
+	sessionMgr.AppendMessage(sess.ID, message.Message{Role: "assistant", Content: "FINAL turn"})
+
+	body := map[string]any{
+		"kind":       "markdown",
+		"message_id": "multi-turn-msg",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sess.ID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/{id}/render failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	content := string(bodyBytes)
+	if got := strings.Count(content, "class=\"message message-assistant"); got != 2 {
+		t.Errorf("expected 2 assistant bubbles, got %d:\n%s", got, content)
+	}
+	if !strings.Contains(content, "INTERMEDIATE") {
+		t.Errorf("intermediate assistant message missing from render:\n%s", content)
+	}
+	if !strings.Contains(content, "<strong>bold</strong>") {
+		t.Errorf("intermediate message markdown not rendered:\n%s", content)
+	}
+	if !strings.Contains(content, "FINAL turn") {
+		t.Errorf("final assistant message missing from render:\n%s", content)
+	}
+}
+
 func TestHandleRender_MarkdownDedupByMessageID(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
