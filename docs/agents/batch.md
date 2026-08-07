@@ -131,9 +131,9 @@ How it works:
 
 1. **Claim:** Lists the oldest open `ready-for-agent` issues (excluding `in-progress` and `issue-type:parent`), claims up to `-j N` of them, and adds an `in-progress` label to each. The dispatcher is the only process that touches issue state — workers never do, so there is no claim race.
 2. **Worktrees:** Fetches `origin/main` and creates one detached git worktree per issue (`.worktrees/issue-N`). Detached HEAD is required because `main` is checked out in the primary worktree.
-3. **Workers:** Runs one `eitri -b` worker per worktree, in parallel. Each worker creates a branch, implements the issue, pushes, and opens a PR whose description contains `Closes #N` (so the issue auto-closes on merge). Worker output goes to `.worktrees/issue-N/log` — never interleaved on the terminal. Workers do **not** merge.
-4. **Review trail:** Each worker's batch session is persisted under an auto-generated `~/.eitri/sessions/<id>/` (session snapshot, HTTP traces, and timeline), same layout as a UI session. The worker's log carries its `session_id`; after a batch, every processed issue has a reviewable session directory for post-run inspection with the same tools that work on UI sessions (`jq`, `cat`, session report).
-5. **Merge queue:** After all workers finish, the dispatcher merges PRs one at a time (`gh pr merge --squash --delete-branch`), rebasing each PR branch onto the latest `origin/main` first. If a rebase conflicts, the dispatcher spawns a focused `eitri -b` resolution run inside that worktree, capped at 3 attempts per PR; past the cap the PR is left open with a comment and the dispatcher moves on. Merging is serialized because two concurrent merges would race (the second PR goes stale and GitHub refuses to merge).
+3. **Workers:** Runs one worker subprocess per worktree, in parallel. Each worker drives that issue's whole **build→test→review** pipeline (T6, #1192): the `code-build` persona implements the issue and opens a PR whose description contains `Closes #N`; the `code-test` gate then rejects or accepts it; and a test-passing PR goes to the `code-review` gate. Worker output goes to `.worktrees/issue-N/log` with per-stage batches streamed to `log.build`/`log.test`/`log.review` — never interleaved on the terminal. Workers do **not** merge.
+4. **Review trail:** Each stage batch session is persisted under an auto-generated `~/.eitri/sessions/<id>/` (session snapshot, HTTP traces, and timeline), same layout as a UI session. The stage logs carry each run's `session_id`; after a batch, every processed issue has reviewable session directories for post-run inspection with the same tools that work on UI sessions (`jq`, `cat`, session report).
+5. **Merge queue:** After all workers finish, the dispatcher merges PRs one at a time (`gh pr merge --squash --delete-branch`), rebasing each PR branch onto the latest `origin/main` first. A PR is merged **only** when bash tracks the latest test verdict = `PASS` **and** the latest review verdict = `APPROVED` (the dual-gate precondition; `can_merge_issue`). PRs that failed the gates are left open with a "needs human" comment and count as leftovers. If a rebase conflicts, the dispatcher spawns a focused `eitri -b` resolution run inside that worktree, capped at 3 attempts per PR; past the cap the PR is left open with a comment and the dispatcher moves on. Merging is serialized because two concurrent merges would race (the second PR goes stale and GitHub refuses to merge).
 6. **Cleanup:** Worktrees are removed on success and on crash (via `trap`). On startup the dispatcher removes stale `in-progress` labels whose worktree no longer exists.
 7. **Stopping:** Ctrl+C (or SIGTERM) stops claiming new issues after the current batch finishes — in-flight workers and the merge queue run to completion, then the script exits. A second signal forces an immediate exit. Workers are spawned via `setsid --wait` so the terminal signal only reaches the dispatcher; without `setsid` a Ctrl+C also kills the workers.
 
@@ -164,23 +164,42 @@ Two gates consume this plumbing (`test_pr` from T4, #1191; `review_pr` from T5,
   writes **currently-open** findings to `$wt/.test.md` (noting the no-test-suite
   downgrade when it admits a project that builds but has no suite). `test_pr`
   maps that to `PASS`/`REJECT`, or `hard-fail` on a missing/unknown verdict or
-  non-zero exit. It gates before any review; the fix loop (cap / re-entry) is T6.
+  non-zero exit. It gates before any review; a test-failing PR never reaches it.
 - `review_pr <wt> <prompt>` runs the `code-review` persona as a fresh batch
   (stage `review`), which loads the `code-review` skill (Standards + Spec axes)
   and decides `APPROVED` / `CHANGES_REQUIRED` / `BLOCKED`, writing the
   **currently-open** review findings to `$wt/.review.md`. `review_pr` passes the
   three review verbs through, or maps to `hard-fail` on a missing/unknown
   verdict (e.g. a stray test verb) or a non-zero exit. The build→test→review
-  order means it only ever sees a test-passing PR; it decides nothing about the
-  fix loop.
+  order means it only ever sees a test-passing PR.
 
 A non-zero exit **or** a missing `VERDICT:` line both surface as `hard-fail` —
 a missing verdict or an auth/config/lock error never becomes a blind retry. The
-helpers only run a batch and report a verdict; they do not decide loop policy
-(the shared 3-round cap / re-entry / merge precondition live in T6). Both
-functions live in `agent-loop.sh`, which is guard-claused so sourcing it (e.g.
-from a Go test, or from T4/T5) defines the helpers without starting the
-dispatcher.
+gates only run a batch and report a verdict; the fix-loop policy lives in
+`run_issue_phase` below.
+
+### Fix loop & dual-gate merge (`build_pr`, `run_issue_phase`, `can_merge_issue`)
+
+The per-issue worker phase is driven by `run_issue_phase <wt> <num> <title>`
+(T6, #1192), orchestration in pure bash (no orchestrator persona):
+
+- `build_pr <wt> <prompt>` runs the `code-build` persona as a fresh batch via
+  run_persona_batch and maps a clean exit to `OK` (the implementer opens a PR but
+  emits no `VERDICT` line) or `hard-fail` on a non-zero exit.
+- `run_issue_phase` runs up to **3 shared rounds** of build→test→review. Round 1
+  prompts `code-build` with the issue; on re-entry it is a fresh batch handed
+  `build_fix_prompt` (the current `.test.md`, `.review.md`, and PR). Test
+  `REJECT` and review `CHANGES_REQUIRED` both bounce to a new build round; review
+  `BLOCKED` consumes the cap immediately. Cap exhaustion / `BLOCKED` / any
+  `hard-fail` leaves the PR open with a "needs human" comment and moves on.
+- `can_merge_issue <wt>` is true only when the **latest** stored test verdict =
+  `PASS` AND the **latest** stored review verdict = `APPROVED` (`latest_verdict` /
+  `store_verdict` are per-worktree files overwritten each gate pass). The merge
+  queue consults it before calling `merge_pr`.
+
+Both the helper-only section and `run_issue_phase` live in `agent-loop.sh`,
+which is guard-claused so sourcing it (e.g. from a Go test) defines the helpers
+without starting the dispatcher.
 
 ## Exit codes
 

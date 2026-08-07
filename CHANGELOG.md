@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `scripts/agent-loop.sh` wires the build→test→review pipeline into the per-issue
+  worker phase (T6, #1192): each issue now runs a bounded fix loop driven by pure
+  bash — the `code-build` persona implements/opens the PR (via `build_pr`), the
+  `code-test` gate (`test_pr`) rejects/accepts it, and only a test-passing PR goes
+  to the `code-review` gate (`review_pr`). Test `REJECT` and review
+  `CHANGES_REQUIRED` bounce back to a fresh `code-build` round handed the current
+  `.test.md`/`.review.md` and PR; review `BLOCKED` consumes the shared cap
+  immediately. The 3-round cap (shared across both reject paths) leaves the PR open
+  with a "needs human" comment and moves on. The dispatcher's merge queue now only
+  merges when bash tracks the latest test verdict = `PASS` AND the latest review
+  verdict = `APPROVED` (`can_merge_issue`), reusing the existing serialized
+  rebase-first `merge_pr`. `docs/agents/batch.md` documents the loop.
+
 - `scripts/agent-loop.sh` gains the `review_pr` gate (T5, #1190): it runs the
   `code-review` persona as a fresh batch via the shared verdict plumbing and
   maps its outcome to `APPROVED`/`CHANGES_REQUIRED`/`BLOCKED`/`hard-fail`. The
