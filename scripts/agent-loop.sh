@@ -161,6 +161,23 @@ extract_verdict() {
 	esac
 }
 
+# Extract the batch session id from a log. Batch runs emit their auto-generated
+# session ID as a JSON slog attribute on stdout
+# (internal/runner/batch.go: slog.Info("batch session", slog.String("session_id", id), ...)),
+# e.g. `"msg":"batch session","session_id":"batch-<id>","session_dir":...`, so we
+# parse the quoted JSON value (`"session_id":"<value>"`) instead of a bare
+# `session_id=<value>`. A bare legacy form is still accepted for robustness.
+# Returns the ID, or empty when the log has none (or is missing) — a genuinely
+# session-less worker must never yield a false positive.
+extract_session_id() {
+	local log="$1" sid=""
+	sid=$(grep -m1 -oE '"session_id":"[A-Za-z0-9._-]+"' "$log" 2>/dev/null | sed -E 's/.*"session_id":"([A-Za-z0-9._-]+)".*/\1/' || true)
+	if [ -z "$sid" ]; then
+		sid=$(grep -m1 -oE 'session_id=[A-Za-z0-9._-]+' "$log" 2>/dev/null | sed -E 's/^session_id=//' || true)
+	fi
+	printf '%s' "$sid"
+}
+
 # Run one persona batch in a worktree and surface its persona verdict (review
 # verbs for the code-review gate, PASS/REJECT for the code-test gate).
 #
@@ -404,6 +421,36 @@ run_issue_phase() {
 			gh pr comment "$pr" --body "Dispatcher: ${needs_human}. Needs human intervention before automatic merging." >/dev/null 2>&1 || true
 		fi
 	fi
+}
+
+# Print a reviewable per-issue worker summary for the dispatcher (issue #1215).
+# For each stage log that is present (build / test / review / resolve) this
+# reports the stage's latest verdict (extract_verdict; empty when the persona
+# emits no VERDICT line, e.g. a clean build or a resolve run), the batch
+# session ID auto-generated for that batch (extract_session_id), and the route
+# to that batch's persisted session trail under ~/.eitri/sessions/<id>/. The
+# resolve stage runs inside merge_pr and streams to log.resolve, so it is
+# included here only when a rebase-conflict resolution actually ran. Each batch
+# streams to its own per-stage log file, so parallel workers never interleave
+# on the terminal. The worker's overall exit status and wall-clock duration are
+# passed in as $3/$4 (measured by the dispatcher around wait).
+#
+# args: <wt> <num> <status> <seconds>
+print_issue_summary() {
+	local wt="$1" num="$2" st="$3" dur="$4"
+	local stage verdict sid
+	echo "Issue #$num worker: exit=$st duration=${dur}s"
+	for stage in build test review resolve; do
+		[ -f "$wt/log.$stage" ] || continue
+		verdict=$(extract_verdict "$wt/log.$stage")
+		[ -n "$verdict" ] || verdict="(none)"
+		sid=$(extract_session_id "$wt/log.$stage")
+		if [ -n "$sid" ]; then
+			echo "  stage $stage: verdict=$verdict session_id=$sid -> ~/.eitri/sessions/$sid/"
+		else
+			echo "  stage $stage: verdict=$verdict (no batch session)"
+		fi
+	done
 }
 
 # --- Sandbox check ---------------------------------------------------------
@@ -750,6 +797,7 @@ main() {
 			num=${entry%%:*}
 			pid=${entry##*:}
 			st=0
+			t0=$SECONDS
 			while :; do
 				if wait "$pid"; then
 					st=0
@@ -764,15 +812,11 @@ main() {
 			else
 				echo "Warning: worker for issue #$num failed (exit $st)" >&2
 			fi
-			# Locate the worker's review trail: each stage batch's session ID is
-			# auto-generated, so resolve it from the run's reported `session_id`
-			# across the per-stage logs rather than assuming a fixed directory.
-			sid=$(grep -m1 -ohE 'session_id=[A-Za-z0-9._-]+' "$WORKTREES_DIR/issue-$num"/log* 2>/dev/null | head -1 | sed 's/^session_id=//' || true)
-			if [ -n "$sid" ]; then
-				echo "Issue #$num session: ~/.eitri/sessions/$sid/ (see $WORKTREES_DIR/issue-$num/log)"
-			else
-				echo "Issue #$num: no session_id found in worker log" >&2
-			fi
+			# Rich per-issue telemetry (issue #1215): worker status + wall-clock
+			# duration plus each stage that ran, its verdict, and the route to that
+			# batch's persisted session trail. Bundled into ONE helper so the block
+			# stays reviewable and stays out of the per-issue worker logs.
+			print_issue_summary "$WORKTREES_DIR/issue-$num" "$num" "$st" "$((SECONDS - t0))"
 		done
 
 		# Serialized merge queue: every issue with an open PR goes through it,

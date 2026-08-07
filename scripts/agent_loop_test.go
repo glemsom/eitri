@@ -55,6 +55,121 @@ func TestExtractVerdict(t *testing.T) {
 	}
 }
 
+// extract_session_id parses the session ID out of a batch log. Batch runs emit
+// their auto-generated session ID as a JSON slog attribute on stdout
+// (batch.go: slog.Info("batch session", slog.String("session_id", batchID), ...)),
+// e.g. "\"msg\":\"batch session\",\"session_id\":\"batch-abc123\",...", so the
+// extraction must parse the quoted JSON value rather than a bare
+// `session_id=<value>`. A bare legacy form is still accepted for robustness, and
+// a log with no session id must yield empty (never a false positive).
+func TestExtractSessionID(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "sample.log")
+	writeExecutable(t, filepath.Join(dir, "eitri"), "#!/usr/bin/env bash\n")
+
+	cases := []struct {
+		name string
+		log  string
+		want string
+	}{
+		{
+			name: "json slog line",
+			log:  `{"time":"2026-01-02T00:00:00Z","level":"INFO","msg":"batch session","session_id":"batch-abc123","session_dir":"/root/.eitri/sessions/batch-abc123"}`,
+			want: "batch-abc123",
+		},
+		{
+			name: "json session id among other attributes",
+			log:  `{"msg":"batch session","session_id":"batch-9f3c1a2b4d5e6f7a","session_dir":"/root/.eitri/sessions/batch-9f3c1a2b4d5e6f7a"}`,
+			want: "batch-9f3c1a2b4d5e6f7a",
+		},
+		{
+			name: "bare legacy form",
+			log:  "session_id=batch-xyz789\n",
+			want: "batch-xyz789",
+		},
+		{
+			name: "json wins over bare form",
+			log:  "session_id=legacy-old\n\"session_id\":\"batch-new\"\n",
+			want: "batch-new",
+		},
+		{
+			name: "no session id",
+			log:  "build succeeded\nVERDICT: PASS\n",
+			want: "",
+		},
+		{
+			name: "missing log file",
+			log:  "",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := log
+			if tc.log != "" {
+				if err := os.WriteFile(log, []byte(tc.log), 0o644); err != nil {
+					t.Fatalf("write log: %v", err)
+				}
+			} else {
+				path = filepath.Join(dir, "does-not-exist.log")
+			}
+			out := runSourcedBash(t, `printf '%s' "$(extract_session_id "`+path+`")"`)
+			if out != tc.want {
+				t.Fatalf("extract_session_id(%q) = %q, want %q", path, out, tc.want)
+			}
+		})
+	}
+}
+
+// print_issue_summary renders a reviewable per-issue telemetry block: it lists
+// each stage log that ran with its latest verdict and, when that batch carries
+// a session ID, the route to its persisted session trail, plus the worker's
+// overall exit status and duration. It only reports stages whose log exists and
+// never fabricates a session id (issue #1215).
+func TestPrintIssueSummary(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(dir, "wt")
+	if err := os.MkdirAll(wt, 0o755); err != nil {
+		t.Fatalf("mkdir wt: %v", err)
+	}
+	// build emits no VERDICT (clean build) but has a session id; test carries a
+	// PASS verdict and a session id; review carries APPROVED and a session id;
+	// resolve is absent (no rebase conflict) — it must not be reported.
+	buildSession := `{"msg":"batch session","session_id":"batch-build"}`
+	testLog := `{"msg":"batch session","session_id":"batch-test"}
+VERDICT: PASS
+`
+	reviewLog := `{"msg":"batch session","session_id":"batch-review"}
+VERDICT: APPROVED
+`
+	logs := map[string]string{
+		"log.build":  buildSession,
+		"log.test":   testLog,
+		"log.review": reviewLog,
+	}
+	for name, body := range logs {
+		if err := os.WriteFile(filepath.Join(wt, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	wtQuoted := strings.ReplaceAll(wt, "'", "'\"'\"")
+	out := runSourcedBash(t, `print_issue_summary '`+wtQuoted+`' 7 0 42`)
+	for _, want := range []string{
+		"worker: exit=0 duration=42s",
+		"stage build: verdict=(none) session_id=batch-build -> ~/.eitri/sessions/batch-build/",
+		"stage test: verdict=PASS session_id=batch-test -> ~/.eitri/sessions/batch-test/",
+		"stage review: verdict=APPROVED session_id=batch-review -> ~/.eitri/sessions/batch-review/",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "stage resolve") {
+		t.Fatalf("resolve stage absent from worktree but reported:\n%s", out)
+	}
+}
+
 func TestRunPersonaBatch_Verdicts(t *testing.T) {
 	cases := []struct {
 		name        string
