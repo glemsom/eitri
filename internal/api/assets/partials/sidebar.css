@@ -39,11 +39,11 @@
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
   font-weight: 600;
   color: var(--text-muted);
   font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: -0.01em;
   flex-shrink: 0;
 }
 
@@ -266,7 +266,7 @@ details.tool-entry-wrapper .tool-result {
   margin: 0.25rem 0.5rem 0.5rem;
   padding: 0.5rem 0.75rem;
   font-family: var(--font-code);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   line-height: 1.5;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -290,6 +290,7 @@ details.tool-entry-wrapper .tool-result {
 
 .session-item:hover {
   background: var(--surface-alt);
+  border-left: 3px solid var(--accent);
 }
 
 .session-item:active {

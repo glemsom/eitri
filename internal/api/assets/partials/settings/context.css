@@ -124,6 +124,9 @@ textarea {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  /* Distinct panel tint — context sits one step toward --surface-alt so it
+     reads as its own zone between tools and thinking. (issue #1181) */
+  background: color-mix(in srgb, var(--surface-alt) 20%, var(--surface));
 }
 
 /* eitri-context custom element needs display:block since it defaults to inline */
@@ -170,15 +173,15 @@ eitri-context {
 }
 .context-bar {
   flex: 1;
-  height: 8px;
+  height: 10px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 999px;
   overflow: hidden;
   min-width: 60px;
 }
 .context-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 999px;
   transition: width 0.3s ease, background-color 0.3s ease;
   width: 0%;
 }

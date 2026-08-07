@@ -131,9 +131,10 @@
     max-height: 120px;
   }
 
-  .tool-activity-list,
-  .thinking-panel .thinking-content {
-    font-size: 0.78rem;
+  /* Tool activity keeps the 0.82rem hierarchy on compact widths too rather
+     than shrinking below the sidebar's type scale. (issue #1181) */
+  .tool-activity-list {
+    font-size: 0.82rem;
   }
 
   /* Report page: tighter gutters, stacking header chrome, wrapping run
