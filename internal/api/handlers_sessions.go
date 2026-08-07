@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -492,16 +490,11 @@ func (s *Server) handleCleanupClearAllTraces(w http.ResponseWriter, r *http.Requ
 
 	var cleared int
 	for _, id := range diskIDs {
-		traces, err := s.config.Persister.ListTraces(id)
+		n, err := s.config.Persister.ClearAllTraces(id)
 		if err != nil {
 			continue
 		}
-		for _, trace := range traces {
-			tracePath := filepath.Join(s.config.Persister.RootDir(), "sessions", id, "traces", string(trace.ID)+".json")
-			if err := os.Remove(tracePath); err == nil {
-				cleared++
-			}
-		}
+		cleared += n
 	}
 
 	// Re-render cleanup section with refreshed disk usage

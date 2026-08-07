@@ -54,6 +54,29 @@ func TestListRuns_NoData(t *testing.T) {
 	}
 }
 
+func TestListRuns_CorruptSnapshot_ReturnsReconstructedRun(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-runs-corrupt"
+
+	// Corrupt session.json, no timeline. The reconstructed run list only
+	// depends on the file's existence, not its parseability.
+	sessionDir := filepath.Join(dir, "sessions", sessionID)
+	if err := os.MkdirAll(sessionDir, 0700); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "session.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatalf("failed to write corrupt snapshot: %v", err)
+	}
+
+	runs, err := svc.ListRuns(sessionID)
+	if err != nil {
+		t.Fatalf("corrupt snapshot should yield the reconstructed run, got error: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 reconstructed run, got %d", len(runs))
+	}
+}
+
 func TestListRuns_SingleTimeline(t *testing.T) {
 	svc, dir := newTestService(t)
 	sessionID := "sess-1"
@@ -371,6 +394,39 @@ func TestGetReport_Reconstructed_WithSystemPrompt(t *testing.T) {
 	}
 	if rep.SystemPrompt != "You are Eitri, an expert AI coding agent." {
 		t.Errorf("expected SystemPrompt to be carried from snapshot, got %q", rep.SystemPrompt)
+	}
+}
+
+func TestGetReport_Reconstructed_CorruptSnapshotDegrades(t *testing.T) {
+	svc, dir := newTestService(t)
+	sessionID := "sess-recon-corrupt"
+
+	// Corrupt session.json with no timeline: the reconstructed report must
+	// render (degraded — empty title, no turns) rather than fail, matching
+	// the pre-refactor behavior where an unmarshal error was ignored.
+	sessionDir := filepath.Join(dir, "sessions", sessionID)
+	if err := os.MkdirAll(sessionDir, 0700); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "session.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatalf("failed to write corrupt snapshot: %v", err)
+	}
+
+	rep, err := svc.GetReport(sessionID, 0)
+	if err != nil {
+		t.Fatalf("corrupt snapshot should degrade to a reconstructed report, got error: %v", err)
+	}
+	if rep == nil {
+		t.Fatal("expected non-nil report")
+	}
+	if rep.ReportVersion != "reconstructed" {
+		t.Errorf("expected report_version 'reconstructed', got %q", rep.ReportVersion)
+	}
+	if rep.Title != "" {
+		t.Errorf("expected empty title for corrupt snapshot, got %q", rep.Title)
+	}
+	if len(rep.Turns) != 0 {
+		t.Errorf("expected no turns for corrupt snapshot, got %d", len(rep.Turns))
 	}
 }
 

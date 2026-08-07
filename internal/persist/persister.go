@@ -5,6 +5,7 @@ package persist
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -56,6 +57,12 @@ type RestoredState struct {
 	Histories map[string][]message.Message // sessionID → conversation history with system prompt prepended
 	Traces    []*debug.HTTPTrace
 }
+
+// ErrCorruptSnapshot indicates a session snapshot file existed on disk but
+// could not be parsed as a valid session snapshot. Callers that degrade on
+// unreadable data (e.g. the reconstructed report path) can distinguish this
+// from hard I/O failures with errors.Is.
+var ErrCorruptSnapshot = errors.New("persist: corrupt session snapshot")
 
 // Persister manages disk I/O for session snapshots, conversation history,
 // and HTTP traces under a root data directory.
@@ -242,8 +249,8 @@ func (p *Persister) readSessionSnapshot(sessionID string) ([]byte, error) {
 }
 
 // LoadSession reads and parses the current session snapshot from disk.
-// Returns nil, nil if no snapshot exists for the session.
-// This is the replacement for LoadLatestSessionSnapshot and LoadLatestHistory.
+// Returns nil, nil if no snapshot exists for the session. A snapshot file that
+// exists but cannot be parsed returns an error wrapping ErrCorruptSnapshot.
 func (p *Persister) LoadSession(sessionID string) (*session.UISession, error) {
 	data, err := p.readSessionSnapshot(sessionID)
 	if err != nil || data == nil {
@@ -251,7 +258,7 @@ func (p *Persister) LoadSession(sessionID string) (*session.UISession, error) {
 	}
 	var snap session.UISession
 	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, fmt.Errorf("cannot parse session snapshot for %s: %w", sessionID, err)
+		return nil, fmt.Errorf("cannot parse session snapshot for %s: %w: %v", sessionID, ErrCorruptSnapshot, err)
 	}
 	return &snap, nil
 }
@@ -298,10 +305,17 @@ func (p *Persister) LoadSessionInfo(sessionID string) (*SessionInfo, error) {
 	}, nil
 }
 
-// ListTraces reads and parses all trace files for a session, in filename
-// order. Trace files that cannot be read or parsed are skipped so one corrupt
-// file never hides the rest.
-func (p *Persister) ListTraces(sessionID string) ([]*debug.HTTPTrace, error) {
+// traceFilename returns the on-disk filename for a trace file with the given ID.
+func traceFilename(id string) string {
+	return id + ".json"
+}
+
+// ListTraceFilenames returns the stems (IDs, without the .json suffix) of every
+// trace file on disk for a session, without reading or parsing them. Unlike
+// ListTraces it includes unreadable or corrupt files, so callers that operate
+// on raw files (e.g. clear-all-traces cleanup) see everything on disk.
+// Returns nil, nil when the session has no traces directory.
+func (p *Persister) ListTraceFilenames(sessionID string) ([]string, error) {
 	tracesDir := filepath.Join(p.rootDir, "sessions", sessionID, "traces")
 	entries, err := os.ReadDir(tracesDir)
 	if err != nil {
@@ -310,12 +324,28 @@ func (p *Persister) ListTraces(sessionID string) ([]*debug.HTTPTrace, error) {
 		}
 		return nil, fmt.Errorf("cannot list traces dir %s: %w", tracesDir, err)
 	}
-	var traces []*debug.HTTPTrace
+	var stems []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		trace, err := p.LoadTrace(sessionID, strings.TrimSuffix(entry.Name(), ".json"))
+		stems = append(stems, strings.TrimSuffix(entry.Name(), ".json"))
+	}
+	return stems, nil
+}
+
+// ListTraces reads and parses all trace files for a session, in filename
+// order. Trace files that cannot be read or parsed are skipped so one corrupt
+// file never hides the rest. To enumerate every trace file on disk including
+// unreadable ones, use ListTraceFilenames.
+func (p *Persister) ListTraces(sessionID string) ([]*debug.HTTPTrace, error) {
+	stems, err := p.ListTraceFilenames(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	var traces []*debug.HTTPTrace
+	for _, stem := range stems {
+		trace, err := p.LoadTrace(sessionID, stem)
 		if err != nil {
 			continue // skip unreadable or corrupt trace files
 		}
@@ -326,7 +356,7 @@ func (p *Persister) ListTraces(sessionID string) ([]*debug.HTTPTrace, error) {
 
 // LoadTrace reads and parses a single trace file for a session.
 func (p *Persister) LoadTrace(sessionID, traceID string) (*debug.HTTPTrace, error) {
-	path := filepath.Join(p.rootDir, "sessions", sessionID, "traces", traceID+".json")
+	path := filepath.Join(p.rootDir, "sessions", sessionID, "traces", traceFilename(traceID))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read trace file %s: %w", path, err)
@@ -420,7 +450,7 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 		return fmt.Errorf("cannot marshal trace: %w", err)
 	}
 
-	traceFile := filepath.Join(tracesDir, string(trace.ID)+".json")
+	traceFile := filepath.Join(tracesDir, traceFilename(string(trace.ID)))
 	if err := atomicWrite(traceFile, data, 0600); err != nil {
 		return fmt.Errorf("cannot write trace file: %w", err)
 	}
@@ -431,6 +461,25 @@ func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	p.mu.Unlock()
 
 	return nil
+}
+
+// ClearAllTraces removes every trace file for a session — including unreadable
+// or corrupt ones, which ListTraces skips — and returns the number of files
+// removed. It is the cleanup counterpart to ListTraceFilenames: both operate on
+// raw filenames so nothing on disk survives a clear.
+func (p *Persister) ClearAllTraces(sessionID string) (int, error) {
+	stems, err := p.ListTraceFilenames(sessionID)
+	if err != nil {
+		return 0, err
+	}
+	cleared := 0
+	for _, stem := range stems {
+		traceFile := filepath.Join(p.rootDir, "sessions", sessionID, "traces", traceFilename(stem))
+		if err := os.Remove(traceFile); err == nil {
+			cleared++
+		}
+	}
+	return cleared, nil
 }
 
 // Flush writes any pending session snapshots, unpersisted HTTP traces to disk.

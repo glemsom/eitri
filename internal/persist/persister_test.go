@@ -2,6 +2,7 @@ package persist
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -577,6 +578,31 @@ func TestLoadSession_ReturnsNilOnMissing(t *testing.T) {
 	}
 }
 
+func TestLoadSession_CorruptSnapshot_ReturnsCorruptError(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "corrupt-snap"
+	sessionDir := filepath.Join(rootDir, "sessions", sessionID)
+	if err := os.MkdirAll(sessionDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "session.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := p.LoadSession(sessionID)
+	if !errors.Is(err, ErrCorruptSnapshot) {
+		t.Fatalf("expected ErrCorruptSnapshot, got %v", err)
+	}
+	if snap != nil {
+		t.Errorf("expected nil snapshot for corrupt file, got %v", snap)
+	}
+}
+
 func TestFlush_SnapshotsSessions(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
@@ -675,7 +701,7 @@ func TestListTimelines_ReturnsMetas(t *testing.T) {
 	}
 }
 
-func TestListTraces_ReturnsIDs(t *testing.T) {
+func TestListTraces_ReturnsTraces(t *testing.T) {
 	rootDir := t.TempDir()
 	p, err := New(rootDir)
 	if err != nil {
@@ -708,6 +734,93 @@ func TestListTraces_ReturnsIDs(t *testing.T) {
 	}
 	if traces[0].ID != "trace-list-1" {
 		t.Errorf("trace ID = %q, want %q", traces[0].ID, "trace-list-1")
+	}
+}
+
+func TestListTraceFilenames_IncludesCorruptFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "trace-filenames"
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	// One well-formed trace and one corrupt trace file on disk.
+	if err := p.SaveTrace(sessionID, &debug.HTTPTrace{ID: "good-1", SessionID: sessionID}); err != nil {
+		t.Fatal(err)
+	}
+	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	if err := os.WriteFile(filepath.Join(tracesDir, "corrupt-1.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListTraceFilenames enumerates every trace file on disk — corrupt ones
+	// included — because consumers that delete raw files need to see them.
+	stems, err := p.ListTraceFilenames(sessionID)
+	if err != nil {
+		t.Fatalf("ListTraceFilenames returned error: %v", err)
+	}
+	got := make(map[string]bool, len(stems))
+	for _, s := range stems {
+		got[s] = true
+	}
+	if !got["good-1"] || !got["corrupt-1"] {
+		t.Errorf("expected stems [good-1 corrupt-1], got %v", stems)
+	}
+
+	// ListTraces, by contrast, skips the corrupt file.
+	traces, err := p.ListTraces(sessionID)
+	if err != nil {
+		t.Fatalf("ListTraces returned error: %v", err)
+	}
+	if len(traces) != 1 || traces[0].ID != "good-1" {
+		t.Errorf("expected only good-1 from ListTraces, got %v", traces)
+	}
+}
+
+func TestClearAllTraces_RemovesCorruptFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	p, err := New(rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sessionID := "clear-all-traces"
+	sess := &session.UISession{ID: sessionID}
+	if err := p.SnapshotSession(sessionID, sess); err != nil {
+		t.Fatalf("SnapshotSession: %v", err)
+	}
+
+	// A well-formed trace and a corrupt one. ClearAllTraces must remove both —
+	// clear-all-traces deletes by on-disk filename, so corrupt files are not
+	// left behind even though ListTraces would skip them.
+	if err := p.SaveTrace(sessionID, &debug.HTTPTrace{ID: "good-1", SessionID: sessionID}); err != nil {
+		t.Fatal(err)
+	}
+	tracesDir := filepath.Join(rootDir, "sessions", sessionID, "traces")
+	if err := os.WriteFile(filepath.Join(tracesDir, "corrupt-1.json"), []byte("{not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cleared, err := p.ClearAllTraces(sessionID)
+	if err != nil {
+		t.Fatalf("ClearAllTraces returned error: %v", err)
+	}
+	if cleared != 2 {
+		t.Errorf("expected 2 trace files cleared, got %d", cleared)
+	}
+
+	stems, err := p.ListTraceFilenames(sessionID)
+	if err != nil {
+		t.Fatalf("ListTraceFilenames returned error: %v", err)
+	}
+	if len(stems) != 0 {
+		t.Errorf("expected no trace files left on disk, got %v", stems)
 	}
 }
 

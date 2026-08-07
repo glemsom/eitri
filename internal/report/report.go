@@ -5,6 +5,7 @@ package report
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -174,14 +175,15 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 // listRunsFromHistory reconstructs a best-effort run list from the session snapshot.
 func (svc *Service) listRunsFromHistory(sessionID string) ([]RunInfo, error) {
 	snap, err := svc.persister.LoadSession(sessionID)
-	if err != nil {
+	if err != nil && !errors.Is(err, persist.ErrCorruptSnapshot) {
 		return nil, fmt.Errorf("load session: %w", err)
 	}
-	if snap == nil {
+	if snap == nil && !errors.Is(err, persist.ErrCorruptSnapshot) {
 		return nil, nil
 	}
 
-	// Single reconstructed run
+	// Single reconstructed run. A corrupt snapshot still yields it: the run
+	// list only depends on the snapshot file's existence, not its content.
 	return []RunInfo{
 		{
 			Run:       0,
@@ -707,10 +709,13 @@ func closestTraceByTimestamp(traces []*debug.HTTPTrace, ts time.Time) *debug.HTT
 // buildReconstructedReport builds a report from session snapshot only (no timeline).
 func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, error) {
 	snap, err := svc.persister.LoadSession(sessionID)
-	if err != nil {
+	if err != nil && !errors.Is(err, persist.ErrCorruptSnapshot) {
 		return nil, fmt.Errorf("load session: %w", err)
 	}
 
+	// A corrupt snapshot degrades to an empty reconstructed report rather than
+	// failing the whole report, matching the pre-refactor behavior where an
+	// unmarshal error was silently ignored.
 	var title, workspace string
 	if snap != nil {
 		title = snap.Title
