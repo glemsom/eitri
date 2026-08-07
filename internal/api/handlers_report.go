@@ -60,7 +60,7 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.ReportService == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "persistence not configured"})
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "report service not configured"})
 		return
 	}
 
