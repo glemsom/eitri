@@ -43,7 +43,10 @@
 //	                   UI, batch, and sub-agent runs (issues #1107, #1201,
 //	                   ADR-0028); snapshot source parameterized per transport
 //	                   (UI: live-sync + CopySession; batch/sub-agent:
-//	                   buildUISession from history)
+//	                   buildUISession from history). Its terminal seam persists
+//	                   the run timeline under the run ID plumbed in at
+//	                   construction (runID, generated once per run at run
+//	                   start — issue #1234), never a recomputed ID.
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
 //	                   helpers used by the prepareRun seam (prepare.go).
 //	                   buildLLMService assembles auth, LLM service, tool

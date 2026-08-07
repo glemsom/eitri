@@ -18,6 +18,8 @@ import (
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
+	"github.com/glemsom/eitri/internal/tokenizer"
 )
 
 // TestRunCompleter_SharedBehavior verifies the unified run-completer (issue
@@ -126,6 +128,64 @@ func TestRunCompleter_SharedBehavior(t *testing.T) {
 			t.Errorf("error terminal snapshot Status = %q, want %q", sess.Status, uisession.StatusError)
 		}
 	})
+}
+
+// TestRunCompleter_TerminalPersistsPlumbedRunID verifies the terminal seam
+// (issue #1234): terminal() persists the run timeline under the run ID that
+// was computed once at run start and plumbed through the run-completer, never
+// an ID recomputed from (id, startedAt). The run ID is generated exactly once
+// per run (UI, batch, sub-agent) and flows to the persisted timeline, SSE
+// events, and HTTP traces as one identifier by construction — the turn↔trace
+// correlation (issue #988) depends on it.
+func TestRunCompleter_TerminalPersistsPlumbedRunID(t *testing.T) {
+	persister, rec := newSubAgentPersistWiring(t)
+	svc := NewRunService(RunServiceDeps{
+		DebugRecorder: rec,
+		Persister:     persister,
+	})
+
+	id := "sess-runid"
+	startedAt := time.Date(2026, 7, 25, 17, 46, 46, 0, time.UTC)
+	// Deliberately NOT GenerateRunID(id, startedAt): a terminal seam that
+	// recomputes the ID from (id, startedAt) would persist this different
+	// value instead of the plumbed one, breaking the shared-identifier
+	// invariant.
+	plumbedRunID := "plumbed-run-id"
+	if recomputed := timeline.GenerateRunID(id, startedAt); recomputed == plumbedRunID {
+		t.Fatalf("test setup: GenerateRunID(%q, startedAt) = %q must differ from plumbed run ID %q",
+			id, recomputed, plumbedRunID)
+	}
+
+	req := &litellm.Request{
+		Model: "test-model",
+		Messages: []litellm.Message{
+			{Role: litellm.RoleSystem, Blocks: []litellm.Block{litellm.TextBlock{Text: "You are a test."}}},
+			{Role: litellm.RoleUser, Blocks: []litellm.Block{litellm.TextBlock{Text: "run whoami"}}},
+		},
+	}
+	c := &runCompleter{
+		svc:          svc,
+		historyMgr:   loop.NewRequestHistoryManager(req),
+		id:           id,
+		title:        "task",
+		systemPrompt: "You are a test.",
+		workspace:    "/tmp/ws",
+		startedAt:    startedAt,
+		cfg:          RunConfig{ProviderID: "opencode_go", ModelName: "test-model"},
+		runID:        plumbedRunID,
+	}
+
+	outcome := classifyRunExit(nil, context.Background())
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+	w.Done("msg_1", tokenizer.EstimateUsage("hi", nil, "test-model"))
+	c.terminal(sseState, outcome.Status, outcome.Termination)
+
+	tl := loadSubAgentTimeline(t, persister, id)
+	if tl.RunID != plumbedRunID {
+		t.Errorf("timeline RunID = %q, want plumbed run ID %q (terminal seam must not recompute)",
+			tl.RunID, plumbedRunID)
+	}
 }
 
 // TestRunCompleter_UISnapshotSourceFidelity verifies the UI-transport

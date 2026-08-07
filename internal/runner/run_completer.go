@@ -42,11 +42,18 @@ import (
 // snapshot under <id>/ session.json is derived from historyMgr.History()
 // (batch/sub-agent) or from the UI session (UI mode).
 type runCompleter struct {
-	svc          *RunService
-	historyMgr   loop.HistoryManager // conversation source (session-manager or request based)
-	id           string              // session directory / task ID for history, snapshot, and timeline
-	browserID    string              // UI browser linkage (sub-agent UI mode only; empty for batch)
-	parentID     string              // parent session linkage (sub-agent only; empty for batch)
+	svc        *RunService
+	historyMgr loop.HistoryManager // conversation source (session-manager or request based)
+	id         string              // session directory / task ID for history, snapshot, and timeline
+	// runID is the run identifier generated exactly once at run start and
+	// plumbed through the run options (loop.RunOpts.RunID) and this terminal
+	// seam (issue #1234). The persisted timeline, SSE events, and HTTP traces
+	// all carry this same identifier by construction, so turns stay
+	// correlatable to their traces by ID (issue #988). It is never recomputed
+	// from (id, startedAt) here.
+	runID        string
+	browserID    string // UI browser linkage (sub-agent UI mode only; empty for batch)
+	parentID     string // parent session linkage (sub-agent only; empty for batch)
 	title        string
 	systemPrompt string
 	workspace    string
@@ -196,7 +203,7 @@ func stripLeadingSystemMessage(msgs []message.Message) []message.Message {
 // error on failure.
 func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Status, termination *timeline.TimelineTermination) {
 	c.persist(status)
-	c.svc.persistRunTimeline(c.id, timeline.GenerateRunID(c.id, c.startedAt), c.startedAt, sseState, c.cfg, termination)
+	c.svc.persistRunTimeline(c.id, c.runID, c.startedAt, sseState, c.cfg, termination)
 }
 
 // exitOutcome is the result of the single exit taxonomy (ADR-0029): a run's

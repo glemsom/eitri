@@ -16,8 +16,8 @@ import (
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
-	"github.com/glemsom/eitri/internal/timeline"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // batchTestPersister builds a Persister on a temp dir wired to the debug
@@ -224,6 +224,19 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	}
 	if tl.SessionID != "test-batch" {
 		t.Errorf("timeline SessionID = %q, want %q", tl.SessionID, "test-batch")
+	}
+	// The run ID is generated exactly once per run and plumbed through the
+	// run options (loop.RunOpts.RunID → HTTP traces) and the terminal seam
+	// (runCompleter.runID → timeline), so the persisted timeline and the
+	// HTTP traces share one identifier by construction (issue #1234). The
+	// turn↔trace correlation (issue #988) falls back to joining by this
+	// (run, turn) key, so any drift would silently break it.
+	if tl.RunID != trace.RunID {
+		t.Errorf("timeline RunID = %q, want trace RunID %q (single run ID per run)", tl.RunID, trace.RunID)
+	}
+	if tl.RunID != timeline.GenerateRunID("test-batch", tl.StartedAt) {
+		t.Errorf("timeline RunID = %q, want the run-start ID %q derived from (session, started-at)",
+			tl.RunID, timeline.GenerateRunID("test-batch", tl.StartedAt))
 	}
 	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCompleted {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationCompleted)

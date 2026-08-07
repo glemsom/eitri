@@ -129,7 +129,9 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	}
 	// Generate the run ID once at run start so the persisted timeline, SSE
 	// events, and HTTP traces all share the same identifier and turns can be
-	// correlated to traces by ID (issue #988).
+	// correlated to traces by ID (issue #988). The value is plumbed through
+	// the run options (loop.RunOpts.RunID) and the run-completer's terminal
+	// seam (runID) — no call site recomputes it (issue #1234).
 	state.RunID = timeline.GenerateRunID(sessionID, state.StartedAt)
 	s.store(sessionID, state)
 
@@ -175,6 +177,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			svc:        s,
 			historyMgr: historyMgr,
 			id:         sessionID,
+			runID:      state.RunID,
 			cfg:        cfg,
 			startedAt:  state.StartedAt,
 		}
@@ -192,7 +195,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			Confirmer:        confirmer,
 			UISessionMgr:     s.uiSessionMgr,
 			SessionID:        sessionID,
-			RunID:            timeline.GenerateRunID(sessionID, state.StartedAt),
+			RunID:            state.RunID,
 			ContextWindow:    contextWindowTokens,
 			CrashDumpFunc:    s.crashDumpFunc,
 			Turns:            &state.Turns,
