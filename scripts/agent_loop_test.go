@@ -312,3 +312,158 @@ func runSourcedBash(t *testing.T, snippet string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// ---- T6 loop orchestration (issue #1192) ---------------------------------
+//
+// run_issue_phase drives the build→test→review fix loop for one issue. We
+// exercise it exactly as the worker does: source agent-loop.sh (helpers only)
+// with a stub `eitri` on PATH that emits stage-appropriate verdicts, a stub
+// `gh` that reports a PR and records needs-human comments, then assert on the
+// stored verdict files / the merge gate and the needs-human path.
+
+func TestRunIssuePhase(t *testing.T) {
+	const eitriStub = `#!/usr/bin/env bash
+persona=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --persona) persona="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$persona" in
+  code-build) exit 0 ;;
+  code-test)
+    n=0; [ -f .tcount ] && n=$(cat .tcount); n=$((n+1)); echo "$n" > .tcount
+    v=$(printf '%s' "$TEST_SEQ" | awk -v i="$n" '{print $i}')
+    echo "VERDICT: $v"
+    exit 0 ;;
+  code-review)
+    n=0; [ -f .rcount ] && n=$(cat .rcount); n=$((n+1)); echo "$n" > .rcount
+    v=$(printf '%s' "$REVIEW_SEQ" | awk -v i="$n" '{print $i}')
+    echo "VERDICT: $v"
+    exit 0 ;;
+esac
+`
+	const ghStub = `#!/usr/bin/env bash
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo "42"; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "comment" ]; then touch "$GH_COMMENT_MARKER"; exit 0; fi
+exit 0
+`
+
+	cases := []struct {
+		name       string
+		testSeq    string
+		reviewSeq  string
+		wantTest   string
+		wantReview string
+		wantMerge  bool
+		wantHuman  bool
+	}{
+		{
+			name:       "approve on first round",
+			testSeq:    "PASS",
+			reviewSeq:  "APPROVED",
+			wantTest:   "PASS",
+			wantReview: "APPROVED",
+			wantMerge:  true,
+		},
+		{
+			name:       "test reject bounces to a fresh round then approves",
+			testSeq:    "REJECT PASS",
+			reviewSeq:  "APPROVED",
+			wantTest:   "PASS",
+			wantReview: "APPROVED",
+			wantMerge:  true,
+		},
+		{
+			name:       "review changes-required bounces to a fresh round then approves",
+			testSeq:    "PASS PASS",
+			reviewSeq:  "CHANGES_REQUIRED APPROVED",
+			wantTest:   "PASS",
+			wantReview: "APPROVED",
+			wantMerge:  true,
+		},
+		{
+			name:       "review blocked uses the cap immediately",
+			testSeq:    "PASS",
+			reviewSeq:  "BLOCKED",
+			wantTest:   "PASS",
+			wantReview: "BLOCKED",
+			wantMerge:  false,
+			wantHuman:  true,
+		},
+		{
+			name:       "three reject rounds exhaust the shared cap",
+			testSeq:    "REJECT REJECT REJECT",
+			reviewSeq:  "",
+			wantTest:   "REJECT",
+			wantReview: "NONE",
+			wantMerge:  false,
+			wantHuman:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			wt := filepath.Join(repo, "wt")
+			if err := os.MkdirAll(wt, 0o755); err != nil {
+				t.Fatalf("mkdir wt: %v", err)
+			}
+			marker := filepath.Join(repo, ".gh-commented")
+			shim := t.TempDir()
+			writeExecutable(t, filepath.Join(shim, "eitri"), eitriStub)
+			writeExecutable(t, filepath.Join(shim, "gh"), ghStub)
+
+			wtQuoted := strings.ReplaceAll(wt, "'", "'\"'\"")
+			script := `run_issue_phase '` + wtQuoted + `' 1 "an issue"`
+			cmd := exec.Command("bash", "-c", "source agent-loop.sh; "+script)
+			cmd.Dir = "."
+			cmd.Env = append(os.Environ(),
+				"PATH="+shim+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"TEST_SEQ="+tc.testSeq,
+				"REVIEW_SEQ="+tc.reviewSeq,
+				"GH_COMMENT_MARKER="+marker,
+			)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("run_issue_phase failed: %v\n%s", err, out)
+			}
+
+			if got := readVerdict(t, wt, "test"); got != tc.wantTest {
+				t.Fatalf("test verdict = %q, want %q\n%s", got, tc.wantTest, out)
+			}
+			if got := readVerdict(t, wt, "review"); got != tc.wantReview {
+				t.Fatalf("review verdict = %q, want %q\n%s", got, tc.wantReview, out)
+			}
+
+			// Merge gate must reflect the latest stored verdicts.
+			mergeOut := runSourcedBash(t, `can_merge_issue '`+wtQuoted+`' && echo mergeable || echo not-mergeable`)
+			expectMergeable := "not-mergeable"
+			if tc.wantMerge {
+				expectMergeable = "mergeable"
+			}
+			if mergeOut != expectMergeable {
+				t.Fatalf("can_merge_issue = %q, want %q\n%s", mergeOut, expectMergeable, out)
+			}
+
+			// A needs-human outcome must result in a gh PR comment.
+			_, ghErr := os.Stat(marker)
+			hadComment := ghErr == nil
+			if hadComment != tc.wantHuman {
+				t.Fatalf("needs-human comment present = %v, want %v\n%s", hadComment, tc.wantHuman, out)
+			}
+		})
+	}
+}
+
+func readVerdict(t *testing.T, wt, kind string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(wt, "."+kind+"-verdict"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "NONE"
+		}
+		t.Fatalf("read verdict %s: %v", kind, err)
+	}
+	return strings.TrimSpace(string(b))
+}
