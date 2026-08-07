@@ -327,6 +327,18 @@ swap, a streaming message finalising), poll the DOM for the *content* instead â€
 re-resolve the element via `EvaluateAsDevTools` on every `pollForCondition`
 iteration, and only then assert on the captured text. (issue #1218)
 
+One more readiness trap: a component fetched into an empty container via htmx
+(`hx-get` + `hx-trigger="load"`, e.g. the header persona selector) becomes
+*visible* as soon as the response is swapped in, but htmx attaches the new
+nodes' `hx-*` event listeners (e.g. an option's `hx-post` activation handler)
+in a **deferred settle task after the swap**. `chromedp.WaitVisible` alone can
+therefore return before the component is interactive â€” a synthetic Enter
+activation lands on a button with no listener and silently does nothing. When
+a test drives such a component, wait for it to be htmx-wired first: poll until
+each target node's `htmx-internal-data.listenerInfos` carries the expected
+trigger (see `waitForPersonaSelectorReady` in
+`browser_persona_keyboard_test.go`, issue #1219).
+
 For manual testing against a real server:
 
 ```bash

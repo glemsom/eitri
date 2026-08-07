@@ -163,6 +163,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The browser E2E persona-selector keyboard test
+  (`TestBrowser_PersonaDropdownKeyboard`) no longer flakes on the #1219
+  regression gate. The header selector is fetched into the empty
+  `#persona-selector-container` via an htmx `hx-trigger="load"` request, and
+  htmx attaches each option's `hx-post` activation listener in a **deferred
+  settle task after the swap** — so a selector that is merely *visible* can
+  still be missing its click listeners. The test used to start keying as soon
+  as the selector appeared, so the Enter activation's synthetic click could
+  land on an option with no htmx listener attached yet and silently do nothing
+  (dropdown stayed open, label unchanged; ~30% failure rate under the gate's
+  `-shuffle=on -count 2`). It now waits for the selector's options to be
+  htmx-wired — each option's `htmx-internal-data.listenerInfos` carries a
+  `click` trigger — before interacting, the same content-driven readiness
+  pattern as the #1217/#1218 de-flakes. (#1219)
+
 - The browser E2E composer test (`TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline`)
   no longer flakes with `No node with given id found (-32000)`: it used to chain
   chromedp selector actions (`WaitVisible` then `Text`) across the post-Enter HTMX

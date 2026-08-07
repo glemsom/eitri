@@ -53,6 +53,43 @@ func readPersonaUIState(t *testing.T, ctx context.Context) personaUIState {
 	return s
 }
 
+// waitForPersonaSelectorReady waits until the header persona selector is not
+// only present but fully wired up by htmx. The selector is fetched into the
+// empty #persona-selector-container via an hx-trigger="load" request, and htmx
+// attaches each option's hx-post click listener in a deferred task after the
+// swap (the settle phase) — so a selector that is merely *visible* can still
+// be missing its click listeners. An Enter activation fired in that window
+// silently does nothing (the synthetic click reaches the option, but no htmx
+// listener is attached yet), which the #1219 regression gate caught as a
+// timing flake in TestBrowser_PersonaDropdownKeyboard. Waiting on the
+// options' htmx-internal-data.listenerInfos (the same record htmx itself
+// keeps, see eitri-persona-selector.js's vendored htmx) makes the interaction
+// deterministic: keyboard activation only starts once the hx-post handlers are
+// attached.
+func waitForPersonaSelectorReady(t *testing.T, ctx context.Context) {
+	t.Helper()
+	pollForCondition(t, 10*time.Second, 50*time.Millisecond, func() bool {
+		var ready bool
+		err := chromedp.Run(ctx, chromedp.EvaluateAsDevTools(`(function() {
+			var selector = document.getElementById('persona-selector');
+			if (!selector) return false;
+			var options = selector.querySelectorAll('[role="option"]');
+			if (options.length === 0) return false;
+			for (var i = 0; i < options.length; i++) {
+				var d = options[i]['htmx-internal-data'];
+				if (!d || !d.listenerInfos) return false;
+				var hasClick = false;
+				for (var j = 0; j < d.listenerInfos.length; j++) {
+					if (d.listenerInfos[j].trigger === 'click') { hasClick = true; break; }
+				}
+				if (!hasClick) return false;
+			}
+			return true;
+		})()`, &ready))
+		return err == nil && ready
+	})
+}
+
 // TestBrowser_PersonaDropdownKeyboard verifies the header persona selector is
 // fully operable by keyboard (issue #1074). A second persona ("assistant") is
 // seeded so arrow navigation is meaningful; the active persona is "generic"
@@ -88,6 +125,11 @@ func TestBrowser_PersonaDropdownKeyboard(t *testing.T) {
 		t.Fatalf("navigate to chat failed: %v", err)
 	}
 	waitForComposerReady(t, ctx)
+	// The selector is fetched via an htmx hx-trigger="load" request and its
+	// hx-post option listeners attach in a deferred settle task; wait until
+	// they are wired so the Enter activation below deterministically activates
+	// (issue #1219 regression-gate flake).
+	waitForPersonaSelectorReady(t, ctx)
 
 	// AC2 — the trigger announces the popup and the options expose their
 	// selection state to screen readers.
