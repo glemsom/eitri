@@ -115,14 +115,14 @@
 }
 
 :root {
-  --bg: #1a1a2e;
-  --surface: #16213e;
-  --surface-alt: #0f3460;
-  --text: #e0e0e0;
-  --text-muted: #a0a0b0;
-  --accent: #e94560;
-  --accent-hover: #ff6b81;
-  --border: #2a2a4a;
+  --bg: #0d0d12;
+  --surface: #14141a;
+  --surface-alt: #1a1a22;
+  --text: #e8e8ea;
+  --text-muted: #9b9ba5;
+  --accent: #c26f6b;
+  --accent-hover: #d48680;
+  --border: #23232d;
   --success: #2ecc71;
   --warning: #f39c12;
   --error: #e74c3c;
@@ -139,14 +139,14 @@
   --text-xl: 1.25rem;
 
   /* Visual design tokens */
-  --glass-bg: rgba(22, 33, 62, 0.7);
+  --glass-bg: rgba(20, 20, 26, 0.72);
   --glass-border: rgba(255, 255, 255, 0.08);
-  --accent-gradient: linear-gradient(135deg, #e94560, #ff6b81);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
-  --surface-raised: #1a2740;
-  --surface-overlay: rgba(22, 33, 62, 0.95);
+  --accent-gradient: linear-gradient(135deg, #c26f6b, #d48680);
+  --shadow-sm: 0 1px 3px rgba(13, 13, 18, 0.5);
+  --shadow-md: 0 4px 12px rgba(13, 13, 18, 0.55);
+  --shadow-lg: 0 8px 32px rgba(13, 13, 18, 0.65);
+  --surface-raised: #16161e;
+  --surface-overlay: rgba(13, 13, 18, 0.96);
   --composer-height: 130px;
 
   /* Semantic status colors (issue #1068) — one token per stream status,
@@ -177,16 +177,16 @@
   --surface-hover: rgba(255, 255, 255, 0.04);
 
   /* Surface tints */
-  --header-bg: rgba(22, 33, 62, 0.97);
+  --header-bg: rgba(13, 13, 18, 0.97);
   --header-border: var(--glass-border);
   --overlay-bg: rgba(0, 0, 0, 0.6);
   --device-flow-bg: rgba(255, 255, 255, 0.015);
-  --llm-meta-bg: rgba(15, 52, 96, 0.3);
-  --turn-context-bg: rgba(15, 52, 96, 0.15);
+  --llm-meta-bg: rgba(26, 26, 34, 0.65);
+  --turn-context-bg: rgba(26, 26, 34, 0.4);
 
   /* Elevation */
-  --shadow-btn: 0 1px 4px rgba(0, 0, 0, 0.35);
-  --shadow-float: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-btn: 0 1px 4px rgba(13, 13, 18, 0.6);
+  --shadow-float: 0 2px 8px rgba(13, 13, 18, 0.5);
 }
 
 /* Light theme overrides (issue #977) */
