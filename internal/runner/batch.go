@@ -43,6 +43,12 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// in-memory history session. EITRI_BATCH_SESSION_ID is no longer honoured.
 	batchID := s.newRunID(runJobRoleBatch)
 	batchStartedAt := time.Now()
+	// Generate the run ID once at run start so the persisted timeline, SSE
+	// events, and HTTP traces all share the same identifier and turns can be
+	// correlated to traces by ID (issue #988). The value is plumbed through
+	// the run options (loop.RunOpts.RunID) and the run-completer's terminal
+	// seam (runID) — no call site recomputes it (issue #1234).
+	batchRunID := timeline.GenerateRunID(batchID, batchStartedAt)
 	rootDir := "~/.eitri"
 	if s.persister != nil {
 		rootDir = s.persister.RootDir()
@@ -100,6 +106,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		svc:          s,
 		historyMgr:   historyMgr,
 		id:           batchID,
+		runID:        batchRunID,
 		title:        title,
 		systemPrompt: fullSystemPrompt,
 		workspace:    workspace,
@@ -172,7 +179,7 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		Confirmer:        nil,
 		UISessionMgr:     nil,
 		SessionID:        batchID,
-		RunID:            timeline.GenerateRunID(batchID, batchStartedAt),
+		RunID:            batchRunID,
 		ContextWindow:    cfg.ContextWindowTokens,
 		CrashDumpFunc:    s.crashDumpFunc,
 		Turns:            &turns,

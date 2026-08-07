@@ -161,6 +161,13 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		StartedAt: time.Now(),
 	}
 
+	// Generate the run ID once at run start so the persisted timeline, SSE
+	// events, and HTTP traces all share the same identifier and turns can be
+	// correlated to traces by ID (issue #988). The value is plumbed through
+	// the run options (loop.RunOpts.RunID) and the run-completer's terminal
+	// seam (runID) — no call site recomputes it (issue #1234).
+	taskRunID := timeline.GenerateRunID(taskID, record.StartedAt)
+
 	s.subagents.storeRecord(taskID, record)
 
 	var childRunState *RunState
@@ -223,6 +230,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		svc:          s,
 		historyMgr:   loop.NewRequestHistoryManager(req),
 		id:           taskID,
+		runID:        taskRunID,
 		parentID:     sessionID,
 		title:        uisession.TitlePreview(task),
 		systemPrompt: systemPrompt,
@@ -280,7 +288,7 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			Confirmer:        nil,
 			UISessionMgr:     s.uiSessionMgr,
 			SessionID:        "",
-			RunID:            timeline.GenerateRunID(taskID, record.StartedAt),
+			RunID:            taskRunID,
 			ContextWindow:    parentCfg.ContextWindowTokens,
 			CrashDumpFunc:    nil,
 			Turns:            nil,
