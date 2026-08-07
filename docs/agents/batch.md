@@ -137,6 +137,29 @@ How it works:
 
 The dispatcher reports per-issue worker exit status and continues past failures; it exits 0 only if nothing was left unmerged or orphaned.
 
+### Verdict plumbing (`run_persona_batch`, `extract_verdict`)
+
+`agent-loop.sh` ships two reusable helpers for the review-gated pipeline (T3,
+#1188) so the build→test→review gates (T4/T5) and any future gate share one
+invocation path:
+
+- `run_persona_batch <wt> <stage> <persona> <prompt>` runs `eitri --persona
+  <persona> -b "<prompt>"` inside the worktree as a **fresh batch** (fresh
+  context = objective evaluation), streaming output to `$wt/log.$stage` with the
+  same `setsid --wait` shield and 130/143 Ctrl+C loop the worker phase uses. It
+  prints three lines: the verdict (`APPROVED | CHANGES_REQUIRED | BLOCKED |
+  hard-fail`), the batch's exit status, and the stage log path.
+- `extract_verdict <log>` parses the **latest** `VERDICT: ...` line out of a log,
+  returning just the verdict name, or empty when there is none.
+
+A non-zero exit **or** a missing `VERDICT:` line both surface as `hard-fail` —
+a missing verdict or an auth/config/lock error never becomes a blind retry. The
+helper only runs a batch and reports a verdict; it does not decide loop policy
+(the shared 3-round cap / re-entry / merge precondition live in T6). Both
+functions live in `agent-loop.sh`, which is guard-claused so sourcing it (e.g.
+from a Go test, or from T4/T5) defines the helpers without starting the
+dispatcher.
+
 ## Exit codes
 
 | Code | Meaning                                      |

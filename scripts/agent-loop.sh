@@ -33,9 +33,18 @@
 
 set -euo pipefail
 
+# When this file is sourced (e.g. by tests reusing the verdict plumbing and the
+# run_persona_batch helper on 1190/1191), define the helper functions but skip
+# the dispatcher entry point. Direct invocation behaves exactly as before.
+RUN_ENTRYPOINT=1
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+	RUN_ENTRYPOINT=0
+fi
+
 REPO=""
 JOBS=2
 
+if [ "$RUN_ENTRYPOINT" -eq 1 ]; then
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-j)
@@ -84,6 +93,7 @@ for cmd in gh eitri jq git; do
 done
 
 cd "$REPO"
+fi
 
 WORKTREES_DIR=".worktrees"
 
@@ -125,6 +135,62 @@ WORKER_SHIELD=""
 if command -v setsid >/dev/null 2>&1 && setsid --wait true >/dev/null 2>&1; then
 	WORKER_SHIELD="setsid --wait"
 fi
+
+# --- Verdict plumbing ---------------------------------------------------
+
+# Extract the latest `VERDICT: APPROVED | CHANGES_REQUIRED | BLOCKED` line from
+# a batch log. Returns just the verdict name, or an empty string when the log
+# has no verdict line (or is missing). A missing verdict is always treated by
+# callers as a hard failure — genuinely no verdict (logger cut short, the persona
+# refused to emit one) must never be mistaken for a result or a retry.
+extract_verdict() {
+	local log="$1" v=""
+	v=$(grep -oE 'VERDICT:[[:space:]]*(APPROVED|CHANGES_REQUIRED|BLOCKED)' "$log" 2>/dev/null | tail -1 || true)
+	case "$v" in
+		*APPROVED) printf '%s' 'APPROVED' ;;
+		*CHANGES_REQUIRED) printf '%s' 'CHANGES_REQUIRED' ;;
+		*BLOCKED) printf '%s' 'BLOCKED' ;;
+	esac
+}
+
+# Run one persona batch in a worktree and surface its review verdict.
+#
+# args: <wt> <stage> <persona> <prompt>
+#
+# Runs `eitri --persona <persona> -b "<prompt>"` inside the worktree, streaming
+# output to "$wt/log.$stage", with the same worker shield and Ctrl+C handling
+# (130/143 loop) as the per-issue worker phase — each call is a fresh batch with
+# fresh context, so a gate evaluates the current tree objectively.
+#
+# Emits three lines to stdout (the caller captures and consumes them):
+#   1. verdict: APPROVED | CHANGES_REQUIRED | BLOCKED | hard-fail
+#   2. the batch's exit status (hard-fail is only set when status != 0 or the
+#      verdict is missing)
+#   3. the per-stage log path
+#
+# A non-zero exit OR a missing verdict both surface as `hard-fail`; the helper
+# never decides loop policy (cap / re-entry live in T6) and never blind-retries
+# auth/config/lock errors that won't self-heal.
+run_persona_batch() {
+	local wt="$1" stage="$2" persona="$3" prompt="$4"
+	local log="$wt/log.$stage" pid st=0 verdict
+	( cd "$wt" && exec $WORKER_SHIELD eitri --persona "$persona" -b "$prompt" ) > "$log" 2>&1 &
+	pid=$!
+	while :; do
+		if wait "$pid"; then
+			st=0
+			break
+		else
+			st=$?
+		fi
+		[ "$st" -eq 130 ] || [ "$st" -eq 143 ] || break
+	done
+	verdict=$(extract_verdict "$log")
+	if [ "$st" -ne 0 ] || [ -z "$verdict" ]; then
+		verdict="hard-fail"
+	fi
+	printf '%s\n%s\n%s\n' "$verdict" "$st" "$log"
+}
 
 
 # --- Sandbox check ---------------------------------------------------------
@@ -472,4 +538,6 @@ main() {
 	echo "All ready-for-agent issues processed cleanly."
 }
 
-main
+if [ "$RUN_ENTRYPOINT" -eq 1 ]; then
+	main
+fi
