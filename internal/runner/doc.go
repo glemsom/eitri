@@ -32,11 +32,16 @@
 //	                   replaces the run's history with the compacted version
 //	                   via the history manager's replace-history capability
 //	run.go           — StartRun (agent loop entry point), session persistence
-//	                   after run, UI OnTurnComplete (snapshot + compaction)
+//	                   after run, exit-path status snapshots + timelines
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
 //	                   loop.NewSessionHistoryManager, io.Writer output)
 //	batch_persist.go — Batch session persistence: per-turn snapshots and the
 //	                   batch turn completer (snapshot + shared compaction)
+//	run_completer.go — runCompleter: the unified per-turn run-completer for
+//	                   UI, batch, and sub-agent runs (issues #1107, #1201,
+//	                   ADR-0028); snapshot source parameterized per transport
+//	                   (UI: live-sync + CopySession; batch/sub-agent:
+//	                   buildUISession from history)
 //	system_prompt.go — buildSystemPrompt and buildLLMService: shared
 //	                   helpers used by the prepareRun seam (prepare.go).
 //	                   buildLLMService assembles auth, LLM service, tool

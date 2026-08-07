@@ -168,6 +168,20 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 		}
 		confirmer := loop.NewFuncConfirmer(s.confirmPath)
 
+		// UI-mode run-completer: the same per-turn persistence + auto-compaction
+		// + re-snapshot path batch and sub-agent runs use (run_completer.go),
+		// wired with the UI snapshot source so per-turn snapshots live-sync the
+		// run's live conversation into the UI session and preserve full
+		// UI-session fidelity via CopySession (ADR-0028).
+		completer := &runCompleter{
+			svc:        s,
+			historyMgr: historyMgr,
+			id:         sessionID,
+			cfg:        cfg,
+			startedAt:  state.StartedAt,
+		}
+		completer.snapshotSource = completer.uiSnapshotSource
+
 		err := loop.RunAgent(runCtx, loop.RunSpec{
 			Client:     llmSvc,
 			Request:    req,
@@ -186,7 +200,7 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			Turns:            &state.Turns,
 			DebugLLMDir:      cfg.DebugLLMDir,
 			TurnTimeout:      cfg.TurnTimeout,
-			TurnCompleter:    s,
+			TurnCompleter:    completer,
 			CalibrationStore: s.calibrationStore,
 			ModelName:        cfg.ModelName,
 			RetryPolicy:      &cfg.RetryPolicy,
@@ -418,123 +432,10 @@ func (s *RunService) broadcastSessionStatusUpdate(sessionID string, status uises
 	})
 }
 
-// ── TurnCompleter implementation ────────────────────────────────────────────
-
-// OnTurnComplete implements loop.TurnCompleter. It is called after each
-// complete agent turn to persist snapshots and trigger auto-compaction.
-func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
-	if s.persister == nil || s.uiSessionMgr == nil {
-		return
-	}
-	// Uses the explicit copy helper: the snapshot below serializes the full
-	// session facade to disk and needs a detached copy (see snapshotSession).
-	sess := s.uiSessionMgr.CopySession(sessionID)
-	if sess == nil {
-		return
-	}
-
-	historyMsgs := s.historySessionMgr.History(sessionID)
-	if historyMsgs == nil {
-		return
-	}
-
-	// Sync the run's live conversation (history manager) into the UI session
-	// so the browser UI and snapshots show incremental progress during long
-	// runs instead of appearing frozen on the original user message until the
-	// run completes. Without this, a multi-turn run burns turns and writes
-	// traces while the UI session stays at a single message. The system prompt
-	// is stored separately on the UI session (SetSystemPrompt), so strip it
-	// from the history copy below. If compaction later replaces the history
-	// with a compacted version, its own sync below overrides this one.
-	if s.historySessionMgr != nil {
-		uiMsgs := make([]message.Message, 0, len(historyMsgs))
-		for _, em := range historyMsgs {
-			uiMsgs = append(uiMsgs, em.ToMessage())
-		}
-		if len(uiMsgs) > 0 && uiMsgs[0].Role == "system" {
-			uiMsgs = uiMsgs[1:]
-		}
-		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
-	}
-
-	// Always snapshot after each turn.
-	if err := s.persister.SnapshotSession(sessionID, sess); err != nil {
-		slog.Warn("failed to snapshot session",
-			slog.String("session_id", sessionID),
-			slog.Any("error", err),
-		)
-	}
-	// Auto-compaction: retrieve the run config from the active RunState and
-	// run the shared compaction step (also used by batch parent runs — the
-	// settings in ~/.eitri/config.json are honored identically in both modes).
-	state := s.get(sessionID)
-	if state == nil {
-		return
-	}
-	cfg := state.RunCfg
-
-	compactedMsgs, compactedCount, freedTokens, prunedToolCalls, compErr := s.autoCompactAfterTurn(ctx, loop.NewSessionHistoryManager(s.historySessionMgr, sessionID), cfg)
-	if compErr != nil {
-		slog.Warn("compaction failed, will retry on next turn",
-			slog.String("session_id", sessionID),
-			slog.Any("error", compErr),
-		)
-		// Broadcast warning toast
-		if runState := s.get(sessionID); runState != nil {
-			runState.SSE.Broadcast(runstate.SSEEvent{
-				Type: "toast",
-				Data: map[string]any{
-					"level":   "warning",
-					"message": "Compaction failed: " + compErr.Error(),
-				},
-			})
-		}
-		return
-	}
-	if compactedMsgs == nil {
-		return
-	}
-
-	// Sync compacted messages to the UI session manager so snapshots reflect
-	// the compacted state. Strip the system prompt (stored separately in UI session).
-	if s.uiSessionMgr != nil {
-		uiMsgs := compactedMsgs
-		if len(uiMsgs) > 0 && uiMsgs[0].Role == "system" {
-			uiMsgs = uiMsgs[1:]
-		}
-		s.uiSessionMgr.ReplaceConversationMessages(sessionID, uiMsgs)
-	}
-
-	// Snapshot the compacted history. Uses the explicit copy helper: the
-	// persister serializes the full session facade and needs a detached copy.
-	sessAfter := s.uiSessionMgr.CopySession(sessionID)
-	if sessAfter != nil {
-		if err := s.persister.SnapshotSession(sessionID, sessAfter); err != nil {
-			slog.Warn("failed to snapshot compacted session",
-				slog.String("session_id", sessionID),
-				slog.Any("error", err),
-			)
-		}
-	}
-
-	// Broadcast compaction_complete event for UI toast.
-	freedK := freedTokens / 1000
-	message := fmt.Sprintf("Compacted %d messages — freed ~%dk tokens", compactedCount, freedK)
-	if prunedToolCalls > 0 {
-		message += fmt.Sprintf(". %d tool calls pruned", prunedToolCalls)
-	}
-	if runState := s.get(sessionID); runState != nil {
-		runState.SSE.Broadcast(runstate.SSEEvent{
-			Type: "compaction_complete",
-			Data: map[string]any{
-				"compacted_count":   compactedCount,
-				"freed_tokens":      freedTokens,
-				"pruned_tool_calls": prunedToolCalls,
-				"message":           message,
-			},
-		})
-	}
-}
+// Per-turn completion for UI runs moved into the unified runCompleter
+// (run_completer.go, ADR-0028): RunService no longer implements
+// loop.TurnCompleter. startRunWithConfig wires a UI-mode runCompleter into
+// loop.RunOpts.TurnCompleter.
 
 // compactSessionHistory runs the compactor on the given messages using the
 // provided LLM service, gated by high-water and low-water thresholds.
@@ -542,7 +443,8 @@ func (s *RunService) OnTurnComplete(ctx context.Context, sessionID string) {
 // estimate when a store and model are provided, falling back to the default
 // 4.0 ratio when the store is nil.
 // Returns the compacted messages, count, freed tokens, pruned tool calls, and any error.
-// Shared by auto-compaction (OnTurnComplete) and manual compaction (CompactSession).
+// Shared by auto-compaction (autoCompactAfterTurn) and manual compaction
+// (CompactSession).
 func compactSessionHistory(ctx context.Context, messages []message.Message, client *litellm.Client, store *tokenizer.CalibrationStore, highWater, lowWater, messageSizeThreshold, toolCallRetentionTurns int, salienceEnabled bool, model string) ([]message.Message, int, int, int, error) {
 	totalEst := compactor.MessagesTokenEstimate(messages, store, model)
 	if totalEst <= highWater {

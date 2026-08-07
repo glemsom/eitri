@@ -730,7 +730,7 @@ func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
 	llmURL := fakeJoinMidRunChatServer(t, releaseThirdTurn).URL
 
 	// The UI session only receives committed turns when a persister is
-	// configured (RunService.OnTurnComplete syncs live history into the UI
+	// configured (the UI-mode runCompleter syncs live history into the UI
 	// session; without it the server-rendered page on rejoin would not show
 	// the committed bubble at all). Build the server with a persister.
 	homeDir := t.TempDir()

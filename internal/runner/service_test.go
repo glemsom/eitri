@@ -2393,7 +2393,11 @@ func TestCompactSessionHistory_CalibratedHighWaterGate(t *testing.T) {
 	_ = pruned
 }
 
-func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {
+// TestRunCompleter_SyncsHistoryToUISession verifies that the UI-mode
+// run-completer's per-turn completion (ADR-0028) syncs the run's live history
+// into the UI session, so the browser UI shows incremental progress during
+// long runs instead of appearing frozen on the original user message.
+func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
 	uiMgr := uisession.NewManager(10, t.TempDir())
 	historyMgr := history.NewSessionManager(50)
 	persister, err := persist.New(t.TempDir())
@@ -2422,7 +2426,18 @@ func TestOnTurnComplete_SyncsHistoryToUISession(t *testing.T) {
 	historyMgr.AppendTool(sess.ID, "call_1", "file contents...", "", false)
 	historyMgr.AppendAssistant(sess.ID, "Here is a mid-run update.", nil)
 
-	svc.OnTurnComplete(context.Background(), sess.ID)
+	// UI-mode run-completer (ADR-0028): the same per-turn persistence path
+	// batch and sub-agent runs use, wired with the UI snapshot source so the
+	// live conversation is synced into the UI session on each complete turn.
+	completer := &runCompleter{
+		svc:          svc,
+		historyMgr:   loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		id:           sess.ID,
+		cfg:          RunConfig{},
+	}
+	completer.snapshotSource = completer.uiSnapshotSource
+
+	completer.OnTurnComplete(context.Background(), sess.ID)
 
 	convo := uiMgr.GetConversationShared(sess.ID)
 	if convo == nil {

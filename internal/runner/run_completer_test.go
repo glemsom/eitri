@@ -8,6 +8,7 @@ import (
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/timeline"
@@ -118,6 +119,89 @@ func TestRunCompleter_SharedBehavior(t *testing.T) {
 			t.Errorf("error terminal snapshot Status = %q, want %q", sess.Status, uisession.StatusError)
 		}
 	})
+}
+
+// TestRunCompleter_UISnapshotSourceFidelity verifies the UI-transport
+// snapshot source (ADR-0028): persist live-syncs the run's live conversation
+// into the UI session, then snapshots the UI session facade via CopySession,
+// preserving the full fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs)
+// that the history-derived facade omits — while still stripping the leading
+// system message (stored in SystemPrompt only).
+func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
+	uiMgr := uisession.NewManager(10, t.TempDir())
+	historyMgr := history.NewSessionManager(50)
+	p, err := persist.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr:      uiMgr,
+		HistorySessionMgr: historyMgr,
+		Persister:         p,
+	})
+
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+
+	// Fidelity carried on the UI session but absent from the history-derived
+	// facade: the system prompt, active skills, a closed-at timestamp, and
+	// rendered message IDs (the latter stored in a 10-slot ring buffer).
+	uiMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
+	uiMgr.ActivateSkill(sess.ID, "write")
+	closedAt := time.Now().Add(-time.Hour)
+	uiMgr.SetClosedAt(sess.ID, &closedAt)
+	uiMgr.AddRenderedMessageID(sess.ID, "msg_1")
+	uiMgr.AddRenderedMessageID(sess.ID, "msg_2")
+
+	// Populate the run's live history as the agent loop would across turns.
+	historyMgr.Create(sess.ID)
+	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
+	historyMgr.AppendUser(sess.ID, "Do the work")
+	historyMgr.AppendAssistant(sess.ID, "Mid-run reply.", nil)
+
+	// UI-mode run-completer: the same per-turn path batch and sub-agent runs
+	// use, wired with the UI snapshot source.
+	c := &runCompleter{
+		svc:          svc,
+		historyMgr:   loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		id:           sess.ID,
+		cfg:          RunConfig{},
+	}
+	c.snapshotSource = c.uiSnapshotSource
+
+	c.OnTurnComplete(context.Background(), sess.ID)
+
+	// The UI conversation must reflect the live history (what makes long runs
+	// visible during execution), with the system message stripped.
+	convo := uiMgr.GetConversationShared(sess.ID)
+	if convo == nil || len(convo.Messages) != 2 {
+		t.Fatalf("UI conversation = %+v, want 2 messages (user + assistant)", convo)
+	}
+	if convo.Messages[0].Role != "user" || convo.Messages[0].Content != "Do the work" {
+		t.Errorf("UI conversation first message = %+v, want user 'Do the work'", convo.Messages[0])
+	}
+
+	snap := loadSubAgentSessionSnapshot(t, p, sess.ID)
+	assertNoSystemMessage(t, snap)
+	if snap.SystemPrompt != "You are Eitri." {
+		t.Errorf("snapshot SystemPrompt = %q, want %q", snap.SystemPrompt, "You are Eitri.")
+	}
+	// CopySession fidelity preserved in the snapshot.
+	if got := snap.ActiveSkills; len(got) != 1 || got[0] != "write" {
+		t.Errorf("snapshot ActiveSkills = %v, want [write]", got)
+	}
+	if snap.ClosedAt == nil || !snap.ClosedAt.Equal(closedAt) {
+		t.Errorf("snapshot ClosedAt = %v, want %v", snap.ClosedAt, closedAt)
+	}
+	rendered := snap.RenderedMessageIDs
+	if len(rendered) < 2 || rendered[0] != "msg_1" || rendered[1] != "msg_2" {
+		t.Errorf("snapshot RenderedMessageIDs = %v, want ring buffer starting [msg_1 msg_2]", rendered)
+	}
+	if len(snap.Messages) != 2 || snap.Messages[0].Content != "Do the work" || snap.Messages[1].Content != "Mid-run reply." {
+		t.Errorf("snapshot Messages = %+v, want live history (user + assistant)", snap.Messages)
+	}
 }
 
 // assertNoSystemMessage fails the test if the snapshot carries any message
