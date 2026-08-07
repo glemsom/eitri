@@ -1,8 +1,17 @@
 /* partials/chat-stream.css — streaming message chrome, collapsibles, status/toast, active skills bar. */
-/* Status text in header h1 (issue #451) */
+/* Status pill in header h1 (issue #451). Rendered as a subtle pill whose
+   background/edge tint is derived from the semantic status token via
+   color-mix, so it stays theme-correct and needs no new color literals
+   (issue #1180). Idle stays hidden when the tab has no active run. */
 .stream-status-text {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1.4;
+  white-space: nowrap;
+  margin-left: 0.15rem;
 }
 
 .stream-status-text.idle,
@@ -12,30 +21,44 @@
 
 .stream-status-text.connecting {
   color: var(--status-connecting);
+  background: color-mix(in srgb, var(--status-connecting) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-connecting) 30%, transparent);
 }
 
 .stream-status-text.streaming {
   color: var(--status-streaming);
+  background: color-mix(in srgb, var(--status-streaming) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-streaming) 30%, transparent);
 }
 
 .stream-status-text.tool-running {
   color: var(--status-tool-running);
+  background: color-mix(in srgb, var(--status-tool-running) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-tool-running) 30%, transparent);
 }
 
 .stream-status-text.rendering {
   color: var(--status-rendering);
+  background: color-mix(in srgb, var(--status-rendering) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-rendering) 30%, transparent);
 }
 
 .stream-status-text.done {
   color: var(--status-done);
+  background: color-mix(in srgb, var(--status-done) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-done) 30%, transparent);
 }
 
 .stream-status-text.error {
   color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-error) 30%, transparent);
 }
 
 .stream-status-text.reconnecting {
   color: var(--status-reconnecting);
+  background: color-mix(in srgb, var(--status-reconnecting) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-reconnecting) 30%, transparent);
 }
 
 /* Error toast */

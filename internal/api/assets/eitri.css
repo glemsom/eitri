@@ -415,20 +415,56 @@ header {
      during streaming, which contributes to main-thread jank on long sessions. */
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-border);
-  padding: 0.5rem 1rem;
+  padding: 0.75rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
 header h1 {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--accent);
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* Workspace indicator in header — clickable chip that opens the directory
+   browser. Restyled as an interactive chip (issue #1180): background tint,
+   border, radius and padding so it reads as actionable, with ellipsis
+   truncation so a long path never pushes the header off a single row. */
+.workspace-indicator {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.workspace-indicator:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.workspace-indicator:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.workspace-indicator:active {
+  color: var(--accent-hover);
+  border-color: var(--accent);
 }
 
 .header-face-container {
@@ -1383,10 +1419,19 @@ details[open] .tool-chevron {
 
 
 /* partials/chat-stream.css — streaming message chrome, collapsibles, status/toast, active skills bar. */
-/* Status text in header h1 (issue #451) */
+/* Status pill in header h1 (issue #451). Rendered as a subtle pill whose
+   background/edge tint is derived from the semantic status token via
+   color-mix, so it stays theme-correct and needs no new color literals
+   (issue #1180). Idle stays hidden when the tab has no active run. */
 .stream-status-text {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1.4;
+  white-space: nowrap;
+  margin-left: 0.15rem;
 }
 
 .stream-status-text.idle,
@@ -1396,30 +1441,44 @@ details[open] .tool-chevron {
 
 .stream-status-text.connecting {
   color: var(--status-connecting);
+  background: color-mix(in srgb, var(--status-connecting) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-connecting) 30%, transparent);
 }
 
 .stream-status-text.streaming {
   color: var(--status-streaming);
+  background: color-mix(in srgb, var(--status-streaming) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-streaming) 30%, transparent);
 }
 
 .stream-status-text.tool-running {
   color: var(--status-tool-running);
+  background: color-mix(in srgb, var(--status-tool-running) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-tool-running) 30%, transparent);
 }
 
 .stream-status-text.rendering {
   color: var(--status-rendering);
+  background: color-mix(in srgb, var(--status-rendering) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-rendering) 30%, transparent);
 }
 
 .stream-status-text.done {
   color: var(--status-done);
+  background: color-mix(in srgb, var(--status-done) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-done) 30%, transparent);
 }
 
 .stream-status-text.error {
   color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-error) 30%, transparent);
 }
 
 .stream-status-text.reconnecting {
   color: var(--status-reconnecting);
+  background: color-mix(in srgb, var(--status-reconnecting) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-reconnecting) 30%, transparent);
 }
 
 /* Error toast */
@@ -1769,28 +1828,6 @@ details[open] .tool-chevron {
 }
 
 .message-system a:hover {
-  color: var(--accent-hover);
-}
-
-/* Workspace indicator in header — clickable, opens the directory browser */
-.workspace-indicator {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  padding: 0;
-  cursor: pointer;
-}
-
-.workspace-indicator:hover {
-  color: var(--accent);
-}
-
-.workspace-indicator:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: 3px;
-}
-
-.workspace-indicator:active {
   color: var(--accent-hover);
 }
 
@@ -2239,6 +2276,24 @@ eitri-composer {
   .scroll-to-bottom-btn {
     right: 1rem;
     bottom: calc(var(--composer-bottom, var(--composer-height, 130px)) + 0.75rem);
+  }
+
+  /* Header stays in a single row on narrow viewports: tighten the gap and
+     let the workspace chip truncate rather than push chrome off-screen
+     (issue #1180). */
+  header {
+    gap: 0.75rem;
+  }
+
+  header h1,
+  header #workspace-indicator {
+    min-width: 0;
+  }
+
+  #workspace-indicator {
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   #app {

@@ -49,20 +49,56 @@ header {
      during streaming, which contributes to main-thread jank on long sessions. */
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-border);
-  padding: 0.5rem 1rem;
+  padding: 0.75rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
 header h1 {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--accent);
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* Workspace indicator in header — clickable chip that opens the directory
+   browser. Restyled as an interactive chip (issue #1180): background tint,
+   border, radius and padding so it reads as actionable, with ellipsis
+   truncation so a long path never pushes the header off a single row. */
+.workspace-indicator {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.workspace-indicator:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.workspace-indicator:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.workspace-indicator:active {
+  color: var(--accent-hover);
+  border-color: var(--accent);
 }
 
 .header-face-container {
