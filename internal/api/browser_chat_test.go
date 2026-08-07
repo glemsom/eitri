@@ -2947,9 +2947,12 @@ func TestBrowser_StreamingMarkdownAutoScrollRegression(t *testing.T) {
 	})
 }
 
-// TestBrowser_AssistantBubbleMaxWidth verifies that assistant message bubbles
-// are capped at 90% of the messages container width.
-func TestBrowser_AssistantBubbleMaxWidth(t *testing.T) {
+// TestBrowser_AssistantBubbleFullWidth verifies the assistant-message redesign
+// (issue #1179): assistant bubbles now fill the full width of the messages
+// container, and very long unbreakable content wraps (overflow-wrap: break-word)
+// instead of overflowing the container or forcing horizontal scroll even in a
+// narrow viewport.
+func TestBrowser_AssistantBubbleFullWidth(t *testing.T) {
 	server := newTestServerWithRuns(t)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
@@ -2999,9 +3002,17 @@ func TestBrowser_AssistantBubbleMaxWidth(t *testing.T) {
 	if result.ContainerW <= 0 {
 		t.Fatalf("invalid container width: %v", result.ContainerW)
 	}
-	if result.MsgRatio > 0.901 {
-		t.Errorf("assistant bubble too wide: msg=%.1fpx, container=%.1fpx, ratio=%.4f (want <= 0.90)",
+	// Assistant bubbles are full-width rows (align-self: stretch), so the
+	// bubble fills the container even with a very long unbreakable contained.
+	if result.MsgRatio < 0.99 {
+		t.Errorf("assistant bubble not full width: msg=%.1fpx, container=%.1fpx, ratio=%.4f (want ~1.0)",
 			result.MsgW, result.ContainerW, result.MsgRatio)
+	}
+	// Long unbreakable text must wrap inside the bubble rather than overflow
+	// the container (no horizontal scroll on narrow viewports).
+	if result.ContentW > result.ContainerW+1.0 {
+		t.Errorf("assistant content overflows container: content=%.1fpx container=%.1fpx (want content <= container)",
+			result.ContentW, result.ContainerW)
 	}
 	t.Logf("assistant bubble: msg=%.1fpx body=%.1fpx content=%.1fpx container=%.1fpx ratio=%.4f",
 		result.MsgW, result.BodyW, result.ContentW, result.ContainerW, result.MsgRatio)

@@ -66,7 +66,7 @@
     bubble.setAttribute('data-optimistic', 'true');
     // Escape HTML then convert newlines to <br> for display (matches server-side nl2br)
     var safe = S.escapeHtml(text).replace(/\r?\n/g, '<br>\n');
-    bubble.innerHTML = '<div class="message-avatar">U</div><div class="message-body"><div class="message-content">' + safe + '</div></div>';
+    bubble.innerHTML = '<div class="message-body"><div class="message-content">' + safe + '</div></div><div class="message-avatar">U</div>';
     messages.appendChild(bubble);
   }
   S.insertOptimisticBubble = insertOptimisticBubble;
