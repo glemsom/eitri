@@ -64,7 +64,8 @@ Orchestrates startup:
 5. **LLM history service** (`internal/history/`) — stores LLM conversation history with sliding window
 6. **Skills service** (`skills.Service`) — scans Agent Skills roots, resolves precedence, exposes effective/shadowed/invalid records
 7. **Run service** (`runner.RunService`) — run lifecycle, agent loop, SSE broadcast via `runstate.State`
-8. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `config.Manager`, and `skills.Service`
+8. **Report service** (`report.Service`) — constructed once from the persister and injected via `ServerConfig.ReportService`; the report handlers consume it instead of building a per-request service (issue #1206)
+9. **HTTP server** (`api.NewServer`) — registers routes via `net/http` (Go 1.22+ ServeMux); uses `session.Manager`, `runner.RunService`, `report.Service`, `config.Manager`, and `skills.Service`
 
 Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies active SSE clients, cancels active runs, then shuts down HTTP. On crash, `RunService` writes a crash dump via `debug.WriteCrashDump` capturing config summary, sessions, HTTP traces, logs, and system diagnostics.
 
@@ -234,7 +235,9 @@ Sub-agent runs are persisted as child sessions keyed by their task ID (issue #10
 | `handlers_compact.go` | Conversation compaction endpoint |
 | `handlers_personas.go` | Persona list/set endpoints |
 | `handlers_report.go` | Session report generation endpoint |
-| `handlers_report_page.go` | Session Report page renderer |
+| `handlers_report_page.go` | Session Report page renderer (page + HTMX run-swap fragment) |
+
+The four report handlers (list reports, get report, report page, report fragment) all consume the `report.Service` injected once at startup via `ServerConfig.ReportService` — per-request `report.New(persister)` construction is gone (issue #1206). A nil service (no persister) yields the same empty/404 responses as before.
 | `handlers_workspace.go` | Workspace file browser |
 | `handlers_browse_directory.go` | Directory listing with breadcrumbs |
 | `copilot_device_flow.go` | GitHub Copilot device-flow UI handler |

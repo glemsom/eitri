@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/report"
 	"github.com/glemsom/eitri/internal/timeline"
 )
 
@@ -28,9 +29,10 @@ func testHelper(t *testing.T) (*httptest.Server, string, *persist.Persister) {
 	}
 
 	cfg := ServerConfig{
-		Persister: p,
-		Workspace: dir,
-		StartTime: time.Now(),
+		Persister:     p,
+		ReportService: report.New(p),
+		Workspace:     dir,
+		StartTime:     time.Now(),
 	}
 	srv := NewServer(cfg)
 	ts := httptest.NewServer(srv.Handler())
@@ -242,5 +244,145 @@ func TestHandleListReports_NoPersister(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Errorf("expected empty runs, got %d", len(runs))
+	}
+}
+
+// TestHandleListReports_InjectedServiceOnly proves the handler consumes the
+// injected report.Service (issue #1206): ServerConfig.Persister is absent, so
+// a run list can only come from the service wired into ServerConfig.
+func TestHandleListReports_InjectedServiceOnly(t *testing.T) {
+	dir, err := os.MkdirTemp("", "api-report-injected-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	p, err := persist.New(dir)
+	if err != nil {
+		t.Fatalf("failed to create persister: %v", err)
+	}
+
+	cfg := ServerConfig{
+		ReportService: report.New(p), // no Persister — service is the only source
+		Workspace:     dir,
+		StartTime:     time.Now(),
+	}
+	srv := NewServer(cfg)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	sessionID := "sess-injected-1"
+	now := time.Now().UTC()
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-injected",
+		SessionID: sessionID,
+		Provider: timeline.TimelineProvider{
+			Model:      "test-model",
+			ProviderID: "test-provider",
+		},
+		StartedAt: now,
+		EndedAt:   now.Add(5 * time.Second),
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
+			Message: "",
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "grep"},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "grep", Output: "results", Error: false},
+		},
+	}
+	if err := p.SaveTimeline(sessionID, tl); err != nil {
+		t.Fatalf("failed to save timeline: %v", err)
+	}
+
+	resp, err := ts.Client().Get(ts.URL + "/api/sessions/" + sessionID + "/reports")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+
+	runs, ok := body["runs"].([]any)
+	if !ok {
+		t.Fatal("expected 'runs' array")
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 run from injected service, got %d", len(runs))
+	}
+}
+
+// TestHandleGetReport_InjectedServiceOnly proves the report body comes from the
+// injected report.Service without ServerConfig.Persister (issue #1206).
+func TestHandleGetReport_InjectedServiceOnly(t *testing.T) {
+	dir, err := os.MkdirTemp("", "api-report-injected-get-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	p, err := persist.New(dir)
+	if err != nil {
+		t.Fatalf("failed to create persister: %v", err)
+	}
+
+	cfg := ServerConfig{
+		ReportService: report.New(p), // no Persister — service is the only source
+		Workspace:     dir,
+		StartTime:     time.Now(),
+	}
+	srv := NewServer(cfg)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	sessionID := "sess-injected-get-1"
+	now := time.Now().UTC()
+	tl := &timeline.Timeline{
+		Version:   1,
+		RunID:     "run-injected-get",
+		SessionID: sessionID,
+		Provider: timeline.TimelineProvider{
+			Model:      "injected-model",
+			ProviderID: "openai",
+		},
+		StartedAt: now,
+		EndedAt:   now.Add(10 * time.Second),
+		Termination: &timeline.TimelineTermination{
+			Reason:  timeline.TerminationCompleted,
+			Message: "",
+		},
+		Events: []timeline.TimelineEvent{
+			{Type: "tool_call", Timestamp: now, Turn: 1, Tool: "bash", Args: json.RawMessage(`{"cmd":"ls"}`)},
+			{Type: "tool_result", Timestamp: now, Turn: 1, Tool: "bash", Output: "file.txt", Error: false},
+		},
+	}
+	if err := p.SaveTimeline(sessionID, tl); err != nil {
+		t.Fatalf("failed to save timeline: %v", err)
+	}
+
+	resp, err := ts.Client().Get(ts.URL + "/api/sessions/" + sessionID + "/report?run=0")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode body: %v", err)
+	}
+	if body["model"] != "injected-model" {
+		t.Errorf("expected model 'injected-model', got %v", body["model"])
 	}
 }
