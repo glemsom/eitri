@@ -724,9 +724,9 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 	// server restart only if the persisted snapshot contains compacted messages.
 	// compactedMsgs includes the system prompt at [0]; the UI session stores
 	// it separately, so skip it when replacing conversation messages (the
-	// strip-system-message invariant lives in stripLeadingSystemMessage).
+	// strip-system-message invariant lives in message.StripLeadingSystemMessage).
 	if s.uiSessionMgr != nil {
-		s.uiSessionMgr.ReplaceConversationMessages(sessionID, stripLeadingSystemMessage(compactedMsgs))
+		s.uiSessionMgr.ReplaceConversationMessages(sessionID, message.StripLeadingSystemMessage(compactedMsgs))
 	}
 
 	// Snapshot the compacted history if persister is available.

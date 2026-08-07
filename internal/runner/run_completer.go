@@ -169,31 +169,8 @@ func (c *runCompleter) uiSnapshotSource(status uisession.Status) *uisession.UISe
 	if hist == nil || len(hist) == 0 {
 		return nil
 	}
-	svc.uiSessionMgr.ReplaceConversationMessages(c.id, stripLeadingSystemMessage(historyToMessages(hist)))
+	svc.uiSessionMgr.ReplaceConversationMessages(c.id, message.SyncHistoryToConversation(hist))
 	return svc.uiSessionMgr.CopySession(c.id)
-}
-
-// historyToMessages converts the conversation source's history entries into
-// the flat message shape shared by every persisted facade.
-func historyToMessages(hist []message.EitriMessage) []message.Message {
-	msgs := make([]message.Message, 0, len(hist))
-	for _, em := range hist {
-		msgs = append(msgs, em.ToMessage())
-	}
-	return msgs
-}
-
-// stripLeadingSystemMessage removes the leading system message from a
-// conversation message list — the single home of the strip-system-message
-// invariant (ADR-0028): the system prompt is persisted separately
-// (UISession.SystemPrompt / the history manager's system prompt), so it must
-// never appear in a persisted facade's Messages list. All run transports and
-// manual compaction funnel their UI/snapshot message lists through here.
-func stripLeadingSystemMessage(msgs []message.Message) []message.Message {
-	if len(msgs) > 0 && msgs[0].Role == "system" {
-		return msgs[1:]
-	}
-	return msgs
 }
 
 // terminal writes the terminal snapshot and the run timeline for the given
@@ -272,7 +249,7 @@ func classifyRunExit(runErr error, runCtx context.Context) exitOutcome {
 // Run snapshots are plain UISession facades: the system prompt is stored in
 // the separate system_prompt field (matching UI snapshots) and the leading
 // system message the history manager prepends is stripped from Messages (the
-// strip-system-message invariant, see stripLeadingSystemMessage).
+// strip-system-message invariant, see message.SyncHistoryToConversation).
 func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISession {
 	hist := c.historyMgr.History()
 	if hist == nil || len(hist) == 0 {
@@ -285,7 +262,7 @@ func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISess
 		ParentID:     c.parentID,
 		Title:        c.title,
 		Status:       status,
-		Messages:     stripLeadingSystemMessage(historyToMessages(hist)),
+		Messages:     message.SyncHistoryToConversation(hist),
 		Workspace:    c.workspace,
 		SystemPrompt: c.systemPrompt,
 		CreatedAt:    c.startedAt,

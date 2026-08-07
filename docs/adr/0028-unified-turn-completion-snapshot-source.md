@@ -30,13 +30,16 @@ path. The merged `runCompleter` gains a per-transport **snapshot-source seam**:
   `buildUISession` as before.
 
 The strip-system-message invariant collapses into one place — the
-`stripLeadingSystemMessage` helper inside the completer — used by
-`buildUISession`, the UI live-sync, and `CompactSession`; the other hand-rolled
-sites are deleted. UI parent runs keep their compaction SSE events (warning
-toast on failure, `compaction_complete` on success), emitted by the unified
-completer when a `RunState` is present (batch and sub-agent runs have none and
-only log). No user-visible behavior change; a pure internal refactor guarded
-by the existing snapshot / compaction / message-ordering test suite.
+history→conversation sync module `internal/message/sync.go`
+(`message.SyncHistoryToConversation`, `message.StripLeadingSystemMessage`,
+extracted from the completer by issue #1235) — used by `buildUISession`, the UI
+live-sync, and `CompactSession`; the other hand-rolled sites are deleted. UI
+parent runs keep their compaction SSE events (warning toast on failure,
+`compaction_complete` on success), emitted by the unified completer when a
+`RunState` is present (batch and sub-agent runs have none and only log). No
+user-visible behavior change; a pure internal refactor guarded by the existing
+snapshot / compaction / message-ordering test suite and the sync module's own
+unit tests.
 
 ## Considered options
 
@@ -44,7 +47,7 @@ by the existing snapshot / compaction / message-ordering test suite.
 |----------|--------|----------------------|
 | UI per-turn completion | Unified `runCompleter` with a snapshot-source seam | Keep `RunService.OnTurnComplete` (two near-identical per-turn paths, four strip sites — the duplication this ADR removes) |
 | UI snapshot source | Live-sync then `CopySession` | History-derived facade via `buildUISession` (drops `ActiveSkills`/`ClosedAt`/`RenderedMessageIDs` from UI snapshots) |
-| Strip invariant | One `stripLeadingSystemMessage` helper in the completer | Leave hand-rolled copies at each sync site (drift surface) |
+| Strip invariant | One sync module (`message.SyncHistoryToConversation` / `message.StripLeadingSystemMessage` in `internal/message/sync.go`, extracted by issue #1235) | Leave hand-rolled copies at each sync site (drift surface) |
 | Compaction SSE events | Unified completer emits them when a `RunState` exists | Transport-specific notifier hook (extra plumbing for the same gate) |
 
 ## Consequences
