@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,18 +58,14 @@ func waitForSubAgentDone(t *testing.T, svc *RunService, taskID string) {
 // snapshot for a sub-agent task ID.
 func loadSubAgentSessionSnapshot(t *testing.T, p *persist.Persister, taskID string) *uisession.UISession {
 	t.Helper()
-	data, err := p.LoadSession(taskID)
+	sess, err := p.LoadSession(taskID)
 	if err != nil {
 		t.Fatalf("LoadSession(%s): %v", taskID, err)
 	}
-	if data == nil {
+	if sess == nil {
 		t.Fatalf("no session snapshot found for sub-agent %s", taskID)
 	}
-	var sess uisession.UISession
-	if err := json.Unmarshal(data, &sess); err != nil {
-		t.Fatalf("unmarshal sub-agent session snapshot: %v", err)
-	}
-	return &sess
+	return sess
 }
 
 // loadSubAgentTimeline reads the single persisted timeline for a sub-agent
@@ -84,15 +79,14 @@ func loadSubAgentTimeline(t *testing.T, p *persist.Persister, taskID string) *ti
 	if len(metas) != 1 {
 		t.Fatalf("got %d timeline(s) for sub-agent %s, want 1", len(metas), taskID)
 	}
-	data, err := p.LoadTimeline(taskID, metas[0].Filename)
+	tl, err := p.LoadTimeline(taskID, metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline(%s): %v", taskID, err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(data, &tl); err != nil {
-		t.Fatalf("unmarshal sub-agent timeline: %v", err)
+	if tl == nil {
+		t.Fatalf("LoadTimeline(%s) returned nil", taskID)
 	}
-	return &tl
+	return tl
 }
 
 // TestSubAgentPersistsChildSession verifies that a completed sub-agent run
@@ -174,11 +168,11 @@ func TestSubAgentPersistsChildSession(t *testing.T) {
 
 	// ── traces: land under the child session's traces/ (previously dropped) ──
 	_ = persister.Flush(nil, nil) // drain the async trace queue synchronously
-	traceIDs, err := persister.ListTraces(taskID)
+	traces, err := persister.ListTraces(taskID)
 	if err != nil {
 		t.Fatalf("ListTraces(%s): %v", taskID, err)
 	}
-	if len(traceIDs) == 0 {
+	if len(traces) == 0 {
 		t.Fatalf("no HTTP traces persisted for sub-agent session %s", taskID)
 	}
 
@@ -474,11 +468,11 @@ func TestBatchRun_SubAgentPersistence(t *testing.T) {
 
 	// Traces must land under the child session's traces/ directory.
 	_ = persister.Flush(nil, nil)
-	traceIDs, err := persister.ListTraces(taskID)
+	traces, err := persister.ListTraces(taskID)
 	if err != nil {
 		t.Fatalf("ListTraces(%s): %v", taskID, err)
 	}
-	if len(traceIDs) == 0 {
+	if len(traces) == 0 {
 		t.Fatalf("no HTTP traces persisted for batch-mode sub-agent %s", taskID)
 	}
 

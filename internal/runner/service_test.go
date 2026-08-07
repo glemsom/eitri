@@ -1804,16 +1804,12 @@ func TestRunService_FatalRunErrorSetsErrorStatusSnapshotsAndBroadcasts(t *testin
 		t.Fatalf("in-memory status = %q, want %q", got.Status, uisession.StatusError)
 	}
 
-	data, err := persister.LoadSession(sess.ID)
+	snap, err := persister.LoadSession(sess.ID)
 	if err != nil {
 		t.Fatalf("LoadSession: %v", err)
 	}
-	if data == nil {
+	if snap == nil {
 		t.Fatal("snapshot missing")
-	}
-	var snap uisession.UISession
-	if err := json.Unmarshal(data, &snap); err != nil {
-		t.Fatalf("unmarshal snapshot: %v", err)
 	}
 	if snap.Status != uisession.StatusError {
 		t.Fatalf("snapshot status = %q, want %q", snap.Status, uisession.StatusError)

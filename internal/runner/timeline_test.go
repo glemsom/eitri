@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -46,13 +45,12 @@ func TestPersistRunTimeline_NoRunState(t *testing.T) {
 		t.Fatalf("got %d timeline(s), want 1", len(metas))
 	}
 
-	data, err := persister.LoadTimeline("session-1", metas[0].Filename)
+	tl, err := persister.LoadTimeline("session-1", metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(data, &tl); err != nil {
-		t.Fatalf("unmarshal timeline: %v", err)
+	if tl == nil {
+		t.Fatal("LoadTimeline returned nil timeline")
 	}
 
 	if tl.RunID != "run-abc" {
@@ -115,13 +113,12 @@ func TestPersistRunTimeline_AllTerminationReasons(t *testing.T) {
 			if len(metas) != 1 {
 				t.Fatalf("got %d timeline(s), want 1", len(metas))
 			}
-			data, err := persister.LoadTimeline("session-1", metas[0].Filename)
+			tl, err := persister.LoadTimeline("session-1", metas[0].Filename)
 			if err != nil {
 				t.Fatalf("LoadTimeline: %v", err)
 			}
-			var tl timeline.Timeline
-			if err := json.Unmarshal(data, &tl); err != nil {
-				t.Fatalf("unmarshal timeline: %v", err)
+			if tl == nil {
+				t.Fatal("LoadTimeline returned nil timeline")
 			}
 			if tl.Termination == nil || tl.Termination.Reason != reason {
 				t.Errorf("Termination = %+v, want reason %q", tl.Termination, reason)
