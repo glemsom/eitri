@@ -41,15 +41,13 @@ self.addEventListener("install", (event) => {
         "/static/favicon-16.png?v=__EITRI_VERSION__",
         "/static/pwa-icon-192.png?v=__EITRI_VERSION__",
         "/static/pwa-icon-512.png?v=__EITRI_VERSION__",
-        // Self-hosted UI fonts (Inter + JetBrains Mono) are precached so the
-        // UI is fully offline-capable. (issue #970)
-        "/static/fonts/Inter-cyrillic-ext.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-cyrillic.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-greek-ext.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-greek.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-vietnamese.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-latin-ext.woff2?v=__EITRI_VERSION__",
-        "/static/fonts/Inter-latin.woff2?v=__EITRI_VERSION__",
+        // Self-hosted UI fonts (Geist + JetBrains Mono) are precached so the
+        // UI is fully offline-capable. (issue #970, #1177)
+        "/static/fonts/Geist-cyrillic-ext.woff2?v=__EITRI_VERSION__",
+        "/static/fonts/Geist-cyrillic.woff2?v=__EITRI_VERSION__",
+        "/static/fonts/Geist-vietnamese.woff2?v=__EITRI_VERSION__",
+        "/static/fonts/Geist-latin-ext.woff2?v=__EITRI_VERSION__",
+        "/static/fonts/Geist-latin.woff2?v=__EITRI_VERSION__",
         "/static/fonts/JetBrainsMono-cyrillic-ext.woff2?v=__EITRI_VERSION__",
         "/static/fonts/JetBrainsMono-cyrillic.woff2?v=__EITRI_VERSION__",
         "/static/fonts/JetBrainsMono-greek.woff2?v=__EITRI_VERSION__",

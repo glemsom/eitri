@@ -865,8 +865,8 @@ func TestServiceWorker(t *testing.T) {
 			want: `cache.match(event.request)`,
 		},
 		{
-			name: "precaches self-hosted Inter fonts",
-			want: `"/static/fonts/Inter-latin.woff2?v=__EITRI_VERSION__"`,
+			name: "precaches self-hosted Geist fonts",
+			want: `"/static/fonts/Geist-latin.woff2?v=__EITRI_VERSION__"`,
 		},
 		{
 			name: "precaches self-hosted JetBrains Mono fonts",

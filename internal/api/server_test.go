@@ -1690,7 +1690,7 @@ func TestPageSelfHostsFonts(t *testing.T) {
 		}
 		// Critical latin subsets are preloaded so text renders fast.
 		for _, pre := range []string{
-			`rel="preload" href="/static/fonts/Inter-latin.woff2?v=`,
+			`rel="preload" href="/static/fonts/Geist-latin.woff2?v=`,
 			`rel="preload" href="/static/fonts/JetBrainsMono-latin.woff2?v=`,
 			`as="font" type="font/woff2" crossorigin`,
 		} {
@@ -1712,7 +1712,7 @@ func TestStaticAssetsImmutableCacheControl(t *testing.T) {
 		"/static/favicon-16.png",
 		"/static/pwa-icon-512.png",
 		"/static/fonts/KaTeX_Main-Regular.woff2",
-		"/static/fonts/Inter-latin.woff2",
+		"/static/fonts/Geist-latin.woff2",
 		"/static/fonts/JetBrainsMono-latin.woff2",
 	} {
 		t.Run(path, func(t *testing.T) {
