@@ -256,7 +256,7 @@ make test-race
 
 1. Add `func TestBrowser_YourFeature(t *testing.T)` to the appropriate `internal/api/browser_*.go` file (or create a new one if it tests a new feature area). Every `browser_*.go` file carries a `//go:build e2e` header so the test stays out of the fast unit gate.
 2. Use `newTestServer` / `newTestServerWithRuns` + `newBrowserCtx` helpers.
-3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions.
+3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions — but when the asserted content arrives together with a re-render (HTMX swap, streaming repaint), poll for the content instead of chaining selector actions (see "Deterministic timing" below).
 4. Prefer `chromedp.SendKeys` over `SetValue` (triggers HTMX events).
 
 ### Deterministic timing in browser tests
@@ -283,6 +283,16 @@ fetch on a constrained runner cannot expire the poll fallback deadline and
 fail a render that is correct. The `Timeout` option is only a generous
 fallback guard (default 30s) against a genuinely broken render — readiness is
 observed DOM state, never a wall-clock guess (issue #1217).
+
+Also avoid *chaining* chromedp selector actions (e.g. `WaitVisible` followed by
+`Text`) across a DOM re-render boundary. chromedp resolves the first action to a
+CDP node id and reuses it for the rest of the `chromedp.Run` batch; if an HTMX
+swap or streaming repaint replaces the element in between, the held id goes stale
+and the chained action fails with `No node with given id found (-32000)`. When the
+asserted content can arrive together with a re-render (a bubble inserted by a
+swap, a streaming message finalising), poll the DOM for the *content* instead —
+re-resolve the element via `EvaluateAsDevTools` on every `pollForCondition`
+iteration, and only then assert on the captured text. (issue #1218)
 
 For manual testing against a real server:
 

@@ -92,15 +92,28 @@ func TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline(t *testing.T) {
 		t.Fatalf("dispatch Enter failed: %v", err)
 	}
 
-	err = chromedp.Run(ctx,
-		chromedp.WaitVisible(".message-user", chromedp.ByQuery),
-		chromedp.Text(".message-user .message-content", &userText, chromedp.ByQuery),
-	)
-	if err != nil {
-		t.Fatalf("send by Enter failed: %v", err)
-	}
+	// The Enter submit re-renders #messages via an HTMX swap that inserts the
+	// user bubble. Don't chain selector actions (WaitVisible then Text) across
+	// that re-render boundary: chromedp holds the CDP node id resolved by the
+	// first action, the swap invalidates it, and the chained action fails with
+	// "No node with given id found (-32000)". Poll for the rendered content
+	// instead, re-resolving the element on every iteration. (issue #1218)
+	pollForCondition(t, 5*time.Second, 100*time.Millisecond, func() bool {
+		var text string
+		_ = chromedp.Run(ctx,
+			chromedp.EvaluateAsDevTools(`(function() {
+				var el = document.querySelector('.message-user .message-content');
+				return el ? el.textContent : '';
+			})()`, &text),
+		)
+		if !strings.Contains(text, "line 1") || !strings.Contains(text, "line 2") {
+			return false
+		}
+		userText = text
+		return true
+	})
 	if !strings.Contains(userText, "line 1") || !strings.Contains(userText, "line 2") {
-		t.Fatalf("user bubble text = %q, want both lines present", userText)
+		t.Fatalf("send by Enter failed: user bubble text = %q, want both lines present", userText)
 	}
 }
 
@@ -1918,13 +1931,51 @@ func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
 // last child of #messages so IntersectionObserver can track scroll position correctly.
 func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 	llmURL := fakeInstantChatServer(t, "test reply content").URL
-	server := newTestServerWithRuns(t)
+
+	// The UI session only receives committed turns when a persister is
+	// configured (the UI-mode runCompleter syncs live history into the UI
+	// session; without it the final assistant bubble renders empty and the
+	// test only passes when the browser happens to catch the live stream
+	// before the instant fake run finishes — the "assistant response did not
+	// render" flake, issue #1218). Build the server with a persister, mirroring
+	// TestBrowser_NoDuplicateMessageOnMidRunRejoin.
+	homeDir := t.TempDir()
+	eitriDir := t.TempDir()
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	historySessionMgr := history.NewSessionManager(50)
+	p, err := persist.New(eitriDir)
+	if err != nil {
+		t.Fatalf("persist.New: %v", err)
+	}
+	runSvc := runner.NewRunService(runner.RunServiceDeps{
+		UISessionMgr:      sessionMgr,
+		HistorySessionMgr: historySessionMgr,
+		Persister:         p,
+		HomeDir:           homeDir,
+	})
+	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
+	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
+		t.Fatalf("ensure generic persona: %v", err)
+	}
+	runSvc.SetSkillsService(skillsSvc)
+	srv := api.NewServer(api.ServerConfig{
+		ConfigPath:     t.TempDir() + "/config.json",
+		Workspace:      workspace,
+		HomeDir:        homeDir,
+		SessionManager: sessionMgr,
+		RunService:     runSvc,
+		SkillsService:  skillsSvc,
+		Persister:      p,
+	})
+	server := httptest.NewServer(srv.Handler())
+	t.Cleanup(server.Close)
 	configureProvider(t, server, llmURL)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	err := chromedp.Run(ctx,
+	err = chromedp.Run(ctx,
 		network.Enable(),
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
@@ -1949,7 +2000,11 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 		t.Error("scroll-sentinel should be a child of #messages")
 	}
 
-	// Send a message
+	// Send a message. Wait for the composer to be fully wired first so the
+	// keystrokes are not dropped into a half-initialised textarea (an empty
+	// submit is blocked by the required attribute, so no run would start and
+	// the assistant response below would never render).
+	waitForComposerReady(t, ctx)
 	err = chromedp.Run(ctx,
 		chromedp.SendKeys("#chat-input", "Test sentinel position", chromedp.ByQuery),
 		chromedp.Click("#send-btn", chromedp.ByQuery),
@@ -1958,20 +2013,25 @@ func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 
-	// Wait for run to complete by polling for assistant message
+	// Wait for the assistant response to render. Poll for the rendered content,
+	// re-resolving the element each iteration, so a streaming repaint cannot
+	// invalidate a held CDP node reference; give it a generous window for busy
+	// CI runners instead of a short fixed loop. (issue #1218)
 	var assistantText string
-	for i := 0; i < 30; i++ {
-		err = chromedp.Run(ctx,
+	pollForCondition(t, 15*time.Second, 100*time.Millisecond, func() bool {
+		var text string
+		_ = chromedp.Run(ctx,
 			chromedp.EvaluateAsDevTools(`(function() {
 				var el = document.querySelector('.message-assistant .message-content');
 				return el ? el.textContent : '';
-			})()`, &assistantText),
+			})()`, &text),
 		)
-		if err == nil && strings.TrimSpace(assistantText) != "" {
-			break
+		if strings.TrimSpace(text) == "" {
+			return false
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		assistantText = text
+		return true
+	})
 	if strings.TrimSpace(assistantText) == "" {
 		t.Fatal("assistant response did not render")
 	}

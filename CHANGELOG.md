@@ -161,6 +161,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The browser E2E composer test (`TestBrowser_ComposerEnterSendsAndShiftEnterAddsNewline`)
+  no longer flakes with `No node with given id found (-32000)`: it used to chain
+  chromedp selector actions (`WaitVisible` then `Text`) across the post-Enter HTMX
+  re-render of the user bubble, and the swap invalidated the CDP node id resolved by
+  the first action. It now polls the DOM for the rendered `.message-user` content,
+  re-resolving the element on every iteration. `TestBrowser_ScrollSentinelPosition`
+  no longer trips "assistant response did not render": its server now runs with a
+  persister (so the run-completer live-syncs the assistant turn into the UI session
+  and the final bubble actually renders content instead of depending on the browser
+  catching the live stream before the instant fake run finishes), and it waits for
+  the response via a generous content-driven poll after the composer is fully
+  wired. (#1218)
+
 - The streaming-markdown **final-render browser E2E tests**
   (`TestBrowser_StreamingMarkdownFinalRender*`) no longer fail on slow/CI
   runners. The shared `streamingMarkdownTestHelper` now first waits for the
