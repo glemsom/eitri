@@ -35,8 +35,10 @@
 //	                   after run, exit-path status snapshots + timelines
 //	batch.go         — BatchRun: headless batch mode (no UI sessions,
 //	                   loop.NewSessionHistoryManager, io.Writer output)
-//	batch_persist.go — Batch session persistence: per-turn snapshots and the
-//	                   batch turn completer (snapshot + shared compaction)
+//	batch_persist.go — Batch-run title derivation (batchTitle). Batch session
+//	                   persistence itself lives in the unified run-completer
+//	                   (run_completer.go): per-turn snapshots, per-call HTTP
+//	                   traces, and the per-run timeline.
 //	run_completer.go — runCompleter: the unified per-turn run-completer for
 //	                   UI, batch, and sub-agent runs (issues #1107, #1201,
 //	                   ADR-0028); snapshot source parameterized per transport
@@ -54,7 +56,6 @@
 //	skill_context.go — sessionSkillContext resolution, stale skill
 //	                   detection, skill directory enumeration
 //	repo_instructions.go — readRepositoryInstructions (AGENTS.md loader)
-//	run_tracker.go   — Concurrency-safe active-run map, cancel, snapshot
 //	subagent_store.go — In-flight sub-agent record store and parent config
 //
 // # Dependencies

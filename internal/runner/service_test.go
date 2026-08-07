@@ -1576,8 +1576,8 @@ func TestRunService_SetCrashDumpFunc_Nil(t *testing.T) {
 }
 
 // ── Inline tracker tests ────────────────────────────────────────────────────
-// Formerly in run_tracker_test.go. Test the private methods that were inlined
-// from runTracker into RunService.
+// Tests the private active-run map methods that were inlined from the former
+// runTracker type into RunService (issue #782).
 
 func TestRunService_NewHasEmptyActiveMap(t *testing.T) {
 	svc := NewRunService(RunServiceDeps{})
