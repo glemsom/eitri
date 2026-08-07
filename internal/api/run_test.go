@@ -20,6 +20,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	runner "github.com/glemsom/eitri/internal/runner"
@@ -38,17 +39,45 @@ type testServerWithRuns struct {
 	runSvc     *runner.RunService
 }
 
+// testServerWithRunsOptions controls how a runs-enabled test server is built.
+type testServerWithRunsOptions struct {
+	// persister wires a run persister into the server (RunServiceDeps.Persister
+	// and ServerConfig.Persister). Browser E2E tests need it: the run-completer's
+	// live-sync of committed turns into the UI session is persister-gated, so
+	// without a persister a fast fake run finishes before the browser's
+	// EventSource connects and the assistant bubble never renders committed
+	// content (issue #1218). Lower-level integration tests that assert on raw
+	// session state (e.g. component replay) keep it off.
+	persister bool
+}
+
 // newManagedTestServerWithRuns creates a test server with RunService enabled
 // and returns test handles for session/run/executor assertions.
 func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
+	t.Helper()
+	return newManagedTestServerWithRunsOpts(t, testServerWithRunsOptions{})
+}
+
+// newManagedTestServerWithRunsOpts is the shared constructor behind the
+// runs-enabled test-server helpers.
+func newManagedTestServerWithRunsOpts(t *testing.T, opts testServerWithRunsOptions) *testServerWithRuns {
 	t.Helper()
 	homeDir := t.TempDir()
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
 	historySessionMgr := history.NewSessionManager(50)
+	var p *persist.Persister
+	if opts.persister {
+		var err error
+		p, err = persist.New(t.TempDir())
+		if err != nil {
+			t.Fatalf("persist.New: %v", err)
+		}
+	}
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
 		UISessionMgr:      sessionMgr,
 		HistorySessionMgr: historySessionMgr,
+		Persister:         p,
 		HomeDir:           homeDir,
 	})
 	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
@@ -67,6 +96,7 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 		SessionManager: sessionMgr,
 		RunService:     runSvc,
 		SkillsService:  skillsSvc,
+		Persister:      p,
 	}
 	srv := api.NewServer(cfg)
 	server := httptest.NewServer(srv.Handler())
@@ -81,10 +111,14 @@ func newManagedTestServerWithRuns(t *testing.T) *testServerWithRuns {
 	}
 }
 
-// newTestServerWithRuns creates a test server with RunService enabled.
+// newTestServerWithRuns creates a test server with RunService enabled and a
+// run persister wired in. The persister matters for browser E2E tests: the
+// run-completer only live-syncs committed turns into the UI session when a
+// persister is configured, and tests that assert rendered assistant content
+// after an instant fake run depend on that committed-turn rendering.
 func newTestServerWithRuns(t *testing.T) *httptest.Server {
 	t.Helper()
-	return newManagedTestServerWithRuns(t).server
+	return newManagedTestServerWithRunsOpts(t, testServerWithRunsOptions{persister: true}).server
 }
 
 func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string, skillsSvc *skills.Service) *testServerWithRuns {

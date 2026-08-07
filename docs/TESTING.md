@@ -255,7 +255,7 @@ make test-race
 ### Adding a new browser test
 
 1. Add `func TestBrowser_YourFeature(t *testing.T)` to the appropriate `internal/api/browser_*.go` file (or create a new one if it tests a new feature area). Every `browser_*.go` file carries a `//go:build e2e` header so the test stays out of the fast unit gate.
-2. Use `newTestServer` / `newTestServerWithRuns` + `newBrowserCtx` helpers.
+2. Use `newTestServer` / `newTestServerWithRuns` + `newBrowserCtx` helpers. `newTestServerWithRuns` builds its server **with a run persister wired in**: the run-completer only live-syncs committed turns into the UI session when a persister is configured, so tests that assert rendered assistant content after a fast fake run (the streaming-markdown family, scroll sentinel, etc.) need it or the final bubble never renders (issue #1218). If a test needs the lower-level `newManagedTestServerWithRuns` handles, use `newManagedTestServerWithRunsOpts(t, testServerWithRunsOptions{persister: true})` for the same persister-backed server.
 3. Use `chromedp.WaitVisible` / `chromedp.Text` for DOM assertions — but when the asserted content arrives together with a re-render (HTMX swap, streaming repaint), poll for the content instead of chaining selector actions (see "Deterministic timing" below).
 4. Prefer `chromedp.SendKeys` over `SetValue` (triggers HTMX events).
 

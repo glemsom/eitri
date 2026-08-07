@@ -17,14 +17,8 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/glemsom/eitri/internal/api"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
-	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/persona"
-	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/skills"
 )
 
 // ————— Composer tests ————— —
@@ -742,47 +736,19 @@ func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
 
 	llmURL := fakeJoinMidRunChatServer(t, releaseThirdTurn).URL
 
-	// The UI session only receives committed turns when a persister is
+	// newManagedTestServerWithRunsOpts with a persister, which this test needs:
+	// the UI session only receives committed turns when a persister is
 	// configured (the UI-mode runCompleter syncs live history into the UI
-	// session; without it the server-rendered page on rejoin would not show
-	// the committed bubble at all). Build the server with a persister.
-	homeDir := t.TempDir()
-	eitriDir := t.TempDir()
-	workspace := t.TempDir()
-	sessionMgr := session.NewManager(10, workspace)
-	historySessionMgr := history.NewSessionManager(50)
-	p, err := persist.New(eitriDir)
-	if err != nil {
-		t.Fatalf("persist.New: %v", err)
-	}
-	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		Persister:         p,
-		HomeDir:           homeDir,
-	})
-	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
-	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
-		t.Fatalf("ensure generic persona: %v", err)
-	}
-	runSvc.SetSkillsService(skillsSvc)
-	srv := api.NewServer(api.ServerConfig{
-		ConfigPath:     t.TempDir() + "/config.json",
-		Workspace:      workspace,
-		HomeDir:        homeDir,
-		SessionManager: sessionMgr,
-		RunService:     runSvc,
-		SkillsService:  skillsSvc,
-		Persister:      p,
-	})
-	server := httptest.NewServer(srv.Handler())
-	t.Cleanup(server.Close)
+	// session; without it the server-rendered page on rejoin would not show the
+	// committed bubble at all).
+	h := newManagedTestServerWithRunsOpts(t, testServerWithRunsOptions{persister: true})
+	server := h.server
 	configureProvider(t, server, llmURL)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	err = chromedp.Run(ctx,
+	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
 	)
@@ -900,7 +866,7 @@ func TestBrowser_NoDuplicateMessageOnMidRunRejoin(t *testing.T) {
 	// the subsequent t.TempDir() cleanups no longer race the writer goroutine
 	// (issue #1122).
 	release()
-	waitForRunToFinish(t, runSvc, sessionID)
+	waitForRunToFinish(t, h.runSvc, sessionID)
 }
 
 func mustSessionID(t *testing.T, ctx context.Context) string {
@@ -1932,50 +1898,19 @@ func TestBrowser_StreamingTokensAppendInScrollContainer(t *testing.T) {
 func TestBrowser_ScrollSentinelPosition(t *testing.T) {
 	llmURL := fakeInstantChatServer(t, "test reply content").URL
 
-	// The UI session only receives committed turns when a persister is
-	// configured (the UI-mode runCompleter syncs live history into the UI
-	// session; without it the final assistant bubble renders empty and the
-	// test only passes when the browser happens to catch the live stream
-	// before the instant fake run finishes — the "assistant response did not
-	// render" flake, issue #1218). Build the server with a persister, mirroring
-	// TestBrowser_NoDuplicateMessageOnMidRunRejoin.
-	homeDir := t.TempDir()
-	eitriDir := t.TempDir()
-	workspace := t.TempDir()
-	sessionMgr := session.NewManager(10, workspace)
-	historySessionMgr := history.NewSessionManager(50)
-	p, err := persist.New(eitriDir)
-	if err != nil {
-		t.Fatalf("persist.New: %v", err)
-	}
-	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		Persister:         p,
-		HomeDir:           homeDir,
-	})
-	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
-	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
-		t.Fatalf("ensure generic persona: %v", err)
-	}
-	runSvc.SetSkillsService(skillsSvc)
-	srv := api.NewServer(api.ServerConfig{
-		ConfigPath:     t.TempDir() + "/config.json",
-		Workspace:      workspace,
-		HomeDir:        homeDir,
-		SessionManager: sessionMgr,
-		RunService:     runSvc,
-		SkillsService:  skillsSvc,
-		Persister:      p,
-	})
-	server := httptest.NewServer(srv.Handler())
-	t.Cleanup(server.Close)
+	// newTestServerWithRuns wires a run persister, which the scroll-sentinel
+	// test needs: the run-completer only live-syncs committed turns into the UI
+	// session when a persister is configured, and without one the final
+	// assistant bubble renders empty — the test only passed when the browser
+	// happened to catch the live stream before the instant fake run finished
+	// (the "assistant response did not render" flake, issue #1218).
+	server := newTestServerWithRuns(t)
 	configureProvider(t, server, llmURL)
 
 	ctx, cancel := newBrowserCtx(t, server.URL)
 	defer cancel()
 
-	err = chromedp.Run(ctx,
+	err := chromedp.Run(ctx,
 		network.Enable(),
 		chromedp.Navigate(server.URL+"/"),
 		chromedp.WaitVisible("#chat-view", chromedp.ByQuery),
