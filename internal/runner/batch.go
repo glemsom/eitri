@@ -222,14 +222,15 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 		)
 	}
 
-	// Terminal snapshot + timeline on every exit path (success and failure).
-	// The status and termination come from the single exit taxonomy shared by
-	// the UI, batch, and sub-agent transports (ADR-0029): idle on completion /
-	// cancellation / max-turns and error on true failure. The batch CLI exit
-	// code is unaffected — it is driven by the returned runErr, not the
-	// snapshot status.
-	outcome := classifyRunExit(runErr, runCtx)
-	completer.terminal(sseState, outcome.Status, outcome.Termination)
+	// Terminal snapshot + timeline on every exit path (success and failure),
+	// through the single terminal seam shared with the UI and sub-agent
+	// transports (runExit, run_exit.go, issue #1238): the seam classifies the
+	// exit (ADR-0029 — idle on completion / cancellation / max-turns and error
+	// on true failure) and writes the terminal snapshot + timeline. Batch runs
+	// have no per-reason transport work (no UI session, no record to update),
+	// so the exitWork is nil. The batch CLI exit code is unaffected — it is
+	// driven by the returned runErr, not the snapshot status.
+	completer.runExit(sseState, runErr, runCtx, nil)
 
 	return content, runErr
 }

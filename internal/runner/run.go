@@ -182,6 +182,18 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			startedAt:  state.StartedAt,
 		}
 		completer.snapshotSource = completer.uiSnapshotSource
+		// Terminal snapshots copy the UI conversation exactly (plain
+		// CopySession) instead of re-running the per-turn live-sync: by the
+		// time the run ends every completed turn has already been live-synced,
+		// and a final sync could drop UI-only messages (tool components /
+		// quick replies attached during tool execution) that are not in the
+		// run history (issue #1238).
+		completer.terminalSnapshotSource = func(uisession.Status) *uisession.UISession {
+			if s.uiSessionMgr == nil {
+				return nil
+			}
+			return s.uiSessionMgr.CopySession(sessionID)
+		}
 
 		err := loop.RunAgent(runCtx, loop.RunSpec{
 			Client:     llmSvc,
@@ -206,67 +218,30 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 			ModelName:        cfg.ModelName,
 			RetryPolicy:      &cfg.RetryPolicy,
 		})
-		if err != nil {
-			// Terminal status and termination reason come from the single exit
-			// taxonomy shared with the batch and sub-agent paths (ADR-0029):
-			// idle on cancellation / max-turns, error on true failure. The
-			// per-reason branches below keep only the transport-specific work
-			// (message appending, SSE events, crash dumps).
-			outcome := classifyRunExit(err, runCtx)
-			switch outcome.Termination.Reason {
-			case timeline.TerminationCancelled:
-				// The final turn is already in the UI conversation: the
-				// UI-mode run-completer live-syncs each completed turn,
-				// including the last one (ADR-0028). When the run-completer's
-				// live-sync cannot run (no disk persister attached), the
-				// run-end append below is the sole path that puts the streamed
-				// reply into the UI conversation (issue #1217).
-				s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
-				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
-				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
-				w.Error("Run cancelled")
-				return
-
-			case timeline.TerminationMaxTurns:
-				// The agent loop already handles max-turns itself: it emits
-				// the max-turns error and closes the SSE stream
-				// (loop.RunAgent broadcasts SSEWriter.Error before returning
-				// MaxTurnsExceededError), so there is nothing left to
-				// broadcast or append here. Emitting a done event after
-				// stream close is a no-op (the event is silently dropped) and
-				// appending the message to the SSE buffer is neither broadcast
-				// nor persisted (issue #1233). Keep the terminal status
-				// snapshot and the timeline write; the run ends idle with the
-				// error message visible over SSE.
-				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
-				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
-				return
-
-			default:
-				// Fatal error — mark the session failed before persisting
-				// diagnostics so UI and disk snapshots do not stay running.
-				s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
-				w.Error(err.Error())
-				s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
-				if s.crashDumpFunc != nil {
-					s.crashDumpFunc(err, runtimeDebug.Stack())
-				}
-				return
-			}
-		}
-
-		// Normal completion: the final assistant message is already in the UI
-		// conversation via the run-completer's live-history sync of the last
-		// completed turn (ADR-0028) when a disk persister is attached. Without
-		// a persister the per-turn live-sync cannot run, so the run-end append
-		// below is the sole path that puts the streamed reply into the UI
-		// conversation — the browser's final-render POST reads it (issue
-		// #1217). The append dedups against the per-turn sync, so it is safe
-		// to call unconditionally on both configurations (issue #1203).
-		outcome := classifyRunExit(nil, runCtx)
-		s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
-		s.setSessionStatusAndSnapshot(sessionID, outcome.Status)
-		s.persistRunTimeline(sessionID, state.RunID, state.StartedAt, sseState, cfg, outcome.Termination)
+		// Every exit path finishes through the single terminal seam shared
+		// with the batch and sub-agent transports (runExit, run_exit.go,
+		// issue #1238): the seam classifies the exit (ADR-0029 — idle on
+		// cancellation / max-turns, error on true failure), runs the UI
+		// transport's per-reason work through the single exit switch, and
+		// writes the terminal snapshot + timeline. The UI per-reason work
+		// keeps only transport-specific behaviour — the run-end append of the
+		// streamed reply (issue #1217), the session-status broadcast, the SSE
+		// closing error events, and the crash dump — with the per-reason
+		// ordering comments preserved from the pre-unification branches:
+		//
+		//   - completed/cancelled: the final turn is already in the UI
+		//     conversation via the run-completer's per-turn live-sync
+		//     (ADR-0028) when a persister is attached; without a persister the
+		//     run-end append is the sole path that puts the streamed reply
+		//     into the UI conversation (issue #1217), deduping against the
+		//     per-turn sync (issue #1203).
+		//   - max-turns: the agent loop already emits the max-turns error and
+		//     closes the SSE stream itself (issue #1233), so there is nothing
+		//     left to broadcast or append; the run ends idle with the error
+		//     message visible over SSE.
+		//   - error: mark the session failed before persisting diagnostics so
+		//     UI and disk snapshots do not stay running.
+		completer.runExit(sseState, err, runCtx, s.uiExitWork(sessionID, sseState, w, err))
 	}()
 
 	slog.Info("run started", slog.String("session_id", sessionID), slog.String("provider", cfg.ProviderID), slog.String("model", modelName))
@@ -364,24 +339,72 @@ func (s *RunService) persistRunTimeline(sessionID, runID string, startedAt time.
 	}
 }
 
-// setSessionStatusAndSnapshot sets the session status, persists a snapshot to
-// disk with the updated status, and broadcasts the status change to browser
-// subscribers. The status comes from the shared exit taxonomy (ADR-0029); on
-// the UI exit paths it must be called before snapshotSession so the on-disk
-// snapshot reflects the terminal state (idle/error) instead of "running". The
-// broadcast flows through broadcastStatusUpdate, the single session-status
-// broadcast helper shared with the sub-agent path.
-func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisession.Status) {
-	if s.uiSessionMgr == nil {
-		s.snapshotSession(sessionID)
-		return
+// uiExitWork builds the UI transport's per-reason exit work for the single
+// run-end seam (runExit, run_exit.go, issue #1238). Each per-reason handler
+// runs before the terminal snapshot + timeline write and keeps only
+// transport-specific behaviour: the run-end append of the streamed reply
+// (syncRunResultToUISession, issue #1217), the terminal status update (so the
+// snapshot reflects idle/error instead of running), the SSE closing error
+// events, and the crash dump. The session_status broadcast runs in
+// afterTerminal — after the terminal snapshot is on disk — so browser
+// subscribers never observe the terminal status before the snapshot lands.
+// The exit switch itself lives in exactly one place (exitWork.run); adding a
+// termination reason touches the taxonomy (classifyRunExit) and the switch,
+// not this wiring.
+//
+// Per-reason ordering notes preserved from the pre-unification branches:
+//
+//   - completed/cancelled: the final turn is already in the UI conversation
+//     via the run-completer's per-turn live-sync (ADR-0028) when a persister
+//     is attached; without a persister the run-end append is the sole path
+//     that puts the streamed reply into the UI conversation (issue #1217),
+//     deduping against the per-turn sync (issue #1203).
+//   - cancelled: the closing "Run cancelled" error event is broadcast before
+//     the terminal write, so the persisted timeline now carries it — the same
+//     as the error path's closing event (previously the cancelled branch
+//     broadcast after the timeline, so its timeline omitted the event; the
+//     unified seam makes both transports' timelines consistent, issue #1238).
+//   - max-turns: the agent loop already emits the max-turns error and closes
+//     the SSE stream itself (issue #1233), so there is nothing left to
+//     broadcast or append; the run ends idle with the error message visible
+//     over SSE.
+//   - error: mark the session failed before persisting diagnostics so UI and
+//     disk snapshots do not stay running.
+func (s *RunService) uiExitWork(sessionID string, sseState *runstate.State, w *runstate.Writer, runErr error) *exitWork {
+	// Terminal status must be set before the seam takes the terminal snapshot;
+	// the broadcast of that status happens in afterTerminal below.
+	setStatus := func(status uisession.Status) {
+		if s.uiSessionMgr != nil {
+			s.uiSessionMgr.UpdateStatus(sessionID, status)
+		}
 	}
-	s.uiSessionMgr.UpdateStatus(sessionID, status)
-	s.snapshotSession(sessionID)
-
-	// broadcastStatusUpdate re-applies the (idempotent) status update so the
-	// session_status broadcast goes through the single shared helper.
-	s.broadcastStatusUpdate(sessionID, status, s.uiSessionMgr, s.broadcast)
+	return &exitWork{
+		completed: func(outcome exitOutcome) {
+			s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
+			setStatus(outcome.Status)
+		},
+		cancelled: func(outcome exitOutcome) {
+			s.syncRunResultToUISession(sessionID, sseState.BufferString(), sseState.ReasoningBufferString())
+			setStatus(outcome.Status)
+			w.Error("Run cancelled")
+		},
+		maxTurns: func(outcome exitOutcome) {
+			setStatus(outcome.Status)
+		},
+		error: func(outcome exitOutcome) {
+			setStatus(outcome.Status)
+			w.Error(runErr.Error())
+			if s.crashDumpFunc != nil {
+				s.crashDumpFunc(runErr, runtimeDebug.Stack())
+			}
+		},
+		// Broadcast the terminal session status only after the terminal
+		// snapshot + timeline write, so a subscriber that reacts to the
+		// session_status event can read the on-disk terminal snapshot.
+		afterTerminal: func(outcome exitOutcome) {
+			s.broadcastStatusUpdate(sessionID, outcome.Status, s.uiSessionMgr, s.broadcast)
+		},
+	}
 }
 
 // appendToSession no longer exists (issue #1203): the run-end append of the
@@ -390,30 +413,15 @@ func (s *RunService) setSessionStatusAndSnapshot(sessionID string, status uisess
 // completion path's live-history sync (run_completer.go, ADR-0028). Sub-agent
 // child sessions append their transcript directly in subagent.go.
 
-// snapshotSession persists the current UI session to disk.
-func (s *RunService) snapshotSession(sessionID string) {
-	if s.persister == nil || s.uiSessionMgr == nil {
-		return
-	}
-	// Uses the explicit copy helper: the persister serializes the session to
-	// JSON and must receive a detached UISession facade (meta + messages +
-	// skills) rather than a shared reference to manager-owned state.
-	sess := s.uiSessionMgr.CopySession(sessionID)
-	if sess == nil {
-		return
-	}
-	if err := s.persister.SnapshotSession(sessionID, sess); err != nil {
-		slog.Warn("failed to snapshot session",
-			slog.String("session_id", sessionID),
-			slog.Any("error", err),
-		)
-	}
-}
-
 // Per-turn completion for UI runs moved into the unified runCompleter
 // (run_completer.go, ADR-0028): RunService no longer implements
 // loop.TurnCompleter. startRunWithConfig wires a UI-mode runCompleter into
-// loop.RunOpts.TurnCompleter.
+// loop.RunOpts.TurnCompleter. Terminal status snapshots and timelines run
+// through the shared run-end seam (run_exit.go, issue #1238): the UI
+// transport's terminal snapshot source is a plain CopySession (set in
+// startRunWithConfig) so the terminal snapshot preserves the UI conversation
+// exactly, and the former setSessionStatusAndSnapshot / snapshotSession
+// helpers are gone — the seam's persistSource owns the snapshot write.
 
 // compactSessionHistory runs the compactor on the given messages using the
 // provided LLM service, gated by high-water and low-water thresholds.
