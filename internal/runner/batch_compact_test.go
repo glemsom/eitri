@@ -8,7 +8,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -130,17 +129,12 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 	var midRun *uisession.UISession
 	llm := batchCompactLLMServer(t, func(body string) {
 		turn2Body = body
-		data, err := persister.LoadSession(batchID)
-		if err != nil || data == nil {
-			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", data, err)
+		s, err := persister.LoadSession(batchID)
+		if err != nil || s == nil {
+			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", s, err)
 			return
 		}
-		var s uisession.UISession
-		if err := json.Unmarshal(data, &s); err != nil {
-			t.Errorf("mid-run: unmarshal snapshot: %v", err)
-			return
-		}
-		midRun = &s
+		midRun = s
 	})
 
 	cfg := batchRunConfig(llm.URL, workspace)
@@ -183,13 +177,9 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 	}
 
 	// The terminal snapshot also reflects the compacted history.
-	data, err := persister.LoadSession(batchID)
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession(batchID)
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession: %v, %v", final, err)
 	}
 	if !hasCompactedMessage(final.Messages) {
 		t.Errorf("terminal snapshot has no compacted message; got %d messages", len(final.Messages))
@@ -234,13 +224,9 @@ func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
 	if strings.Contains(turn2Body, "[TOOL RESULT COMPACTED") {
 		t.Error("turn-2 request contains a compacted marker despite compaction being disabled")
 	}
-	data, err := persister.LoadSession(batchID)
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession(batchID)
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession: %v, %v", final, err)
 	}
 	if hasCompactedMessage(final.Messages) {
 		t.Error("terminal snapshot contains compacted messages despite compaction being disabled")
@@ -541,18 +527,13 @@ func TestSubAgentRun_AutoCompaction(t *testing.T) {
 		turn2Body = body
 		capMu.Unlock()
 
-		data, err := persister.LoadSession(taskID)
-		if err != nil || data == nil {
-			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", data, err)
-			return
-		}
-		var s uisession.UISession
-		if err := json.Unmarshal(data, &s); err != nil {
-			t.Errorf("mid-run: unmarshal snapshot: %v", err)
+		s, err := persister.LoadSession(taskID)
+		if err != nil || s == nil {
+			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", s, err)
 			return
 		}
 		capMu.Lock()
-		midRun = &s
+		midRun = s
 		capMu.Unlock()
 	})
 
@@ -607,13 +588,9 @@ func TestSubAgentRun_AutoCompaction(t *testing.T) {
 
 	// The terminal snapshot also reflects the compacted history, and the child
 	// session trail shape is unchanged (snapshot keyed by task ID).
-	data, err := persister.LoadSession(taskID)
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession(%s): %v, %v", taskID, data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession(taskID)
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession(%s): %v, %v", taskID, final, err)
 	}
 	if final.ID != taskID {
 		t.Errorf("terminal snapshot ID = %q, want %q", final.ID, taskID)

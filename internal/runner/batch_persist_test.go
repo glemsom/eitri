@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -117,17 +116,12 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	// persisted a running-status snapshot.
 	var midRun *uisession.UISession
 	llm := twoTurnLLM(t, func() {
-		data, err := persister.LoadSession("test-batch")
-		if err != nil || data == nil {
-			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", data, err)
+		s, err := persister.LoadSession("test-batch")
+		if err != nil || s == nil {
+			t.Errorf("mid-run: LoadSession = %v, %v; want snapshot on disk", s, err)
 			return
 		}
-		var s uisession.UISession
-		if err := json.Unmarshal(data, &s); err != nil {
-			t.Errorf("mid-run: unmarshal snapshot: %v", err)
-			return
-		}
-		midRun = &s
+		midRun = s
 	})
 
 	cfg := batchRunConfig(llm.URL, workspace)
@@ -157,13 +151,9 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	}
 
 	// ── Terminal snapshot ──
-	data, err := persister.LoadSession("test-batch")
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession("test-batch")
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession: %v, %v", final, err)
 	}
 	if final.ID != "test-batch" {
 		t.Errorf("ID = %q, want %q", final.ID, "test-batch")
@@ -205,16 +195,16 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	if err := persister.Flush(nil, nil); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	traceIDs, err := persister.ListTraces("test-batch")
+	traces, err := persister.ListTraces("test-batch")
 	if err != nil {
 		t.Fatalf("ListTraces: %v", err)
 	}
-	if len(traceIDs) != 2 {
-		t.Errorf("got %d persisted traces, want 2 (one per LLM call)", len(traceIDs))
+	if len(traces) != 2 {
+		t.Errorf("got %d persisted traces, want 2 (one per LLM call)", len(traces))
 	}
-	traceData, err := persister.LoadTrace("test-batch", traceIDs[0])
-	if err != nil || len(traceData) == 0 {
-		t.Fatalf("LoadTrace: %v, %v", traceData, err)
+	trace, err := persister.LoadTrace("test-batch", string(traces[0].ID))
+	if err != nil || trace == nil {
+		t.Fatalf("LoadTrace: %v, %v", trace, err)
 	}
 
 	// ── Timeline ──
@@ -225,13 +215,12 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	if len(metas) != 1 {
 		t.Fatalf("got %d timeline(s), want 1", len(metas))
 	}
-	tlData, err := persister.LoadTimeline("test-batch", metas[0].Filename)
+	tl, err := persister.LoadTimeline("test-batch", metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(tlData, &tl); err != nil {
-		t.Fatalf("unmarshal timeline: %v", err)
+	if tl == nil {
+		t.Fatal("LoadTimeline returned nil timeline")
 	}
 	if tl.SessionID != "test-batch" {
 		t.Errorf("timeline SessionID = %q, want %q", tl.SessionID, "test-batch")
@@ -302,13 +291,9 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 	}
 
 	// Terminal snapshot must reflect the failure.
-	data, err := persister.LoadSession("test-fail")
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession("test-fail")
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession: %v, %v", final, err)
 	}
 	if final.Status != uisession.StatusError {
 		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusError)
@@ -322,12 +307,12 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 	if err := persister.Flush(nil, nil); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
-	traceIDs, err := persister.ListTraces("test-fail")
+	traces, err := persister.ListTraces("test-fail")
 	if err != nil {
 		t.Fatalf("ListTraces: %v", err)
 	}
-	if len(traceIDs) != 2 {
-		t.Errorf("got %d persisted traces, want 2 (both LLM calls)", len(traceIDs))
+	if len(traces) != 2 {
+		t.Errorf("got %d persisted traces, want 2 (both LLM calls)", len(traces))
 	}
 
 	// Timeline records the error termination.
@@ -338,13 +323,12 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 	if len(metas) != 1 {
 		t.Fatalf("got %d timeline(s), want 1", len(metas))
 	}
-	tlData, err := persister.LoadTimeline("test-fail", metas[0].Filename)
+	tl, err := persister.LoadTimeline("test-fail", metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(tlData, &tl); err != nil {
-		t.Fatalf("unmarshal timeline: %v", err)
+	if tl == nil {
+		t.Fatal("LoadTimeline returned nil timeline")
 	}
 	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationError {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationError)
@@ -383,13 +367,12 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 	if len(metas) != 1 {
 		t.Fatalf("got %d timeline(s), want 1", len(metas))
 	}
-	tlData, err := persister.LoadTimeline("test-cancel", metas[0].Filename)
+	tl, err := persister.LoadTimeline("test-cancel", metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(tlData, &tl); err != nil {
-		t.Fatalf("unmarshal timeline: %v", err)
+	if tl == nil {
+		t.Fatal("LoadTimeline returned nil timeline")
 	}
 	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationCancelled {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationCancelled)
@@ -398,13 +381,9 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 	// The terminal snapshot reflects the cancellation as idle, matching the
 	// UI/sub-agent exit taxonomy — only true failures persist error status
 	// (ADR-0029, issue #1202).
-	data, err := persister.LoadSession("test-cancel")
-	if err != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, err)
-	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
+	final, err := persister.LoadSession("test-cancel")
+	if err != nil || final == nil {
+		t.Fatalf("LoadSession: %v, %v", final, err)
 	}
 	if final.Status != uisession.StatusIdle {
 		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusIdle)
@@ -450,13 +429,12 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	if len(metas) != 1 {
 		t.Fatalf("got %d timeline(s), want 1", len(metas))
 	}
-	tlData, err := persister.LoadTimeline("test-maxturns", metas[0].Filename)
+	tl, err := persister.LoadTimeline("test-maxturns", metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline: %v", err)
 	}
-	var tl timeline.Timeline
-	if err := json.Unmarshal(tlData, &tl); err != nil {
-		t.Fatalf("unmarshal timeline: %v", err)
+	if tl == nil {
+		t.Fatal("LoadTimeline returned nil timeline")
 	}
 	if tl.Termination == nil || tl.Termination.Reason != timeline.TerminationMaxTurns {
 		t.Errorf("timeline termination = %+v, want reason %q", tl.Termination, timeline.TerminationMaxTurns)
@@ -465,16 +443,12 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	// The terminal snapshot reflects the max-turns stop as idle, matching the
 	// UI/sub-agent exit taxonomy — only true failures persist error status
 	// (ADR-0029, issue #1202).
-	data, loadErr := persister.LoadSession("test-maxturns")
-	if loadErr != nil || data == nil {
-		t.Fatalf("LoadSession: %v, %v", data, loadErr)
+	snap, loadErr := persister.LoadSession("test-maxturns")
+	if loadErr != nil || snap == nil {
+		t.Fatalf("LoadSession: %v, %v", snap, loadErr)
 	}
-	var final uisession.UISession
-	if err := json.Unmarshal(data, &final); err != nil {
-		t.Fatalf("unmarshal terminal snapshot: %v", err)
-	}
-	if final.Status != uisession.StatusIdle {
-		t.Errorf("Status = %q, want %q", final.Status, uisession.StatusIdle)
+	if snap.Status != uisession.StatusIdle {
+		t.Errorf("Status = %q, want %q", snap.Status, uisession.StatusIdle)
 	}
 }
 

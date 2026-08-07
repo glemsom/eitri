@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // defaultRetention is the default maximum total size (1 GiB) for persisted data.
@@ -213,19 +214,22 @@ func (p *Persister) ListTimelines(sessionID string) ([]TimelineMeta, error) {
 }
 
 // LoadTimeline reads and parses a single timeline file for a session.
-func (p *Persister) LoadTimeline(sessionID, filename string) ([]byte, error) {
+func (p *Persister) LoadTimeline(sessionID, filename string) (*timeline.Timeline, error) {
 	path := filepath.Join(p.rootDir, "sessions", sessionID, "timeline", filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read timeline file %s: %w", path, err)
 	}
-	return data, nil
+	var tl timeline.Timeline
+	if err := json.Unmarshal(data, &tl); err != nil {
+		return nil, fmt.Errorf("cannot parse timeline file %s: %w", path, err)
+	}
+	return &tl, nil
 }
 
-// LoadSession reads the current session snapshot from disk.
-// Returns nil, nil if no snapshot exists for the session.
-// This is the replacement for LoadLatestSessionSnapshot and LoadLatestHistory.
-func (p *Persister) LoadSession(sessionID string) ([]byte, error) {
+// readSessionSnapshot returns the raw bytes of a session's session.json
+// snapshot file. Returns nil, nil when no snapshot exists for the session.
+func (p *Persister) readSessionSnapshot(sessionID string) ([]byte, error) {
 	sessionFile := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
 	data, err := os.ReadFile(sessionFile)
 	if err != nil {
@@ -235,6 +239,21 @@ func (p *Persister) LoadSession(sessionID string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot read session file %s: %w", sessionFile, err)
 	}
 	return data, nil
+}
+
+// LoadSession reads and parses the current session snapshot from disk.
+// Returns nil, nil if no snapshot exists for the session.
+// This is the replacement for LoadLatestSessionSnapshot and LoadLatestHistory.
+func (p *Persister) LoadSession(sessionID string) (*session.UISession, error) {
+	data, err := p.readSessionSnapshot(sessionID)
+	if err != nil || data == nil {
+		return nil, err
+	}
+	var snap session.UISession
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return nil, fmt.Errorf("cannot parse session snapshot for %s: %w", sessionID, err)
+	}
+	return &snap, nil
 }
 
 // SessionInfo holds the metadata about a persisted session needed for listing.
@@ -250,7 +269,7 @@ type SessionInfo struct {
 // LoadSessionInfo reads just the metadata of a session snapshot from disk
 // without loading full message content. Returns nil, nil if no snapshot exists.
 func (p *Persister) LoadSessionInfo(sessionID string) (*SessionInfo, error) {
-	data, err := p.LoadSession(sessionID)
+	data, err := p.readSessionSnapshot(sessionID)
 	if err != nil || data == nil {
 		return nil, err
 	}
@@ -279,8 +298,10 @@ func (p *Persister) LoadSessionInfo(sessionID string) (*SessionInfo, error) {
 	}, nil
 }
 
-// ListTraces returns the filenames (without .json) of all trace files for a session.
-func (p *Persister) ListTraces(sessionID string) ([]string, error) {
+// ListTraces reads and parses all trace files for a session, in filename
+// order. Trace files that cannot be read or parsed are skipped so one corrupt
+// file never hides the rest.
+func (p *Persister) ListTraces(sessionID string) ([]*debug.HTTPTrace, error) {
 	tracesDir := filepath.Join(p.rootDir, "sessions", sessionID, "traces")
 	entries, err := os.ReadDir(tracesDir)
 	if err != nil {
@@ -289,24 +310,32 @@ func (p *Persister) ListTraces(sessionID string) ([]string, error) {
 		}
 		return nil, fmt.Errorf("cannot list traces dir %s: %w", tracesDir, err)
 	}
-	var ids []string
+	var traces []*debug.HTTPTrace
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		ids = append(ids, strings.TrimSuffix(entry.Name(), ".json"))
+		trace, err := p.LoadTrace(sessionID, strings.TrimSuffix(entry.Name(), ".json"))
+		if err != nil {
+			continue // skip unreadable or corrupt trace files
+		}
+		traces = append(traces, trace)
 	}
-	return ids, nil
+	return traces, nil
 }
 
-// LoadTrace reads a single trace file for a session.
-func (p *Persister) LoadTrace(sessionID, traceID string) ([]byte, error) {
+// LoadTrace reads and parses a single trace file for a session.
+func (p *Persister) LoadTrace(sessionID, traceID string) (*debug.HTTPTrace, error) {
 	path := filepath.Join(p.rootDir, "sessions", sessionID, "traces", traceID+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read trace file %s: %w", path, err)
 	}
-	return data, nil
+	var trace debug.HTTPTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		return nil, fmt.Errorf("cannot parse trace file %s: %w", path, err)
+	}
+	return &trace, nil
 }
 
 // SaveTimeline writes a condensed timeline for a single run to disk.

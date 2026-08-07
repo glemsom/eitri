@@ -539,18 +539,14 @@ func TestLoadSession_ReturnsSessionData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := p.LoadSession(sessionID)
+	restored, err := p.LoadSession(sessionID)
 	if err != nil {
 		t.Fatalf("LoadSession returned error: %v", err)
 	}
-	if data == nil {
+	if restored == nil {
 		t.Fatal("LoadSession returned nil data")
 	}
 
-	var restored session.UISession
-	if err := json.Unmarshal(data, &restored); err != nil {
-		t.Fatalf("cannot unmarshal: %v", err)
-	}
 	if len(restored.Messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(restored.Messages))
 	}
@@ -572,11 +568,11 @@ func TestLoadSession_ReturnsNilOnMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := p.LoadSession("nonexistent")
+	snap, err := p.LoadSession("nonexistent")
 	if err != nil {
 		t.Fatalf("LoadSession returned error: %v", err)
 	}
-	if data != nil {
+	if snap != nil {
 		t.Fatal("LoadSession should return nil for missing session")
 	}
 }
@@ -703,12 +699,15 @@ func TestListTraces_ReturnsIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ids, err := p.ListTraces(sessionID)
+	traces, err := p.ListTraces(sessionID)
 	if err != nil {
 		t.Fatalf("ListTraces returned error: %v", err)
 	}
-	if len(ids) != 1 || ids[0] != "trace-list-1" {
-		t.Errorf("expected [trace-list-1], got %v", ids)
+	if len(traces) != 1 {
+		t.Fatalf("expected 1 trace, got %d", len(traces))
+	}
+	if traces[0].ID != "trace-list-1" {
+		t.Errorf("trace ID = %q, want %q", traces[0].ID, "trace-list-1")
 	}
 }
 
@@ -736,16 +735,12 @@ func TestLoadTrace_ReturnsTrace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := p.LoadTrace(sessionID, "trace-load-1")
+	restored, err := p.LoadTrace(sessionID, "trace-load-1")
 	if err != nil {
 		t.Fatalf("LoadTrace returned error: %v", err)
 	}
-	if data == nil {
+	if restored == nil {
 		t.Fatal("LoadTrace returned nil")
-	}
-	var restored debug.HTTPTrace
-	if err := json.Unmarshal(data, &restored); err != nil {
-		t.Fatalf("cannot unmarshal: %v", err)
 	}
 	if restored.ID != "trace-load-1" {
 		t.Errorf("ID = %q, want %q", restored.ID, "trace-load-1")
@@ -760,12 +755,13 @@ func TestLoadTimeline_ReturnsContent(t *testing.T) {
 	}
 
 	sessionID := "load-timeline"
+	startedAt := time.Now().UTC()
 	timeline := struct {
 		StartedAt time.Time `json:"started_at"`
 		RunID     string    `json:"run_id"`
 		Data      string    `json:"data"`
 	}{
-		StartedAt: time.Now().UTC(),
+		StartedAt: startedAt,
 		RunID:     "run-load-1",
 		Data:      "test-data",
 	}
@@ -782,12 +778,18 @@ func TestLoadTimeline_ReturnsContent(t *testing.T) {
 		t.Fatal("no timeline files")
 	}
 
-	data, err := p.LoadTimeline(sessionID, metas[0].Filename)
+	tl, err := p.LoadTimeline(sessionID, metas[0].Filename)
 	if err != nil {
 		t.Fatalf("LoadTimeline returned error: %v", err)
 	}
-	if data == nil {
+	if tl == nil {
 		t.Fatal("LoadTimeline returned nil")
+	}
+	if tl.RunID != "run-load-1" {
+		t.Errorf("RunID = %q, want %q", tl.RunID, "run-load-1")
+	}
+	if !tl.StartedAt.Equal(startedAt) {
+		t.Errorf("StartedAt = %v, want %v", tl.StartedAt, startedAt)
 	}
 }
 
@@ -836,13 +838,12 @@ func TestSnapshotSession_CarriesToolCallFields(t *testing.T) {
 		t.Fatalf("SnapshotSession: %v", err)
 	}
 
-	data, err := p.LoadSession(sessionID)
+	restored, err := p.LoadSession(sessionID)
 	if err != nil {
 		t.Fatalf("LoadSession: %v", err)
 	}
-	var restored session.UISession
-	if err := json.Unmarshal(data, &restored); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	if restored == nil {
+		t.Fatal("LoadSession returned nil")
 	}
 
 	if len(restored.Messages) != 2 {
@@ -998,11 +999,11 @@ func TestPrune_UnderCapDoesNothing(t *testing.T) {
 	}
 
 	// session.json should still exist
-	data, err := p.LoadSession("prune-test")
+	snap, err := p.LoadSession("prune-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data == nil {
+	if snap == nil {
 		t.Fatal("session.json was removed despite being under cap")
 	}
 }
@@ -1048,11 +1049,11 @@ func TestPrune_RemovesOldTraceFiles(t *testing.T) {
 	}
 
 	// session.json must still exist
-	data, err := p.LoadSession(sessionID)
+	snap, err := p.LoadSession(sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data == nil {
+	if snap == nil {
 		t.Fatal("session.json was removed by prune")
 	}
 }

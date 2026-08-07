@@ -13,7 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/debug"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/timeline"
 )
 
@@ -143,15 +142,8 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 
 	runs := make([]RunInfo, 0, len(metas))
 	for i, meta := range metas {
-		data, err := svc.persister.LoadTimeline(sessionID, meta.Filename)
+		tl, err := svc.persister.LoadTimeline(sessionID, meta.Filename)
 		if err != nil {
-			continue
-		}
-		var tl struct {
-			Termination *timeline.TimelineTermination `json:"termination"`
-			Events      []timeline.TimelineEvent      `json:"events"`
-		}
-		if err := json.Unmarshal(data, &tl); err != nil {
 			continue
 		}
 
@@ -181,11 +173,11 @@ func (svc *Service) ListRuns(sessionID string) ([]RunInfo, error) {
 
 // listRunsFromHistory reconstructs a best-effort run list from the session snapshot.
 func (svc *Service) listRunsFromHistory(sessionID string) ([]RunInfo, error) {
-	data, err := svc.persister.LoadSession(sessionID)
+	snap, err := svc.persister.LoadSession(sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("load session: %w", err)
 	}
-	if data == nil {
+	if snap == nil {
 		return nil, nil
 	}
 
@@ -224,18 +216,13 @@ func (svc *Service) GetReport(sessionID string, runIndex int) (*SessionReport, e
 	}
 
 	meta := metas[runIndex]
-	data, err := svc.persister.LoadTimeline(sessionID, meta.Filename)
+	tl, err := svc.persister.LoadTimeline(sessionID, meta.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("load timeline: %w", err)
 	}
 
-	var tl timeline.Timeline
-	if err := json.Unmarshal(data, &tl); err != nil {
-		return nil, fmt.Errorf("unmarshal timeline: %w", err)
-	}
-
 	// Load session snapshot
-	report := svc.buildReportFromTimeline(sessionID, &tl, metas)
+	report := svc.buildReportFromTimeline(sessionID, tl, metas)
 
 	// Try to enrich with session snapshot data
 	report = svc.enrichFromSnapshot(sessionID, report)
@@ -434,13 +421,8 @@ func (svc *Service) computeSummary(tl *timeline.Timeline, turns []Turn) Summary 
 
 // enrichFromSnapshot fills in titles, user messages, and reasoning content from session snapshot.
 func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) *SessionReport {
-	data, err := svc.persister.LoadSession(sessionID)
-	if err != nil || data == nil {
-		return report
-	}
-
-	var snap session.UISession
-	if err := json.Unmarshal(data, &snap); err != nil {
+	snap, err := svc.persister.LoadSession(sessionID)
+	if err != nil || snap == nil {
 		return report
 	}
 
@@ -573,25 +555,9 @@ func (svc *Service) enrichFromSnapshot(sessionID string, report *SessionReport) 
 // feature), the join falls back to grouping traces by (run, turn) and finally
 // to the legacy ±30s timestamp heuristic.
 func (svc *Service) enrichFromTraces(sessionID, runID string, report *SessionReport) *SessionReport {
-	traceIDs, err := svc.persister.ListTraces(sessionID)
-	if err != nil || len(traceIDs) == 0 {
-		return report
-	}
-
 	// Load all traces for the session once.
-	traces := make([]*debug.HTTPTrace, 0, len(traceIDs))
-	for _, tid := range traceIDs {
-		data, err := svc.persister.LoadTrace(sessionID, tid)
-		if err != nil {
-			continue
-		}
-		var trace debug.HTTPTrace
-		if err := json.Unmarshal(data, &trace); err != nil {
-			continue
-		}
-		traces = append(traces, &trace)
-	}
-	if len(traces) == 0 {
+	traces, err := svc.persister.ListTraces(sessionID)
+	if err != nil || len(traces) == 0 {
 		return report
 	}
 
@@ -740,23 +706,15 @@ func closestTraceByTimestamp(traces []*debug.HTTPTrace, ts time.Time) *debug.HTT
 
 // buildReconstructedReport builds a report from session snapshot only (no timeline).
 func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, error) {
-	data, err := svc.persister.LoadSession(sessionID)
+	snap, err := svc.persister.LoadSession(sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("load session: %w", err)
 	}
 
-	var snapData []byte
-	if data != nil {
-		snapData = data
-	}
-
 	var title, workspace string
-	var snap session.UISession
-	if snapData != nil {
-		if err := json.Unmarshal(snapData, &snap); err == nil {
-			title = snap.Title
-			workspace = snap.Workspace
-		}
+	if snap != nil {
+		title = snap.Title
+		workspace = snap.Workspace
 	}
 
 	report := &SessionReport{
@@ -771,7 +729,7 @@ func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, 
 		},
 	}
 
-	if snapData != nil && len(snap.Messages) > 0 {
+	if snap != nil && len(snap.Messages) > 0 {
 		turnNum := 0
 		for _, msg := range snap.Messages {
 			turnNum++
@@ -801,7 +759,7 @@ func (svc *Service) buildReconstructedReport(sessionID string) (*SessionReport, 
 		}
 	}
 
-	if snapData != nil {
+	if snap != nil {
 		report = svc.enrichFromSnapshot(sessionID, report)
 	}
 	// No timeline exists for this session, so there is no run ID to group

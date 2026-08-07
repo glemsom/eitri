@@ -496,8 +496,8 @@ func (s *Server) handleCleanupClearAllTraces(w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			continue
 		}
-		for _, traceID := range traces {
-			tracePath := filepath.Join(s.config.Persister.RootDir(), "sessions", id, "traces", traceID+".json")
+		for _, trace := range traces {
+			tracePath := filepath.Join(s.config.Persister.RootDir(), "sessions", id, "traces", string(trace.ID)+".json")
 			if err := os.Remove(tracePath); err == nil {
 				cleared++
 			}

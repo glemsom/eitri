@@ -5,6 +5,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -331,12 +332,20 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 		return nil, fmt.Errorf("persister not available")
 	}
 
-	data, err := s.persister.LoadSession(sessionID)
+	snap, err := s.persister.LoadSession(sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load session from disk: %w", err)
 	}
-	if data == nil {
+	if snap == nil {
 		return nil, fmt.Errorf("session %s not found on disk", sessionID)
+	}
+
+	// The session manager's load seam still speaks raw JSON; re-marshal the
+	// typed snapshot for it (a single round-trip at load time, not per
+	// artifact).
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return nil, fmt.Errorf("cannot marshal session for manager: %w", err)
 	}
 
 	loaded, err := s.uiSessionMgr.LoadFromDisk(data)
