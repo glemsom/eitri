@@ -249,14 +249,17 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 			// Release browser allocator connections for this sub-agent's task ID
 			toolReg.EndSession(taskID)
 			record.finish()
+			// Commit the terminal result to the durable store so a parent can
+			// collect it even after the in-memory record is reaped (issue #1200).
+			s.subagents.storeCompletedResult(sessionID, taskID, subAgentRecordToResult(record))
 			// Clean up child session's RunState from active runs
 			if record.ChildSessionID != "" {
 				s.remove(record.ChildSessionID, childRunState)
 				// Update child session status to idle
 				s.broadcastSessionStatusUpdate(record.ChildSessionID, uisession.StatusIdle)
 			}
-			// Reap after TTL
-			time.AfterFunc(subAgentReapTTL, func() {
+			// Reap after TTL (configurable for tests; defaults to subAgentReapTTL)
+			time.AfterFunc(s.subagents.reapTTL, func() {
 				s.subagents.reapAfterTTL(taskID)
 			})
 		}()
@@ -362,38 +365,55 @@ func (s *RunService) CollectSubAgents(ctx context.Context, taskIDs []string) (ma
 
 	slog.Info("collecting sub-agents", slog.Int("count", len(taskIDs)))
 
-	// Gather all done channels under lock
-	type recordInfo struct {
-		done   chan struct{}
+	// For each requested task, resolve which in-memory record (if any) to wait
+	// on. A task still in flight is represented by a live record; a task that
+	// already reached a terminal state and has since been reaped (its 30s TTL
+	// elapsed, e.g. the parent waited through user input before collecting) is
+	// represented by its durable completed result (issue #1200). A task in
+	// neither place is genuinely unknown and must fail with unknown task_id.
+	type waitInfo struct {
 		record *subAgentRecord
 	}
-	recordsMap, err := s.subagents.getRecords(taskIDs)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]recordInfo, 0, len(taskIDs))
-	for _, rec := range recordsMap {
-		records = append(records, recordInfo{done: rec.Done, record: rec})
+	var waits []waitInfo
+	results := make(map[string]SubAgentResult, len(taskIDs))
+	for _, tid := range taskIDs {
+		rec := s.subagents.getRecord(tid)
+		if rec != nil {
+			waits = append(waits, waitInfo{record: rec})
+			continue
+		}
+		if res, ok := s.subagents.getCompletedResult(tid); ok {
+			// Already finished and reaped — return its completed result now;
+			// there is no done channel left to wait on.
+			slog.Info("collect found reaped completed sub-agent", slog.String("task_id", tid))
+			results[tid] = res
+			continue
+		}
+		return nil, fmt.Errorf("unknown task_id: %s", tid)
 	}
 
-	// Wait for each task to complete, snapshotting each record's final result
-	// at the moment its done channel closes. Completed records are reaped from
-	// the store after subAgentReapTTL, so a long wait for a slow task would
-	// otherwise lose the results of fast tasks — they came back as "cancelled"
-	// with empty results even though they completed. The record pointer stays
-	// valid after reaping; only the store entry is removed.
-	results := make(map[string]SubAgentResult, len(taskIDs))
-	for _, ri := range records {
+	// Wait for each in-flight task to complete, snapshotting each record's
+	// final result at the moment its done channel closes. Completed records are
+	// reaped from the store after subAgentReapTTL, so a long wait for a slow
+	// task would otherwise lose the results of fast tasks — they came back as
+	// "cancelled" with empty results even though they completed. The record
+	// pointer stays valid after reaping; only the store entry is removed.
+	for _, ri := range waits {
 		select {
-		case <-ri.done:
+		case <-ri.record.Done:
 			// Task completed — snapshot now, before the record can be reaped.
 			results[ri.record.TaskID] = subAgentRecordToResult(ri.record)
 		case <-ctx.Done():
 			// Context cancelled — return partial results: prefer the snapshot
-			// for tasks already observed done, then fall back to the store.
+			// for tasks already observed done, then fall back to the durable
+			// completed result or the store.
 			slog.Info("collect cancelled, returning partial results")
 			for _, tid := range taskIDs {
 				if _, ok := results[tid]; ok {
+					continue
+				}
+				if res, ok := s.subagents.getCompletedResult(tid); ok {
+					results[tid] = res
 					continue
 				}
 				if rec := s.subagents.getRecord(tid); rec != nil {

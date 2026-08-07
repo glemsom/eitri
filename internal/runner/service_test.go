@@ -528,6 +528,119 @@ func TestRunService_CollectSubAgents_PreservesResultsAfterReap(t *testing.T) {
 		t.Fatalf("task B result = %+v, want completed/'result B'/5 turns", b)
 	}
 }
+func TestRunService_CollectSubAgents_CompletedAfterReap(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// A sub-agent finishes, then its in-memory record is reaped past the TTL
+	// (the exact issue #1200 failure: the parent waits for user input before
+	// calling collect). The completed result must survive the reap and still
+	// be returned by a later collect.
+	taskID := "task_done"
+	rec := &subAgentRecord{
+		TaskID:    taskID,
+		Status:    subAgentCompleted,
+		Result:    "fact-finding result",
+		TurnCount: 4,
+		Done:      make(chan struct{}),
+		StartedAt: time.Now(),
+	}
+	rec.finish()
+	svc.subagents.storeRecord(taskID, rec)
+
+	// Store the completed result and reap the live record, simulating the
+	// post-TTL state: the agents map entry is gone, only the durable
+	// completed result remains (as the real reap path would leave it).
+	svc.subagents.storeCompletedResult("parent-sess", taskID, subAgentRecordToResult(rec))
+	svc.subagents.reapAfterTTL(taskID)
+
+	results, err := svc.CollectSubAgents(context.Background(), []string{taskID})
+	if err != nil {
+		t.Fatalf("CollectSubAgents: %v", err)
+	}
+	res, ok := results[taskID]
+	if !ok {
+		t.Fatalf("task %s missing from results", taskID)
+	}
+	if res.Status != "completed" || res.Result != "fact-finding result" || res.TurnCount != 4 {
+		t.Fatalf("result = %+v, want completed/'fact-finding result'/4 turns after reap", res)
+	}
+}
+
+func TestRunService_CollectSubAgents_AfterReap_EndToEnd(t *testing.T) {
+	// The ticket-relevant regression: spawn a sub-agent, let it finish, wait
+	// past the (shortened) reap TTL so its in-memory record is reaped, then
+	// collect. The completed result must still be returned (issue #1200).
+	const testReapTTL = 100 * time.Millisecond
+
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{"content":"fact-finding result"},"index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: ", `{"choices":[{"delta":{},"finish_reason":"stop","index":0}]}`, "\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	svc, _ := newRunServiceForTest(t)
+	svc.subagents.reapTTL = testReapTTL
+
+	cfg := RunConfig{
+		ProviderID: "opencode_go",
+		BaseURL:    llm.URL,
+		APIKey:     "test-key",
+		ModelName:  "test-model",
+		Workspace:  t.TempDir(),
+		MaxTurns:   5,
+	}
+	svc.subagents.StoreParentCfg("parent-sess", cfg)
+
+	taskID, err := svc.SpawnSubAgent(context.Background(), "parent-sess", "find facts", 5, "")
+	if err != nil {
+		t.Fatalf("SpawnSubAgent: %v", err)
+	}
+	waitForSubAgentDone(t, svc, taskID)
+
+	// Wait past the reap TTL so the in-memory record is gone, then assert the
+	// durable completed result survived and is returned by a fresh collect —
+	// exactly the parent "delegate → wait for user input → collect" flow.
+	time.Sleep(testReapTTL + 50*time.Millisecond)
+	if svc.subagents.getRecord(taskID) != nil {
+		t.Fatal("in-memory record should be reaped after TTL")
+	}
+
+	results, err := svc.CollectSubAgents(context.Background(), []string{taskID})
+	if err != nil {
+		t.Fatalf("CollectSubAgents after reap: %v", err)
+	}
+	res, ok := results[taskID]
+	if !ok {
+		t.Fatalf("task %s missing from results", taskID)
+	}
+	if res.Status != "completed" {
+		t.Errorf("status = %q, want %q", res.Status, "completed")
+	}
+	if res.Result != "fact-finding result" {
+		t.Errorf("result = %q, want %q", res.Result, "fact-finding result")
+	}
+	if res.TurnCount == 0 {
+		t.Errorf("turn_count = 0, want > 0")
+	}
+}
+
+func TestRunService_CollectSubAgents_UnknownStillErrors(t *testing.T) {
+	svc, _ := newRunServiceForTest(t)
+
+	// A genuinely unknown id must still fail with unknown task_id even though
+	// the completed-result fallback exists (do not fabricate results).
+	_, err := svc.CollectSubAgents(context.Background(), []string{"never-spawned"})
+	if err == nil {
+		t.Fatal("expected error for never-spawned task id")
+	}
+	if !strings.Contains(err.Error(), "unknown task_id") {
+		t.Fatalf("error = %q, want 'unknown task_id'", err.Error())
+	}
+}
+
 func TestRunService_CancelSubAgents_CancelsInFlight(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 
