@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // withTempHome sets HOME to a temp directory for the duration of the test.
@@ -321,5 +323,62 @@ func TestDelete_OnlyFromHomeDir(t *testing.T) {
 	// Verify it's gone
 	if _, err := LoadWithHome(workspace, home, "test"); err == nil {
 		t.Error("persona still exists after deletion")
+	}
+}
+
+// TestExamplePersonas validates the adaptable example persona templates shipped
+// under docs/personas/ parse cleanly into PersonaDefinition and satisfy the
+// persona contract (a name, a system prompt, and no blank required-skill names),
+// so a copy/paste straight to ~/.eitri/personas/ works without YAML or schema
+// errors. These are the code-build/code-test/code-review examples for the
+// review-gated agent loop (issue #1189, ADR-0027).
+func TestExamplePersonas(t *testing.T) {
+	examplesDir := filepath.Join("..", "..", "docs", "personas")
+	files, err := filepath.Glob(filepath.Join(examplesDir, "*.yaml"))
+	if err != nil {
+		t.Fatalf("glob example personas: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no example personas found under %s (expected three)", examplesDir)
+	}
+
+	wantNames := map[string]bool{
+		"code-build":  false,
+		"code-test":   false,
+		"code-review": false,
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Errorf("read %s: %v", f, err)
+			continue
+		}
+
+		var def PersonaDefinition
+		if err := yaml.Unmarshal(data, &def); err != nil {
+			t.Errorf("parse %s: %v", f, err)
+			continue
+		}
+		if def.Name == "" {
+			t.Errorf("%s: missing name", f)
+		}
+		if def.SystemPrompt == "" {
+			t.Errorf("%s: missing system_prompt", f)
+		}
+		if def.Name != "" {
+			wantNames[def.Name] = true
+		}
+		for _, s := range def.RequiredSkills {
+			if s == "" {
+				t.Errorf("%s: blank entry in required_skills", f)
+			}
+		}
+	}
+
+	// The three expected example personas must all be present.
+	for name, seen := range wantNames {
+		if !seen {
+			t.Errorf("expected example persona %q not found in %s", name, examplesDir)
+		}
 	}
 }

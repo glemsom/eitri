@@ -28,7 +28,9 @@ The optional `--persona` flag overrides the active persona for the batch run onl
 2. `active_persona` in `config.json` — persistent per-workspace persona
 3. `"generic"` fallback — built-in default when neither is set
 
-The persona is resolved from the workspace `.eitri/personas/` directory, falling back to `~/.eitri/personas/`. If the persona file does not exist, the run fails with a clear error.
+The persona is resolved from the **user-level** home directory only — `~/.eitri/personas/<name>.yaml`. Personas are never workspace-scoped (the runner ignores a workspace `.eitri/personas/` directory — unlike skills, which do support workspace overrides; see ADR-0018), and unlike the config file they do not follow `$EITRI_DIR`. If the persona file does not exist, the run fails with a clear error.
+
+Adaptable **example** personas for the review-gated agent loop (`code-build`, `code-test`, `code-review`) ship under `docs/personas/` — copy one to `~/.eitri/personas/<name>.yaml` and edit it to fit your project. They are templates, not auto-installed.
 
 ## How it works
 
