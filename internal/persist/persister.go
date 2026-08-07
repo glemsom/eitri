@@ -240,12 +240,48 @@ func (p *Persister) LoadTimeline(sessionID, filename string) (*timeline.Timeline
 	return &tl, nil
 }
 
+// sessionSnapshotFile returns the on-disk path of a session's session.json
+// snapshot file.
+func (p *Persister) sessionSnapshotFile(sessionID string) string {
+	return filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
+}
+
+// sessionExistsOnDisk reports whether the session has a session.json snapshot
+// on disk. A session whose session.json is gone has been permanently deleted:
+// this is the single owner of that check, used by the snapshot loader and every
+// trace save / flush / query site (issue #1237).
+//
+// The check is IsNotExist-aware: it returns (true, nil) when the snapshot
+// exists, (false, nil) when it does not, and (false, err) for any other stat
+// failure. A session whose snapshot cannot be examined (e.g. EACCES, ENOTDIR)
+// is NOT reported as deleted — callers surface the error as they did before
+// the consolidation.
+func (p *Persister) sessionExistsOnDisk(sessionID string) (bool, error) {
+	_, err := os.Stat(p.sessionSnapshotFile(sessionID))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 // readSessionSnapshot returns the raw bytes of a session's session.json
 // snapshot file. Returns nil, nil when no snapshot exists for the session.
 func (p *Persister) readSessionSnapshot(sessionID string) ([]byte, error) {
-	sessionFile := filepath.Join(p.rootDir, "sessions", sessionID, "session.json")
+	sessionFile := p.sessionSnapshotFile(sessionID)
+	exists, err := p.sessionExistsOnDisk(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read session file %s: %w", sessionFile, err)
+	}
+	if !exists {
+		return nil, nil
+	}
 	data, err := os.ReadFile(sessionFile)
 	if err != nil {
+		// Narrow race: the snapshot can disappear between the existence check
+		// and the read — that still means "no session" (pre-#1237 semantics).
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
@@ -445,13 +481,16 @@ func (p *Persister) SnapshotSession(sessionID string, s *session.UISession) erro
 // archived trace.
 func (p *Persister) SaveTrace(sessionID string, trace *debug.HTTPTrace) error {
 	// If session.json is gone the session was permanently deleted — do not
-	// recreate the directory by writing a trace.
-	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
-	sessionFile := filepath.Join(sessionDir, "session.json")
-	if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
+	// recreate the directory by writing a trace. Only a definitive
+	// "does not exist" skips the write; any other stat failure falls through
+	// so the write path surfaces the underlying I/O error (pre-#1237
+	// behaviour).
+	exists, err := p.sessionExistsOnDisk(sessionID)
+	if err == nil && !exists {
 		return nil
 	}
 
+	sessionDir := filepath.Join(p.rootDir, "sessions", sessionID)
 	tracesDir := filepath.Join(sessionDir, "traces")
 	if err := os.MkdirAll(tracesDir, 0700); err != nil {
 		return fmt.Errorf("cannot create traces dir %s: %w", tracesDir, err)
@@ -558,8 +597,8 @@ func (p *Persister) Flush(sessions []*session.UISession, traces []*debug.HTTPTra
 		// If the session isn't live and its session.json is gone,
 		// the session was permanently deleted — skip its traces.
 		if !liveIDs[trace.SessionID] {
-			sessionFile := filepath.Join(p.rootDir, "sessions", trace.SessionID, "session.json")
-			if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
+			exists, err := p.sessionExistsOnDisk(trace.SessionID)
+			if err == nil && !exists {
 				continue
 			}
 		}
@@ -736,8 +775,8 @@ func (p *Persister) Prune() error {
 // In the new single-file format, it's just <dir>/session.json.
 // For backward compatibility, if session.json is a symlink (old format),
 // it resolves the symlink to find the actual file.
-func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
-	sessionFile := filepath.Join(sessionsDir, sessionID, "session.json")
+func (p *Persister) sessionSnapshotPath(sessionID string) (string, error) {
+	sessionFile := p.sessionSnapshotFile(sessionID)
 	info, err := os.Lstat(sessionFile)
 	if err != nil {
 		return "", err
@@ -748,7 +787,7 @@ func sessionSnapshotPath(sessionsDir, sessionID string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		resolved := filepath.Join(sessionsDir, sessionID, target)
+		resolved := filepath.Join(p.rootDir, "sessions", sessionID, target)
 		return resolved, nil
 	}
 	return sessionFile, nil
@@ -791,7 +830,7 @@ func (p *Persister) Restore() (*RestoredState, error) {
 		sessionID := entry.Name()
 
 		// --- Restore session snapshot ---
-		snapshotPath, err := sessionSnapshotPath(sessionsDir, sessionID)
+		snapshotPath, err := p.sessionSnapshotPath(sessionID)
 		if err != nil {
 			if os.IsNotExist(err) {
 				// No session.json — try old-format history as fallback

@@ -139,12 +139,15 @@ func (p *Persister) scanTraces(filter TraceFilter) ([]*debug.HTTPTrace, error) {
 	for _, sessionID := range sessionDirs {
 		sessionDir := filepath.Join(sessionsDir, sessionID)
 		// Deleted sessions have no session.json — their traces must not be
-		// resurrected by queries (mirrors Restore and SaveTrace).
-		if _, err := os.Stat(filepath.Join(sessionDir, "session.json")); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
+		// resurrected by queries (single owner: sessionExistsOnDisk, mirrors
+		// Restore and SaveTrace). A stat error that is not "does not exist"
+		// is surfaced, not treated as deletion (pre-#1237 behaviour).
+		exists, err := p.sessionExistsOnDisk(sessionID)
+		if err != nil {
 			return nil, fmt.Errorf("cannot stat session file for %s: %w", sessionID, err)
+		}
+		if !exists {
+			continue
 		}
 
 		tracesDir := filepath.Join(sessionDir, "traces")
