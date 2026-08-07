@@ -369,7 +369,7 @@ func Base(title string, chatPath string, sessions []*session.UISession, activeID
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\"><!-- PWA meta tags --><meta name=\"theme-color\" content=\"#1a1a2e\" media=\"(prefers-color-scheme: dark)\"><meta name=\"theme-color\" content=\"#f5f5f7\" media=\"(prefers-color-scheme: light)\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-title\" content=\"Eitri\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" sizes=\"192x192\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\"><!-- PWA meta tags --><meta name=\"theme-color\" content=\"#0d0d12\" media=\"(prefers-color-scheme: dark)\"><meta name=\"theme-color\" content=\"#f5f5f7\" media=\"(prefers-color-scheme: light)\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-title\" content=\"Eitri\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" sizes=\"192x192\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -94,16 +94,16 @@ func TestBrowser_DarkThemeDefault(t *testing.T) {
 		); err != nil {
 			return false
 		}
-		return bgColor == "#1a1a2e" && textColor == "#e0e0e0"
+		return bgColor == "#0d0d12" && textColor == "#e8e8ea"
 	})
 
 	// Verify dark theme CSS variables are applied
 	// Dark theme values from eitri.css
-	if bgColor != "#1a1a2e" {
-		t.Errorf("--bg = %q, want %q", bgColor, "#1a1a2e")
+	if bgColor != "#0d0d12" {
+		t.Errorf("--bg = %q, want %q", bgColor, "#0d0d12")
 	}
-	if textColor != "#e0e0e0" {
-		t.Errorf("--text = %q, want %q", textColor, "#e0e0e0")
+	if textColor != "#e8e8ea" {
+		t.Errorf("--text = %q, want %q", textColor, "#e8e8ea")
 	}
 }
 

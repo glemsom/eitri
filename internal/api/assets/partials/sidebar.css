@@ -21,6 +21,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Distinct panel tint — sessions section sits on the base surface. */
+  background: var(--surface);
 }
 
 #session-tabs {
@@ -100,6 +102,8 @@
   flex: 0 0 auto;
   max-height: 260px;
   min-height: 0;
+  /* Distinct panel tint — tools section one step off the sessions base. */
+  background: color-mix(in srgb, var(--surface-alt) 35%, var(--surface));
 }
 
 #thinking-panel {
@@ -108,6 +112,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Distinct panel tint — thinking section a further step toward --surface-alt. */
+  background: color-mix(in srgb, var(--surface-alt) 55%, var(--surface));
 }
 
 .sidebar-divider {
