@@ -18,7 +18,6 @@ import (
 	"github.com/glemsom/eitri/internal/skills"
 	"github.com/glemsom/eitri/internal/timeline"
 	"github.com/glemsom/eitri/internal/tool"
-	"github.com/glemsom/eitri/internal/uixt"
 )
 
 // subAgentStatus tracks the lifecycle of a sub-agent task.
@@ -303,49 +302,44 @@ func (s *RunService) SpawnSubAgent(ctx context.Context, sessionID, task string, 
 		record.Result, record.TurnCount = extractSubAgentResult(req.Messages)
 
 		if runErr != nil {
-			// Cancellation / context deadline — terminal snapshot is idle,
-			// matching the UI path's cancelled exit.
-			if subCtx.Err() != nil || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+			// Terminal status and termination reason come from the single exit
+			// taxonomy shared with the UI and batch paths (ADR-0029): idle on
+			// cancellation / max-turns, error on true failure.
+			outcome := classifyRunExit(runErr, subCtx)
+			switch outcome.Termination.Reason {
+			case timeline.TerminationCancelled:
 				record.Status = subAgentCancelled
-				completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationCancelled), &timeline.TimelineTermination{
-					Reason:  timeline.TerminationCancelled,
-					Message: "Run cancelled by user or context deadline exceeded",
-				})
+				completer.terminal(sseState, outcome.Status, outcome.Termination)
 				slog.Info("sub-agent cancelled", slog.String("task_id", taskID))
 				return
-			}
 
-			// Max turns exceeded — same terminal handling as the UI path.
-			var maxTurnsErr *loop.MaxTurnsExceededError
-			if errors.As(runErr, &maxTurnsErr) {
+			case timeline.TerminationMaxTurns:
 				record.Status = subAgentError
 				record.Err = runErr
-				completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationMaxTurns), &timeline.TimelineTermination{
-					Reason:  timeline.TerminationMaxTurns,
-					Message: uixt.MaxTurnsMessage(maxTurnsErr.Limit),
-				})
+				var maxTurnsErr *loop.MaxTurnsExceededError
+				limit := 0
+				if errors.As(runErr, &maxTurnsErr) {
+					limit = maxTurnsErr.Limit
+				}
+				completer.terminal(sseState, outcome.Status, outcome.Termination)
 				slog.Warn("sub-agent max turns exceeded",
 					slog.String("task_id", taskID),
-					slog.Int("limit", maxTurnsErr.Limit),
+					slog.Int("limit", limit),
 				)
 				return
-			}
 
-			record.Status = subAgentError
-			record.Err = runErr
-			completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationError), &timeline.TimelineTermination{
-				Reason:  timeline.TerminationError,
-				Message: runErr.Error(),
-			})
-			slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
-			return
+			default:
+				record.Status = subAgentError
+				record.Err = runErr
+				completer.terminal(sseState, outcome.Status, outcome.Termination)
+				slog.Warn("sub-agent error", slog.String("task_id", taskID), slog.Any("error", runErr))
+				return
+			}
 		}
 
 		record.Status = subAgentCompleted
-		completer.terminal(sseState, runCompleterTerminalStatus(timeline.TerminationCompleted), &timeline.TimelineTermination{
-			Reason:  timeline.TerminationCompleted,
-			Message: "",
-		})
+		outcome := classifyRunExit(nil, subCtx)
+		completer.terminal(sseState, outcome.Status, outcome.Termination)
 		slog.Info("sub-agent completed",
 			slog.String("task_id", taskID),
 			slog.Int("turn_count", record.TurnCount),
