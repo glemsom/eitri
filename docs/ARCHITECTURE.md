@@ -242,7 +242,7 @@ Route contract: `api.Server` registers routes via Go 1.22+ ServeMux. SSE packets
 
 | Template | Purpose |
 |----------|---------|
-| `base.templ` | HTML document shell + embedded pinned assets + browser island scripts. Sidebar is a four-panel flex column: `#session-panel` (sessions list, fixed height), `#tool-activity` (tool activity cards, max 6 entries), `#thinking-panel` (LLM reasoning content, flex-grows), `#context-panel` (context window progress bars) |
+| `base.templ` | HTML document shell + embedded pinned assets + browser island scripts. Sidebar is a four-panel flex column rendered as four visually distinct zones (each carries its own subtle background tint; sentence-case SemiBold panel labels): `#session-panel` (sessions list, fixed height), `#tool-activity` (tool activity cards, max 6 entries), `#thinking-panel` (LLM reasoning content in a readable tinted code panel, flex-grows), `#context-panel` (context window progress bar with a thick, rounded-end track). Session items gain a left-accent border on hover. (#1181) |
 | `chat.templ` | `ChatView` — workspace indicator, setup banner for invalid provider config, message list, input, visible Stop button, completion menu container, SSE target for selected session |
 | `session_tabs.templ` | `SessionTabs` — session list with title, status dot, close button, and new-session button in header |
 | `settings.templ` | `SettingsView` — config form wrapper that composes the per-section sub-templates (profile, provider/auth, model, prompt, limits, compaction, sandbox, diagnostics, browser) |

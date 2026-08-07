@@ -577,11 +577,11 @@ header h1 {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
   font-weight: 600;
   color: var(--text-muted);
   font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: -0.01em;
   flex-shrink: 0;
 }
 
@@ -804,7 +804,7 @@ details.tool-entry-wrapper .tool-result {
   margin: 0.25rem 0.5rem 0.5rem;
   padding: 0.5rem 0.75rem;
   font-family: var(--font-code);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   line-height: 1.5;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -828,6 +828,7 @@ details.tool-entry-wrapper .tool-result {
 
 .session-item:hover {
   background: var(--surface-alt);
+  border-left: 3px solid var(--accent);
 }
 
 .session-item:active {
@@ -2365,9 +2366,10 @@ eitri-composer {
     max-height: 120px;
   }
 
-  .tool-activity-list,
-  .thinking-panel .thinking-content {
-    font-size: 0.78rem;
+  /* Tool activity keeps the 0.82rem hierarchy on compact widths too rather
+     than shrinking below the sidebar's type scale. (issue #1181) */
+  .tool-activity-list {
+    font-size: 0.82rem;
   }
 
   /* Report page: tighter gutters, stacking header chrome, wrapping run
@@ -3213,6 +3215,9 @@ textarea {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  /* Distinct panel tint — context sits one step toward --surface-alt so it
+     reads as its own zone between tools and thinking. (issue #1181) */
+  background: color-mix(in srgb, var(--surface-alt) 20%, var(--surface));
 }
 
 /* eitri-context custom element needs display:block since it defaults to inline */
@@ -3259,15 +3264,15 @@ eitri-context {
 }
 .context-bar {
   flex: 1;
-  height: 8px;
+  height: 10px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 999px;
   overflow: hidden;
   min-width: 60px;
 }
 .context-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 999px;
   transition: width 0.3s ease, background-color 0.3s ease;
   width: 0%;
 }
