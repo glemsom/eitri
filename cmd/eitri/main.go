@@ -323,7 +323,7 @@ func main() {
 		}
 	}
 
-	sessionMgr := session.NewManager(10, workspace)
+	sessionMgr := session.NewManager(10, workspace, session.WithMaxExchanges(cfg.MaxHistory))
 	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 
 	// Restore persisted data from disk before starting the server

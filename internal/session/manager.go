@@ -10,21 +10,44 @@ import (
 	"github.com/glemsom/eitri/internal/message"
 )
 
+// ManagerOption configures a Manager at construction time.
+type ManagerOption func(*Manager)
+
+// WithMaxExchanges sets the per-session exchange-cap sliding window
+// (issue #1239). An exchange begins with a user message and includes all
+// following assistant and tool messages until the next user message. A
+// non-positive value falls back to message.DefaultMaxExchanges (150) —
+// exactly like history.NewSessionManager, so both stores always resolve the
+// same default cap. Without this option the Manager uses the default cap.
+func WithMaxExchanges(maxExchanges int) ManagerOption {
+	return func(m *Manager) {
+		if maxExchanges <= 0 {
+			maxExchanges = message.DefaultMaxExchanges
+		}
+		m.maxExchanges = maxExchanges
+	}
+}
+
 // NewManager creates a session manager with the given cap and default workspace.
 // New sessions will use defaultWorkspace as their initial workspace.
-func NewManager(maxSessions int, defaultWorkspace string) *Manager {
+func NewManager(maxSessions int, defaultWorkspace string, opts ...ManagerOption) *Manager {
 	if maxSessions <= 0 {
 		maxSessions = 10
 	}
-	return &Manager{
+	m := &Manager{
 		metaStore:        make(map[string]*SessionMeta),
 		convoStore:       make(map[string]*Conversation),
 		configStore:      make(map[string]*SessionConfig),
 		browserSessions:  make(map[string][]string),
 		nextSessionNum:   make(map[string]int),
 		maxSessions:      maxSessions,
+		maxExchanges:     message.DefaultMaxExchanges,
 		defaultWorkspace: defaultWorkspace,
 	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
 
 // All returns a copy of all sessions. Used for bulk operations.

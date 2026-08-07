@@ -15,8 +15,11 @@ import (
 const (
 	// DefaultMaxExchanges is the default sliding window cap in exchanges.
 	// An exchange begins with a user message and includes all following
-	// assistant and tool messages until the next user message.
-	DefaultMaxExchanges = 150
+	// assistant and tool messages until the next user message. It aliases
+	// message.DefaultMaxExchanges — the single canonical source — so both the
+	// history store and the canonical session store always resolve to the
+	// same cap (issue #1239).
+	DefaultMaxExchanges = message.DefaultMaxExchanges
 
 	// DefaultSystemPrompt is the fallback system prompt when no persona is active
 	// and no user override is set. It aliases persona.DefaultPrompt — the single

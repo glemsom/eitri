@@ -76,7 +76,7 @@ Key lifecycle: sets up graceful shutdown via `signal.NotifyContext` → notifies
 | `session.go` | `SessionManager` — per-chat LLM conversation history with sliding window cap |
 | `session_test.go` | Unit tests for session lifecycle, history, sliding window |
 
-Stores per-session LLM message history with configurable exchange cap. System prompt stored separately and prepended on reads. Used by `runner` loop to load history before each agent turn. Histories are restored on startup from persisted snapshots via `RestoreHistory`, so they survive server restarts.
+Stores per-session LLM message history with configurable exchange cap. System prompt stored separately and prepended on reads. Used by `runner` loop to load history before each agent turn. Histories are restored on startup from persisted snapshots via `RestoreHistory`, so they survive server restarts. `DefaultMaxExchanges` aliases the single canonical default in `internal/message` (issue #1239), so the history store and the canonical session store always resolve the same cap.
 
 ### `internal/message/` — Shared message types + history→conversation sync
 
@@ -85,8 +85,12 @@ Stores per-session LLM message history with configurable exchange cap. System pr
 | `message.go` | `EitriMessage` / `Message` types and conversion helpers (`ToMessage`, `ToLitellmMessage`, `FromLitellmMessage`) |
 | `sync.go` | `SyncHistoryToConversation`, `StripLeadingSystemMessage` — the history→conversation sync seam (issue #1235): converts a run's LLM history (`[]EitriMessage`, system prompt prepended on reads) into the flat conversation shape (`[]Message`, system prompt stored separately) and strips the leading system message |
 | `sync_test.go` | Unit tests for the sync seam — system-message stripping, tool-call/tool-result mapping, empty history, compacted-message passthrough |
+| `exchange.go` | `DefaultMaxExchanges`, `TrimExchanges`, `RepairPendingToolUse` — the exchange-cap sliding window and pending-tool-use repair as pure functions over the flat `Message` shape (issue #1239): the two history behaviours the canonical session store gains, so both stores are driven to identical trim/repair behaviour before the history store is contracted away |
+| `exchange_test.go` | Unit tests for the exchange-cap sliding window and pending-tool-use repair |
 
 The sync seam is the documented, unit-tested boundary where the two conversation stores meet (issue #1235): the loop's history (history store) and the UI/snapshot conversation (session store) share the flat `Message` shape via this module. `SyncHistoryToConversation` is the single home of the strip-system-message invariant (ADR-0028) — the system prompt is stored separately (`UISession.SystemPrompt` / the history manager's system prompt), so it never appears in a persisted facade's `Messages` list. All run transports (`runCompleter` UI live-sync and `buildUISession`) and manual compaction (`CompactSession`) funnel their UI/snapshot message lists through here.
+
+`exchange.go` holds the exchange-cap sliding window and pending-tool-use repair (issue #1239) as pure functions over the flat canonical `Message` shape: `TrimExchanges` removes the oldest exchanges (a user message plus everything after it until the next user message, keeping the trailing assistant/tool tail — the exact semantics of the history store's trim) when the user-message count exceeds the cap, and `RepairPendingToolUse` closes a trailing unresolved assistant tool call with a synthetic tool error result so a resume never appends a user message after an unclosed tool use. `DefaultMaxExchanges` (150) is the single canonical default; both the history store and the session store resolve to it.
 
 ### `internal/fileutil/` — File path validation and operations
 
@@ -190,16 +194,20 @@ Compaction is salience-aware (`compaction_salience_enabled`, default true): mess
 | `manager.go` | `Manager` lifecycle — construction, CRUD, browser-ownership checks, session cap, disk snapshot loads |
 | `helpers.go` | Internal assemble/split helpers and session ID generation |
 | `metadata.go` | Session metadata mutations — title, status, closed-at timestamps |
-| `conversation.go` | Conversation mutations — messages, components, quick replies, active skills |
+| `conversation.go` | Conversation mutations — messages, components, quick replies, active skills, exchange-cap trim, pending-tool-use repair |
 | `config.go` | Per-session config/workspace |
 | `browser.go` | Browser session ordering and indexing |
 | `child.go` | Parent-child (sub-agent) session management |
 | `ring.go` | Rendered-message-ID dedup ring buffer |
 | `session_test.go` | Unit tests for session lifecycle, browser scoping, message limits |
+| `exchange_test.go` | Unit tests for the exchange-cap sliding window and pending-tool-use repair on the canonical store |
+| `exchange_parity_test.go` | Parity tests driving the canonical store and the LLM-history store through identical inputs |
 
 Replaces inline `UISession` map in early `api.Server`. Server-owned canonical session state: ID, browser_id, title, status (`idle`/`running`/`error`), messages, active skills, timestamps. `api.Server` stores `*session.Manager` and passes session data to templates. Not persisted — server restart loses all sessions.
 
 Session titles derive from the exported `session.TitlePreview` helper (first 31 runes of the latest user message, whitespace-normalized, ellipsis-suffixed when truncated) — exported so headless (batch) runs can derive titles exactly like the UI (issue #1038).
+
+The canonical store enforces the same history behaviours as the LLM-history store (issue #1239): a per-session **exchange-cap sliding window** (default `message.DefaultMaxExchanges` = 150; configured via the `WithMaxExchanges` constructor option — production wires `cfg.MaxHistory` in `cmd/eitri/main.go`) trims the conversation on every append path (`AppendMessage`, `AppendToConversation`) with the exact sliding-window semantics of the history store's trim, and `RepairPendingToolUse` closes a trailing unresolved assistant tool call with a synthetic tool error result before a resume. `ReplaceConversationMessages` does **not** trim — matching the history store's `RestoreHistory` (compaction / per-turn live-sync write-back is never trimmed). Parity tests (`exchange_parity_test.go`) drive both stores through identical operation sequences and assert identical conversation shapes, so the two stores work side by side before the history store is contracted away (umbrella #1231).
 
 ### `internal/persist/` — Session snapshots, traces, and timelines on disk
 
