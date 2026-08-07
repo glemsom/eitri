@@ -62,11 +62,11 @@ func AggregateTraces(traces []*HTTPTrace) *TraceAggregate {
 			agg.Tokens.ReasoningTokens += u.ReasoningTokens
 		}
 	}
-	// TotalTokens mirrors the recorder's metrics aggregation: the sum of the
-	// four components, not each trace's stored total (which may be zero on
-	// traces recorded before provider-usage enrichment).
-	agg.Tokens.TotalTokens = agg.Tokens.PromptTokens + agg.Tokens.CompletionTokens +
-		agg.Tokens.CacheReadTokens + agg.Tokens.CacheWriteTokens
+	// TotalTokens derives through the shared UsageTotals.TokenTotal (issue
+	// #1240) — the sum of the four components, not each trace's stored total
+	// (which may be zero on traces recorded before provider-usage enrichment) —
+	// the same derivation the recorder's metrics snapshot uses.
+	agg.Tokens.TotalTokens = agg.Tokens.TokenTotal()
 	agg.ErrorRate = float64(agg.ErrorCount) / float64(len(traces))
 
 	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })

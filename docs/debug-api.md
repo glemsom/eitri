@@ -155,10 +155,11 @@ curl -sS "$BASE/api/debug/sessions/abc123/http?limit=5" | jq '.traces | length'
 ```
 
 Query parameters: parsed by the same shared trace-filter parser as the
-persisted endpoints (issue #1240): `limit` (default 20, max 100) plus
-`provider_id`, `model`, `from`, `to`, and `offset` — the archive-style
-parameters are accepted and ignored by the in-memory list (the session itself
-comes from the path). Malformed parameters return `400`.
+persisted endpoints (issue #1240): `limit` (no limit parameter = return
+everything the recorder holds for the session; max 100), `provider_id`
+(filters within the session, like `/api/debug/http`), and `model`, `from`,
+`to`, `offset` — accepted and ignored by the in-memory list (the session
+itself comes from the path). Malformed parameters return `400`.
 
 Response shape is identical to `GET /api/debug/http` with `traces` and
 `in_flight` arrays.
@@ -177,7 +178,8 @@ Query parameters:
 
 - `session_id`: filter to one session.
 - `provider_id`: filter by provider (e.g. `opencode_go`, `github_copilot`).
-- `limit`: max traces to return (default 20, max 100).
+- `limit`: max traces to return (no limit parameter = everything the recorder
+  holds; max 100).
 - `model`, `from`, `to`, `offset`: accepted and ignored — the in-memory
   endpoint parses through the same shared trace-filter parser as the
   persisted endpoints (issue #1240) but the recorder list filters only on

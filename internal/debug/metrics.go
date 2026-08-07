@@ -156,6 +156,15 @@ func (u *UsageTotals) HasTokens() bool {
 			u.CacheWriteTokens > 0 || u.TotalTokens > 0)
 }
 
+// TokenTotal derives TotalTokens as the sum of the four usage components, not
+// each trace's stored total (which may be zero on traces recorded before
+// provider-usage enrichment). It is the single owner of the derivation: both
+// aggregation sites — the recorder's per-provider-model metrics snapshot and
+// the window aggregate — compute TotalTokens through it (issue #1240).
+func (u *UsageTotals) TokenTotal() int {
+	return u.PromptTokens + u.CompletionTokens + u.CacheReadTokens + u.CacheWriteTokens
+}
+
 // providerModelKey identifies the per-provider-per-model aggregate.
 type providerModelKey struct {
 	ProviderID string
