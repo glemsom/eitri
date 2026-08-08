@@ -415,6 +415,125 @@ func TestReviewPr(t *testing.T) {
 	}
 }
 
+// TestFindPr verifies that find_pr resolves the issue's own PR by exact
+// head-branch match (`issue-N`) and only falls back to the anchored `Closes #N`
+// body line. It must NOT resolve a parent/umbrella issue to a PR that merely
+// *mentions* `#N` in free text (the regression that made two issues map to one
+// PR and race the same branch, issue #1231). A stub `gh` stands in for
+// `gh pr list --json ...` (its --jq expression is applied with the real jq), so
+// find_pr is exercised exactly as the dispatcher runs it.
+func TestFindPr(t *testing.T) {
+	cases := []struct {
+		name     string
+		prsJSON  string // JSON array emitted by the stub `gh pr list`
+		issueNum string
+		wantPR   string
+	}{
+		{
+			name: "matches by exact head branch issue-N",
+			prsJSON: `[
+  {"number": 11, "headRefName": "issue-7"},
+  {"number": 99, "headRefName": "issue-99"}
+]`,
+			issueNum: "7",
+			wantPR:   "11",
+		},
+		{
+			name: "ignores a free-text #N mention, matches the anchored head branch",
+			// issue #7's own branch must win over an umbrella PR that merely
+			// mentions "for umbrella #7" in its body but lives on issue-999.
+			prsJSON: `[
+  {"number": 999, "headRefName": "issue-999", "body": "splits off from umbrella #7"},
+  {"number": 11, "headRefName": "issue-7", "body": "Closes #7"}
+]`,
+			issueNum: "7",
+			wantPR:   "11",
+		},
+		{
+			name: "does NOT resolve an umbrella issue to a child PR body mention",
+			// the regression (#1231): issue #7 is the umbrella, no PR has head
+			// branch issue-7, but child PR #1254 says "for umbrella #7". Free-text
+			// matching must NOT return it.
+			prsJSON: `[
+  {"number": 1254, "headRefName": "issue-1241", "body": "contract phase for umbrella #7"}
+]`,
+			issueNum: "7",
+			wantPR:   "",
+		},
+		{
+			name: "falls back to anchored Closes #N body when no head-branch match",
+			prsJSON: `[
+  {"number": 42, "headRefName": "fix/history", "body": "Closes #7"}
+]`,
+			issueNum: "7",
+			wantPR:   "42",
+		},
+		{
+			name: "anchored Closes #N does not match a different issue number",
+			prsJSON: `[
+  {"number": 42, "headRefName": "fix/history", "body": "Closes #99"}
+]`,
+			issueNum: "7",
+			wantPR:   "",
+		},
+		{
+			name: "anchored Closes #N rejects a longer number (Closes #72 != #7)",
+			prsJSON: `[
+  {"number": 42, "headRefName": "fix/history", "body": "Closes #72"}
+]`,
+			issueNum: "7",
+			wantPR:   "",
+		},
+		{
+			name: "no open PR yields empty",
+			prsJSON: `[]`,
+			issueNum: "7",
+			wantPR:   "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			shim := t.TempDir()
+			prsFile := filepath.Join(shim, "prs.json")
+			if err := os.WriteFile(prsFile, []byte(tc.prsJSON), 0o644); err != nil {
+				t.Fatalf("write prs.json: %v", err)
+			}
+			// Stub `gh` mirrors `gh pr list --state open --json ... --jq 'expr'`:
+			// it feeds the fixture array to the real jq with the very --jq
+			// expression find_pr passes, so the selection logic under test is the
+			// dispatcher's own, not a reimplementation here.
+			ghStub := `#!/usr/bin/env bash
+set -euo pipefail
+in_jq=0
+jqexpr=""
+for a in "$@"; do
+  if [ "$in_jq" = 1 ]; then jqexpr="$a"; in_jq=0; fi
+  if [ "$a" = "--jq" ]; then in_jq=1; fi
+done
+cat "$GH_PRS_FILE" | jq -r "$jqexpr"
+`
+			writeExecutable(t, filepath.Join(shim, "gh"), ghStub)
+
+			script := `find_pr ` + tc.issueNum
+			cmd := exec.Command("bash", "-c", "source agent-loop.sh; "+script)
+			cmd.Dir = "."
+			cmd.Env = append(os.Environ(),
+				"PATH="+shim+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"GH_PRS_FILE="+prsFile,
+			)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("find_pr failed: %v\n%s", err, out)
+			}
+			got := strings.TrimSpace(string(out))
+			// find_pr prints one number per line from `head -n 1`; assert the first tag
+			if got != tc.wantPR {
+				t.Fatalf("find_pr(%s) = %q, want %q", tc.issueNum, got, tc.wantPR)
+			}
+		})
+	}
+}
+
 // runSourcedBash sources scripts/agent-loop.sh (helper definitions only) then
 // runs the given snippet, returning its stdout.
 func runSourcedBash(t *testing.T, snippet string) string {

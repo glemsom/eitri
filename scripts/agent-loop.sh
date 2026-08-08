@@ -221,8 +221,10 @@ run_persona_batch() {
 # Run the test gate (T4, #1191): run the `code-test` persona as a fresh batch
 # against an issue's worktree/PR and map its outcome to the test gate's verdict.
 # Delegates to run_persona_batch (stage `test`, persona `code-test`); the persona
-# runs the project's tests, decides PASS/REJECT (applying the no-test-suite
-# downgrade when the project builds but has no suite), and writes the currently-
+# run the project's FULL test suite (all `make test*` targets, including
+# `make test-race` and any browser gate), decides PASS/REJECT (applying the
+# no-test-suite downgrade when the project builds but has no suite), and writes
+# the currently-
 # open findings to `$wt/.test.md`. The gate only maps the verdict to
 # PASS / REJECT / hard-fail: code-test `PASS`/`REJECT` pass through; a missing
 # verdict, a non-zero exit, or a non-test verdict (e.g. a stray review verb)
@@ -536,7 +538,10 @@ Step 1:
 - [ ] Create a branch for the implementation
 - [ ] Implement the work described in the GitHub issue using the \`tdd\` skill if possible
 - [ ] Update any relevant documentation
-- [ ] Run \`make test\` and fix any issues found
+- [ ] Build the project (e.g. \`go build ./...\`) and run the tests relevant to
+  your change, fixing any issues found — do NOT run the full suite (all
+  \`make test*\` targets, the race suite, any browser E2E gate); the
+  \`code-test\` gate runs it once after you
 - [ ] Commit and push changes to git
 - [ ] Create a GitHub pull request whose description contains \`Closes #${num}\`
 
@@ -557,8 +562,10 @@ Description: Implement issue #${num} — ${title} (fix round)
 
 Re-enter the build for issue #${num} as a fresh fix round${pr:+ on PR #${pr}}. Close out the currently-open
 handoff findings below, update documentation (including CHANGELOG.md under
-\x60## [Unreleased]\x60), run the tests and fix anything you introduced, then push the new
-commits to the existing PR branch. Do NOT open a second PR and do NOT merge.
+\x60## [Unreleased]\x60), build the project, run the tests relevant to your change and
+fix anything you introduced (do NOT run the full suite — the \x60code-test\x60 gate
+owns it), then push the new commits to the existing PR branch. Do NOT open a
+second PR and do NOT merge.
 
 Read both handoff files in the worktree before touching anything:
 \x60.test.md\x60 and \x60.review.md\x60 (currently-open findings only).
@@ -579,10 +586,12 @@ test_prompt() {
 	local num="$1" title="$2" pr="$3"
 	cat <<EOF
 Verify issue #${num} — ${title}${pr:+ (PR #${pr})}. Identify the project's build and test
-commands, build the project, and run the suite in this worktree. Write the
-currently-open test findings to \x60.test.md\x60, then end your log with EXACTLY one
-final \x60VERDICT: PASS\x60 or \x60VERDICT: REJECT\x60 line (apply the no-test-suite
-downgrade and note it when the project builds but has no suite).
+commands, build the project, and run the FULL suite in this worktree: \x60make test\x60
+plus \x60make test-race\x60 and every other \x60make test*\x60 target the project defines
+(e.g. a browser E2E gate). \x60make test-race\x60 is mandatory when the project has a
+race suite. Write the currently-open test findings to \x60.test.md\x60, then end your
+log with EXACTLY one final \x60VERDICT: PASS\x60 or \x60VERDICT: REJECT\x60 line (apply the
+no-test-suite downgrade and note it when the project builds but has no suite).
 EOF
 }
 
