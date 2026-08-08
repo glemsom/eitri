@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -93,6 +95,81 @@ func TestSessionHistoryManager_History_UnknownSession(t *testing.T) {
 	adapter := NewSessionHistoryManager(mgr, "unknown-session")
 	if msgs := adapter.History(); msgs != nil {
 		t.Errorf("History() = %v, want nil for unknown session", msgs)
+	}
+}
+
+// TestSessionHistoryManager_History_ConcurrentWithAppend is a race-regression
+// test for issue #1241's fix round: History() must read the canonical
+// conversation through a locked copy accessor, never by iterating the live
+// shared reference that the run goroutine keeps appending to. Manual
+// compaction (POST /api/sessions/{id}/compact) calls History() with no
+// active-run guard, so the reader (this goroutine) and the writer (the
+// simulated active run's AppendAssistant/AppendTool) overlap in production.
+// Under -race this test must report no data races; before the fix it fails
+// with a DATA RACE on the shared conversation's slice header and elements.
+func TestSessionHistoryManager_History_ConcurrentWithAppend(t *testing.T) {
+	mgr := uisession.NewManager(100, t.TempDir())
+	sessionID := "race-session-hist"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "start", CreatedAt: time.Now()})
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending assistant/tool messages
+	// via the adapter, exactly what the agent loop does mid-run (issue #1241).
+	// A user message every 10 appends keeps the exchange-cap trim active so
+	// the conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			adapter.AppendAssistant(fmt.Sprintf("reply %d", i), nil)
+			adapter.AppendTool(fmt.Sprintf("call_%d", i), "result", "", false)
+			if i%10 == 0 {
+				mgr.AppendToConversation(sessionID, message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Simulated manual-compaction goroutine: reads the full history with no
+	// active-run guard (handleCompact), overlapping the run's appends.
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			msgs := adapter.History()
+			if msgs != nil {
+				// Walk the result so element reads are exercised.
+				for _, m := range msgs {
+					_ = m.Role
+					_ = m.Content()
+				}
+			}
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// The conversation must still read coherently after the overlap.
+	if got := adapter.History(); got == nil || len(got) < 2 {
+		t.Fatalf("History() = %v, want >= 2 messages (system + user)", got)
 	}
 }
 

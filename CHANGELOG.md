@@ -222,6 +222,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The session-backed history adapter's `History()` no longer reads the live
+  canonical conversation without a lock (issue #1241 fix round): `History()`,
+  the UI snapshot source (`uiSnapshotSource`), and batch run-start's
+  `extractLastMessages` all read the conversation through
+  `session.Manager.CopyConversation` — a snapshot taken under the manager lock
+  — instead of iterating the shared reference returned by
+  `GetConversationShared` after its lock has been released. Manual compaction
+  (`POST /api/sessions/{id}/compact`) calls `History()` with no active-run
+  guard, so the unsynchronized read could overlap the run goroutine's appends
+  to the same message list (a data race: torn reads could drop/duplicate
+  messages in the compactor's output → permanent conversation corruption).
+  Regression coverage: race-detector tests drive `History()`,
+  `uiSnapshotSource`, and `extractLastMessages` concurrently with live
+  appends.
+
 - Fixed a browser-E2E flake class across the final-render tests
   (`TestBrowser_ThinkingRendering`, `TestBrowser_HTMXBeforeEndTargetsMessages`,
   `TestBrowser_ToolCardsInScrollContainer`, and the streaming-markdown finals),

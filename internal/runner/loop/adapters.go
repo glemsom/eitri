@@ -35,9 +35,10 @@ type ConfirmationFunc func(ctx context.Context, sessionID, path, message string)
 
 // HistoryManager abstracts conversation history storage for the agent loop.
 // Two adapters exist: sessionHistoryManager (browser UI path via
-// *history.SessionManager) and requestHistoryManager (headless/direct-messages
-// path via *litellm.Request). Both support ReplaceHistory so auto-compaction
-// can write the compacted history back regardless of the storage backend.
+// *session.Manager, the canonical store — issue #1241) and
+// requestHistoryManager (headless/direct-messages path via *litellm.Request).
+// Both support ReplaceHistory so auto-compaction can write the compacted
+// history back regardless of the storage backend.
 type HistoryManager interface {
 	// History returns the full conversation history with system prompt prepended.
 	History() []message.EitriMessage
@@ -101,11 +102,29 @@ func NewSessionHistoryManager(sessionMgr *uisession.Manager, sessionID string) *
 // prompt is stored separately on the session (never in the message list, the
 // strip-system-message invariant, ADR-0028) and prepended as the leading
 // system message on reads.
+//
+// The conversation is read through Manager.CopyConversation — a snapshot
+// taken under the manager lock — never through the live shared reference
+// (GetConversationShared): manual compaction (CompactSession → History) runs
+// on the API goroutine with no active-run guard, so it can overlap the run
+// goroutine's AppendAssistant/AppendTool appends to the same conversation
+// (issue #1241 fix round). Iterating the live reference without the lock is a
+// data race (torn reads can drop/duplicate messages in the compactor's
+// output); the locked copy is immune.
+//
+// Fidelity note: each canonical message is round-tripped through
+// message.FromLitellm(message.ToLitellmMessage(msg)) so LLM request history
+// stays byte-identical to the old store (the parity test). The round-trip
+// folds ReasoningContent into the content TextBlock ("R\nC") for non-tool
+// assistant messages and drops RawContent — a deliberate fidelity match to
+// the old store, whose LLM history never carried either field. Adapter-written
+// messages carry no reasoning, so the fold only affects messages written by
+// other paths (syncRunResultToUISession, persister-less configs).
 func (m *sessionHistoryManager) History() []message.EitriMessage {
 	if m.sessionMgr == nil {
 		return nil
 	}
-	convo := m.sessionMgr.GetConversationShared(m.sessionID)
+	convo := m.sessionMgr.CopyConversation(m.sessionID)
 	if convo == nil {
 		return nil
 	}

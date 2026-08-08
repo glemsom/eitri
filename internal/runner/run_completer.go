@@ -180,12 +180,16 @@ func (c *runCompleter) persistSource(status uisession.Status, source func(status
 // the full UI-session fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs)
 // that the history-derived facade omits. Returns nil when the UI session is
 // unavailable or the conversation has no messages yet.
+//
+// The presence check reads a locked copy (CopyConversation), never the live
+// shared reference: manual compaction can replace the conversation's message
+// list concurrently with a per-turn snapshot (issue #1241 fix round).
 func (c *runCompleter) uiSnapshotSource(status uisession.Status) *uisession.UISession {
 	svc := c.svc
 	if svc.uiSessionMgr == nil {
 		return nil
 	}
-	convo := svc.uiSessionMgr.GetConversationShared(c.id)
+	convo := svc.uiSessionMgr.CopyConversation(c.id)
 	if convo == nil || len(convo.Messages) == 0 {
 		return nil
 	}

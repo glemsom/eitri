@@ -300,8 +300,12 @@ func (b *batchStreamer) closeThinking() {
 // extractLastMessages extracts the last user and assistant messages from the
 // canonical conversation store for the given session ID. Returns empty strings
 // if no messages of that role are found.
+//
+// The conversation is read through a locked copy (CopyConversation), never the
+// live shared reference: the conversation may be appended to by a concurrent
+// run while the batch run-start reads it (issue #1241 fix round).
 func extractLastMessages(sessionMgr *uisession.Manager, sessionID string) (lastUser, lastAssistant string) {
-	convo := sessionMgr.GetConversationShared(sessionID)
+	convo := sessionMgr.CopyConversation(sessionID)
 	if convo == nil {
 		return "", ""
 	}

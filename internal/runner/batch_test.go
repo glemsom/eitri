@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -578,6 +579,87 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 	if asst != "second answer" {
 		t.Fatalf("expected assistant='second answer', got %q", asst)
+	}
+}
+
+// TestExtractLastMessages_ConcurrentWithAppend is a race-regression test for
+// issue #1241's fix round: extractLastMessages reads the canonical
+// conversation, so it must read a locked copy rather than iterate the live
+// shared reference a concurrent run keeps appending to. Under -race this test
+// must report no data races.
+func TestExtractLastMessages_ConcurrentWithAppend(t *testing.T) {
+	mgr := uisession.NewManager(100, t.TempDir())
+	seedSession(t, mgr, "test-session", "", "start")
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending to the canonical
+	// conversation (the loop's session-backed history adapter path). A user
+	// message every 10 appends keeps the exchange-cap trim active so the
+	// conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			mgr.AppendToConversation("test-session", message.Message{
+				Role: "assistant", Content: fmt.Sprintf("reply %d", i), CreatedAt: time.Now(),
+			})
+			if i%10 == 0 {
+				mgr.AppendToConversation("test-session", message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Reader goroutine: batch run-start extracts last user/assistant messages
+	// while the run is active elsewhere on the same session.
+	//
+	// The primary gate for the unsynchronized access is the race detector; the
+	// read-side invariant we assert here is that a user message is always
+	// present (the seeded "start" message plus the writer's periodic user
+	// appends survive the exchange-cap trim — it keeps the trailing user
+	// tail). An empty assistant is legitimate at the very start, before the
+	// writer's first append, so only the user side is counted.
+	var emptyUser int32
+	var reads int64
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			user, _ := extractLastMessages(mgr, "test-session")
+			atomic.AddInt64(&reads, 1)
+			if user == "" {
+				atomic.AddInt32(&emptyUser, 1)
+			}
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	if atomic.LoadInt64(&reads) == 0 {
+		t.Fatal("reader goroutine never ran")
+	}
+	if empty := atomic.LoadInt32(&emptyUser); empty > 0 {
+		t.Errorf("extractLastMessages returned empty user in %d reads", empty)
+	}
+	// After the overlap the conversation certainly holds assistant replies.
+	if _, asst := extractLastMessages(mgr, "test-session"); asst == "" {
+		t.Error("extractLastMessages returned empty assistant after overlapping appends")
 	}
 }
 

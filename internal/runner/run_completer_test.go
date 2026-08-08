@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -266,6 +267,82 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	}
 	if len(snap.Messages) != 2 || snap.Messages[0].Content != "Do the work" || snap.Messages[1].Content != "Mid-run reply." {
 		t.Errorf("snapshot Messages = %+v, want live history (user + assistant)", snap.Messages)
+	}
+}
+
+// TestRunCompleter_UISnapshotSource_ConcurrentWithAppend is a race-regression
+// test for issue #1241's fix round: uiSnapshotSource reads the canonical
+// conversation's length, so it must read a locked copy rather than touch the
+// live shared reference a concurrent run keeps appending to. Under -race this
+// test must report no data races.
+func TestRunCompleter_UISnapshotSource_ConcurrentWithAppend(t *testing.T) {
+	uiMgr := uisession.NewManager(100, t.TempDir())
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr: uiMgr,
+	})
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Do the work", CreatedAt: time.Now()})
+
+	c := &runCompleter{
+		svc:        svc,
+		historyMgr: loop.NewSessionHistoryManager(uiMgr, sess.ID),
+		id:         sess.ID,
+		cfg:        RunConfig{},
+	}
+	c.snapshotSource = c.uiSnapshotSource
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending to the canonical
+	// conversation (the loop's session-backed history adapter path). A user
+	// message every 10 appends keeps the exchange-cap trim active so the
+	// conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			uiMgr.AppendToConversation(sess.ID, message.Message{
+				Role: "assistant", Content: fmt.Sprintf("reply %d", i), CreatedAt: time.Now(),
+			})
+			if i%10 == 0 {
+				uiMgr.AppendToConversation(sess.ID, message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Reader goroutine: per-turn snapshotting overlaps the run's appends.
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			c.snapshotSource(uisession.StatusRunning)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// The snapshot source must still return a session after the overlap.
+	if snap := c.snapshotSource(uisession.StatusIdle); snap == nil {
+		t.Fatal("uiSnapshotSource returned nil after overlapping appends")
 	}
 }
 
