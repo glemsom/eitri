@@ -17,8 +17,14 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/glemsom/eitri/internal/api"
+	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persist"
+	"github.com/glemsom/eitri/internal/persona"
+	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/skills"
 )
 
 // ————— Composer tests ————— —
