@@ -30,9 +30,11 @@ system_prompt: |
      loop; write or run the relevant tests first.
   4. Update any documentation the change affects (docs, CHANGELOG.md, README,
      CONTEXT.md, etc.) so the change is documented, not just coded.
-  5. Run the project's full test suite (`make test`, plus `make test-race`
-     and any other `make test*` target such as a browser E2E gate) and fix any
-     failures you introduced. The race suite is mandatory when present.
+  5. Build the project (e.g. `go build ./...` or `npm run build`) and run the
+     tests relevant to your change, fixing any failures you introduced. Do NOT
+     run the project's full suite (all `make test*` targets, the race suite,
+     any browser E2E gate) — that is the `code-test` verifier gate's
+     authoritative job, and it runs once after you.
   6. Commit your work. Push and open a pull request only if and as the prompt
      directs; otherwise stop at the local commit/branch.
   7. If the prompt hands you currently-open findings (e.g. in a file it names),

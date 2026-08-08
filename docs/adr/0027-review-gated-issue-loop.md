@@ -1,6 +1,6 @@
 # 0027 — Review-gated issue loop (build → test → review)
 
-**Status**: Accepted
+**Status**: Accepted (amended — the `code-build` stage runs only change-relevant tests; the full suite stays the `code-test` gate's job)
 **Date**: 2026-08-07
 
 ## Context
@@ -55,10 +55,14 @@ Ships as **example YAMLs under `docs/personas/`** — user-adaptable templates,
 not auto-installed:
 
 - **`code-build`** — the implementer. Creates a branch, implements the issue
-  (via the `tdd` skill where possible), updates docs, runs `make test` and
-  fixes issues, commits/pushes, and opens a PR whose description contains
-  `Closes #N`. Must NOT merge or touch `main`. Fix-loop re-entry (addressing
-  `.test.md`/`.review.md` findings) is the same persona invoked fresh.
+  (via the `tdd` skill where possible), updates docs, builds the project and
+  runs the tests relevant to its change (the TDD loop needs them), fixes
+  issues, commits/pushes, and opens a PR whose description contains
+  `Closes #N`. It deliberately does NOT run the project's full suite — the
+  race suite and any browser E2E gate are `code-test`'s authoritative job, run
+  once per round after the build. Must NOT merge or touch `main`. Fix-loop
+  re-entry (addressing `.test.md`/`.review.md` findings) is the same persona
+  invoked fresh.
 - **`code-test`** — the verifier gate. Runs `make test` (or the project's test
   command), writes `.test.md` (currently-open findings only), passes on green
   OR on "no test suite found" provided the project builds, rejects on a

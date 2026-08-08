@@ -538,9 +538,10 @@ Step 1:
 - [ ] Create a branch for the implementation
 - [ ] Implement the work described in the GitHub issue using the \`tdd\` skill if possible
 - [ ] Update any relevant documentation
-- [ ] Run the project's full test suite — \`make test\` plus \`make test-race\`
-  and any other \`make test*\` target the project defines (e.g. a browser E2E
-  gate) — and fix any issues found
+- [ ] Build the project (e.g. \`go build ./...\`) and run the tests relevant to
+  your change, fixing any issues found — do NOT run the full suite (all
+  \`make test*\` targets, the race suite, any browser E2E gate); the
+  \`code-test\` gate runs it once after you
 - [ ] Commit and push changes to git
 - [ ] Create a GitHub pull request whose description contains \`Closes #${num}\`
 
@@ -561,8 +562,10 @@ Description: Implement issue #${num} — ${title} (fix round)
 
 Re-enter the build for issue #${num} as a fresh fix round${pr:+ on PR #${pr}}. Close out the currently-open
 handoff findings below, update documentation (including CHANGELOG.md under
-\x60## [Unreleased]\x60), run the tests and fix anything you introduced, then push the new
-commits to the existing PR branch. Do NOT open a second PR and do NOT merge.
+\x60## [Unreleased]\x60), build the project, run the tests relevant to your change and
+fix anything you introduced (do NOT run the full suite — the \x60code-test\x60 gate
+owns it), then push the new commits to the existing PR branch. Do NOT open a
+second PR and do NOT merge.
 
 Read both handoff files in the worktree before touching anything:
 \x60.test.md\x60 and \x60.review.md\x60 (currently-open findings only).

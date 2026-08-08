@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The agent-loop's `code-build` stage no longer runs the project's full test
+  suite (`make test-race`, browser E2E gate, etc.) before opening a PR: it now
+  builds the project and runs only the tests relevant to its change (the TDD
+  loop), leaving the authoritative full suite to the `code-test` gate, which
+  runs it once per round. The `build_prompt`/`build_fix_prompt` prompts in
+  `scripts/agent-loop.sh`, the `code-build` example persona
+  (`docs/personas/code-build.yaml`), and ADR-0027 are updated to match;
+  `code-test` and the test gate are unchanged.
+
 - The canonical UI session store (`internal/session`) gains the two history
   behaviours only the old LLM-history store had (issue #1239): the
   **exchange-cap sliding window** and **pending-tool-use repair**. The shared
