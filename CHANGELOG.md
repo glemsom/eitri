@@ -172,8 +172,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gone — the canonical store IS the run's history). LLM request history is
   byte-identical (a parity test drives the new adapter against the old history
   store through identical operation sequences), and snapshot/report tests pass
-  unchanged. The old `internal/history` store remains only for the parity
-  tests until it is contracted away (umbrella #1231, issue #1242).
+  unchanged. One deliberate fidelity caveat: the read-side round-trip folds
+  `ReasoningContent` written into the canonical store by other paths
+  (`syncRunResultToUISession`, persister-less configs only) into the content
+  `TextBlock` ("R\nC") and drops `RawContent` — a match to the old store,
+  whose LLM history never carried either field; adapter-written messages carry
+  no reasoning, so the fold never affects ordinary UI/batch runs. The old
+  `internal/history` store remains only for the parity tests until it is
+  contracted away (umbrella #1231, issue #1242).
 
 - Trace aggregation now has a single owner (issue #1240): the window-aggregate fold (count, error count/rate, p50/p95 latency, token totals, window bounds) that the persisted archive aggregate endpoint returns is implemented once — `debug.AggregateTraces` in the new `internal/debug/aggregate.go` — and `Persister.AggregateTraces` delegates to it instead of re-implementing the fold on disk (its previous `aggregateTraces` explicitly "mirrored the recorder's metrics"). All debug trace endpoints now parse their filter parameters (session/provider/model/time/limit/offset) through one shared parser, so the in-memory recorder lists (`/api/debug/http` and `/api/debug/sessions/{id}/http`) accept the same parameter surface as the persisted endpoints (`model`/`from`/`to`/`offset` are accepted and ignored by the in-memory lists, which filter only on session/provider/limit) and reject malformed parameters with `400` exactly like the archive endpoints. The derived token total (the sum of the four usage components, not each trace's stored total) is likewise single-owned — `UsageTotals.TokenTotal` — used by both the recorder's metrics snapshot and the window aggregate. `/api/debug/metrics` (the recorder's richer per-provider-per-model counters) and `/api/debug/traces/aggregate` return the same data as before; Session Report enrichment is unchanged. The in-memory endpoints' docs now match the code: `limit` defaults to no limit (everything the recorder holds, capped at 100) and `provider_id` filters within the path session on `/api/debug/sessions/{id}/http`.
 
@@ -221,6 +227,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make test` and `make test-race` now print a single compact verdict line (packages passed/failed, failing test names, and DATA RACE warnings with `-race`) plus only the failing tests' error excerpts, instead of one boilerplate line per package. Full raw output is teed to `dist/test-output.log` / `dist/test-race-output.log` for on-demand grepping, and the exit code mirrors `go test`. (#1032, #1033)
 
 ### Fixed
+
+- The session-backed history adapter's `History()` filters UI-only **empty
+  assistant placeholders** out of LLM request history (issue #1241 AC2):
+  `session.Manager.AppendComponent`/`SetQuickReplies` append a bare
+  `{role:"assistant"}` placeholder into the canonical store whenever the last
+  conversation message is not an assistant message — which happens on the
+  second and subsequent component-emitting tool calls of a turn (component
+  emission runs before `AppendTool`, so the previous tool result is last). The
+  old LLM-history store never carried these placeholders, so unfiltered they
+  reached the next turn's LLM request as content-less `{"role":"assistant"}`
+  messages — the exact shape providers reject (the old store's
+  `AppendAssistant` and the loop's turn-end guard both skip empty assistant
+  messages). `History()` now drops assistant messages with no content and no
+  tool calls on read (the canonical store keeps them as UI component targets;
+  because compaction reads and rewrites the conversation through this
+  LLM-view `History()`, a compaction also drops the empty placeholder
+  scaffolding — components attached to real assistant messages survive); the
+  parity test's operation sequence is unaffected. Regression coverage: a
+  unit test drives a component-emitting multi-tool turn through the adapter
+  and asserts no empty assistant reaches `History()`, and a loop-level test
+  runs the turn through `RunAgent` and asserts the next LLM request contains
+  no empty assistant message.
 
 - The session-backed history adapter's `History()` no longer reads the live
   canonical conversation without a lock (issue #1241 fix round): `History()`,

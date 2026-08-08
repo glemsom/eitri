@@ -795,6 +795,105 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	}
 }
 
+// TestRunAgent_ComponentEmissionTurn_NextLLMRequestHasNoEmptyAssistant is the
+// AC2 regression test for issue #1241: a component-emitting multi-tool turn
+// (which creates empty assistant placeholders in the canonical store via
+// session.Manager.AppendComponent/SetQuickReplies) must not leak those
+// placeholders into the next turn's LLM request. The parity test only drives
+// the adapter's own API and cannot catch this — only a real loop run exercises
+// the tool-execution path where component emission runs before AppendTool.
+func TestRunAgent_ComponentEmissionTurn_NextLLMRequestHasNoEmptyAssistant(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	var mu sync.Mutex
+	var secondTurnReq *litellm.Request
+	client := newMockClientWithRequestHook([]mockTurn{
+		{
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`),
+				buildMockToolCall("call_2", "render_mermaid_diagram", `{"code":"graph TD; C-->D;"}`),
+			},
+		},
+		{tokens: []tokenEvent{{content: "done"}}},
+	}, func(turn int, req *litellm.Request) error {
+		if turn == 1 {
+			mu.Lock()
+			secondTurnReq = req
+			mu.Unlock()
+		}
+		return nil
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_mermaid_diagram",
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("Rendered MermaidDiagram")), nil
+		},
+	})
+
+	sessionMgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-comp-turn"
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "render two diagrams", CreatedAt: time.Now()})
+
+	req := &litellm.Request{Model: "test-model"}
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, RunOpts{
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  sessionMgr,
+		SessionID:     sessionID,
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	mu.Lock()
+	captured := secondTurnReq
+	mu.Unlock()
+	if captured == nil {
+		t.Fatal("second-turn LLM request was not captured")
+	}
+
+	// The canonical store retains the UI placeholder (it is the component
+	// target) — the filter is read-side only.
+	convo := sessionMgr.GetConversationShared(sessionID)
+	placeholderFound := false
+	for _, msg := range convo.Messages {
+		if msg.Role == "assistant" && msg.Content == "" && len(msg.ToolCalls) == 0 {
+			placeholderFound = true
+			break
+		}
+	}
+	if !placeholderFound {
+		t.Error("test setup: expected an empty assistant placeholder in the canonical store after the component-emitting turn")
+	}
+
+	// The second-turn LLM request must contain no empty assistant message.
+	for i, msg := range captured.Messages {
+		if msg.Role != litellm.Role("assistant") {
+			continue
+		}
+		flat := message.FromLitellmMessage(msg)
+		if flat.Content == "" && len(flat.ToolCalls) == 0 {
+			t.Errorf("second-turn request Messages[%d]: empty assistant placeholder leaked into LLM request", i)
+		}
+	}
+}
+
 func TestRunAgent_ToolExecutionError_IsError(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()

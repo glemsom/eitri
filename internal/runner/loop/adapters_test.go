@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -217,6 +218,76 @@ func TestSessionHistoryManager_AppendAssistant_SkipsEmpty(t *testing.T) {
 	msgs := adapter.History()
 	if len(msgs) != 2 {
 		t.Fatalf("History() has %d messages, want 2 (system + user; empty assistant skipped)", len(msgs))
+	}
+}
+
+// TestSessionHistoryManager_History_FiltersEmptyAssistantPlaceholders guards
+// AC2 for realistic UI runs: session.Manager.AppendComponent/SetQuickReplies
+// append a bare empty assistant placeholder ({Role:"assistant", Content:""})
+// into the canonical store whenever the last conversation message is not an
+// assistant message. In the loop's tool-execution path component emission runs
+// *before* AppendTool, so the second and subsequent component-emitting tool
+// calls of a turn each create such a placeholder after the previous tool
+// result. The old LLM-history store never carried these UI-only placeholders,
+// so the session-backed adapter's History() must filter them on read — left
+// unfiltered they reach the next LLM request as {"role":"assistant"} with no
+// content or tool_calls, which some providers reject.
+func TestSessionHistoryManager_History_FiltersEmptyAssistantPlaceholders(t *testing.T) {
+	t.Parallel()
+	mgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-placeholder"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "render two diagrams", CreatedAt: time.Now()})
+
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+
+	// A turn with two component-emitting tool calls, driven exactly like the
+	// loop: AppendAssistant (assistant with tool calls), then per tool —
+	// AppendComponent *before* AppendTool. The first component attaches to the
+	// assistant message (last is assistant); the second runs after the first
+	// tool result, so AppendComponent creates an empty assistant placeholder.
+	adapter.AppendAssistant("", []litellm.ToolUseBlock{
+		{ID: "call_1", Name: "render_mermaid_diagram", Arguments: json.RawMessage(`{"code":"graph TD; A-->B;"}`)},
+		{ID: "call_2", Name: "render_mermaid_diagram", Arguments: json.RawMessage(`{"code":"graph TD; C-->D;"}`)},
+	})
+	_ = mgr.AppendComponent(sessionID, message.ComponentData{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}})
+	adapter.AppendTool("call_1", "rendered", "", false)
+	_ = mgr.AppendComponent(sessionID, message.ComponentData{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; C-->D;"}})
+	adapter.AppendTool("call_2", "rendered", "", false)
+	// SetQuickReplies after a tool result creates a placeholder too.
+	_ = mgr.SetQuickReplies(sessionID, []string{"yes", "no"})
+
+	// The canonical store must retain the placeholders — they are the UI
+	// component targets, and History() filters on read, never on write.
+	convo := mgr.GetConversationShared(sessionID)
+	placeholderCount := 0
+	for _, msg := range convo.Messages {
+		if msg.Role == "assistant" && msg.Content == "" && len(msg.ToolCalls) == 0 {
+			placeholderCount++
+		}
+	}
+	if placeholderCount == 0 {
+		t.Fatal("test setup: expected empty assistant placeholders in the canonical store")
+	}
+
+	// The LLM request history must not carry them: every assistant message in
+	// History() must have content or tool calls.
+	hist := adapter.History()
+	for i, em := range hist {
+		if em.Role != litellm.Role("assistant") {
+			continue
+		}
+		if em.Content() == "" && len(em.ToolCalls()) == 0 {
+			t.Errorf("History()[%d]: empty assistant placeholder leaked into LLM history (%+v)", i, em)
+		}
+	}
+	// Exact shape after the filtering: system + user + assistant(tool calls) +
+	// the two tool results — no placeholder messages.
+	if len(hist) != 5 {
+		t.Fatalf("History() has %d messages, want 5 (system, user, assistant, tool, tool)", len(hist))
+	}
+	if got := []string{string(hist[0].Role), string(hist[1].Role), string(hist[2].Role), string(hist[3].Role), string(hist[4].Role)}; !slices.Equal(got, []string{"system", "user", "assistant", "tool", "tool"}) {
+		t.Errorf("History() roles = %v, want [system user assistant tool tool]", got)
 	}
 }
 

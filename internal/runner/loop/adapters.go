@@ -120,6 +120,18 @@ func NewSessionHistoryManager(sessionMgr *uisession.Manager, sessionID string) *
 // the old store, whose LLM history never carried either field. Adapter-written
 // messages carry no reasoning, so the fold only affects messages written by
 // other paths (syncRunResultToUISession, persister-less configs).
+//
+// UI-only empty assistant placeholders (created by session.Manager's
+// AppendComponent/SetQuickReplies when the last conversation message is not an
+// assistant message — the second and subsequent component-emitting tool calls
+// of a turn) are filtered out on read: the old LLM-history store never carried
+// them, and they serialise as {"role":"assistant"} with no content or
+// tool_calls, which some providers reject. The filter is read-side — the
+// canonical store keeps the placeholders as the UI component targets; because
+// compaction (auto and manual) reads and rewrites the conversation through
+// this LLM-view History(), a compaction also drops the empty placeholder
+// scaffolding (components attached to real, non-empty assistant messages
+// survive).
 func (m *sessionHistoryManager) History() []message.EitriMessage {
 	if m.sessionMgr == nil {
 		return nil
@@ -148,12 +160,30 @@ func (m *sessionHistoryManager) History() []message.EitriMessage {
 	messages = append(messages, sysMsg)
 	for _, msg := range convo.Messages {
 		em := message.FromLitellm(message.ToLitellmMessage(msg))
+		if isEmptyAssistant(em) {
+			continue
+		}
 		em.CreatedAt = msg.CreatedAt
 		em.Components = msg.Components
 		em.QuickReplies = msg.QuickReplies
 		messages = append(messages, em)
 	}
 	return messages
+}
+
+// isEmptyAssistant reports whether an EitriMessage is a UI-only empty
+// assistant placeholder: assistant role with no text content and no tool
+// calls. These are appended into the canonical store by session.Manager's
+// AppendComponent/SetQuickReplies when the last conversation message is not an
+// assistant message (components need a target to attach to). The old LLM
+// history store never carried them, so the session-backed History() filters
+// them on read (see History's fidelity note). Assistant messages with content
+// or tool calls are never empty and must pass through.
+func isEmptyAssistant(m message.EitriMessage) bool {
+	if m.Role != litellm.Role("assistant") {
+		return false
+	}
+	return m.Content() == "" && len(m.ToolCalls()) == 0
 }
 
 // AppendAssistant appends an assistant message to the canonical conversation.
