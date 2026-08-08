@@ -629,10 +629,25 @@ claim_issues() {
 
 find_pr() {
 	local num="$1"
-	# The open PR whose description references "Closes #num".
-	gh pr list --state open --json number,body,headRefName \
-		--jq ".[] | select(.body != null) | select(.body | test(\"#${num}\\\\b\"; \"i\")) | .number" \
-		2>/dev/null | head -n 1 || true
+	local pr=""
+	# Resolve the open PR for an issue. The worker names its branch
+	# `issue-<num>`, so an exact head-branch match is the unambiguous owner.
+	# On older PRs fall back to the `Closes #num` body line. Free-text `#num`
+	# matching is deliberately NOT used: a PR may mention an unrelated issue as
+	# its umbrella/parent (e.g. "for umbrella #1231") without being that issue's
+	# PR — before this fix that let two issues resolve to one PR and their
+	# workers race the same branch. `Closes #<num>` is safe because it is exactly
+	# the marker the build prompt tells the worker to embed, and umbrella/parent
+	# references never use it.
+	if [ -n "$num" ]; then
+		pr=$(gh pr list --state open --json number,headRefName \
+			--jq ".[] | select(.headRefName == \"issue-${num}\") | .number" 2>/dev/null | head -n 1)
+		if [ -z "$pr" ]; then
+			pr=$(gh pr list --state open --json number,body \
+				--jq ".[] | select(.body != null) | select(.body | test(\"Closes[[:space:]]+#${num}($|[^0-9])\"; \"i\")) | .number" 2>/dev/null | head -n 1)
+		fi
+	fi
+	printf '%s\n' "$pr"
 }
 
 wait_for_rebase_finish() {
@@ -829,6 +844,9 @@ main() {
 			pr=$(find_pr "$num")
 			if [ -z "$pr" ]; then
 				echo "Error: no open PR found for issue #$num — left unmerged/orphaned" >&2
+				# Release the claim so the issue is not stranded as in-progress
+				# (cleanup_stale_claims only clears labels whose worktree is gone).
+				gh issue edit "$num" --remove-label in-progress >/dev/null 2>&1 || true
 				failures=$((failures + 1))
 				continue
 			fi
@@ -836,6 +854,9 @@ main() {
 				# PR not gated for merge — leave it open for a human.
 				echo "Issue #$num: not merging PR #$pr (test=$(latest_verdict "$wt" test) review=$(latest_verdict "$wt" review)) — leaving open for review" >&2
 				gh pr comment "$pr" --body "Dispatcher: merge precondition not met (latest test=$(latest_verdict "$wt" test), latest review=$(latest_verdict "$wt" review)). Needs human review." >/dev/null 2>&1 || true
+				# Release the claim so the issue is not stranded as in-progress
+				# (cleanup_stale_claims only clears labels whose worktree is gone).
+				gh issue edit "$num" --remove-label in-progress >/dev/null 2>&1 || true
 				failures=$((failures + 1))
 				continue
 			fi
