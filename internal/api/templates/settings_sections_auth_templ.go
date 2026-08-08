@@ -75,7 +75,7 @@ func providerSection(cfg *config.Config, deviceFlow *CopilotDeviceFlowView) temp
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<details class=\"settings-details\" open><summary><span>Provider &amp; Authentication</span></summary><div class=\"form-group\"><label for=\"provider\">Provider</label> <select id=\"provider\" name=\"provider\" required><option value=\"opencode_go\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<details class=\"settings-details\"><summary><span>Provider &amp; Authentication</span></summary><div class=\"form-group\"><label for=\"provider\">Provider</label> <select id=\"provider\" name=\"provider\" required><option value=\"opencode_go\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

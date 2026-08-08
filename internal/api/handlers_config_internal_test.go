@@ -226,6 +226,57 @@ func TestWriteSettingsForm_RendersContent(t *testing.T) {
 	}
 }
 
+// TestWriteSettingsForm_SectionsCollapsedByDefault verifies every collapsible
+// settings section renders closed on first load: the Provider & Authentication
+// section is no longer the exception that opens by default, and none of the
+// sections carries an `open` attribute. (issue #1257)
+func TestWriteSettingsForm_SectionsCollapsedByDefault(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+
+	cfg := &config.Config{
+		Provider: "custom_openai",
+		Model:    "gpt-4",
+		BaseURL:  "http://example.com",
+	}
+	models := []string{"gpt-4", "gpt-3.5-turbo"}
+	writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+
+	body := w.Result().Body
+	defer body.Close()
+	content, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read rendered settings form: %v", err)
+	}
+	html := string(content)
+
+	sections := strings.Count(html, `<details class="settings-details"`)
+	if sections != 10 {
+		t.Fatalf("settings page has %d collapsible sections, want 10", sections)
+	}
+	if strings.Contains(html, `<details class="settings-details" open`) {
+		t.Error("a settings section renders with the open attribute — all sections must load collapsed")
+	}
+
+	expected := []string{
+		`<span>Profile</span>`,
+		`Provider &amp; Authentication`,
+		`>Model <span id="model-refresh-spinner"`,
+		"Prompt — ",
+		`Timeouts &amp; Limits`,
+		`<span>Compaction</span>`,
+		`<span>Sandbox</span>`,
+		`Debug &amp; Diagnostics`,
+		`<span>Browser</span>`,
+		`<span>Personas</span>`,
+	}
+	for _, label := range expected {
+		if !strings.Contains(html, label) {
+			t.Errorf("settings page missing %q section", label)
+		}
+	}
+}
+
 func TestLoadConfigState_Defaults(t *testing.T) {
 	srv := newInternalTestServer(t)
 	state := srv.loadConfigState(context.Background())
