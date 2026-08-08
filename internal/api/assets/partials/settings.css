@@ -172,6 +172,15 @@
   box-shadow: var(--shadow-md);
 }
 
+/* Closed sections must genuinely hide their content: Chrome's UA hiding rule
+   for closed <details> is overridden by author rules on descendants such as
+   the .form-group { display: flex } layout rule, which left section bodies
+   visible even when collapsed. Force non-summary children of a closed section
+   to display:none so collapse actually hides the body. (issue #1257) */
+.settings-details:not([open]) > :not(summary) {
+  display: none;
+}
+
 .settings-details summary {
   cursor: pointer;
   color: var(--accent);

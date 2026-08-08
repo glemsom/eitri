@@ -3,6 +3,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 
 // ————— Settings page tests ————— —
 
+// getBrowserConfig reads the persisted config through the public API so tests
+// can assert the server state independently of the browser DOM.
 func getBrowserConfig(t *testing.T, server *httptest.Server) map[string]any {
 	t.Helper()
 	resp, err := http.Get(server.URL + "/api/config")
@@ -33,6 +36,174 @@ func getBrowserConfig(t *testing.T, server *httptest.Server) map[string]any {
 	return cfg
 }
 
+// settingsSectionNames are the collapsible sections on the settings page, in
+// render order, matched by <summary> text prefix. (issue #1257)
+var settingsSectionNames = []string{
+	"Profile",
+	"Provider & Authentication",
+	"Model",
+	"Prompt",
+	"Timeouts & Limits",
+	"Compaction",
+	"Sandbox",
+	"Debug & Diagnostics",
+	"Browser",
+	"Personas",
+}
+
+// settingsSectionJS returns a JS expression that finds the settings <details>
+// section whose <summary> text starts with summaryPrefix.
+func settingsSectionJS(summaryPrefix string) string {
+	return fmt.Sprintf(`
+		(function() {
+			var d = Array.from(document.querySelectorAll('details.settings-details')).find(function(d) {
+				var s = d.querySelector('summary');
+				var t = s ? s.textContent.trim() : '';
+				return t.indexOf(%q) === 0;
+			});
+			return d;
+		})()
+	`, summaryPrefix)
+}
+
+// openSettingsSection expands the settings <details> section containing the
+// element matched by innerSelector (e.g. "#provider"), waiting until that
+// element is visible. Sections now load collapsed, so tests must open the
+// relevant section before interacting with fields inside it. (issue #1257)
+func openSettingsSection(innerSelector string) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		if err := chromedp.Run(ctx,
+			chromedp.WaitReady(innerSelector, chromedp.ByQuery),
+			chromedp.Evaluate(fmt.Sprintf(`
+				(function() {
+					var el = document.querySelector(%q);
+					var d = el ? el.closest('details.settings-details') : null;
+					if (d && !d.open) { d.querySelector('summary').click(); }
+					return !!(d && d.open);
+				})()
+			`, innerSelector), nil),
+		); err != nil {
+			return err
+		}
+		return chromedp.Run(ctx, chromedp.WaitVisible(innerSelector, chromedp.ByQuery))
+	})
+}
+
+// TestBrowser_SettingsSectionsCollapsedByDefault verifies every collapsible
+// settings section (Profile, Provider & Authentication, Model, Prompt,
+// Timeouts & Limits, Compaction, Sandbox, Debug & Diagnostics, Browser,
+// Personas) loads collapsed with its body genuinely hidden (rendered box
+// model, not just the `open` attribute), and that a header click expands the
+// section while a second click collapses it again. (issue #1257)
+func TestBrowser_SettingsSectionsCollapsedByDefault(t *testing.T) {
+	server := newTestServer(t)
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var sections []map[string]any
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`
+			(function() {
+				return Array.from(document.querySelectorAll('details.settings-details')).map(function(d) {
+					var s = d.querySelector('summary');
+					var content = Array.prototype.slice.call(d.children).find(function(c) { return c.tagName !== 'SUMMARY'; });
+					var rect = content ? content.getBoundingClientRect() : null;
+					return {
+						text: s ? s.textContent.trim() : '',
+						open: d.open,
+						contentHidden: !content || (rect.width === 0 && rect.height === 0)
+					};
+				});
+			})()
+		`, &sections),
+	)
+	if err != nil {
+		t.Fatalf("read settings sections: %v", err)
+	}
+
+	if len(sections) != len(settingsSectionNames) {
+		t.Fatalf("settings page has %d collapsible sections, want %d", len(sections), len(settingsSectionNames))
+	}
+	for i, want := range settingsSectionNames {
+		text, _ := sections[i]["text"].(string)
+		if !strings.HasPrefix(text, want) {
+			t.Fatalf("section %d summary = %q, want prefix %q", i, text, want)
+		}
+		if open, _ := sections[i]["open"].(bool); open {
+			t.Errorf("section %q loads open — all settings sections must load collapsed", want)
+		}
+		if hidden, _ := sections[i]["contentHidden"].(bool); !hidden {
+			t.Errorf("section %q body is visible on load — collapsed sections must hide their content", want)
+		}
+	}
+
+	// A header click expands each section; a second click collapses it again.
+	for _, want := range settingsSectionNames {
+		var state map[string]any
+		err := chromedp.Run(ctx,
+			chromedp.Evaluate(fmt.Sprintf(`
+				(function() {
+					var d = %s;
+					if (!d) return false;
+					d.querySelector('summary').click();
+					return true;
+				})()
+			`, settingsSectionJS(want)), nil),
+			chromedp.Sleep(50*time.Millisecond),
+			chromedp.EvaluateAsDevTools(fmt.Sprintf(`
+				(function() {
+					var d = %s;
+					if (!d) return null;
+					var content = Array.prototype.slice.call(d.children).find(function(c) { return c.tagName !== 'SUMMARY'; });
+					var rect = content ? content.getBoundingClientRect() : null;
+					return { open: d.open, contentHidden: !content || (rect.width === 0 && rect.height === 0) };
+				})()
+			`, settingsSectionJS(want)), &state),
+		)
+		if err != nil {
+			t.Fatalf("expand section %q: %v", want, err)
+		}
+		if open, _ := state["open"].(bool); !open {
+			t.Errorf("section %q did not expand on header click", want)
+		}
+		if hidden, _ := state["contentHidden"].(bool); hidden {
+			t.Errorf("section %q body still hidden after header click", want)
+		}
+
+		err = chromedp.Run(ctx,
+			chromedp.Evaluate(fmt.Sprintf(`
+				(function() {
+					var d = %s;
+					if (!d) return false;
+					d.querySelector('summary').click();
+					return true;
+				})()
+			`, settingsSectionJS(want)), nil),
+			chromedp.Sleep(50*time.Millisecond),
+			chromedp.EvaluateAsDevTools(fmt.Sprintf(`
+				(function() {
+					var d = %s;
+					if (!d) return null;
+					var content = Array.prototype.slice.call(d.children).find(function(c) { return c.tagName !== 'SUMMARY'; });
+					var rect = content ? content.getBoundingClientRect() : null;
+					return { open: d.open, contentHidden: !content || (rect.width === 0 && rect.height === 0) };
+				})()
+			`, settingsSectionJS(want)), &state),
+		)
+		if err != nil {
+			t.Fatalf("collapse section %q: %v", want, err)
+		}
+		if open, _ := state["open"].(bool); open {
+			t.Errorf("section %q still open after second header click", want)
+		}
+		if hidden, _ := state["contentHidden"].(bool); !hidden {
+			t.Errorf("section %q body visible after collapsing", want)
+		}
+	}
+}
+
 func TestBrowser_SettingsModelChangeDoesNotAutosave(t *testing.T) {
 	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
 	server := newTestServer(t)
@@ -44,6 +215,7 @@ func TestBrowser_SettingsModelChangeDoesNotAutosave(t *testing.T) {
 	var saveDisabled bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#model"),
 		chromedp.WaitReady("#model option[value='gpt-3.5-turbo']", chromedp.ByQuery),
 		chromedp.Evaluate(`
 			(function() {
@@ -78,6 +250,7 @@ func TestBrowser_SettingsSavePersistsDraftAndClearsDirtyState(t *testing.T) {
 	var saveDisabled bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#model"),
 		chromedp.WaitReady("#model option[value='gpt-3.5-turbo']", chromedp.ByQuery),
 		chromedp.Evaluate(`
 			(function() {
@@ -115,6 +288,7 @@ func TestBrowser_SettingsRevertRestoresSavedConfigWithoutWriting(t *testing.T) {
 	var saveDisabled bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#system_prompt"),
 		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
 		chromedp.SetValue("#system_prompt", "draft prompt", chromedp.ByQuery),
 		chromedp.Click("#settings-revert-btn", chromedp.ByQuery),
@@ -151,6 +325,7 @@ func TestBrowser_SettingsDirtyDraftGuardsNavigation(t *testing.T) {
 	var unloadGuarded bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#system_prompt"),
 		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
 		chromedp.Evaluate(`
 			(function() {
@@ -205,6 +380,7 @@ func TestBrowser_SettingsPage(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
+		openSettingsSection("#provider"),
 		chromedp.Value("#provider", &providerVal, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -229,6 +405,7 @@ func TestBrowser_SettingsFormElements(t *testing.T) {
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#provider", chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools("document.querySelector('#provider') !== null", &providerExists),
 		chromedp.EvaluateAsDevTools("document.querySelector('#api_key') !== null", &apiKeyExists),
@@ -293,6 +470,7 @@ func TestBrowser_SettingsProviderEndpointDraftBehavior(t *testing.T) {
 	var saveDisabled bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#base_url"),
 		chromedp.WaitVisible("#base_url", chromedp.ByQuery),
 		chromedp.Evaluate(`
 			(function() {
@@ -415,6 +593,7 @@ func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
 	var hasGPT35 bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#model"),
 		chromedp.WaitReady("#model option[value='gpt-4']", chromedp.ByQuery),
 		chromedp.EvaluateAsDevTools(
 			`Array.from(document.querySelector('#model').options).map(o => o.value).includes("gpt-4")`,
@@ -447,6 +626,7 @@ func TestBrowser_InitialConfigSavePopulatesModels(t *testing.T) {
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
 		chromedp.Clear("#base_url", chromedp.ByQuery),
@@ -506,6 +686,7 @@ func TestBrowser_ConfigSavePopulatesModels(t *testing.T) {
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#model"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.Evaluate(`
 			(function() {
@@ -574,6 +755,7 @@ func TestBrowser_ConfigSaveProviderFailure(t *testing.T) {
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
 		chromedp.Clear("#base_url", chromedp.ByQuery),
@@ -636,6 +818,7 @@ func TestBrowser_SettingsSaveButtonLoadingState(t *testing.T) {
 	var submitDisabled bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		// Set provider to custom_openai and fill credentials so save will succeed
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
@@ -706,6 +889,7 @@ func TestBrowser_SettingsSaveShowsSuccessIndicator(t *testing.T) {
 	var successText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		// Set provider to custom_openai and fill credentials
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
@@ -736,6 +920,7 @@ func TestBrowser_SettingsSaveErrorAutoScroll(t *testing.T) {
 	var feedbackVisible bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),
 		chromedp.Clear("#base_url", chromedp.ByQuery),
@@ -776,6 +961,8 @@ func TestBrowser_SettingsCtrlEnterSaves(t *testing.T) {
 	var successText string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(server.URL+"/settings"),
+		openSettingsSection("#provider"),
+		openSettingsSection("#system_prompt"),
 		chromedp.WaitVisible("#settings-form", chromedp.ByQuery),
 		// Set up credentials
 		chromedp.SetValue("#provider", "custom_openai", chromedp.ByQuery),

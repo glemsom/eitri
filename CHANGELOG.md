@@ -154,6 +154,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Settings page now loads with every collapsible section — Profile,
+  Provider & Authentication, Model, Prompt, Timeouts & Limits, Compaction,
+  Sandbox, Debug & Diagnostics, Browser, and Personas — **collapsed by
+  default** (#1257). The Provider & Authentication section is no longer the
+  exception that opened on load; clicking a section header expands it and
+  clicking again collapses it. This also fixes a latent rendering bug: an
+  author CSS rule on `.form-group` (the `display: flex` layout rule)
+  overrode the browser's built-in hiding rule for closed `<details>`, so a
+  "closed" section's body was actually still visible in Chrome — the new
+  explicit `display: none` rule for closed `.settings-details` makes collapse
+  genuinely hide the content (verified via the rendered box model, not just
+  the `open` attribute). The skills and sessions pages reuse the same section
+  styling but keep their sections explicitly open; their behaviour is
+  unchanged.
+
 - The loop's session-backed history adapter (`loop.NewSessionHistoryManager`)
   now reads and writes the **canonical session store** (`internal/session`)
   instead of the separate LLM-history store (`internal/history`), for both UI
