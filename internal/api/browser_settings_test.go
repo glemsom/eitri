@@ -403,6 +403,190 @@ func TestBrowser_SettingsProviderEndpointDraftBehavior(t *testing.T) {
 	}
 }
 
+// openSettingsPromptSectionAction opens the Prompt <details> section of the
+// settings page so prompt-field assertions interact with the section regardless
+// of whether settings sections render collapsed by default (issue #1257
+// collapses them; issue #1258's prompt tests rely on the section being open).
+func openSettingsPromptSectionAction() chromedp.Action {
+	return chromedp.Evaluate(`
+		(function() {
+			var ta = document.getElementById('system_prompt');
+			if (!ta) return false;
+			var details = ta.closest('details');
+			if (details && !details.open) details.open = true;
+			return true;
+		})()
+	`, nil)
+}
+
+// TestBrowser_SettingsDefaultPromptPreviewWhenEmpty verifies that an empty
+// prompt field renders the full built-in default prompt read-only below the
+// field with the Reset-to-default button disabled (issue #1258).
+func TestBrowser_SettingsDefaultPromptPreviewWhenEmpty(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var previewText string
+	var resetDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		openSettingsPromptSectionAction(),
+		chromedp.WaitVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.Text("#default-prompt-preview", &previewText, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.getElementById('prompt-reset-btn').disabled`, &resetDisabled),
+	)
+	if err != nil {
+		t.Fatalf("default prompt preview inspection failed: %v", err)
+	}
+	if !strings.Contains(previewText, "You are Eitri, an expert AI coding agent") {
+		t.Fatalf("default prompt preview does not show the built-in default prompt: %q", previewText)
+	}
+	if !resetDisabled {
+		t.Fatal("Reset to default should be disabled when the prompt field is empty")
+	}
+}
+
+// TestBrowser_SettingsDefaultPromptPreviewHidesWithOverride verifies that an
+// existing override hides the default-prompt preview and enables the
+// Reset-to-default button (issue #1258).
+func TestBrowser_SettingsDefaultPromptPreviewHidesWithOverride(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4","system_prompt":"saved override"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var promptValue string
+	var resetDisabled bool
+	var previewHidden bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		openSettingsPromptSectionAction(),
+		chromedp.Value("#system_prompt", &promptValue, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.getElementById('prompt-reset-btn').disabled`, &resetDisabled),
+		chromedp.EvaluateAsDevTools(`document.getElementById('default-prompt-preview').hidden`, &previewHidden),
+	)
+	if err != nil {
+		t.Fatalf("default prompt preview override inspection failed: %v", err)
+	}
+	if promptValue != "saved override" {
+		t.Fatalf("prompt field = %q, want saved override", promptValue)
+	}
+	if resetDisabled {
+		t.Fatal("Reset to default should be enabled when the prompt field has an override")
+	}
+	if !previewHidden {
+		t.Fatal("default prompt preview should be hidden when the prompt field has an override")
+	}
+}
+
+// TestBrowser_SettingsResetToDefaultClearsOverrideAndShowsPreview verifies the
+// live client-side flow: typing an override hides the preview and enables
+// Reset; clicking Reset clears the field (empty = built-in default at run
+// time, not the default text copied in) and re-shows the preview; clearing the
+// text manually re-shows it too — all without a save round-trip (issue #1258).
+func TestBrowser_SettingsResetToDefaultClearsOverrideAndShowsPreview(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	var promptValue string
+	var resetDisabled bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		openSettingsPromptSectionAction(),
+		// Typing an override hides the preview and enables Reset (live, no save).
+		chromedp.SetValue("#system_prompt", "my override", chromedp.ByQuery),
+		chromedp.WaitNotVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.getElementById('prompt-reset-btn').disabled`, &resetDisabled),
+	)
+	if err != nil {
+		t.Fatalf("typing override failed: %v", err)
+	}
+	if resetDisabled {
+		t.Fatal("Reset to default should be enabled while the prompt field has an override")
+	}
+
+	// Reset to default clears the field and re-shows the preview, disabling Reset.
+	err = chromedp.Run(ctx,
+		chromedp.Click("#prompt-reset-btn", chromedp.ByQuery),
+		chromedp.WaitVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.Value("#system_prompt", &promptValue, chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.getElementById('prompt-reset-btn').disabled`, &resetDisabled),
+	)
+	if err != nil {
+		t.Fatalf("reset to default failed: %v", err)
+	}
+	if promptValue != "" {
+		t.Fatalf("prompt after Reset to default = %q, want empty (built-in default at run time)", promptValue)
+	}
+	if !resetDisabled {
+		t.Fatal("Reset to default should be disabled again after clearing the override")
+	}
+
+	// Clearing the text manually re-shows the preview and disables Reset (live).
+	err = chromedp.Run(ctx,
+		chromedp.SetValue("#system_prompt", "another override", chromedp.ByQuery),
+		chromedp.WaitNotVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.Evaluate(`
+			(function() {
+				var ta = document.getElementById('system_prompt');
+				ta.value = '';
+				ta.dispatchEvent(new Event('input', { bubbles: true }));
+			})()
+		`, nil),
+		chromedp.WaitVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.EvaluateAsDevTools(`document.getElementById('prompt-reset-btn').disabled`, &resetDisabled),
+	)
+	if err != nil {
+		t.Fatalf("clearing override manually failed: %v", err)
+	}
+	if !resetDisabled {
+		t.Fatal("Reset to default should be disabled when the field is cleared manually")
+	}
+}
+
+// TestBrowser_SettingsResetToDefaultPersistsOnSave verifies that saving with a
+// reset (empty) prompt field stores no override — empty means the built-in
+// default at run time (issue #1258).
+func TestBrowser_SettingsResetToDefaultPersistsOnSave(t *testing.T) {
+	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"}]}`)
+	server := newTestServer(t)
+	putBrowserConfig(t, server, fmt.Sprintf(`{"provider":"custom_openai","base_url":"%s","api_key":"sk-test","model":"gpt-4","system_prompt":"saved override"}`, fakeProvider.URL))
+
+	ctx, cancel := newBrowserCtx(t, server.URL)
+	defer cancel()
+
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(server.URL+"/settings"),
+		chromedp.WaitVisible("#system_prompt", chromedp.ByQuery),
+		openSettingsPromptSectionAction(),
+		chromedp.Click("#prompt-reset-btn", chromedp.ByQuery),
+		chromedp.WaitVisible("#default-prompt-preview", chromedp.ByQuery),
+		chromedp.Click("button[type=submit]", chromedp.ByQuery),
+		chromedp.WaitVisible(".save-success", chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("reset and save failed: %v", err)
+	}
+
+	cfg := getBrowserConfig(t, server)
+	if cfg["system_prompt"] != "" {
+		t.Fatalf("saved system_prompt after reset = %q, want empty (built-in default at run time)", cfg["system_prompt"])
+	}
+}
+
 func TestBrowser_SettingsDirectNavigationPopulatesModels(t *testing.T) {
 	fakeProvider := fakeProviderServer(t, http.StatusOK, `{"object":"list","data":[{"id":"gpt-4"},{"id":"gpt-3.5-turbo"}]}`)
 	server := newTestServer(t)

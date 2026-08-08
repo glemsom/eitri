@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Settings page's Prompt section now shows the effective built-in default
+  prompt: when the prompt field is empty, the canonical `persona.DefaultPrompt`
+  text is rendered read-only in a scrollable block directly below the field, so
+  the user sees exactly what will be used at run time (issue #1258). A new
+  "Reset to default" button (mirroring the Base URL row's reset pattern)
+  clears any override — enabled only while the field holds an override,
+  disabled when empty. Typing an override hides the preview and enables Reset;
+  clearing the field re-shows the preview and disables it — all live,
+  client-side, without a save. Reset clears the field to empty (empty = the
+  built-in default at run time, so future improvements to the built-in default
+  are inherited automatically); it does not copy the default text into the
+  field. Behaviour with a custom persona active is unchanged — that persona's
+  own prompt still wins at run time.
+
 - The canonical UI session store (`internal/session`) gains the two history
   behaviours only the old LLM-history store had (issue #1239): the
   **exchange-cap sliding window** and **pending-tool-use repair**. The shared

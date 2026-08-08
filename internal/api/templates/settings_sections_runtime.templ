@@ -1,6 +1,9 @@
 package templates
 
-import "github.com/glemsom/eitri/internal/config"
+import (
+	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/persona"
+)
 
 // promptSection renders the system-prompt settings group.
 templ promptSection(cfg *config.Config) {
@@ -14,6 +17,12 @@ templ promptSection(cfg *config.Config) {
 				<small class="char-count" id="prompt-char-count">{ len(cfg.SystemPrompt) } / 4096 chars</small>
 			</div>
 			<small class="hint">The default prompt used when no persona is active, or when the active persona is missing or broken. Editing it updates the generic persona. When a custom persona is active, that persona's own prompt takes precedence.</small>
+
+			<div class="prompt-actions-row">
+				<button type="button" id="prompt-reset-btn" if cfg.SystemPrompt == "" { disabled }>Reset to default</button>
+				<small class="hint">Clears any override — the built-in default prompt below is used at run time.</small>
+			</div>
+			<pre id="default-prompt-preview" class="default-prompt-preview" if cfg.SystemPrompt != "" { hidden }>{ persona.DefaultPrompt }</pre>
 		</div>
 	</details>
 }

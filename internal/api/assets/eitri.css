@@ -2809,6 +2809,31 @@ eitri-composer {
   font-family: var(--font-code);
 }
 
+/* Reset-to-default button row under the prompt field */
+.prompt-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Read-only built-in default prompt preview: scrollable monospace block */
+.default-prompt-preview {
+  font-family: var(--font-code);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text-muted);
+}
+
 /* Form-actions sticky on desktop: scoped to form-actions-sticky so device-flow
    buttons (also .form-actions) do not inherit sticky positioning. */
 @media (min-width: 769px) {
