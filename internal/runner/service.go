@@ -15,7 +15,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/provider"
@@ -52,9 +51,8 @@ func (rs *RunState) finish() {
 type PersistAuthFunc = provider.PersistAuthFunc
 
 type RunServiceDeps struct {
-	UISessionMgr      *uisession.Manager
-	HistorySessionMgr *history.SessionManager
-	SkillsService     *skills.Service
+	UISessionMgr  *uisession.Manager
+	SkillsService *skills.Service
 	// HomeDir is the user home directory used for persona storage
 	// (~/.eitri/personas/). If empty, persona resolution falls back to
 	// os.UserHomeDir(). Tests inject a per-server home dir instead of
@@ -87,16 +85,15 @@ type RunService struct {
 	confirmMu     sync.Mutex
 	confirmations map[string]chan loop.ConfirmationResult // sessionID → confirmation channel
 
-	uiSessionMgr      *uisession.Manager
-	skillsSvc         *skills.Service
-	historySessionMgr *history.SessionManager
-	debugRecorder     *debug.Recorder
-	homeDir           string // persona home directory; empty falls back to os.UserHomeDir()
-	persistAuth       PersistAuthFunc
-	crashDumpFunc     func(err error, stack []byte)
-	persister         *persist.Persister           // optional; writes session snapshots & traces to disk
-	calibrationStore  *tokenizer.CalibrationStore  // optional; per-model CPT calibration
-	newRunIDFn        func(role runJobRole) string // injectable ID generator; nil → runJobID
+	uiSessionMgr     *uisession.Manager
+	skillsSvc        *skills.Service
+	debugRecorder    *debug.Recorder
+	homeDir          string // persona home directory; empty falls back to os.UserHomeDir()
+	persistAuth      PersistAuthFunc
+	crashDumpFunc    func(err error, stack []byte)
+	persister        *persist.Persister           // optional; writes session snapshots & traces to disk
+	calibrationStore *tokenizer.CalibrationStore  // optional; per-model CPT calibration
+	newRunIDFn       func(role runJobRole) string // injectable ID generator; nil → runJobID
 }
 
 const completedRunRetention = 5 * time.Second
@@ -104,19 +101,18 @@ const completedRunRetention = 5 * time.Second
 // NewRunService creates a RunService with the given dependencies.
 func NewRunService(deps RunServiceDeps) *RunService {
 	return &RunService{
-		active:            make(map[string]*RunState),
-		broadcast:         New(),
-		subagents:         newSubagentStore(),
-		confirmations:     make(map[string]chan loop.ConfirmationResult),
-		uiSessionMgr:      deps.UISessionMgr,
-		skillsSvc:         deps.SkillsService,
-		historySessionMgr: deps.HistorySessionMgr,
-		debugRecorder:     deps.DebugRecorder,
-		homeDir:           deps.HomeDir,
-		crashDumpFunc:     deps.CrashDumpFunc,
-		persister:         deps.Persister,
-		calibrationStore:  deps.CalibrationStore,
-		newRunIDFn:        deps.NewRunID,
+		active:           make(map[string]*RunState),
+		broadcast:        New(),
+		subagents:        newSubagentStore(),
+		confirmations:    make(map[string]chan loop.ConfirmationResult),
+		uiSessionMgr:     deps.UISessionMgr,
+		skillsSvc:        deps.SkillsService,
+		debugRecorder:    deps.DebugRecorder,
+		homeDir:          deps.HomeDir,
+		crashDumpFunc:    deps.CrashDumpFunc,
+		persister:        deps.Persister,
+		calibrationStore: deps.CalibrationStore,
+		newRunIDFn:       deps.NewRunID,
 	}
 }
 
@@ -155,11 +151,6 @@ func (s *RunService) SetPersistAuth(fn PersistAuthFunc) {
 // SetCrashDumpFunc sets the crash dump callback.
 func (s *RunService) SetCrashDumpFunc(fn func(err error, stack []byte)) {
 	s.crashDumpFunc = fn
-}
-
-// HistorySessionManager returns the history session manager used by the run service.
-func (s *RunService) HistorySessionManager() *history.SessionManager {
-	return s.historySessionMgr
 }
 
 // SubscribeBrowser registers a browser-level SSE subscriber for the given browserID.
@@ -342,20 +333,23 @@ func (s *RunService) HasPendingConfirmation(sessionID string) bool {
 	return ok
 }
 
-// CloseSession cancels the active run and closes the session.
+// CloseSession cancels the active run for a session. The canonical
+// conversation store's session lifecycle (Close/Delete) is owned by the API
+// handlers, which call CloseSession first to stop the run and then close or
+// delete the session from the store (issue #1241) — the former close of the
+// separate LLM-history store is gone.
 func (s *RunService) CloseSession(sessionID string) error {
 	s.Cancel(sessionID)
-	if s.historySessionMgr != nil {
-		s.historySessionMgr.Close(sessionID)
-	}
 	return nil
 }
 
-// LoadSessionFromDisk reads a session snapshot from disk via the persister,
-// adds it to the UI session manager (with status forced to idle), and restores
-// its conversation history in the history manager.
-// Returns the loaded session, or an error if the session doesn't exist on disk
-// or if reading/parsing fails.
+// LoadSessionFromDisk reads a session snapshot from disk via the persister
+// and adds it to the canonical session manager (with status forced to idle).
+// The canonical conversation store is the run's history source (issue #1241),
+// so the restored conversation is served to the loop directly by the
+// session-backed history adapter — no separate history-store copy remains.
+// Returns the loaded session, or an error if the session doesn't exist on
+// disk or if reading/parsing fails.
 func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession, error) {
 	if s.persister == nil {
 		return nil, fmt.Errorf("persister not available")
@@ -382,23 +376,10 @@ func (s *RunService) LoadSessionFromDisk(sessionID string) (*uisession.UISession
 		return nil, fmt.Errorf("cannot restore session to manager: %w", err)
 	}
 
-	// Restore conversation history in the history manager.
-	// Shared read: the messages are copied out below into the history manager.
-	if s.historySessionMgr != nil {
-		convo := s.uiSessionMgr.GetConversationShared(sessionID)
-		if convo != nil {
-			msgs := make([]message.Message, 0, len(convo.Messages))
-			for _, m := range convo.Messages {
-				msgs = append(msgs, message.Message{
-					Role:       m.Role,
-					Content:    m.Content,
-					ToolCallID: m.ToolCallID,
-					ToolCalls:  m.ToolCalls,
-				})
-			}
-			s.historySessionMgr.RestoreHistory(sessionID, msgs)
-		}
-	}
+	// The canonical conversation store IS the run's history source
+	// (issue #1241): LoadFromDisk restored the persisted conversation into
+	// it, so the session-backed history adapter serves it directly — the
+	// former copy into the separate LLM-history store is gone.
 
 	return loaded, nil
 }
@@ -673,9 +654,14 @@ func (s *RunService) ResolveConfirmation(sessionID, path string, approved bool) 
 // and returns the number of messages compacted, approximate number of tokens freed,
 // and the number of tool-call argument blocks pruned.
 func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg RunConfig) (compactedCount int, freedTokens int, prunedToolCalls int, _ error) {
-	if s.historySessionMgr == nil {
-		return 0, 0, 0, fmt.Errorf("history session manager not available")
+	if s.uiSessionMgr == nil {
+		return 0, 0, 0, fmt.Errorf("session manager not available")
 	}
+	// The canonical conversation store is the run's history source
+	// (issue #1241): manual compaction reads and writes it through the same
+	// session-backed history adapter the loop uses, so the compacted history
+	// is the single conversation both the next LLM request and the UI read.
+	historyMgr := loop.NewSessionHistoryManager(s.uiSessionMgr, sessionID)
 
 	// Build a minimal LLM service for summarization (no tools needed).
 	llmSvc, err := newCompactLLMService(ctx, cfg, s.persistAuth)
@@ -683,9 +669,9 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 		return 0, 0, 0, fmt.Errorf("failed to create LLM service for compaction: %w", err)
 	}
 
-	historyMsgs := s.historySessionMgr.History(sessionID)
+	historyMsgs := historyMgr.History()
 	if historyMsgs == nil {
-		// Session not known to history manager — no history to compact.
+		// Session not known to the canonical store — no history to compact.
 		return 0, 0, 0, nil
 	}
 
@@ -716,18 +702,13 @@ func (s *RunService) CompactSession(ctx context.Context, sessionID string, cfg R
 		return 0, 0, 0, nil
 	}
 
-	// Replace in-memory history with compacted version.
-	s.historySessionMgr.RestoreHistory(sessionID, compactedMsgs)
-
-	// Sync compacted messages to the UI session manager so snapshots and
-	// on-disk persistence reflect the compacted state. Compaction survives
-	// server restart only if the persisted snapshot contains compacted messages.
-	// compactedMsgs includes the system prompt at [0]; the UI session stores
-	// it separately, so skip it when replacing conversation messages (the
-	// strip-system-message invariant lives in message.StripLeadingSystemMessage).
-	if s.uiSessionMgr != nil {
-		s.uiSessionMgr.ReplaceConversationMessages(sessionID, message.StripLeadingSystemMessage(compactedMsgs))
-	}
+	// Replace the canonical conversation with the compacted version (the
+	// adapter extracts the leading system message into the session's separate
+	// SystemPrompt field — the strip-system-message invariant, ADR-0028 — so
+	// the UI conversation, LLM request history, and snapshots all reflect the
+	// compacted state). Compaction survives server restart only if the
+	// persisted snapshot contains compacted messages.
+	historyMgr.ReplaceHistory(compactedMsgs)
 
 	// Snapshot the compacted history if persister is available.
 	// Uses the explicit copy helper: the persister serializes the full session

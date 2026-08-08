@@ -11,11 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -183,11 +184,9 @@ func TestBatchRun_FeedsDebugRecorderMetrics(t *testing.T) {
 
 	rec := debug.NewRecorder(20)
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		DebugRecorder:     rec,
+		UISessionMgr:  uiSessionMgr,
+		DebugRecorder: rec,
 	})
 
 	cfg := RunConfig{
@@ -453,9 +452,7 @@ func TestBatchRun_DelegateSpawnsSubAgent(t *testing.T) {
 	}))
 	defer llm.Close()
 
-	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-	})
+	svc := NewRunService(RunServiceDeps{})
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    llm.URL,
@@ -508,11 +505,9 @@ func TestBatchRun_ErrorFeedsMetrics(t *testing.T) {
 
 	rec := debug.NewRecorder(20)
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		DebugRecorder:     rec,
+		UISessionMgr:  uiSessionMgr,
+		DebugRecorder: rec,
 	})
 
 	cfg := RunConfig{
@@ -546,8 +541,8 @@ func TestBatchRun_ErrorFeedsMetrics(t *testing.T) {
 }
 
 func TestExtractLastMessages(t *testing.T) {
-	mgr := history.NewSessionManager(10)
-	mgr.Create("test-session")
+	mgr := uisession.NewManager(10, t.TempDir())
+	seedSession(t, mgr, "test-session", "", "")
 
 	// No messages yet
 	user, asst := extractLastMessages(mgr, "test-session")
@@ -556,7 +551,7 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add a user message
-	mgr.AppendUser("test-session", "hello world")
+	mgr.AppendToConversation("test-session", message.Message{Role: "user", Content: "hello world", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "hello world" {
 		t.Fatalf("expected user='hello world', got %q", user)
@@ -566,7 +561,7 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add an assistant message
-	mgr.AppendAssistant("test-session", "hi there", nil)
+	mgr.AppendToConversation("test-session", message.Message{Role: "assistant", Content: "hi there", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "hello world" {
 		t.Fatalf("expected user='hello world', got %q", user)
@@ -576,14 +571,95 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add more messages and verify last ones are returned
-	mgr.AppendUser("test-session", "second question")
-	mgr.AppendAssistant("test-session", "second answer", nil)
+	mgr.AppendToConversation("test-session", message.Message{Role: "user", Content: "second question", CreatedAt: time.Now()})
+	mgr.AppendToConversation("test-session", message.Message{Role: "assistant", Content: "second answer", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "second question" {
 		t.Fatalf("expected user='second question', got %q", user)
 	}
 	if asst != "second answer" {
 		t.Fatalf("expected assistant='second answer', got %q", asst)
+	}
+}
+
+// TestExtractLastMessages_ConcurrentWithAppend is a race-regression test for
+// issue #1241's fix round: extractLastMessages reads the canonical
+// conversation, so it must read a locked copy rather than iterate the live
+// shared reference a concurrent run keeps appending to. Under -race this test
+// must report no data races.
+func TestExtractLastMessages_ConcurrentWithAppend(t *testing.T) {
+	mgr := uisession.NewManager(100, t.TempDir())
+	seedSession(t, mgr, "test-session", "", "start")
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending to the canonical
+	// conversation (the loop's session-backed history adapter path). A user
+	// message every 10 appends keeps the exchange-cap trim active so the
+	// conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			mgr.AppendToConversation("test-session", message.Message{
+				Role: "assistant", Content: fmt.Sprintf("reply %d", i), CreatedAt: time.Now(),
+			})
+			if i%10 == 0 {
+				mgr.AppendToConversation("test-session", message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Reader goroutine: batch run-start extracts last user/assistant messages
+	// while the run is active elsewhere on the same session.
+	//
+	// The primary gate for the unsynchronized access is the race detector; the
+	// read-side invariant we assert here is that a user message is always
+	// present (the seeded "start" message plus the writer's periodic user
+	// appends survive the exchange-cap trim — it keeps the trailing user
+	// tail). An empty assistant is legitimate at the very start, before the
+	// writer's first append, so only the user side is counted.
+	var emptyUser int32
+	var reads int64
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			user, _ := extractLastMessages(mgr, "test-session")
+			atomic.AddInt64(&reads, 1)
+			if user == "" {
+				atomic.AddInt32(&emptyUser, 1)
+			}
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	if atomic.LoadInt64(&reads) == 0 {
+		t.Fatal("reader goroutine never ran")
+	}
+	if empty := atomic.LoadInt32(&emptyUser); empty > 0 {
+		t.Errorf("extractLastMessages returned empty user in %d reads", empty)
+	}
+	// After the overlap the conversation certainly holds assistant replies.
+	if _, asst := extractLastMessages(mgr, "test-session"); asst == "" {
+		t.Error("extractLastMessages returned empty assistant after overlapping appends")
 	}
 }
 
@@ -686,11 +762,9 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	// Use a dead-port connection pattern so the run fails (connection refused)
 	// after the persona has been loaded and the system prompt built.
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		SkillsService:     skillsSvc,
+		UISessionMgr:  uiSessionMgr,
+		SkillsService: skillsSvc,
 	})
 
 	batchCfg := RunConfig{

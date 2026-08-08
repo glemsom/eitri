@@ -16,9 +16,9 @@ type ManagerOption func(*Manager)
 // WithMaxExchanges sets the per-session exchange-cap sliding window
 // (issue #1239). An exchange begins with a user message and includes all
 // following assistant and tool messages until the next user message. A
-// non-positive value falls back to message.DefaultMaxExchanges (150) —
-// exactly like history.NewSessionManager, so both stores always resolve the
-// same default cap. Without this option the Manager uses the default cap.
+// non-positive value falls back to message.DefaultMaxExchanges (150) — the
+// single canonical default. Without this option the Manager uses the default
+// cap.
 func WithMaxExchanges(maxExchanges int) ManagerOption {
 	return func(m *Manager) {
 		if maxExchanges <= 0 {

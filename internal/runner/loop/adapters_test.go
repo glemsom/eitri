@@ -4,25 +4,48 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persona"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/voocel/litellm"
 )
 
 // ── sessionHistoryManager tests ────────────────────────────────────────────
 
+// addTestSession inserts a canonical-store session with the given ID and
+// system prompt, mirroring the run-start contract: the loop's session-backed
+// history adapter reads and writes the canonical conversation store directly
+// (issue #1241), so tests seed the conversation there rather than in a
+// separate history store.
+func addTestSession(t *testing.T, mgr *uisession.Manager, id, systemPrompt string) {
+	t.Helper()
+	mgr.Add(&uisession.UISession{
+		ID:        id,
+		Title:     "test",
+		Messages:  []message.Message{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	if systemPrompt != "" {
+		mgr.SetSystemPrompt(id, systemPrompt)
+	}
+}
+
 func TestSessionHistoryManager_History(t *testing.T) {
 	t.Parallel()
-	sessionMgr := history.NewSessionManager(0)
+	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-hist"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "hello")
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
-	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter := NewSessionHistoryManager(mgr, sessionID)
 	msgs := adapter.History()
 
 	if len(msgs) == 0 {
@@ -39,6 +62,26 @@ func TestSessionHistoryManager_History(t *testing.T) {
 	}
 }
 
+func TestSessionHistoryManager_History_DefaultSystemPromptFallback(t *testing.T) {
+	t.Parallel()
+	// A session whose system prompt was never set must fall back to the
+	// canonical persona default (persona.DefaultPrompt — the single source,
+	// formerly aliased by the deleted history store's DefaultSystemPrompt).
+	mgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-dflt"
+	addTestSession(t, mgr, sessionID, "")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
+
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+	msgs := adapter.History()
+	if len(msgs) != 2 {
+		t.Fatalf("History() returned %d messages, want 2", len(msgs))
+	}
+	if got := msgs[0].Content(); got != persona.DefaultPrompt {
+		t.Errorf("system message content = %q, want %q", got, persona.DefaultPrompt)
+	}
+}
+
 func TestSessionHistoryManager_History_NilSessionMgr(t *testing.T) {
 	t.Parallel()
 	adapter := NewSessionHistoryManager(nil, "test-session")
@@ -48,14 +91,98 @@ func TestSessionHistoryManager_History_NilSessionMgr(t *testing.T) {
 	}
 }
 
+func TestSessionHistoryManager_History_UnknownSession(t *testing.T) {
+	t.Parallel()
+	mgr := uisession.NewManager(10, t.TempDir())
+	adapter := NewSessionHistoryManager(mgr, "unknown-session")
+	if msgs := adapter.History(); msgs != nil {
+		t.Errorf("History() = %v, want nil for unknown session", msgs)
+	}
+}
+
+// TestSessionHistoryManager_History_ConcurrentWithAppend is a race-regression
+// test for issue #1241's fix round: History() must read the canonical
+// conversation through a locked copy accessor, never by iterating the live
+// shared reference that the run goroutine keeps appending to. Manual
+// compaction (POST /api/sessions/{id}/compact) calls History() with no
+// active-run guard, so the reader (this goroutine) and the writer (the
+// simulated active run's AppendAssistant/AppendTool) overlap in production.
+// Under -race this test must report no data races; before the fix it fails
+// with a DATA RACE on the shared conversation's slice header and elements.
+func TestSessionHistoryManager_History_ConcurrentWithAppend(t *testing.T) {
+	mgr := uisession.NewManager(100, t.TempDir())
+	sessionID := "race-session-hist"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "start", CreatedAt: time.Now()})
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending assistant/tool messages
+	// via the adapter, exactly what the agent loop does mid-run (issue #1241).
+	// A user message every 10 appends keeps the exchange-cap trim active so
+	// the conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			adapter.AppendAssistant(fmt.Sprintf("reply %d", i), nil)
+			adapter.AppendTool(fmt.Sprintf("call_%d", i), "result", "", false)
+			if i%10 == 0 {
+				mgr.AppendToConversation(sessionID, message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Simulated manual-compaction goroutine: reads the full history with no
+	// active-run guard (handleCompact), overlapping the run's appends.
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			msgs := adapter.History()
+			if msgs != nil {
+				// Walk the result so element reads are exercised.
+				for _, m := range msgs {
+					_ = m.Role
+					_ = m.Content()
+				}
+			}
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// The conversation must still read coherently after the overlap.
+	if got := adapter.History(); got == nil || len(got) < 2 {
+		t.Fatalf("History() = %v, want >= 2 messages (system + user)", got)
+	}
+}
+
 func TestSessionHistoryManager_AppendAssistant(t *testing.T) {
 	t.Parallel()
-	sessionMgr := history.NewSessionManager(0)
+	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-aa"
-	sessionMgr.Create(sessionID)
-	sessionMgr.AppendUser(sessionID, "hi")
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
 
-	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter := NewSessionHistoryManager(mgr, sessionID)
 	adapter.AppendAssistant("Hello!", nil)
 
 	msgs := adapter.History()
@@ -75,14 +202,104 @@ func TestSessionHistoryManager_AppendAssistant_NilSessionMgr(t *testing.T) {
 	adapter.AppendAssistant("Hello!", nil)
 }
 
+func TestSessionHistoryManager_AppendAssistant_SkipsEmpty(t *testing.T) {
+	t.Parallel()
+	// Empty assistant messages serialise as {"role":"assistant"} with no
+	// content or tool calls, which some providers reject. The session-backed
+	// adapter must skip them exactly like the old history store did so the
+	// LLM request history stays byte-identical (issue #1241).
+	mgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-empty"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
+
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+	adapter.AppendAssistant("", nil)
+
+	msgs := adapter.History()
+	if len(msgs) != 2 {
+		t.Fatalf("History() has %d messages, want 2 (system + user; empty assistant skipped)", len(msgs))
+	}
+}
+
+// TestSessionHistoryManager_History_FiltersEmptyAssistantPlaceholders guards
+// AC2 for realistic UI runs: session.Manager.AppendComponent/SetQuickReplies
+// append a bare empty assistant placeholder ({Role:"assistant", Content:""})
+// into the canonical store whenever the last conversation message is not an
+// assistant message. In the loop's tool-execution path component emission runs
+// *before* AppendTool, so the second and subsequent component-emitting tool
+// calls of a turn each create such a placeholder after the previous tool
+// result. The old LLM-history store never carried these UI-only placeholders,
+// so the session-backed adapter's History() must filter them on read — left
+// unfiltered they reach the next LLM request as {"role":"assistant"} with no
+// content or tool_calls, which some providers reject.
+func TestSessionHistoryManager_History_FiltersEmptyAssistantPlaceholders(t *testing.T) {
+	t.Parallel()
+	mgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-placeholder"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "render two diagrams", CreatedAt: time.Now()})
+
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+
+	// A turn with two component-emitting tool calls, driven exactly like the
+	// loop: AppendAssistant (assistant with tool calls), then per tool —
+	// AppendComponent *before* AppendTool. The first component attaches to the
+	// assistant message (last is assistant); the second runs after the first
+	// tool result, so AppendComponent creates an empty assistant placeholder.
+	adapter.AppendAssistant("", []litellm.ToolUseBlock{
+		{ID: "call_1", Name: "render_mermaid_diagram", Arguments: json.RawMessage(`{"code":"graph TD; A-->B;"}`)},
+		{ID: "call_2", Name: "render_mermaid_diagram", Arguments: json.RawMessage(`{"code":"graph TD; C-->D;"}`)},
+	})
+	_ = mgr.AppendComponent(sessionID, message.ComponentData{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; A-->B;"}})
+	adapter.AppendTool("call_1", "rendered", "", false)
+	_ = mgr.AppendComponent(sessionID, message.ComponentData{Name: "MermaidDiagram", Data: map[string]any{"code": "graph TD; C-->D;"}})
+	adapter.AppendTool("call_2", "rendered", "", false)
+	// SetQuickReplies after a tool result creates a placeholder too.
+	_ = mgr.SetQuickReplies(sessionID, []string{"yes", "no"})
+
+	// The canonical store must retain the placeholders — they are the UI
+	// component targets, and History() filters on read, never on write.
+	convo := mgr.GetConversationShared(sessionID)
+	placeholderCount := 0
+	for _, msg := range convo.Messages {
+		if msg.Role == "assistant" && msg.Content == "" && len(msg.ToolCalls) == 0 {
+			placeholderCount++
+		}
+	}
+	if placeholderCount == 0 {
+		t.Fatal("test setup: expected empty assistant placeholders in the canonical store")
+	}
+
+	// The LLM request history must not carry them: every assistant message in
+	// History() must have content or tool calls.
+	hist := adapter.History()
+	for i, em := range hist {
+		if em.Role != litellm.Role("assistant") {
+			continue
+		}
+		if em.Content() == "" && len(em.ToolCalls()) == 0 {
+			t.Errorf("History()[%d]: empty assistant placeholder leaked into LLM history (%+v)", i, em)
+		}
+	}
+	// Exact shape after the filtering: system + user + assistant(tool calls) +
+	// the two tool results — no placeholder messages.
+	if len(hist) != 5 {
+		t.Fatalf("History() has %d messages, want 5 (system, user, assistant, tool, tool)", len(hist))
+	}
+	if got := []string{string(hist[0].Role), string(hist[1].Role), string(hist[2].Role), string(hist[3].Role), string(hist[4].Role)}; !slices.Equal(got, []string{"system", "user", "assistant", "tool", "tool"}) {
+		t.Errorf("History() roles = %v, want [system user assistant tool tool]", got)
+	}
+}
+
 func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 	t.Parallel()
-	sessionMgr := history.NewSessionManager(0)
+	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-tc"
-	sessionMgr.Create(sessionID)
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
-	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter := NewSessionHistoryManager(mgr, sessionID)
 	toolCalls := []litellm.ToolUseBlock{
 		{ID: "call_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)},
 	}
@@ -103,12 +320,12 @@ func TestSessionHistoryManager_AppendAssistantWithToolCalls(t *testing.T) {
 
 func TestSessionHistoryManager_AppendTool(t *testing.T) {
 	t.Parallel()
-	sessionMgr := history.NewSessionManager(0)
+	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-at"
-	sessionMgr.Create(sessionID)
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
-	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter := NewSessionHistoryManager(mgr, sessionID)
 	adapter.AppendTool("call_1", "result content", "", false)
 
 	msgs := adapter.History()
@@ -133,13 +350,12 @@ func TestSessionHistoryManager_AppendTool_NilSessionMgr(t *testing.T) {
 
 func TestSessionHistoryManager_ReplaceHistory(t *testing.T) {
 	t.Parallel()
-	sessionMgr := history.NewSessionManager(0)
+	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-rh"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "hello")
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
-	adapter := NewSessionHistoryManager(sessionMgr, sessionID)
+	adapter := NewSessionHistoryManager(mgr, sessionID)
 	adapter.ReplaceHistory([]message.Message{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "compacted user"},
@@ -156,6 +372,42 @@ func TestSessionHistoryManager_ReplaceHistory(t *testing.T) {
 	if msgs[2].Content() != "compacted answer" {
 		t.Errorf("message[2] content = %q, want %q", msgs[2].Content(), "compacted answer")
 	}
+	// The leading system message must be extracted into the canonical store's
+	// separate SystemPrompt field, never left in the conversation messages
+	// (the strip-system-message invariant, ADR-0028).
+	convo := mgr.GetConversationShared(sessionID)
+	if convo == nil || len(convo.Messages) != 2 {
+		t.Fatalf("canonical conversation = %+v, want 2 messages (system stripped)", convo)
+	}
+	if convo.SystemPrompt != "You are helpful." {
+		t.Errorf("canonical SystemPrompt = %q, want %q", convo.SystemPrompt, "You are helpful.")
+	}
+}
+
+func TestSessionHistoryManager_ReplaceHistory_NoSystemMessage(t *testing.T) {
+	t.Parallel()
+	// ReplaceHistory without a leading system message replaces the messages
+	// verbatim and leaves the stored system prompt untouched (the
+	// strip-system-message invariant, ADR-0028: only a leading system message
+	// is extracted into the separate SystemPrompt field).
+	mgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-rh2"
+	addTestSession(t, mgr, sessionID, "You are helpful.")
+	mgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
+
+	adapter := NewSessionHistoryManager(mgr, sessionID)
+	adapter.ReplaceHistory([]message.Message{
+		{Role: "user", Content: "compacted user"},
+		{Role: "assistant", Content: "compacted answer"},
+	})
+
+	msgs := adapter.History()
+	if len(msgs) != 3 {
+		t.Fatalf("History() returned %d messages, want 3", len(msgs))
+	}
+	if msgs[0].Content() != "You are helpful." {
+		t.Errorf("system prompt = %q, want %q (unchanged)", msgs[0].Content(), "You are helpful.")
+	}
 }
 
 func TestSessionHistoryManager_ReplaceHistory_NilSessionMgr(t *testing.T) {
@@ -163,6 +415,60 @@ func TestSessionHistoryManager_ReplaceHistory_NilSessionMgr(t *testing.T) {
 	adapter := NewSessionHistoryManager(nil, "test-session")
 	// Should not panic
 	adapter.ReplaceHistory([]message.Message{{Role: "user", Content: "x"}})
+}
+
+// TestSessionHistoryManager_LLMHistoryShape verifies the loop's LLM-boundary
+// history shape produced by the session-backed adapter (issue #1241): a full
+// turn sequence — assistant text, tool result, assistant tool call, tool
+// result, final assistant text — reads back as the system prompt prepended
+// followed by the flat canonical messages in order. The old LLM-history store
+// this adapter was originally parity-driven against was deleted by issue
+// #1242; the expected shape is asserted directly.
+func TestSessionHistoryManager_LLMHistoryShape(t *testing.T) {
+	t.Parallel()
+	const (
+		id      = "parity-session"
+		sysPrmt = "You are Eitri."
+	)
+
+	// Canonical store: driven through the session-backed adapter (issue #1241).
+	newMgr := uisession.NewManager(10, t.TempDir())
+	newMgr.Add(&uisession.UISession{
+		ID:        id,
+		Title:     "test",
+		Messages:  []message.Message{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	newMgr.SetSystemPrompt(id, sysPrmt)
+	newMgr.AppendToConversation(id, message.Message{Role: "user", Content: "run the build", CreatedAt: time.Now()})
+	adapter := NewSessionHistoryManager(newMgr, id)
+
+	// The same turn sequence through the conversation source.
+	adapter.AppendAssistant("let me check", nil)
+	adapter.AppendTool("call_1", "result content", "", false)
+	adapter.AppendAssistant("", []litellm.ToolUseBlock{
+		{ID: "call_2", Name: "test_tool", Arguments: json.RawMessage(`{}`)},
+	})
+	adapter.AppendTool("call_2", "done", "", false)
+	adapter.AppendAssistant("build finished", nil)
+
+	newHist := adapter.History()
+	wantRoles := []string{"system", "user", "assistant", "tool", "assistant", "tool", "assistant"}
+	if len(newHist) != len(wantRoles) {
+		t.Fatalf("history length = %d, want %d", len(newHist), len(wantRoles))
+	}
+	for i, want := range wantRoles {
+		if got := string(newHist[i].Role); got != want {
+			t.Errorf("message[%d] role = %q, want %q", i, got, want)
+		}
+	}
+	if got := newHist[0].Content(); got != sysPrmt {
+		t.Errorf("message[0] content = %q, want %q (system prompt prepended)", got, sysPrmt)
+	}
+	if got := newHist[3].ToolCallID(); got != "call_1" {
+		t.Errorf("message[3] tool_call_id = %q, want %q", got, "call_1")
+	}
 }
 
 func TestSessionHistoryManager_Interface(t *testing.T) {

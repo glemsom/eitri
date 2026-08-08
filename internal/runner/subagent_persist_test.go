@@ -13,10 +13,9 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
-	"github.com/glemsom/eitri/internal/timeline"
 	uisession "github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/timeline"
 )
 
 // newSubAgentPersistWiring creates a persister and a debug recorder whose
@@ -330,10 +329,9 @@ func TestSubAgentPersistsChildSession_UIMode(t *testing.T) {
 		t.Fatalf("uiSessionMgr.Create: %v", err)
 	}
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
+		UISessionMgr:  uiSessionMgr,
+		DebugRecorder: rec,
+		Persister:     persister,
 	})
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
@@ -426,9 +424,8 @@ func TestBatchRun_SubAgentPersistence(t *testing.T) {
 
 	persister, rec := newSubAgentPersistWiring(t)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
+		DebugRecorder: rec,
+		Persister:     persister,
 	})
 	cfg := RunConfig{
 		ProviderID: "opencode_go",

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	runner "github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/testutil"
@@ -139,8 +138,7 @@ func fakeInFlightProvider(t *testing.T, wait func(ctx context.Context)) *httptes
 func TestCleanupRuntimeCancelsRuns(t *testing.T) {
 	provider := fakeBlockingProvider(t)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      session.NewManager(10, t.TempDir()),
-		HistorySessionMgr: history.NewSessionManager(10),
+		UISessionMgr: session.NewManager(10, t.TempDir()),
 	})
 
 	runCfg := runner.RunConfig{

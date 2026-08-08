@@ -14,7 +14,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/provider"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -63,11 +62,9 @@ func TestPrepareRun_UIAndBatchParity(t *testing.T) {
 	workspace, homeDir, skillsSvc := testPersonaWithRequiredSkill(t)
 
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		SkillsService:     skillsSvc,
+		UISessionMgr:  uiSessionMgr,
+		SkillsService: skillsSvc,
 	})
 
 	cfg := RunConfig{
@@ -199,9 +196,8 @@ func TestPrepareRun_DelegatedLeafToolset(t *testing.T) {
 	workspace, homeDir, skillsSvc := testPersonaWithRequiredSkill(t)
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: history.NewSessionManager(50),
-		SkillsService:     skillsSvc,
+		UISessionMgr:  uiSessionMgr,
+		SkillsService: skillsSvc,
 	})
 	cfg := RunConfig{
 		ProviderID:    "opencode_go",
@@ -316,8 +312,7 @@ func TestBatchRun_AppliesMaxOutputTokensAndPromptCacheKey(t *testing.T) {
 	defer llm.Close()
 
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		NewRunID:          fixedRunID(batchID),
+		NewRunID: fixedRunID(batchID),
 	})
 	cfg := RunConfig{
 		ProviderID:      "opencode_go",
@@ -389,8 +384,7 @@ func TestBatchRun_PersonaRequiredSkillFlow(t *testing.T) {
 	defer llm.Close()
 
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		SkillsService:     skillsSvc,
+		SkillsService: skillsSvc,
 	})
 	cfg := RunConfig{
 		ProviderID:    "opencode_go",
@@ -427,9 +421,7 @@ func TestBatchRun_PersonaRequiredSkillFlow(t *testing.T) {
 // deferred EndSession relies on to release browser-tool connections when a
 // batch run ends (issue #1091).
 func TestPrepareRun_BatchRegistryEndsBrowserSession(t *testing.T) {
-	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-	})
+	svc := NewRunService(RunServiceDeps{})
 	cfg := RunConfig{
 		ProviderID:   "opencode_go",
 		BaseURL:      "http://127.0.0.1:1",

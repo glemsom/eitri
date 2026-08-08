@@ -24,7 +24,7 @@ type Confirmer interface {
 }
 ```
 
-Two adapters each: session-backed vs request-backed history managers (UI component replay and quick replies stay on the UI session manager, outside the interface), and `RunService` (channel-based rendezvous with the API endpoint) vs a canned-result test stub.
+Two adapters each: session-backed vs request-backed history managers (UI component replay and quick replies stay on the UI session manager, outside the interface), and `RunService` (channel-based rendezvous with the API endpoint) vs a canned-result test stub. (The session-backed adapter originally wrapped `*history.SessionManager`; since issue #1241 it wraps the canonical `*session.Manager` store, and the old history store was deleted by issue #1242 — the interface itself is unchanged.)
 
 `RunAgent` now takes `RunSpec` (transport/config: client, request, tools, SSE writer, turn/history caps) plus `RunOpts` (runtime/UI: history manager, confirmer, UI session manager, session ID, run ID, context window, crash-dump func, turn pointer, debug dir, turn completer, calibration store). UI-only concerns stay out of the seam interfaces.
 

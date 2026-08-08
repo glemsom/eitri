@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behaviours only the old LLM-history store had (issue #1239): the
   **exchange-cap sliding window** and **pending-tool-use repair**. The shared
   logic lives in `internal/message/exchange.go` as pure functions over the flat
-  canonical `Message` shape — `TrimExchanges` (drops the oldest exchanges when
+  `Message` shape — `TrimExchanges` (drops the oldest exchanges when
   the user-message count exceeds the cap, keeping the trailing assistant/tool
   tail — exactly the history store's sliding-window semantics) and
   `RepairPendingToolUse` (closes a trailing unresolved assistant tool call with
@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stores in `cmd/eitri/main.go`, so they work side by side with the same cap.
   **Parity tests** (`internal/session/exchange_parity_test.go`) drive both
   stores through identical inputs and assert identical conversation shapes for
-  trim and repair, so both stores behave identically before the history store
-  is contracted away (umbrella #1231).
+  trim and repair, so both stores behave identically; the old history store
+  was subsequently deleted with the sync layer (umbrella #1231, issue #1242).
 
 - The `write` and `edit` tools can now target configured **writable roots** —
   the same `sandbox.extra_writable_paths` paths the `bash` tool may write to —
@@ -154,6 +154,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The loop's session-backed history adapter (`loop.NewSessionHistoryManager`)
+  now reads and writes the **canonical session store** (`internal/session`)
+  instead of the separate LLM-history store (`internal/history`), for both UI
+  and batch runs (issue #1241). The run-completer's per-turn
+  history→conversation copy (`ReplaceConversationMessages` + the sync module)
+  disappears from the UI snapshot path — the UI conversation, the LLM request
+  history, and the persisted snapshots all read the same canonical
+  conversation, so tool-attached components/quick replies survive persistence.
+  `RunService` no longer carries a `HistorySessionMgr` dependency: UI runs
+  append the user message to the canonical store synchronously in `StartRun`
+  (the chat handler no longer double-appends), batch runs create their session
+  in the canonical store, manual compaction reads/writes the canonical
+  conversation through the same adapter seam, and loading a session from disk
+  (`LoadSessionFromDisk`) restores its conversation directly into the
+  canonical store (the old `RestoreHistory`-into-history-store hydration is
+  gone — the canonical store IS the run's history). LLM request history is
+  byte-identical (a parity test drives the new adapter against the old history
+  store through identical operation sequences), and snapshot/report tests pass
+  unchanged. One deliberate fidelity caveat: the read-side round-trip folds
+  `ReasoningContent` written into the canonical store by other paths
+  (`syncRunResultToUISession`, persister-less configs only) into the content
+  `TextBlock` ("R\nC") and drops `RawContent` — a match to the old store,
+  whose LLM history never carried either field; adapter-written messages carry
+  no reasoning, so the fold never affects ordinary UI/batch runs. The old
+  `internal/history` store remained only for the parity tests and was deleted
+  with the sync layer by issue #1242 (umbrella #1231).
+
 - Trace aggregation now has a single owner (issue #1240): the window-aggregate fold (count, error count/rate, p50/p95 latency, token totals, window bounds) that the persisted archive aggregate endpoint returns is implemented once — `debug.AggregateTraces` in the new `internal/debug/aggregate.go` — and `Persister.AggregateTraces` delegates to it instead of re-implementing the fold on disk (its previous `aggregateTraces` explicitly "mirrored the recorder's metrics"). All debug trace endpoints now parse their filter parameters (session/provider/model/time/limit/offset) through one shared parser, so the in-memory recorder lists (`/api/debug/http` and `/api/debug/sessions/{id}/http`) accept the same parameter surface as the persisted endpoints (`model`/`from`/`to`/`offset` are accepted and ignored by the in-memory lists, which filter only on session/provider/limit) and reject malformed parameters with `400` exactly like the archive endpoints. The derived token total (the sum of the four usage components, not each trace's stored total) is likewise single-owned — `UsageTotals.TokenTotal` — used by both the recorder's metrics snapshot and the window aggregate. `/api/debug/metrics` (the recorder's richer per-provider-per-model counters) and `/api/debug/traces/aggregate` return the same data as before; Session Report enrichment is unchanged. The in-memory endpoints' docs now match the code: `limit` defaults to no limit (everything the recorder holds, capped at 100) and `provider_id` filters within the path session on `/api/debug/sessions/{id}/http`.
 
 - The "session was permanently deleted" check is consolidated into one helper (issue #1237): `Persister.sessionExistsOnDisk` is now the single owner of the "no `session.json` on disk" check, used by the snapshot loader (`readSessionSnapshot`/`LoadSession`/`LoadSessionInfo`), `SaveTrace`, `Flush`, and the trace query surface (`scanTraces` — `QueryTraces`/`AggregateTraces`) instead of four inline `os.Stat`/`os.ReadFile`-based copies. The check is `IsNotExist`-aware: only a definitive "no `session.json` on disk" counts as permanently deleted, while other stat failures (EACCES, ENOTDIR, …) surface at each site exactly as they did before the consolidation (the snapshot loader and trace query surface return the wrapped error; `SaveTrace`/`Flush` fall through to the write path). Trace save/flush/restore/query behaviour is unchanged: a session whose `session.json` is gone is treated as permanently deleted everywhere, so its traces are never recreated, persisted, or resurrected by queries.
@@ -199,7 +226,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-request HTTP logging is now suppressed in test binaries, so failed-test output dumps stay lean — production servers still log every request at Info level. Test coverage for the request-log fields moved to a direct unit test. (#1031)
 - `make test` and `make test-race` now print a single compact verdict line (packages passed/failed, failing test names, and DATA RACE warnings with `-race`) plus only the failing tests' error excerpts, instead of one boilerplate line per package. Full raw output is teed to `dist/test-output.log` / `dist/test-race-output.log` for on-demand grepping, and the exit code mirrors `go test`. (#1032, #1033)
 
+### Removed
+
+- The old LLM-history store (`internal/history/`) and the history→conversation
+  sync layer (`internal/message/sync.go` — `SyncHistoryToConversation` /
+  `StripLeadingSystemMessage`) are deleted (umbrella #1231, issue #1242). Once
+  the loop's session-backed history adapter was pointed at the canonical
+  `internal/session` store (issue #1241) no production reference to the old
+  store remained, and the sync seam survived only for the batch/sub-agent
+  snapshot facade — `runCompleter.buildUISession` now converts the loop's
+  LLM-boundary `[]EitriMessage` to the flat `[]Message` inline (with the
+  leading system message stripped, ADR-0028). The parity tests that drove the
+  two stores through identical inputs (`internal/session/exchange_parity_test.go`,
+  the old-store half of the adapter parity test) are deleted with the store;
+  the canonical store's exchange-cap trim and pending-tool-use repair remain
+  covered by `internal/session/exchange_test.go`, and the session-backed
+  adapter's LLM-boundary history shape is asserted directly. Startup session
+  restore is unchanged — it flows through `Manager.LoadFromDisk` into the
+  canonical store. Exactly one message type is documented as canonical:
+  `EitriMessage` at the loop's LLM boundary (`Message` is the flat
+  store/snapshot shape).
+
 ### Fixed
+
+- The session-backed history adapter's `History()` filters UI-only **empty
+  assistant placeholders** out of LLM request history (issue #1241 AC2):
+  `session.Manager.AppendComponent`/`SetQuickReplies` append a bare
+  `{role:"assistant"}` placeholder into the canonical store whenever the last
+  conversation message is not an assistant message — which happens on the
+  second and subsequent component-emitting tool calls of a turn (component
+  emission runs before `AppendTool`, so the previous tool result is last). The
+  old LLM-history store never carried these placeholders, so unfiltered they
+  reached the next turn's LLM request as content-less `{"role":"assistant"}`
+  messages — the exact shape providers reject (the old store's
+  `AppendAssistant` and the loop's turn-end guard both skip empty assistant
+  messages). `History()` now drops assistant messages with no content and no
+  tool calls on read (the canonical store keeps them as UI component targets;
+  because compaction reads and rewrites the conversation through this
+  LLM-view `History()`, a compaction also drops the empty placeholder
+  scaffolding — components attached to real assistant messages survive); the
+  parity test's operation sequence is unaffected. Regression coverage: a
+  unit test drives a component-emitting multi-tool turn through the adapter
+  and asserts no empty assistant reaches `History()`, and a loop-level test
+  runs the turn through `RunAgent` and asserts the next LLM request contains
+  no empty assistant message.
+
+- The session-backed history adapter's `History()` no longer reads the live
+  canonical conversation without a lock (issue #1241 fix round): `History()`,
+  the UI snapshot source (`uiSnapshotSource`), and batch run-start's
+  `extractLastMessages` all read the conversation through
+  `session.Manager.CopyConversation` — a snapshot taken under the manager lock
+  — instead of iterating the shared reference returned by
+  `GetConversationShared` after its lock has been released. Manual compaction
+  (`POST /api/sessions/{id}/compact`) calls `History()` with no active-run
+  guard, so the unsynchronized read could overlap the run goroutine's appends
+  to the same message list (a data race: torn reads could drop/duplicate
+  messages in the compactor's output → permanent conversation corruption).
+  Regression coverage: race-detector tests drive `History()`,
+  `uiSnapshotSource`, and `extractLastMessages` concurrently with live
+  appends.
 
 - Fixed a browser-E2E flake class across the final-render tests
   (`TestBrowser_ThinkingRendering`, `TestBrowser_HTMXBeforeEndTargetsMessages`,

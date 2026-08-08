@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/runstate"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -20,10 +20,11 @@ import (
 )
 
 // BatchRun runs a single prompt in headless batch mode.
-// It uses sessionHistoryManager (wrapping history.SessionManager) to store
-// conversation history, streams text tokens to the supplied io.Writer as they
-// arrive, and blocks until the agent loop finishes or context is cancelled.
-// Confirmation requests are denied (nil confirmer → error returned to LLM).
+// It uses sessionHistoryManager (wrapping the canonical conversation store,
+// issue #1241) to store conversation history, streams text tokens to the
+// supplied io.Writer as they arrive, and blocks until the agent loop finishes
+// or context is cancelled. Confirmation requests are denied (nil confirmer →
+// error returned to LLM).
 //
 // Returns the final accumulated response text alongside any error.
 func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig, out io.Writer) (string, error) {
@@ -87,14 +88,31 @@ func (s *RunService) BatchRun(ctx context.Context, prompt string, cfg RunConfig,
 	// state) when the batch run ends — same cleanup seam as UI runs.
 	defer toolReg.EndSession(batchID)
 
-	// Use the service's HistorySessionMgr or create a local one if nil
-	sessionMgr := s.historySessionMgr
+	// Use the service's canonical conversation store (or create a local one
+	// if nil). Batch runs read and write the same conversation store as UI
+	// runs through the session-backed history adapter (issue #1241): the
+	// batch session is created in the canonical store with the auto-generated
+	// batch ID so the loop's history, the snapshots, and (in server mode) the
+	// UI all share one conversation.
+	sessionMgr := s.uiSessionMgr
 	if sessionMgr == nil {
-		sessionMgr = history.NewSessionManager(cfg.MaxHistory)
+		sessionMgr = uisession.NewManager(10, workspace, uisession.WithMaxExchanges(cfg.MaxHistory))
 	}
-	sessionMgr.Create(batchID)
+	sessionMgr.Add(&uisession.UISession{
+		ID:        batchID,
+		Title:     title,
+		Status:    uisession.StatusRunning,
+		Messages:  []message.Message{},
+		Workspace: workspace,
+		CreatedAt: batchStartedAt,
+		UpdatedAt: time.Now(),
+	})
 	sessionMgr.SetSystemPrompt(batchID, fullSystemPrompt)
-	sessionMgr.AppendUser(batchID, prompt)
+	sessionMgr.AppendMessage(batchID, message.Message{
+		Role:      "user",
+		Content:   prompt,
+		CreatedAt: time.Now(),
+	})
 	defer sessionMgr.Close(batchID)
 
 	// Build the unified run-completer and its conversation source (the shared
@@ -280,25 +298,29 @@ func (b *batchStreamer) closeThinking() {
 }
 
 // extractLastMessages extracts the last user and assistant messages from the
-// session manager's history for the given session ID. Returns empty strings
+// canonical conversation store for the given session ID. Returns empty strings
 // if no messages of that role are found.
-func extractLastMessages(sessionMgr *history.SessionManager, sessionID string) (lastUser, lastAssistant string) {
-	history := sessionMgr.History(sessionID)
-	if history == nil {
+//
+// The conversation is read through a locked copy (CopyConversation), never the
+// live shared reference: the conversation may be appended to by a concurrent
+// run while the batch run-start reads it (issue #1241 fix round).
+func extractLastMessages(sessionMgr *uisession.Manager, sessionID string) (lastUser, lastAssistant string) {
+	convo := sessionMgr.CopyConversation(sessionID)
+	if convo == nil {
 		return "", ""
 	}
-	// Walk backwards through history to find the last user and assistant messages.
-	// The system prompt is the first message; skip it.
-	for i := len(history) - 1; i >= 0; i-- {
-		msg := history[i]
+	// Walk backwards through the conversation to find the last user and
+	// assistant messages.
+	for i := len(convo.Messages) - 1; i >= 0; i-- {
+		msg := convo.Messages[i]
 		switch msg.Role {
 		case "user":
 			if lastUser == "" {
-				lastUser = msg.Content()
+				lastUser = msg.Content
 			}
 		case "assistant":
 			if lastAssistant == "" {
-				lastAssistant = msg.Content()
+				lastAssistant = msg.Content
 			}
 		}
 		if lastUser != "" && lastAssistant != "" {

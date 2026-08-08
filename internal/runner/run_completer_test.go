@@ -7,12 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/voocel/litellm"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -46,16 +46,14 @@ func TestRunCompleter_SharedBehavior(t *testing.T) {
 		cfg:          cfg,
 	}
 
-	t.Run("session-manager source (batch)", func(t *testing.T) {
+	t.Run("canonical-store source (batch)", func(t *testing.T) {
 		id := "sess-batch"
-		sessionMgr := history.NewSessionManager(50)
-		sessionMgr.Create(id)
-		sessionMgr.SetSystemPrompt(id, "You are a test.")
-		sessionMgr.AppendUser(id, "hello")
-		sessionMgr.AppendAssistant(id, "hi there", nil)
+		uiMgr := uisession.NewManager(10, t.TempDir(), uisession.WithMaxExchanges(50))
+		seedSession(t, uiMgr, id, "You are a test.", "hello")
+		uiMgr.AppendToConversation(id, message.Message{Role: "assistant", Content: "hi there", CreatedAt: time.Now()})
 		c := base
 		c.id = id
-		c.historyMgr = loop.NewSessionHistoryManager(sessionMgr, id)
+		c.historyMgr = loop.NewSessionHistoryManager(uiMgr, id)
 
 		c.OnTurnComplete(context.Background(), id)
 
@@ -189,22 +187,22 @@ func TestRunCompleter_TerminalPersistsPlumbedRunID(t *testing.T) {
 }
 
 // TestRunCompleter_UISnapshotSourceFidelity verifies the UI-transport
-// snapshot source (ADR-0028): persist live-syncs the run's live conversation
-// into the UI session, then snapshots the UI session facade via CopySession,
+// snapshot source (ADR-0028) after issue #1241: the loop reads and writes the
+// canonical conversation store directly through the session-backed history
+// adapter, so the turn-completer's per-turn history→conversation copy is
+// gone. The snapshot source copies the canonical UI session facade exactly —
 // preserving the full fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs)
-// that the history-derived facade omits — while still stripping the leading
-// system message (stored in SystemPrompt only).
+// that the history-derived facade omits — with the system prompt stored
+// separately (stripped from Messages).
 func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	uiMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	p, err := persist.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("persist.New: %v", err)
 	}
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiMgr,
-		HistorySessionMgr: historyMgr,
-		Persister:         p,
+		UISessionMgr: uiMgr,
+		Persister:    p,
 	})
 
 	sess, err := uiMgr.Create("browser-1")
@@ -222,17 +220,18 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	uiMgr.AddRenderedMessageID(sess.ID, "msg_1")
 	uiMgr.AddRenderedMessageID(sess.ID, "msg_2")
 
-	// Populate the run's live history as the agent loop would across turns.
-	historyMgr.Create(sess.ID)
-	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
-	historyMgr.AppendUser(sess.ID, "Do the work")
-	historyMgr.AppendAssistant(sess.ID, "Mid-run reply.", nil)
+	// Populate the canonical conversation as the agent loop would across
+	// turns (via the session-backed history adapter, issue #1241) — the UI
+	// conversation IS the run history, so there is no separate store to sync
+	// from at snapshot time.
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Do the work", CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Mid-run reply.", CreatedAt: time.Now()})
 
 	// UI-mode run-completer: the same per-turn path batch and sub-agent runs
 	// use, wired with the UI snapshot source.
 	c := &runCompleter{
 		svc:        svc,
-		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		historyMgr: loop.NewSessionHistoryManager(uiMgr, sess.ID),
 		id:         sess.ID,
 		cfg:        RunConfig{},
 	}
@@ -240,8 +239,8 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 
 	c.OnTurnComplete(context.Background(), sess.ID)
 
-	// The UI conversation must reflect the live history (what makes long runs
-	// visible during execution), with the system message stripped.
+	// The canonical conversation must be untouched — the per-turn copy is
+	// gone, so OnTurnComplete snapshots it as it stands.
 	convo := uiMgr.GetConversationShared(sess.ID)
 	if convo == nil || len(convo.Messages) != 2 {
 		t.Fatalf("UI conversation = %+v, want 2 messages (user + assistant)", convo)
@@ -268,6 +267,82 @@ func TestRunCompleter_UISnapshotSourceFidelity(t *testing.T) {
 	}
 	if len(snap.Messages) != 2 || snap.Messages[0].Content != "Do the work" || snap.Messages[1].Content != "Mid-run reply." {
 		t.Errorf("snapshot Messages = %+v, want live history (user + assistant)", snap.Messages)
+	}
+}
+
+// TestRunCompleter_UISnapshotSource_ConcurrentWithAppend is a race-regression
+// test for issue #1241's fix round: uiSnapshotSource reads the canonical
+// conversation's length, so it must read a locked copy rather than touch the
+// live shared reference a concurrent run keeps appending to. Under -race this
+// test must report no data races.
+func TestRunCompleter_UISnapshotSource_ConcurrentWithAppend(t *testing.T) {
+	uiMgr := uisession.NewManager(100, t.TempDir())
+	svc := NewRunService(RunServiceDeps{
+		UISessionMgr: uiMgr,
+	})
+	sess, err := uiMgr.Create("browser-1")
+	if err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Do the work", CreatedAt: time.Now()})
+
+	c := &runCompleter{
+		svc:        svc,
+		historyMgr: loop.NewSessionHistoryManager(uiMgr, sess.ID),
+		id:         sess.ID,
+		cfg:        RunConfig{},
+	}
+	c.snapshotSource = c.uiSnapshotSource
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Simulated active run goroutine: keeps appending to the canonical
+	// conversation (the loop's session-backed history adapter path). A user
+	// message every 10 appends keeps the exchange-cap trim active so the
+	// conversation stays bounded for the whole overlap window.
+	go func() {
+		defer wg.Done()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			uiMgr.AppendToConversation(sess.ID, message.Message{
+				Role: "assistant", Content: fmt.Sprintf("reply %d", i), CreatedAt: time.Now(),
+			})
+			if i%10 == 0 {
+				uiMgr.AppendToConversation(sess.ID, message.Message{
+					Role: "user", Content: fmt.Sprintf("user %d", i), CreatedAt: time.Now(),
+				})
+			}
+			i++
+		}
+	}()
+
+	// Reader goroutine: per-turn snapshotting overlaps the run's appends.
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			c.snapshotSource(uisession.StatusRunning)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// The snapshot source must still return a session after the overlap.
+	if snap := c.snapshotSource(uisession.StatusIdle); snap == nil {
+		t.Fatal("uiSnapshotSource returned nil after overlapping appends")
 	}
 }
 

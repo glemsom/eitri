@@ -1,9 +1,8 @@
 // exchange.go — the exchange-cap sliding window and pending-tool-use repair,
-// the two conversation-history behaviours the canonical session store shares
-// with the LLM-history store (issue #1239). Both are pure functions over the
-// flat canonical message shape so the session store and the history store can
-// be driven to identical behaviour side by side before the history store is
-// contracted away (umbrella #1231).
+// the two conversation-history behaviours of the canonical session store
+// (issue #1239). Both are pure functions over the flat `Message` shape so the
+// session store enforces exactly the sliding-window and tool-use-repair
+// semantics the loop's LLM boundary expects (umbrella #1231).
 
 package message
 
@@ -12,8 +11,8 @@ import "time"
 // DefaultMaxExchanges is the default sliding-window cap in exchanges.
 // An exchange begins with a user message and includes all following
 // assistant and tool messages until the next user message. It is the single
-// canonical default; history.DefaultMaxExchanges aliases it and the session
-// Manager's exchange cap defaults to it (issue #1239).
+// canonical default; the session Manager's exchange cap defaults to it
+// (issue #1239).
 const DefaultMaxExchanges = 150
 
 // TrimExchanges removes the oldest exchanges when the user message count

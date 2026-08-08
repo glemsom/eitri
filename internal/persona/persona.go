@@ -20,8 +20,8 @@ import (
 const (
 	// DefaultPrompt is the canonical built-in system prompt for the generic
 	// persona and for when no persona is active. It is the single source of
-	// truth: history.DefaultSystemPrompt aliases it rather than declaring its
-	// own copy.
+	// truth: the session store's system-prompt fallback and the loop's
+	// session-backed history adapter resolve to it.
 	DefaultPrompt = `You are Eitri, an expert AI coding agent. You can help the user by reading/writing/editing files, executing commands - and giving recommendations to the user.
 
 ## Core behavior

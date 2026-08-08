@@ -171,24 +171,28 @@ func (c *runCompleter) persistSource(status uisession.Status, source func(status
 	}
 }
 
-// uiSnapshotSource is the UI-transport snapshot source (ADR-0028): it
-// live-syncs the run's live conversation (history manager) into the UI
-// session — so the browser UI and snapshots show incremental progress during
-// long runs instead of appearing frozen on the original user message — then
-// snapshots the UI session facade via CopySession, preserving the full
-// UI-session fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs) that the
-// history-derived facade omits. Returns nil when the UI session is unavailable
-// or the conversation source has no history yet.
+// uiSnapshotSource is the UI-transport snapshot source (ADR-0028): the loop's
+// session-backed history adapter already reads and writes the canonical
+// conversation store directly (issue #1241), so the UI conversation IS the
+// run's live history — the former per-turn history→conversation copy
+// (message.SyncHistoryToConversation + ReplaceConversationMessages) is gone
+// from this path. The source snapshots the UI session facade via CopySession,
+// preserving the full UI-session fidelity (ActiveSkills, ClosedAt,
+// RenderedMessageIDs) that the history-derived facade omits. Returns nil when
+// the UI session is unavailable or the conversation has no messages yet.
+//
+// The presence check reads a locked copy (CopyConversation), never the live
+// shared reference: manual compaction can replace the conversation's message
+// list concurrently with a per-turn snapshot (issue #1241 fix round).
 func (c *runCompleter) uiSnapshotSource(status uisession.Status) *uisession.UISession {
 	svc := c.svc
 	if svc.uiSessionMgr == nil {
 		return nil
 	}
-	hist := c.historyMgr.History()
-	if hist == nil || len(hist) == 0 {
+	convo := svc.uiSessionMgr.CopyConversation(c.id)
+	if convo == nil || len(convo.Messages) == 0 {
 		return nil
 	}
-	svc.uiSessionMgr.ReplaceConversationMessages(c.id, message.SyncHistoryToConversation(hist))
 	return svc.uiSessionMgr.CopySession(c.id)
 }
 
@@ -213,11 +217,24 @@ func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Statu
 // Run snapshots are plain UISession facades: the system prompt is stored in
 // the separate system_prompt field (matching UI snapshots) and the leading
 // system message the history manager prepends is stripped from Messages (the
-// strip-system-message invariant, see message.SyncHistoryToConversation).
+// strip-system-message invariant, ADR-0028). The conversion from the loop's
+// LLM-boundary shape ([]EitriMessage, system prompt prepended on reads) to the
+// flat []Message is inlined here — the former message.SyncHistoryToConversation
+// module was deleted with the old LLM-history store (umbrella #1231,
+// issue #1242), leaving EitriMessage as the single canonical message type at
+// the loop's LLM boundary.
 func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISession {
 	hist := c.historyMgr.History()
 	if hist == nil || len(hist) == 0 {
 		return nil
+	}
+
+	msgs := make([]message.Message, 0, len(hist))
+	for _, em := range hist {
+		msgs = append(msgs, em.ToMessage())
+	}
+	if len(msgs) > 0 && msgs[0].Role == "system" {
+		msgs = msgs[1:]
 	}
 
 	return &uisession.UISession{
@@ -226,7 +243,7 @@ func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISess
 		ParentID:     c.parentID,
 		Title:        c.title,
 		Status:       status,
-		Messages:     message.SyncHistoryToConversation(hist),
+		Messages:     msgs,
 		Workspace:    c.workspace,
 		SystemPrompt: c.systemPrompt,
 		CreatedAt:    c.startedAt,

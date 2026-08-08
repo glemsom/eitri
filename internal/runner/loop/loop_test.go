@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/sandbox"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
@@ -792,6 +792,105 @@ func TestRunAgent_MultipleToolCallsPerTurn(t *testing.T) {
 	// Check sequential execution (a before b since tool_calls are ordered)
 	if execOrder[0] != "a" || execOrder[1] != "b" {
 		t.Errorf("execOrder = %v, want [a b]", execOrder)
+	}
+}
+
+// TestRunAgent_ComponentEmissionTurn_NextLLMRequestHasNoEmptyAssistant is the
+// AC2 regression test for issue #1241: a component-emitting multi-tool turn
+// (which creates empty assistant placeholders in the canonical store via
+// session.Manager.AppendComponent/SetQuickReplies) must not leak those
+// placeholders into the next turn's LLM request. The parity test only drives
+// the adapter's own API and cannot catch this — only a real loop run exercises
+// the tool-execution path where component emission runs before AppendTool.
+func TestRunAgent_ComponentEmissionTurn_NextLLMRequestHasNoEmptyAssistant(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	var mu sync.Mutex
+	var secondTurnReq *litellm.Request
+	client := newMockClientWithRequestHook([]mockTurn{
+		{
+			toolCalls: []litellm.ToolUseBlock{
+				buildMockToolCall("call_1", "render_mermaid_diagram", `{"code":"graph TD; A-->B;"}`),
+				buildMockToolCall("call_2", "render_mermaid_diagram", `{"code":"graph TD; C-->D;"}`),
+			},
+		},
+		{tokens: []tokenEvent{{content: "done"}}},
+	}, func(turn int, req *litellm.Request) error {
+		if turn == 1 {
+			mu.Lock()
+			secondTurnReq = req
+			mu.Unlock()
+		}
+		return nil
+	})
+
+	toolReg := tool.NewRegistry()
+	toolReg.Register(&simpleMockTool{
+		name: "render_mermaid_diagram",
+		callFunc: func(ctx context.Context, args json.RawMessage) (tool.ToolResult, error) {
+			return tool.Success(tool.TextBlocks("Rendered MermaidDiagram")), nil
+		},
+	})
+
+	sessionMgr := uisession.NewManager(10, t.TempDir())
+	sessionID := "test-session-comp-turn"
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "render two diagrams", CreatedAt: time.Now()})
+
+	req := &litellm.Request{Model: "test-model"}
+
+	err := RunAgent(context.Background(), RunSpec{
+		Client:     client,
+		Request:    req,
+		MaxTurns:   5,
+		MaxHistory: 0,
+		SSEWriter:  w,
+		Tools:      toolReg,
+	}, RunOpts{
+		HistoryMgr:    NewSessionHistoryManager(sessionMgr, sessionID),
+		Confirmer:     nil,
+		UISessionMgr:  sessionMgr,
+		SessionID:     sessionID,
+		ContextWindow: 0,
+		CrashDumpFunc: nil,
+		Turns:         nil,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error: %v", err)
+	}
+
+	mu.Lock()
+	captured := secondTurnReq
+	mu.Unlock()
+	if captured == nil {
+		t.Fatal("second-turn LLM request was not captured")
+	}
+
+	// The canonical store retains the UI placeholder (it is the component
+	// target) — the filter is read-side only.
+	convo := sessionMgr.GetConversationShared(sessionID)
+	placeholderFound := false
+	for _, msg := range convo.Messages {
+		if msg.Role == "assistant" && msg.Content == "" && len(msg.ToolCalls) == 0 {
+			placeholderFound = true
+			break
+		}
+	}
+	if !placeholderFound {
+		t.Error("test setup: expected an empty assistant placeholder in the canonical store after the component-emitting turn")
+	}
+
+	// The second-turn LLM request must contain no empty assistant message.
+	for i, msg := range captured.Messages {
+		if msg.Role != litellm.Role("assistant") {
+			continue
+		}
+		flat := message.FromLitellmMessage(msg)
+		if flat.Content == "" && len(flat.ToolCalls) == 0 {
+			t.Errorf("second-turn request Messages[%d]: empty assistant placeholder leaked into LLM request", i)
+		}
 	}
 }
 
@@ -2314,11 +2413,10 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-1"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
-	sessionMgr.AppendUser(sessionID, "hi")
+	addTestSession(t, sessionMgr, sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2396,11 +2494,10 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-2"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2451,11 +2548,10 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-3"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "hi")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2507,11 +2603,10 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-4"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2612,11 +2707,10 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		{tokens: []tokenEvent{{content: "answer"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-5"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
-	sessionMgr.AppendUser(sessionID, "hello")
+	addTestSession(t, sessionMgr, sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2693,11 +2787,10 @@ func TestContextUpdate_UsesCalibratedStore(t *testing.T) {
 			{tokens: []tokenEvent{{content: "answer"}}},
 		})
 
-		sessionMgr := history.NewSessionManager(0)
+		sessionMgr := uisession.NewManager(10, t.TempDir())
 		sessionID := "test-session-calibrated"
-		sessionMgr.Create(sessionID)
-		sessionMgr.SetSystemPrompt(sessionID, systemPrompt)
-		sessionMgr.AppendUser(sessionID, "hello")
+		addTestSession(t, sessionMgr, sessionID, systemPrompt)
+		sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
 		req := &litellm.Request{Model: "test-model"}
 
@@ -2775,11 +2868,10 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-cancel-think"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "analyze code")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "analyze code", CreatedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -2814,21 +2906,27 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	}
 
 	// An assistant message must be saved even for mid-stream cancel
-	hist := sessionMgr.History(sessionID)
-	if len(hist) < 3 {
-		t.Fatalf("history has %d messages after cancel, want at least 3 (sys + user + assistant)", len(hist))
+	convo := sessionMgr.GetConversationShared(sessionID)
+	if convo == nil {
+		t.Fatal("canonical conversation missing after cancel")
 	}
-	if hist[len(hist)-1].Role != "assistant" {
-		t.Errorf("last message role = %q, want %q", hist[len(hist)-1].Role, "assistant")
+	if len(convo.Messages) < 2 {
+		t.Fatalf("conversation has %d messages after cancel, want at least 2 (user + assistant)", len(convo.Messages))
+	}
+	if convo.Messages[len(convo.Messages)-1].Role != "assistant" {
+		t.Errorf("last message role = %q, want %q", convo.Messages[len(convo.Messages)-1].Role, "assistant")
 	}
 
 	// Simulate new prompt after cancel
-	sessionMgr.AppendUser(sessionID, "new question")
-	hist2 := sessionMgr.History(sessionID)
+	sessionMgr.AppendMessage(sessionID, message.Message{Role: "user", Content: "new question", CreatedAt: time.Now()})
+	convo2 := sessionMgr.GetConversationShared(sessionID)
+	if convo2 == nil {
+		t.Fatal("canonical conversation missing after resume")
+	}
 
 	// Verify no consecutive user messages — would cause 400 errors with some providers
-	lastRole := litellm.Role("")
-	for _, msg := range hist2 {
+	lastRole := ""
+	for _, msg := range convo2.Messages {
 		if msg.Role == "user" && lastRole == "user" {
 			t.Errorf("Consecutive user messages found — provider would reject as malformed")
 			break

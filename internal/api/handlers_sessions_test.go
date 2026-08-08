@@ -10,11 +10,10 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/api"
-	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner"
 	"github.com/glemsom/eitri/internal/session"
-	"github.com/glemsom/eitri/internal/message"
 )
 
 // ————— handleRoot —————
@@ -804,7 +803,6 @@ func TestHandlePermanentDelete_RedirectsToSessionsPage(t *testing.T) {
 	}
 }
 
-
 // ————— handleLoadSession —————
 
 // newTestServerWithPersister creates a test server with a session manager,
@@ -815,15 +813,13 @@ func newTestServerWithPersister(t *testing.T) (*httptest.Server, *session.Manage
 	eitriDir := t.TempDir()
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
-	historySessionMgr := history.NewSessionManager(50)
 	p, err := persist.New(eitriDir)
 	if err != nil {
 		t.Fatalf("persist.New: %v", err)
 	}
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		Persister:         p,
+		UISessionMgr: sessionMgr,
+		Persister:    p,
 	})
 	cfg := api.ServerConfig{
 		ConfigPath:     t.TempDir() + "/config.json",

@@ -46,11 +46,13 @@
 //	run_completer.go — runCompleter: the unified per-turn run-completer for
 //	                   UI, batch, and sub-agent runs (issues #1107, #1201,
 //	                   ADR-0028); snapshot source parameterized per transport
-//	                   (UI: live-sync + CopySession; batch/sub-agent:
-//	                   buildUISession from history). Its terminal seam persists
-//	                   the run timeline under the run ID plumbed in at
-//	                   construction (runID, generated once per run at run
-//	                   start — issue #1234), never a recomputed ID.
+//	                   (UI: CopySession over the canonical conversation store —
+//	                   the loop writes it directly, no per-turn copy, issue
+//	                   #1241; batch/sub-agent: buildUISession from history).
+//	                   Its terminal seam persists the run timeline under the
+//	                   run ID plumbed in at construction (runID, generated
+//	                   once per run at run start — issue #1234), never a
+//	                   recomputed ID.
 //	run_exit.go      — the single run-end terminal seam shared by the UI,
 //	                   batch, and sub-agent transports (issue #1238,
 //	                   ADR-0028/0029): exit classification (classifyRunExit),
@@ -80,8 +82,8 @@
 //   - litellm   — LLM transport abstraction (*litellm.Client, Request)
 //   - tool      — ToolHandler, Registry, built-in tools (bash, read, write, etc.)
 //   - runstate  — SSE event types (SSEEvent, RenderKind), State, Writer
-//   - session   — UI session Manager (uisession)
-//   - history   — session history Manager and default system prompt
+//   - session   — UI session Manager (uisession); the canonical conversation
+//     store the session-backed history adapter reads and writes (issue #1241)
 //   - provider  — auth resolution, provider descriptions
 //   - skills    — Skill discovery, activation, resource manifests
 //   - debug     — HTTP trace recorder (optional)

@@ -184,11 +184,11 @@ func TestRunExit_NilExitWork(t *testing.T) {
 // unit tests instead of full-service async runs.
 func TestRunExit_UIExitWork(t *testing.T) {
 	tests := []struct {
-		name        string
-		runErr      error
-		status      uisession.Status
-		wantAppend  bool // run-end sync appends the streamed reply
-		wantSSEErr  string
+		name         string
+		runErr       error
+		status       uisession.Status
+		wantAppend   bool // run-end sync appends the streamed reply
+		wantSSEErr   string
 		wantNoSSEErr bool
 	}{
 		{
@@ -198,11 +198,11 @@ func TestRunExit_UIExitWork(t *testing.T) {
 			wantAppend: true,
 		},
 		{
-			name:        "cancelled",
-			runErr:      context.Canceled,
-			status:      uisession.StatusIdle,
-			wantAppend:  true,
-			wantSSEErr:  "Run cancelled",
+			name:       "cancelled",
+			runErr:     context.Canceled,
+			status:     uisession.StatusIdle,
+			wantAppend: true,
+			wantSSEErr: "Run cancelled",
 		},
 		{
 			name:         "max turns",
