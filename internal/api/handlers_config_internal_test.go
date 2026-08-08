@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -224,6 +225,61 @@ func TestWriteSettingsForm_RendersContent(t *testing.T) {
 	if !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("Content-Type = %q, want text/html", ct)
 	}
+}
+
+// TestWriteSettingsForm_DefaultPromptPreviewAndReset verifies the Prompt
+// section renders the canonical built-in default prompt (persona.DefaultPrompt)
+// read-only below the field when the field is empty, hides it when an override
+// is set, and wires the Reset-to-default button's disabled state to the
+// override state (issue #1258).
+func TestWriteSettingsForm_DefaultPromptPreviewAndReset(t *testing.T) {
+	models := []string{"gpt-4"}
+
+	t.Run("empty prompt shows preview and disabled reset", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+		cfg := &config.Config{
+			Provider: "custom_openai",
+			Model:    "gpt-4",
+			BaseURL:  "http://example.com",
+		}
+		writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+
+		body := w.Body.String()
+		if !strings.Contains(body, `id="default-prompt-preview"`) {
+			t.Fatal("default prompt preview element not rendered when the prompt field is empty")
+		}
+		// The rendered body HTML-escapes the preview text, so compare unescaped.
+		if !strings.Contains(html.UnescapeString(body), persona.DefaultPrompt) {
+			t.Fatal("default prompt preview does not contain the canonical built-in default prompt")
+		}
+		if strings.Contains(body, `id="default-prompt-preview" class="default-prompt-preview" hidden`) {
+			t.Fatal("default prompt preview must be visible when the prompt field is empty")
+		}
+		if !strings.Contains(body, `id="prompt-reset-btn" disabled`) {
+			t.Fatal("Reset to default button should be disabled when the prompt field is empty")
+		}
+	})
+
+	t.Run("override hides preview and enables reset", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/settings", nil)
+		cfg := &config.Config{
+			Provider:     "custom_openai",
+			Model:        "gpt-4",
+			BaseURL:      "http://example.com",
+			SystemPrompt: "my override",
+		}
+		writeSettingsForm(w, r, http.StatusOK, cfg, models, "")
+
+		body := w.Body.String()
+		if !strings.Contains(body, `id="default-prompt-preview" class="default-prompt-preview" hidden`) {
+			t.Fatal("default prompt preview must be hidden when the prompt field has an override")
+		}
+		if !strings.Contains(body, `id="prompt-reset-btn">Reset to default`) {
+			t.Fatal("Reset to default button should be enabled (no disabled attr) when the prompt field has an override")
+		}
+	})
 }
 
 func TestLoadConfigState_Defaults(t *testing.T) {

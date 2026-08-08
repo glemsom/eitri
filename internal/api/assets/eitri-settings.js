@@ -143,6 +143,35 @@
     updateBaseURLState();
   }
 
+  // — Default prompt preview and reset-to-default —
+  function updatePromptState() {
+    var input = document.getElementById('system_prompt');
+    if (!input) return;
+    // "Empty" means no override: the run-time resolution treats a non-empty
+    // field (even whitespace) as an override, so match cfg.SystemPrompt == "".
+    var hasOverride = input.value !== '';
+    var preview = document.getElementById('default-prompt-preview');
+    if (preview) preview.hidden = hasOverride;
+    var resetBtn = document.getElementById('prompt-reset-btn');
+    if (resetBtn) resetBtn.disabled = !hasOverride;
+  }
+
+  function initPromptReset() {
+    var input = document.getElementById('system_prompt');
+    if (!input || input.dataset.promptResetInstalled === 'true') return;
+    input.dataset.promptResetInstalled = 'true';
+    input.addEventListener('input', updatePromptState);
+    var resetBtn = document.getElementById('prompt-reset-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        updatePromptState();
+      });
+    }
+    updatePromptState();
+  }
+
   // — Model refresh spinner and fetch —
   function refreshModels() {
     var spinner = document.getElementById('model-refresh-spinner');
@@ -399,6 +428,7 @@
     installGlobalHandlers();
     if (!document.getElementById('settings-form')) return;
     initBaseURLToggle();
+    initPromptReset();
     installDirtyTracking();
     initSaveSuccessFade();
     scrollToErrorIfPresent();
