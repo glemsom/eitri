@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persona"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/voocel/litellm"
 )
@@ -65,7 +65,8 @@ func TestSessionHistoryManager_History(t *testing.T) {
 func TestSessionHistoryManager_History_DefaultSystemPromptFallback(t *testing.T) {
 	t.Parallel()
 	// A session whose system prompt was never set must fall back to the
-	// canonical persona default, exactly like the history store.
+	// canonical persona default (persona.DefaultPrompt — the single source,
+	// formerly aliased by the deleted history store's DefaultSystemPrompt).
 	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-dflt"
 	addTestSession(t, mgr, sessionID, "")
@@ -76,8 +77,8 @@ func TestSessionHistoryManager_History_DefaultSystemPromptFallback(t *testing.T)
 	if len(msgs) != 2 {
 		t.Fatalf("History() returned %d messages, want 2", len(msgs))
 	}
-	if got := msgs[0].Content(); got != history.DefaultSystemPrompt {
-		t.Errorf("system message content = %q, want %q", got, history.DefaultSystemPrompt)
+	if got := msgs[0].Content(); got != persona.DefaultPrompt {
+		t.Errorf("system message content = %q, want %q", got, persona.DefaultPrompt)
 	}
 }
 
@@ -386,8 +387,9 @@ func TestSessionHistoryManager_ReplaceHistory(t *testing.T) {
 func TestSessionHistoryManager_ReplaceHistory_NoSystemMessage(t *testing.T) {
 	t.Parallel()
 	// ReplaceHistory without a leading system message replaces the messages
-	// verbatim and leaves the stored system prompt untouched (matches
-	// history.SessionManager.RestoreHistory).
+	// verbatim and leaves the stored system prompt untouched (the
+	// strip-system-message invariant, ADR-0028: only a leading system message
+	// is extracted into the separate SystemPrompt field).
 	mgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-rh2"
 	addTestSession(t, mgr, sessionID, "You are helpful.")
@@ -415,24 +417,19 @@ func TestSessionHistoryManager_ReplaceHistory_NilSessionMgr(t *testing.T) {
 	adapter.ReplaceHistory([]message.Message{{Role: "user", Content: "x"}})
 }
 
-// TestSessionHistoryManager_ParityWithHistoryStore verifies the acceptance
-// criterion that the session-backed adapter produces byte-identical LLM
-// request history after pointing it at the canonical store (issue #1241):
-// the same operation sequence driven through the canonical store (via the
-// adapter) and through the old LLM-history store yields identical litellm
-// messages (the system prompt + every turn's assistant/tool appends).
-func TestSessionHistoryManager_ParityWithHistoryStore(t *testing.T) {
+// TestSessionHistoryManager_LLMHistoryShape verifies the loop's LLM-boundary
+// history shape produced by the session-backed adapter (issue #1241): a full
+// turn sequence — assistant text, tool result, assistant tool call, tool
+// result, final assistant text — reads back as the system prompt prepended
+// followed by the flat canonical messages in order. The old LLM-history store
+// this adapter was originally parity-driven against was deleted by issue
+// #1242; the expected shape is asserted directly.
+func TestSessionHistoryManager_LLMHistoryShape(t *testing.T) {
 	t.Parallel()
 	const (
 		id      = "parity-session"
 		sysPrmt = "You are Eitri."
 	)
-
-	// Old store: driven through history.SessionManager's own API.
-	oldStore := history.NewSessionManager(50)
-	oldStore.Create(id)
-	oldStore.SetSystemPrompt(id, sysPrmt)
-	oldStore.AppendUser(id, "run the build")
 
 	// Canonical store: driven through the session-backed adapter (issue #1241).
 	newMgr := uisession.NewManager(10, t.TempDir())
@@ -447,43 +444,30 @@ func TestSessionHistoryManager_ParityWithHistoryStore(t *testing.T) {
 	newMgr.AppendToConversation(id, message.Message{Role: "user", Content: "run the build", CreatedAt: time.Now()})
 	adapter := NewSessionHistoryManager(newMgr, id)
 
-	// The same turn sequence through both conversation sources.
-	oldStore.AppendAssistant(id, "let me check", nil)
+	// The same turn sequence through the conversation source.
 	adapter.AppendAssistant("let me check", nil)
-
-	oldStore.AppendTool(id, "call_1", "result content", "", false)
 	adapter.AppendTool("call_1", "result content", "", false)
-
-	oldStore.AppendAssistant(id, "", []message.ToolCall{
-		{ID: "call_2", Type: "function", Function: message.FunctionCall{Name: "test_tool", Arguments: `{}`}},
-	})
 	adapter.AppendAssistant("", []litellm.ToolUseBlock{
 		{ID: "call_2", Name: "test_tool", Arguments: json.RawMessage(`{}`)},
 	})
-
-	oldStore.AppendTool(id, "call_2", "done", "", false)
 	adapter.AppendTool("call_2", "done", "", false)
-
-	oldStore.AppendAssistant(id, "build finished", nil)
 	adapter.AppendAssistant("build finished", nil)
 
-	oldHist := oldStore.History(id)
 	newHist := adapter.History()
-	if len(oldHist) != len(newHist) {
-		t.Fatalf("history lengths differ: old=%d new=%d", len(oldHist), len(newHist))
+	wantRoles := []string{"system", "user", "assistant", "tool", "assistant", "tool", "assistant"}
+	if len(newHist) != len(wantRoles) {
+		t.Fatalf("history length = %d, want %d", len(newHist), len(wantRoles))
 	}
-	for i := range oldHist {
-		oldMsg := oldHist[i].ToLitellm()
-		newMsg := newHist[i].ToLitellm()
-		if oldMsg.Role != newMsg.Role {
-			t.Errorf("message[%d] role: old=%q new=%q", i, oldMsg.Role, newMsg.Role)
-			continue
+	for i, want := range wantRoles {
+		if got := string(newHist[i].Role); got != want {
+			t.Errorf("message[%d] role = %q, want %q", i, got, want)
 		}
-		oldJSON, _ := json.Marshal(oldMsg)
-		newJSON, _ := json.Marshal(newMsg)
-		if string(oldJSON) != string(newJSON) {
-			t.Errorf("message[%d] serialized litellm differs:\n old=%s\n new=%s", i, oldJSON, newJSON)
-		}
+	}
+	if got := newHist[0].Content(); got != sysPrmt {
+		t.Errorf("message[0] content = %q, want %q (system prompt prepended)", got, sysPrmt)
+	}
+	if got := newHist[3].ToolCallID(); got != "call_1" {
+		t.Errorf("message[3] tool_call_id = %q, want %q", got, "call_1")
 	}
 }
 

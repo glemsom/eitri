@@ -53,7 +53,7 @@ type HistorySchema struct {
 // RestoredState holds all data recovered from disk on startup.
 type RestoredState struct {
 	Sessions map[string]*session.UISession
-	// Histories are derived directly from session snapshot messages (canonical type).
+	// Histories are derived directly from session snapshot messages (flat snapshot shape).
 	Histories map[string][]message.Message // sessionID → conversation history with system prompt prepended
 	Traces    []*debug.HTTPTrace
 }
@@ -799,8 +799,8 @@ func (p *Persister) sessionSnapshotPath(sessionID string) (string, error) {
 // All restored sessions have Status set to StatusIdle regardless of what the snapshot says.
 //
 // The restored Histories are derived directly from the session snapshots' Messages
-// field (canonical message.Message type). No conversion is needed since all consumers
-// use the canonical type.
+// field (the flat message.Message snapshot shape). No conversion is needed since
+// all consumers use the flat shape.
 //
 // For backward compatibility, if old-format history data exists under history/
 // and no session.json was found, it attempts to read from the old format.
@@ -855,7 +855,7 @@ func (p *Persister) Restore() (*RestoredState, error) {
 
 		state.Sessions[sessionID] = &s
 
-		// Derive history from session messages (canonical type, no conversion needed)
+		// Derive history from session messages (flat snapshot shape, no conversion needed)
 		state.Histories[sessionID] = s.Messages
 
 		// --- Restore HTTP traces ---

@@ -114,7 +114,7 @@ func TestManager_ExchangeCapDoesNotTrimReplace(t *testing.T) {
 
 	// ReplaceConversationMessages is the canonical store's RestoreHistory
 	// equivalent (compaction / per-turn live-sync write-back); like the
-	// history store's RestoreHistory it must NOT trim.
+	// session-backed adapter's ReplaceHistory it must NOT trim.
 	overCap := make([]message.Message, 0, 5)
 	for i := 0; i < 5; i++ {
 		overCap = append(overCap, message.Message{Role: "user", Content: "q"})
@@ -179,8 +179,8 @@ func TestManager_RepairPendingToolUse_UnknownSessionNoop(t *testing.T) {
 }
 
 func TestManager_ExchangeCapConstructorNormalizesNonPositive(t *testing.T) {
-	// WithMaxExchanges(<=0) must fall back to the default cap, exactly like
-	// history.NewSessionManager — both stores resolve the same default.
+	// WithMaxExchanges(<=0) must fall back to the default cap
+	// (message.DefaultMaxExchanges).
 	mgr := session.NewManager(10, t.TempDir(), session.WithMaxExchanges(0))
 	sess, err := mgr.Create("browser-1")
 	if err != nil {

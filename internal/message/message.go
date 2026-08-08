@@ -1,7 +1,9 @@
 // Package message defines the EitriMessage and Message types and conversion
-// helpers. EitriMessage wraps litellm.Message with UI-only metadata. Message
-// is a flat struct used for serialization and by consumers that need direct
-// field access to role, content, and tool call fields.
+// helpers. EitriMessage — the canonical message type at the loop's LLM
+// boundary (what HistoryManager reads and writes, and what the loop converts
+// to litellm for the request) — wraps litellm.Message with UI-only metadata.
+// Message is the flat serialization/conversation shape used by the canonical
+// session store and persisted snapshots.
 //
 // Migrated from internal/llm (issue #899).
 package message
@@ -40,8 +42,9 @@ type FunctionCall struct {
 
 // Message is the flat conversation message type used for serialization and by
 // consumers that need direct field access to role, content, tool calls, and UI
-// metadata. It is the historical canonical type; newer code should prefer
-// EitriMessage which wraps litellm.Message.
+// metadata. It is the storage/snapshot shape of the canonical session store;
+// the canonical message type at the loop's LLM boundary is EitriMessage (see
+// the package doc).
 //
 // All data paths (LLM API → persistence → UI) can use this type or convert
 // from EitriMessage as needed.
@@ -63,7 +66,11 @@ type Message struct {
 
 // ── EitriMessage ───────────────────────────────────────────────────────────
 
-// EitriMessage wraps litellm.Message with UI-only metadata.
+// EitriMessage is the canonical message type at the loop's LLM boundary: it
+// wraps litellm.Message with UI-only metadata, and both HistoryManager
+// adapters read and write it (the loop converts it to litellm for the
+// request). Message is its flat serialization counterpart (see the package
+// doc).
 type EitriMessage struct {
 	litellm.Message
 	CreatedAt    time.Time       `json:"created_at"`

@@ -42,8 +42,7 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 
 // seedSession inserts a session with the given ID into a canonical session
 // manager — the loop's session-backed history source (issue #1241) — seeded
-// with a system prompt and an optional initial user message. Mirrors the old
-// history.SessionManager.Create/SetSystemPrompt/AppendUser test setup.
+// with a system prompt and an optional initial user message.
 func seedSession(t *testing.T, mgr *uisession.Manager, id, systemPrompt, userMsg string) {
 	t.Helper()
 	mgr.Add(&uisession.UISession{

@@ -36,7 +36,12 @@ The strip-system-message invariant collapses into one place — the
 history→conversation sync module `internal/message/sync.go`
 (`message.SyncHistoryToConversation`, `message.StripLeadingSystemMessage`,
 extracted from the completer by issue #1235) — used by `buildUISession`, the UI
-live-sync, and `CompactSession`; the other hand-rolled sites are deleted. UI
+live-sync, and `CompactSession`; the other hand-rolled sites are deleted.
+(That module was itself deleted by issue #1242 once the old LLM-history store
+was gone: the invariant now lives at the canonical-store boundaries — the
+session-backed adapter's `ReplaceHistory` extracts the leading system message
+into the session's separate `SystemPrompt` field, and `buildUISession` strips
+it from the snapshot facade.) UI
 parent runs keep their compaction SSE events (warning toast on failure,
 `compaction_complete` on success), emitted by the unified completer when a
 `RunState` is present (batch and sub-agent runs have none and only log). No
@@ -50,7 +55,7 @@ unit tests.
 |----------|--------|----------------------|
 | UI per-turn completion | Unified `runCompleter` with a snapshot-source seam | Keep `RunService.OnTurnComplete` (two near-identical per-turn paths, four strip sites — the duplication this ADR removes) |
 | UI snapshot source | Live-sync then `CopySession` | History-derived facade via `buildUISession` (drops `ActiveSkills`/`ClosedAt`/`RenderedMessageIDs` from UI snapshots) |
-| Strip invariant | One sync module (`message.SyncHistoryToConversation` / `message.StripLeadingSystemMessage` in `internal/message/sync.go`, extracted by issue #1235) | Leave hand-rolled copies at each sync site (drift surface) |
+| Strip invariant | One sync module (`message.SyncHistoryToConversation` / `message.StripLeadingSystemMessage` in `internal/message/sync.go`, extracted by issue #1235; deleted with the old history store by issue #1242 — the invariant now lives at the canonical-store boundaries: the session-backed adapter's `ReplaceHistory` extraction and `buildUISession`'s facade strip) | Leave hand-rolled copies at each sync site (drift surface) |
 | Compaction SSE events | Unified completer emits them when a `RunState` exists | Transport-specific notifier hook (extra plumbing for the same gate) |
 
 ## Consequences
@@ -59,7 +64,10 @@ Positive:
 
 - One per-turn snapshot + auto-compaction + re-snapshot path across UI, batch,
   and sub-agent runs — no drift surface between near-identical codepaths.
-- The strip-system-message invariant lives in exactly one place.
+- The strip-system-message invariant lives in exactly one place (the sync
+  module, issue #1235; after issue #1242, at the canonical-store boundaries —
+  the session-backed adapter's `ReplaceHistory` extraction and `buildUISession`'s
+  facade strip).
 - UI snapshots keep full `CopySession` fidelity, including mid-run snapshots
   that now reflect the just-completed turn's live-synced conversation.
 

@@ -98,10 +98,9 @@ func NewSessionHistoryManager(sessionMgr *uisession.Manager, sessionID string) *
 }
 
 // History returns the conversation history from the canonical store with the
-// system prompt prepended. Mirrors history.SessionManager.History: the system
-// prompt is stored separately on the session (never in the message list, the
-// strip-system-message invariant, ADR-0028) and prepended as the leading
-// system message on reads.
+// system prompt prepended. The system prompt is stored separately on the
+// session (never in the message list, the strip-system-message invariant,
+// ADR-0028) and prepended as the leading system message on reads.
 //
 // The conversation is read through Manager.CopyConversation — a snapshot
 // taken under the manager lock — never through the live shared reference
@@ -114,18 +113,19 @@ func NewSessionHistoryManager(sessionMgr *uisession.Manager, sessionID string) *
 //
 // Fidelity note: each canonical message is round-tripped through
 // message.FromLitellm(message.ToLitellmMessage(msg)) so LLM request history
-// stays byte-identical to the old store (the parity test). The round-trip
-// folds ReasoningContent into the content TextBlock ("R\nC") for non-tool
-// assistant messages and drops RawContent — a deliberate fidelity match to
-// the old store, whose LLM history never carried either field. Adapter-written
-// messages carry no reasoning, so the fold only affects messages written by
-// other paths (syncRunResultToUISession, persister-less configs).
+// stays byte-identical to the shape the former LLM-history store produced.
+// The round-trip folds ReasoningContent into the content TextBlock ("R\nC")
+// for non-tool assistant messages and drops RawContent — a deliberate fidelity
+// match to the old store's LLM history, which never carried either field.
+// Adapter-written messages carry no reasoning, so the fold only affects
+// messages written by other paths (syncRunResultToUISession, persister-less
+// configs).
 //
 // UI-only empty assistant placeholders (created by session.Manager's
 // AppendComponent/SetQuickReplies when the last conversation message is not an
 // assistant message — the second and subsequent component-emitting tool calls
-// of a turn) are filtered out on read: the old LLM-history store never carried
-// them, and they serialise as {"role":"assistant"} with no content or
+// of a turn) are filtered out on read: the deleted LLM-history store never
+// carried them, and they serialise as {"role":"assistant"} with no content or
 // tool_calls, which some providers reject. The filter is read-side — the
 // canonical store keeps the placeholders as the UI component targets; because
 // compaction (auto and manual) reads and rewrites the conversation through
@@ -142,8 +142,8 @@ func (m *sessionHistoryManager) History() []message.EitriMessage {
 	}
 
 	// Build the system prompt message. The canonical store stores the prompt
-	// separately; fall back to the canonical persona default when unset,
-	// exactly like the history store.
+	// separately; fall back to the canonical persona default when unset
+	// (persona.DefaultPrompt, the single source).
 	sysPrompt := convo.SystemPrompt
 	if sysPrompt == "" {
 		sysPrompt = persona.DefaultPrompt
@@ -175,10 +175,10 @@ func (m *sessionHistoryManager) History() []message.EitriMessage {
 // assistant placeholder: assistant role with no text content and no tool
 // calls. These are appended into the canonical store by session.Manager's
 // AppendComponent/SetQuickReplies when the last conversation message is not an
-// assistant message (components need a target to attach to). The old LLM
-// history store never carried them, so the session-backed History() filters
-// them on read (see History's fidelity note). Assistant messages with content
-// or tool calls are never empty and must pass through.
+// assistant message (components need a target to attach to). The deleted
+// LLM-history store never carried them, so the session-backed History()
+// filters them on read (see History's fidelity note). Assistant messages with
+// content or tool calls are never empty and must pass through.
 func isEmptyAssistant(m message.EitriMessage) bool {
 	if m.Role != litellm.Role("assistant") {
 		return false
@@ -189,8 +189,8 @@ func isEmptyAssistant(m message.EitriMessage) bool {
 // AppendAssistant appends an assistant message to the canonical conversation.
 // Empty assistant messages (no content, no tool calls) are skipped — they
 // serialise as {"role":"assistant"} with no content or tool_calls, which some
-// providers reject (matches the history store's append path so LLM request
-// history stays byte-identical).
+// providers reject (matching the former history store's append path so LLM
+// request history stays byte-identical).
 func (m *sessionHistoryManager) AppendAssistant(content string, toolCalls []litellm.ToolUseBlock) {
 	if m.sessionMgr == nil {
 		return
@@ -225,8 +225,7 @@ func (m *sessionHistoryManager) AppendTool(toolCallID, content, rawContent strin
 // ReplaceHistory replaces the canonical conversation with the given flat
 // messages (e.g. compacted history written back after auto-compaction). A
 // leading system message is extracted into the session's separate SystemPrompt
-// field, mirroring history.SessionManager.RestoreHistory (the
-// strip-system-message invariant, ADR-0028).
+// field — the strip-system-message invariant, ADR-0028.
 func (m *sessionHistoryManager) ReplaceHistory(messages []message.Message) {
 	if m.sessionMgr == nil {
 		return

@@ -83,17 +83,18 @@
 //   - ActivateSkill / DeactivateSkill — manage active skills per session
 //   - AddRenderedMessageID / HasRenderedMessageID — dedup ring buffer
 //   - WithMaxExchanges / RepairPendingToolUse — the history behaviours the
-//     canonical store shares with the old LLM-history store (issue #1239):
-//     the per-session exchange-cap sliding window (append paths trim to the
-//     cap exactly like history's append paths) and the repair that closes a
-//     trailing unresolved assistant tool call before a resume.
+//     canonical store enforces (issue #1239): the per-session exchange-cap
+//     sliding window (append paths trim to the cap) and the repair that
+//     closes a trailing unresolved assistant tool call before a resume.
 //
 // Since issue #1241 the canonical store is the loop's session-backed history
 // source: the `loop.sessionHistoryManager` adapter (`internal/runner/loop`)
 // reads and writes the conversation here directly, so UI and batch runs keep
 // their LLM request history, the UI conversation, and the persisted snapshots
-// in this single store (the separate LLM-history store is contracted away,
-// umbrella #1231).
+// in this single store. The former separate LLM-history store
+// (`internal/history`) was deleted with the sync layer that bridged the two
+// (umbrella #1231, issue #1242) — this store is the only conversation store
+// left.
 //
 // Dependencies: internal/message (Message and ComponentData types)
 //

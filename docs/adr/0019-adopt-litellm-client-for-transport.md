@@ -24,7 +24,7 @@ Replace `internal/llm/` entirely with `litellm.Client` and its provider subpacka
 | Concern | Package | Status |
 |---------|---------|--------|
 | Provider auth/discovery/profiles | `internal/provider/` | Unchanged |
-| Session management | `internal/history/` | Types updated only |
+| Session management | ~~`internal/history/`~~ → `internal/session/` | Contracted away: the LLM-history store was deleted in favour of the canonical `internal/session` store (umbrella #1231, issues #1239–#1242) |
 | Agent loop orchestration | `internal/runner/loop/` | Rewired to litellm stream |
 | Tool registry & dispatch | `internal/tool/` | Unchanged (already litellm types) |
 | SSE broadcast | `internal/runstate/` | Unchanged |

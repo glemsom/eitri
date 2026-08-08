@@ -175,11 +175,11 @@ func (c *runCompleter) persistSource(status uisession.Status, source func(status
 // session-backed history adapter already reads and writes the canonical
 // conversation store directly (issue #1241), so the UI conversation IS the
 // run's live history — the former per-turn history→conversation copy
-// (SyncHistoryToConversation + ReplaceConversationMessages) is gone from this
-// path. The source snapshots the UI session facade via CopySession, preserving
-// the full UI-session fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs)
-// that the history-derived facade omits. Returns nil when the UI session is
-// unavailable or the conversation has no messages yet.
+// (message.SyncHistoryToConversation + ReplaceConversationMessages) is gone
+// from this path. The source snapshots the UI session facade via CopySession,
+// preserving the full UI-session fidelity (ActiveSkills, ClosedAt,
+// RenderedMessageIDs) that the history-derived facade omits. Returns nil when
+// the UI session is unavailable or the conversation has no messages yet.
 //
 // The presence check reads a locked copy (CopyConversation), never the live
 // shared reference: manual compaction can replace the conversation's message
@@ -217,11 +217,24 @@ func (c *runCompleter) terminal(sseState *runstate.State, status uisession.Statu
 // Run snapshots are plain UISession facades: the system prompt is stored in
 // the separate system_prompt field (matching UI snapshots) and the leading
 // system message the history manager prepends is stripped from Messages (the
-// strip-system-message invariant, see message.SyncHistoryToConversation).
+// strip-system-message invariant, ADR-0028). The conversion from the loop's
+// LLM-boundary shape ([]EitriMessage, system prompt prepended on reads) to the
+// flat []Message is inlined here — the former message.SyncHistoryToConversation
+// module was deleted with the old LLM-history store (umbrella #1231,
+// issue #1242), leaving EitriMessage as the single canonical message type at
+// the loop's LLM boundary.
 func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISession {
 	hist := c.historyMgr.History()
 	if hist == nil || len(hist) == 0 {
 		return nil
+	}
+
+	msgs := make([]message.Message, 0, len(hist))
+	for _, em := range hist {
+		msgs = append(msgs, em.ToMessage())
+	}
+	if len(msgs) > 0 && msgs[0].Role == "system" {
+		msgs = msgs[1:]
 	}
 
 	return &uisession.UISession{
@@ -230,7 +243,7 @@ func (c *runCompleter) buildUISession(status uisession.Status) *uisession.UISess
 		ParentID:     c.parentID,
 		Title:        c.title,
 		Status:       status,
-		Messages:     message.SyncHistoryToConversation(hist),
+		Messages:     msgs,
 		Workspace:    c.workspace,
 		SystemPrompt: c.systemPrompt,
 		CreatedAt:    c.startedAt,

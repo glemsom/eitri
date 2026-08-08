@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behaviours only the old LLM-history store had (issue #1239): the
   **exchange-cap sliding window** and **pending-tool-use repair**. The shared
   logic lives in `internal/message/exchange.go` as pure functions over the flat
-  canonical `Message` shape — `TrimExchanges` (drops the oldest exchanges when
+  `Message` shape — `TrimExchanges` (drops the oldest exchanges when
   the user-message count exceeds the cap, keeping the trailing assistant/tool
   tail — exactly the history store's sliding-window semantics) and
   `RepairPendingToolUse` (closes a trailing unresolved assistant tool call with
@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stores in `cmd/eitri/main.go`, so they work side by side with the same cap.
   **Parity tests** (`internal/session/exchange_parity_test.go`) drive both
   stores through identical inputs and assert identical conversation shapes for
-  trim and repair, so both stores behave identically before the history store
-  is contracted away (umbrella #1231).
+  trim and repair, so both stores behave identically; the old history store
+  was subsequently deleted with the sync layer (umbrella #1231, issue #1242).
 
 - The `write` and `edit` tools can now target configured **writable roots** —
   the same `sandbox.extra_writable_paths` paths the `bash` tool may write to —
@@ -178,8 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TextBlock` ("R\nC") and drops `RawContent` — a match to the old store,
   whose LLM history never carried either field; adapter-written messages carry
   no reasoning, so the fold never affects ordinary UI/batch runs. The old
-  `internal/history` store remains only for the parity tests until it is
-  contracted away (umbrella #1231, issue #1242).
+  `internal/history` store remained only for the parity tests and was deleted
+  with the sync layer by issue #1242 (umbrella #1231).
 
 - Trace aggregation now has a single owner (issue #1240): the window-aggregate fold (count, error count/rate, p50/p95 latency, token totals, window bounds) that the persisted archive aggregate endpoint returns is implemented once — `debug.AggregateTraces` in the new `internal/debug/aggregate.go` — and `Persister.AggregateTraces` delegates to it instead of re-implementing the fold on disk (its previous `aggregateTraces` explicitly "mirrored the recorder's metrics"). All debug trace endpoints now parse their filter parameters (session/provider/model/time/limit/offset) through one shared parser, so the in-memory recorder lists (`/api/debug/http` and `/api/debug/sessions/{id}/http`) accept the same parameter surface as the persisted endpoints (`model`/`from`/`to`/`offset` are accepted and ignored by the in-memory lists, which filter only on session/provider/limit) and reject malformed parameters with `400` exactly like the archive endpoints. The derived token total (the sum of the four usage components, not each trace's stored total) is likewise single-owned — `UsageTotals.TokenTotal` — used by both the recorder's metrics snapshot and the window aggregate. `/api/debug/metrics` (the recorder's richer per-provider-per-model counters) and `/api/debug/traces/aggregate` return the same data as before; Session Report enrichment is unchanged. The in-memory endpoints' docs now match the code: `limit` defaults to no limit (everything the recorder holds, capped at 100) and `provider_id` filters within the path session on `/api/debug/sessions/{id}/http`.
 
@@ -225,6 +225,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Per-request HTTP logging is now suppressed in test binaries, so failed-test output dumps stay lean — production servers still log every request at Info level. Test coverage for the request-log fields moved to a direct unit test. (#1031)
 - `make test` and `make test-race` now print a single compact verdict line (packages passed/failed, failing test names, and DATA RACE warnings with `-race`) plus only the failing tests' error excerpts, instead of one boilerplate line per package. Full raw output is teed to `dist/test-output.log` / `dist/test-race-output.log` for on-demand grepping, and the exit code mirrors `go test`. (#1032, #1033)
+
+### Removed
+
+- The old LLM-history store (`internal/history/`) and the history→conversation
+  sync layer (`internal/message/sync.go` — `SyncHistoryToConversation` /
+  `StripLeadingSystemMessage`) are deleted (umbrella #1231, issue #1242). Once
+  the loop's session-backed history adapter was pointed at the canonical
+  `internal/session` store (issue #1241) no production reference to the old
+  store remained, and the sync seam survived only for the batch/sub-agent
+  snapshot facade — `runCompleter.buildUISession` now converts the loop's
+  LLM-boundary `[]EitriMessage` to the flat `[]Message` inline (with the
+  leading system message stripped, ADR-0028). The parity tests that drove the
+  two stores through identical inputs (`internal/session/exchange_parity_test.go`,
+  the old-store half of the adapter parity test) are deleted with the store;
+  the canonical store's exchange-cap trim and pending-tool-use repair remain
+  covered by `internal/session/exchange_test.go`, and the session-backed
+  adapter's LLM-boundary history shape is asserted directly. Startup session
+  restore is unchanged — it flows through `Manager.LoadFromDisk` into the
+  canonical store. Exactly one message type is documented as canonical:
+  `EitriMessage` at the loop's LLM boundary (`Message` is the flat
+  store/snapshot shape).
 
 ### Fixed
 

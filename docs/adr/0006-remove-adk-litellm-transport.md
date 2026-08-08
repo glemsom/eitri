@@ -12,7 +12,7 @@ Eitri initially adopted Google ADK Go SDK (`google.golang.org/adk/v2`) for agent
 
 1. **Remove all ADK dependencies** — `google.golang.org/adk/v2`, `google.golang.org/genai`, `google.golang.org/api`, and their transitive tree.
 2. **Keep Eitri's provider auth/discovery/profile layer** (`internal/provider/`): GitHub OAuth device flow, token refresh, structured `provider_auth` state, model discovery/filtering, UI-facing provider metadata. Only the chat HTTP transport was replaced.
-3. **Session management lives in `internal/history/`** — sliding window (last 50 exchanges) via a `SessionManager` API (`AppendUser`, `AppendAssistant`, `AppendTool`); loss-on-restart semantics.
+3. **Session management lived in `internal/history/`** — sliding window (last 50 exchanges) via a `SessionManager` API (`AppendUser`, `AppendAssistant`, `AppendTool`); loss-on-restart semantics. (That store was contracted away in favour of the canonical `internal/session` store, umbrella #1231, issues #1239–#1242; the sliding-window cap and pending-tool-use repair now live in `internal/message/exchange.go`.)
 4. **Synchronous agent loop** — `LLM → parse tool_calls → execute → feed back → LLM`, running in a goroutine with concurrent SSE fan-out to the UI. No state machine, no multi-agent routing.
 5. **Tool definitions** in `internal/tool/` — explicit Go structs with `JSONSchema()` methods; `SchemaOf[T]` reduces boilerplate.
 6. **OpenCode Go model routing** — prefix-based (`qwen*`/`minimax*` → Anthropic `/v1/messages`, everything else → OpenAI `/v1/chat/completions`); unknown prefixes default to OpenAI-compatible.
