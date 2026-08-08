@@ -4,6 +4,12 @@
 // meet (issue #1235): the loop's history ([]EitriMessage, system prompt
 // prepended on reads) becomes the canonical conversation shape
 // ([]Message, system prompt stored separately).
+//
+// Since issue #1241 the loop's session-backed history adapter reads and
+// writes the canonical session store directly, so the UI snapshot path no
+// longer funnels through this module — it survives for the request-based
+// (sub-agent) and batch snapshot facades and for manual compaction until the
+// history store is contracted away (umbrella #1231, issue #1242).
 
 package message
 
@@ -11,9 +17,9 @@ package message
 // conversation message shape, stripping the leading system message (the
 // strip-system-message invariant, ADR-0028): the system prompt is stored
 // separately (UISession.SystemPrompt / the history manager's system prompt),
-// so it must never appear in a persisted facade's Messages list. All run
-// transports and manual compaction funnel their UI/snapshot message lists
-// through here.
+// so it must never appear in a persisted facade's Messages list. The
+// batch/sub-agent snapshot facade (buildUISession) and manual compaction
+// funnel their UI/snapshot message lists through here.
 func SyncHistoryToConversation(hist []EitriMessage) []Message {
 	msgs := make([]Message, 0, len(hist))
 	for _, em := range hist {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/testutil"
 )
 
@@ -22,10 +24,9 @@ func TestNoGoroutineLeak_CompactSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	svc.historySessionMgr.Create(sess.ID)
-	svc.historySessionMgr.AppendUser(sess.ID, "Tell me a summary of context")
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Tell me a summary of context", CreatedAt: time.Now()})
 	for i := 0; i < 6; i++ {
-		svc.historySessionMgr.AppendAssistant(sess.ID, "Some long diagnostic output line number "+strconv.Itoa(i), nil)
+		uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Some long diagnostic output line number " + strconv.Itoa(i), CreatedAt: time.Now()})
 	}
 
 	for i := 0; i < 3; i++ {

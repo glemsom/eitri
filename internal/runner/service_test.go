@@ -19,7 +19,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/compactor"
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
@@ -34,13 +33,43 @@ func newRunServiceForTest(t *testing.T) (*RunService, *uisession.Manager) {
 	t.Helper()
 
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
+		UISessionMgr: uiSessionMgr,
 	})
 	return svc, uiSessionMgr
+}
+
+// seedSession inserts a session with the given ID into a canonical session
+// manager — the loop's session-backed history source (issue #1241) — seeded
+// with a system prompt and an optional initial user message. Mirrors the old
+// history.SessionManager.Create/SetSystemPrompt/AppendUser test setup.
+func seedSession(t *testing.T, mgr *uisession.Manager, id, systemPrompt, userMsg string) {
+	t.Helper()
+	mgr.Add(&uisession.UISession{
+		ID:        id,
+		Title:     "test",
+		Messages:  []message.Message{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	if systemPrompt != "" {
+		mgr.SetSystemPrompt(id, systemPrompt)
+	}
+	if userMsg != "" {
+		mgr.AppendToConversation(id, message.Message{Role: "user", Content: userMsg, CreatedAt: time.Now()})
+	}
+}
+
+// sessionHistory returns the run's LLM request history (system prompt
+// prepended) for the given session through the loop's session-backed history
+// adapter — the production seam that reads the canonical conversation store
+// directly (issue #1241).
+func sessionHistory(svc *RunService, id string) []message.EitriMessage {
+	if svc.uiSessionMgr == nil {
+		return nil
+	}
+	return loop.NewSessionHistoryManager(svc.uiSessionMgr, id).History()
 }
 
 // unreachableURL returns a loopback HTTP URL with no listener, so dialing it
@@ -64,7 +93,8 @@ func TestStartRun_InjectsRepoInstructions(t *testing.T) {
 		t.Fatalf("write AGENTS.md: %v", err)
 	}
 
-	svc, _ := newRunServiceForTest(t)
+	svc, uiMgr := newRunServiceForTest(t)
+	seedSession(t, uiMgr, "session-1", "", "")
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    unreachableURL(t),
@@ -79,7 +109,7 @@ func TestStartRun_InjectsRepoInstructions(t *testing.T) {
 	}
 	defer svc.Cancel("session-1")
 
-	hist := svc.historySessionMgr.History("session-1")
+	hist := sessionHistory(svc, "session-1")
 	if len(hist) < 1 {
 		t.Fatal("no history entries")
 	}
@@ -101,18 +131,16 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 		ModelName:  "test-model",
 	}
 
-	// Create and populate a session
-	svc.historySessionMgr.Create("test-session")
-	svc.historySessionMgr.SetSystemPrompt("test-session", "You are Eitri.")
-	svc.historySessionMgr.AppendUser("test-session", "Hi, my name is Glenn")
-	svc.historySessionMgr.AppendAssistant("test-session", "Hello Glenn!", nil)
+	// Create and populate a session in the canonical conversation store
+	seedSession(t, svc.uiSessionMgr, "test-session", "You are Eitri.", "Hi, my name is Glenn")
+	svc.uiSessionMgr.AppendToConversation("test-session", message.Message{Role: "assistant", Content: "Hello Glenn!", CreatedAt: time.Now()})
 
-	hist1 := svc.historySessionMgr.History("test-session")
+	hist1 := sessionHistory(svc, "test-session")
 	if len(hist1) != 3 {
 		t.Fatalf("History length after first run = %d, want 3 (sys + user + asst)", len(hist1))
 	}
 
-	// StartRun with explicit config — must not replace historySessionMgr
+	// StartRun with explicit config — must not replace the conversation store
 	_, err := svc.StartRun(context.Background(), "test-session", "another message", cfg)
 	if err != nil {
 		t.Fatalf("StartRun: %v", err)
@@ -120,13 +148,13 @@ func TestRunService_HistoryPreservedViaDeps(t *testing.T) {
 	defer svc.Cancel("test-session")
 
 	// History should still be preserved
-	if svc.historySessionMgr == nil {
-		t.Fatal("historySessionMgr is nil after StartRun")
+	if svc.uiSessionMgr == nil {
+		t.Fatal("uiSessionMgr is nil after StartRun")
 	}
-	hist2 := svc.historySessionMgr.History("test-session")
+	hist2 := sessionHistory(svc, "test-session")
 	if len(hist2) < 3 {
 		t.Fatalf("History length after StartRun = %d, want >= 3 (preserved). "+
-			"Bug: StartRun replaced historySessionMgr", len(hist2))
+			"Bug: StartRun replaced the conversation store", len(hist2))
 	}
 	// Verify the history order is preserved
 	// After StartRun: system prompt + user(Hi) + asst(Hello Glenn!) + user(another message)
@@ -158,11 +186,9 @@ func TestWaitForRunsToFinish_BlocksUntilTerminalPersistence(t *testing.T) {
 		t.Fatalf("persist.New: %v", err)
 	}
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		Persister:         persister,
+		UISessionMgr: uiSessionMgr,
+		Persister:    persister,
 	})
 
 	// A fake LLM that streams one assistant token then stops, so the run
@@ -973,9 +999,8 @@ func TestRunService_SpawnSubAgent_PersonaRequiredSkillFlow(t *testing.T) {
 				uiSessionMgr = uisession.NewManager(10, t.TempDir())
 			}
 			svc := NewRunService(RunServiceDeps{
-				UISessionMgr:      uiSessionMgr,
-				HistorySessionMgr: history.NewSessionManager(50),
-				SkillsService:     skillsSvc,
+				UISessionMgr:  uiSessionMgr,
+				SkillsService: skillsSvc,
 			})
 			cfg := RunConfig{
 				ProviderID:    "opencode_go",
@@ -1091,8 +1116,7 @@ func TestRunService_SpawnSubAgent_CreatesChildSession(t *testing.T) {
 
 func TestRunService_SpawnSubAgent_NoUIManager_NoChildSession(t *testing.T) {
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      nil,
-		HistorySessionMgr: nil,
+		UISessionMgr: nil,
 	})
 
 	cfg := RunConfig{
@@ -1198,12 +1222,17 @@ func TestRunService_ActiveRunCount_DecrementsAfterCancel(t *testing.T) {
 
 // ── CloseSession ─────────────────────────────────────────────────────────────
 
-func TestRunService_CloseSession_CancelsRunAndClosesHistory(t *testing.T) {
-	svc, _ := newRunServiceForTest(t)
+// TestRunService_CloseSession_CancelsRun verifies CloseSession stops the
+// active run. The canonical conversation store's session lifecycle (Close /
+// Delete) is owned by the API handlers, which call CloseSession first to stop
+// the run and then close or delete the session from the store — the former
+// separate LLM-history store close is gone (issue #1241).
+func TestRunService_CloseSession_CancelsRun(t *testing.T) {
+	svc, uiMgr := newRunServiceForTest(t)
 	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
-	// Create a history session
-	svc.historySessionMgr.Create("session-1")
+	// Create a canonical-store session
+	seedSession(t, uiMgr, "session-1", "You are Eitri.", "hello")
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
 	if err != nil {
@@ -1225,34 +1254,33 @@ func TestRunService_CloseSession_CancelsRunAndClosesHistory(t *testing.T) {
 		t.Fatal("run still active after CloseSession")
 	}
 
-	// Verify history session is closed
-	if svc.historySessionMgr.History("session-1") != nil {
-		t.Fatal("expected history session to be closed")
+	// The canonical session is still present — the caller owns closing it
+	// (SessionManager.Close/Delete happens after CloseSession in the handlers).
+	if uiMgr.Get("session-1") == nil {
+		t.Fatal("canonical session removed by CloseSession; the caller owns the store's session lifecycle")
 	}
 }
 
 func TestRunService_CloseSession_NoActiveRun(t *testing.T) {
-	svc, _ := newRunServiceForTest(t)
+	svc, uiMgr := newRunServiceForTest(t)
 
-	// Create a history session but no active run
-	svc.historySessionMgr.Create("session-1")
+	// Create a canonical-store session but no active run
+	seedSession(t, uiMgr, "session-1", "You are Eitri.", "")
 
 	err := svc.CloseSession("session-1")
 	if err != nil {
 		t.Fatalf("CloseSession with no active run: %v", err)
 	}
 
-	// History should still be closed
-	if svc.historySessionMgr.History("session-1") != nil {
-		t.Fatal("expected history session to be closed")
+	// No active run; the canonical session is untouched (caller owns it).
+	if uiMgr.Get("session-1") == nil {
+		t.Fatal("canonical session removed by CloseSession; the caller owns the store's session lifecycle")
 	}
 }
 
-func TestRunService_CloseSession_NilHistoryManager(t *testing.T) {
-	// Use a service with nil history manager
-	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: nil,
-	})
+func TestRunService_CloseSession_NoUIManager(t *testing.T) {
+	// Use a service with nil session manager.
+	svc := NewRunService(RunServiceDeps{})
 	cfg := RunConfig{ProviderID: "opencode_go", BaseURL: unreachableURL(t), APIKey: "test-key", ModelName: "test-model"}
 
 	_, err := svc.StartRun(context.Background(), "session-1", "hello", cfg)
@@ -1262,11 +1290,11 @@ func TestRunService_CloseSession_NilHistoryManager(t *testing.T) {
 
 	err = svc.CloseSession("session-1")
 	if err != nil {
-		t.Fatalf("CloseSession with nil history manager: %v", err)
+		t.Fatalf("CloseSession with nil session manager: %v", err)
 	}
 
 	if svc.ActiveRun("session-1") != nil {
-		t.Fatal("run still active after CloseSession with nil history manager")
+		t.Fatal("run still active after CloseSession with nil session manager")
 	}
 }
 
@@ -1913,17 +1941,15 @@ func TestRunService_NotifyAllClosed(t *testing.T) {
 
 func TestRunService_FatalRunErrorSetsErrorStatusSnapshotsAndBroadcasts(t *testing.T) {
 	uiMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	persister, err := persist.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("persist.New: %v", err)
 	}
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiMgr,
-		HistorySessionMgr: historyMgr,
-		Persister:         persister,
-		CrashDumpFunc:     func(error, []byte) {},
+		UISessionMgr:  uiMgr,
+		Persister:     persister,
+		CrashDumpFunc: func(error, []byte) {},
 	})
 
 	sess, err := uiMgr.Create("browser-1")
@@ -2158,8 +2184,11 @@ func TestRunService_LoadSessionFromDisk_LoadsAndRestores(t *testing.T) {
 		t.Fatal("session should be restored to manager")
 	}
 
-	// Verify history was restored
-	history := svc.historySessionMgr.History(sessionID)
+	// Verify history was restored into the canonical conversation store —
+	// the session-backed history source since issue #1241. LoadFromDisk adds
+	// the snapshot's messages to the manager, so the loop's History() seam
+	// serves the restored conversation (no separate history-store restore).
+	history := sessionHistory(svc, sessionID)
 	if history == nil {
 		t.Fatal("history should be restored")
 	}
@@ -2291,32 +2320,23 @@ func compactRunConfig(llmURL string) RunConfig {
 	}
 }
 
-func TestCompactSession_NoHistoryManager(t *testing.T) {
-	// Create a RunService with nil history manager.
-	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: nil,
-	})
+func TestCompactSession_NoSessionManager(t *testing.T) {
+	// Create a RunService with nil session manager.
+	svc := NewRunService(RunServiceDeps{})
 
-	sess, err := uiSessionMgr.Create("browser-1")
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-
-	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, compactRunConfig(unreachableURL(t)))
+	_, _, _, err := svc.CompactSession(context.Background(), "any-session", compactRunConfig(unreachableURL(t)))
 	if err == nil {
-		t.Fatal("expected error when history manager is nil")
+		t.Fatal("expected error when session manager is nil")
 	}
-	if !strings.Contains(err.Error(), "history session manager not available") {
-		t.Errorf("expected 'history session manager not available' error, got: %v", err)
+	if !strings.Contains(err.Error(), "session manager not available") {
+		t.Errorf("expected 'session manager not available' error, got: %v", err)
 	}
 }
 
 func TestCompactSession_SessionNotFound(t *testing.T) {
 	svc, _ := newRunServiceForTest(t)
 
-	// Session not in history manager should not error — just return no compaction.
+	// Session not in the canonical store should not error — just return no compaction.
 	count, freed, pruned, err := svc.CompactSession(context.Background(), "unknown-session", compactRunConfig(unreachableURL(t)))
 	if err != nil {
 		t.Fatalf("CompactSession should not error for unknown session: %v", err)
@@ -2341,13 +2361,15 @@ func TestCompactSession_ReplacesHistory(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	// Populate history with a large tool message.
+	// Populate the canonical conversation with a large tool message through
+	// the loop's session-backed history adapter (the seam CompactSession now
+	// reads and writes, issue #1241).
 	msgs := []message.Message{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: "run build"},
 		{Role: "tool", Content: strings.Repeat("Build output with detail\n", 200)},
 	}
-	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(svc.uiSessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	cfg := compactRunConfig(fakeLLM.URL)
 	count, freed, pruned, err := svc.CompactSession(context.Background(), sess.ID, cfg)
@@ -2364,8 +2386,8 @@ func TestCompactSession_ReplacesHistory(t *testing.T) {
 		t.Errorf("expected pruned = 0, got %d", pruned)
 	}
 
-	// Verify that history was replaced.
-	hist := svc.historySessionMgr.History(sess.ID)
+	// Verify that history was replaced in the canonical store.
+	hist := sessionHistory(svc, sess.ID)
 	if hist == nil {
 		t.Fatal("history is nil after compaction")
 	}
@@ -2402,7 +2424,7 @@ func TestCompactSession_Snapshots(t *testing.T) {
 		{Role: "user", Content: "hello"},
 		{Role: "tool", Content: strings.Repeat("large tool output data\n", 200)},
 	}
-	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(svc.uiSessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	cfg := compactRunConfig(fakeLLM.URL)
 	_, _, _, err = svc.CompactSession(context.Background(), sess.ID, cfg)
@@ -2443,7 +2465,7 @@ func TestCompactSession_SnapshotFailureWarns(t *testing.T) {
 		{Role: "user", Content: "hello"},
 		{Role: "tool", Content: strings.Repeat("large tool output\n", 200)},
 	}
-	svc.historySessionMgr.RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(svc.uiSessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	cfg := compactRunConfig(fakeLLM.URL)
 	// Even with snapshot failure, CompactSession should return success
@@ -2563,45 +2585,44 @@ func TestCompactSessionHistory_CalibratedHighWaterGate(t *testing.T) {
 	_ = pruned
 }
 
-// TestRunCompleter_SyncsHistoryToUISession verifies that the UI-mode
-// run-completer's per-turn completion (ADR-0028) syncs the run's live history
-// into the UI session, so the browser UI shows incremental progress during
-// long runs instead of appearing frozen on the original user message.
-func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
+// TestRunCompleter_UISnapshotSourceServesCanonicalConversation verifies the
+// UI-mode run-completer's per-turn persistence (ADR-0028) after issue #1241:
+// the loop reads and writes the canonical conversation store directly through
+// the session-backed history adapter, so the turn-completer's per-turn
+// history→conversation copy is gone. OnTurnComplete snapshots the canonical
+// conversation as it stands — it must not replace, rewrite, or duplicate it —
+// and the on-disk snapshot reflects the same conversation.
+func TestRunCompleter_UISnapshotSourceServesCanonicalConversation(t *testing.T) {
 	uiMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	persister, err := persist.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("persist.New: %v", err)
 	}
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiMgr,
-		HistorySessionMgr: historyMgr,
-		Persister:         persister,
+		UISessionMgr: uiMgr,
+		Persister:    persister,
 	})
 
 	sess, err := uiMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("Create session: %v", err)
 	}
+	uiMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
 
-	// Populate the run's live history as the agent loop would across turns.
-	historyMgr.Create(sess.ID)
-	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
-	historyMgr.AppendUser(sess.ID, "Do the work")
-	historyMgr.AppendAssistant(sess.ID, "First, let me look around.", []message.ToolCall{
-		{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}},
-	})
-	historyMgr.AppendTool(sess.ID, "call_1", "file contents...", "", false)
-	historyMgr.AppendAssistant(sess.ID, "Here is a mid-run update.", nil)
+	// Populate the canonical conversation as the agent loop would have
+	// written it across turns (via the session-backed history adapter,
+	// issue #1241): the UI conversation IS the run history.
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Do the work", CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "First, let me look around.", ToolCalls: []message.ToolCall{{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}}}, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "tool", ToolCallID: "call_1", Content: "file contents...", CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Here is a mid-run update.", CreatedAt: time.Now()})
 
 	// UI-mode run-completer (ADR-0028): the same per-turn persistence path
-	// batch and sub-agent runs use, wired with the UI snapshot source so the
-	// live conversation is synced into the UI session on each complete turn.
+	// batch and sub-agent runs use, wired with the UI snapshot source.
 	completer := &runCompleter{
 		svc:        svc,
-		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		historyMgr: loop.NewSessionHistoryManager(uiMgr, sess.ID),
 		id:         sess.ID,
 		cfg:        RunConfig{},
 	}
@@ -2614,16 +2635,32 @@ func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
 		t.Fatal("expected a conversation in the UI session")
 	}
 
-	// The UI session should reflect the full live conversation, not just the
-	// original user message — this is what makes long runs visible during
-	// execution instead of appearing frozen until completion.
+	// The conversation must be untouched — the loop wrote it directly, so the
+	// turn-completer no longer re-copies history into it. Before #1241 the
+	// live-sync replaced the conversation with the history-derived list.
 	roles := make([]string, 0, len(convo.Messages))
 	for i := range convo.Messages {
 		roles = append(roles, string(convo.Messages[i].Role))
 	}
 	want := []string{"user", "assistant", "tool", "assistant"}
 	if !reflect.DeepEqual(roles, want) {
-		t.Errorf("UI session roles = %v, want %v", roles, want)
+		t.Errorf("UI session roles = %v, want %v (per-turn copy must be gone)", roles, want)
+	}
+
+	// The on-disk snapshot reflects the same canonical conversation.
+	snap, err := persister.LoadSession(sess.ID)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	snapRoles := make([]string, 0, len(snap.Messages))
+	for i := range snap.Messages {
+		snapRoles = append(snapRoles, string(snap.Messages[i].Role))
+	}
+	if !reflect.DeepEqual(snapRoles, want) {
+		t.Errorf("snapshot roles = %v, want %v", snapRoles, want)
+	}
+	if snap.SystemPrompt != "You are Eitri." {
+		t.Errorf("snapshot SystemPrompt = %q, want %q", snap.SystemPrompt, "You are Eitri.")
 	}
 }
 
@@ -2637,47 +2674,41 @@ func TestRunCompleter_SyncsHistoryToUISession(t *testing.T) {
 // surface the last message twice after a page refresh.
 func TestRunEndNoDuplicateFinalAssistantMessage(t *testing.T) {
 	uiMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	persister, err := persist.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("persist.New: %v", err)
 	}
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiMgr,
-		HistorySessionMgr: historyMgr,
-		Persister:         persister,
+		UISessionMgr: uiMgr,
+		Persister:    persister,
 	})
 
 	sess, err := uiMgr.Create("browser-1")
 	if err != nil {
 		t.Fatalf("Create session: %v", err)
 	}
+	uiMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
 
-	// Populate the run's live history as the agent loop leaves it after the
-	// final turn of a multi-turn run: two tool-using turns, then the final
-	// assistant answer.
-	historyMgr.Create(sess.ID)
-	historyMgr.SetSystemPrompt(sess.ID, "You are Eitri.")
-	historyMgr.AppendUser(sess.ID, "Do the work")
-	historyMgr.AppendAssistant(sess.ID, "Turn 1 reply", []message.ToolCall{
-		{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}},
-	})
-	historyMgr.AppendTool(sess.ID, "call_1", `{"task_id":"t1"}`, "", false)
-	historyMgr.AppendAssistant(sess.ID, "Turn 2 reply", []message.ToolCall{
-		{ID: "call_2", Function: message.FunctionCall{Name: "read", Arguments: "again"}},
-	})
-	historyMgr.AppendTool(sess.ID, "call_2", `{"t1":{"status":"completed"}}`, "", false)
-	historyMgr.AppendAssistant(sess.ID, "Final reply", nil)
+	// Populate the canonical conversation as the agent loop leaves it after
+	// the final turn of a multi-turn run: two tool-using turns, then the
+	// final assistant answer. The loop writes the canonical store directly
+	// through the session-backed history adapter (issue #1241), so this IS
+	// the run history — there is no separate store to sync from.
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "user", Content: "Do the work", CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Turn 1 reply", ToolCalls: []message.ToolCall{{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: "weird"}}}, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "tool", ToolCallID: "call_1", Content: `{"task_id":"t1"}`, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Turn 2 reply", ToolCalls: []message.ToolCall{{ID: "call_2", Function: message.FunctionCall{Name: "read", Arguments: "again"}}}, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "tool", ToolCallID: "call_2", Content: `{"t1":{"status":"completed"}}`, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation(sess.ID, message.Message{Role: "assistant", Content: "Final reply", CreatedAt: time.Now()})
 
 	// The unified completion path (ADR-0028): after the final turn the UI-mode
-	// run-completer live-syncs the run history into the UI session. At run end
-	// run.go no longer appends the accumulated SSE buffer (issue #1203), so the
-	// final assistant message must appear exactly once — once per turn would be
-	// the duplicate the old append-dedup hack papered over.
+	// run-completer persists the canonical conversation. At run end run.go no
+	// longer appends the accumulated SSE buffer (issue #1203), so the final
+	// assistant message must appear exactly once.
 	completer := &runCompleter{
 		svc:        svc,
-		historyMgr: loop.NewSessionHistoryManager(historyMgr, sess.ID),
+		historyMgr: loop.NewSessionHistoryManager(uiMgr, sess.ID),
 		id:         sess.ID,
 		cfg:        RunConfig{},
 	}

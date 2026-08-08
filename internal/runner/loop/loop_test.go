@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/runstate"
 	"github.com/glemsom/eitri/internal/sandbox"
+	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tokenizer"
 	"github.com/glemsom/eitri/internal/tool"
 	"github.com/voocel/litellm"
@@ -2314,11 +2314,10 @@ func TestContextUpdate_SingleTurnNoTools(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-1"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
-	sessionMgr.AppendUser(sessionID, "hi")
+	addTestSession(t, sessionMgr, sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2396,11 +2395,10 @@ func TestContextUpdate_MultiTurnWithToolCalls(t *testing.T) {
 		},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-2"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2451,11 +2449,10 @@ func TestContextUpdate_ZeroContextWindowSkipsBroadcast(t *testing.T) {
 		{tokens: []tokenEvent{{content: "Hello!"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-3"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "hi")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hi", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2507,11 +2504,10 @@ func TestContextUpdate_MaxTurnsExceededIncludesFinalUpdate(t *testing.T) {
 		},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-4"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "run tool")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "run tool", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2612,11 +2608,10 @@ func TestContextUpdate_DataHasExpectedFields(t *testing.T) {
 		{tokens: []tokenEvent{{content: "answer"}}},
 	})
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-session-5"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are a helpful assistant.")
-	sessionMgr.AppendUser(sessionID, "hello")
+	addTestSession(t, sessionMgr, sessionID, "You are a helpful assistant.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
 	req := &litellm.Request{
 		Model: "test-model",
@@ -2693,11 +2688,10 @@ func TestContextUpdate_UsesCalibratedStore(t *testing.T) {
 			{tokens: []tokenEvent{{content: "answer"}}},
 		})
 
-		sessionMgr := history.NewSessionManager(0)
+		sessionMgr := uisession.NewManager(10, t.TempDir())
 		sessionID := "test-session-calibrated"
-		sessionMgr.Create(sessionID)
-		sessionMgr.SetSystemPrompt(sessionID, systemPrompt)
-		sessionMgr.AppendUser(sessionID, "hello")
+		addTestSession(t, sessionMgr, sessionID, systemPrompt)
+		sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "hello", CreatedAt: time.Now()})
 
 		req := &litellm.Request{Model: "test-model"}
 
@@ -2775,11 +2769,10 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	sseState := runstate.New()
 	w := runstate.NewWriter(sseState)
 
-	sessionMgr := history.NewSessionManager(0)
+	sessionMgr := uisession.NewManager(10, t.TempDir())
 	sessionID := "test-cancel-think"
-	sessionMgr.Create(sessionID)
-	sessionMgr.SetSystemPrompt(sessionID, "You are helpful.")
-	sessionMgr.AppendUser(sessionID, "analyze code")
+	addTestSession(t, sessionMgr, sessionID, "You are helpful.")
+	sessionMgr.AppendToConversation(sessionID, message.Message{Role: "user", Content: "analyze code", CreatedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -2814,21 +2807,27 @@ func TestCancelDuringThinking_PreservesAlternation(t *testing.T) {
 	}
 
 	// An assistant message must be saved even for mid-stream cancel
-	hist := sessionMgr.History(sessionID)
-	if len(hist) < 3 {
-		t.Fatalf("history has %d messages after cancel, want at least 3 (sys + user + assistant)", len(hist))
+	convo := sessionMgr.GetConversationShared(sessionID)
+	if convo == nil {
+		t.Fatal("canonical conversation missing after cancel")
 	}
-	if hist[len(hist)-1].Role != "assistant" {
-		t.Errorf("last message role = %q, want %q", hist[len(hist)-1].Role, "assistant")
+	if len(convo.Messages) < 2 {
+		t.Fatalf("conversation has %d messages after cancel, want at least 2 (user + assistant)", len(convo.Messages))
+	}
+	if convo.Messages[len(convo.Messages)-1].Role != "assistant" {
+		t.Errorf("last message role = %q, want %q", convo.Messages[len(convo.Messages)-1].Role, "assistant")
 	}
 
 	// Simulate new prompt after cancel
-	sessionMgr.AppendUser(sessionID, "new question")
-	hist2 := sessionMgr.History(sessionID)
+	sessionMgr.AppendMessage(sessionID, message.Message{Role: "user", Content: "new question", CreatedAt: time.Now()})
+	convo2 := sessionMgr.GetConversationShared(sessionID)
+	if convo2 == nil {
+		t.Fatal("canonical conversation missing after resume")
+	}
 
 	// Verify no consecutive user messages — would cause 400 errors with some providers
-	lastRole := litellm.Role("")
-	for _, msg := range hist2 {
+	lastRole := ""
+	for _, msg := range convo2.Messages {
 		if msg.Role == "user" && lastRole == "user" {
 			t.Errorf("Consecutive user messages found — provider would reject as malformed")
 			break

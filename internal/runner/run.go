@@ -94,21 +94,23 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 	fullSystemPrompt := prep.systemPrompt
 	req := prep.req
 
-	// Store the system prompt on the UI session so it gets persisted
-	// in session snapshots and displayed in reports.
+	// The canonical conversation store is the run's history source for UI
+	// runs (issue #1241): store the system prompt on the session (so it is
+	// persisted in snapshots and displayed in reports), repair a conversation
+	// left with a dangling assistant tool call from an interrupted run, and
+	// append the user message — synchronously, before the run goroutine
+	// starts — so the loop's first History() sees it. Appending a user
+	// message after an unresolved tool use makes an invalid sequence ("user
+	// message follows unresolved tool use") that the provider rejects. See
+	// RepairPendingToolUse.
 	if s.uiSessionMgr != nil {
 		s.uiSessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
-	}
-
-	if s.historySessionMgr != nil {
-		s.historySessionMgr.Create(sessionID)
-		s.historySessionMgr.SetSystemPrompt(sessionID, fullSystemPrompt)
-		// Repair a history left with a dangling assistant tool call from an
-		// interrupted run. Appending a user message after an unresolved tool use
-		// makes an invalid sequence ("user message follows unresolved tool use")
-		// that the provider rejects. See RepairPendingToolUse.
-		s.historySessionMgr.RepairPendingToolUse(sessionID)
-		s.historySessionMgr.AppendUser(sessionID, userMessage)
+		s.uiSessionMgr.RepairPendingToolUse(sessionID)
+		s.uiSessionMgr.AppendMessage(sessionID, message.Message{
+			Role:      "user",
+			Content:   userMessage,
+			CreatedAt: time.Now(),
+		})
 	}
 
 	maxTurnsVal := maxTurns
@@ -159,10 +161,13 @@ func (s *RunService) startRunWithConfig(ctx context.Context, sessionID, userMess
 
 		w := runstate.NewWriter(sseState)
 
-		// Construct adapters from service dependencies.
+		// Construct adapters from service dependencies. UI runs read and write
+		// the canonical conversation store directly through the session-backed
+		// history adapter (issue #1241); when no UI session manager exists the
+		// request itself is the history (headless/direct-messages path).
 		var historyMgr loop.HistoryManager
-		if s.historySessionMgr != nil {
-			historyMgr = loop.NewSessionHistoryManager(s.historySessionMgr, sessionID)
+		if s.uiSessionMgr != nil {
+			historyMgr = loop.NewSessionHistoryManager(s.uiSessionMgr, sessionID)
 		} else {
 			historyMgr = loop.NewRequestHistoryManager(req)
 		}

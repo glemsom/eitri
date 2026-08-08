@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
+	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persona"
 	uisession "github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/skills"
@@ -183,11 +183,9 @@ func TestBatchRun_FeedsDebugRecorderMetrics(t *testing.T) {
 
 	rec := debug.NewRecorder(20)
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		DebugRecorder:     rec,
+		UISessionMgr:  uiSessionMgr,
+		DebugRecorder: rec,
 	})
 
 	cfg := RunConfig{
@@ -453,9 +451,7 @@ func TestBatchRun_DelegateSpawnsSubAgent(t *testing.T) {
 	}))
 	defer llm.Close()
 
-	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-	})
+	svc := NewRunService(RunServiceDeps{})
 	cfg := RunConfig{
 		ProviderID: "opencode_go",
 		BaseURL:    llm.URL,
@@ -508,11 +504,9 @@ func TestBatchRun_ErrorFeedsMetrics(t *testing.T) {
 
 	rec := debug.NewRecorder(20)
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		DebugRecorder:     rec,
+		UISessionMgr:  uiSessionMgr,
+		DebugRecorder: rec,
 	})
 
 	cfg := RunConfig{
@@ -546,8 +540,8 @@ func TestBatchRun_ErrorFeedsMetrics(t *testing.T) {
 }
 
 func TestExtractLastMessages(t *testing.T) {
-	mgr := history.NewSessionManager(10)
-	mgr.Create("test-session")
+	mgr := uisession.NewManager(10, t.TempDir())
+	seedSession(t, mgr, "test-session", "", "")
 
 	// No messages yet
 	user, asst := extractLastMessages(mgr, "test-session")
@@ -556,7 +550,7 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add a user message
-	mgr.AppendUser("test-session", "hello world")
+	mgr.AppendToConversation("test-session", message.Message{Role: "user", Content: "hello world", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "hello world" {
 		t.Fatalf("expected user='hello world', got %q", user)
@@ -566,7 +560,7 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add an assistant message
-	mgr.AppendAssistant("test-session", "hi there", nil)
+	mgr.AppendToConversation("test-session", message.Message{Role: "assistant", Content: "hi there", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "hello world" {
 		t.Fatalf("expected user='hello world', got %q", user)
@@ -576,8 +570,8 @@ func TestExtractLastMessages(t *testing.T) {
 	}
 
 	// Add more messages and verify last ones are returned
-	mgr.AppendUser("test-session", "second question")
-	mgr.AppendAssistant("test-session", "second answer", nil)
+	mgr.AppendToConversation("test-session", message.Message{Role: "user", Content: "second question", CreatedAt: time.Now()})
+	mgr.AppendToConversation("test-session", message.Message{Role: "assistant", Content: "second answer", CreatedAt: time.Now()})
 	user, asst = extractLastMessages(mgr, "test-session")
 	if user != "second question" {
 		t.Fatalf("expected user='second question', got %q", user)
@@ -686,11 +680,9 @@ func TestBatchRun_UsesActivePersona(t *testing.T) {
 	// Use a dead-port connection pattern so the run fails (connection refused)
 	// after the persona has been loaded and the system prompt built.
 	uiSessionMgr := uisession.NewManager(10, t.TempDir())
-	historyMgr := history.NewSessionManager(50)
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      uiSessionMgr,
-		HistorySessionMgr: historyMgr,
-		SkillsService:     skillsSvc,
+		UISessionMgr:  uiSessionMgr,
+		SkillsService: skillsSvc,
 	})
 
 	batchCfg := RunConfig{

@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -104,10 +103,9 @@ func TestBatchRun_PersistsSessionTrail(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	// Capture the snapshot at a deterministic mid-run point: the moment the
@@ -274,10 +272,9 @@ func TestBatchRun_FailurePathPersistsErrorSnapshotAndDrainsTraces(t *testing.T) 
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	var reqs int
@@ -360,10 +357,9 @@ func TestBatchRun_CancelledTermination(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	cfg := batchRunConfig(unreachableURL(t), workspace)
@@ -414,10 +410,9 @@ func TestBatchRun_MaxTurnsTermination(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	// Every turn requests another tool call, so the run always hits the cap.
@@ -502,10 +497,9 @@ func TestBatchSession_RetentionInteraction(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	llm := twoTurnLLM(t, nil)

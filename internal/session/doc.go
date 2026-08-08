@@ -88,6 +88,13 @@
 //     cap exactly like history's append paths) and the repair that closes a
 //     trailing unresolved assistant tool call before a resume.
 //
+// Since issue #1241 the canonical store is the loop's session-backed history
+// source: the `loop.sessionHistoryManager` adapter (`internal/runner/loop`)
+// reads and writes the conversation here directly, so UI and batch runs keep
+// their LLM request history, the UI conversation, and the persisted snapshots
+// in this single store (the separate LLM-history store is contracted away,
+// umbrella #1231).
+//
 // Dependencies: internal/message (Message and ComponentData types)
 //
 // Extension points:

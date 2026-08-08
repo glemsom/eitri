@@ -19,8 +19,7 @@ func TestRunService_CrashDumpOnFatalError(t *testing.T) {
 	crashCalled := make(chan struct{}, 1)
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      nil,
-		HistorySessionMgr: nil,
+		UISessionMgr: nil,
 		CrashDumpFunc: func(err error, stack []byte) {
 			capturedErr = err.Error()
 			capturedStack = stack
@@ -69,8 +68,7 @@ func TestRunService_CrashDumpNotCalledOnCancel(t *testing.T) {
 	defer llm.Close()
 
 	svc := NewRunService(RunServiceDeps{
-		UISessionMgr:      nil,
-		HistorySessionMgr: nil,
+		UISessionMgr: nil,
 		CrashDumpFunc: func(err error, stack []byte) {
 			crashCalled.Store(true)
 		},

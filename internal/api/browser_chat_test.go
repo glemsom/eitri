@@ -18,7 +18,6 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/glemsom/eitri/internal/api"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
@@ -3332,10 +3331,9 @@ func TestBrowser_MultiTurnIntermediateMessageSurvivesFinalize(t *testing.T) {
 	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 	sessionMgr := session.NewManager(10, workspace)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: history.NewSessionManager(50),
-		Persister:         p,
-		HomeDir:           homeDir,
+		UISessionMgr: sessionMgr,
+		Persister:    p,
+		HomeDir:      homeDir,
 	})
 	runSvc.SetSkillsService(skillsSvc)
 	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
@@ -3426,4 +3424,3 @@ func mustPersister(t *testing.T, eitriDir string) *persist.Persister {
 	}
 	return p
 }
-

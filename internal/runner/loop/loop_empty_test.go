@@ -49,7 +49,7 @@ func TestRunAgent_EmptyStream_CompletesSuccessfully(t *testing.T) {
 	)
 
 	err = RunAgent(context.Background(), RunSpec{
-		Client:    client,
+		Client:     client,
 		Request:    req,
 		MaxTurns:   5,
 		MaxHistory: 0,
@@ -80,7 +80,7 @@ func TestRunAgent_EmptyStream_CompletesSuccessfully(t *testing.T) {
 	for _, evt := range events {
 		if evt.Type == "token" {
 			t.Errorf("unexpected token event for empty stream, got: %+v", evt)
-			}
+		}
 	}
 
 	// Verify NO empty assistant message was appended — empty assistant

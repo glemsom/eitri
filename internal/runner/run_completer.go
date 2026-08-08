@@ -171,24 +171,24 @@ func (c *runCompleter) persistSource(status uisession.Status, source func(status
 	}
 }
 
-// uiSnapshotSource is the UI-transport snapshot source (ADR-0028): it
-// live-syncs the run's live conversation (history manager) into the UI
-// session — so the browser UI and snapshots show incremental progress during
-// long runs instead of appearing frozen on the original user message — then
-// snapshots the UI session facade via CopySession, preserving the full
-// UI-session fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs) that the
-// history-derived facade omits. Returns nil when the UI session is unavailable
-// or the conversation source has no history yet.
+// uiSnapshotSource is the UI-transport snapshot source (ADR-0028): the loop's
+// session-backed history adapter already reads and writes the canonical
+// conversation store directly (issue #1241), so the UI conversation IS the
+// run's live history — the former per-turn history→conversation copy
+// (SyncHistoryToConversation + ReplaceConversationMessages) is gone from this
+// path. The source snapshots the UI session facade via CopySession, preserving
+// the full UI-session fidelity (ActiveSkills, ClosedAt, RenderedMessageIDs)
+// that the history-derived facade omits. Returns nil when the UI session is
+// unavailable or the conversation has no messages yet.
 func (c *runCompleter) uiSnapshotSource(status uisession.Status) *uisession.UISession {
 	svc := c.svc
 	if svc.uiSessionMgr == nil {
 		return nil
 	}
-	hist := c.historyMgr.History()
-	if hist == nil || len(hist) == 0 {
+	convo := svc.uiSessionMgr.GetConversationShared(c.id)
+	if convo == nil || len(convo.Messages) == 0 {
 		return nil
 	}
-	svc.uiSessionMgr.ReplaceConversationMessages(c.id, message.SyncHistoryToConversation(hist))
 	return svc.uiSessionMgr.CopySession(c.id)
 }
 

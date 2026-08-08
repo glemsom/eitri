@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	eitrimsg "github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runner"
 
 	"github.com/glemsom/eitri/internal/api/templates"
@@ -116,6 +115,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Use context.Background() instead of r.Context() so the run survives
 	// the HTTP handler returning (which cancels the request context).
 	// Cancel() provides explicit cancellation via state.Cancel().
+	// The user message is appended to the canonical conversation store inside
+	// StartRun (synchronously, before the run goroutine starts), so the loop's
+	// first LLM request sees it — the UI no longer appends it here, which
+	// would double-append now that the run history and the UI conversation are
+	// the same store (issue #1241). An orphaned message on StartRun failure is
+	// impossible: StartRun only appends after all validation passes.
 	skillWarnings, err := s.config.RunService.StartRun(context.Background(), id, prompt, runCfg)
 	if err != nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -124,14 +129,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		component.Render(r.Context(), w)
 		return
 	}
-
-	// Append user message to session only after run starts successfully.
-	// This prevents orphaned messages if StartRun fails (issue #972).
-	s.config.SessionManager.AppendMessage(id, eitrimsg.Message{
-		Role:      "user",
-		Content:   prompt,
-		CreatedAt: time.Now(),
-	})
 
 	// Render skill warnings
 	for _, warning := range skillWarnings {

@@ -154,6 +154,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The loop's session-backed history adapter (`loop.NewSessionHistoryManager`)
+  now reads and writes the **canonical session store** (`internal/session`)
+  instead of the separate LLM-history store (`internal/history`), for both UI
+  and batch runs (issue #1241). The run-completer's per-turn
+  history→conversation copy (`ReplaceConversationMessages` + the sync module)
+  disappears from the UI snapshot path — the UI conversation, the LLM request
+  history, and the persisted snapshots all read the same canonical
+  conversation, so tool-attached components/quick replies survive persistence.
+  `RunService` no longer carries a `HistorySessionMgr` dependency: UI runs
+  append the user message to the canonical store synchronously in `StartRun`
+  (the chat handler no longer double-appends), batch runs create their session
+  in the canonical store, manual compaction reads/writes the canonical
+  conversation through the same adapter seam, and loading a session from disk
+  (`LoadSessionFromDisk`) restores its conversation directly into the
+  canonical store (the old `RestoreHistory`-into-history-store hydration is
+  gone — the canonical store IS the run's history). LLM request history is
+  byte-identical (a parity test drives the new adapter against the old history
+  store through identical operation sequences), and snapshot/report tests pass
+  unchanged. The old `internal/history` store remains only for the parity
+  tests until it is contracted away (umbrella #1231, issue #1242).
+
 - Trace aggregation now has a single owner (issue #1240): the window-aggregate fold (count, error count/rate, p50/p95 latency, token totals, window bounds) that the persisted archive aggregate endpoint returns is implemented once — `debug.AggregateTraces` in the new `internal/debug/aggregate.go` — and `Persister.AggregateTraces` delegates to it instead of re-implementing the fold on disk (its previous `aggregateTraces` explicitly "mirrored the recorder's metrics"). All debug trace endpoints now parse their filter parameters (session/provider/model/time/limit/offset) through one shared parser, so the in-memory recorder lists (`/api/debug/http` and `/api/debug/sessions/{id}/http`) accept the same parameter surface as the persisted endpoints (`model`/`from`/`to`/`offset` are accepted and ignored by the in-memory lists, which filter only on session/provider/limit) and reject malformed parameters with `400` exactly like the archive endpoints. The derived token total (the sum of the four usage components, not each trace's stored total) is likewise single-owned — `UsageTotals.TokenTotal` — used by both the recorder's metrics snapshot and the window aggregate. `/api/debug/metrics` (the recorder's richer per-provider-per-model counters) and `/api/debug/traces/aggregate` return the same data as before; Session Report enrichment is unchanged. The in-memory endpoints' docs now match the code: `limit` defaults to no limit (everything the recorder holds, capped at 100) and `provider_id` filters within the path session on `/api/debug/sessions/{id}/http`.
 
 - The "session was permanently deleted" check is consolidated into one helper (issue #1237): `Persister.sessionExistsOnDisk` is now the single owner of the "no `session.json` on disk" check, used by the snapshot loader (`readSessionSnapshot`/`LoadSession`/`LoadSessionInfo`), `SaveTrace`, `Flush`, and the trace query surface (`scanTraces` — `QueryTraces`/`AggregateTraces`) instead of four inline `os.Stat`/`os.ReadFile`-based copies. The check is `IsNotExist`-aware: only a definitive "no `session.json` on disk" counts as permanently deleted, while other stat failures (EACCES, ENOTDIR, …) surface at each site exactly as they did before the consolidation (the snapshot loader and trace query surface return the wrapped error; `SaveTrace`/`Flush` fall through to the write path). Trace save/flush/restore/query behaviour is unchanged: a session whose `session.json` is gone is treated as permanently deleted everywhere, so its traces are never recreated, persisted, or resurrected by queries.

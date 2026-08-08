@@ -18,7 +18,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
@@ -65,7 +64,6 @@ func newManagedTestServerWithRunsOpts(t *testing.T, opts testServerWithRunsOptio
 	homeDir := t.TempDir()
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
-	historySessionMgr := history.NewSessionManager(50)
 	var p *persist.Persister
 	if opts.persister {
 		var err error
@@ -75,10 +73,9 @@ func newManagedTestServerWithRunsOpts(t *testing.T, opts testServerWithRunsOptio
 		}
 	}
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		Persister:         p,
-		HomeDir:           homeDir,
+		UISessionMgr: sessionMgr,
+		Persister:    p,
+		HomeDir:      homeDir,
 	})
 	skillsSvc := skills.NewServiceWithHome(homeDir, workspace)
 
@@ -139,9 +136,8 @@ func newManagedTestServerWithRunsAndSkillsService(t *testing.T, workspace string
 
 	sessionMgr := session.NewManager(10, workspace)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: history.NewSessionManager(50),
-		HomeDir:           homeDir,
+		UISessionMgr: sessionMgr,
+		HomeDir:      homeDir,
 	})
 	runSvc.SetSkillsService(skillsSvc)
 
@@ -1249,12 +1245,10 @@ func TestChatRun_GitHubCopilotProviderAuthBeatsStaleAPIKey(t *testing.T) {
 
 func TestChatRun_GitHubCopilotRefreshesExpiredProviderAuthState(t *testing.T) {
 	sessionMgr := session.NewManager(10, t.TempDir())
-	historySessionMgr := history.NewSessionManager(50)
 	skillsSvc := skills.NewService()
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		SkillsService:     skillsSvc,
+		UISessionMgr:  sessionMgr,
+		SkillsService: skillsSvc,
 	})
 	configPath := t.TempDir() + "/config.json"
 	now := time.Now().Add(-2 * time.Hour)
@@ -2507,31 +2501,51 @@ func TestComponentReplay_QuickReplies(t *testing.T) {
 
 	waitForRunToFinish(t, h.runSvc, sessionID)
 
-	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 2)
+	// The run writes the canonical conversation directly (issue #1241): the
+	// tool-calling assistant message, the two tool results, and the final
+	// reply are all in the one conversation store. The Mermaid component and
+	// the QuickReplies chips are attached to assistant messages during tool
+	// execution (the component on the assistant message that carried the tool
+	// calls, the chips on the placeholder SetQuickReplies created), and they
+	// survive because the per-turn history→conversation copy is gone. Wait
+	// for the full conversation before asserting them.
+	sess := waitForSessionMessageCount(t, h.sessionMgr, sessionID, 5)
 
-	if len(sess.Messages) < 2 {
-		t.Fatal("expected at least 2 messages")
-	}
-	assistantMsg := sess.Messages[1]
-	if assistantMsg.Role != "assistant" {
-		t.Errorf("message[1] role = %q, want %q", assistantMsg.Role, "assistant")
-	}
-	if len(assistantMsg.QuickReplies) == 0 {
-		t.Error("expected QuickReplies on assistant message, got none")
-	} else if len(assistantMsg.QuickReplies) != 2 || assistantMsg.QuickReplies[0] != "yes" || assistantMsg.QuickReplies[1] != "no" {
-		t.Errorf("QuickReplies = %v, want [yes no]", assistantMsg.QuickReplies)
+	if len(sess.Messages) < 5 {
+		t.Fatalf("expected 5+ messages (user + assistant + tool results + final reply), got %d", len(sess.Messages))
 	}
 
-	if len(assistantMsg.Components) == 0 {
-		t.Fatal("expected components on assistant message, got none")
+	// The Mermaid component lands on the assistant message that carried the
+	// tool calls.
+	var componentMsg, quickReplyMsg *message.Message
+	for i := range sess.Messages {
+		msg := &sess.Messages[i]
+		if msg.Role != "assistant" {
+			continue
+		}
+		if len(msg.Components) > 0 && componentMsg == nil {
+			componentMsg = msg
+		}
+		if len(msg.QuickReplies) > 0 && quickReplyMsg == nil {
+			quickReplyMsg = msg
+		}
+	}
+
+	if componentMsg == nil {
+		t.Fatal("expected components on an assistant message, got none")
+	}
+	if quickReplyMsg == nil {
+		t.Fatal("expected QuickReplies on an assistant message, got none")
+	} else if len(quickReplyMsg.QuickReplies) != 2 || quickReplyMsg.QuickReplies[0] != "yes" || quickReplyMsg.QuickReplies[1] != "no" {
+		t.Errorf("QuickReplies = %v, want [yes no]", quickReplyMsg.QuickReplies)
 	}
 
 	foundComponents := make(map[string]bool)
-	for _, comp := range assistantMsg.Components {
+	for _, comp := range componentMsg.Components {
 		foundComponents[comp.Name] = true
 	}
 	if !foundComponents["MermaidDiagram"] {
-		t.Errorf("components missing MermaidDiagram, got: %v", assistantMsg.Components)
+		t.Errorf("components missing MermaidDiagram, got: %v", componentMsg.Components)
 	}
 
 	sessionURL := h.server.URL + "/sessions/" + sessionID

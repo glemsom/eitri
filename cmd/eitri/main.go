@@ -20,7 +20,6 @@ import (
 	"github.com/glemsom/eitri/internal/api"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/persist"
 	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/report"
@@ -324,7 +323,6 @@ func main() {
 	}
 
 	sessionMgr := session.NewManager(10, workspace, session.WithMaxExchanges(cfg.MaxHistory))
-	historyMgr := history.NewSessionManager(cfg.MaxHistory)
 
 	// Restore persisted data from disk before starting the server
 	if persister != nil {
@@ -334,13 +332,13 @@ func main() {
 		} else {
 			// Sessions are no longer restored into the session manager on startup.
 			// They are still written to disk every turn for troubleshooting/debugging.
+			// The canonical conversation store IS the run's history source
+			// (issue #1241): a session's persisted conversation is restored on
+			// demand via the load endpoint (POST /api/sessions/{id}/load), which
+			// loads it into the session manager — the former separate LLM-history
+			// store hydration is gone, and the loop's session-backed history
+			// adapter reads the restored conversation directly.
 			slog.Info("restored sessions from disk", slog.Int("count", len(restored.Sessions)))
-
-			// Hydrate history manager
-			for id, msgs := range restored.Histories {
-				historyMgr.RestoreHistory(id, msgs)
-			}
-			slog.Info("restored histories from disk", slog.Int("count", len(restored.Histories)))
 
 			// Hydrate debug recorder
 			debugRecorder.LoadAll(restored.Traces)
@@ -351,11 +349,10 @@ func main() {
 	}
 
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historyMgr,
-		DebugRecorder:     debugRecorder,
-		Persister:         persister,
-		CalibrationStore:  calStore,
+		UISessionMgr:     sessionMgr,
+		DebugRecorder:    debugRecorder,
+		Persister:        persister,
+		CalibrationStore: calStore,
 	})
 
 	skillsSvc := skills.NewService()

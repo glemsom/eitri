@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/api"
-	"github.com/glemsom/eitri/internal/history"
-	"github.com/glemsom/eitri/internal/persona"
 	"github.com/glemsom/eitri/internal/message"
+	"github.com/glemsom/eitri/internal/persona"
 	runner "github.com/glemsom/eitri/internal/runner"
+	"github.com/glemsom/eitri/internal/runner/loop"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -95,11 +95,9 @@ func newTestServerForCompact(t *testing.T) *testServerWithRuns {
 	homeDir := t.TempDir()
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
-	historySessionMgr := history.NewSessionManager(50)
 	runSvc := runner.NewRunService(runner.RunServiceDeps{
-		UISessionMgr:      sessionMgr,
-		HistorySessionMgr: historySessionMgr,
-		HomeDir:           homeDir,
+		UISessionMgr: sessionMgr,
+		HomeDir:      homeDir,
 	})
 
 	if err := persona.EnsureGenericWithHome(homeDir); err != nil {
@@ -169,8 +167,7 @@ func TestHandleCompact_NoHistoryToCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Ensure the history session manager also has this session
-	ts.runSvc.HistorySessionManager().Create(sess.ID)
+	// The session already lives in the canonical store — nothing extra to seed.
 
 	// Build request with browser cookie
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
@@ -212,7 +209,7 @@ func TestHandleCompact_DisabledInConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.runSvc.HistorySessionManager().Create(sess.ID)
+	// The session already lives in the canonical store — nothing extra to seed.
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -263,7 +260,7 @@ func TestHandleCompact_WithHistory_NoOpWhenLLMFails(t *testing.T) {
 		{Role: "user", Content: "run the build"},
 		{Role: "tool", Content: strings.Repeat("Build output with lots of detail\n", 200)},
 	}
-	ts.runSvc.HistorySessionManager().RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(ts.sessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -290,7 +287,7 @@ func TestHandleCompact_ActiveRunNotChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.runSvc.HistorySessionManager().Create(sess.ID)
+	// The session already lives in the canonical store — nothing extra to seed.
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -330,7 +327,7 @@ func TestHandleCompact_InvalidConfig_Returns422(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts.runSvc.HistorySessionManager().Create(sess.ID)
+	// The session already lives in the canonical store — nothing extra to seed.
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -383,7 +380,7 @@ func TestHandleCompact_Success_ReturnsStatsToast(t *testing.T) {
 		{Role: "user", Content: "run the build"},
 		{Role: "tool", Content: strings.Repeat("Build output with lots of detail\n", 300)},
 	}
-	ts.runSvc.HistorySessionManager().RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(ts.sessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
@@ -451,7 +448,7 @@ func TestHandleCompact_PrunedToolCallsReported(t *testing.T) {
 		},
 		{Role: "tool", Content: strings.Repeat("file1.txt file2.txt\n", 200), ToolCallID: "call_1"},
 	}
-	ts.runSvc.HistorySessionManager().RestoreHistory(sess.ID, msgs)
+	loop.NewSessionHistoryManager(ts.sessionMgr, sess.ID).ReplaceHistory(msgs)
 
 	req, _ := http.NewRequest("POST", ts.server.URL+"/api/sessions/"+sess.ID+"/compact", nil)
 	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})

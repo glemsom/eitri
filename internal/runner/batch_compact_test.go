@@ -23,7 +23,6 @@ import (
 	"github.com/voocel/litellm"
 
 	"github.com/glemsom/eitri/internal/debug"
-	"github.com/glemsom/eitri/internal/history"
 	"github.com/glemsom/eitri/internal/message"
 	"github.com/glemsom/eitri/internal/runner/loop"
 	uisession "github.com/glemsom/eitri/internal/session"
@@ -119,10 +118,10 @@ func TestBatchRun_AutoCompaction(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		UISessionMgr:  uisession.NewManager(10, workspace, uisession.WithMaxExchanges(50)),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	var turn2Body string
@@ -199,10 +198,10 @@ func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
 	rec := debug.NewRecorder(20)
 	persister := batchTestPersister(t, rec)
 	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-		DebugRecorder:     rec,
-		Persister:         persister,
-		NewRunID:          fixedRunID(batchID),
+		UISessionMgr:  uisession.NewManager(10, workspace, uisession.WithMaxExchanges(50)),
+		DebugRecorder: rec,
+		Persister:     persister,
+		NewRunID:      fixedRunID(batchID),
 	})
 
 	var turn2Body string
@@ -237,12 +236,9 @@ func TestBatchRun_NoAutoCompactionWhenDisabled(t *testing.T) {
 // no-op when compaction is disabled, the context window is unset, or the
 // history is at or below the high-water mark.
 func TestAutoCompactAfterTurn_SkipConditions(t *testing.T) {
-	svc, _ := newRunServiceForTest(t)
-	sessionMgr := history.NewSessionManager(50)
-	sessionMgr.Create("s1")
-	sessionMgr.SetSystemPrompt("s1", "You are a test.")
-	sessionMgr.AppendUser("s1", "hello")
-	historyMgr := loop.NewSessionHistoryManager(sessionMgr, "s1")
+	svc, uiMgr := newRunServiceForTest(t)
+	seedSession(t, uiMgr, "s1", "You are a test.", "hello")
+	historyMgr := loop.NewSessionHistoryManager(uiMgr, "s1")
 
 	t.Run("disabled", func(t *testing.T) {
 		cfg := compactRunConfig(unreachableURL(t))
@@ -286,24 +282,21 @@ func TestAutoCompactAfterTurn_SkipConditions(t *testing.T) {
 // when the high-water mark is exceeded, exactly as UI auto-compaction does.
 func TestAutoCompactAfterTurn_CompactsAndRestoresHistory(t *testing.T) {
 	fakeLLM := fakeCompactLLMServer(t, "summary")
-	svc := NewRunService(RunServiceDeps{
-		HistorySessionMgr: history.NewSessionManager(50),
-	})
-	sessionMgr := history.NewSessionManager(50)
-	sessionMgr.Create("s1")
-	sessionMgr.SetSystemPrompt("s1", "You are a test.")
-	sessionMgr.AppendUser("s1", "run build")
-	sessionMgr.AppendAssistant("s1", "let me look", []message.ToolCall{
+	svc, uiMgr := newRunServiceForTest(t)
+	seedSession(t, uiMgr, "s1", "You are a test.", "")
+	uiMgr.SetSystemPrompt("s1", "You are a test.")
+	uiMgr.AppendToConversation("s1", message.Message{Role: "user", Content: "run build", CreatedAt: time.Now()})
+	uiMgr.AppendToConversation("s1", message.Message{Role: "assistant", Content: "let me look", ToolCalls: []message.ToolCall{
 		{ID: "call_1", Function: message.FunctionCall{Name: "read", Arguments: `{"path":"x"}`}},
-	})
-	sessionMgr.AppendTool("s1", "call_1", strings.Repeat("Build output with detail\n", 200), "", false)
+	}, CreatedAt: time.Now()})
+	uiMgr.AppendToConversation("s1", message.Message{Role: "tool", ToolCallID: "call_1", Content: strings.Repeat("Build output with detail\n", 200), CreatedAt: time.Now()})
 
 	cfg := compactRunConfig(fakeLLM.URL)
 	cfg.ContextWindowTokens = 2000
 	cfg.CompactionThresholdPercent = 50 // high-water 1000 < ~1250-token tool result
 	cfg.CompactionLowWaterPercent = 30
 
-	historyMgr := loop.NewSessionHistoryManager(sessionMgr, "s1")
+	historyMgr := loop.NewSessionHistoryManager(uiMgr, "s1")
 	compacted, count, freed, pruned, err := svc.autoCompactAfterTurn(context.Background(), historyMgr, cfg)
 	if err != nil {
 		t.Fatalf("autoCompactAfterTurn: %v", err)
@@ -318,8 +311,8 @@ func TestAutoCompactAfterTurn_CompactsAndRestoresHistory(t *testing.T) {
 		t.Errorf("expected freed > 0, got %d", freed)
 	}
 
-	// The history manager must now serve the compacted history.
-	hist := sessionMgr.History("s1")
+	// The canonical conversation store must now serve the compacted history.
+	hist := loop.NewSessionHistoryManager(uiMgr, "s1").History()
 	if hist == nil {
 		t.Fatal("history is nil after compaction")
 	}
