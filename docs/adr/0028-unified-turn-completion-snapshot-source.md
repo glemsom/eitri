@@ -35,8 +35,11 @@ path. The merged `runCompleter` gains a per-transport **snapshot-source seam**:
 The strip-system-message invariant collapses into one place — the
 history→conversation sync module `internal/message/sync.go`
 (`message.SyncHistoryToConversation`, `message.StripLeadingSystemMessage`,
-extracted from the completer by issue #1235) — used by `buildUISession`, the UI
-live-sync, and `CompactSession`; the other hand-rolled sites are deleted. UI
+extracted from the completer by issue #1235) — used by `buildUISession`; the
+first-round hand-rolled sites are deleted. Since issue #1241 the loop's
+session-backed history adapter reads and writes the canonical conversation
+store directly, so the UI live-sync and manual compaction (`CompactSession`)
+no longer funnel through this module. UI
 parent runs keep their compaction SSE events (warning toast on failure,
 `compaction_complete` on success), emitted by the unified completer when a
 `RunState` is present (batch and sub-agent runs have none and only log). No
