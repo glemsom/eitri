@@ -534,10 +534,21 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 			// Broadcast final context_update before done, including actual provider usage
 			broadcastContextUpdate(usage)
 
-			// The done event carries the provider-reported usage when the
-			// provider returned any; the text-length estimate is used only as a
-			// fallback so the actual value is never shadowed.
-			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), usageForDone(usage, contentStr, opts.CalibrationStore, opts.ModelName))
+			// Compute the usage payload for the done event now (provider-reported
+			// usage when available; the text-length estimate only as a fallback).
+			doneUsage := usageForDone(usage, contentStr, opts.CalibrationStore, opts.ModelName)
+
+			// Commit the final assistant message and live-sync it into the UI
+			// conversation BEFORE broadcasting the terminal "done" event. The
+			// frontend reacts to "done" by firing the finalize /render POST, which
+			// reads the conversation to build the assistant bubble(s). If "done"
+			// were broadcast first, the render request could race the commit and see
+			// a stale conversation (no assistant message yet), yielding an empty
+			// swap and no .message-assistant element — the browser E2E flake class
+			// seen across the final-render tests (issue #1217/#1218/#1219 rotate
+			// through TestBrowser_ThinkingRendering, _HTMXBeforeEndTargetsMessages,
+			// _ToolCardsInScrollContainer, and the streaming-markdown finals).
+
 			// Append final assistant response to conversation history
 			// Only append when there's actual content — empty assistant messages
 			// produce invalid OpenAI-format JSON and may be rejected by providers.
@@ -549,10 +560,15 @@ func RunAgent(ctx context.Context, spec RunSpec, opts RunOpts) error {
 				trimMessages(spec.Request, spec.MaxHistory)
 			}
 
-			// Fire per-turn snapshot callback
+			// Fire per-turn snapshot callback (live-syncs the run's history into
+			// the UI session / snapshot when a persister is attached) — must run
+			// before "done" so the final conversation is committed by the time the
+			// browser's finalize render reads it.
 			if opts.TurnCompleter != nil {
 				opts.TurnCompleter.OnTurnComplete(ctx, opts.SessionID)
 			}
+
+			spec.SSEWriter.Done(fmt.Sprintf("msg_%d", time.Now().UnixNano()), doneUsage)
 			return nil
 		}
 

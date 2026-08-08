@@ -290,6 +290,103 @@ func sseEventTypes(events []runstate.SSEEvent) []string {
 	return types
 }
 
+type blockingTurnCompleter struct {
+	onStart func()
+	onRun   func()
+}
+
+func (c *blockingTurnCompleter) OnTurnComplete(ctx context.Context, sessionID string) {
+	if c.onStart != nil {
+		c.onStart()
+	}
+	if c.onRun != nil {
+		c.onRun()
+	}
+}
+
+func TestRunAgent_DoneAfterFinalMessageCommit(t *testing.T) {
+	t.Parallel()
+	sseState := runstate.New()
+	w := runstate.NewWriter(sseState)
+
+	client := newMockClient([]mockTurn{
+		{tokens: []tokenEvent{{content: "Hello! How can I help?"}}},
+	})
+
+	req := lrFromMessages(
+		[]litellm.Message{
+			{Role: litellm.Role("user"), Blocks: []litellm.Block{litellm.TextBlock{Text: "hi"}}},
+		},
+		lrWithModel("test-model"),
+	)
+
+	turnStarted := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	completer := &blockingTurnCompleter{
+		onStart: func() { once.Do(func() { close(turnStarted) }) },
+		onRun:   func() { <-release },
+	}
+
+	var runErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runErr = RunAgent(context.Background(), RunSpec{
+			Client:     client,
+			Request:    req,
+			MaxTurns:   5,
+			MaxHistory: 0,
+			SSEWriter:  w,
+			Tools:      nil,
+		}, RunOpts{
+			HistoryMgr:    NewRequestHistoryManager(req),
+			Confirmer:     nil,
+			UISessionMgr:  nil,
+			SessionID:     "",
+			ContextWindow: 128000,
+			CrashDumpFunc: nil,
+			Turns:         nil,
+			TurnCompleter: completer,
+		})
+	}()
+
+	// Wait until we are inside the turn-completer, i.e. the stream has finished
+	// and the final-turn commit is in progress.
+	select {
+	case <-turnStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for OnTurnComplete to run")
+	}
+
+	// The "done" event must NOT have been emitted while the final message is
+	// still being committed / synced.
+	for _, evt := range sseState.History() {
+		if evt.Type == "done" {
+			close(release)
+			<-done
+			t.Fatalf("done SSE event emitted before final assistant message commit / turn-completer returned")
+		}
+	}
+
+	// Allow the run to finish and assert it completed cleanly.
+	close(release)
+	<-done
+	if runErr != nil {
+		t.Fatalf("RunAgent error: %v", runErr)
+	}
+
+	hasDone := false
+	for _, ty := range sseEventTypes(collectSSE(sseState)) {
+		if ty == "done" {
+			hasDone = true
+		}
+	}
+	if !hasDone {
+		t.Errorf("expected done event, got %v", sseEventTypes(collectSSE(sseState)))
+	}
+}
+
 func TestRunAgent_SingleTurn_NoToolCalls(t *testing.T) {
 	t.Parallel()
 	sseState := runstate.New()

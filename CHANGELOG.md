@@ -201,6 +201,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed a browser-E2E flake class across the final-render tests
+  (`TestBrowser_ThinkingRendering`, `TestBrowser_HTMXBeforeEndTargetsMessages`,
+  `TestBrowser_ToolCardsInScrollContainer`, and the streaming-markdown finals),
+  where a completed run could paint an empty bubble (or none) in the live view.
+  The agent loop now commits the final assistant message to the conversation and
+  runs the per-turn live-sync **before** broadcasting the terminal `done` SSE
+  event, so the frontend's finalize `/render` request (fired from `done`) always
+  reads a conversation that already contains the finished reply — instead of
+  racing the commit and swapping in an empty response.
+
 - Trace identity is now single-owner across restarts (#1236): fresh trace IDs
   always advance past the restored archive — `Recorder.LoadAll` reseeds the
   ID generator from the largest restored `trace_N` (never moving it backwards)
