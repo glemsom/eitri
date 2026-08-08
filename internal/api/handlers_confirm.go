@@ -211,8 +211,17 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 				renderedAny = true
 			}
 			// No visible assistant output since the last user message — nothing to
-			// render (tool-only run). Return an empty response.
-			if !renderedAny {
+			// render (tool-only run, or a tool-call-only turn). Return an empty
+			// response so the frontend does not resurrect a stale bubble from a
+			// previous run. Exception: a conversation with no messages at all
+			// (e.g. a session driven by a fake/partial EventSource where the user
+			// never sent a message) must still produce an empty bubble for the
+			// frontend's `#streaming` outerHTML swap — otherwise no `.message-assistant`
+			// element is ever created and the run appears to render nothing.
+			if len(convo.Messages) == 0 {
+				component := templates.AssistantBubble(id, "", nil)
+				component.Render(r.Context(), w)
+			} else if !renderedAny {
 				w.WriteHeader(http.StatusOK)
 				return
 			}

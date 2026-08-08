@@ -418,6 +418,55 @@ func TestHandleRender_MarkdownKind_MultiTurnRendersAllBubbles(t *testing.T) {
 	}
 }
 
+// TestHandleRender_MarkdownKind_EmptyConversationStillRendersBubble is a
+// regression test for the browser E2E failure where the 'done' finalize on a
+// session with no committed messages returned an empty response (200 + no body).
+// The frontend swaps `#streaming` with the render response via HTMX outerHTML;
+// an empty body creates no `.message-assistant` element, so the run appears to
+// render nothing. A conversation with zero messages must still produce an
+// (empty) assistant bubble for the swap.
+func TestHandleRender_MarkdownKind_EmptyConversationStillRendersBubble(t *testing.T) {
+	workspace := t.TempDir()
+	sessionMgr := session.NewManager(10, workspace)
+	server := newTestServerWithSessionManager(t, workspace, sessionMgr)
+	defer server.Close()
+
+	browserID := "test-browser-render-empty"
+	sess, err := sessionMgr.Create(browserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No messages appended — mimics a session driven by a partial/fake
+	// EventSource where the user never committed a message (e2e
+	// TestBrowser_ToolCardsInScrollContainer).
+	body := map[string]any{
+		"kind":       "markdown",
+		"message_id": "empty-msg",
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/"+sess.ID+"/render", bytes.NewReader(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "browser_id", Value: browserID})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/sessions/{id}/render failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	content := string(bodyBytes)
+	if !strings.Contains(content, "class=\"message message-assistant") {
+		t.Errorf("empty conversation should still render a .message-assistant bubble for the frontend swap, got: %q", content)
+	}
+}
+
 func TestHandleRender_MarkdownDedupByMessageID(t *testing.T) {
 	workspace := t.TempDir()
 	sessionMgr := session.NewManager(10, workspace)
