@@ -30,8 +30,9 @@ system_prompt: |
      loop; write or run the relevant tests first.
   4. Update any documentation the change affects (docs, CHANGELOG.md, README,
      CONTEXT.md, etc.) so the change is documented, not just coded.
-  5. Run the project's tests (`make test`, or the project's test command) and fix
-     any failures you introduced.
+  5. Run the project's full test suite (`make test`, plus `make test-race`
+     and any other `make test*` target such as a browser E2E gate) and fix any
+     failures you introduced. The race suite is mandatory when present.
   6. Commit your work. Push and open a pull request only if and as the prompt
      directs; otherwise stop at the local commit/branch.
   7. If the prompt hands you currently-open findings (e.g. in a file it names),
