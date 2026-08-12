@@ -85,6 +85,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 - **Wire dialect target: OpenAI Chat Completions** for the primary provider — the documented route for DeepSeek/Kimi/GLM/MiMo/Grok/Hy. Chat Completions is the bootstrap default only for `deepseek-v4-flash`; everything else is **data-driven off model discovery**, not a hardcoded prefix table. (Ticket #11)
 - **Routing is per-model metadata.** Read `GET /v1/models` (base `https://opencode.ai/zen/go/v1`) and dispatch on each model's `npm`/`url`. Supported families: Chat Completions (open models), Anthropic `/v1/messages` (Qwen/MiniMax), Responses `/v1/responses` (GPT-only). (Ticket #11)
 - **Streaming.** All families are SSE. Chat Completions consumes `choices[].delta.{content|tool_calls|reasoning_content}` + terminal `data: [DONE]`. `includeUsage`/`stream_options.include_usage` is force-on; parse `usage` from the stream (incl. final chunk) for cache-hit/miss and token telemetry. (Ticket #11)
+- **Provider breadth (T11, ADR-0004).** A factory (`provider.FromConfig`) builds the running provider from the saved `config.Provider`: opencode-go and custom-openai map to the OpenAI-compatible client; github-copilot maps to a Copilot provider on the same Chat-Completions wire. One canonical schema per tool is re-expressed per dialect (`ReExpress`) — no per-provider copies. Copilot batch resolves a stored-valid token → non-interactive refresh → else a clean re-auth-in-TUI error; the interactive device-flow handshake is TUI-only.
 
 ### 2. Tool exposure & dispatch loop
 
