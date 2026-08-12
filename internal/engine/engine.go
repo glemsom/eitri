@@ -115,12 +115,21 @@ func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (strin
 // AgentOptions configures the tool-call dispatch loop (docs/spec.md §2).
 // Tools and ToolChoice are the request-head tool definitions sent to the
 // provider (kept stable per session for prompt caching); Executor runs calls;
-// MaxTurns caps the loop (0 = uncapped).
+// MaxTurns caps the loop (0 = uncapped). CanContinue, when set, lets an
+// interactive caller grant another budget once the cap is hit instead of the
+// loop failing (eitri.md §2.1).
 type AgentOptions struct {
 	Tools      []provider.Tool
 	ToolChoice any
 	Executor   ToolExecutor
 	MaxTurns   int
+
+	// CanContinue is asked when MaxTurns (>0) is reached and the loop wants to
+	// keep going. When nil — the batch/headless default — the loop stops with
+	// ErrMaxTurns (auto-deny changes). When it returns true, the loop is granted
+	// a fresh MaxTurns budget and continues; a false return stops with ErrMaxTurns.
+	// It is the interactive "pause at the cap and prompt to continue" boundary.
+	CanContinue func() bool
 }
 
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages
@@ -134,7 +143,12 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 	for turn := 0; ; turn++ {
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
-			return final, ErrMaxTurns
+			// The cap is reached. Batch/headless (no hook) auto-denies: stop.
+			// Interactive callers may grant another budget via CanContinue.
+			if opts.CanContinue == nil || !opts.CanContinue() {
+				return final, ErrMaxTurns
+			}
+			turn = 0 // a granted continuation resets the turn budget
 		}
 		s, err := e.provider.Stream(ctx, provider.Request{
 			Model:           req.Model,

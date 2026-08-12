@@ -169,10 +169,16 @@ func Run(opts Options) error {
 	// the same engine, session transcript, and tool registry as batch, and
 	// renders into the primary buffer (docs/spec.md §9).
 	if opts.Prompt == "" {
-		return runTUI(e, cfg, reg, key)
+		// TUI: a provider is needed for live model discovery in Settings (T12);
+		// tests inject one via Options.Provider or fall back to the default.
+		p2 := p
+		if p2 == nil {
+			p2 = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
+		}
+		return runTUI(e, cfg, reg, key, p2, cfgPath)
 	}
 
-	res, err := runAgent(e, cfg, reg, key, opts.Prompt)
+	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil)
 	if err != nil {
 		return err
 	}
@@ -224,7 +230,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 // and batch use. It is the single turn seam for both run kinds, so a TUI run
 // round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
 // §2.6).
-func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string) (engine.Result, error) {
+func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, canContinue func() bool) (engine.Result, error) {
 	return e.RunAgent(context.Background(), engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
@@ -241,7 +247,8 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 			}
 			return reg.Run(ctx, name, args)
 		}),
-		MaxTurns: cfg.MaxTurns,
+		MaxTurns:    cfg.MaxTurns,
+		CanContinue: canContinue,
 	})
 }
 

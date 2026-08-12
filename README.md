@@ -110,6 +110,14 @@ optionally overrides the Chat-Completions endpoint (defaults to OpenCode Go;
 custom OpenAI-compatible endpoints are formalized in T11). The batch engine
 injects a fake provider in tests via the `app.Options.Provider` seam.
 
+In the TUI, `ctrl+s` opens a **Settings** surface to pick the provider and
+model (models are discovered from the configured provider) and tune
+`reasoning_effort`, `max_turns`, `compaction_fraction`, and
+`extra_writable_paths`; saving persists to `~/.eitri/config.json` and takes
+effect on the next run. When an agent run reaches the `max_turns` cap in the
+TUI it pauses and prompts to continue (`y`/`n`); batch mode instead
+auto-denies continuation and stops with an error.
+
 ## Data directory
 
 On launch Eitri creates its data directory and establishes a GUID session for

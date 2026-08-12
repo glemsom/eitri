@@ -187,6 +187,15 @@ type Provider interface {
 	Stream(ctx context.Context, req Request) (Stream, error)
 }
 
+// ModelLister is an optional capability a Provider may expose: discovering the
+// available model IDs from the configured provider so the Settings surface can
+// offer a picker without hand-editing config (eitri.md §2.2, T12). It is a
+// separate interface so minimal/test providers (Scripted) need not implement
+// it; callers type-assert and treat absence as "no discovery" rather than error.
+type ModelLister interface {
+	Models(ctx context.Context) ([]string, error)
+}
+
 // consume reads a Stream to completion, returning the concatenated assistant
 // answer content and the terminal usage, if any. A Done chunk always precedes
 // io.EOF.
