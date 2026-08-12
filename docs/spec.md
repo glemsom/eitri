@@ -146,6 +146,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 ### 9. TUI
 
 - **Charm stack:** Bubble Tea + Lip Gloss + Bubbles; **Glamour over goldmark** (custom-renderer seam) for Markdown→ANSI. (Ticket #18)
+- **Display context:** **Ghostty** (Kitty-compatible) is the project's primary console; the core TUI is terminal-agnostic (Charm + primary buffer), and Ghostty/Kitty is relevant only as the graphics-protocol display target for the (deferred) Mermaid work. (Ticket #18)
 - **Primary-buffer differential rendering** by default (pi/Claude-Code/Codex pattern) to preserve native selection/scrollback/search via Bubble Tea's swappable `Renderer` seam. Alt-screen reserved for modal settings/dashboard. (Ticket #18)
 - **Thinking:** collapsible stream per-turn (auto-collapse after turn). **Compaction:** `[compacted]` marker + cache hit-ratio gauge. **Skills:** show detected and currently-activated skills; slash-command activation (`/skillname`) and `/` completion in the composer. (Tickets #17/#18/#21, eitri.md §2.3)
 
