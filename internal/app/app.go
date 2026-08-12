@@ -172,24 +172,7 @@ func Run(opts Options) error {
 		return runTUI(e, cfg, reg, key)
 	}
 
-	res, err := e.RunAgent(context.Background(), engine.RunRequest{
-		Model:           cfg.Model,
-		Prompt:          opts.Prompt,
-		SessionKey:      key,
-		ThinkingEnabled: true, // deepseek thinking stays default-on (spec §6)
-		ReasoningEffort: cfg.ReasoningEffort,
-	}, engine.AgentOptions{
-		Tools:      providerTools(reg.Definitions()),
-		ToolChoice: "auto",
-		Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
-			var args map[string]any
-			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-				return "", err
-			}
-			return reg.Run(ctx, name, args)
-		}),
-		MaxTurns: cfg.MaxTurns,
-	})
+	res, err := runAgent(e, cfg, reg, key, opts.Prompt)
 	if err != nil {
 		return err
 	}
@@ -234,6 +217,32 @@ type stderrWarner struct{}
 
 func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
+}
+
+// runAgent drives one agent turn (user prompt → assistant answer) over the
+// shared run engine, session transcript, and tool registry that both the TUI
+// and batch use. It is the single turn seam for both run kinds, so a TUI run
+// round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
+// §2.6).
+func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string) (engine.Result, error) {
+	return e.RunAgent(context.Background(), engine.RunRequest{
+		Model:           cfg.Model,
+		Prompt:          prompt,
+		SessionKey:      sessionKey,
+		ThinkingEnabled: true, // deepseek thinking stays default-on (spec §6)
+		ReasoningEffort: cfg.ReasoningEffort,
+	}, engine.AgentOptions{
+		Tools:      providerTools(reg.Definitions()),
+		ToolChoice: "auto",
+		Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+			var args map[string]any
+			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+				return "", err
+			}
+			return reg.Run(ctx, name, args)
+		}),
+		MaxTurns: cfg.MaxTurns,
+	})
 }
 
 // providerTools maps the registry's definitions to provider Tool objects for

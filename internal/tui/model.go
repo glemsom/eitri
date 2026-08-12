@@ -38,9 +38,6 @@ type Model struct {
 
 	messages []message
 	busy     bool
-	err      error
-	width    int
-	ready    bool
 }
 
 // NewModel builds a TUI model wired to the run function.
@@ -65,9 +62,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msgi := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msgi.Width
 		m.composer.SetWidth(msgi.Width - 2)
-		m.ready = true
 		return m, nil
 
 	case tea.KeyMsg:
@@ -85,7 +80,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.composer.Reset()
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
-			m.err = nil
 			return m, turnCmd(m.turn, prompt)
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).

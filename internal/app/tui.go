@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -12,31 +11,13 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// runEngineTurn runs one agent turn (user prompt → assistant answer) over the
-// shared run engine, session transcript, and tool registry that batch mode
-// uses. It is the single turn seam for both the TUI and batch, so a TUI run
-// round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
-// §2.6).
+// runEngineTurn adapts the shared runAgent turn to the tui.Turn seam. It runs
+// one agent turn over the same engine, session transcript, and tool registry as
+// batch, so a TUI greeting round-trips through the engine exactly like batch
+// (docs/spec.md §9, eitri.md §2.6).
 func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string) tui.Turn {
 	return func(ctx context.Context, prompt string) (string, error) {
-		res, err := e.RunAgent(ctx, engine.RunRequest{
-			Model:           cfg.Model,
-			Prompt:          prompt,
-			SessionKey:      sessionKey,
-			ThinkingEnabled: true,
-			ReasoningEffort: cfg.ReasoningEffort,
-		}, engine.AgentOptions{
-			Tools:      providerTools(reg.Definitions()),
-			ToolChoice: "auto",
-			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
-				var args map[string]any
-				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-					return "", err
-				}
-				return reg.Run(ctx, name, args)
-			}),
-			MaxTurns: cfg.MaxTurns,
-		})
+		res, err := runAgent(e, cfg, reg, sessionKey, prompt)
 		if err != nil {
 			return "", err
 		}
