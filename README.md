@@ -25,14 +25,16 @@ eitri [flags]
 ```
 
 | Flag          | Meaning                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
+| ------------ | ------------------------------------------------------------------------ |
 | `-b <prompt>` | Run once in batch mode with the given prompt, emit the answer, and exit. |
+| `-v`          | In batch mode, also print the model's thinking/reasoning to stdout.      |
 | `-d`          | Debug mode (writes full HTTP traces to/from the provider).               |
 | `--version`   | Print the version and exit.                                              |
 
-The `-b` behavior is wired up in a later ticket (T1c); today the binary parses
-the batch prompt and performs the boot sequence. `-d` enables debug mode, which
-attaches the HTTP trace sink to the run session.
+`-b <prompt>` runs one non-tool turn through the shared run engine and prints
+the final answer to stdout. Thinking/reasoning is suppressed from batch output
+by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables debug
+mode, which attaches the HTTP trace sink to the run session.
 
 ## Configuration
 
@@ -44,8 +46,11 @@ it on startup (`config.json`, `eitri.md` §2.7):
 
 Persisted settings: `provider`, `model`, `reasoning_effort` (default `high`),
 `max_turns` (default `250`), `compaction_fraction` (default `0.8`), and
-`extra_writable_paths`. Provider credentials are delivered via environment
-(wired in later provider tickets).
+`extra_writable_paths`. Provider credentials are delivered via environment:
+the OpenCode Go key is read from `OPENCODE_API_KEY`, and `EITRI_PROVIDER_URL`
+optionally overrides the Chat-Completions endpoint (defaults to OpenCode Go;
+custom OpenAI-compatible endpoints are formalized in T11). The batch engine
+injects a fake provider in tests via the `app.Options.Provider` seam.
 
 ## Data directory
 

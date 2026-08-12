@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,6 +62,37 @@ func TestCLISmoke(t *testing.T) {
 			t.Fatalf("eitri without bwrap output %q lacks an install-bubblewrap hint", out)
 		}
 	})
+}
+
+// TestCLIBatchWithStubProvider runs the compiled binary in batch mode against a
+// local stub Chat-Completions server, exercising the full CLI → app → engine →
+// provider path end-to-end without a network. It asserts the final answer lands
+// on stdout.
+func TestCLIBatchWithStubProvider(t *testing.T) {
+	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	bin := buildBinary(t)
+	dataDir := filepath.Join(t.TempDir(), ".eitri")
+	cmd := exec.Command(bin, "-b", "hello")
+	cmd.Env = append(
+		cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"),
+		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+srv.URL,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("eitri -b exit error = %v, output:\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "Hello world") {
+		t.Fatalf("batch output %q missing the final answer", out)
+	}
 }
 
 // buildBinary compiles cmd/eitri into a temp path and returns it.

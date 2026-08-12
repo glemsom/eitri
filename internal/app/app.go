@@ -5,13 +5,17 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/engine"
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 )
 
@@ -48,6 +52,22 @@ type Options struct {
 	// session for deep-dive provider debugging (eitri.md §2.5).
 	Debug bool
 
+	// Prompt, when non-empty, runs batch mode with the given prompt and prints
+	// the final answer to Stdout (eitri -b). Reasoning is suppressed from
+	// stdout unless Verbose is set (docs/spec.md §6).
+	Prompt string
+
+	// Verbose (-v) enables reasoning output to stdout in batch mode.
+	Verbose bool
+
+	// Stdout receives the batch answer. When nil it defaults to os.Stdout.
+	Stdout io.Writer
+
+	// Provider, when non-nil, backs the batch engine. When nil, a provider is
+	// built from the loaded config (OpenCode Go via OPENCODE_API_KEY). Tests
+	// inject the fake provider through this option.
+	Provider provider.Provider
+
 	// LookPath locates an executable on the host PATH. It defaults to
 	// exec.LookPath; tests inject a stub to drive bwrap-missing behavior.
 	LookPath func(name string) (string, error)
@@ -56,11 +76,11 @@ type Options struct {
 // Run performs the Eitri boot sequence and returns the first error it hits, so
 // a caller can map it to an exit status. The workspace, session temp, sandbox
 // (bwrap cage), host-side tools, and path namespace are later components that
-// hang off this sequence.
+// hang off this sequence; batch mode (opts.Prompt) is driven through the shared
+// run engine here.
 func Run(opts Options) error {
-	// The prompt (-b) flag is parsed at the CLI layer but its engine behavior
-	// is wired in a later ticket (T1c); boot treats it as a no-op. The debug
-	// (-d) flag is honored here via opts.Debug when establishing the session.
+	// The debug (-d) flag is honored here via opts.Debug when establishing the
+	// run session.
 	if opts.Version {
 		fmt.Println(Version)
 		return nil
@@ -78,12 +98,14 @@ func Run(opts Options) error {
 	if err != nil {
 		return err
 	}
-	if _, err := config.Load(cfgPath); err != nil {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
 		return err
 	}
 
 	// Establish the run's on-disk session trail under sessions/<GUID>.
-	if _, err := session.New(dir, opts.Debug); err != nil {
+	sess, err := session.New(dir, opts.Debug)
+	if err != nil {
 		return err
 	}
 
@@ -95,7 +117,58 @@ func Run(opts Options) error {
 		return ErrMissingBwrap
 	}
 
+	// Batch mode: run one non-tool turn through the shared engine and print
+	// the final answer (docs/spec.md §6; eitri.md §2.1).
+	if opts.Prompt != "" {
+		p := opts.Provider
+		if p == nil {
+			p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
+		}
+		e := engine.New(p, sess)
+		res, err := e.Run(context.Background(), engine.RunRequest{
+			Model:  cfg.Model,
+			Prompt: opts.Prompt,
+		})
+		if err != nil {
+			return err
+		}
+		out := opts.Stdout
+		if out == nil {
+			out = os.Stdout
+		}
+		if opts.Verbose && res.Reasoning != "" {
+			fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
+		}
+		fmt.Fprintln(out, res.Answer)
+	}
+
 	return nil
+}
+
+// ProviderKeyEnv is the environment variable holding the OpenCode Go API key.
+// Per docs/research/opencode-endpoints.md, the OpenCode Go credential is
+// delivered via this env var (no key material in config).
+const ProviderKeyEnv = "OPENCODE_API_KEY"
+
+// ProviderURLEnv optionally overrides the Chat-Completions endpoint Eitri
+// talks to, for local testing and custom OpenAI-compatible endpoints (the
+// latter formalized in T11). It defaults to OpenCode Go.
+const ProviderURLEnv = "EITRI_PROVIDER_URL"
+
+// defaultProvider builds the primary provider: an OpenAI-compatible
+// Chat-Completions client against OpenCode Go's endpoint, overridable via env.
+func defaultProvider(apiKey, url string) provider.Provider {
+	if url == "" {
+		url = "https://opencode.ai/zen/go/v1/chat/completions"
+	}
+	return provider.NewOpenAICompatible(apiKeyOrDefault(apiKey), url)
+}
+
+func apiKeyOrDefault(key string) string {
+	if key != "" {
+		return key
+	}
+	return "not-configured"
 }
 
 // resolveConfigPath selects the config file path: an explicit override, else

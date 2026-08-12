@@ -1,7 +1,6 @@
-// Command eitri is the Eitri single-binary agent CLI. This ticket (T1) wires
-// the boot skeleton: flag parsing, the data directory, and the hard bubblewrap
-// prerequisite. The batch (-b) prompt and -d debug flag are parsed here and
-// their engine behavior is hooked up in later tickets.
+// Command eitri is the Eitri single-binary agent CLI. It parses the batch (-b)
+// prompt and -d / -v flags and drives them through the shared run engine in
+// internal/app. The TUI shell arrives in a later ticket (T9a).
 package main
 
 import (
@@ -21,7 +20,8 @@ Usage:
 Flags:
 
   -b <prompt>    run once in batch mode with the given prompt and exit
-  -d             enable debug mode (writes full HTTP traces in later tickets)
+  -v             in batch mode, print the model's thinking/reasoning to stdout
+  -d             enable debug mode (writes full HTTP traces to/from the provider)
   --version      print the version and exit
 
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
@@ -31,6 +31,7 @@ requires bubblewrap (bwrap) to be installed; it never runs unsandboxed.
 func main() {
 	var (
 		prompt   = flag.String("b", "", "run once in batch mode with the given prompt and exit")
+		verbose  = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")
 		debug    = flag.Bool("d", false, "enable debug mode")
 		showVers = flag.Bool("version", false, "print the version and exit")
 	)
@@ -47,10 +48,9 @@ func main() {
 	opts := app.Options{
 		DataDir: os.Getenv(app.DataDirEnv),
 		Debug:   *debug,
-		// Batch prompt is accepted now; Run wires it in a later ticket (T1c),
-		// so referencing it keeps the contract explicit.
+		Prompt:  *prompt,
+		Verbose: *verbose,
 	}
-	_ = prompt
 
 	if err := app.Run(opts); err != nil {
 		die(err)
