@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -77,7 +78,7 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	}
 
 	if e.transcript != nil {
-		_ = e.transcript.WriteTranscript([]byte(fmt.Sprintf("=== %s ===\n%s\n", req.Prompt, res.Answer)))
+		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, res.Answer))
 	}
 	return res, nil
 }
@@ -165,7 +166,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			final.Answer = content
 			final.Reasoning = reasoning
 			if e.transcript != nil {
-				_ = e.transcript.WriteTranscript([]byte(fmt.Sprintf("=== %s ===\n%s\n", req.Prompt, content)))
+				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content))
 			}
 			return final, nil
 		}
@@ -173,18 +174,53 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		assistant.ToolCalls = done.ToolCalls
 		messages = append(messages, assistant)
 		for _, tc := range done.ToolCalls {
-			result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
-			if err != nil {
-				result = "error executing tool: " + err.Error()
-			}
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,
-				Content:    result,
+				Content:    execToolCall(ctx, opts, tc),
 			})
 		}
 	}
 }
+
+// toolSchema returns the canonical strict-shaped Parameters map for the named
+// tool from the request-head tool manifest, or nil if the tool is unknown/not
+// validated. The schema is the canonical form re-expressed per dialect, so it
+// is the single validation target.
+func toolSchema(tools []provider.Tool, name string) map[string]any {
+	for _, t := range tools {
+		if t.Function.Name == name {
+			return t.Function.Parameters
+		}
+	}
+	return nil
+}
+
+// execToolCall runs one tool call through the hardened dispatch path: it
+// parses and validates the arguments against the tool's strict schema, then
+// executes only when valid. Malformed JSON is routed to a wrapped
+// {"INVALID_JSON": "<raw>"} tool result (built via the JSON library so
+// escaping stays correct); a schema-violating call is rejected with a
+// descriptive error. It never panics and never silently skips a call.
+func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) string {
+	var parsed map[string]any
+	if err := validateToolCallArgs(toolSchema(opts.Tools, tc.Name), tc.Arguments, &parsed); err != nil {
+		if errors.Is(err, errInvalidJSON) {
+			b, jerr := json.Marshal(map[string]string{"INVALID_JSON": tc.Arguments})
+			if jerr != nil {
+				return `{"INVALID_JSON":"unserializable"}`
+			}
+			return string(b)
+		}
+		return "invalid tool arguments: " + err.Error()
+	}
+	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
+	if err != nil {
+		return "error executing tool: " + err.Error()
+	}
+	return result
+}
+
 func closeErr(err error) error {
 	if err == io.EOF {
 		return nil

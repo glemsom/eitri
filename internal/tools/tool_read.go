@@ -28,15 +28,11 @@ func (r *readTool) Schema() map[string]any {
 			"type":        "string",
 			"description": "The file path, in the shared path namespace (workspace or sandbox /tmp).",
 		},
-		"start_line": map[string]any{
-			"type":        "integer",
-			"description": "Optional 1-based start line (default 1).",
-		},
-		"end_line": map[string]any{
-			"type":        "integer",
-			"description": "Optional 1-based end line, inclusive (default: through EOF).",
-		},
-	}, []string{"path"})
+		// Strict-shaped (all-required) with optionals expressed as nullable
+		// unions per docs/spec.md §2: a model omits an optional by sending null.
+		"start_line": []any{"integer", "null"},
+		"end_line":   []any{"integer", "null"},
+	}, []string{"path", "start_line", "end_line"})
 }
 
 func (r *readTool) Run(ctx context.Context, args map[string]any) (string, error) {
@@ -76,14 +72,16 @@ func (r *readTool) Run(ctx context.Context, args map[string]any) (string, error)
 	}
 	var b []byte
 	for i := start; i <= end; i++ {
-		b = append(b, []byte(fmt.Sprintf("%6d\t%s\n", i, lines[i-1]))...)
+		b = append(b, fmt.Appendf(nil, "%6d\t%s\n", i, lines[i-1])...)
 	}
 	return string(b), nil
 }
 
 func argInt(args map[string]any, key string, def int) (int, error) {
 	v, ok := args[key]
-	if !ok {
+	if !ok || v == nil {
+		// Treat a nullable-union optional expressed as null (strict-shaped
+		// schemas, docs/spec.md §2) as absent so it falls to its default.
 		return def, nil
 	}
 	var out int
