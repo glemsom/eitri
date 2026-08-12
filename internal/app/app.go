@@ -73,6 +73,15 @@ type Options struct {
 	// LookPath locates an executable on the host PATH. It defaults to
 	// exec.LookPath; tests inject a stub to drive bwrap-missing behavior.
 	LookPath func(name string) (string, error)
+
+	// Fetcher backs the web_fetch tool's network seam. When nil, a real
+	// http.Client is used; tests inject a stub to drive engine-seam web_fetch
+	// turns without a network.
+	Fetcher tools.Fetcher
+
+	// Browser backs the open_in_browser tool's host-side launch seam. When nil,
+	// xdg-open is used; tests inject a recording stub.
+	Browser tools.BrowserLauncher
 }
 
 // Run performs the Eitri boot sequence and returns the first error it hits, so
@@ -133,6 +142,8 @@ func Run(opts Options) error {
 		GUID:          guid,
 		ExtraWritable: cfg.ExtraWritablePaths,
 		Runner:        tools.RealRunner,
+		Fetcher:       opts.Fetcher,
+		Browser:       opts.Browser,
 	})
 	// Session temp is ephemeral per run and removed when the run ends (ADR-0002).
 	tempHost := tools.HostTempFor(guid)
