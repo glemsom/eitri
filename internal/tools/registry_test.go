@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,39 @@ func TestBashRunsInSandbox(t *testing.T) {
 	}
 	if got != "$HOME\n" {
 		t.Fatalf("bash output = %q, want %q", got, "$HOME\n")
+	}
+}
+
+// TestBashCompressesNoisyOutputAtBoundary verifies a noisy, high-volume bash
+// read is compressed at the tool-result boundary (docs/spec.md §5): the output
+// returned into the conversation is truncated with the explicit "+ more" marker
+// and is strictly shorter, but the raw command can be re-run for recovery.
+func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
+	var raw strings.Builder
+	for i := 0; i < 400; i++ {
+		raw.WriteString("src/file_")
+		raw.WriteString(strconv.Itoa(i))
+		raw.WriteString(".go          1234 bytes\n")
+	}
+	rr := &recordingRunner{out: &Output{Stdout: raw.String()}}
+	r, _ := newTestRegistry(t, rr)
+	got, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	if err != nil {
+		t.Fatalf("bash error = %v, want nil", err)
+	}
+	if !strings.Contains(got, " more") {
+		t.Fatalf("compressed bash output missing explicit tail marker: %q", got)
+	}
+	if len(got) >= len(raw.String()) {
+		t.Fatalf("compressed output not shorter: raw=%d bytes, got=%d bytes", len(raw.String()), len(got))
+	}
+	// Deterministic: re-running the same command returns the same compressed form.
+	again, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	if err != nil {
+		t.Fatalf("bash second run error = %v, want nil", err)
+	}
+	if again != got {
+		t.Fatalf("compression not deterministic: first=%q second=%q", got, again)
 	}
 }
 
