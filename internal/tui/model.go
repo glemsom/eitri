@@ -43,7 +43,6 @@ type turnDoneMsg struct {
 
 // skillDoneMsg reports a slash-command skill activation's result.
 type skillDoneMsg struct {
-	name    string
 	payload string
 }
 
@@ -411,7 +410,7 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 		if err != nil {
 			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
 		}
-		return skillDoneMsg{name: name, payload: payload}
+		return skillDoneMsg{payload: payload}
 	})
 }
 
