@@ -28,12 +28,14 @@ func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &fakeStream{ev: newSSE(bytes.NewReader(data))}, nil
+	return &fakeStream{ev: newSSE(bytes.NewReader(data)), acc: newToolAccumulator()}, nil
 }
 
-// fakeStream adapts the parsed SSE events into the Stream seam.
+// fakeStream adapts the parsed SSE events into the Stream seam, accumulating
+// streamed tool_call fragments across the turn.
 type fakeStream struct {
-	ev *sse
+	ev  *sse
+	acc *toolAccumulator
 }
 
 // Next implements Stream.
@@ -45,5 +47,5 @@ func (fs *fakeStream) Next() (Chunk, error) {
 	if err != nil {
 		return Chunk{}, err
 	}
-	return parseEvent(e.data)
+	return parseEvent(e.data, fs.acc)
 }
