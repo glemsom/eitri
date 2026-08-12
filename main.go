@@ -1,6 +1,6 @@
-// Command eitri is the Eitri single-binary agent CLI. It parses the batch (-b)
-// prompt and -d / -v flags and drives them through the shared run engine in
-// internal/app. The TUI shell arrives in a later ticket (T9a).
+// Command eitri is the Eitri single-binary agent CLI. With no flags it starts
+// the interactive fullscreen TUI; with -b it runs once in batch mode. Both are
+// driven through the shared run engine in internal/app.
 package main
 
 import (
@@ -15,7 +15,8 @@ const usage = `eitri — a self-hosted, single-binary AI coding agent for Linux.
 
 Usage:
 
-  eitri [flags]
+  eitri [flags]          launch the interactive TUI
+  eitri -b <prompt>      run once in batch mode and exit
 
 Flags:
 

@@ -6,9 +6,21 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/tui"
 )
 
+// stubTUI replaces the TUI program launcher with a no-op that captures the
+// model, letting boot-path tests exercise Run without a real terminal.
+func stubTUI(t *testing.T) {
+	t.Helper()
+	orig := runProgram
+	runProgram = func(m tui.Model) error { return nil }
+	t.Cleanup(func() { runProgram = orig })
+}
+
 func TestRunCreatesDataDir(t *testing.T) {
+	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 
@@ -23,6 +35,7 @@ func TestRunCreatesDataDir(t *testing.T) {
 }
 
 func TestRunToleratesExistingDataDir(t *testing.T) {
+	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -74,6 +87,7 @@ func TestVersionShortCircuitsBoot(t *testing.T) {
 // is created with defaults when absent, and a session transcript directory is
 // established under the data dir.
 func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
+	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 	cfgPath := filepath.Join(dir, "config.json")
@@ -115,6 +129,7 @@ func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 // Debug, creates a session directory (the trace sink itself is covered in the
 // session package).
 func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
+	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 
@@ -130,6 +145,7 @@ func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
 // TestBootUsesDataDirForConfig verifies config lands at dataDir/config.json
 // when no explicit config path is given.
 func TestBootUsesDataDirForConfig(t *testing.T) {
+	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 

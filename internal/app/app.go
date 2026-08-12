@@ -158,42 +158,49 @@ func Run(opts Options) error {
 	// Batch mode: run one agent turn through the shared engine and print the
 	// final answer (docs/spec.md §6; eitri.md §2.1). The engine dispatches any
 	// tool calls through the registry over the provider seam.
-	if opts.Prompt != "" {
-		p := opts.Provider
-		if p == nil {
-			p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
-		}
-		e := engine.New(p, sess)
-		res, err := e.RunAgent(context.Background(), engine.RunRequest{
-			Model:           cfg.Model,
-			Prompt:          opts.Prompt,
-			SessionKey:      sess.GUID(), // opt into the session-scoped prompt cache (T6)
-			ThinkingEnabled: true,        // deepseek thinking stays default-on (spec §6)
-			ReasoningEffort: cfg.ReasoningEffort,
-		}, engine.AgentOptions{
-			Tools:      providerTools(reg.Definitions()),
-			ToolChoice: "auto",
-			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
-				var args map[string]any
-				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-					return "", err
-				}
-				return reg.Run(ctx, name, args)
-			}),
-			MaxTurns: cfg.MaxTurns,
-		})
-		if err != nil {
-			return err
-		}
-		out := opts.Stdout
-		if out == nil {
-			out = os.Stdout
-		}
-		if opts.Verbose && res.Reasoning != "" {
-			fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
-		}
-		fmt.Fprintln(out, res.Answer)
+	p := opts.Provider
+	if p == nil {
+		p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
 	}
+	e := engine.New(p, sess)
+	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
+
+	// Build the interactive TUI run when no batch prompt is given. It sits on
+	// the same engine, session transcript, and tool registry as batch, and
+	// renders into the primary buffer (docs/spec.md §9).
+	if opts.Prompt == "" {
+		return runTUI(e, cfg, reg, key)
+	}
+
+	res, err := e.RunAgent(context.Background(), engine.RunRequest{
+		Model:           cfg.Model,
+		Prompt:          opts.Prompt,
+		SessionKey:      key,
+		ThinkingEnabled: true, // deepseek thinking stays default-on (spec §6)
+		ReasoningEffort: cfg.ReasoningEffort,
+	}, engine.AgentOptions{
+		Tools:      providerTools(reg.Definitions()),
+		ToolChoice: "auto",
+		Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+			var args map[string]any
+			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+				return "", err
+			}
+			return reg.Run(ctx, name, args)
+		}),
+		MaxTurns: cfg.MaxTurns,
+	})
+	if err != nil {
+		return err
+	}
+	out := opts.Stdout
+	if out == nil {
+		out = os.Stdout
+	}
+	if opts.Verbose && res.Reasoning != "" {
+		fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
+	}
+	fmt.Fprintln(out, res.Answer)
 
 	return nil
 }
