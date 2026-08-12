@@ -17,7 +17,7 @@ import (
 // credential is available — a valid access token nor a refresh path. Batch
 // never runs the interactive device flow; the message directs the user to
 // re-authenticate in the TUI, which persists a fresh token to config (T11).
-var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI (settings → connect), which saves a fresh token to config")
+var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
 // RefreshFunc renews a Copilot credential from a refresh token, non-interactively
 // returning a fresh token set. It is the batch-sanctioned automatic renewal path

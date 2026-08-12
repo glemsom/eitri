@@ -43,8 +43,9 @@ requirements that drive every decision in this ticket:
 
 4. **The TUI owns device-flow OAuth.** `provider.DeviceFlow` (start → show
    verification URI/user code in-UI → poll → fresh token) is the TUI-side
-   handshake; the fresh token set is persisted to `config.Copilot` on success, so
-   later batch runs reuse it.
+   handshake. `app.CopilotConnect` runs the full handshake and persists the
+   fresh token set to `config.Copilot`, so the interactive screen can call one
+   function end-to-end and later batch runs reuse the token.
 
 5. **Copilot + custom-OpenAI credentials live in config** (`config.Copilot`,
    `config.CustomOpenAI`), unlike the primary provider's env-delivered key — they
@@ -60,3 +61,14 @@ requirements that drive every decision in this ticket:
   chat round-trip still needs the endpoint's exact request shape verified at
   integration time (the device-flow client and refresh/chat HTTP are wired and
   unit-tested against stubs).
+- The device-flow authentication → token persistence → batch reuse path is
+  complete and callable via `app.CopilotConnect`.
+
+## Remaining interactive UI (out of ADR scope)
+
+Binding a Bubble Tea **approval screen + keybinding** to `app.CopilotConnect` is
+interactive TUI rendering work separate from the seam decisions above; it has no
+normative behavior for batch (batch never runs the device flow). Until that
+screen lands, Copilot authentication is reachable through `app.CopilotConnect`
+in headless/unattended wiring and the TUI settings surface allows selecting the
+provider.

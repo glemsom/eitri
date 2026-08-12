@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // GitHub's Copilot OAuth token endpoint: same host as the device-flow handshake,
@@ -63,4 +65,41 @@ func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken s
 		}
 		return cfg, nil
 	}
+}
+
+// CopilotConnect runs the TUI-side GitHub device-flow handshake end to end:
+// it starts the flow, presents the user code + verification URI to stdErr, polls
+// to completion, and persists the fresh token set to config (eitri.md §2.2 / T11,
+// acceptance criterion (c)). It is the interactive re-auth surface driveable by
+// the TUI; batch never calls it. onCode is called with the code to display once
+// the flow starts (nil → the code is printed to stderr).
+// newDeviceFlow constructs the device-flow client; package-level seam so tests stub the GitHub endpoints.
+var newDeviceFlow = provider.NewDeviceFlow
+
+func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onCode func(provider.DeviceCode)) (config.Config, error) {
+	flow := newDeviceFlow(httpc, nil)
+	cd, err := flow.Start(ctx)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if onCode != nil {
+		onCode(cd)
+	} else {
+		fmt.Fprintf(os.Stderr, "Open https://github.com/login/device and enter code: %s\n", cd.UserCode)
+	}
+	tok, err := flow.Poll(ctx, cd.DeviceCode)
+	if err != nil {
+		return config.Config{}, err
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg.Provider = provider.ProviderCopilot
+	cfg.Copilot = tok
+	if err := config.Save(cfg, cfgPath); err != nil {
+		return config.Config{}, err
+	}
+	return cfg, nil
 }
