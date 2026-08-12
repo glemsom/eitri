@@ -39,6 +39,10 @@ func New(p provider.Provider, tr TranscriptWriter) *Engine {
 type RunRequest struct {
 	Model  string
 	Prompt string
+	// SessionKey opts the run into deepseek's session-scoped prompt cache:
+	// every request carries prompt_cache_key:<SessionKey> and the request head
+	// stays byte-identical across turns (docs/spec.md §4). Empty disables it.
+	SessionKey string
 }
 
 // Result is the outcome of one Run.
@@ -54,8 +58,10 @@ type Result struct {
 // the transcript sink.
 func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	s, err := e.provider.Stream(ctx, provider.Request{
-		Model:    req.Model,
-		Messages: []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		Model:       req.Model,
+		Messages:    []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		SetCacheKey: req.SessionKey != "",
+		SessionKey:  req.SessionKey,
 	})
 	if err != nil {
 		return Result{}, err
@@ -123,10 +129,12 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			return final, ErrMaxTurns
 		}
 		s, err := e.provider.Stream(ctx, provider.Request{
-			Model:      req.Model,
-			Messages:   messages,
-			Tools:      opts.Tools,
-			ToolChoice: opts.ToolChoice,
+			Model:       req.Model,
+			Messages:    messages,
+			Tools:       opts.Tools,
+			ToolChoice:  opts.ToolChoice,
+			SetCacheKey: req.SessionKey != "",
+			SessionKey:  req.SessionKey,
 		})
 		if err != nil {
 			return final, err

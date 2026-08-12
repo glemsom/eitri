@@ -69,6 +69,14 @@ type Request struct {
 	Messages   []Message
 	Tools      []Tool
 	ToolChoice any
+	// SetCacheKey opts the request into deepseek's session-scoped prompt cache
+	// (docs/spec.md §4). When true and SessionKey is non-empty, the wire body
+	// carries prompt_cache_key:<SessionKey> — treated as advisory /
+	// content-addressed, kept as a namespace/telemetry key.
+	SetCacheKey bool
+	// SessionKey identifies the session whose stable prefix the provider should
+	// cache; it disambiguates the prompt cache namespace across sessions.
+	SessionKey string
 }
 
 // Chunk is one parsed piece of a streamed turn.
@@ -94,9 +102,13 @@ type Chunk struct {
 }
 
 // Usage is per-turn token telemetry, parsed at the provider seam.
+// PromptCacheHitTokens/MissTokens are deepseek prompt-cache read tokens, the
+// data behind the cache hit-ratio gauge and cost accounting (docs/spec.md §4).
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
+	PromptTokens          int `json:"prompt_tokens"`
+	CompletionTokens      int `json:"completion_tokens"`
+	PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens int `json:"prompt_cache_miss_tokens,omitempty"`
 }
 
 // Stream is the provider seam: a single turn's streamed chunks. A Stream must
