@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -191,8 +190,8 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 	var out strings.Builder
 	for {
 		c, cerr := s.Next()
-		if errors.Is(cerr, context.Canceled) || cerr != nil {
-			break
+		if cerr != nil {
+			break // stream ended or errored: no summary, fail-safe skip
 		}
 		out.WriteString(c.Content)
 		if c.Done {
@@ -247,8 +246,10 @@ func renderBody(messages []provider.Message) string {
 }
 
 // estimateTokens is a deterministic token approximation (chars/4) used for
-// compaction budgeting. It double counts nothing and is stable across runs so
-// the engine is testable deterministically at the seam.
+// compaction budgeting, covering the tail-budget content that matters for the
+// eviction decision: assistant answer text and reasoning_content (ADR-0003
+// decision 3). It is stable across runs so the engine is testable
+// deterministically at the seam.
 func estimateTokens(m provider.Message) int {
 	return estimateString(m.Content) + estimateString(m.ReasoningContent)
 }

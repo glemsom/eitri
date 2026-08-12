@@ -185,8 +185,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		if err != nil {
 			// Emergency overflow trigger: a context-overflow below the proactive
 			// threshold fires the same compaction engine (evict oldest + rebuild
-			// summary head) and retries once, never surfacing the raw overflow
-			// (ADR-0003 decision 2).
+			// summary head) and retries rather than surfacing the raw overflow
+			// (ADR-0003 decision 2). A compaction that no longer reduces the
+			// messages falls through and the overflow is returned.
 			if opts.Compaction != nil && provider.IsContextOverflow(err) {
 				if next, ok := e.maybeCompact(ctx, req, opts, messages, true); ok {
 					messages = next
