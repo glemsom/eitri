@@ -159,9 +159,11 @@ func Run(opts Options) error {
 		}
 		e := engine.New(p, sess)
 		res, err := e.RunAgent(context.Background(), engine.RunRequest{
-			Model:      cfg.Model,
-			Prompt:     opts.Prompt,
-			SessionKey: sess.GUID(), // opt into the session-scoped prompt cache (T6)
+			Model:           cfg.Model,
+			Prompt:          opts.Prompt,
+			SessionKey:      sess.GUID(), // opt into the session-scoped prompt cache (T6)
+			ThinkingEnabled: true,        // deepseek thinking stays default-on (spec §6)
+			ReasoningEffort: cfg.ReasoningEffort,
 		}, engine.AgentOptions{
 			Tools:      providerTools(reg.Definitions()),
 			ToolChoice: "auto",

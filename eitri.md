@@ -69,7 +69,8 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 
 ### 2.7 Configuration & environment
 
-- Config stored in `~/.eitri/config.json` (
+- Config stored in `~/.eitri/config.json` (path overridable via `EITRI_CONFIG`).
+- Key settings: `model` (default `deepseek-v4-flash`), `reasoning_effort` (default `high`; lowered to trade cost, lowers chain-of-thought effort — thinking stays enabled), `max_turns` (cap on tool-loop iterations), `compaction_fraction` (context-utilization trigger for auto-compaction), `extra_writable_paths` (additional writable roots for write/edit).
 - Environment variables: `EITRI_CONFIG` (config path), `EITRI_DIR` (data dir).
 
 ## 3. Platform & requirements
