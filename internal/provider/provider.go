@@ -18,6 +18,28 @@ import (
 // that requires it. It is a clean error, never a panic.
 var ErrMalformed = errors.New("malformed Chat Completions SSE event")
 
+// ErrContextOverflow is returned by a provider when the request would overflow
+// the context window (a 400/context-overflow below the proactive threshold). It
+// is the emergency trigger for the session compaction engine (ADR-0003 decision
+// 2, docs/spec.md §7): the engine evicts the oldest body, rebuilds the summary
+// head, and retries rather than surfacing the raw overflow to the caller.
+var ErrContextOverflow = errors.New("context window overflow")
+
+// IsContextOverflow reports whether err is a context-overflow signal that
+// should trigger emergency compaction: the ErrContextOverflow sentinel, or a
+// non-2xx provider response whose HTTP status is a 400-level client error
+// (the DeepSeek context-limit surface).
+func IsContextOverflow(err error) bool {
+	if errors.Is(err, ErrContextOverflow) {
+		return true
+	}
+	var he *HTTPError
+	if errors.As(err, &he) {
+		return he.Code == 400
+	}
+	return false
+}
+
 // Role is a Chat-Completions message role.
 type Role string
 

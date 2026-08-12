@@ -59,7 +59,14 @@ re-expressed from one canonical schema per dialect, and the dispatch loop
 iterates *all* parallel calls in a turn — validates each against its strict
 schema, and routes malformed/truncated arguments back to the model as a
 structured `{"INVALID_JSON": ...}` tool result so the model self-corrects
-(`docs/spec.md` §2) instead of crashing or silently skipping. Noisy `bash`
+(`docs/spec.md` §2) instead of crashing or silently skipping. Long sessions
+auto-compact through the unified compaction engine (`docs/spec.md` §7,
+ADR-0003): once prompt usage crosses the configured `compaction_fraction` of
+the context window (or a provider context-overflow fires below it), the oldest
+body is evicted and folded into an anchored `## Objective` / `## Next Move`
+summary re-injected at the request head, while the last `tail_turns=2`
+assistant+user pairs (reasoning included) stay verbatim; a `[compacted]`
+marker is surfaced on each event. Noisy `bash`
 reads (`ls`/`find`/`grep`/`rg`) return deterministically-compressed output at
 the tool-result boundary — ANSI/progress screens, consecutive-line dedupe, and
 an explicit `+N more` tail marker on heavy listings, gated never to inflate and
