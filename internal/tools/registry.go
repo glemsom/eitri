@@ -18,6 +18,12 @@ type Deps struct {
 	Runner        Runner
 	Fetcher       Fetcher
 	Browser       BrowserLauncher
+
+	// Skills is the pre-discovered, filtered skill catalog for this run (T8).
+	// When non-nil and non-empty, the dedicated `skill` tool is registered and
+	// its `name` enum is the catalog's valid names. When empty, the skill tool
+	// is omitted entirely (docs/spec.md §3).
+	Skills *Catalog
 }
 
 // Tool is one agent-callable function. Name must match the registry key; Run
@@ -86,12 +92,20 @@ func NewRegistry(d Deps) *Registry {
 	r.tools["edit"] = &editTool{val: r.val}
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
+	if d.Skills != nil && len(d.Skills.Names()) > 0 {
+		r.tools["skill"] = &skillTool{c: d.Skills}
+	}
 	return r
 }
 
-// Names returns the registered tool names in stable order.
+// Names returns the registered tool names in stable order. The skill tool
+// appears only when skills were discovered and passed through Deps.Skills.
 func (r *Registry) Names() []string {
-	return []string{"bash", "read", "write", "edit", "web_fetch", "open_in_browser"}
+	base := []string{"bash", "read", "write", "edit", "web_fetch", "open_in_browser"}
+	if _, ok := r.tools["skill"]; ok {
+		return append(base, "skill")
+	}
+	return base
 }
 
 // PathTranslator returns the shared translation seam (exposed for host-side
