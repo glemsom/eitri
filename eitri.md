@@ -53,8 +53,8 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 
 ### 2.5 Security & sandboxing
 
-- **bwrap sandbox.** Shell commands run inside a bubblewrap sandbox by default — read-only root, writable workspace and `/tmp`, separate PID namespace — for defense-in-depth against arbitrary code execution.
-- **Session-scoped `/tmp`.** Files written to `/tmp` persist across commands within a run and are removed at run end. `open_in_browser`, `write`, and `edit` resolve the same `/tmp` namespace as `bash`. (brwap is provisioning a /tmp/eitri-GUID folder, and exposing as RW inside the bwrap)
+- **bwrap sandbox.** Shell commands run inside a bubblewrap sandbox by default — read-only root, writable workspace and `/tmp`, separate PID namespace — for defense-in-depth against arbitrary code execution. The workspace is mounted read-write at its host path (no path rewrite); the session temp is mounted as sandbox `/tmp` (host `/tmp/eitri-GUID`).
+- **Path-namespace seam.** Host paths are canonical; the only remapped root is session temp (sandbox `/tmp` ↔ host `/tmp/eitri-GUID`). One shared `PathTranslator` in the tool registry routes `bash`, `write`, `edit`, `open_in_browser`, and path validation through the same bidirectional, reversible prefix-map, so all resolve the same `/tmp` namespace as `bash`. The model always sees sandbox `/tmp/...`; the GUID is internal host detail (see ADR-0002).
 - **Path validation.** File tools validate against the workspace root and configured writable roots; targets outside everything are hard errors.
 - **Writable-path controls** (`write`/`edit`) — targets may include configured `extra_writable_paths`, never arbitrary host paths.
 - **Batch-mode guard.** Headless runs auto-deny confirmation requests, preventing risky operations from proceeding unsupervised.
