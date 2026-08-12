@@ -15,11 +15,15 @@ import (
 func TestCLISmoke(t *testing.T) {
 	bin := buildBinary(t)
 
-	t.Run("boot creates data dir and exits zero", func(t *testing.T) {
+	t.Run("boot creates data dir and exits cleanly", func(t *testing.T) {
 		dataDir := filepath.Join(t.TempDir(), ".eitri")
 		cmd := exec.Command(bin)
 		cmd.Env = append(os.Environ(), "EITRI_DIR="+dataDir)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := cmd.CombinedOutput()
+		// With no args, eitri boots then launches the interactive TUI. A
+		// headless run has no TTY, so we tolerate the clean TTY error while
+		// still asserting boot completed (the data dir was created).
+		if err != nil && !strings.Contains(string(out), "/dev/tty") {
 			t.Fatalf("eitri exit error = %v, output:\n%s", err, out)
 		}
 		fi, err := os.Stat(dataDir)

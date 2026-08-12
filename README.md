@@ -24,6 +24,14 @@ go build .        # produces ./eitri in the workspace
 eitri [flags]
 ```
 
+With no flags, `eitri` launches the **interactive fullscreen TUI**: a composer
+you type prompts into and a conversation view that renders each assistant
+answer as Markdown→ANSI. It renders into the **primary (normal) buffer** — not
+the alt screen — so the terminal's native selection, scrollback, and search keep
+working through a session (`docs/spec.md` §9). Both the TUI and batch sit on the
+same run engine and session transcript: a conversation round-trips through the
+engine exactly like `-b` does.
+
 | Flag          | Meaning                                                                  |
 | ------------ | ------------------------------------------------------------------------ |
 | `-b <prompt>` | Run once in batch mode with the given prompt, emit the answer, and exit. |

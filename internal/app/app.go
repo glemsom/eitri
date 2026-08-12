@@ -158,42 +158,32 @@ func Run(opts Options) error {
 	// Batch mode: run one agent turn through the shared engine and print the
 	// final answer (docs/spec.md §6; eitri.md §2.1). The engine dispatches any
 	// tool calls through the registry over the provider seam.
-	if opts.Prompt != "" {
-		p := opts.Provider
-		if p == nil {
-			p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
-		}
-		e := engine.New(p, sess)
-		res, err := e.RunAgent(context.Background(), engine.RunRequest{
-			Model:           cfg.Model,
-			Prompt:          opts.Prompt,
-			SessionKey:      sess.GUID(), // opt into the session-scoped prompt cache (T6)
-			ThinkingEnabled: true,        // deepseek thinking stays default-on (spec §6)
-			ReasoningEffort: cfg.ReasoningEffort,
-		}, engine.AgentOptions{
-			Tools:      providerTools(reg.Definitions()),
-			ToolChoice: "auto",
-			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
-				var args map[string]any
-				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-					return "", err
-				}
-				return reg.Run(ctx, name, args)
-			}),
-			MaxTurns: cfg.MaxTurns,
-		})
-		if err != nil {
-			return err
-		}
-		out := opts.Stdout
-		if out == nil {
-			out = os.Stdout
-		}
-		if opts.Verbose && res.Reasoning != "" {
-			fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
-		}
-		fmt.Fprintln(out, res.Answer)
+	p := opts.Provider
+	if p == nil {
+		p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
 	}
+	e := engine.New(p, sess)
+	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
+
+	// Build the interactive TUI run when no batch prompt is given. It sits on
+	// the same engine, session transcript, and tool registry as batch, and
+	// renders into the primary buffer (docs/spec.md §9).
+	if opts.Prompt == "" {
+		return runTUI(e, cfg, reg, key)
+	}
+
+	res, err := runAgent(e, cfg, reg, key, opts.Prompt)
+	if err != nil {
+		return err
+	}
+	out := opts.Stdout
+	if out == nil {
+		out = os.Stdout
+	}
+	if opts.Verbose && res.Reasoning != "" {
+		fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
+	}
+	fmt.Fprintln(out, res.Answer)
 
 	return nil
 }
@@ -227,6 +217,32 @@ type stderrWarner struct{}
 
 func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
+}
+
+// runAgent drives one agent turn (user prompt → assistant answer) over the
+// shared run engine, session transcript, and tool registry that both the TUI
+// and batch use. It is the single turn seam for both run kinds, so a TUI run
+// round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
+// §2.6).
+func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string) (engine.Result, error) {
+	return e.RunAgent(context.Background(), engine.RunRequest{
+		Model:           cfg.Model,
+		Prompt:          prompt,
+		SessionKey:      sessionKey,
+		ThinkingEnabled: true, // deepseek thinking stays default-on (spec §6)
+		ReasoningEffort: cfg.ReasoningEffort,
+	}, engine.AgentOptions{
+		Tools:      providerTools(reg.Definitions()),
+		ToolChoice: "auto",
+		Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+			var args map[string]any
+			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+				return "", err
+			}
+			return reg.Run(ctx, name, args)
+		}),
+		MaxTurns: cfg.MaxTurns,
+	})
 }
 
 // providerTools maps the registry's definitions to provider Tool objects for
