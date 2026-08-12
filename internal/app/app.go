@@ -231,6 +231,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 // round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
 // §2.6).
 func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, canContinue func() bool) (engine.Result, error) {
+	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	return e.RunAgent(context.Background(), engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
@@ -249,6 +250,10 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 		}),
 		MaxTurns:    cfg.MaxTurns,
 		CanContinue: canContinue,
+		// Session compaction (T10): auto-compact at the configured fraction;
+		// a [compacted] marker is surfaced read-only on each event (spec §7).
+		Compaction:  compaction,
+		OnCompacted: func() { fmt.Fprint(os.Stderr, "[compacted]\n") },
 	})
 }
 

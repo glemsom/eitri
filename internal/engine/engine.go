@@ -130,6 +130,20 @@ type AgentOptions struct {
 	// a fresh MaxTurns budget and continues; a false return stops with ErrMaxTurns.
 	// It is the interactive "pause at the cap and prompt to continue" boundary.
 	CanContinue func() bool
+
+	// Compaction, when non-nil, enables the unified session compaction engine
+	// (ADR-0003, T10). After each turn it compacts when prompt usage crosses the
+	// configured fraction of the context window, and emergently on a provider
+	// context-overflow: the oldest body is evicted, the verbatim tail (last
+	// TailTurns pairs, reasoning included) is kept, and an anchored summary is
+	// re-injected at the head. lastUsage is the running usage so the compaction
+	// check sees the most recent turn's utilization.
+	Compaction  *CompactionConfig
+	OnCompacted func()
+
+	// lastUsage records the most recent turn's token usage, read by the
+	// compaction engine (never set by callers).
+	lastUsage *provider.Usage
 }
 
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages
@@ -150,6 +164,14 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			turn = 0 // a granted continuation resets the turn budget
 		}
+
+		// Proactive compaction check from the prior turn's usage: if the session
+		// crossed the threshold, evict the oldest body and rebuild the summary
+		// head before streaming the next request.
+		if opts.Compaction != nil {
+			messages, _ = e.maybeCompact(ctx, req, opts, messages, false)
+		}
+
 		s, err := e.provider.Stream(ctx, provider.Request{
 			Model:           req.Model,
 			Messages:        messages,
@@ -161,6 +183,17 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			ReasoningEffort: req.ReasoningEffort,
 		})
 		if err != nil {
+			// Emergency overflow trigger: a context-overflow below the proactive
+			// threshold fires the same compaction engine (evict oldest + rebuild
+			// summary head) and retries rather than surfacing the raw overflow
+			// (ADR-0003 decision 2). A compaction that no longer reduces the
+			// messages falls through and the overflow is returned.
+			if opts.Compaction != nil && provider.IsContextOverflow(err) {
+				if next, ok := e.maybeCompact(ctx, req, opts, messages, true); ok {
+					messages = next
+					continue
+				}
+			}
 			return final, err
 		}
 
@@ -178,6 +211,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			reasoning += c.ReasoningContent
 			if c.Usage != nil {
 				final.Usage = c.Usage
+				opts.lastUsage = c.Usage
 			}
 			done = c
 			if c.Done {
