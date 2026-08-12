@@ -238,9 +238,14 @@ func (m Model) updateSettings(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "shift+down", "right":
 		s.adjust(1)
 	default:
-		// Free-form typing on the paths field.
+		// Free-form editing on the paths field: type to append, backspace to
+		// delete the trailing char.
 		if s.field == fieldPaths {
-			s.SetPathBuf(s.pathBuf + msgi.String())
+			if msgi.String() == "backspace" && len(s.pathBuf) > 0 {
+				s.SetPathBuf(s.pathBuf[:len(s.pathBuf)-1])
+			} else if msgi.String() != "backspace" {
+				s.SetPathBuf(s.pathBuf + msgi.String())
+			}
 		}
 	}
 	m.settings = s

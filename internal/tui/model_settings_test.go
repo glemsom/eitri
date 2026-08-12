@@ -81,6 +81,34 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	}
 }
 
+// TestModel_SettingsPathsBackspaceEdits verifies the free-form writable-paths
+// field supports backspace to delete the trailing char before Save.
+func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (string, error) { return "ok", nil },
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// Advance focus to the paths field (index 5).
+	for i := fieldProvider; i < fieldPaths; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "x")         // append
+	m = keypress(t, m, "backspace") // delete it
+	for i := fieldPaths; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv" {
+		t.Fatalf("saved paths = %v, want [/srv] after append+backspace", saved.ExtraWritablePaths)
+	}
+}
+
 // TestModel_ContinuationPromptAnswersYes verifies the interactive max-turns
 // path: an engine that hits the cap signals a prompt, the Model renders it, and
 // a "y" answer grants continuation (eitri.md §2.1). The engine-side hook
@@ -154,6 +182,8 @@ func namedKey(name string) tea.Msg {
 		return tea.KeyMsg{Type: tea.KeyLeft}
 	case "right":
 		return tea.KeyMsg{Type: tea.KeyRight}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
 	case "y":
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}
 	case "n":
