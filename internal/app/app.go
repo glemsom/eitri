@@ -175,7 +175,7 @@ func Run(opts Options) error {
 		if p2 == nil {
 			p2 = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
 		}
-		return runTUI(e, cfg, reg, key, p2, cfgPath)
+		return runTUI(e, cfg, reg, key, p2, cfgPath, skills)
 	}
 
 	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil)

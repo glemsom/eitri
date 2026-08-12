@@ -60,6 +60,27 @@ func TestSkillDiscoverScopes(t *testing.T) {
 	if cb.count != 0 {
 		t.Fatalf("unexpected warnings = %d (%v), want 0", cb.count, cb.warns)
 	}
+
+	// The TUI's skills panel reads install scope + activation state via Items.
+	if catalog.Scope("user-skill") != "user" || catalog.Scope("proj-skill") != "project" {
+		t.Fatalf("install scopes unexpected: user-skill=%q proj-skill=%q", catalog.Scope("user-skill"), catalog.Scope("proj-skill"))
+	}
+	active := 0
+	for _, it := range catalog.Items() {
+		if it.Active {
+			active++
+		}
+	}
+	if active != 0 {
+		t.Fatalf("fresh catalog has %d active skills, want 0", active)
+	}
+	// Marking a skill active is reflected in Items for the panel.
+	catalog.MarkActive("user-skill")
+	for _, it := range catalog.Items() {
+		if it.Name == "user-skill" && !it.Active {
+			t.Fatalf("user-skill should be active after MarkActive: %+v", it)
+		}
+	}
 }
 
 // TestSkillProjectShadowsUser verifies the exact-name collision rule: a project
