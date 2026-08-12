@@ -69,6 +69,70 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 	}
 }
 
+// TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
+// deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
+// carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
+// byte-identical prefix (docs/spec.md §4, research/opencode-endpoints.md §4).
+func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"prompt_cache_key":"sess-123"`) {
+			t.Errorf("request body missing prompt_cache_key: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:       "deepseek-v4-flash",
+		Messages:    []Message{{Role: RoleUser, Content: "hi"}},
+		SetCacheKey: true,
+		SessionKey:  "sess-123",
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+}
+
+// TestOpenAIStreamsPromptCacheUsage verifies the streamed usage carries the
+// deepseek prompt-cache hit/miss token telemetry parsed at the provider seam
+// (docs/spec.md §4, §11).
+func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/usage-cache.sse")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{Model: "deepseek-v4-flash", Messages: []Message{{Role: RoleUser, Content: "hi"}}})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	_, usage, err := consume(s)
+	if err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+	if usage == nil {
+		t.Fatal("usage not parsed")
+	}
+	if usage.PromptCacheHitTokens != 90 || usage.PromptCacheMissTokens != 10 {
+		t.Fatalf("cache usage = hit=%d miss=%d, want hit=90 miss=10", usage.PromptCacheHitTokens, usage.PromptCacheMissTokens)
+	}
+}
+
 // TestOpenAIMalformedEventReturnsCleanError verifies an invalid SSE payload is
 // surfaced as ErrMalformed, never a crash (docs/spec.md §11).
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {

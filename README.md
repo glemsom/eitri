@@ -35,7 +35,13 @@ eitri [flags]
 final answer to stdout. Inside the turn, the engine dispatches any tool calls
 (`bash`, `read`, `write`, `edit`) through the shared tool registry, which runs
 `bash` inside the bwrap sandbox and resolves every path through the shared
-path-namespace seam (ADR-0002). Tool defs are strict-shaped
+path-namespace seam (ADR-0002). The batch engine opts the run into deepseek's
+session-scoped prompt cache: every request carries `prompt_cache_key=<GUID>`
+and the request head (`model` + stable prior-turn history) stays byte-identical
+across turns, so only the tail grows (`docs/spec.md` §4). Per-turn `usage`
+(including `prompt_cache_hit/miss_tokens`) is parsed at the provider seam and
+returned on the run result — the telemetry behind later cache gauges and
+compaction re-warm detection. Tool defs are strict-shaped
 (`additionalProperties:false`, all-required; optionals as nullable unions),
 re-expressed from one canonical schema per dialect, and the dispatch loop
 iterates *all* parallel calls in a turn — validates each against its strict

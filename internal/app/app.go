@@ -148,8 +148,9 @@ func Run(opts Options) error {
 		}
 		e := engine.New(p, sess)
 		res, err := e.RunAgent(context.Background(), engine.RunRequest{
-			Model:  cfg.Model,
-			Prompt: opts.Prompt,
+			Model:      cfg.Model,
+			Prompt:     opts.Prompt,
+			SessionKey: sess.GUID(), // opt into the session-scoped prompt cache (T6)
 		}, engine.AgentOptions{
 			Tools:      providerTools(reg.Definitions()),
 			ToolChoice: "auto",

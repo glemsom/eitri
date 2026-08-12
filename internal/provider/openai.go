@@ -37,6 +37,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		StreamOptions: &streamOptions{
 			IncludeUsage: true, // opencode force-sets include_usage (research §4)
 		},
+		PromptCacheKey: promptCacheKey(req),
 	})
 	if err != nil {
 		return nil, err
@@ -66,12 +67,25 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 
 // chatCompletionBody is the OpenAI Chat-Completions request shape.
 type chatCompletionBody struct {
-	Model         string         `json:"model"`
-	Messages      []Message      `json:"messages"`
-	Tools         []Tool         `json:"tools,omitempty"`
-	ToolChoice    any            `json:"tool_choice,omitempty"`
-	Stream        bool           `json:"stream"`
-	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+	Model          string         `json:"model"`
+	Messages       []Message      `json:"messages"`
+	Tools          []Tool         `json:"tools,omitempty"`
+	ToolChoice     any            `json:"tool_choice,omitempty"`
+	Stream         bool           `json:"stream"`
+	StreamOptions  *streamOptions `json:"stream_options,omitempty"`
+	PromptCacheKey string         `json:"prompt_cache_key,omitempty"`
+}
+
+// promptCacheKey returns the session-scoped prompt cache key for req when the
+// caller opted into deepseek's session cache (docs/spec.md §4), else empty so
+// the field is omitted from the body. When unset the gateway may still cache by
+// request prefix, but Eitri explicitly opts in so the cache namespace is the
+// session id.
+func promptCacheKey(req Request) string {
+	if req.SetCacheKey {
+		return req.SessionKey
+	}
+	return ""
 }
 
 type streamOptions struct {
