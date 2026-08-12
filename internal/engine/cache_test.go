@@ -8,10 +8,10 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// captureBodies returns a provider that records the exact request of every
-// turn it receives, then drives a two-turn tool round trip before a final
-// answer. tools stay fixed and only the tail (tool messages) grows, so the
-// request head must be byte-identical across turns — the whole point of
+// captureHandler is a Scripted-provider handler that records the exact request
+// of every turn it receives, then drives a two-turn tool round trip before a
+// final answer. tools stay fixed and only the tail (tool messages) grows, so
+// the request head must stay byte-identical across turns — the whole point of
 // prompt-caching discipline (docs/spec.md §4, ticket T6 #31).
 type captureHandler struct {
 	requests []provider.Request
