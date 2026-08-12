@@ -3,10 +3,15 @@ package tools
 import (
 	"context"
 	"strings"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 // bashTool runs a shell command inside the bwrap sandbox with host network,
-// returning the combined stdout+stderr (token-efficient single stream).
+// returning the combined stdout+stderr (token-efficient single stream). Its
+// output is routed through the deterministic tool-output compressor so noisy
+// `ls`/`find`/`grep`/`rg` reads stay cheap (docs/spec.md §5); the never-inflate
+// gate keeps terse output untouched, and recovery is a re-run of the command.
 type bashTool struct {
 	sb *Sandbox
 }
@@ -37,7 +42,9 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (string, error)
 	if err != nil {
 		return o.Combined(), err
 	}
-	return o.Combined(), nil
+	// Compress at the tool-result boundary so the compressed bytes land in the
+	// cache prefix (docs/spec.md §5). Never-inflate gate preserves terse output.
+	return compress.Compress(o.Combined()), nil
 }
 
 // Combined returns stdout then stderr joined, prioritizing stdout for token

@@ -41,8 +41,12 @@ re-expressed from one canonical schema per dialect, and the dispatch loop
 iterates *all* parallel calls in a turn — validates each against its strict
 schema, and routes malformed/truncated arguments back to the model as a
 structured `{"INVALID_JSON": ...}` tool result so the model self-corrects
-(`docs/spec.md` §2) instead of crashing or silently skipping. Thinking/reasoning is suppressed from batch
-output by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables
+(`docs/spec.md` §2) instead of crashing or silently skipping. Noisy `bash`
+reads (`ls`/`find`/`grep`/`rg`) return deterministically-compressed output at
+the tool-result boundary — ANSI/progress screens, consecutive-line dedupe, and
+an explicit `+N more` tail marker on heavy listings, gated never to inflate and
+recoverable by re-running the command (`docs/spec.md` §5; `internal/compress`).
+Thinking/reasoning is suppressed from batch output by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables
 debug mode, which attaches the HTTP trace sink to the run session.
 
 ## Configuration
