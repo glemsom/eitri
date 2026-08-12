@@ -16,8 +16,6 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 - **Headless.** (Also support running in `batch` mode for unattented automations/schedules)
 - **Token efficient.** Tools are optimized for LLM token usage. As example, `read` requires line range for reading, to avoid reading entire files by default. `bash` tools has filters for common tools to reduce token usage.
 
----
-
 ## 2. Capabilities
 ### 2.1 tools
 
@@ -53,7 +51,6 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 
 - **Pattern compression** — deterministic, zero-LLM compression of high-volume bash output (`ls`, `find`, `grep`, `rg`) that regroups it by directory/file and never inflates token count.
 
-
 ### 2.5 Security & sandboxing
 
 - **bwrap sandbox.** Shell commands run inside a bubblewrap sandbox by default — read-only root, writable workspace and `/tmp`, separate PID namespace — for defense-in-depth against arbitrary code execution.
@@ -68,14 +65,12 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 - `eitri -b "prompt"` runs the agent once from the terminal and exits. (Emits answer to `stdout`)
   - By default, does not emit `thinking` to `stdout` (Can be enabled `-v`)
 - Uses the same run engine, sandbox, skills, and on-disk review trail as TUI runs — batch sessions persist, report, and auto-compact identically.
-- Supports scripting, automation, and CI integration. (Can also be used through for example `tmux` to facilitate sub-agent features)
+- Supports scripting, automation, and CI integration.
 
 ### 2.7 Configuration & environment
 
 - Config stored in `~/.eitri/config.json` (
 - Environment variables: `EITRI_CONFIG` (config path), `EITRI_DIR` (data dir).
-
----
 
 ## 3. Platform & requirements
 
