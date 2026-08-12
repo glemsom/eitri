@@ -38,6 +38,29 @@ activation state, and typing `/skillname` (or `/` + `tab` to complete) activates
 the skill directly through the same seam the engine uses (`docs/spec.md` §9,
 `eitri.md` §2.3).
 
+### Keyboard shortcuts
+
+Keybindings for the interactive TUI. Typing, cursor movement, and backspace
+are handled by the composer; the shortcuts below drive the agent.
+
+| Shortcut                   | Context       | Action                          |
+| -------------------------- | ------------- | ------------------------------- |
+| `Enter`                    | Composer      | Send the current prompt (no-op while busy)
+| `ctrl+c`                   | Anywhere      | Quit                            |
+| `ctrl+s`                   | Conversation  | Open the Settings panel         |
+| `esc`                      | Settings      | Cancel / close without saving   |
+| `tab`                      | Composer      | Toggle the collapsible thinking stream |
+| `tab`                      | Slash command | Cycle skill-name completion     |
+| `tab` / `enter`            | Settings      | Move focus to the next field    |
+| `up` / `down` / `left` / `right` | Settings | Adjust the focused value   |
+| `y` / `Y` / `Enter`        | Max-turns     | Continue = yes                  |
+| `n` / `N` / `esc` / `ctrl+c` | Max-turns   | Continue = no                   |
+
+When a run pauses at the `max_turns` cap, only `y`/`n` (or `esc`/`ctrl+c` to
+stop) are accepted until you answer. In the Settings panel, focus moves with
+`tab`/`enter` and values are adjusted with the arrow keys; the free-form paths
+field accepts typing and `backspace`.
+
 | Flag          | Meaning                                                                  |
 | ------------ | ------------------------------------------------------------------------ |
 | `-b <prompt>` | Run once in batch mode with the given prompt, emit the answer, and exit. |
