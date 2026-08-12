@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -66,6 +67,77 @@ func TestVersionShortCircuitsBoot(t *testing.T) {
 	}
 	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Run(version) should not boot the data dir, stat err = %v", err)
+	}
+}
+
+// TestBootLoadsConfigAndCreatesSession drives the boot seam: the config file
+// is created with defaults when absent, and a session transcript directory is
+// established under the data dir.
+func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+	cfgPath := filepath.Join(dir, "config.json")
+
+	if err := Run(Options{DataDir: dataDir, ConfigPath: cfgPath, LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+
+	// Config persisted with defaults.
+	cfgData, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("config not created at %s: %v", cfgPath, err)
+	}
+	var got struct {
+		MaxTurns int `json:"max_turns"`
+	}
+	if err := json.Unmarshal(cfgData, &got); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	if got.MaxTurns != 250 {
+		t.Fatalf("config MaxTurns = %d, want default 250", got.MaxTurns)
+	}
+
+	// A session transcript directory is created under sessions/<GUID>.
+	sessions := filepath.Join(dataDir, "sessions")
+	entries, err := os.ReadDir(sessions)
+	if err != nil {
+		t.Fatalf("sessions dir %s not created: %v", sessions, err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("sessions dir has %d entries, want exactly 1 session", len(entries))
+	}
+	if !entries[0].IsDir() {
+		t.Fatalf("sessions/%s is not a directory", entries[0].Name())
+	}
+}
+
+// TestBootDebugCreatesTraceCapableSession verifies the -d flag, plumbed as
+// Debug, creates a session directory (the trace sink itself is covered in the
+// session package).
+func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+
+	if err := Run(Options{DataDir: dataDir, Debug: true, LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run(debug) error = %v, want nil", err)
+	}
+	sessions := filepath.Join(dataDir, "sessions")
+	if _, err := os.Stat(sessions); err != nil {
+		t.Fatalf("sessions dir %s not created in debug mode: %v", sessions, err)
+	}
+}
+
+// TestBootUsesDataDirForConfig verifies config lands at dataDir/config.json
+// when no explicit config path is given.
+func TestBootUsesDataDirForConfig(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+
+	if err := Run(Options{DataDir: dataDir, LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "config.json")); err != nil {
+		t.Fatalf("config not at dataDir/config.json: %v", err)
 	}
 }
 

@@ -46,11 +46,11 @@ func main() {
 
 	opts := app.Options{
 		DataDir: os.Getenv(app.DataDirEnv),
-		// Batch prompt and debug are accepted now; Run wires them in later
-		// tickets, so referencing them keeps the contract explicit.
+		Debug:   *debug,
+		// Batch prompt is accepted now; Run wires it in a later ticket (T1c),
+		// so referencing it keeps the contract explicit.
 	}
 	_ = prompt
-	_ = debug
 
 	if err := app.Run(opts); err != nil {
 		die(err)
