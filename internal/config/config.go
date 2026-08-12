@@ -1,0 +1,86 @@
+// Package config handles Eitri's persistent local configuration: the JSON
+// config file under the data directory (~/.eitri/config.json by default,
+// path overridden by EITRI_CONFIG). It is created with defaults when absent,
+// loaded on startup, and saved whenever settings change (eitri.md §2.7).
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// Defaults for session and provider behavior (docs/spec.md §11, eitri.md §2.1).
+const (
+	// DefaultMaxTurns is the cap on loop iterations per run.
+	DefaultMaxTurns = 250
+	// DefaultCompactionFraction is the context-utilization trigger for
+	// auto-compaction (ADR-0003).
+	DefaultCompactionFraction = 0.8
+	// DefaultReasoningEffort is the per-session reasoning setting (spec §20).
+	DefaultReasoningEffort = "high"
+	// DefaultProvider and DefaultModel are the primary provider defaults
+	// (docs/spec.md §3).
+	DefaultProvider = "opencode-go"
+	DefaultModel    = "deepseek-v4-flash"
+)
+
+// Config is the persisted Eitri configuration. Provider credentials are
+// delivered via environment (wire later), so no key material lives here.
+type Config struct {
+	Provider           string   `json:"provider"`
+	Model              string   `json:"model"`
+	ReasoningEffort    string   `json:"reasoning_effort"`
+	MaxTurns           int      `json:"max_turns"`
+	CompactionFraction float64  `json:"compaction_fraction"`
+	ExtraWritablePaths []string `json:"extra_writable_paths,omitempty"`
+}
+
+// Default returns a config populated with Eitri's defaults.
+func Default() Config {
+	return Config{
+		Provider:           DefaultProvider,
+		Model:              DefaultModel,
+		ReasoningEffort:    DefaultReasoningEffort,
+		MaxTurns:           DefaultMaxTurns,
+		CompactionFraction: DefaultCompactionFraction,
+	}
+}
+
+// Load reads the config file at path, creating it with defaults when absent.
+func Load(path string) (Config, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		cfg := Default()
+		if err := Save(cfg, path); err != nil {
+			return Config{}, err
+		}
+		return cfg, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config %s: %w", path, err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// Save writes cfg to path as JSON, creating parent directories as needed.
+func Save(cfg Config, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write config %s: %w", path, err)
+	}
+	return nil
+}
