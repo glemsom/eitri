@@ -78,3 +78,105 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// capturedRequests records every provider.Request the engine issues, so a test
+// can assert the reasoning-control head (thinking + normalized effort) is
+// threaded through the engine seam (docs/spec.md §6).
+type capturedRequests struct {
+	reqs []provider.Request
+}
+
+// TestRunThreadsThinkingAndEffort verifies the engine passes the reasoning
+// controls through to the provider: thinking enabled and the configured
+// reasoning_effort are set on every outgoing Request.
+func TestRunThreadsThinkingAndEffort(t *testing.T) {
+	cap := &capturedRequests{}
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		cap.reqs = append(cap.reqs, req)
+		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
+	}), &mockTranscript{})
+
+	_, err := e.Run(context.Background(), RunRequest{
+		Model:           "deepseek-v4-flash",
+		Prompt:          "go",
+		ThinkingEnabled: true,
+		ReasoningEffort: "medium", // normalized to high by the provider
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if len(cap.reqs) != 1 {
+		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
+	}
+	if !cap.reqs[0].ThinkingEnabled {
+		t.Error("engine did not set ThinkingEnabled on the request")
+	}
+	if cap.reqs[0].ReasoningEffort != "medium" {
+		t.Errorf("engine ReasoningEffort = %q, want %q", cap.reqs[0].ReasoningEffort, "medium")
+	}
+}
+
+// TestRunAgentPersistsReasoningOnToolTurns drives a reasoning-then-tool-call
+// fixture through the engine: turn one streams real reasoning and a tool call;
+// turn two streams real reasoning and the final answer. The engine must keep
+// the reasoning on the assistant message it re-emits for the tool turn (so the
+// resubmitted history never strips it, tripping DeepSeek's 400) and surface
+// the final turn's reasoning on the result (docs/spec.md §6).
+func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
+	assistantTurn := 0
+	var assistantReasons []string // reasoning_content the engine re-emits per assistant turn
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		// Collect the reasoning_content of every assistant message the engine
+		// carries forward into a later request.
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleAssistant {
+				assistantReasons = append(assistantReasons, m.ReasoningContent)
+			}
+		}
+		switch assistantTurn {
+		case 0:
+			assistantTurn++
+			return provider.StreamFunc(
+				provider.Chunk{ReasoningContent: "turn-one reasoning"},
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_a", Type: "function", Name: "bash", Arguments: `{"command":"ls"}`},
+				}, Done: true},
+			), nil
+		default:
+			return provider.StreamFunc(
+				provider.Chunk{ReasoningContent: "turn-two reasoning"},
+				provider.Chunk{Content: "final answer", FinishReason: "stop", Done: true},
+			), nil
+		}
+	})
+
+	e := New(scripted, &mockTranscript{})
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash", Parameters: map[string]any{
+			"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []any{"command"},
+		}}}},
+		Executor: &mockToolRecorder{},
+		MaxTurns: 5,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if res.Answer != "final answer" {
+		t.Fatalf("Answer = %q, want %q", res.Answer, "final answer")
+	}
+	if res.Reasoning != "turn-two reasoning" {
+		t.Fatalf("Result.Reasoning = %q, want the final turn's reasoning", res.Reasoning)
+	}
+	// The resubmitted history must carry the first turn's real reasoning on its
+	// assistant message (the tool-call turn), so the provider never 400s.
+	found := false
+	for _, r := range assistantReasons {
+		if r == "turn-one reasoning" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("assistant reasoning re-emitted = %v, want turn-one reasoning preserved on the tool turn", assistantReasons)
+	}
+}

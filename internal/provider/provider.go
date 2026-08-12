@@ -9,6 +9,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 )
@@ -34,9 +35,46 @@ type Message struct {
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	// ReasoningContent is deepseek-family chain-of-thought. It must always be
-	// echoed on assistant messages so tool-call turns do not trip the provider's
-	// 400 (docs/spec.md §6).
+	// echoed on assistant messages — even empty — so tool-call turns do not trip
+	// the provider's 400 (docs/spec.md §6). Message.MarshalJSON emits it on
+	// assistant messages unconditionally and omits it on user/tool messages.
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+// MarshalJSON serializes a Message with role-aware reasoning handling: the
+// `reasoning_content` field is emitted unconditionally on assistant messages
+// (even when empty — DeepSeek's hard 400-avoidance, docs/spec.md §6) and
+// omitted on every other role. This guarantees a resubmitted tool-call history
+// always carries the field, without polluting user/tool turns with an empty
+// string.
+func (m Message) MarshalJSON() ([]byte, error) {
+	wire := messageWire{
+		Role:       m.Role,
+		Content:    m.Content,
+		ToolCallID: m.ToolCallID,
+		ToolCalls:  m.ToolCalls,
+	}
+	// Reasoning is present on assistant messages unconditionally (even empty);
+	// on every other role it is omitted so the field never pollutes the wire.
+	if m.Role == RoleAssistant {
+		rc := m.ReasoningContent
+		wire.ReasoningContent = &rc
+	}
+	return json.Marshal(wire)
+}
+
+// messageWire is the deterministic field-ordered serialization shape for a
+// Message. Struct field order fixes the wire key order (role, content,
+// tool_call_id, tool_calls, reasoning_content) so bodies stay byte-stable for
+// the prompt cache (docs/spec.md §4). ReasoningContent is a pointer: a nil
+// (non-assistant) omits the field, while a non-nil assistant value always
+// emits it, even when empty — the DeepSeek 400-avoidance (docs/spec.md §6).
+type messageWire struct {
+	Role             Role       `json:"role"`
+	Content          string     `json:"content,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ReasoningContent *string    `json:"reasoning_content,omitempty"`
 }
 
 // ToolFunction is one tool's reusable definition: a name, description, and a
@@ -77,6 +115,30 @@ type Request struct {
 	// SessionKey identifies the session whose stable prefix the provider should
 	// cache; it disambiguates the prompt cache namespace across sessions.
 	SessionKey string
+
+	// ThinkingEnabled opts the request into DeepSeek thinking mode
+	// ({"type":"enabled"}). Kept default-on for agent work; lowering effort,
+	// not thinking, is how an operator trades speed (docs/spec.md §6).
+	ThinkingEnabled bool
+	// ReasoningEffort is the requested chain-of-thought effort level, normalized
+	// via NormalizeReasoningEffort before hitting the wire (low/medium→high,
+	// xhigh→max). Empty omits reasoning_effort from the body.
+	ReasoningEffort string
+}
+
+// NormalizeReasoningEffort maps DeepSeek's legacy effort values to the
+// meaningful wire tiers (docs/spec.md §6): low/medium→high, xhigh→max. high
+// and max pass through unchanged; any other value (including empty) is
+// returned untouched so it can be omitted.
+func NormalizeReasoningEffort(effort string) string {
+	switch effort {
+	case "low", "medium":
+		return "high"
+	case "xhigh":
+		return "max"
+	default:
+		return effort
+	}
 }
 
 // Chunk is one parsed piece of a streamed turn.

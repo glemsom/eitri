@@ -43,6 +43,12 @@ type RunRequest struct {
 	// every request carries prompt_cache_key:<SessionKey> and the request head
 	// stays byte-identical across turns (docs/spec.md §4). Empty disables it.
 	SessionKey string
+
+	// ThinkingEnabled opts the run into deepseek thinking mode (default on).
+	// ReasoningEffort requests the chain-of-thought effort level, normalized on
+	// the wire (docs/spec.md §6).
+	ThinkingEnabled bool
+	ReasoningEffort string
 }
 
 // Result is the outcome of one Run.
@@ -58,10 +64,12 @@ type Result struct {
 // the transcript sink.
 func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	s, err := e.provider.Stream(ctx, provider.Request{
-		Model:       req.Model,
-		Messages:    []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
-		SetCacheKey: req.SessionKey != "",
-		SessionKey:  req.SessionKey,
+		Model:           req.Model,
+		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		SetCacheKey:     req.SessionKey != "",
+		SessionKey:      req.SessionKey,
+		ThinkingEnabled: req.ThinkingEnabled,
+		ReasoningEffort: req.ReasoningEffort,
 	})
 	if err != nil {
 		return Result{}, err
@@ -129,12 +137,14 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			return final, ErrMaxTurns
 		}
 		s, err := e.provider.Stream(ctx, provider.Request{
-			Model:       req.Model,
-			Messages:    messages,
-			Tools:       opts.Tools,
-			ToolChoice:  opts.ToolChoice,
-			SetCacheKey: req.SessionKey != "",
-			SessionKey:  req.SessionKey,
+			Model:           req.Model,
+			Messages:        messages,
+			Tools:           opts.Tools,
+			ToolChoice:      opts.ToolChoice,
+			SetCacheKey:     req.SessionKey != "",
+			SessionKey:      req.SessionKey,
+			ThinkingEnabled: req.ThinkingEnabled,
+			ReasoningEffort: req.ReasoningEffort,
 		})
 		if err != nil {
 			return final, err

@@ -37,7 +37,9 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		StreamOptions: &streamOptions{
 			IncludeUsage: true, // opencode force-sets include_usage (research §4)
 		},
-		PromptCacheKey: promptCacheKey(req),
+		PromptCacheKey:  promptCacheKey(req),
+		Thinking:        thinkingControl(req),
+		ReasoningEffort: normalizedEffort(req.ReasoningEffort),
 	})
 	if err != nil {
 		return nil, err
@@ -67,13 +69,36 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 
 // chatCompletionBody is the OpenAI Chat-Completions request shape.
 type chatCompletionBody struct {
-	Model          string         `json:"model"`
-	Messages       []Message      `json:"messages"`
-	Tools          []Tool         `json:"tools,omitempty"`
-	ToolChoice     any            `json:"tool_choice,omitempty"`
-	Stream         bool           `json:"stream"`
-	StreamOptions  *streamOptions `json:"stream_options,omitempty"`
-	PromptCacheKey string         `json:"prompt_cache_key,omitempty"`
+	Model           string           `json:"model"`
+	Messages        []Message        `json:"messages"`
+	Tools           []Tool           `json:"tools,omitempty"`
+	ToolChoice      any              `json:"tool_choice,omitempty"`
+	Stream          bool             `json:"stream"`
+	StreamOptions   *streamOptions   `json:"stream_options,omitempty"`
+	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
+	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
+	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
+}
+
+// thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
+// thinking default-on for agent loops (docs/spec.md §6).
+type thinkingEnabler struct {
+	Type string `json:"type"`
+}
+
+// thinkingControl returns the enabled thinking toggle when req opts in, else
+// nil so the field is omitted.
+func thinkingControl(req Request) *thinkingEnabler {
+	if !req.ThinkingEnabled {
+		return nil
+	}
+	return &thinkingEnabler{Type: "enabled"}
+}
+
+// normalizedEffort returns the wire-ready reasoning_effort, or empty so json
+// omits the field when unset.
+func normalizedEffort(effort string) string {
+	return NormalizeReasoningEffort(effort)
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the
