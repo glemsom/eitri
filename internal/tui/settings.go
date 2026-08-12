@@ -171,7 +171,7 @@ func stepFrac(v float64, d int) float64 {
 // settingsView renders the Settings surface: a focused row per settable knob,
 // the focused row highlighted, a Save/Cancel footer. It is deterministic for
 // render-testing.
-func settingsView(f settingsForm, width int) string {
+func settingsView(f settingsForm) string {
 	var b strings.Builder
 	b.WriteString(headerStyle.Render("Eitri Settings"))
 	b.WriteString("\n")

@@ -98,7 +98,7 @@ func TestSettingsForm_SaveIsAFocusableField(t *testing.T) {
 func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	// Discovery surfaces grok-2; the view shows the discovered selection.
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
-	view := settingsView(f, 80)
+	view := settingsView(f)
 	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "high", "250", "0.80", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
@@ -109,7 +109,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldModel
-	view := settingsView(f, 80)
+	view := settingsView(f)
 	if !strings.Contains(view, "▸ ") {
 		t.Fatalf("settings view %q missing focus marker", view)
 	}

@@ -280,10 +280,10 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 // Settings surface and the continuation prompt are rendered on top when active.
 func (m Model) View() string {
 	if m.settings != nil {
-		return settingsView(*m.settings, m.composer.Width())
+		return settingsView(*m.settings)
 	}
 	if m.prompting {
-		return promptView(m.composer.Width())
+		return promptView()
 	}
 
 	var b strings.Builder
@@ -308,7 +308,7 @@ func (m Model) View() string {
 }
 
 // promptView renders the interactive max-turns continuation prompt.
-func promptView(width int) string {
+func promptView() string {
 	return headerStyle.Render("run paused at the max-turns cap") + "\n" +
 		"Continue the run with more turns? (" + statusStyle.Render("y") + "/" + statusStyle.Render("n") + ")"
 }
