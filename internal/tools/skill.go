@@ -101,8 +101,23 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	return c, nil
 }
 
-// discoverScope walks root for skill pack directories and folds the valid ones
-// into c. root is the scope's <scope>/skills parent (may not exist).
+// skillParseStatus describes why a discovered pack was or wasn't cataloged.
+type skillParseStatus int
+
+const (
+	// skillCataloged: the pack parsed and is model-invocable; add it.
+	skillCataloged skillParseStatus = iota
+	// skillHidden: the pack parsed but declares disable-model-invocation: true,
+	// so it is hidden from the catalog and the tool enum (hide-not-block).
+	skillHidden
+	// skillUnparseable: the frontmatter is invalid; omit fail-closed with a warn.
+	skillUnparseable
+)
+
+// discoverScope walks root for skill pack directories and folds the model-
+// invocable ones into c. root is the scope's <scope>/skills parent (may not
+// exist). Hidden (disable-model-invocation) and unparseable packs are omitted
+// per hide-not-block; only unparseable ones warn.
 func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -120,8 +135,13 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			continue
 		}
 		packDir := filepath.Join(root, name)
-		skill, ok := parseSkill(packDir)
-		if !ok {
+		skill, status := parseSkill(packDir)
+		switch status {
+		case skillHidden:
+			// Hide-not-block: a disable-model-invocation pack is not listed for
+			// the model, so it is never returned to be blocked at call time.
+			continue
+		case skillUnparseable:
 			if w != nil {
 				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s", name, scope)
 			}
@@ -135,28 +155,33 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 }
 
 // parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and
-// collects the packaged resources. It returns ok=false (fail-closed) when the
-// frontmatter cannot be parsed validly.
-func parseSkill(packDir string) (*Skill, bool) {
+// collects the packaged resources. It reports skillUnparseable (fail-closed)
+// when the frontmatter cannot be parsed validly, and skillHidden when the pack
+// declares disable-model-invocation: true (hidden from the model, hide-not-
+// block).
+func parseSkill(packDir string) (*Skill, skillParseStatus) {
 	md := filepath.Join(packDir, "SKILL.md")
 	data, err := os.ReadFile(md)
 	if err != nil {
-		return nil, false
+		return nil, skillUnparseable
 	}
 	body, front, ok := splitFrontmatter(string(data))
 	if !ok {
-		return nil, false
+		return nil, skillUnparseable
 	}
 	meta := parseFrontmatter(front)
 	name, ok := meta["name"]
 	name = strings.TrimSpace(name)
 	if !ok || name == "" {
-		return nil, false
+		return nil, skillUnparseable
 	}
 	desc, _ := meta["description"]
 	desc = strings.TrimSpace(desc)
 	if desc == "" {
-		return nil, false
+		return nil, skillUnparseable
+	}
+	if disableModelInvocation(meta["disable-model-invocation"]) {
+		return nil, skillHidden
 	}
 
 	res := bundledResources(packDir, md)
@@ -165,7 +190,19 @@ func parseSkill(packDir string) (*Skill, bool) {
 		Body:        strings.TrimPrefix(body, "\n"),
 		Resources:   res,
 		Dir:         packDir,
-	}, true
+	}, skillCataloged
+}
+
+// disableModelInvocation reports whether the disable-model-invocation
+// frontmatter field is truthy (true/1/yes), so the pack is hidden from the
+// model (hide-not-block).
+func disableModelInvocation(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // bundledResources lists the pack's files (relative paths) excluding SKILL.md,

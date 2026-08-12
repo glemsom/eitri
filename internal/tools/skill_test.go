@@ -237,6 +237,37 @@ func TestSkillSchemaEnumConstrained(t *testing.T) {
 	}
 }
 
+// TestSkillDisableModelInvocationHidden verifies hide-not-block: a valid pack
+// declaring disable-model-invocation: true is omitted from the catalog and the
+// tool enum (filtered, not listed to be blocked at call time).
+func TestSkillDisableModelInvocationHidden(t *testing.T) {
+	user := t.TempDir()
+	writeSkill(t, user, "normal", "invocable", "body n", nil)
+	// A pack with disable-model-invocation: true in its frontmatter.
+	dir := filepath.Join(user, "manual")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	content := "---\nname: manual\ndescription: only user invokes\ndisable-model-invocation: true\n---\n\nmanual body\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	cb := &warningSink{}
+	catalog, err := Discover(user, t.TempDir(), cb)
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	names := catalog.Names()
+	if len(names) != 1 || names[0] != "normal" {
+		t.Fatalf("names = %v, want exactly [normal] (manual hidden by disable-model-invocation)", names)
+	}
+	// Hiding is not an error, so it must not warn.
+	if cb.count != 0 {
+		t.Fatalf("unexpected warnings = %d, want 0 (hidden != unparseable)", cb.count)
+	}
+}
+
 // testDeps builds registry deps for a skill test with an injected catalog and a
 // throwaway workspace (no bash runner needed).
 func testDeps(t *testing.T, workspace string, catalog *Catalog) Deps {
