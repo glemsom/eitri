@@ -37,6 +37,33 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	return r, ws
 }
 
+// TestReadSchemaNullableUnion is a regression guard for the OpenCode Go HTTP
+// 400 on the read tool: the optional start_line/end_line were emitted as a
+// bare []any{"integer","null"} which marshals to a plain JSON array
+// ["integer","null"], an invalid JSON-Schema that the provider's validator
+// rejects. They must be a proper type-array union object ({"type":[...]}).
+func TestReadSchemaNullableUnion(t *testing.T) {
+	// Schema() needs no validator, so the type can be exercised directly.
+	schema := (&readTool{}).Schema()
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema: no properties map, got %T", schema["properties"])
+	}
+	for _, field := range []string{"start_line", "end_line"} {
+		node, ok := props[field].(map[string]any)
+		if !ok {
+			t.Fatalf("schema property %q: expected union object, got %T (%v)", field, props[field], props[field])
+		}
+		types, ok := node["type"].([]any)
+		if !ok {
+			t.Fatalf("schema property %q: expected type-array union, got %v", field, node)
+		}
+		if len(types) != 2 || types[0] != "integer" || types[1] != "null" {
+			t.Fatalf("schema property %q: unexpected type union %v", field, types)
+		}
+	}
+}
+
 func argMap(kv ...string) map[string]any {
 	m := map[string]any{}
 	for i := 0; i+1 < len(kv); i += 2 {

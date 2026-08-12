@@ -30,8 +30,11 @@ func (r *readTool) Schema() map[string]any {
 		},
 		// Strict-shaped (all-required) with optionals expressed as nullable
 		// unions per docs/spec.md §2: a model omits an optional by sending null.
-		"start_line": []any{"integer", "null"},
-		"end_line":   []any{"integer", "null"},
+		// The union is the OpenAI-compatible type-array form so the provider's
+		// schema validator accepts it (a bare []any marshals to a plain JSON
+		// array, which OpenCode Go rejects with HTTP 400).
+		"start_line": map[string]any{"type": []any{"integer", "null"}},
+		"end_line":   map[string]any{"type": []any{"integer", "null"}},
 	}, []string{"path", "start_line", "end_line"})
 }
 
