@@ -32,11 +32,12 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 
 ### 2.2 LLM providers & models
 
-- **OpenCode Go** — routes models by prefix (Qwen / MiniMax to Anthropic, the rest to OpenAI completions).
-- **GitHub Copilot** — device-flow OAuth integration with an in-UI approval flow.
-- **Custom OpenAI** — any OpenAI-compatible endpoint with a user-supplied base URL and API key.
+- **OpenCode Go** — primary provider; routes models by dialect family (Qwen / MiniMax to Anthropic, the rest to OpenAI completions).
+- **GitHub Copilot** — device-flow OAuth integration with an **in-UI approval flow** (TUI-only); batch consumes stored/refreshed credentials and never runs the interactive handshake.
+- **Custom OpenAI** — any OpenAI-compatible endpoint with a user-supplied base URL and API key; routes via Chat Completions (no device flow).
 - **Model discovery.** Available models are discovered from the configured provider and surfaced in Settings.
-- **Reasoning support.** First-class handling of model chain-of-thought:
+- **Provider routing.** A provider factory builds the running provider from the saved `provider` config value, honored identically across TUI and batch.
+- **Reasoning support.** First-class handling of model chain-of-thought (including Copilot, which streams its reasoning through the same channel as the primary provider).
 - **Prompt caching.** Session-scoped prompt-cache keys to reduce cost/latency on long sessions.
 
 ### 2.3 Agent Skills

@@ -27,15 +27,38 @@ const (
 	DefaultModel    = "deepseek-v4-flash"
 )
 
-// Config is the persisted Eitri configuration. Provider credentials are
-// delivered via environment (wire later), so no key material lives here.
+// CopilotConfig holds the GitHub Copilot device-flow credential state, persisted
+// so a later batch run can reuse the TUI-established session without re-auth
+// (T11 / eitri.md §2.2). Batch may transparently renew an expired access token
+// via RefreshToken, but the interactive device-flow handshake is TUI-only.
+type CopilotConfig struct {
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	// ExpiresAt is the unix-seconds expiry of AccessToken; 0 when unknown. Batch
+	// refreshes when the access token is absent or past this time.
+	ExpiresAt int64 `json:"expires_at,omitempty"`
+}
+
+// OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key
+// (custom OpenAI provider, eitri.md §2.2 / T11). No device flow: key/setup only.
+type OpenAIConfig struct {
+	BaseURL string `json:"base_url,omitempty"`
+	Key     string `json:"key,omitempty"`
+}
+
+// Config is the persisted Eitri configuration. The primary provider's key
+// (OpenCode Go) is delivered via the OPENCODE_API_KEY environment variable; the
+// Copilot device-flow tokens and the custom-OpenAI endpoint/key are stored here
+// because they are user-configured and reused across runs (T11).
 type Config struct {
-	Provider           string   `json:"provider"`
-	Model              string   `json:"model"`
-	ReasoningEffort    string   `json:"reasoning_effort"`
-	MaxTurns           int      `json:"max_turns"`
-	CompactionFraction float64  `json:"compaction_fraction"`
-	ExtraWritablePaths []string `json:"extra_writable_paths,omitempty"`
+	Provider           string        `json:"provider"`
+	Model              string        `json:"model"`
+	ReasoningEffort    string        `json:"reasoning_effort"`
+	MaxTurns           int           `json:"max_turns"`
+	CompactionFraction float64       `json:"compaction_fraction"`
+	ExtraWritablePaths []string      `json:"extra_writable_paths,omitempty"`
+	Copilot            CopilotConfig `json:"copilot,omitempty"`
+	CustomOpenAI       OpenAIConfig  `json:"custom_openai,omitempty"`
 }
 
 // Default returns a config populated with Eitri's defaults.

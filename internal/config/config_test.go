@@ -44,6 +44,48 @@ func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
 	}
 }
 
+// TestCopilotAndCustomOpenAITokensPersist verifies provider credentials for
+// the non-default provider families round-trip through save/load: the Copilot
+// device-flow tokens and the custom OpenAI endpoint+key are stored in config
+// (T11). Copilot credentials must persist so a later batch run reuses the
+// TUI-established session; custom OpenAI needs no device flow, key/setup only.
+func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.Provider = "github-copilot"
+	cfg.Model = "gpt-4o"
+	cfg.Copilot = CopilotConfig{AccessToken: "acc", RefreshToken: "ref", ExpiresAt: 123}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.Copilot.AccessToken != "acc" || got.Copilot.RefreshToken != "ref" || got.Copilot.ExpiresAt != 123 {
+		t.Fatalf("Load() Copilot = %+v, want persisted tokens", got.Copilot)
+	}
+
+	// Lower the Provider to custom-openai and verify the endpoint+key persist.
+	dir2 := t.TempDir()
+	path2 := filepath.Join(dir2, "config.json")
+	cfg2 := Default()
+	cfg2.Provider = "custom-openai"
+	cfg2.CustomOpenAI = OpenAIConfig{BaseURL: "https://my.endpoint/v1/chat/completions", Key: "k"}
+	if err := Save(cfg2, path2); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+	got2, err := Load(path2)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got2.CustomOpenAI.BaseURL != "https://my.endpoint/v1/chat/completions" || got2.CustomOpenAI.Key != "k" {
+		t.Fatalf("Load() CustomOpenAI = %+v, want persisted endpoint+key", got2.CustomOpenAI)
+	}
+}
+
 func TestLoadReadsPersistedConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

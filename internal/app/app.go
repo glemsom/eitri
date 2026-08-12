@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,12 +156,17 @@ func Run(opts Options) error {
 	tempHost := tools.HostTempFor(guid)
 	defer func() { _ = os.RemoveAll(tempHost) }()
 
-	// Batch mode: run one agent turn through the shared engine and print the
-	// final answer (docs/spec.md §6; eitri.md §2.1). The engine dispatches any
-	// tool calls through the registry over the provider seam.
+	// Build the provider the saved config selects (opencode-go, github-copilot,
+	// or custom-openai) and honor it across both run kinds (T11 / eitri.md §2.2).
+	// Tests inject a deterministic provider via Options.Provider; production
+	// builds it from the loaded config + env credentials.
 	p := opts.Provider
 	if p == nil {
-		p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
+		var err error
+		p, err = buildProvider(cfg, cfgPath)
+		if err != nil {
+			return err
+		}
 	}
 	e := engine.New(p, sess)
 	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
@@ -169,13 +175,7 @@ func Run(opts Options) error {
 	// the same engine, session transcript, and tool registry as batch, and
 	// renders into the primary buffer (docs/spec.md §9).
 	if opts.Prompt == "" {
-		// TUI: a provider is needed for live model discovery in Settings (T12);
-		// tests inject one via Options.Provider or fall back to the default.
-		p2 := p
-		if p2 == nil {
-			p2 = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
-		}
-		return runTUI(e, cfg, reg, key, p2, cfgPath, skills)
+		return runTUI(e, cfg, reg, key, p, cfgPath, skills)
 	}
 
 	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil)
@@ -257,21 +257,21 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 	})
 }
 
-// providerTools maps the registry's definitions to provider Tool objects for
-// the Chat-Completions request head.
+// providerTools maps the registry's definitions to provider Chat-Completions
+// Tool objects via the single per-dialect serializer (provider.ReExpress, T5/#10):
+// one canonical JSON-Schema per tool is re-expressed per dialect, never
+// hand-copied per provider. Only the Chat dialect is emitted today — the engine
+// and every current provider talk the Chat-Completions wire (§2 of the spec).
 func providerTools(defs []tools.Definition) []provider.Tool {
-	out := make([]provider.Tool, 0, len(defs))
+	canonical := make([]provider.DialectDefinition, 0, len(defs))
 	for _, d := range defs {
-		out = append(out, provider.Tool{
-			Type: "function",
-			Function: provider.ToolFunction{
-				Name:        d.Name,
-				Description: d.Description,
-				Parameters:  d.Parameters,
-			},
+		canonical = append(canonical, provider.DialectDefinition{
+			Name:        d.Name,
+			Description: d.Description,
+			Schema:      d.Parameters,
 		})
 	}
-	return out
+	return provider.ReExpress(canonical, provider.DialectChat).([]provider.Tool)
 }
 
 // ProviderKeyEnv is the environment variable holding the OpenCode Go API key.
@@ -284,20 +284,20 @@ const ProviderKeyEnv = "OPENCODE_API_KEY"
 // latter formalized in T11). It defaults to OpenCode Go.
 const ProviderURLEnv = "EITRI_PROVIDER_URL"
 
-// defaultProvider builds the primary provider: an OpenAI-compatible
-// Chat-Completions client against OpenCode Go's endpoint, overridable via env.
-func defaultProvider(apiKey, url string) provider.Provider {
-	if url == "" {
-		url = "https://opencode.ai/zen/go/v1/chat/completions"
-	}
-	return provider.NewOpenAICompatible(apiKeyOrDefault(apiKey), url)
-}
-
-func apiKeyOrDefault(key string) string {
-	if key != "" {
-		return key
-	}
-	return "not-configured"
+// buildProvider builds the provider the saved config selects via the shared
+// factory (provider.FromConfig, T11): it honors cfg.Provider across TUI and
+// batch and wires the Copilot non-interactive refresh + token persistence into
+// the config file so a renewed device-flow session is reused by later runs.
+func buildProvider(cfg config.Config, cfgPath string) (provider.Provider, error) {
+	return provider.FromConfig(cfg, provider.ProviderEnv{
+		OpenCodeKey:    os.Getenv(ProviderKeyEnv),
+		OpenCodeURL:    os.Getenv(ProviderURLEnv),
+		CopilotRefresh: copilotRefresh(http.DefaultClient),
+		CopilotPersist: func(c config.CopilotConfig) error {
+			cfg.Copilot = c
+			return config.Save(cfg, cfgPath)
+		},
+	})
 }
 
 // resolveConfigPath selects the config file path: an explicit override, else
