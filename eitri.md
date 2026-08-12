@@ -19,7 +19,7 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 ## 2. Capabilities
 ### 2.1 tools
 
-- **Built-in tool registry** shared across all run kinds (TUI, batch, sub-agent):
+- **Built-in tool registry** shared across all run kinds (TUI, batch):
   - `bash` — shell command execution (sandboxed via `bubblewrap`). Token efficient filters for commands like `ls`, `find` `grep` and `rg`)
   - `read` - Read file. Supports file-range reads to avoid reading entire files into context.
   - `write` - For writing an entire file.
