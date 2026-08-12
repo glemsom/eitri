@@ -35,7 +35,13 @@ eitri [flags]
 final answer to stdout. Inside the turn, the engine dispatches any tool calls
 (`bash`, `read`, `write`, `edit`) through the shared tool registry, which runs
 `bash` inside the bwrap sandbox and resolves every path through the shared
-path-namespace seam (ADR-0002). Thinking/reasoning is suppressed from batch
+path-namespace seam (ADR-0002). Tool defs are strict-shaped
+(`additionalProperties:false`, all-required; optionals as nullable unions),
+re-expressed from one canonical schema per dialect, and the dispatch loop
+iterates *all* parallel calls in a turn — validates each against its strict
+schema, and routes malformed/truncated arguments back to the model as a
+structured `{"INVALID_JSON": ...}` tool result so the model self-corrects
+(`docs/spec.md` §2) instead of crashing or silently skipping. Thinking/reasoning is suppressed from batch
 output by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables
 debug mode, which attaches the HTTP trace sink to the run session.
 
