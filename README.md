@@ -33,7 +33,8 @@ eitri [flags]
 
 `-b <prompt>` runs one agent turn through the shared run engine and prints the
 final answer to stdout. Inside the turn, the engine dispatches any tool calls
-(`bash`, `read`, `write`, `edit`, `web_fetch`, `open_in_browser`) through the
+(`bash`, `read`, `write`, `edit`, `web_fetch`, `open_in_browser`, and — when
+skills are discovered — `skill`) through the
 shared tool registry, which runs `bash` inside the bwrap sandbox, resolves every
 path through the shared path-namespace seam (ADR-0002), fetches web content on
 `web_fetch`'s own network-unrestricted path (ADR-0001), and launches the host
@@ -57,6 +58,33 @@ an explicit `+N more` tail marker on heavy listings, gated never to inflate and
 recoverable by re-running the command (`docs/spec.md` §5; `internal/compress`).
 Thinking/reasoning is suppressed from batch output by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables
 debug mode, which attaches the HTTP trace sink to the run session.
+
+## Agent Skills
+
+Eitri auto-discovers **Agent Skills** (modular instruction packs; see
+https://agentskills.io/specification) from two scopes and makes them callable
+via a dedicated `skill` tool mid-session (`docs/spec.md` §3; ticket #33):
+
+- **User scope** — `~/.agents/skills/<name>/SKILL.md`, available across every
+  project on the machine.
+- **Project scope** — `<workspace>/.agents/skills/<name>/SKILL.md`, committed
+  with the project. On an exact-name collision the **project pack shadows the
+  user pack**.
+
+Discovery parses each pack's frontmatter leniently: a pack with an unparseable
+`SKILL.md` (missing/absent `name`+`description` ahead of the body) is omitted
+with a warning to stderr rather than surfaced to the model (fail-closed). The
+`skill` tool is **only registered when at least one valid skill exists**; when
+zero skills are present the tool is omitted entirely. The tool's `name`
+parameter is constrained to a strict-schema `enum` of the discovered, filtered
+names — never blocked-at-call-time. Activating a skill returns the pack's body
+(frontmatter stripped) wrapped in `<skill_content name="…">` plus a
+`<skill_resources>` listing of the bundle's files — injected as a **tool result**,
+never elevated into a `system` message — so the model resolves referenced files
+through its own read/list tools. Re-activating an already-in-context skill
+returns a short dedupe notice instead of re-injecting the body. The wrapping
+tags double as the compaction ring-fence marker (`["skill"]`).
+
 
 ## Configuration
 

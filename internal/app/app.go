@@ -136,6 +136,11 @@ func Run(opts Options) error {
 	if err != nil {
 		return err
 	}
+	// Agent Skill discovery: user-global ~/.agents/skills + project
+	// .agents/skills, project shadowing user on exact-name collision. The
+	// catalog is threaded through the registry so the dedicated skill tool is
+	// registered only when skills exist (docs/spec.md §3; ticket #33).
+	skills := discoverSkills(workspace)
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
 		TempHost:      tools.HostTempFor(guid),
@@ -144,6 +149,7 @@ func Run(opts Options) error {
 		Runner:        tools.RealRunner,
 		Fetcher:       opts.Fetcher,
 		Browser:       opts.Browser,
+		Skills:        skills,
 	})
 	// Session temp is ephemeral per run and removed when the run ends (ADR-0002).
 	tempHost := tools.HostTempFor(guid)
@@ -190,6 +196,37 @@ func Run(opts Options) error {
 	}
 
 	return nil
+}
+
+// discoverSkills discovers Agent Skill packs from the user-global
+// ~/.agents/skills root and the project .agents/skills root under workspace
+// (project shadows user on exact-name collision). Discovery is lenient:
+// unparseable packs are omitted with a warning to stderr (fail-closed). It
+// returns an empty catalog when no roots exist or none parse, so the skill
+// tool is simply unregistered.
+func discoverSkills(workspace string) *tools.Catalog {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "eitri: resolve home for skill discovery: %v\n", err)
+		return &tools.Catalog{}
+	}
+	c, err := tools.Discover(
+		filepath.Join(home, "agents", "skills"),
+		filepath.Join(workspace, ".agents", "skills"),
+		stderrWarner{},
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "eitri: skill discovery failed: %v\n", err)
+		return &tools.Catalog{}
+	}
+	return c
+}
+
+// stderrWarner reports discovery warnings to stderr.
+type stderrWarner struct{}
+
+func (stderrWarner) Warnf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
 // providerTools maps the registry's definitions to provider Tool objects for
