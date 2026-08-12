@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"time"
 )
 
 // Fetcher is the web_fetch network seam. Fetch returns a reader over the
@@ -17,8 +18,17 @@ type Fetcher interface {
 	Fetch(ctx context.Context, url string) (io.ReadCloser, error)
 }
 
-// httpFetcher is the production Fetcher: a plain net/http client.
+// httpFetcher is the production Fetcher: a plain net/http client with a
+// bounded timeout so a stalled host can never hang the agent turn.
 type httpFetcher struct{}
+
+// fetchTimeout bounds a single HTTP fetch so a slow or hung endpoint cannot
+// block the run engine forever.
+const fetchTimeout = 30 * time.Second
+
+// fetchClient is the shared, bounded client backing httpFetcher (the
+// Fetcher interface remains the injection seam for tests).
+var fetchClient = &http.Client{Timeout: fetchTimeout}
 
 // Fetch performs an HTTP GET and returns the response body, erroring on a
 // non-2xx status so untrusted error pages never masquerade as content.
@@ -28,7 +38,7 @@ func (httpFetcher) Fetch(ctx context.Context, url string) (io.ReadCloser, error)
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "eitri/0.1 web_fetch")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fetchClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
