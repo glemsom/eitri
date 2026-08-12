@@ -45,14 +45,14 @@ func argMap(kv ...string) map[string]any {
 	return m
 }
 
-// TestRegistryExposesCoreTools locks the initial four-tool surface.
-func TestRegistryExposesCoreTools(t *testing.T) {
+// TestRegistryExposesTools locks the six-tool surface.
+func TestRegistryExposesTools(t *testing.T) {
 	r, _ := newTestRegistry(t, nil)
 	got := map[string]bool{}
 	for _, n := range r.Names() {
 		got[n] = true
 	}
-	for _, want := range []string{"bash", "read", "write", "edit"} {
+	for _, want := range []string{"bash", "read", "write", "edit", "web_fetch", "open_in_browser"} {
 		if !got[want] {
 			t.Fatalf("registry missing tool %q; names = %v", want, r.Names())
 		}

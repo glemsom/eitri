@@ -33,9 +33,12 @@ eitri [flags]
 
 `-b <prompt>` runs one agent turn through the shared run engine and prints the
 final answer to stdout. Inside the turn, the engine dispatches any tool calls
-(`bash`, `read`, `write`, `edit`) through the shared tool registry, which runs
-`bash` inside the bwrap sandbox and resolves every path through the shared
-path-namespace seam (ADR-0002). The batch engine opts the run into deepseek's
+(`bash`, `read`, `write`, `edit`, `web_fetch`, `open_in_browser`) through the
+shared tool registry, which runs `bash` inside the bwrap sandbox, resolves every
+path through the shared path-namespace seam (ADR-0002), fetches web content on
+`web_fetch`'s own network-unrestricted path (ADR-0001), and launches the host
+browser for `open_in_browser` (outside the cage). The batch engine opts the run
+into deepseek's
 session-scoped prompt cache: every request carries `prompt_cache_key=<GUID>`
 and the request head (`model` + stable prior-turn history) stays byte-identical
 across turns, so only the tail grows (`docs/spec.md` §4). Per-turn `usage`

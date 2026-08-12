@@ -7,14 +7,17 @@ import (
 
 // Deps carries the per-session wiring the registry (and hence every tool)
 // needs: the workspace, the session temp host root, the GUID that namespaces
-// /tmp, configured extra writable paths, and the sandbox runner. One registry
-// is built per run and shared across TUI and batch.
+// /tmp, configured extra writable paths, the sandbox runner, and the network
+// and browser seams. One registry is built per run and shared across TUI and
+// batch.
 type Deps struct {
 	Workspace     string
 	TempHost      string
 	GUID          GUID
 	ExtraWritable []string
 	Runner        Runner
+	Fetcher       Fetcher
+	Browser       BrowserLauncher
 }
 
 // Tool is one agent-callable function. Name must match the registry key; Run
@@ -51,20 +54,29 @@ func (r *Registry) Definitions() []Definition {
 }
 
 // Registry is the shared tool registry: it wires the single PathTranslator and
-// Validator (ADR-0002) once, then exposes the fixed tool surface. Later tickets
-// add web_fetch, open_in_browser, and skill.
+// Validator (ADR-0002) once, plus the network and browser seams, then exposes
+// the fixed tool surface. Later tickets add web_fetch, open_in_browser, and
+// skill.
 type Registry struct {
 	tr      *PathTranslator
 	val     *Validator
 	sandbox *Sandbox
+	browser BrowserLauncher
 	tools   map[string]Tool
 }
 
 // NewRegistry builds the registry for one session from Deps.
 func NewRegistry(d Deps) *Registry {
+	if d.Fetcher == nil {
+		d.Fetcher = httpFetcher{}
+	}
+	if d.Browser == nil {
+		d.Browser = xdgBrowser{}
+	}
 	r := &Registry{
-		tr:    NewPathTranslator(d.GUID),
-		tools: map[string]Tool{},
+		tr:      NewPathTranslator(d.GUID),
+		browser: d.Browser,
+		tools:   map[string]Tool{},
 	}
 	r.val = NewValidator(d.Workspace, d.ExtraWritable, r.tr)
 	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
@@ -72,12 +84,14 @@ func NewRegistry(d Deps) *Registry {
 	r.tools["read"] = &readTool{val: r.val}
 	r.tools["write"] = &writeTool{val: r.val}
 	r.tools["edit"] = &editTool{val: r.val}
+	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
+	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
 	return r
 }
 
 // Names returns the registered tool names in stable order.
 func (r *Registry) Names() []string {
-	return []string{"bash", "read", "write", "edit"}
+	return []string{"bash", "read", "write", "edit", "web_fetch", "open_in_browser"}
 }
 
 // PathTranslator returns the shared translation seam (exposed for host-side
