@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
+	"github.com/glemsom/eitri/internal/tools"
 )
 
 // Version reports the Eitri build version tag, set at build time.
@@ -117,17 +119,48 @@ func Run(opts Options) error {
 		return ErrMissingBwrap
 	}
 
-	// Batch mode: run one non-tool turn through the shared engine and print
-	// the final answer (docs/spec.md §6; eitri.md §2.1).
+	// Build the shared tool registry wired to this run's workspace + session
+	// temp so bash/read/write/edit resolve the same path namespace (ADR-0002).
+	// Both the registry and the sandbox mount agree on the temp host root.
+	guid := tools.GUID(sess.GUID())
+	workspace, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace:     workspace,
+		TempHost:      tools.HostTempFor(guid),
+		GUID:          guid,
+		ExtraWritable: cfg.ExtraWritablePaths,
+		Runner:        tools.RealRunner,
+	})
+	// Session temp is ephemeral per run and removed when the run ends (ADR-0002).
+	tempHost := tools.HostTempFor(guid)
+	defer func() { _ = os.RemoveAll(tempHost) }()
+
+	// Batch mode: run one agent turn through the shared engine and print the
+	// final answer (docs/spec.md §6; eitri.md §2.1). The engine dispatches any
+	// tool calls through the registry over the provider seam.
 	if opts.Prompt != "" {
 		p := opts.Provider
 		if p == nil {
 			p = defaultProvider(os.Getenv(ProviderKeyEnv), os.Getenv(ProviderURLEnv))
 		}
 		e := engine.New(p, sess)
-		res, err := e.Run(context.Background(), engine.RunRequest{
+		res, err := e.RunAgent(context.Background(), engine.RunRequest{
 			Model:  cfg.Model,
 			Prompt: opts.Prompt,
+		}, engine.AgentOptions{
+			Tools:      providerTools(reg.Definitions()),
+			ToolChoice: "auto",
+			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+				var args map[string]any
+				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+					return "", err
+				}
+				return reg.Run(ctx, name, args)
+			}),
+			MaxTurns: cfg.MaxTurns,
 		})
 		if err != nil {
 			return err
@@ -143,6 +176,23 @@ func Run(opts Options) error {
 	}
 
 	return nil
+}
+
+// providerTools maps the registry's definitions to provider Tool objects for
+// the Chat-Completions request head.
+func providerTools(defs []tools.Definition) []provider.Tool {
+	out := make([]provider.Tool, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, provider.Tool{
+			Type: "function",
+			Function: provider.ToolFunction{
+				Name:        d.Name,
+				Description: d.Description,
+				Parameters:  d.Parameters,
+			},
+		})
+	}
+	return out
 }
 
 // ProviderKeyEnv is the environment variable holding the OpenCode Go API key.

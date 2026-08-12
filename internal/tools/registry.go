@@ -1,0 +1,136 @@
+package tools
+
+import (
+	"context"
+	"fmt"
+)
+
+// Deps carries the per-session wiring the registry (and hence every tool)
+// needs: the workspace, the session temp host root, the GUID that namespaces
+// /tmp, configured extra writable paths, and the sandbox runner. One registry
+// is built per run and shared across TUI and batch.
+type Deps struct {
+	Workspace     string
+	TempHost      string
+	GUID          GUID
+	ExtraWritable []string
+	Runner        Runner
+}
+
+// Tool is one agent-callable function. Name must match the registry key; Run
+// receives a JSON-decoded argument map and returns a deterministic, reversible
+// string result suitable for future compression/compaction. Schema returns the
+// tool's strict-shaped JSON-Schema argument object (additionalProperties:false,
+// required fields) so a caller can build the per-dialect tool definition.
+type Tool interface {
+	Name() string
+	Description() string
+	Schema() map[string]any
+	Run(ctx context.Context, args map[string]any) (string, error)
+}
+
+// Definition is a tool's provider-facing definition: name, description, and a
+// minimal JSON-Schema parameters object (strict-shaped, per docs/spec.md §2).
+type Definition struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+// Definitions returns the registry's fixed tool surface as provider-facing
+// definitions (name/description/JSON-Schema). The stable ordering and content
+// keep the request head byte-stable so a later prompt cache can hit.
+func (r *Registry) Definitions() []Definition {
+	names := r.Names()
+	out := make([]Definition, 0, len(names))
+	for _, n := range names {
+		t := r.tools[n]
+		out = append(out, Definition{Name: n, Description: t.Description(), Parameters: t.Schema()})
+	}
+	return out
+}
+
+// Registry is the shared tool registry: it wires the single PathTranslator and
+// Validator (ADR-0002) once, then exposes the fixed tool surface. Later tickets
+// add web_fetch, open_in_browser, and skill.
+type Registry struct {
+	tr      *PathTranslator
+	val     *Validator
+	sandbox *Sandbox
+	tools   map[string]Tool
+}
+
+// NewRegistry builds the registry for one session from Deps.
+func NewRegistry(d Deps) *Registry {
+	r := &Registry{
+		tr:    NewPathTranslator(d.GUID),
+		tools: map[string]Tool{},
+	}
+	r.val = NewValidator(d.Workspace, d.ExtraWritable, r.tr)
+	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
+	r.tools["bash"] = &bashTool{sb: r.sandbox}
+	r.tools["read"] = &readTool{val: r.val}
+	r.tools["write"] = &writeTool{val: r.val}
+	r.tools["edit"] = &editTool{val: r.val}
+	return r
+}
+
+// Names returns the registered tool names in stable order.
+func (r *Registry) Names() []string {
+	return []string{"bash", "read", "write", "edit"}
+}
+
+// PathTranslator returns the shared translation seam (exposed for host-side
+// launch points like open_in_browser and for tests).
+func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
+
+// Run executes the named tool with the given decoded args, returning its
+// string result. Unknown tools are a hard error.
+func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (string, error) {
+	tool, ok := r.tools[name]
+	if !ok {
+		return "", fmt.Errorf("unknown tool %q", name)
+	}
+	return tool.Run(ctx, args)
+}
+
+// helper: strArg extracts a required string argument, enforcing presence.
+func strArg(args map[string]any, key string) (string, error) {
+	v, ok := args[key]
+	if !ok {
+		return "", fmt.Errorf("missing required argument %q", key)
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return "", fmt.Errorf("argument %q must be a non-empty string", key)
+	}
+	return s, nil
+}
+
+// strictSchema builds a strict-shaped JSON-Schema object (docs/spec.md §2):
+// additionalProperties:false and every field required, emulating optionals with
+// unions when needed later. This is the canonical per-tool schema target T5
+// re-expresses per dialect.
+func strictSchema(properties map[string]any, required []string) map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties":           properties,
+		"required":             required,
+	}
+}
+
+// optStr extracts an optional string argument. Unlike strArg it permits an
+// empty value (e.g. an empty new_string in an edit that deletes text); the
+// key must still be present and a string.
+func optStr(args map[string]any, key string) (string, error) {
+	v, ok := args[key]
+	if !ok {
+		return "", fmt.Errorf("missing required argument %q", key)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("argument %q must be a string", key)
+	}
+	return s, nil
+}

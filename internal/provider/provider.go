@@ -29,14 +29,46 @@ const (
 
 // Message is a single conversation turn sent to the provider.
 type Message struct {
-	Role    Role   `json:"role"`
-	Content string `json:"content,omitempty"`
+	Role       Role       `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	// ReasoningContent is deepseek-family chain-of-thought. It must always be
+	// echoed on assistant messages so tool-call turns do not trip the provider's
+	// 400 (docs/spec.md §6).
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+// ToolFunction is one tool's reusable definition: a name, description, and a
+// JSON-Schema parameters object. It is the canonical form re-expressed per
+// wire dialect later (T5); for this ticket Chat-Completions only.
+type ToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+}
+
+// Tool is the outer Chat-Completions tool wrapper (type: function).
+type Tool struct {
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+}
+
+// ToolCall is one assistant-invoked function call, streamed as fragments and
+// assembled into this complete form. Arguments is the raw JSON string.
+type ToolCall struct {
+	ID        string `json:"id,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 // Request is one Chat-Completions turn.
 type Request struct {
-	Model    string
-	Messages []Message
+	Model      string
+	Messages   []Message
+	Tools      []Tool
+	ToolChoice any
 }
 
 // Chunk is one parsed piece of a streamed turn.
@@ -52,6 +84,13 @@ type Chunk struct {
 	// Usage, when non-nil, carries per-turn token telemetry delivered via
 	// stream_options.include_usage.
 	Usage *Usage
+	// FinishReason is the streaming finish_reason, e.g. "stop" or "tool_calls".
+	// A tool_calls finish signals the engine to dispatch and continue.
+	FinishReason string
+	// ToolCalls holds the tool calls accumulated across this turn's chunks
+	// (fragmented function.name/arguments reassembled per index). Populated on
+	// the terminal chunk when the model elected to call a tool.
+	ToolCalls []ToolCall
 }
 
 // Usage is per-turn token telemetry, parsed at the provider seam.

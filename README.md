@@ -31,10 +31,13 @@ eitri [flags]
 | `-d`          | Debug mode (writes full HTTP traces to/from the provider).               |
 | `--version`   | Print the version and exit.                                              |
 
-`-b <prompt>` runs one non-tool turn through the shared run engine and prints
-the final answer to stdout. Thinking/reasoning is suppressed from batch output
-by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables debug
-mode, which attaches the HTTP trace sink to the run session.
+`-b <prompt>` runs one agent turn through the shared run engine and prints the
+final answer to stdout. Inside the turn, the engine dispatches any tool calls
+(`bash`, `read`, `write`, `edit`) through the shared tool registry, which runs
+`bash` inside the bwrap sandbox and resolves every path through the shared
+path-namespace seam (ADR-0002). Thinking/reasoning is suppressed from batch
+output by default (`docs/spec.md` §6); use `-v` to surface it. `-d` enables
+debug mode, which attaches the HTTP trace sink to the run session.
 
 ## Configuration
 

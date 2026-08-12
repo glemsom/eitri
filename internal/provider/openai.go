@@ -29,9 +29,11 @@ func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 // Stream implements Provider with an HTTP Chat-Completions request.
 func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, error) {
 	body, err := json.Marshal(chatCompletionBody{
-		Model:    req.Model,
-		Messages: req.Messages,
-		Stream:   true,
+		Model:      req.Model,
+		Messages:   req.Messages,
+		Tools:      req.Tools,
+		ToolChoice: req.ToolChoice,
+		Stream:     true,
 		StreamOptions: &streamOptions{
 			IncludeUsage: true, // opencode force-sets include_usage (research §4)
 		},
@@ -59,13 +61,15 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		resp.Body.Close()
 		return nil, &HTTPError{Code: resp.StatusCode, Body: "provider returned non-2xx"}
 	}
-	return &openAIStream{ev: newSSE(resp.Body)}, nil
+	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
 }
 
 // chatCompletionBody is the OpenAI Chat-Completions request shape.
 type chatCompletionBody struct {
 	Model         string         `json:"model"`
 	Messages      []Message      `json:"messages"`
+	Tools         []Tool         `json:"tools,omitempty"`
+	ToolChoice    any            `json:"tool_choice,omitempty"`
 	Stream        bool           `json:"stream"`
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
@@ -85,9 +89,10 @@ func (e *HTTPError) Error() string {
 }
 
 // openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE]
-// to a Done chunk and io.EOF to io.EOF.
+// to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.
 type openAIStream struct {
-	ev *sse
+	ev  *sse
+	acc *toolAccumulator
 }
 
 // Next implements Stream.
@@ -99,5 +104,5 @@ func (os *openAIStream) Next() (Chunk, error) {
 	if err != nil {
 		return Chunk{}, err
 	}
-	return parseEvent(e.data)
+	return parseEvent(e.data, os.acc)
 }
