@@ -28,10 +28,12 @@ type Skill struct {
 }
 
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
-// It owns the discovery-order name list (for the strict enum) and the per-run
+// It owns the discovery-order name list (for the strict enum), the per-name
+// install scope (user/project, for the TUI's skills panel) and the per-run
 // activation set (for dedupe).
 type Catalog struct {
 	skills    map[string]*Skill
+	scopes    map[string]string // skill name -> install scope ("user" or "project")
 	order     []string
 	activated map[string]bool
 }
@@ -48,6 +50,43 @@ func (c *Catalog) Names() []string {
 // Skill returns the named skill, or nil when it is not in the catalog.
 func (c *Catalog) Skill(name string) *Skill {
 	return c.skills[name]
+}
+
+// SkillItem is one detected skill surfaced to the TUI's skills panel: its
+// install scope ("user" or "project") and whether it is currently activated
+// this session (docs/spec.md §9, eitri.md §2.3).
+type SkillItem struct {
+	Name        string
+	Description string
+	Scope       string
+	Active      bool
+}
+
+// Items returns the detected skills in stable sorted order with their install
+// their install scope and per-session activation state for the TUI panel.
+func (c *Catalog) Items() []SkillItem {
+	out := make([]SkillItem, len(c.order))
+	if c == nil || c.order == nil {
+		return out
+	}
+	for i, name := range c.order {
+		out[i] = SkillItem{
+			Name:        name,
+			Description: c.skills[name].Description,
+			Scope:       c.scopes[name],
+			Active:      c.activated[name],
+		}
+	}
+	return out
+}
+
+// Scope returns the install scope ("user" or "project") for the named skill,
+// or "" when the name is not in the catalog.
+func (c *Catalog) Scope(name string) string {
+	if c == nil {
+		return ""
+	}
+	return c.scopes[name]
 }
 
 // Enum returns the strict-schema enum values: the valid, filtered skill names.
@@ -82,6 +121,7 @@ func (c *Catalog) MarkActive(name string) {
 func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
 		skills:    map[string]*Skill{},
+		scopes:    map[string]string{},
 		activated: map[string]bool{},
 	}
 
@@ -150,6 +190,7 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 		// Project shadows user (and a later project entry wins over an earlier
 		// one) by simple overwrite of the same keyed name.
 		c.skills[name] = skill
+		c.scopes[name] = scope
 	}
 	return nil
 }

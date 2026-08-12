@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -140,5 +141,67 @@ func TestBatchSkillThroughEngineSeam(t *testing.T) {
 	}
 	if !strings.Contains(got, "already active") {
 		t.Fatalf("re-activation did not produce a dedupe notice:\n%s", got)
+	}
+}
+
+// TestTUISlashSkillThroughEngineSeam verifies the TUI slash-command activation
+// path (T9b) runs through the same `skill` tool the batch engine uses (T8): the
+// SkillsSurface built by skillSurface drives reg.Run(ctx, "skill", ...) and
+// returns the wrapped agentskills-io payload, and the catalog reflects the skill
+// as active (docs/spec.md §9, eitri.md §2.3).
+func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
+	ws := t.TempDir()
+	skillDir := filepath.Join(ws, ".agents", "skills", "tui-skill")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: tui-skill\ndescription: a slash-invocable demo\n---\n\n# TUI Skill\n\nDo the tui thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("tui-seam-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatalf("skillSurface = nil, want non-nil for a discovered skill")
+	}
+	if len(surface.Items) != 1 || surface.Items[0].Name != "tui-skill" || surface.Items[0].Scope != "project" {
+		t.Fatalf("surface items = %+v, want the project-scoped tui-skill", surface.Items)
+	}
+
+	payload, err := surface.Activate(context.Background(), "tui-skill")
+	if err != nil {
+		t.Fatalf("slash activation error = %v, want nil", err)
+	}
+	if !strings.Contains(payload, "<skill_content name=\"tui-skill\">") || !strings.Contains(payload, "Do the tui thing") {
+		t.Fatalf("slash activation payload wrong:\n%s", payload)
+	}
+	// The catalog and its panel items reflect the skill as active.
+	if !skills.IsActive("tui-skill") {
+		t.Fatalf("tui-skill not marked active after slash activation")
+	}
+	foundActive := false
+	for _, it := range skills.Items() {
+		if it.Name == "tui-skill" && it.Active {
+			foundActive = true
+		}
+	}
+	if !foundActive {
+		t.Fatalf("panel items do not reflect tui-skill as active")
 	}
 }

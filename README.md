@@ -30,7 +30,13 @@ answer as Markdown→ANSI. It renders into the **primary (normal) buffer** — n
 the alt screen — so the terminal's native selection, scrollback, and search keep
 working through a session (`docs/spec.md` §9). Both the TUI and batch sit on the
 same run engine and session transcript: a conversation round-trips through the
-engine exactly like `-b` does.
+engine exactly like `-b` does. On each turn the model's reasoning is surfaced as
+its own **collapsible thinking stream** — auto-collapsed after the turn, expanded
+with `tab` — kept separate from the answer (`docs/spec.md` §9). When skills are
+detected, a **skills panel** lists them with install scope and per-session
+activation state, and typing `/skillname` (or `/` + `tab` to complete) activates
+the skill directly through the same seam the engine uses (`docs/spec.md` §9,
+`eitri.md` §2.3).
 
 | Flag          | Meaning                                                                  |
 | ------------ | ------------------------------------------------------------------------ |
@@ -98,7 +104,11 @@ names — never blocked-at-call-time. Activating a skill returns the pack's body
 never elevated into a `system` message — so the model resolves referenced files
 through its own read/list tools. Re-activating an already-in-context skill
 returns a short dedupe notice instead of re-injecting the body. The wrapping
-tags double as the compaction ring-fence marker (`["skill"]`).
+tags double as the compaction ring-fence marker (`["skill"]`). In the TUI a
+**skills panel** lists detected skills with their install scope and whether they
+are currently activated this session, and a **slash command** (`/skillname`, or
+`/` + `tab` to complete) activates a skill directly through the same `skill`
+tool the engine uses — no need to ask the model to do it (`eitri.md` §2.3).
 
 
 ## Configuration

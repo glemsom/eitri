@@ -16,18 +16,54 @@ import (
 // the shared engine seam. It is what the model depends on; both the real engine
 // (internal/engine) and tests implement it, so conversation behavior is testable
 // without a terminal or a live provider.
-type Turn func(ctx context.Context, prompt string) (string, error)
+type Turn func(ctx context.Context, prompt string) (TurnResult, error)
+
+// TurnResult is the outcome of one conversation turn: the final assistant
+// answer plus any reasoning produced along the way. Reasoning is kept on a
+// separate channel so the TUI can render it as a collapsible thinking block and
+// never merge it into the answer (docs/spec.md §6, ticket #17).
+type TurnResult struct {
+	Answer    string
+	Reasoning string
+}
 
 // message is one committed line of the conversation log.
 type message struct {
-	role    string // "you" or "eitri"
-	content string
+	role      string // "you" or "eitri"
+	content   string
+	reasoning string // assistant chain-of-thought, rendered as a collapsible block
 }
 
 type turnDoneMsg struct {
-	prompt string
-	answer string
-	err    error
+	prompt    string
+	answer    string
+	reasoning string
+	err       error
+}
+
+// skillDoneMsg reports a slash-command skill activation's result.
+type skillDoneMsg struct {
+	name    string
+	payload string
+}
+
+// SkillItem is one detected skill surfaced to the TUI's skills panel: its
+// install scope and whether it is currently activated this session
+// (docs/spec.md §9, eitri.md §2.3).
+type SkillItem struct {
+	Name        string
+	Description string
+	Scope       string
+	Active      bool
+}
+
+// SkillsSurface wires the TUI's skills panel and slash-command activation to
+// the run's tool layer (T8). Items lists the detected skills; Activate runs one
+// skill activation (the T8 `skill` tool via the engine/registry seam) and
+// returns the activation payload. Nil means no skills were detected.
+type SkillsSurface struct {
+	Items    []SkillItem
+	Activate func(ctx context.Context, name string) (string, error)
 }
 
 // Dependencies wires a Model to its environment: the conversation Turn, model
@@ -47,6 +83,9 @@ type Dependencies struct {
 	// SaveBack, when non-nil, is invoked with updated settings after Save so
 	// the app can refresh its in-process view.
 	SaveBack func(config.Config)
+	// Skills, when non-nil, backs the skills panel and slash-command activation.
+	// Nil hides the panel and disables `/skillname` commands (no skills).
+	Skills *SkillsSurface
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -73,6 +112,14 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
+	// showThinking expands the collapsible reasoning blocks in the log. It
+	// defaults false (auto-collapsed after a turn) and toggles on `tab` so the
+	// user can watch reasoning on demand (docs/spec.md §6/§9, ticket #17).
+	showThinking bool
+
+	// skills is the live list backing the skills panel, refreshed on slash
+	// activation so the panel reflects per-session active state.
+	skills []SkillItem
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -95,6 +142,7 @@ func NewModelCfg(d Dependencies) Model {
 		deps:         d,
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
+		skills:       skillSnapshot(d),
 	}
 }
 
@@ -163,9 +211,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.composer.Reset()
+			// A slash command activates a detected skill directly (eitri.md §2.3):
+			// `/skillname` runs the T8 skill tool and surfaces the result, instead
+			// of sending the raw command as a chat prompt.
+			if name, ok := slashCommand(prompt, m.skills); ok {
+				return m.activateSkill(name)
+			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
 			return m, m.turnCmd(prompt)
+		case "tab":
+			// Fresh `/` with tab completes the skill command: cycling through
+			// matching detected skills. Otherwise tab toggles the thinking stream.
+			if m.deps.Skills != nil && m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") {
+				m.completeSkillCommand()
+				return m, nil
+			}
+			// Toggle the collapsible thinking stream (auto-collapsed by default).
+			m.showThinking = !m.showThinking
+			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
 		nm, cmd := m.composer.Update(msg)
@@ -178,8 +242,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msgi.err != nil {
 			m.messages = append(m.messages, message{role: "eitri", content: "⚠ " + msgi.err.Error()})
 		} else {
-			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer})
+			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
 		}
+		return m, nil
+
+	case skillDoneMsg:
+		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
 		return m, nil
 	}
 
@@ -275,9 +343,105 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		answer, err := m.turn(ctx, prompt)
-		return turnDoneMsg{prompt: prompt, answer: answer, err: err}
+		res, err := m.turn(ctx, prompt)
+		if err != nil {
+			return turnDoneMsg{prompt: prompt, err: err}
+		}
+		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning}
 	})
+}
+
+// skillSnapshot captures the detected skills at construction so the panel has
+// a stable, renderable list even if the Dependencies snapshot is nil or empty.
+func skillSnapshot(d Dependencies) []SkillItem {
+	if d.Skills != nil {
+		return d.Skills.Items
+	}
+	return nil
+}
+
+// slashCommand reports whether prompt is a `/skillname` activation command for a
+// detected skill. It returns the exact skill name and true when the whole line
+// names a detected skill (leading/trailing whitespace already trimmed).
+func slashCommand(prompt string, skills []SkillItem) (string, bool) {
+	if len(skills) == 0 || !strings.HasPrefix(prompt, "/") {
+		return "", false
+	}
+	name := strings.TrimPrefix(prompt, "/")
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, " \t") {
+		return "", false
+	}
+	for _, it := range skills {
+		if it.Name == name {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// activateSkill runs one slash-command activation through the SkillsSurface
+// activation seam (the T8 skill tool) on a detached command and renders the
+// result as an assistant note. It flips the local panel state to active.
+func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
+	m.messages = append(m.messages, message{role: "you", content: "/" + name})
+	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
+		m.messages = append(m.messages, message{role: "eitri", content: "⚠ no skill activation available"})
+		return m, nil
+	}
+	m.markActive(name)
+	return m, skillCmd(m.deps.Skills.Activate, name)
+}
+
+// markActive sets the local panel skill (and any skill tool feedback) active.
+func (m *Model) markActive(name string) {
+	for i := range m.skills {
+		if m.skills[i].Name == name {
+			m.skills[i].Active = true
+		}
+	}
+}
+
+// skillCmd runs a skill activation off the main loop and reports its payload.
+func skillCmd(activate func(ctx context.Context, name string) (string, error), name string) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		payload, err := activate(ctx, name)
+		if err != nil {
+			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
+		}
+		return skillDoneMsg{name: name, payload: payload}
+	})
+}
+
+// completeSkillCommand fills the composer with a `/skillname` completion cycling
+// through detected skills matching the current partial command.
+func (m *Model) completeSkillCommand() {
+	cur := m.composer.Value()
+	partial := strings.TrimSpace(strings.TrimPrefix(cur, "/"))
+	matches := make([]string, 0, len(m.skills))
+	for _, it := range m.skills {
+		if strings.HasPrefix(it.Name, partial) {
+			matches = append(matches, it.Name)
+		}
+	}
+	if len(matches) == 0 {
+		return
+	}
+	// Cycle deterministically: advance one match per press.
+	var next string
+	for i, n := range matches {
+		if n == partial {
+			next = matches[(i+1)%len(matches)]
+			break
+		}
+	}
+	if next == "" {
+		next = matches[0]
+	}
+	m.composer.SetValue("/" + next)
+	m.composer.SetCursor(len("/") + len(next))
 }
 
 // View renders the conversation plus composer. It renders committed messages
@@ -293,6 +457,14 @@ func (m Model) View() string {
 
 	var b strings.Builder
 	for _, msg := range m.messages {
+		// Reasoning renders as a distinct, collapsible stream — never merged
+		// into the answer. Auto-collapsed by default; `tab` expands (N17).
+		if msg.role != "you" && msg.reasoning != "" {
+			b.WriteString(thinkingHeader())
+			if m.showThinking {
+				b.WriteString(msg.reasoning + "\n")
+			}
+		}
 		md, _ := RenderMarkdown(msg.content, m.composer.Width())
 		if msg.role == "you" {
 			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("you"), md)
@@ -300,6 +472,7 @@ func (m Model) View() string {
 			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("eitri"), md)
 		}
 	}
+	renderSkillsPanel(&b, m.skills)
 	if m.busy {
 		b.WriteString(statusStyle.Render("… thinking"))
 		b.WriteString("\n")
@@ -316,6 +489,34 @@ func (m Model) View() string {
 func promptView() string {
 	return headerStyle.Render("run paused at the max-turns cap") + "\n" +
 		"Continue the run with more turns? (" + statusStyle.Render("y") + "/" + statusStyle.Render("n") + ")"
+}
+
+// thinkingHeader renders the collapsible reasoning-stream header. It labels the
+// block distinctly from the answer so reasoning is recognizable but secondary;
+// the collapsed state reflects that the block is auto-collapsed after the turn
+// (docs/spec.md §9, ticket #17).
+func thinkingHeader() string {
+	return statusStyle.Render("‹ thinking ›") + "\n"
+}
+
+// renderSkillsPanel appends the skills panel to the view: one line per detected
+// skill showing its install scope and activation state, so the interactive TUI
+// surfaces detected + currently-activated skills (docs/spec.md §9, eitri.md
+// §2.3). It renders nothing when no skills were detected.
+func renderSkillsPanel(b *strings.Builder, skills []SkillItem) {
+	if len(skills) == 0 {
+		return
+	}
+	b.WriteString(statusStyle.Render("skills"))
+	b.WriteString("\n")
+	for _, it := range skills {
+		state := "✕"
+		if it.Active {
+			state = "✓"
+		}
+		b.WriteString(statusStyle.Render("  " + it.Name + " [" + it.Scope + "] " + state))
+		b.WriteString("\n")
+	}
 }
 
 // statusStyle is a small Lip Gloss style for the in-progress indicator, kept

@@ -14,11 +14,11 @@ import (
 // appended to the conversation (ticket #34: "a TUI run of a greeting
 // round-trips through the engine and renders the answer").
 func TestModel_greetingRoundTrip(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string) (string, error) {
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
 		if prompt != "hello" {
 			t.Errorf("expected prompt 'hello', got %q", prompt)
 		}
-		return "Hello! **glad** to help.", nil
+		return TurnResult{Answer: "Hello! **glad** to help."}, nil
 	})
 
 	// Set a size so the composer has a width.
@@ -53,8 +53,8 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 // TestModel_errorTurn asserts a failing turn renders a visible error instead of
 // silently dropping.
 func TestModel_errorTurn(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string) (string, error) {
-		return "", errors.New("provider exploded")
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		return TurnResult{}, errors.New("provider exploded")
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -66,6 +66,121 @@ func TestModel_errorTurn(t *testing.T) {
 }
 
 // resize installs a window size on the model.
+
+// TestModel_thinkingCollapsible asserts reasoning renders as a distinct,
+// auto-collapsed block: the header is always shown, the reasoning body is
+// hidden until `tab` expands it, and reasoning never leaks into the answer
+// (docs/spec.md §6, ticket #17).
+func TestModel_thinkingCollapsible(t *testing.T) {
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		return TurnResult{
+			Answer:    "plain answer",
+			Reasoning: "I reason about it first.",
+		}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	// Auto-collapsed after the turn: header present, body absent by default.
+	view := m.View()
+	if !strings.Contains(view, "thinking") {
+		t.Errorf("expected a thinking header in view, got: %q", view)
+	}
+	if strings.Contains(view, "I reason about it first") {
+		t.Errorf("reasoning body should be collapsed by default, got: %q", view)
+	}
+
+	// Toggling with `tab` expands the reasoning body.
+	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = asModel(t, toggled)
+	expanded := m.View()
+	if !strings.Contains(expanded, "I reason about it first") {
+		t.Errorf("tab should expand the reasoning body, got: %q", expanded)
+	}
+	// The answer is still rendered, and reasoning appears before it as a distinct
+	// stream (never interleaved into the answer body). Glamour word-wraps the
+	// answer across ANSI runs, so match on the word rather than the full phrase.
+	if !strings.Contains(expanded, "plain") {
+		t.Errorf("answer still required in view, got: %q", expanded)
+	}
+	thinkingIdx := strings.Index(expanded, "I reason about it first")
+	eitriIdx := strings.Index(expanded, "eitri")
+	if thinkingIdx == -1 || eitriIdx == -1 || thinkingIdx > eitriIdx {
+		t.Errorf("reasoning block must render as its own stream before the answer, got: %q", expanded)
+	}
+}
+
+// TestModel_skillsPanelRenders asserts the skills panel lists detected skills
+// with their install scope and activation state (docs/spec.md §9, eitri.md
+// §2.3).
+func TestModel_skillsPanelRenders(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "project"}}},
+	})
+	m = resize(t, m)
+	view := m.View()
+	if !strings.Contains(view, "skills") {
+		t.Errorf("expected a skills panel header, got: %q", view)
+	}
+	if !strings.Contains(view, "my-skill") || !strings.Contains(view, "project") {
+		t.Errorf("expected detected skill + scope in panel, got: %q", view)
+	}
+}
+
+// TestModel_slashCommandActivatesSkill drives `/skillname` through the TUI
+// slash-command path: the activation seam runs, the skill is marked active in
+// the panel, and the activation payload renders as an assistant note. This is
+// the TUI side of the engine-seam activation flow (ticket #35).
+func TestModel_slashCommandActivatesSkill(t *testing.T) {
+	var activated string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{
+			Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "user"}},
+			Activate: func(_ context.Context, name string) (string, error) {
+				activated = name
+				return `<skill_content name="my-skill">payload</skill_content>`, nil
+			},
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/my-skill")
+	m = submitAndWait(t, m)
+
+	if activated != "my-skill" {
+		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
+	}
+	view := m.View()
+	if !strings.Contains(view, "payload") {
+		t.Errorf("skill payload should render in view, got: %q", view)
+	}
+	// The activated skill shows ✓ in the panel.
+	if !strings.Contains(view, "✓") {
+		t.Errorf("activated skill should be marked active in panel, got: %q", view)
+	}
+}
+
+// TestModel_slashCompletionTab asserts `/` + tab cycles a skill-name completion
+// in the composer (eitri.md §2.3).
+func TestModel_slashCompletionTab(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{
+			{Name: "alpha", Scope: "user"},
+			{Name: "beta", Scope: "project"},
+		}},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/a")
+	// Tab completes the partial `/a` to `/alpha`.
+	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = asModel(t, toggled)
+	if got := m.composer.Value(); got != "/alpha" {
+		t.Errorf("tab completion = %q, want \"/alpha\"", got)
+	}
+}
 func resize(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
