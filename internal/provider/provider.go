@@ -30,15 +30,15 @@ const (
 
 // Message is a single conversation turn sent to the provider.
 type Message struct {
-	Role       Role       `json:"role"`
-	Content    string     `json:"content,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	Role       Role
+	Content    string
+	ToolCallID string
+	ToolCalls  []ToolCall
 	// ReasoningContent is deepseek-family chain-of-thought. It must always be
 	// echoed on assistant messages — even empty — so tool-call turns do not trip
-	// the provider's 400 (docs/spec.md §6). Message.MarshalJSON emits it on
-	// assistant messages unconditionally and omits it on user/tool messages.
-	ReasoningContent string `json:"reasoning_content,omitempty"`
+	// the provider's 400 (docs/spec.md §6). MarshalJSON emits it on assistant
+	// messages unconditionally and omits it on user/tool messages.
+	ReasoningContent string
 }
 
 // MarshalJSON serializes a Message with role-aware reasoning handling: the

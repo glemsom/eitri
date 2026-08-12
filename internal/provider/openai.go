@@ -39,7 +39,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		},
 		PromptCacheKey:  promptCacheKey(req),
 		Thinking:        thinkingControl(req),
-		ReasoningEffort: normalizedEffort(req.ReasoningEffort),
+		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
 	})
 	if err != nil {
 		return nil, err
@@ -93,12 +93,6 @@ func thinkingControl(req Request) *thinkingEnabler {
 		return nil
 	}
 	return &thinkingEnabler{Type: "enabled"}
-}
-
-// normalizedEffort returns the wire-ready reasoning_effort, or empty so json
-// omits the field when unset.
-func normalizedEffort(effort string) string {
-	return NormalizeReasoningEffort(effort)
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the
