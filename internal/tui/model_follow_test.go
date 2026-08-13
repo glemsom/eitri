@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // This file covers the T1 alt-screen pivot's viewport follow seam (issue #119,
@@ -136,30 +134,6 @@ func TestModel_liveFollowTracksAppends(t *testing.T) {
 	// split the contiguous phrase apart.
 	if row := newestNonBlank(got); !strings.Contains(row, "qe") {
 		t.Errorf("idle follow must hold the newest committed answer at the bottom, got last row %q\n%s", row, got)
-	}
-}
-
-// TestModel_followNoScrollUINavigates asserts issue #108 AC3: no paging/scroll
-// UI is added — the model's Update never routes scroll/paging keys into the
-// persisted viewport, so native navigation remains out of scope. Feeding scroll
-// keys while idle must leave the
-// viewport's offset untouched.
-func TestModel_followNoScrollUINavigates(t *testing.T) {
-	m := busyStreamingModel(t)
-	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer"})
-	m = asModel(t, nm)
-	vp := m.histViewport
-	if vp == nil {
-		t.Fatalf("persisted viewport must be present")
-	}
-	// Paging/scroll keys relayed to the TUI must not move the viewport: native
-	// scroll is the navigation path, so these keys are inert for the follow UI.
-	for _, k := range []tea.KeyType{tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown, tea.KeyEnd, tea.KeyHome} {
-		before := vp.YOffset
-		m = mustUpdate(t, m, tea.KeyMsg{Type: k})
-		if vp.YOffset != before {
-			t.Errorf("scroll/paging key %v moved the persisted viewport (no-scroll-UI violated): %d -> %d", k, before, vp.YOffset)
-		}
 	}
 }
 

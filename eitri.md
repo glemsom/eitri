@@ -30,6 +30,8 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 
 - **Review surface.** In the TUI, `ctrl+d` opens a read-only Review panel over the transcript: a changed-file list with `[+N, −M]` deltas and status (modified/added/deleted), an in-terminal inline diff of the focused file (pure-Go diff engine, no external renderer), and `open_in_browser` as the escape hatch to the full file in the host browser/editor for diffs too rich for the terminal. It never mutates the repo or the live agent loop.
 
+- **Transcript scroll navigation.** In the TUI the transcript is navigable (issue #120): the mouse wheel scrolls up/down, `PgUp`/`PgDn` page through it, and `Home`/`End` jump to the oldest/newest output. Scrolling up breaks the follow position so reading stays put instead of being yanked to the newest; submitting a new prompt re-follows the newest output. Navigation never steals composer input focus (arrow keys keep editing the prompt).
+
 - **Max-turns limit.** Configurable cap on loop iterations per run. Default is 250 turns, then interactive prompt to allow Eitri to continue with more turns.
 
 ### 2.2 LLM providers & models
