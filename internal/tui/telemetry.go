@@ -65,12 +65,6 @@ type Telemetry struct {
 // to a Model via Dependencies. The caller wires the engine event seam's
 // per-turn updates into UpdateChan.
 func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
-	return newTelemetry(model, effort, thinking, maxTurns)
-}
-
-// newTelemetry builds a status-strip collector seeded with the run's static
-// session state. All updates arrive through the returned channel.
-func newTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
 	return &Telemetry{
 		model:    model,
 		effort:   effort,

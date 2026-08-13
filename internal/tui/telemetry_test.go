@@ -10,7 +10,7 @@ import (
 // from the deepseek-v4-flash price table (docs/spec.md §4 / ADR-0003:
 // $0.14/1M input miss, $0.28/1M output, $0.0028/1M cache hit).
 func TestTelemetryAggregatesUsage(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	for _, u := range []TelemetryUpdate{
 		{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000},
 		{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000},
@@ -35,7 +35,7 @@ func TestTelemetryAggregatesUsage(t *testing.T) {
 // TestTelemetryTurnCounting asserts a status strip counts one turn per turn
 // Start event, reflected in the turns/N rendered text.
 func TestTelemetryTurnCounting(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 10)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 10)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -51,7 +51,7 @@ func TestTelemetryTurnCounting(t *testing.T) {
 // TestTelemetryCompactionMarker asserts a compaction event surfaces a
 // read-only [compacted] marker in the strip.
 func TestTelemetryCompactionMarker(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
 
 	if !te.compacted {
@@ -66,7 +66,7 @@ func TestTelemetryCompactionMarker(t *testing.T) {
 // and thinking on/off from the run's static config at boot, before any events
 // arrive.
 func TestTelemetryStripShowsStaticSession(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	s := te.render(140)
 
 	for _, want := range []string{"deepseek-v4-flash", "effort", "low", "thinking", "on", "0/250", "$0"} {
@@ -79,7 +79,7 @@ func TestTelemetryStripShowsStaticSession(t *testing.T) {
 // TestTelemetryStripCollapsesBelowWidth asserts the status strip collapses to a
 // compact one-line form on narrow windows so it never overlaps the composer.
 func TestTelemetryStripCollapsesBelowWidth(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	full := te.render(140)
 	collapsed := te.render(60)

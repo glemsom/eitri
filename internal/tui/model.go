@@ -41,10 +41,12 @@ type turnDoneMsg struct {
 	err       error
 }
 
-// telemetryTickMsg re-triggers an Update cycle so the status strip keeps
-// draining the engine's live telemetry channel while the agent runs, even with
-// no keyboard input. It is re-issued only while updates actually arrived.
-type telemetryTickMsg struct{}
+// telemetryUpdateMsg carries one queued live telemetry update from the engine
+// seam into the UI loop. It is produced by a waiting command (telemetryWait) so
+// the status strip refreshes live even with no keyboard input.
+type telemetryUpdateMsg struct {
+	update TelemetryUpdate
+}
 
 // skillDoneMsg reports a slash-command skill activation's result.
 type skillDoneMsg struct {
@@ -177,7 +179,13 @@ func internalContinue(req chan struct{}, resp chan bool) bool {
 }
 
 // Init returns any startup commands. None are needed; input drives everything.
+// Init returns any startup commands. It schedules the live telemetry waiter so
+// the status strip starts refreshing from the engine seam immediately, even
+// with no keyboard input (issue #86).
 func (m Model) Init() tea.Cmd {
+	if m.telemetry != nil {
+		return telemetryWait(m.telemetry)
+	}
 	return nil
 }
 
@@ -194,36 +202,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 	}
 
-	// Drain any queued live telemetry updates from the engine seam into the
-	// status strip. If any arrived, re-issue a tick so the strip keeps polling
-	// while the run streams events (issue #86).
-	if m.telemetry != nil {
-		applied := false
-		for {
-			select {
-			case u := <-m.telemetry.updates:
-				m.telemetry.apply(u)
-				applied = true
-			default:
-				goto drained
-			}
-		}
-	drained:
-		if applied {
-			cmds = append(cmds, telemetryTick)
-		}
-	}
-
 	switch msgi := msg.(type) {
-	case telemetryTickMsg:
-		// A self-tick re-enters Update so the status strip polls the engine's
-		// telemetry channel again. The top-of-Update drain already appended a
-		// further tick iff more updates arrived; otherwise the poll stops.
-		return m, tea.Batch(cmds...)
+	case telemetryUpdateMsg:
+		// A live telemetry update arrived through the waiting command: fold it
+		// into the strip and immediately re-issue the waiter so the strip keeps
+		// refreshing live (issue #86), with no keyboard input required.
+		if m.telemetry == nil {
+			return m, nil
+		}
+		m.telemetry.apply(msgi.update)
+		return m, telemetryWait(m.telemetry)
 
 	case tea.WindowSizeMsg:
 		m.composer.SetWidth(msgi.Width - 2)
-		return m, tea.Batch(cmds...)
+		return m, nil
 
 	case tea.KeyMsg:
 		// Settings surface open: route keys to it.
@@ -580,6 +572,17 @@ var (
 	statusStyle = lipgloss.NewStyle().Faint(true)
 )
 
-// telemetryTick re-enters Update to keep polling the live telemetry channel
-// (issue #86) while the agent streams events, even with no keyboard input.
-func telemetryTick() tea.Msg { return telemetryTickMsg{} }
+// telemetryWait returns a command that blocks until the next live telemetry
+// update arrives on the engine seam channel, then delivers it to the UI loop as
+// a telemetryUpdateMsg. The model re-issues it after each update so the strip
+// keeps refreshing live (issue #86), even with no keyboard input. When the
+// channel closes it returns nil so the polling stops.
+func telemetryWait(te *Telemetry) tea.Cmd {
+	return func() tea.Msg {
+		u, ok := <-te.updates
+		if !ok {
+			return nil
+		}
+		return telemetryUpdateMsg{update: u}
+	}
+}

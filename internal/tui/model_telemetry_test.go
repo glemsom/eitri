@@ -12,7 +12,7 @@ import (
 // when telemetry is wired, showing the live cache gauge and cost pulled from
 // the engine seam.
 func TestModelStatusStripRenders(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	m := NewModelCfg(Dependencies{
@@ -40,7 +40,7 @@ func TestModelStatusStripRenders(t *testing.T) {
 // TestModelStatusStripDrainsLiveUpdates asserts feeding an update into the
 // telemetry channel and running Update folds it into the rendered strip.
 func TestModelStatusStripDrainsLiveUpdates(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 10)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 10)
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
 			return TurnResult{Answer: "hi"}, nil
@@ -49,9 +49,16 @@ func TestModelStatusStripDrainsLiveUpdates(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	// Feed a usage update on the telemetry channel (the app's listener path).
+	// Feed a usage update on the telemetry channel (the app's listener path),
+	// then drive it through the same live-delivery path the program uses: the
+	// telemetry waiter wakes the loop with a telemetryUpdateMsg.
 	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	cmd := telemetryWait(te)
+	if cmd == nil {
+		t.Fatal("expected a telemetry waiter command")
+	}
+	msg := cmd()
+	nm, _ := m.Update(msg)
 	m = asModel(t, nm)
 
 	if !strings.Contains(m.View(), "cache:90%") {
@@ -63,7 +70,7 @@ func TestModelStatusStripDrainsLiveUpdates(t *testing.T) {
 // details on a narrow window, keeping the live telemetry, so it never
 // crowds the composer.
 func TestModelStatusStripCollapsesNarrow(t *testing.T) {
-	te := newTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
 			return TurnResult{Answer: "hi"}, nil
