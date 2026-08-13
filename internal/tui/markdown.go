@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/muesli/termenv"
 )
 
@@ -36,7 +38,7 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 		width = 100
 	}
 	if !isSupportedTheme(theme) {
-		theme = "dark"
+		theme = config.DefaultTheme
 	}
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylePath(theme),
