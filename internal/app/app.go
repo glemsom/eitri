@@ -15,7 +15,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+
+	"golang.org/x/term"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
@@ -39,6 +42,70 @@ const (
 // found on the host. Per ADR-0001 decision 3, bwrap is a hard prerequisite:
 // Eitri never falls back to unsandboxed execution.
 var ErrMissingBwrap = errors.New("bubblewrap (bwrap) is required but was not found; install bubblewrap to continue")
+
+// ErrTUINotInteractive is returned when the interactive TUI cannot render into
+// the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the
+// window is below the minimum width. It directs the user to batch mode (T7,
+// issue #125), so a non-interactive context never gets TUI reflow written into
+// a pipe or a dumb terminal.
+var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
+
+// minTUIWidth is the narrowest terminal (in columns) the full-screen TUI
+// renders into; below it the transcript is squeezed unusably, so the TUI is
+// refused in favor of batch mode (T7, issue #125).
+const minTUIWidth = 80
+
+// tuiEnv captures the host-terminal facts the TUI boot guard reads (T7, issue
+// #125). width is the terminal width in columns; 0 means unknown.
+type tuiEnv struct {
+	stdoutTTY bool
+	term      string
+	width     int
+}
+
+// currentTUIEnv reads the host-terminal facts from os.Stdout, TERM, and the
+// terminal size. It is a package-level seam so tests drive the refusal
+// conditions without a real terminal (same pattern as runProgram); the
+// production default probes the real host.
+var currentTUIEnv = func() tuiEnv {
+	fi, err := os.Stdout.Stat()
+	stdoutTTY := err == nil && fi.Mode()&os.ModeCharDevice != 0
+	width := 0
+	if stdoutTTY {
+		// The width probe is best-effort: a failure leaves width 0, which the
+		// guard treats as unknown and never refuses on (a real TTY that cannot
+		// report size still gets the TUI).
+		if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			width = w
+		}
+	}
+	return tuiEnv{stdoutTTY: stdoutTTY, term: os.Getenv("TERM"), width: width}
+}
+
+// tuiBootError decides whether the interactive TUI can render into the host
+// context: nil when it can, ErrTUINotInteractive when stdout is not a TTY,
+// TERM is unset or a dumb terminfo (any case, incl. dumb-* variants), or the
+// window is narrower than minTUIWidth (T7, issue #125). An unknown width (0)
+// never refuses.
+func tuiBootError(env tuiEnv) error {
+	switch {
+	case !env.stdoutTTY:
+		return fmt.Errorf("%w: stdout is not an interactive terminal (output piped?)", ErrTUINotInteractive)
+	case isDumbTerm(env.term):
+		return fmt.Errorf("%w: TERM is %q; a real terminal emulator is required", ErrTUINotInteractive, env.term)
+	case env.width > 0 && env.width < minTUIWidth:
+		return fmt.Errorf("%w: terminal is %d columns wide; %d are required", ErrTUINotInteractive, env.width, minTUIWidth)
+	}
+	return nil
+}
+
+// isDumbTerm reports whether TERM denotes a non-interactive termcap: unset,
+// "dumb", or a dumb-* variant (e.g. dumb-16color), case-insensitively (T7,
+// issue #125).
+func isDumbTerm(term string) bool {
+	lower := strings.ToLower(term)
+	return lower == "" || lower == "dumb" || strings.HasPrefix(lower, "dumb-")
+}
 
 // Options control a single Run invocation.
 type Options struct {
@@ -174,9 +241,16 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
 
 	// Build the interactive TUI run when no batch prompt is given. It sits on
-	// the same engine, session transcript, and tool registry as batch, and
-	// renders into the primary buffer (docs/spec.md §9).
+	// the same engine, session transcript, and tool registry as batch (docs
+	// spec.md §9). First the non-interactive guard (T7, issue #125) checks the
+	// host terminal: piped stdout, a dumb/unset TERM, or a sub-threshold window
+	// refuses the full-screen TUI with a message pointing at batch mode, so no
+	// TUI reflow is ever written into a pipe or a dumb terminal. The batch
+	// entrant below is untouched.
 	if opts.Prompt == "" {
+		if err := tuiBootError(currentTUIEnv()); err != nil {
+			return err
+		}
 		return runTUI(e, cfg, reg, key, p, cfgPath, skills, workspace, tempHost)
 	}
 
