@@ -146,6 +146,17 @@ type AgentOptions struct {
 	lastUsage *provider.Usage
 }
 
+// NegotiateGenerationControls pre-flights a special turn's generation-control
+// requirements against this engine's provider capability surface (docs/spec.md
+// §13 / issue #58). It forwards to the provider seam; the returned controls are
+// the ones the provider will honor — required controls the provider cannot honor
+// fail here, before any wire call, while unsupported optional controls are
+// dropped. It is the seam generation-control-aware special turns (issues #59–#62)
+// consult before streaming.
+func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provider.ControlRequirement) ([]provider.GenerationControl, error) {
+	return provider.NegotiateGenerationControls(ctx, e.provider, reqs)
+}
+
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages
 // list, executes any returned tool_calls (single-call path is the floor here;
 // hardening is T5), appends a matching role:"tool" result per call, and

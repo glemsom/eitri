@@ -167,6 +167,13 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 
 - Compiled Go, no tmux/Node/npm/Docker/Kubernetes as runtime deps. This constraint rules out shelling out to Node-based tools (e.g. `mmdc` for rendering) and any headless-Chromium/CDP dance. (eitri.md §1, Ticket #18)
 
+### 13. Generation-control capability negotiation (special turns)
+
+- **Special turns.** Internal, non-tool generations (e.g. the compaction summary; later JSON-Object-Mode finalizations) are *special turns* distinct from ordinary agent/tool turns. (Issue #58 foundation; issues #59–#62 add the wire emission for each control.)
+- **Capability surface, not model/endpoint sniffing.** A provider declares which generation controls it can honor through an optional capability interface (`provider.GenerationControlProvider`) — higher layers type-assert and consume it instead of inspecting model ids or endpoint strings. Absence of the surface means the provider honors no generation controls. (Issue #58)
+- **Four controls.** JSON Object Mode, Generation Budget, Sampling Policy, and provider-side Tool Schema Enforcement, keyed by `provider.GenerationControl`. (Issues #59–#62)
+- **Required vs optional.** A special turn marks each control it wants required or optional. `provider.NegotiateGenerationControls` pre-flights the plan against the provider capability **before any wire call**: an unsupported **required** control fails fast with a clean `UnsupportedRequiredControlError`; an unsupported **optional** control is dropped, and its absence from the returned honored set is the observable degradation. A control requested multiple times is honored once, and `required` wins over `optional`. The engine exposes the same seam as `Engine.NegotiateGenerationControls` for special turns. (Issue #58)
+
 ## Testing Decisions
 
 - **Test external behavior, not internals.** A good test drives the agent engine end-to-end against a deterministic fake provider and asserts on the *observable* request/response stream (the `messages`/`tools`/`tool_choice` bodies emitted, the parsed `usage`, the tool results returned) — not on the inside of a given struct or loop.
@@ -178,6 +185,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
   - **Tool-output compressor**: deterministic/idempotent output, never-inflate gate, `+N more` marker, `fetch_original` recovery.
   - **Compaction engine**: 80%-trigger, overflow trigger, tail-floor eviction (incl. reasoning retention), anchored-summary re-injection into the head, fail-safe-skip, `["skill"]` ring-fence.
   - **Skill activation**: enum-constrained `name`, hide-not-block filtering, frontmatter-strip-on-activation, scope shadowing, dedupe, tag-ring-fence.
+  - **Generation-control negotiation**: required-control fail-fast vs optional-control degradation, capability-surface absence, dedupe/required-wins semantics (§13 / issue #58).
 - **Prior art in-repo:** none yet (spec-first project, no `src/`). Mirror the decision-doc rigor of `docs/research/*` and `docs/adr/*`, and keep the fake-provider fixtures as source-of-truth request/response samples alongside the tests the way the research docs carry canonical primary-source claims.
 
 ## Out of Scope
