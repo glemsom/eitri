@@ -135,6 +135,13 @@ func (r *reviewPanel) move(steps int) {
 	}
 }
 
+// focused returns the changed file the cursor currently points at. Callers use
+// it for the inline diff and the open_in_browser hatch so the cursor→entry
+// navigation lives in one place instead of being re-derived at each call site.
+func (r *reviewPanel) focused() reviewEntry {
+	return r.files[r.cursor]
+}
+
 // computeHunks fills a focused file's inline diff from its before/after content
 // using the pure-Go diff engine (issue #90 AC2), so nothing ships to an
 // external renderer.
@@ -149,7 +156,7 @@ func (m *Model) openFocused() {
 	if m.deps.OpenInBrowser == nil || m.review == nil || len(m.review.files) == 0 {
 		return
 	}
-	if err := m.deps.OpenInBrowser(context.Background(), m.review.files[m.review.cursor].path); err != nil {
+	if err := m.deps.OpenInBrowser(context.Background(), m.review.focused().path); err != nil {
 		m.review.openErr = err.Error()
 	}
 }
@@ -175,7 +182,7 @@ func (m Model) renderReview(b *strings.Builder) {
 		if i == r.cursor {
 			marker = "▶"
 		}
-		fmt.Fprintf(b, "%s %s  [+%d, −%d]  %s", marker, f.path, f.added, f.removed, f.status)
+		fmt.Fprintf(b, "%s %s  %s  %s", marker, f.path, deltaTag(f.added, f.removed), f.status)
 		b.WriteString("\n")
 	}
 	if r.expanded && r.cursor < len(r.files) {
@@ -197,7 +204,7 @@ func (m Model) renderReview(b *strings.Builder) {
 // couldn't snapshot) falls back to the count summary.
 func renderDiff(f reviewEntry) string {
 	if len(f.hunks) == 0 {
-		return statusStyle.Render("  "+f.path+" [+"+fmt.Sprintf("%d", f.added)+", −"+fmt.Sprintf("%d", f.removed)+"]") + "\n"
+		return statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
 	}
 	var sb strings.Builder
 	for _, h := range f.hunks {
@@ -215,4 +222,11 @@ func renderDiff(f reviewEntry) string {
 		}
 	}
 	return sb.String()
+}
+
+// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
+// the review file list and the no-diff fallback, so the count formatting lives
+// in one place.
+func deltaTag(added, removed int) string {
+	return fmt.Sprintf("[+%d, −%d]", added, removed)
 }

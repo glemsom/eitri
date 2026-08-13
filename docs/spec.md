@@ -194,6 +194,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
   - **Tool-output compressor**: deterministic/idempotent output, never-inflate gate, `+N more` marker, `fetch_original` recovery.
   - **Compaction engine**: 80%-trigger, overflow trigger, tail-floor eviction (incl. reasoning retention), anchored-summary re-injection into the head, fail-safe-skip, `["skill"]` ring-fence.
   - **Skill activation**: enum-constrained `name`, hide-not-block filtering, frontmatter-strip-on-activation, scope shadowing, dedupe, tag-ring-fence.
+  - **Diff engine (`internal/diff`)**: pure-Go line diff — git-style hunks with context, added/deleted/new-file semantics, non-overlapping distant hunks, correct @@ header position math (§9 / issue #90).
   - **Generation-control negotiation**: required-control fail-fast vs optional-control degradation, capability-surface absence, dedupe/required-wins semantics (§13 / issue #58).
   - **JSON Object Mode finalization**: `RunJSONObjectMode` wire-emits `response_format` on a supporting provider and fails fast on an unsupported one, while ordinary turns carry no `response_format` (§13 / issue #59).
   - **Sampling Policy special turns**: `RunSamplingPolicy` pre-flights `sampling_policy` as required — a supporting provider wire-emits exactly one of `temperature`/`top_p` (never both), an unsupported provider fails fast before any wire call, and ordinary turns carry neither (§13 / issue #61).
