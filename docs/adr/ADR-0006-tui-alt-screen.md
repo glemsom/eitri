@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-14
 - Supersedes: the earlier in-progress primary-buffer compensation plan (width-bucket scroll-cache, manual clip/anchor/band-height derivation)
-- Related: issue #118 (Full-terminal viewport TUI alt-screen pivot), issue #119 (T1 — Alt-screen full-terminal viewport), issue #120 (T2 — Scroll navigation)
+- Related: issue #118 (Full-terminal viewport TUI alt-screen pivot), issue #119 (T1 — Alt-screen full-terminal viewport), issue #120 (T2 — Scroll navigation), issue #126 (T8 — Test re-expression, viewport-native)
 
 ## Context
 
@@ -52,4 +52,8 @@ buffer's incremental-render semantics.
   repaint the full surface, so no stale primary-buffer residue remains.
 - The TUI boot path (`internal/app/tui.go`) is the seam that flips render mode;
   tests exercise the model's `View`/`renderPane` directly rather than driving a
-  real terminal.
+  real terminal. The pivot's guarantees are re-expressed as viewport-native
+  tests at that `Update`/`View` seam (T8, issue #126): resize re-flow without
+  duplicated/scattered text at multiple widths, follow/pinning/rail/review
+  behaviours, multi-line composer insert + submit, and the non-interactive
+  fallback guard.

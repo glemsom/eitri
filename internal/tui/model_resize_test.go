@@ -26,20 +26,22 @@ func plain(s string) string { return ansiRe.ReplaceAllString(s, "") }
 // TestResize_KeepsNewestPinnedAcrossResize asserts a resize re-flows the
 // transcript and keeps the newest content pinned in view without duplicating or
 // scattering any committed line: the newest answer is present exactly once at
-// both the wide and narrow sizes.
+// every tested width (wide, mid, and narrow), and a resize back to a prior
+// size must never re-introduce doubled or scattered lines.
 func TestResize_KeepsNewestPinnedAcrossResize(t *testing.T) {
 	m := buildMultiTurnModel(t)
 	m = applyResize(t, m, 120, 24)
 
 	// Wide: the newest answer is present and not duplicated.
-	wide := view(m)
-	assertNewestOnce(t, wide, "answer q3")
+	assertNewestOnce(t, view(m), "answer q3")
 
-	// Shrink the window; the transcript must re-flow (re-word-wrap) without
-	// duplicating or scattering the newest committed output.
-	m = applyResize(t, m, 80, 18)
-	narrow := view(m)
-	assertNewestOnce(t, narrow, "answer q3")
+	// Shrink the window stepwise; the transcript must re-flow (re-word-wrap)
+	// without duplicating or scattering the newest committed output at any
+	// width along the way.
+	for _, w := range []int{100, 80, 60, 40} {
+		m = applyResize(t, m, w, 18)
+		assertNewestOnce(t, view(m), "answer q3")
+	}
 
 	// Grow back: still a single coherent newest answer, never doubled by stale
 	// primary-buffer residue.

@@ -34,6 +34,70 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	}
 }
 
+// TestModel_shiftEnterInsertsNewlineWithoutSubmitting asserts Shift+Enter
+// (surfaced by Bubble Tea as the line-feed key, KeyCtrlJ) inserts a line
+// break into the draft instead of submitting it (issue #121 AC2): after the
+// key the turn seam has seen nothing and the composer holds the two-line
+// draft.
+func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
+	var got []string
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		got = append(got, prompt)
+		return TurnResult{Answer: "ok"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "line one")
+	m = newlineShiftEnter(t, m)
+	m = typeText(t, m, "line two")
+
+	if len(got) != 0 {
+		t.Fatalf("Shift+Enter must not submit; engine saw %q", got)
+	}
+	if v := m.composer.Value(); v != "line one\nline two" {
+		t.Errorf("Shift+Enter should insert a newline into the draft, value = %q", v)
+	}
+	if h := m.composer.Height(); h != 2 {
+		t.Errorf("two-line draft should sit at 2 rows, got %d", h)
+	}
+}
+
+// TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
+// composer cycle (issue #126 AC3 / #121 AC2): Shift+Enter builds a two-line
+// draft, plain Enter submits it verbatim to the engine seam, and the composer
+// clears back to one row. The newlines the user typed must reach the turn
+// seam, not be flattened or dropped.
+func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
+	var got []string
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		got = append(got, prompt)
+		return TurnResult{Answer: "ok"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "line one")
+	m = newlineShiftEnter(t, m)
+	m = typeText(t, m, "line two")
+
+	m = submitAndWait(t, m)
+
+	if len(got) != 1 || got[0] != "line one\nline two" {
+		t.Fatalf("multi-line draft must submit verbatim, engine saw %q", got)
+	}
+	if v := m.composer.Value(); v != "" {
+		t.Errorf("composer must be cleared after multi-line submit, value = %q", v)
+	}
+	if h := m.composer.Height(); h != 1 {
+		t.Errorf("cleared composer should sit at 1 row, got %d", h)
+	}
+}
+
+// newlineShiftEnter drives the Shift+Enter newline key (surfaced as KeyCtrlJ)
+// through the model's Update seam.
+func newlineShiftEnter(t *testing.T, m Model) Model {
+	t.Helper()
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	return asModel(t, nm)
+}
+
 // TestModel_composerGrowsWithDraftLines asserts the composer grows within the
 // bottom band as the draft gains lines, one row per hard newline, up to the
 // maxComposerRows bound (issue #121 AC5): a short draft stays compact instead
@@ -50,8 +114,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	}
 
 	m = typeText(t, m, "line one")
-	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-	m = asModel(t, newlined)
+	m = newlineShiftEnter(t, m)
 	m = typeText(t, m, "line two")
 	if h := m.composer.Height(); h != 2 {
 		t.Errorf("two-line draft should grow the composer to 2 rows, got %d", h)
@@ -60,8 +123,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	// Push the draft far past the bound: the composer must cap, never exceed.
 	for i := 0; i < maxComposerRows+4; i++ {
 		m = typeText(t, m, "draft")
-		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-		m = asModel(t, newlined)
+		m = newlineShiftEnter(t, m)
 	}
 	if h := m.composer.Height(); h != maxComposerRows {
 		t.Errorf("draft beyond the bound should cap the composer at %d rows, got %d", maxComposerRows, h)
@@ -103,8 +165,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	// Grow the draft far beyond the bound (band = status strip + composer).
 	for i := 0; i < maxComposerRows+10; i++ {
 		m = typeText(t, m, "draft line")
-		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-		m = asModel(t, newlined)
+		m = newlineShiftEnter(t, m)
 	}
 
 	// The composer renders at most the bound: taller drafts scroll internally.
