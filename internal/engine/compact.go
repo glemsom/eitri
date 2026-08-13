@@ -174,6 +174,20 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		"Read the conversation log below and output ONLY the condensed state, keeping the exact headings:" +
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
 
+	// The summary generation is a special turn that opts into a hard Generation
+	// Budget (issue #60, docs/spec.md §13): it requests generation_budget as
+	// required, so negotiation either honors it (a required control is always
+	// honored when it is supported) or fails fast before any wire call. The
+	// request carries a hard max_completion_tokens cap on a supporting provider;
+	// a provider that cannot honor the budget is skipped by the existing fail-safe
+	// path (the eviction still frees context, and the local SummaryMaxTokens cap
+	// remains the safety floor, ADR-0003 decision 4).
+	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+		{Control: provider.GenerationControlGenerationBudget, Required: true},
+	}); err != nil {
+		return "" // fail-safe skip: required Generation Budget unavailable
+	}
+
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model: req.Model,
 		Messages: []provider.Message{
@@ -183,10 +197,14 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		ThinkingEnabled: false, // a summary needs no chain-of-thought
 		SessionKey:      req.SessionKey,
 		SetCacheKey:     req.SessionKey != "",
+		// The hard wire-backed output cap mirrors SummaryMaxTokens (ADR-0003
+		// decision 4); the local capTokens floor remains the safety net.
+		MaxOutputTokens: cfg.SummaryMaxTokens,
 	})
 	if err != nil {
 		return "" // fail-safe skip
 	}
+
 	var out strings.Builder
 	for {
 		c, cerr := s.Next()

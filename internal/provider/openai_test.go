@@ -71,6 +71,65 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmitsGenerationBudget verifies the request head carries
+// max_completion_tokens when the caller opts into a Generation Budget, and that
+// ordinary turns with no budget omit the field entirely (bytes stay clean for
+// the shared request head, docs/spec.md §4 / issue #60).
+func TestOpenAIEmitsGenerationBudget(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), "\"max_completion_tokens\":256") {
+			t.Errorf("request body missing generation budget: %s", body)
+		}
+		if strings.Contains(string(body), "\"max_completion_tokens\":0") {
+			t.Errorf("request body carried zeroed max_completion_tokens, want omitted: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:           "deepseek-v4-flash",
+		Messages:        []Message{{Role: RoleUser, Content: "summarize"}},
+		MaxOutputTokens: 256,
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+
+	// An ordinary turn with no budget must not leak the field.
+	zero := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "max_completion_tokens") {
+			t.Errorf("no-budget request leaked max_completion_tokens: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer zero.Close()
+
+	cl0 := NewOpenAICompatible("test-key", zero.URL+"/v1/chat/completions")
+	s0, err := cl0.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() (no budget) error = %v, want nil", err)
+	}
+	if _, _, err := consume(s0); err != nil {
+		t.Fatalf("consume (no budget) error = %v, want nil", err)
+	}
+}
+
 // TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
@@ -177,6 +236,21 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 	}
 	if !bytes.Contains(full, []byte(`"reasoning_content":"think carefully"`)) {
 		t.Fatalf("assistant message body %s lost real reasoning_content", full)
+	}
+}
+
+// TestOpenAIDeclaresGenerationBudgetSupport verifies the OpenAI-compatible
+// client advertises the generation_budget control through the generation-control
+// capability surface, so the engine can pre-flight a special turn's budget
+// (docs/spec.md §13 / issue #60) before any wire call.
+func TestOpenAIDeclaresGenerationBudgetSupport(t *testing.T) {
+	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
+	supp, err := cl.SupportedGenerationControls(context.Background())
+	if err != nil {
+		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
+	}
+	if len(supp) != 1 || supp[0] != GenerationControlGenerationBudget {
+		t.Fatalf("SupportedGenerationControls() = %v, want [generation_budget]", supp)
 	}
 }
 
