@@ -82,6 +82,17 @@ screen mode.
   `RenderMarkdown` pass every tick. The persisted `bubbletea/viewport` scroll
   component's position + follow behaviour lands with T04.
 - Decision 5 is implemented (issue #109 / T05): the right context rail honours
+- Decision 6's overlay-region work is implemented (issue #110 / T06): the
+  review panel renders in its own height-clipped region — `renderPane` clips the
+  overlay to at most `reviewRegionMax` rows (and never more than the terminal
+  leaves after the fixed band), so a tall expanded diff clips instead of pushing
+  the composer off-screen; `clipReviewRegion` keeps the header + file list and
+  drops the diff tail, and the history viewport (now taking `reserved` rows =
+  band + review) keeps the band bottom-pinned. Settings and the continuation
+  prompt remain fixed full-surface regions that return first from `View()` and
+  capture keys (`updateSettings`/`updatePrompt`), so they stay focused;
+  slash-completion stays pinned above the composer in the fixed band. Keyboard
+  routing to each overlay is unchanged.
   the same visible height as the history region — `styledRail` height-clamps the
   rendered rail to the rows the fixed bottom band does not occupy
   (`railClampHeight`), so the two panes form one coherent row instead of the
