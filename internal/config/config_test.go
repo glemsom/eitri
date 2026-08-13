@@ -92,7 +92,7 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 // TestReasoningEffortDefaultAndPersist verifies the acceptance criteria for
 // the reasoning-effort default change (issue #76): a config written before the
 // change that stored "high" still loads "high", while an absent
-// reasonon_effort field loads the new "low" default.
+// reasoning_effort field loads the new "low" default.
 func TestReasoningEffortDefaultAndPersist(t *testing.T) {
 	// A present stored value is authoritative and survives the round-trip.
 	dir := t.TempDir()
