@@ -11,7 +11,7 @@ import (
 func TestRenderMarkdown_representativeBlocks(t *testing.T) {
 	in := "This is **bold** text.\n\n- first item\n- second item\n\n" +
 		"```go\nfunc main() {}\n```"
-	out, err := RenderMarkdown(in, 80)
+	out, err := RenderMarkdown(in, 80, "dark")
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
@@ -29,6 +29,61 @@ func TestRenderMarkdown_representativeBlocks(t *testing.T) {
 	// A list must render a bullet glyph.
 	if !hasBullet(out) {
 		t.Errorf("expected a list bullet ('- ') in output, got: %q", out)
+	}
+}
+
+// TestRenderMarkdown_allSupportedThemes renders a representative Markdown
+// sample with each of the 7 supported themes (issue #129) and asserts the
+// renderer never errors, so a user-selected theme always renders. "ascii" is
+// deliberately excluded from the supported set.
+func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
+	in := "# Heading\n\nSome **bold** and `code` text.\n"
+	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "notty", "auto"} {
+		out, err := RenderMarkdown(in, 80, theme)
+		if err != nil {
+			t.Fatalf("RenderMarkdown(theme=%q): %v", theme, err)
+		}
+		if strings.TrimSpace(out) == "" {
+			t.Fatalf("RenderMarkdown(theme=%q) rendered empty output", theme)
+		}
+	}
+}
+
+// TestRenderMarkdown_emptyThemeIsDark verifies an empty theme renders exactly
+// as the default dark theme (issue #129): an unset config key must not change
+// rendering.
+func TestRenderMarkdown_emptyThemeIsDark(t *testing.T) {
+	in := "# Heading\n\nSome **bold** text.\n"
+	dark, err := RenderMarkdown(in, 80, "dark")
+	if err != nil {
+		t.Fatalf("RenderMarkdown(dark): %v", err)
+	}
+	empty, err := RenderMarkdown(in, 80, "")
+	if err != nil {
+		t.Fatalf("RenderMarkdown(empty): %v", err)
+	}
+	if empty != dark {
+		t.Fatalf("RenderMarkdown(\"\") = %q, want dark output %q", empty, dark)
+	}
+}
+
+// TestRenderMarkdown_invalidThemeFallsBackToDark verifies an unknown or
+// excluded theme value renders as dark without ever returning an error (issue
+// #129): "bogus" is not a glamour style and "ascii" is deliberately excluded.
+func TestRenderMarkdown_invalidThemeFallsBackToDark(t *testing.T) {
+	in := "# Heading\n\nSome **bold** text.\n"
+	dark, err := RenderMarkdown(in, 80, "dark")
+	if err != nil {
+		t.Fatalf("RenderMarkdown(dark): %v", err)
+	}
+	for _, theme := range []string{"bogus", "ascii", "DARK", ""} {
+		out, err := RenderMarkdown(in, 80, theme)
+		if err != nil {
+			t.Fatalf("RenderMarkdown(theme=%q) errored: %v, want dark fallback", theme, err)
+		}
+		if out != dark {
+			t.Fatalf("RenderMarkdown(theme=%q) = %q, want dark fallback %q", theme, out, dark)
+		}
 	}
 }
 

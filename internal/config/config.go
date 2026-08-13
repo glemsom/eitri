@@ -21,6 +21,9 @@ const (
 	DefaultCompactionFraction = 0.8
 	// DefaultReasoningEffort is the per-session reasoning setting (spec §20).
 	DefaultReasoningEffort = "low"
+	// DefaultTheme is the Markdown render theme when unset or unknown (issue
+	// #129); "ascii" is deliberately excluded from the supported set.
+	DefaultTheme = "dark"
 	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
 	// default (spec §6); off yields requests with no thinking toggle/effort.
 	DefaultThinkingEnabled = true
@@ -61,6 +64,7 @@ type Config struct {
 	MaxTurns           int           `json:"max_turns"`
 	CompactionFraction float64       `json:"compaction_fraction"`
 	ExtraWritablePaths []string      `json:"extra_writable_paths,omitempty"`
+	Theme              string        `json:"theme"`
 	Copilot            CopilotConfig `json:"copilot,omitempty"`
 	CustomOpenAI       OpenAIConfig  `json:"custom_openai,omitempty"`
 }
@@ -74,6 +78,7 @@ func Default() Config {
 		ThinkingEnabled:    DefaultThinkingEnabled,
 		MaxTurns:           DefaultMaxTurns,
 		CompactionFraction: DefaultCompactionFraction,
+		Theme:              DefaultTheme,
 	}
 }
 
@@ -94,6 +99,11 @@ func Load(path string) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	// A file that never saved a theme field keeps the shipped default (issue
+	// #129): an absent or empty theme means "dark", never an error.
+	if cfg.Theme == "" {
+		cfg.Theme = DefaultTheme
 	}
 	// A file that never saved a reasoning_effort field keeps the shipped
 	// default rather than the empty zero value (issue #76).
