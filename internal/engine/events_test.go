@@ -272,3 +272,54 @@ func TestRunAgentEmitsCompactionEvent(t *testing.T) {
 		t.Fatalf("no CompactedEvent emitted; got %v", col.eventTypes())
 	}
 }
+
+// TestRunAgentOverflowKeepsTurnEventsBalanced drives the emergency
+// context-overflow→compact→retry path and asserts every TurnEvent Start is
+// paired with a matching End. An overflowed-and-retried turn streams nothing,
+// so it must not emit an orphaned Start (the event stream a TUI consumes must
+// never pair a Start without a corresponding End).
+func TestRunAgentOverflowKeepsTurnEventsBalanced(t *testing.T) {
+	col := &eventCollector{}
+	h := &overflowHandler{}
+	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
+	e.SetListener(col.on)
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
+		AgentOptions{
+			Tools:      strictToolDefs(),
+			ToolChoice: "auto",
+			Executor:   &mockToolRecorder{},
+			MaxTurns:   5,
+			Compaction: compactCfg(),
+		})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil (overflow should compact and retry)", err)
+	}
+
+	// Every Start must have a Matching End; no Start may dangle.
+	open := map[int]int{}
+	var sawCompacted bool
+	for _, e := range col.events {
+		switch ev := e.(type) {
+		case TurnEvent:
+			if ev.Start {
+				open[ev.Turn]++
+			} else {
+				open[ev.Turn]--
+				if open[ev.Turn] < 0 {
+					t.Fatalf("End without Start for turn %d", ev.Turn)
+				}
+			}
+		case CompactedEvent:
+			sawCompacted = true
+		}
+	}
+	for turn, n := range open {
+		if n != 0 {
+			t.Errorf("turn %d has %d unmatched Start events", turn, n)
+		}
+	}
+	if !sawCompacted {
+		t.Fatal("no CompactedEvent emitted on the emergency-overflow path")
+	}
+}

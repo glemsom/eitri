@@ -317,7 +317,6 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			messages, _ = e.maybeCompact(ctx, req, opts, messages, false, turn)
 		}
 
-		e.emit(TurnEvent{Turn: turn, Start: true})
 		s, err := e.provider.Stream(ctx, provider.Request{
 			Model:                 req.Model,
 			Messages:              messages,
@@ -345,6 +344,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			return final, err
 		}
 
+		// Emit the turn boundary only once the provider stream opened: an
+		// overflowed-and-retried turn carried no streamed output and emits no
+		// Start, so the event stream never pairs a Start without a matching End.
+		e.emit(TurnEvent{Turn: turn, Start: true})
 		var content, reasoning string
 		var done provider.Chunk
 		for {
