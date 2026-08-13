@@ -24,15 +24,37 @@ type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
 }
 
-// Engine is a run engine bound to a provider and a transcript sink.
+// Engine is a run engine bound to a provider and a transcript sink. A caller
+// may subscribe to the engine's live event stream via SetListener; the engine
+// pushes one typed Event per streamed observation (issue #81). Unsubscribed
+// (batch/headless) runs push nothing and are byte-identical to before.
 type Engine struct {
 	provider   provider.Provider
 	transcript TranscriptWriter
+	listener   Listener
 }
 
 // New returns an Engine that talks to p and appends run records to tr.
 func New(p provider.Provider, tr TranscriptWriter) *Engine {
 	return &Engine{provider: p, transcript: tr}
+}
+
+// Listener receives one typed Event per streamed observation from a live run,
+// in order, synchronously from within the turn's drain loop.
+type Listener func(Event)
+
+// SetListener subscribes l to the engine's live event stream. A nil listener
+// removes the subscription. The TUI (and tests) subscribe here to render a run
+// as it happens; batch/headless runs never subscribe and so emit no events.
+func (e *Engine) SetListener(l Listener) {
+	e.listener = l
+}
+
+// emit pushes one Event to the subscriber, no-op when none is attached.
+func (e *Engine) emit(evt Event) {
+	if e.listener != nil {
+		e.listener(evt)
+	}
 }
 
 // RunRequest is a single non-tool turn of work.
@@ -75,7 +97,7 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt)
+	return e.drain(s, req.Prompt, 0)
 }
 
 // drain streams s to completion, accumulating the assistant answer, reasoning,
@@ -83,22 +105,33 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 // returning the finished Result. It is the shared tail of every non-tool turn
 // (Run, RunJSONObjectMode, RunSamplingPolicy) so the stream-drain loop and the
 // transcript write are authored once instead of copied per turn type.
-func (e *Engine) drain(s provider.Stream, prompt string) (Result, error) {
+func (e *Engine) drain(s provider.Stream, prompt string, turn int) (Result, error) {
+	e.emit(TurnEvent{Turn: turn, Start: true})
 	var res Result
+	var endReason string
 	for {
 		c, err := s.Next()
 		if err != nil {
 			return res, closeErr(err)
 		}
-		res.Answer += c.Content
-		res.Reasoning += c.ReasoningContent
+		if c.Content != "" {
+			res.Answer += c.Content
+			e.emit(StreamEvent{Turn: turn, Kind: AnswerStream, Delta: c.Content})
+		}
+		if c.ReasoningContent != "" {
+			res.Reasoning += c.ReasoningContent
+			e.emit(StreamEvent{Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
+		}
 		if c.Usage != nil {
 			res.Usage = c.Usage
+			e.emit(UsageEvent{Turn: turn, Usage: *c.Usage})
 		}
+		endReason = c.FinishReason
 		if c.Done {
 			break
 		}
 	}
+	e.emit(TurnEvent{Turn: turn, EndReason: endReason})
 
 	if e.transcript != nil {
 		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", prompt, res.Answer))
@@ -134,7 +167,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt)
+	return e.drain(s, req.Prompt, 0)
 }
 
 // RunSamplingPolicy runs a Sampling Policy special turn (issue #61,
@@ -166,7 +199,7 @@ func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy p
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt)
+	return e.drain(s, req.Prompt, 0)
 }
 
 // ToolExecutor executes an agent tool call. The tools registry implements it;
@@ -281,7 +314,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		// crossed the threshold, evict the oldest body and rebuild the summary
 		// head before streaming the next request.
 		if opts.Compaction != nil {
-			messages, _ = e.maybeCompact(ctx, req, opts, messages, false)
+			messages, _ = e.maybeCompact(ctx, req, opts, messages, false, turn)
 		}
 
 		s, err := e.provider.Stream(ctx, provider.Request{
@@ -302,14 +335,19 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			// (ADR-0003 decision 2). A compaction that no longer reduces the
 			// messages falls through and the overflow is returned.
 			if opts.Compaction != nil && provider.IsContextOverflow(err) {
-				if next, ok := e.maybeCompact(ctx, req, opts, messages, true); ok {
+				if next, ok := e.maybeCompact(ctx, req, opts, messages, true, turn); ok {
 					messages = next
 					continue
 				}
 			}
+			e.emit(TurnEvent{Turn: turn, EndReason: err.Error()})
 			return final, err
 		}
 
+		// Emit the turn boundary only once the provider stream opened: an
+		// overflowed-and-retried turn carried no streamed output and emits no
+		// Start, so the event stream never pairs a Start without a matching End.
+		e.emit(TurnEvent{Turn: turn, Start: true})
 		var content, reasoning string
 		var done provider.Chunk
 		for {
@@ -320,17 +358,25 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			if err != nil {
 				return final, err
 			}
-			content += c.Content
-			reasoning += c.ReasoningContent
+			if c.Content != "" {
+				content += c.Content
+				e.emit(StreamEvent{Turn: turn, Kind: AnswerStream, Delta: c.Content})
+			}
+			if c.ReasoningContent != "" {
+				reasoning += c.ReasoningContent
+				e.emit(StreamEvent{Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
+			}
 			if c.Usage != nil {
 				final.Usage = c.Usage
 				opts.lastUsage = c.Usage
+				e.emit(UsageEvent{Turn: turn, Usage: *c.Usage})
 			}
 			done = c
 			if c.Done {
 				break
 			}
 		}
+		e.emit(TurnEvent{Turn: turn, EndReason: done.FinishReason})
 
 		assistant := provider.Message{
 			Role: provider.RoleAssistant,
@@ -353,10 +399,13 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		assistant.ToolCalls = done.ToolCalls
 		messages = append(messages, assistant)
 		for _, tc := range done.ToolCalls {
+			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
+			result := execToolCall(ctx, opts, tc)
+			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,
-				Content:    execToolCall(ctx, opts, tc),
+				Content:    result,
 			})
 		}
 	}
