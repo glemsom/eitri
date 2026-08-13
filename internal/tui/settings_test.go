@@ -65,6 +65,32 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 	}
 }
 
+// TestSettingsForm_EffortCyclesAllTiers verifies the reasoning-effort selector
+// cycles through every first-class tier low→medium→high→max (issue #74).
+func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
+	f.field = fieldEffort
+
+	want := []string{"max", "low", "medium", "high"}
+	for _, w := range want {
+		f.adjust(1)
+		if got := f.draft().ReasoningEffort; got != w {
+			t.Fatalf("effort after + = %q, want %q", got, w)
+		}
+	}
+}
+
+// TestSettingsForm_EffortCyclesBackwardWraps verifies backward stepping wraps
+// low→max as well, so no tier is unreachable from the default.
+func TestSettingsForm_EffortCyclesBackwardWraps(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
+	f.field = fieldEffort
+	f.adjust(-1)
+	if got := f.draft().ReasoningEffort; got != "medium" {
+		t.Fatalf("effort after - = %q, want medium", got)
+	}
+}
+
 // TestSettingsForm_ThinkingToggleRetainsEffort validates the reasoning mode
 // (on/off) toggles ThinkingEnabled while retaining the effort selection, so
 // toggling back on restores the original effort tier (issue #56).

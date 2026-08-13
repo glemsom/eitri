@@ -81,6 +81,35 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	}
 }
 
+// TestModel_SettingsEffortSelectingMediumPersists verifies a reasoning-effort
+// tier selected in the panel (medium) persists to config through the Save seam
+// (issue #74 acceptance criteria).
+func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(), // reasoning_effort "high"
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// Advance focus from Provider(0) to the Reasoning effort field (3).
+	for i := fieldProvider; i < fieldEffort; i++ {
+		m = keypress(t, m, "tab")
+	}
+	// From "high", one up selects "medium".
+	m = keypress(t, m, "up")
+	for i := fieldEffort; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if saved.ReasoningEffort != "medium" {
+		t.Fatalf("saved ReasoningEffort = %q, want medium", saved.ReasoningEffort)
+	}
+}
+
 // TestModel_SettingsPathsBackspaceEdits verifies the free-form writable-paths
 // field supports backspace to delete the trailing char before Save.
 func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
