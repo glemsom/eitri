@@ -241,6 +241,37 @@ func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 	}
 }
 
+// TestModel_workspaceStateSurfaced asserts the TUI surfaces the project's
+// read-only state — the workspace path — as a header line above the transcript
+// when supplied, so the user always sees which directory they're operating in
+// (issue #82 AC1). The line is informational/read-only: opening the model with
+// no workspace (the plain chat default) renders no such line.
+func TestModel_workspaceStateSurfaced(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:          func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		WorkspacePath: "/tmp/acme-project",
+	})
+	m = resize(t, m)
+
+	view := m.View()
+	if !strings.Contains(view, "/tmp/acme-project") {
+		t.Errorf("expected workspace path surfaced in view (issue #82 AC1), got: %q", view)
+	}
+
+	// The workspace path is rendered as read-only header state, never in the
+	// composer buffer the user types into.
+	if strings.Contains(m.composer.Value(), "/tmp/acme-project") {
+		t.Errorf("workspace path must not leak into the composer input, got: %q", m.composer.Value())
+	}
+
+	// No workspace supplied (the chat-only default) renders no such header.
+	bare := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil })
+	bare = resize(t, bare)
+	if strings.Contains(bare.View(), "workspace:") {
+		t.Errorf("expected no workspace header when none is configured (issue #82 AC1)")
+	}
+}
+
 // TestModel_shiftEnterThenSubmitSendsWholeMultiLine asserts a multi-line prompt
 // assembled with Shift+Enter is delivered whole to the engine when the final
 // plain Enter submits (ticket #57).

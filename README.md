@@ -42,6 +42,9 @@ run telemetry throughout — model, reasoning effort, thinking on/off,
 from the engine's per-turn usage events, plus a non-blocking `[compacted]`
 marker after a session compaction (`docs/spec.md` §4/§7). On narrow windows it
 collapses to the live counters so it never crowds the composer.
+The workspace directory the run acts on is shown as a **read-only workspace header**
+above the transcript, so you always see which directory the agent operates in
+(`docs/spec.md` §9).
 
 ### Keyboard shortcuts
 

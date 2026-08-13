@@ -79,6 +79,10 @@ type SkillsSurface struct {
 type Dependencies struct {
 	// Turn drives one conversation turn (engine). Required for chat.
 	Turn Turn
+	// WorkspacePath is the project/read-only state surfaced above the
+	// transcript (issue #82 AC1): the workspace directory the run operates in.
+	// Empty means no workspace header is rendered (the plain chat default).
+	WorkspacePath string
 	// Models is the provider-discovered model list surfaced in Settings.
 	Models []string
 	// Config is the loaded config seeded into the Settings draft.
@@ -496,6 +500,13 @@ func (m Model) View() string {
 	}
 
 	var b strings.Builder
+	// Surface the project's read-only state (issue #82 AC1): the workspace
+	// directory the run operates in, rendered as an informational header above
+	// the transcript and never inside the composer the user types into.
+	if m.deps.WorkspacePath != "" {
+		b.WriteString(statusStyle.Render("workspace: " + m.deps.WorkspacePath))
+		b.WriteString("\n")
+	}
 	for _, msg := range m.messages {
 		// Reasoning renders as a distinct, collapsible stream — never merged
 		// into the answer. Auto-collapsed by default; `tab` expands (N17).
