@@ -1,0 +1,116 @@
+package tui
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// TestModel_slashSettingsOpensSurface verifies the `/settings` slash command
+// opens the Settings surface (issue #87 AC1), routing to the same settings
+// panel ctrl+s opens — never sent as a chat prompt to the engine seam.
+func TestModel_slashSettingsOpensSurface(t *testing.T) {
+	var prompted string
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"grok-2"},
+		Config: cfgFixture(),
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/settings")
+	// Enter routes the slash command; the settings surface opens synchronously
+	// (no engine turn), so a plain Enter keypress suffices.
+	m = keypress(t, m, "enter")
+
+	// The settings surface must open (not send /settings to the engine).
+	if m.settings == nil {
+		t.Fatalf("`/settings` did not open the Settings surface")
+	}
+	if prompted != "" {
+		t.Fatalf("`/settings` must not reach the engine seam, got prompt %q", prompted)
+	}
+	if !strings.Contains(m.View(), "Eitri Settings") {
+		t.Fatalf("settings view %q missing title", m.View())
+	}
+}
+
+// TestModel_slashCompletionListsCommands verifies typing `/` surfaces a
+// completion list combining the built-in `/settings` command with any matching
+// detected skill (issue #87 AC1/AC3): the list is visible without forcing a
+// tab, and a plain prompt that merely starts with `/` is still sent normally
+// (issue #87 AC4) so slash handling never swallows user input.
+func TestModel_slashCompletionListsCommands(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{
+			{Name: "review", Description: "code review", Scope: "project"},
+			{Name: "plan", Description: "planning", Scope: "project"},
+		}},
+	})
+	m = resize(t, m)
+
+	// A bare `/` lists the built-in settings command and the detected skills.
+	m = typeText(t, m, "/")
+	view := m.View()
+	if !strings.Contains(view, "/settings") {
+		t.Errorf("bare `/` completion should list /settings, got: %q", view)
+	}
+	if !strings.Contains(view, "/review") || !strings.Contains(view, "/plan") {
+		t.Errorf("bare `/` completion should list detected skills, got: %q", view)
+	}
+
+	// A non-command slash line (e.g. a real path) still submits as a normal
+	// prompt: slash handling must not compete with typing (issue #87 AC4), so
+	// `/<skillname>` and `/settings` are the only inputs intercepted.
+	var prompted string
+	m = NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review", Scope: "project"}}},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/usr/bin/env")
+	out, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = asModel(t, out)
+	if cmd == nil {
+		t.Fatalf("`/usr/bin/env` should submit as a normal turn, got nil cmd")
+	}
+	cmd()
+	if prompted != "/usr/bin/env" {
+		t.Errorf("non-command slash line reached engine with %q, want /usr/bin/env", prompted)
+	}
+}
+
+// TestModel_slashTabCyclesSettingsAndSkills verifies tab on a bare `/` walks the
+// full completion list — the built-in `/settings` command ahead of any matching
+// skill (issue #87 AC1) — filling the composer candidate-by-candidate.
+func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review", Scope: "project"}}},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/")
+
+	// First tab picks `/settings` (first candidate); a second tab advances to
+	// the matching skill.
+	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "/settings" {
+		t.Fatalf("first tab completion = %q, want /settings", got)
+	}
+	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "/review" {
+		t.Fatalf("second tab completion = %q, want /review", got)
+	}
+	// The completed line renders with the selected candidate marked up.
+	if !strings.Contains(m.View(), "▸ /review") {
+		t.Fatalf("completion selection marker missing, got: %q", m.View())
+	}
+}

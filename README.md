@@ -37,9 +37,12 @@ with `tab` — kept separate from the answer (`docs/spec.md` §9). Assistant
 engine's event stream rather than one full-reply dump on completion, so a reply
 renders styled markdown live as it arrives. When skills are
 detected, a **skills panel** lists them with install scope and per-session
-activation state, and typing `/skillname` (or `/` + `tab` to complete) activates
-the skill directly through the same seam the engine uses (`docs/spec.md` §9,
-`eitri.md` §2.3). A bottom **status strip** above the composer shows live
+activation state. The composer is a **slash surface**: typing `/` shows a
+completion list mixing the built-in `/settings` command with matching skills,
+and picking/typing `/skillname` activates the skill directly through the same
+seam the engine uses; `/settings` opens the Settings panel from the composer
+(`docs/spec.md` §9, `eitri.md` §2.3). Any other `/...` line is submitted as a
+normal prompt, so slash handling never swallows input. A bottom **status strip** above the composer shows live
 run telemetry throughout — model, reasoning effort, thinking on/off,
 `turns / max_turns`, running cost, and a **prompt-cache hit-ratio gauge** fed
 from the engine's per-turn usage events, plus a non-blocking `[compacted]`
@@ -60,10 +63,11 @@ are handled by the composer; the shortcuts below drive the agent.
 | `Shift+Enter`              | Composer      | Break the prompt onto a new line (multi-line input; plain `Enter` still sends)
 | `ctrl+c`                   | Anywhere      | Quit                            |
 | `ctrl+s`                   | Conversation  | Open the Settings panel         |
+| (`/settings`)              | Composer      | Same as `ctrl+s`                |
 | `ctrl+d`                   | Conversation  | Open / close the changed-file Review panel
 | `esc`                      | Settings      | Cancel / close without saving   |
 | `tab`                      | Composer      | Toggle the collapsible thinking stream |
-| `tab`                      | Slash command | Cycle skill-name completion     |
+| `tab`                      | Slash command | Cycle `/settings` + skill completion |
 | `tab` / `enter`            | Settings      | Move focus to the next field    |
 | `up` / `down` / `left` / `right` | Settings | Adjust the focused value   |
 | `y` / `Y` / `Enter`        | Max-turns     | Continue = yes                  |
