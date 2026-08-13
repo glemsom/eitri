@@ -106,6 +106,13 @@ type ToolFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Parameters  map[string]any `json:"parameters,omitempty"`
+	// Strict opts this tool into provider-side Tool Schema Enforcement
+	// (issue #62): serialized as strict:true beside the parameters so a
+	// supporting provider rejects schema-violating tool arguments at generation
+	// time. Default (false) omits the flag so ordinary manifests stay
+	// byte-identical. Canonical tool authoring leaves it false and lets the
+	// generation-control seam toggle enforcement across the manifest.
+	Strict bool `json:"strict,omitempty"`
 }
 
 // Tool is the outer Chat-Completions tool wrapper (type: function).
@@ -161,6 +168,14 @@ type Request struct {
 	// a valid JSON object (issue #59, docs/spec.md §13). Kept default-off so
 	// ordinary agent/tool turns never carry it and stay byte-identical.
 	JSONObjectMode bool
+	// ToolSchemaEnforcement opts a tool-capable turn into provider-side Tool
+	// Schema Enforcement (issue #62, docs/spec.md §13): on a supporting provider
+	// each tool manifest carries strict:true so the provider rejects
+	// schema-violating tool arguments at generation time, in addition to Eitri's
+	// mandatory local validation floor. Kept default-off so ordinary agent/tool
+	// turns never carry strict and stay byte-identical; internal local
+	// validation remains the safety floor regardless.
+	ToolSchemaEnforcement bool
 }
 
 // NormalizeReasoningEffort maps DeepSeek's legacy effort values to the
