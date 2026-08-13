@@ -143,7 +143,7 @@ it on startup (`config.json`, `eitri.md` §2.7):
 - `~/.eitri/config.json` by default; `EITRI_CONFIG` overrides the path
 - `EITRI_DIR` overrides the data directory
 
-Persisted settings: `provider`, `model`, `reasoning_effort` (default `high`),
+Persisted settings: `provider`, `model`, `reasoning_effort` (default `low`),
 `thinking_enabled` (default `true`; off produces non-thinking runs with no
 `reasoning_effort`), `max_turns` (default `250`), `compaction_fraction`
 (default `0.8`), and `extra_writable_paths`. Provider credentials are delivered via environment:

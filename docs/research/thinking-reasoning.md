@@ -16,11 +16,11 @@ Every claim below is cited to a primary source. Supersedes/enriches nothing in `
 
 **Eitri treats reasoning as a first-class, always-present-but-conditionally-visible stream.** Adopt DeepSeek's OpenAI-compatible thinking-mode contract (`reasoning_content` + `thinking` + `reasoning_effort`) as the default, since `deepseek-v4-flash` is the primary provider and routes to Chat Completions (see #11). Specifics:
 
-1. **Control**: `reasoning_effort` in the body (`low`/`high`/`max`; DeepSeek maps `low`/`medium`→`high`, `xhigh`→`max`). Keep `thinking` default-enabled for agent work; let the operator downgrade effort, not toggle thinking off.
+1. **Control**: `reasoning_effort` in the body (`low`/`medium`/`high`/`max` are first-class tiers that pass through unchanged; only `xhigh` is remapped → `high`). Keep `thinking` default-enabled for agent work; let the operator downgrade effort, not toggle thinking off.
 2. **Surface on the wire**: consume streamed `choices[].delta.reasoning_content` separately from `content`; accumulate into a per-turn thinking buffer, then hoist into the assistant message.
 3. **Round-trip (the hard constraint)**: DeepSeek **400-errors** if any `assistant` message is missing `reasoning_content`. The provider requires **all** assistant messages to carry a reasoning field — even empty — so Eitri must (a) always set the field, and (b) include real `reasoning_content` on every intermediate assistant turn that participates in a **tool-call loop**. Non-tool-call turns ignore/ignore-passed reasoning.
 4. **UI**: show thinking **in the TUI** as a collapsible/replaceable stream; **suppress from batch stdout by default**; `-v` enables it. Thinking is **never echoed back into the final answer** — it is a separate channel.
-5. **Token budget**: thinking tokens are billed output tokens; `max` effort can emit up to ~384k output tokens on V4. Effort is the binding budget lever; default to a mid tier and let the operator raise it deliberately.
+5. **Token budget**: thinking tokens are billed output tokens; `max` effort can emit up to ~384k output tokens on V4. Effort is the binding budget lever; ship on `low` and let the operator raise it deliberately.
 
 This feeds future spec work on the TUI (#15/#18), compaction (#16/#21), and tool-call dispatch (#10): reasoning must survive those paths.
 
@@ -32,7 +32,7 @@ From the DeepSeek **Thinking Mode** guide and the Chat Completions API reference
 
 - **Request controls**
   - `thinking` (object): `{"type": "enabled"}` toggles thinking on; **defaults to enabled**.
-  - `reasoning_effort` (string): sets effort level. DeepSeek accepts OpenAI-style `high`/`max`, and for compatibility maps `low`/`medium`→`high`, `xhigh`→`max`. (Anthropic-format alias is `output_config.effort`.)
+  - `reasoning_effort` (string): sets effort level. `low`/`medium`/`high`/`max` pass through unchanged; legacy `xhigh` is remapped → `high` when sent to the wire. (Anthropic-format alias is `output_config.effort`.)
   - On the V4 model page: thinking mode supports **low / high / max** reasoning settings; max outputs up to 384k tokens.
 - **Response**: reasoning comes back in **`reasoning_content`** alongside the final answer in **`content`** (stream deltas: `choices[].delta.reasoning_content` / `.content`). Reasoning is a separate channel, not part of the answer.
 
@@ -68,7 +68,7 @@ The ticket's own contract is the right frame, and nothing in the sources contrad
 ## 4. Budgeting
 
 - Reasoning tokens are billed **output** tokens (V4: $0.28/1M output, vs $0.14/1M input uncached). `max` effort can nearly match the input budget per turn, so effort level is the primary cost/quality dial.
-- **Recommended default: `reasoning_effort:high`** for agent loops (`max` reserved for hard multi-step tasks; `low`≈`high` on DeepSeek, so the meaningful tiers are `high`/`max`). Let the operator raise/lower per session rather than per request, keeping the request head byte-stable for the prompt cache (#12).
+- **Recommended default: `reasoning_effort:low`** for agent loops (`max` reserved for hard multi-step tasks). Let the operator raise/lower per session rather than per request, keeping the request head byte-stable for the prompt cache (#12).
 - `thinking` stays **enabled**; an operator who wants cheap fast turns drops effort, not thinking. (DeepSeek maps the legacy `deepseek-chat`=`non-thinking`, `deepseek-reasoner`=`thinking`; both are being deprecated in favor of `deepseek-v4-flash` with the `thinking`/`reasoning_effort` body flags.)
 
 ## 5. Non-goals / notes
