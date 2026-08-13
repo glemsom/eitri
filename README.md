@@ -143,8 +143,9 @@ it on startup (`config.json`, `eitri.md` §2.7):
 - `EITRI_DIR` overrides the data directory
 
 Persisted settings: `provider`, `model`, `reasoning_effort` (default `high`),
-`max_turns` (default `250`), `compaction_fraction` (default `0.8`), and
-`extra_writable_paths`. Provider credentials are delivered via environment:
+`thinking_enabled` (default `true`; off produces non-thinking runs with no
+`reasoning_effort`), `max_turns` (default `250`), `compaction_fraction`
+(default `0.8`), and `extra_writable_paths`. Provider credentials are delivered via environment:
 the OpenCode Go key is read from `OPENCODE_API_KEY`, and `EITRI_PROVIDER_URL`
 optionally overrides the Chat-Completions endpoint (defaults to OpenCode Go;
 custom OpenAI-compatible endpoints are formalized in T11). The batch engine

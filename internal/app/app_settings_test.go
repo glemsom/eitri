@@ -43,7 +43,8 @@ func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 		Provider:        "opencode-go",
 		Model:           "grok-2",
 		ReasoningEffort: "max",
-		MaxTurns:        0, // uncapped: the provider finishes normally
+		ThinkingEnabled: true, // thinking stays on; effort is dialed to max
+		MaxTurns:        0,    // uncapped: the provider finishes normally
 	}
 	if err := config.Save(cfg, cfgPath); err != nil {
 		t.Fatalf("config.Save() error = %v", err)

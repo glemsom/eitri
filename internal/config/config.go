@@ -21,6 +21,9 @@ const (
 	DefaultCompactionFraction = 0.8
 	// DefaultReasoningEffort is the per-session reasoning setting (spec §20).
 	DefaultReasoningEffort = "high"
+	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
+	// default (spec §6); off yields requests with no thinking toggle/effort.
+	DefaultThinkingEnabled = true
 	// DefaultProvider and DefaultModel are the primary provider defaults
 	// (docs/spec.md §3).
 	DefaultProvider = "opencode-go"
@@ -54,6 +57,7 @@ type Config struct {
 	Provider           string        `json:"provider"`
 	Model              string        `json:"model"`
 	ReasoningEffort    string        `json:"reasoning_effort"`
+	ThinkingEnabled    bool          `json:"thinking_enabled"`
 	MaxTurns           int           `json:"max_turns"`
 	CompactionFraction float64       `json:"compaction_fraction"`
 	ExtraWritablePaths []string      `json:"extra_writable_paths,omitempty"`
@@ -67,6 +71,7 @@ func Default() Config {
 		Provider:           DefaultProvider,
 		Model:              DefaultModel,
 		ReasoningEffort:    DefaultReasoningEffort,
+		ThinkingEnabled:    DefaultThinkingEnabled,
 		MaxTurns:           DefaultMaxTurns,
 		CompactionFraction: DefaultCompactionFraction,
 	}

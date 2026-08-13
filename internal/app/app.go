@@ -232,12 +232,19 @@ func (stderrWarner) Warnf(format string, args ...any) {
 // §2.6).
 func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
+	// Thinking off means non-thinking runs: the provider request carries no
+	// thinking toggle and no reasoning_effort, like the compaction summarizer
+	// (spec §6 / #55). Effort is only meaningful when thinking is on.
+	effort := cfg.ReasoningEffort
+	if !cfg.ThinkingEnabled {
+		effort = ""
+	}
 	return e.RunAgent(context.Background(), engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
 		SessionKey:      sessionKey,
-		ThinkingEnabled: true, // deepseek thinking stays default-on (spec §6)
-		ReasoningEffort: cfg.ReasoningEffort,
+		ThinkingEnabled: cfg.ThinkingEnabled, // deepseek thinking default-on (spec §6)
+		ReasoningEffort: effort,
 	}, engine.AgentOptions{
 		Tools:      providerTools(reg.Definitions()),
 		ToolChoice: "auto",

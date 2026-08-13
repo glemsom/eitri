@@ -17,6 +17,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %q, want default \"high\"", cfg.ReasoningEffort)
 	}
+	if !cfg.ThinkingEnabled {
+		t.Fatal("ThinkingEnabled = false, want default true (on)")
+	}
 	if cfg.Provider != "opencode-go" {
 		t.Fatalf("Provider = %q, want default opencode-go primary", cfg.Provider)
 	}
@@ -103,5 +106,26 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	}
 	if len(cfg.ExtraWritablePaths) != 1 || cfg.ExtraWritablePaths[0] != "/tmp/x" {
 		t.Fatalf("Load() ExtraWritablePaths = %v, want [/tmp/x]", cfg.ExtraWritablePaths)
+	}
+}
+
+// TestThinkingEnabledPersists verifies the thinking_enabled mode round-trips
+// through save/load: an off value survives the round-trip so a session that
+// disables reasoning is restored as non-thinking on reload (eitri.md §2.7).
+func TestThinkingEnabledPersists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.ThinkingEnabled = false
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.ThinkingEnabled {
+		t.Fatalf("Load() ThinkingEnabled = true, want persisted off (false)")
 	}
 }
