@@ -130,7 +130,6 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	}
 }
 
-// TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // TestOpenAIEmitsJSONObjectMode verifies that a JSON-Object-Mode finalization
 // turn (issue #59) carries response_format:{type:json_object} on the wire, and
 // that an ordinary turn with the flag off omits the field entirely (bytes stay
@@ -296,7 +295,6 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 	}
 }
 
-// TestOpenAIDeclaresGenerationBudgetSupport verifies the OpenAI-compatible
 // TestOpenAIDeclaresGenerationBudgetSupport verifies the Chat-Completions
 // client advertises the generation_budget and json_object_mode controls through
 // the generation-control capability surface, so the engine can pre-flight a
