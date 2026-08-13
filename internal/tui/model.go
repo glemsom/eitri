@@ -891,13 +891,33 @@ func (m Model) View() string {
 // renderPane renders the transcript + composer surface into the left pane. It
 // is the historical single-pane view; the rail adds itself to the right when
 // visible. It works in the primary buffer, so nothing is cleared.
+//
+// Render is split into explicit, ordered regions (ADR-0006 decision 6, issue
+// T01): the review overlay region (when open) on top, the scroll region
+// (history), then the fixed bottom band (status strip + composer). Each region
+// renders independently into its own builder; renderPane just concatenates them
+// in order. This is the seam T02+ drives with a height-aware viewport and band
+// pinning.
 func (m Model) renderPane() string {
 	var b strings.Builder
-	// Review panel open: it takes over the view (Layout B, issue #90), showing
-	// the dense changed-file summary + inline diff above the transcript.
+	// Overlay region: the review panel takes over the top of the pane (Layout B,
+	// issue #90), showing the dense changed-file summary + inline diff above the
+	// transcript. Settings and the continuation prompt are also overlays but
+	// return earlier from View() as their own full-surface regions.
 	if m.review != nil {
 		m.renderReview(&b)
 	}
+	m.renderHistory(&b)
+	m.renderBand(&b)
+	return b.String()
+}
+
+// renderHistory renders the scroll region: the agent history that the user
+// reads and scrolls. It surfaces the workspace header, every committed message
+// (thinking blocks + markdown body), the interleaved tool entries, the skills
+// panel, and the busy indicator. It is the only region T02+ makes scrollable
+// and height-clamps.
+func (m Model) renderHistory(b *strings.Builder) {
 	// Surface the project's read-only state (issue #82 AC1): the workspace
 	// directory the run operates in, rendered as an informational header above
 	// the transcript and never inside the composer the user types into.
@@ -918,9 +938,9 @@ func (m Model) renderPane() string {
 		}
 		md, _ := RenderMarkdown(msg.content, m.composer.Width())
 		if msg.role == "you" {
-			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("you"), md)
+			fmt.Fprintf(b, "%s\n%s\n", headerStyle.Render("you"), md)
 		} else {
-			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("eitri"), md)
+			fmt.Fprintf(b, "%s\n%s\n", headerStyle.Render("eitri"), md)
 		}
 		// Interleave the turn's tool-call entries right after its prompting "you"
 		// message (issue #84): compact one-liners, collapsed by default, expanded
@@ -931,11 +951,17 @@ func (m Model) renderPane() string {
 			}
 		}
 	}
-	renderSkillsPanel(&b, m.skills)
+	renderSkillsPanel(b, m.skills)
 	if m.busy {
 		b.WriteString(statusStyle.Render("… thinking"))
 		b.WriteString("\n")
 	}
+}
+
+// renderBand renders the fixed bottom band: the live status strip (when wired)
+// plus the slash-command completion list and the composer, in that order. This
+// is the region T02+ pins at the bottom so it never scrolls away on resize.
+func (m Model) renderBand(b *strings.Builder) {
 	// Live status strip (issue #86), rendered above the composer so model,
 	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
 	if m.telemetry != nil {
@@ -945,13 +971,12 @@ func (m Model) renderPane() string {
 	// The slash-command completion list (issue #87 AC1) sits above the composer
 	// whenever the input line is a `/...` command, listing the built-in
 	// /settings command + matching skills with the current selection marked.
-	renderSlashCompletion(&b, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
+	renderSlashCompletion(b, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
 	b.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		b.WriteString("\n" + statusStyle.Render(m.savedMsg))
 		m.savedMsg = ""
 	}
-	return b.String()
 }
 
 // promptView renders the interactive max-turns continuation prompt.
