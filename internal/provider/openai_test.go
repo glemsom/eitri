@@ -292,6 +292,104 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn wire
+// (issue #61, docs/spec.md §13): a temperature policy emits `temperature` and
+// never `top_p`; a nucleus (top-p) policy emits `top_p` and never `temperature`;
+// an ordinary turn with no policy emits neither field, so the shared request head
+// stays untouched. The two sampling modes are mutually exclusive on the wire.
+func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
+	// A sample float value >1.0 catches a stray temperature/top_p mis-reuse: the
+	// policy value must round-trip unchanged so the provider applies the caller's
+	// sampling, not a reinterpretation.
+	const wantValue = 0.82
+
+	tempSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"temperature":0.82`) {
+			t.Errorf("temperature request body missing temperature: %s", body)
+		}
+		if strings.Contains(string(body), "top_p") {
+			t.Errorf("temperature request leaked top_p alongside temperature: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer tempSrv.Close()
+
+	cl := NewOpenAICompatible("test-key", tempSrv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "sample with temperature"}},
+		Sampling: &SamplingPolicy{Mode: SamplingTemperature, Value: wantValue},
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() temperature error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume temperature error = %v, want nil", err)
+	}
+
+	// A nucleus (top-p) policy must emit top_p and never temperature.
+	const wantTopP = 0.95
+	topPSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"top_p":0.95`) {
+			t.Errorf("top_p request body missing top_p: %s", body)
+		}
+		if strings.Contains(string(body), "temperature") {
+			t.Errorf("top_p request leaked temperature alongside top_p: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer topPSrv.Close()
+
+	cl1 := NewOpenAICompatible("test-key", topPSrv.URL+"/v1/chat/completions")
+	s1, err := cl1.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "sample with nucleus"}},
+		Sampling: &SamplingPolicy{Mode: SamplingNucleus, Value: wantTopP},
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() top_p error = %v, want nil", err)
+	}
+	if _, _, err := consume(s1); err != nil {
+		t.Fatalf("consume top_p error = %v, want nil", err)
+	}
+
+	// An ordinary turn with no sampling policy must not leak either field.
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "temperature") {
+			t.Errorf("ordinary request leaked temperature: %s", body)
+		}
+		if strings.Contains(string(body), "top_p") {
+			t.Errorf("ordinary request leaked top_p: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer plain.Close()
+
+	cl0 := NewOpenAICompatible("test-key", plain.URL+"/v1/chat/completions")
+	s0, err := cl0.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "plain turn"}},
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() (ordinary) error = %v, want nil", err)
+	}
+	if _, _, err := consume(s0); err != nil {
+		t.Fatalf("consume (ordinary) error = %v, want nil", err)
+	}
+}
+
 // TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
@@ -402,7 +500,7 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 }
 
 // TestOpenAIDeclaresGenerationControlCapabilities verifies the Chat-Completions
-// client advertises the generation_budget, json_object_mode, and
+// client advertises the generation_budget, json_object_mode, sampling_policy, and
 // tool_schema_enforcement controls through the generation-control capability
 // surface, so the engine can pre-flight a special/tool turn's requirements
 // (docs/spec.md §13 / issues #59–#62) before any wire call.
@@ -412,7 +510,7 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
 	}
-	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlToolSchemaEnforcement}
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement}
 	if len(supp) != len(want) {
 		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
 	}

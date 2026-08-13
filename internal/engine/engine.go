@@ -146,6 +146,56 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 	return res, nil
 }
 
+// RunSamplingPolicy runs a Sampling Policy special turn (issue #61,
+// docs/spec.md §13): an internal, non-tool turn that requests temperature- or
+// nucleus-based sampling for a constrained generation. It pre-flights the
+// sampling_policy control as required — an unsupported provider fails
+// negotiation fast, before any wire call, via provider.UnsupportedRequiredControlError —
+// then streams a non-tool turn carrying exactly the requested policy (so the
+// wire emits temperature or top_p, never both) and returns the generated answer.
+// Ordinary agent/tool turns never carry a sampling policy and stay on provider
+// defaults.
+func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy provider.SamplingPolicy) (Result, error) {
+	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+		{Control: provider.GenerationControlSamplingPolicy, Required: true},
+	}); err != nil {
+		return Result{}, err
+	}
+
+	s, err := e.provider.Stream(ctx, provider.Request{
+		Model:           req.Model,
+		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		SetCacheKey:     req.SessionKey != "",
+		SessionKey:      req.SessionKey,
+		ThinkingEnabled: req.ThinkingEnabled,
+		ReasoningEffort: req.ReasoningEffort,
+		Sampling:        &policy,
+	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	var res Result
+	for {
+		c, err := s.Next()
+		if err != nil {
+			return res, closeErr(err)
+		}
+		res.Answer += c.Content
+		res.Reasoning += c.ReasoningContent
+		if c.Usage != nil {
+			res.Usage = c.Usage
+		}
+		if c.Done {
+			break
+		}
+	}
+	if e.transcript != nil {
+		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, res.Answer))
+	}
+	return res, nil
+}
+
 // ToolExecutor executes an agent tool call. The tools registry implements it;
 // the engine depends on this seam so dispatch is testable without filesystem
 // side effects a specific tool might have.
