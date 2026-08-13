@@ -29,7 +29,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer())
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed())
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -63,7 +63,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer())
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed())
 
 	// Two runs -> one turn-boundary update each, ahead of the usage update.
 	for i := 0; i < 2; i++ {
@@ -96,7 +96,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	stream := tui.NewStreamer()
-	feedEngineEvents(e, te, stream)
+	feedEngineEvents(e, te, stream, tui.NewToolFeed())
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -118,5 +118,70 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	case u := <-stream.Updates():
 		t.Fatalf("unexpected extra stream update: %+v (reasoning must not leak into answer pane)", u)
 	default:
+	}
+}
+
+// scriptedToolEditTurn answers with a single edit tool call, then confirms, so
+// the app's engine listener can forward the tool events into the TUI tool feed.
+func scriptedToolEditTurn() *provider.Scripted {
+	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				return provider.StreamFunc(
+					provider.Chunk{Content: "done", FinishReason: "stop", Done: true},
+				), nil
+			}
+		}
+		return provider.StreamFunc(
+			provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "call_e", Name: "edit", Arguments: `{"path":"/w/f.go"}`},
+			}, Done: true},
+		), nil
+	})
+}
+
+// TestFeedEngineEventsBridgesToolEvents asserts the engine's ToolCallEvent and
+// ToolResultEvent are forwarded through the single engine listener into the TUI
+// tool feed's channel as a paired Start+Result carrying the full result and the
+// file line-delta metadata (issue #84), read-only against the run.
+func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
+	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
+	feed := tui.NewToolFeed()
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed)
+
+	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
+		engine.AgentOptions{
+			Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "edit"}}},
+			Executor: engine.ExecutorFunc(func(_ context.Context, _, _ string) (string, error) {
+				return "Edit applied to /w/f.go", nil
+			}),
+			MaxTurns: 5,
+		}); err != nil {
+		t.Fatalf("RunAgent() error = %v", err)
+	}
+
+	var start *tui.ToolStart
+	var res *tui.ToolResult
+	for {
+		u, ok := <-feed.Updates()
+		if !ok {
+			t.Fatal("tool feed channel closed")
+		}
+		if u.Start != nil {
+			start = u.Start
+		}
+		if u.Result != nil {
+			res = u.Result
+			break
+		}
+	}
+	if start == nil || start.Name != "edit" {
+		t.Fatalf("tool start = %+v, want edit", start)
+	}
+	if res == nil || res.Name != "edit" {
+		t.Fatalf("tool result = %+v, want edit", res)
+	}
+	if res.Result == "" {
+		t.Error("tool result must carry the full delivered result (expand path)")
 	}
 }

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 )
 
 // Deps carries the per-session wiring the registry (and hence every tool)
@@ -64,11 +65,12 @@ func (r *Registry) Definitions() []Definition {
 // the fixed tool surface. Later tickets add web_fetch, open_in_browser, and
 // skill.
 type Registry struct {
-	tr      *PathTranslator
-	val     *Validator
-	sandbox *Sandbox
-	browser BrowserLauncher
-	tools   map[string]Tool
+	tr        *PathTranslator
+	val       *Validator
+	sandbox   *Sandbox
+	browser   BrowserLauncher
+	workspace string
+	tools     map[string]Tool
 }
 
 // NewRegistry builds the registry for one session from Deps.
@@ -80,9 +82,10 @@ func NewRegistry(d Deps) *Registry {
 		d.Browser = xdgBrowser{}
 	}
 	r := &Registry{
-		tr:      NewPathTranslator(d.GUID),
-		browser: d.Browser,
-		tools:   map[string]Tool{},
+		tr:        NewPathTranslator(d.GUID),
+		browser:   d.Browser,
+		workspace: filepath.Clean(d.Workspace),
+		tools:     map[string]Tool{},
 	}
 	r.val = NewValidator(d.Workspace, d.ExtraWritable, r.tr)
 	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
@@ -111,6 +114,11 @@ func (r *Registry) Names() []string {
 // PathTranslator returns the shared translation seam (exposed for host-side
 // launch points like open_in_browser and for tests).
 func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
+
+// Workspace returns the workspace root (host-absolute, cleaned) the run operates
+// in (issue #82 AC1): the writable root bash/read/write/edit validate against.
+// It is exposed for host-side telemetry (e.g. the TUI file line-delta seam).
+func (r *Registry) Workspace() string { return r.workspace }
 
 // Run executes the named tool with the given decoded args, returning its
 // string result. Unknown tools are a hard error.

@@ -3,13 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/tools"
 )
 
 // scriptedBashOnly answers with a single bash tool call, then echoes the tool
@@ -205,7 +208,96 @@ func scriptedBrowserTurn() *provider.Scripted {
 	})
 }
 
-// TestBatchOpenInBrowserThroughEngineSeam runs batch mode with a fake provider
+// scriptedEditTurn drives a scripted provider through one edit tool call on a
+// workspace file, then confirms. It exercises the app's real file line-delta
+// seam (issue #84) end-to-end against the shared registry path resolution.
+func scriptedEditTurn(ws string) *provider.Scripted {
+	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		hasTool := false
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				hasTool = true
+			}
+		}
+		if !hasTool {
+			return provider.StreamFunc(
+				provider.Chunk{Content: "", ReasoningContent: "edit the file"},
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_e", Name: "edit", Arguments: `{"path":"` + ws + `/main.go","old_string":"b","new_string":"b\nc\nd"}`},
+				}, Done: true},
+			), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "edited"},
+			provider.Chunk{FinishReason: "stop", Done: true},
+		), nil
+	})
+}
+
+// TestBatchEditToolReportsLineDelta drives a real edit tool call through the
+// app's shared registry and asserts the engine's ToolResultEvent carries the
+// before/after line delta computed by the fileLineDelta seam (issue #84 AC3):
+// the file gains two lines as one is swapped for three, so the event reports
+// +2, -0. The full delivered result is also present, backing the expand path.
+func TestBatchEditToolReportsLineDelta(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	ws := filepath.Join(home, ".eitri-app-del", filepath.Base(t.TempDir()))
+	if err := os.MkdirAll(ws, 0o700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	defer os.RemoveAll(ws)
+	if err := os.WriteFile(filepath.Join(ws, "main.go"), []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  filepath.Join(t.TempDir(), "eitri-tmp"),
+		Runner:    tools.RealRunner,
+	})
+	e := engine.New(scriptedEditTurn(ws), mockTranscript{})
+	var got *engine.ToolResultEvent
+	e.SetListener(func(ev engine.Event) {
+		if tr, ok := ev.(engine.ToolResultEvent); ok && tr.Name == "edit" {
+			got = &tr
+		}
+	})
+
+	_, err = e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
+		engine.AgentOptions{
+			Tools: providerTools(reg.Definitions()),
+			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+				var args map[string]any
+				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+					return "", err
+				}
+				return reg.Run(ctx, name, args)
+			}),
+			ToolDelta: fileLineDelta(reg),
+			MaxTurns:  5,
+		})
+	if err != nil {
+		t.Fatalf("RunAgent(edit) error = %v", err)
+	}
+
+	editResult := filepath.Join(ws, "main.go")
+	if data, _ := os.ReadFile(editResult); string(data) != "a\nb\nc\nd\n" {
+		t.Errorf("fixture after edit = %q, want \"a\nb\nc\nd\n\"", string(data))
+	}
+	if got == nil {
+		t.Fatal("no edit ToolResultEvent emitted")
+	}
+	if got.Added != 2 || got.Removed != 0 {
+		t.Errorf("edit delta = +%d-%d, want +2-0", got.Added, got.Removed)
+	}
+	if got.Result == "" {
+		t.Error("ToolResultEvent.Result must carry the full delivered result")
+	}
+}
+
 // issuing an open_in_browser turn on a session-temp file:// target, asserting the
 // host-side launch translates the sandbox /tmp path to the host /tmp/eitri-GUID
 // form.

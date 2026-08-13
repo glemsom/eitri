@@ -5,6 +5,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
@@ -255,6 +257,10 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 			}
 			return reg.Run(ctx, name, args)
 		}),
+		// File line-delta telemetry (issue #84): resolve an edit/write tool's
+		// target and diff its line count before/after so the TUI tags `⊕ edit
+		// path [+N,-M]`. Pure UI telemetry; errors degrade to a zero delta.
+		ToolDelta:   fileLineDelta(reg),
 		MaxTurns:    cfg.MaxTurns,
 		CanContinue: canContinue,
 		// Session compaction (T10): auto-compact at the configured fraction;
@@ -262,6 +268,82 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 		Compaction:  compaction,
 		OnCompacted: func() { fmt.Fprint(os.Stderr, "[compacted]\n") },
 	})
+}
+
+// fileLineDelta builds an engine.ToolDelta that reports the added/removed line
+// counts a file-mutating tool call (edit/write) performed, so the TUI can tag a
+// one-line `⊕ edit path [+N,-M]` entry (issue #84). It resolves the tool's
+// `path` argument to its host form via the registry's shared path translator,
+// snapshots the pre-edit line count on Begin, and diffs the post-edit count on
+// End. It is best-effort pure telemetry: a nil seam for non-edit tools, a zero
+// delta for unresolvable paths or read errors, and it never affects the run or
+// its message history.
+func fileLineDelta(reg *tools.Registry) *engine.ToolDelta {
+	mu := &sync.Mutex{}
+	hostPath := ""
+	oldLines := 0
+	return &engine.ToolDelta{
+		Begin: func(_ context.Context, name, argsJSON string) {
+			if name != "edit" && name != "write" {
+				return
+			}
+			var args struct {
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil || args.Path == "" {
+				return
+			}
+			host, _ := reg.PathTranslator().SandboxToHost(args.Path)
+			// A workspace-relative model path resolves as relative; absolutize it
+			// against the workspace root so the line count targets the same file
+			// the tool writes (which the validator resolved against the workspace).
+			if !filepath.IsAbs(host) {
+				host = filepath.Join(reg.Workspace(), host)
+			}
+			n, err := lineCount(host)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			hostPath, oldLines = host, n
+			mu.Unlock()
+		},
+		End: func(_ context.Context, name, _ string) (int, int) {
+			if name != "edit" && name != "write" {
+				return 0, 0
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if hostPath == "" {
+				return 0, 0
+			}
+			newLines, err := lineCount(hostPath)
+			hostPath = "" // one-shot: Begin/End pair back-to-back for one call
+			if err != nil {
+				return 0, 0
+			}
+			added, removed := 0, 0
+			if newLines > oldLines {
+				added = newLines - oldLines
+			} else {
+				removed = oldLines - newLines
+			}
+			return added, removed
+		},
+	}
+}
+
+// lineCount returns the number of lines in the file at host path, or an error
+// when the file cannot be read (a best-effort telemetry degrade, not a failure).
+func lineCount(host string) (int, error) {
+	data, err := os.ReadFile(host)
+	if err != nil {
+		return 0, err
+	}
+	if len(data) == 0 {
+		return 0, nil
+	}
+	return bytes.Count(data, []byte{'\n'}) + 1, nil
 }
 
 // providerTools maps the registry's definitions to provider Chat-Completions
