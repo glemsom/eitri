@@ -34,6 +34,8 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 
 - **Composer.** In the TUI, plain `Enter` submits the prompt; `Shift+Enter` inserts a newline for multi-line drafts. The composer grows with the draft within the fixed bottom band (one row per line, up to a bound), then scrolls internally so a long draft never spills into the transcript; the status strip and slash-completion list stay pinned above it (issue #121).
 
+- **Transcript copy.** In the TUI, `ctrl+o` copies the full conversation transcript (prompts, answers, reasoning, tool entries) to the system clipboard; the `/copy` slash command does the same from the command surface. Copy reports success/failure as a status note and never mutates the transcript or the agent loop (issue #123).
+
 - **Max-turns limit.** Configurable cap on loop iterations per run. Default is 250 turns, then interactive prompt to allow Eitri to continue with more turns.
 
 ### 2.2 LLM providers & models

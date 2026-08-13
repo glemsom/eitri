@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -169,6 +170,10 @@ type Dependencies struct {
 	// / MODEL, fed from the telemetry and skill surfaces. Nil hides the rail
 	// (the plain chat default).
 	Rail *Rail
+	// Clipboard writes text to the system clipboard (issue #123): Ctrl+O and
+	// /copy copy the full transcript through it. Nil falls back to the
+	// atotto/clipboard package default.
+	Clipboard func(text string) error
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -284,6 +289,11 @@ type Model struct {
 	// a new submit re-engages follow. It is a pointer so scroll-state changes
 	// made by View (which runs on a value copy) survive across render cycles.
 	histViewport *viewport.Model
+
+	// clipboard writes the plain-text transcript to the system clipboard (issue
+	// #123): Ctrl+O and /copy route here. It is the injected Dependencies
+	// seam, defaulting to the atotto/clipboard package's WriteAll.
+	clipboard func(text string) error
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -319,7 +329,18 @@ func NewModelCfg(d Dependencies) Model {
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
+		clipboard:       d.Clipboard,
 	}
+}
+
+// newClipboard returns the clipboard write seam (issue #123): the injected
+// Dependencies.Clipboard when set, else the atotto/clipboard package default so
+// Ctrl+O and /copy work out of the box.
+func newClipboard(d Dependencies) func(text string) error {
+	if d.Clipboard != nil {
+		return d.Clipboard
+	}
+	return clipboard.WriteAll
 }
 
 // newHistoryViewport builds the persisted history scroll component (T1
@@ -478,6 +499,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rp := m.buildReview()
 			m.review = &rp
 			return m, nil
+		case "ctrl+o":
+			// Copy the full transcript to the system clipboard (issue #123 AC1),
+			// reporting success/failure as a band status note. Never mutates the
+			// transcript or the agent loop.
+			m.copyTranscript()
+			return m, nil
 		case "ctrl+j":
 			// Shift+Enter newline (issue #121 AC2): terminals deliver Shift+Enter
 			// as the line-feed key, which Bubble Tea surfaces as KeyCtrlJ — there
@@ -514,6 +541,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// unchanged (issue #87 AC4: slash handling never swallows input).
 			if prompt == "/settings" {
 				return m.startSettings()
+			}
+			// /copy copies the full transcript to the clipboard through the same
+			// seam as Ctrl+O (issue #123 AC2); the command is never sent as a
+			// prompt.
+			if prompt == "/copy" {
+				m.copyTranscript()
+				return m, nil
 			}
 			if name, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name)
@@ -828,6 +862,56 @@ func skillSnapshot(d Dependencies) []SkillItem {
 	return nil
 }
 
+// copyTranscript copies the plain-text transcript to the system clipboard
+// through the injected seam (issue #123): Ctrl+O and /copy both route here. The
+// outcome is surfaced as a band status note ("copied" or "copy failed: …");
+// the transcript and the agent loop are never touched.
+func (m *Model) copyTranscript() {
+	if m.clipboard == nil {
+		m.savedMsg = "copy failed: clipboard unavailable"
+		return
+	}
+	if err := m.clipboard(m.transcriptText()); err != nil {
+		m.savedMsg = "copy failed: " + err.Error()
+		return
+	}
+	m.savedMsg = "copied"
+}
+
+// transcriptText renders the conversation log as plain text for clipboard copy
+// (issue #123): role-marked user prompts and assistant answers, per-turn
+// reasoning blocks, and the interleaved tool-call entries (compact one-liner
+// plus full result when complete) — all ANSI-free so the pasted session is
+// clean. It never mutates the transcript or the agent loop.
+func (m Model) transcriptText() string {
+	var b strings.Builder
+	for i, msg := range m.messages {
+		if msg.role != "you" && msg.reasoning != "" {
+			b.WriteString("🤔 " + msg.reasoning + "\n")
+		}
+		if msg.role == "you" {
+			b.WriteString("you: " + msg.content + "\n")
+		} else {
+			b.WriteString("eitri: " + msg.content + "\n")
+		}
+		for _, te := range m.tools {
+			if te.anchor != i {
+				continue
+			}
+			b.WriteString("⊕ " + te.name)
+			if arg := toolArgsHint(te.args); arg != "" {
+				b.WriteString("  " + arg)
+			}
+			b.WriteString("\n")
+			if te.complete && te.result != "" {
+				b.WriteString("  " + strings.ReplaceAll(strings.TrimRight(te.result, "\n"), "\n", "\n  ") + "\n")
+			}
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // slashCommand reports whether prompt is a `/skillname` activation command for a
 // detected skill. It returns the exact skill name and true when the whole line
 // names a detected skill (leading/trailing whitespace already trimmed).
@@ -905,9 +989,12 @@ func slashCandidates(value string, skills []SkillItem) []string {
 		return nil
 	}
 	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
-	cands := make([]string, 0, len(skills)+1)
+	cands := make([]string, 0, len(skills)+2)
 	if partial == "" || strings.HasPrefix("settings", partial) {
 		cands = append(cands, "/settings")
+	}
+	if partial == "" || strings.HasPrefix("copy", partial) {
+		cands = append(cands, "/copy")
 	}
 	for _, it := range skills {
 		// The built-in /settings command owns the `settings` name; a skill of
