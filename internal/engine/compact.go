@@ -76,7 +76,7 @@ func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 // a compaction actually happened. It never fails the run: a summary-generation
 // failure is a fail-safe skip (ADR-0003 decision 4) that still frees context by
 // dropping the oldest body.
-func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOptions, messages []provider.Message, force bool) ([]provider.Message, bool) {
+func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOptions, messages []provider.Message, force bool, turn int) ([]provider.Message, bool) {
 	cfg := opts.Compaction
 	if cfg == nil {
 		return messages, false
@@ -103,6 +103,10 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 	if opts.OnCompacted != nil {
 		opts.OnCompacted()
 	}
+	// Surface the compaction marker on the observer seam (issue #81): the TUI
+	// renders a read-only [compacted] status entry, never blocking the run
+	// (docs/spec.md §7).
+	e.emit(CompactedEvent{Turn: turn})
 	return newPrefix, true
 }
 
