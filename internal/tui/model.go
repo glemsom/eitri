@@ -828,9 +828,10 @@ func thinkingHeader() string {
 
 // renderSlashCompletion appends the slash-command completion list to the view
 // above the composer (issue #87 AC1): the built-in `/settings` command plus any
-// matching detected skills, marking the currently-selected candidate (slashIdx)
-// so the user sees exactly what a tab/return would pick. It renders nothing for
-// a non-slash line or when there are no candidates, so normal typing is
+// matching detected skills. It marks the candidate currently in the composer
+// (tab-filled or typed) as selected; on a bare prefix it points at the next
+// tab-cycling candidate (slashIdx) as a forward hint. It renders nothing for a
+// non-slash line or when there are no candidates, so normal typing is
 // unaffected (issue #87 AC4).
 func renderSlashCompletion(b *strings.Builder, value string, cur string, skills []SkillItem, selected int) {
 	cands := slashCandidates(value, skills)
