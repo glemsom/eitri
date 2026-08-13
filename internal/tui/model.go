@@ -1461,7 +1461,6 @@ func (m Model) renderBand(b *strings.Builder) {
 	b.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		b.WriteString("\n" + statusStyle.Render(m.savedMsg))
-		m.savedMsg = ""
 	}
 }
 
