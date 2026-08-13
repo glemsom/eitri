@@ -20,7 +20,7 @@ const (
 	// auto-compaction (ADR-0003).
 	DefaultCompactionFraction = 0.8
 	// DefaultReasoningEffort is the per-session reasoning setting (spec §20).
-	DefaultReasoningEffort = "high"
+	DefaultReasoningEffort = "low"
 	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
 	// default (spec §6); off yields requests with no thinking toggle/effort.
 	DefaultThinkingEnabled = true
@@ -94,6 +94,11 @@ func Load(path string) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	// A file that never saved a reasoning_effort field keeps the shipped
+	// default rather than the empty zero value (issue #76).
+	if cfg.ReasoningEffort == "" {
+		cfg.ReasoningEffort = DefaultReasoningEffort
 	}
 	return cfg, nil
 }
