@@ -34,8 +34,7 @@ func busyStreamingModel(t *testing.T) Model {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 	// Stream a long answer that dwarfs the viewport: the newest tokens must
-	// stay in view while busy. Distinct tokens per delta let a test track which
-	// (newest) line is at the bottom despite markdown soft-wrapping.
+	// stay in view while busy.
 	for i := 0; i < 6; i++ {
 		m = applyDelta(t, m, " tok"+string(rune('a'+i)))
 	}
@@ -43,13 +42,14 @@ func busyStreamingModel(t *testing.T) Model {
 }
 
 // followRendered returns the visible scroll-region output via the persisted
-// viewport seam (renderHistoryViewport) and the h/vh it used, for asserting
-// follow-to-bottom byte-equality with the classically-correct slice.
-func followRendered(m Model) (got string, histContent string, reserved, vh int) {
+// viewport seam (renderHistoryViewport), the full rendered history content, and
+// the viewport height it was clipped to — for asserting follow-to-bottom
+// byte-equality with the classically-correct slice.
+func followRendered(m Model) (got string, histContent string, vh int) {
 	histContent = m.historyContent()
-	reserved = m.bandHeight()
+	reserved := m.bandHeight()
 	vh = m.height - reserved
-	return m.renderHistoryViewport(histContent, reserved), histContent, reserved, vh
+	return m.renderHistoryViewport(histContent, reserved), histContent, vh
 }
 
 // TestModel_liveFollowKeepsNewestOutput asserts the history viewport stays at
@@ -62,7 +62,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 	if !m.busy {
 		t.Fatalf("test model must be mid-run (busy)")
 	}
-	got, histContent, _, vh := followRendered(m)
+	got, histContent, vh := followRendered(m)
 	if vh <= 0 {
 		t.Fatalf("expected a positive viewport height, got %d", vh)
 	}
@@ -88,7 +88,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 	}
 	for _, h := range []int{6, 12, 8} {
 		m = resizeTo(t, m, 80, h)
-		got, histContent, _, vh := followRendered(m)
+		got, histContent, vh := followRendered(m)
 		if want := visibleHistory(histContent, vh); got != want {
 			t.Errorf("resize to height %d lost the newest output (follow should hold the bottom slice)\n--- got ---\n%s\n--- want ---\n%s", h, got, want)
 		}
@@ -104,7 +104,7 @@ func TestModel_liveFollowTracksAppends(t *testing.T) {
 	m := newTallHistoryModel(t)
 	m = resizeTo(t, m, 80, 8)
 	// A long transcript guarantees an overflowed viewport.
-	got, histContent, _, vh := followRendered(m)
+	got, histContent, vh := followRendered(m)
 	if n := len(histLines(histContent)); n <= vh {
 		t.Fatalf("test must overflow: history (%d lines) should exceed viewport height (%d)", n, vh)
 	}
