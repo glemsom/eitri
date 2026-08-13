@@ -175,21 +175,17 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
 
 	// The summary generation is a special turn that opts into a hard Generation
-	// Budget (issue #60): on a provider that honors it, the request carries a
-	// hard max_completion_tokens cap. A provider lacking the control forces
-	// negotiation to drop it (an unsupported required control fails the contract,
-	// so the summary is skipped by the fail-safe path — the eviction still frees
-	// context and the local SummaryMaxTokens cap remains the safety floor, spec
-	// §13 / ADR-0003 decision 4).
-	honored, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+	// Budget (issue #60, docs/spec.md §13): it requests generation_budget as
+	// required, so negotiation either honors it (a required control is always
+	// honored when it is supported) or fails fast before any wire call. The
+	// request carries a hard max_completion_tokens cap on a supporting provider;
+	// a provider that cannot honor the budget is skipped by the existing fail-safe
+	// path (the eviction still frees context, and the local SummaryMaxTokens cap
+	// remains the safety floor, ADR-0003 decision 4).
+	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
 		{Control: provider.GenerationControlGenerationBudget, Required: true},
-	})
-	if err != nil {
+	}); err != nil {
 		return "" // fail-safe skip: required Generation Budget unavailable
-	}
-	budget := 0
-	if containsControl(honored, provider.GenerationControlGenerationBudget) {
-		budget = cfg.SummaryMaxTokens
 	}
 
 	s, err := e.provider.Stream(ctx, provider.Request{
@@ -201,10 +197,9 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		ThinkingEnabled: false, // a summary needs no chain-of-thought
 		SessionKey:      req.SessionKey,
 		SetCacheKey:     req.SessionKey != "",
-		// The hard wire-backed output cap mirrors SummaryMaxTokens; zero when the
-		// provider could not honor the budget, so the field is omitted and the
-		// local cap remains the sole floor.
-		MaxOutputTokens: budget,
+		// The hard wire-backed output cap mirrors SummaryMaxTokens (ADR-0003
+		// decision 4); the local capTokens floor remains the safety net.
+		MaxOutputTokens: cfg.SummaryMaxTokens,
 	})
 	if err != nil {
 		return "" // fail-safe skip
@@ -292,15 +287,4 @@ func capTokens(text string, n int) string {
 		return text
 	}
 	return text[:max]
-}
-
-// containsControl reports whether the honored generation-control set includes
-// the named control (docs/spec.md §13 / issue #60).
-func containsControl(honored []provider.GenerationControl, want provider.GenerationControl) bool {
-	for _, c := range honored {
-		if c == want {
-			return true
-		}
-	}
-	return false
 }
