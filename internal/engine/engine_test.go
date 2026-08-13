@@ -180,3 +180,49 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 		t.Fatalf("assistant reasoning re-emitted = %v, want turn-one reasoning preserved on the tool turn", assistantReasons)
 	}
 }
+
+// capableScripted is a Provider that both scripts turns and declares a fixed set
+// of supported generation controls, exercising the engine's negotiation seam
+// (docs/spec.md §13 / issue #58).
+type capableScripted struct {
+	*provider.Scripted
+	supported []provider.GenerationControl
+}
+
+// SupportedGenerationControls implements provider.GenerationControlProvider.
+func (c *capableScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
+	return append([]provider.GenerationControl(nil), c.supported...), nil
+}
+
+// TestEngineNegotiatesGenerationControls verifies the engine forwards a special
+// turn's generation-control requirements to the provider capability surface,
+// returning the honored controls and failing a required control the provider
+// cannot honor (before any wire call).
+func TestEngineNegotiatesGenerationControls(t *testing.T) {
+	p := &capableScripted{
+		Scripted:  provider.NewScripted(nil),
+		supported: []provider.GenerationControl{provider.GenerationControlGenerationBudget},
+	}
+	e := New(p, &mockTranscript{})
+
+	// An unsupported required control fails negotiation before any stream.
+	_, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
+		Control:  provider.GenerationControlJSONObjectMode,
+		Required: true,
+	}})
+	if err == nil {
+		t.Fatal("NegotiateGenerationControls() error = nil, want unsupported-required error")
+	}
+
+	// A supported optional control is honored and returned.
+	got, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
+		Control:  provider.GenerationControlGenerationBudget,
+		Required: false,
+	}})
+	if err != nil {
+		t.Fatalf("NegotiateGenerationControls() error = %v, want nil", err)
+	}
+	if len(got) != 1 || got[0] != provider.GenerationControlGenerationBudget {
+		t.Fatalf("NegotiateGenerationControls() = %v, want [generation_budget]", got)
+	}
+}
