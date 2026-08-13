@@ -36,7 +36,7 @@ Why TUIs like Claude Code use alt-screen: it gives a stable, full-width, self-dr
 | `tea.WindowSizeMsg` | `m.width = msgi.Width; m.syncWidths()` (`model.go`) |
 | `syncWidths()` | `composer.SetWidth(transcriptWidth())` — textarea re-wraps |
 | `transcriptWidth()` | terminal width − 2 gutter; − (railWidth+1) while the rail ("#" issue #88) shows; floor of 20 cols |
-| `railVisible()` | auto-shows rail ≥120 cols; auto-hides below; `ctrl+b` overrides on any width |
+| `railVisible()` | auto-shows rail ≥120 cols **and ≥24 rows**; auto-hides narrower or shorter; `ctrl+b` overrides on any size |
 | Terminal **height** | **not captured or used at all** |
 | Viewport / paging / internal scroll | **none** — the transcript is a `strings.Builder` dumped via `View()` |
 | Composer anchoring | not pinned; it just trails the rendered transcript string |
@@ -120,7 +120,7 @@ Rationale against the user's actual ask ("improve UX, focus on resize correctly"
 **Open questions for the decision ticket:**
 - Scroll UX on primary buffer: does internal `UP/DOWN` (not `less`) conflict with terminal-native scroll? — need a manual pass in Ghostty; likely keep `pgup/pgdn` + mouse-wheel only.
 - Is `ctrl+f` alt-screen focus (Option C) worth building behind a flag in the same change, or strictly post-v1?
-- Does the rail (issue #88) height-cap too, or scroll independently?
+- Does the rail (issue #88) height-cap too, or scroll independently? — **resolved** by ADR-0006 decision 5 (issue #109 / T05): the rail height-caps to the same visible height as the history region.
 
 ---
 
