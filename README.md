@@ -36,7 +36,12 @@ with `tab` — kept separate from the answer (`docs/spec.md` §9). When skills a
 detected, a **skills panel** lists them with install scope and per-session
 activation state, and typing `/skillname` (or `/` + `tab` to complete) activates
 the skill directly through the same seam the engine uses (`docs/spec.md` §9,
-`eitri.md` §2.3).
+`eitri.md` §2.3). A bottom **status strip** above the composer shows live
+run telemetry throughout — model, reasoning effort, thinking on/off,
+`turns / max_turns`, running cost, and a **prompt-cache hit-ratio gauge** fed
+from the engine's per-turn usage events, plus a non-blocking `[compacted]`
+marker after a session compaction (`docs/spec.md` §4/§7). On narrow windows it
+collapses to the live counters so it never crowds the composer.
 
 ### Keyboard shortcuts
 

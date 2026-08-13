@@ -41,6 +41,11 @@ type turnDoneMsg struct {
 	err       error
 }
 
+// telemetryTickMsg re-triggers an Update cycle so the status strip keeps
+// draining the engine's live telemetry channel while the agent runs, even with
+// no keyboard input. It is re-issued only while updates actually arrived.
+type telemetryTickMsg struct{}
+
 // skillDoneMsg reports a slash-command skill activation's result.
 type skillDoneMsg struct {
 	payload string
@@ -85,6 +90,10 @@ type Dependencies struct {
 	// Skills, when non-nil, backs the skills panel and slash-command activation.
 	// Nil hides the panel and disables `/skillname` commands (no skills).
 	Skills *SkillsSurface
+	// Telemetry, when non-nil, renders the live bottom status strip (issue #86):
+	// model, effort, thinking, turns/max, cost, and the cache hit-ratio gauge,
+	// fed live from the engine seam. Nil disables the strip.
+	Telemetry *Telemetry
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -119,6 +128,9 @@ type Model struct {
 	// skills is the live list backing the skills panel, refreshed on slash
 	// activation so the panel reflects per-session active state.
 	skills []SkillItem
+
+	// telemetry is the live status strip state (issue #86); nil disables it.
+	telemetry *Telemetry
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -142,6 +154,7 @@ func NewModelCfg(d Dependencies) Model {
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
 		skills:       skillSnapshot(d),
+		telemetry:    d.Telemetry,
 	}
 }
 
@@ -181,10 +194,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 	}
 
+	// Drain any queued live telemetry updates from the engine seam into the
+	// status strip. If any arrived, re-issue a tick so the strip keeps polling
+	// while the run streams events (issue #86).
+	if m.telemetry != nil {
+		applied := false
+		for {
+			select {
+			case u := <-m.telemetry.updates:
+				m.telemetry.apply(u)
+				applied = true
+			default:
+				goto drained
+			}
+		}
+	drained:
+		if applied {
+			cmds = append(cmds, telemetryTick)
+		}
+	}
+
 	switch msgi := msg.(type) {
+	case telemetryTickMsg:
+		// A self-tick re-enters Update so the status strip polls the engine's
+		// telemetry channel again. The top-of-Update drain already appended a
+		// further tick iff more updates arrived; otherwise the poll stops.
+		return m, tea.Batch(cmds...)
+
 	case tea.WindowSizeMsg:
 		m.composer.SetWidth(msgi.Width - 2)
-		return m, nil
+		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
 		// Settings surface open: route keys to it.
@@ -486,6 +525,12 @@ func (m Model) View() string {
 		b.WriteString(statusStyle.Render("… thinking"))
 		b.WriteString("\n")
 	}
+	// Live status strip (issue #86), rendered above the composer so model,
+	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
+	if m.telemetry != nil {
+		b.WriteString(statusStyle.Render(m.telemetry.render(m.composer.Width())))
+		b.WriteString("\n")
+	}
 	b.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		b.WriteString("\n" + statusStyle.Render(m.savedMsg))
@@ -534,3 +579,7 @@ var (
 	headerStyle = lipgloss.NewStyle().Bold(true)
 	statusStyle = lipgloss.NewStyle().Faint(true)
 )
+
+// telemetryTick re-enters Update to keep polling the live telemetry channel
+// (issue #86) while the agent streams events, even with no keyboard input.
+func telemetryTick() tea.Msg { return telemetryTickMsg{} }
