@@ -82,6 +82,12 @@ screen mode.
   `RenderMarkdown` pass every tick. The persisted `bubbletea/viewport` scroll
   component's position + follow behaviour lands with T04.
 - Decision 5 is implemented (issue #109 / T05): the right context rail honours
+  the same visible height as the history region — `styledRail` height-clamps the
+  rendered rail to the rows the fixed bottom band does not occupy
+  (`railClampHeight`), so the two panes form one coherent row instead of the
+  rail overflowing while the history clips. The rail's auto-show/hide also
+  responds to terminal height as well as width (`railShowHeight` gates
+  `railVisible` alongside `railShowWidth`); `ctrl+b` still overrides on any size.
 - Decision 6's overlay-region work is implemented (issue #110 / T06): the
   review panel renders in its own height-clipped region — `renderPane` clips the
   overlay to at most `reviewRegionMax` rows (and never more than the terminal
@@ -93,12 +99,6 @@ screen mode.
   capture keys (`updateSettings`/`updatePrompt`), so they stay focused;
   slash-completion stays pinned above the composer in the fixed band. Keyboard
   routing to each overlay is unchanged.
-  the same visible height as the history region — `styledRail` height-clamps the
-  rendered rail to the rows the fixed bottom band does not occupy
-  (`railClampHeight`), so the two panes form one coherent row instead of the
-  rail overflowing while the history clips. The rail's auto-show/hide also
-  responds to terminal height as well as width (`railShowHeight` gates
-  `railVisible` alongside `railShowWidth`); `ctrl+b` still overrides on any size.
 - Resize feels correct rather than merely non-broken: the composer stays put
   and a drag-resize does not re-render the whole history.
 - A future ADR may obsolete this one if Eitri adopts an alternate-screen focus

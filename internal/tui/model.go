@@ -1054,8 +1054,9 @@ func (m Model) historyContent() string {
 
 // renderHistoryViewport returns the Height-clamped scroll region (ADR-0006
 // decision 3, issue T02): the rendered history content limited to the rows the
-// fixed bottom band does not occupy, so the band stays pinned at the very
-// bottom and only the history clips. Until the first resize lands (m.height ==
+// non-reserved regions (the fixed bottom band, plus the review overlay when
+// open — issue T06) do not occupy, so the band stays pinned at the very bottom
+// and only the history clips. Until the first resize lands (m.height ==
 // 0) the history renders unclamped — the historical pre-resize behaviour, kept
 // for lean embeds and tests that never size.
 //
