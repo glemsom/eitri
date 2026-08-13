@@ -146,6 +146,14 @@ type Request struct {
 	// via NormalizeReasoningEffort before hitting the wire (low/medium→high,
 	// xhigh→max). Empty omits reasoning_effort from the body.
 	ReasoningEffort string
+
+	// MaxOutputTokens is a hard per-turn output cap for a special (non-tool)
+	// turn, emitted on the wire as max_completion_tokens (issue #60). Zero is
+	// the provider default: no budget requested, and ordinary agent/tool turns
+	// that never set it are unaffected. It is the wire-backed Generation Budget
+	// control; local output must still be capped independently as the safety
+	// floor (docs/spec.md §13, ADR-0003 decision 4).
+	MaxOutputTokens int
 }
 
 // NormalizeReasoningEffort maps DeepSeek's legacy effort values to the

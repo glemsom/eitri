@@ -50,6 +50,14 @@ func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refres
 	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist}
 }
 
+// SupportedGenerationControls declares that Copilot can honor the Generation
+// Budget control, since it streams through the same Chat-Completions wire as the
+// primary provider and emits max_completion_tokens on special turns (docs/spec
+// §13 / issue #60). The other three generation controls are not supported here.
+func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	return []GenerationControl{GenerationControlGenerationBudget}, nil
+}
+
 // bearer resolves the bearer token for a run. Batch logic: a valid stored
 // access token is used directly; otherwise a refresh token, when present,
 // renews non-interactively; otherwise no usable credential — ErrReauthRequired.
@@ -96,6 +104,7 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 		Stream:          true,
 		StreamOptions:   &streamOptions{IncludeUsage: true},
 		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
+		MaxOutputTokens: maxOutputTokens(req),
 	})
 	if err != nil {
 		return nil, err

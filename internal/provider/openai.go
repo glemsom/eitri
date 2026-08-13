@@ -85,6 +85,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		PromptCacheKey:  promptCacheKey(req),
 		Thinking:        thinkingControl(req),
 		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
+		MaxOutputTokens: maxOutputTokens(req),
 	})
 	if err != nil {
 		return nil, err
@@ -123,6 +124,11 @@ type chatCompletionBody struct {
 	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
 	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
 	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
+	// MaxOutputTokens is the wire-backed Generation Budget (issue #60): a hard
+	// per-turn output cap emitted as max_completion_tokens for special turns.
+	// Zero (the ordinary-turn default) omits the field so the byte-identical
+	// request head is never perturbed (docs/spec.md §4).
+	MaxOutputTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
@@ -138,6 +144,26 @@ func thinkingControl(req Request) *thinkingEnabler {
 		return nil
 	}
 	return &thinkingEnabler{Type: "enabled"}
+}
+
+// SupportedGenerationControls declares that this Chat-Completions client can
+// honor the Generation Budget control (it wire-emits max_completion_tokens on
+// special turns, docs/spec.md §13 / issue #60). Higher layers consult this via
+// NegotiateGenerationControls; the other three generation controls are not
+// supported here.
+func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	return []GenerationControl{GenerationControlGenerationBudget}, nil
+}
+
+// maxOutputTokens returns the Generation Budget for req as an int usable as a
+// wire max_completion_tokens: it is 0 when no budget was requested so the field
+// is omitted. A negative value (invalid) is clamped to 0 rather than emitted, so
+// an internal caller can never accidentally send a nonsensical cap.
+func maxOutputTokens(req Request) int {
+	if req.MaxOutputTokens <= 0 {
+		return 0
+	}
+	return req.MaxOutputTokens
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the

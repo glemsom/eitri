@@ -125,6 +125,105 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 	}
 }
 
+// budgetScripted wraps a Scripted handler so it also declares (via the
+// generation-control capability surface) that it honors the Generation Budget
+// control — the wire-emitting budget a supporting provider advertises. The
+// engine opts the compaction summary turn into that budget, so the summary
+// request must carry max_completion_tokens (issue #60).
+type budgetScripted struct {
+	provider.Scripted
+}
+
+// SupportedGenerationControls implements provider.GenerationControlProvider.
+func (b *budgetScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
+	return []provider.GenerationControl{provider.GenerationControlGenerationBudget}, nil
+}
+
+// TestCompactionSummaryHonorsGenerationBudget verifies the compaction summary
+// special turn — an internal, non-tool generation — opts into a hard Generation
+// Budget on a supporting provider: the summary request carries
+// max_completion_tokens capped at SummaryMaxTokens, while ordinary agent/tool
+// turns in the same run carry no budget (issue #60).
+func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
+	h := &compactHandler{}
+	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{
+		Model:      "deepseek-v4-flash",
+		Prompt:     "go",
+		SessionKey: "sess-budget",
+	}, AgentOptions{
+		Tools:       strictToolDefs(),
+		ToolChoice:  "auto",
+		Executor:    &mockToolRecorder{},
+		MaxTurns:    10,
+		Compaction:  compactCfg(),
+		OnCompacted: func() {},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error = %v, want nil", err)
+	}
+
+	if len(h.requests) != 4 {
+		t.Fatalf("provider requests = %d, want 4 (t1, t2, summary, final)", len(h.requests))
+	}
+	summary := h.requests[2]
+	if len(summary.Tools) != 0 {
+		t.Fatalf("summary request carried tools, want a non-tool special turn")
+	}
+	if summary.MaxOutputTokens != DefaultSummaryMaxTokens {
+		t.Fatalf("summary MaxOutputTokens = %d, want %d (SummaryMaxTokens)", summary.MaxOutputTokens, DefaultSummaryMaxTokens)
+	}
+	// Ordinary agent/tool turns must not carry a generation budget.
+	for i, r := range h.requests {
+		if i == 2 {
+			continue
+		}
+		if r.MaxOutputTokens != 0 {
+			t.Errorf("ordinary turn %d carried MaxOutputTokens=%d, want 0 (no budget)", i, r.MaxOutputTokens)
+		}
+	}
+}
+
+// TestCompactionSkipsSummaryWhenBudgetUnsupported verifies the generation-control
+// contract (docs/spec.md §13 / issue #60): a special turn that requires the
+// Generation Budget on a provider that cannot honor it fails negotiation, and the
+// summary is skipped via the fail-safe path rather than silently running without
+// the hard cap. Compaction still happens (eviction frees context) and the run
+// completes.
+func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
+	// NewScripted has no generation-control capability surface: it honors no
+	// controls, so a required Generation Budget fails the contract.
+	h := &compactHandler{}
+	e := New(provider.NewScripted(h.stream), &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{
+		Model:      "deepseek-v4-flash",
+		Prompt:     "go",
+		SessionKey: "sess-nobudget",
+	}, AgentOptions{
+		Tools:       strictToolDefs(),
+		ToolChoice:  "auto",
+		Executor:    &mockToolRecorder{},
+		MaxTurns:    10,
+		Compaction:  compactCfg(),
+		OnCompacted: func() {},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error = %v, want nil (compaction still completes on fail-safe skip)", err)
+	}
+	// T1 (tool) -> T2 (tool + threshold) -> no summary -> FINAL, straight through.
+	if len(h.requests) != 3 {
+		t.Fatalf("provider requests = %d, want 3 (t1, t2, final) — summary skipped for unsupported required budget", len(h.requests))
+	}
+	// No request may carry a budget the provider cannot honor.
+	for i, r := range h.requests {
+		if r.MaxOutputTokens != 0 {
+			t.Errorf("request %d carried MaxOutputTokens=%d on an unsupported provider", i, r.MaxOutputTokens)
+		}
+	}
+}
+
 // TestRunAgentCompactsAtThreshold exercises the proactive 80%-threshold trigger
 // through the engine seam (ADR-0003 decision 1/3/4): after a turn reports
 // usage crossing the threshold, the engine evicts the oldest body, re-injects
@@ -133,7 +232,7 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	h := &compactHandler{}
 	var compacted bool
-	e := New(provider.NewScripted(h.stream), &mockTranscript{})
+	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
 	_, err := e.RunAgent(context.Background(), RunRequest{
 		Model:      "deepseek-v4-flash",
@@ -254,7 +353,7 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 // error.
 func TestRunAgentOverflowTrigger(t *testing.T) {
 	h := &overflowHandler{}
-	e := New(provider.NewScripted(h.stream), &mockTranscript{})
+	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
 	_, err := e.RunAgent(context.Background(), RunRequest{
 		Model: "deepseek-v4-flash", Prompt: "go",
