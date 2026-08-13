@@ -313,7 +313,7 @@ func NewModelCfg(d Dependencies) Model {
 	// (issue #121 AC5), so an empty composer sits at a single row.
 	tx.SetHeight(1)
 
-	return Model{
+	m := Model{
 		composer:        tx,
 		turn:            d.Turn,
 		deps:            d,
@@ -331,6 +331,14 @@ func NewModelCfg(d Dependencies) Model {
 		reasoningEffort: d.Config.ReasoningEffort,
 		clipboard:       newClipboard(d),
 	}
+	// An unknown hand-edited theme warns once on startup via the status strip,
+	// naming the fallback, instead of failing silently: the renderer still
+	// falls back to dark per issue #129 (issue #131 AC1). Valid themes never
+	// warn. The warning is one-shot — savedMsg renders once, then clears.
+	if !isSupportedTheme(d.Config.Theme) {
+		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
+	}
+	return m
 }
 
 // newClipboard returns the clipboard write seam (issue #123): the injected
@@ -399,6 +407,13 @@ func (m Model) Init() tea.Cmd {
 // Update handles a UI event and returns the next state plus any commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// The band note is one-shot: it renders on the frame after it was set (the
+	// initial frame for the startup theme warning, one frame after Ctrl+O for
+	// the copy note), then any later message drops it (issues #131 AC1, #123).
+	// The startup warning survives here because the Bubble Tea runtime renders
+	// the initial View before the first Update is processed.
+	m.savedMsg = ""
 
 	// Drain a pending continuation request from the running engine goroutine:
 	// this flips the Model into the prompting state so the next keypress is
