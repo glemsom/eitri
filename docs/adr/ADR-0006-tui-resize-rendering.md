@@ -81,6 +81,14 @@ screen mode.
   resize bursts coalesce to a single re-render instead of re-running the whole
   `RenderMarkdown` pass every tick. The persisted `bubbletea/viewport` scroll
   component's position + follow behaviour lands with T04.
+- Decision 6's follow seam is implemented (issue #108 / T04): the scroll region
+  is served through a persisted `bubbletea/viewport` component (`histViewport`)
+  that owns the scroll position and re-anchors to the newest output
+  (`GotoBottom`) on every render, so the newest content stays in view through
+  streamed appends and a mid-stream resize without ever staring at stale
+  history. No paging/scroll/key/mouse navigation is added — native terminal
+  scroll remains the only navigation path, so the component is the seam a
+  future alternate-screen focus mode can break follow through.
 - Decision 5 is implemented (issue #109 / T05): the right context rail honours
   the same visible height as the history region — `styledRail` height-clamps the
   rendered rail to the rows the fixed bottom band does not occupy

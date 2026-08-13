@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -278,6 +279,17 @@ type Model struct {
 	// every tick. It is a pointer so the content written by View (which runs on a
 	// value copy) survives across render cycles.
 	histCache *scrollCache
+
+	// histViewport is the persisted history scroll component (ADR-0006 decision 6,
+	// issue T04): a bubbletea/viewport that owns the scroll region's position +
+	// follow behaviour. It re-anchors to the newest output (GotoBottom) on every
+	// render so the newest content stays in view through streamed appends and a
+	// mid-stream resize (issue #108 AC1/AC2); native terminal scroll remains the
+	// only navigation path (no paging/scroll keys are wired in, AC3), so the
+	// component is the seam a future focus-mode can break follow through. It is a
+	// pointer so scroll-state changes made by View (which runs on a value copy)
+	// survive across render cycles, matching the histCache pointer.
+	histViewport *viewport.Model
 }
 
 // scrollCache is the bounded scroll-region render cache (ADR-0006 decision 4,
@@ -326,8 +338,25 @@ func NewModelCfg(d Dependencies) Model {
 		// Seed the bounded scroll-cache with a sentinel bucket so the first view
 		// always builds (an unbuilt empty cache must not be served as content).
 		histCache:       &scrollCache{bkt: -1},
+		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
 	}
+}
+
+// newHistoryViewport builds the persisted history scroll component (ADR-0006
+// decision 6, issue T04) as a heap-allocated bubbletea/viewport. It is a
+// pointer so scroll-state changes made by View (which runs on a value copy)
+// survive across render cycles, matching the histCache pointer. It starts
+// unsized (0x0) until the first WindowSizeMsg lands.
+func newHistoryViewport() *viewport.Model {
+	v := viewport.New(0, 0)
+	// No re-implemented navigation (ADR-0006 decision 6, issue #108 AC3): the
+	// viewport only renders the follow position — native terminal scroll is the
+	// navigation path. Disabling mouse-wheel scrolling here makes that intent
+	// explicit rather than inherited from the component defaults (the Bubble Tea
+	// program does not enable mouse tracking anyway).
+	v.MouseWheelEnabled = false
+	return &v
 }
 
 // SetTurn swaps the conversation Turn (used at boot to wire the engine seam
@@ -1060,15 +1089,21 @@ func (m Model) historyContent() string {
 // 0) the history renders unclamped — the historical pre-resize behaviour, kept
 // for lean embeds and tests that never size.
 //
-// While the run is live (no user scroll input yet — native scroll is the
-// navigation path, ADR-0006 decision 6) the clamp is bottom-anchored: the
-// newest output stays visible. The bubbletea/viewport scroll-position/follow
-// state (not just the per-width render cache from T03, which landed in issue
-// #107) arrives with the T04 live-follow seam (issue #108); decision 6 keeps
-// paging/mouse routing off here. Line endings are preserved so the primary
-// buffer's native selection/scrollback stay clean (ADR-0006 decision 1).
+// The clip is served through the persisted bubbletea/viewport scroll component
+// (ADR-0006 decision 6, issue T04): the viewport owns the scroll position, and
+// re-anchors to the newest output (GotoBottom) after every append so the newest
+// content stays in view through streamed appends and a mid-stream resize
+// (issue #108 AC1/AC2). Decision 6 keeps paging/mouse/scroll keys off here —
+// native terminal scroll is the only navigation path (AC3) — so the component
+// re-follows each render and is the seam a future focus-mode can break follow
+// through. The per-width render cache (T03, issue #107) bounds the markdown
+// rebuild cost independently of this scroll state. Line endings are preserved
+// so the primary buffer's native selection/scrollback stay clean (ADR-0006
+// decision 1).
 func (m Model) renderHistoryViewport(content string, reserved int) string {
 	if m.height <= 0 {
+		// No size has landed yet: the historical unclamped render, kept for lean
+		// embeds and tests that never size.
 		return content
 	}
 	vh := m.height - reserved
@@ -1076,10 +1111,26 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 		// The non-scroll regions occupy the whole terminal; no room for history.
 		return ""
 	}
-	return visibleHistory(content, vh)
+	vp := m.histViewport
+	if vp == nil {
+		// Fall back to the stateless bottom-anchored slice for a model built
+		// without the persisted component (should not occur via NewModelCfg).
+		return visibleHistory(content, vh)
+	}
+	// Re-hydrate the persisted viewport with the fresh content + dimensions so
+	// it owns the scroll position relative to the current content.
+	vp.Width = m.transcriptWidth()
+	vp.Height = vh
+	vp.SetContent(content)
+	// Follow the newest output after appends (ADR-0006 decision 6, issue #108
+	// AC1/AC2): the newest content stays in view through streamed appends and a
+	// mid-stream resize. With no scroll/paging keys wired in (decision 6, AC3)
+	// native terminal scroll is the only navigation path, so the viewport
+	// re-anchors to the newest on every render; the persisted component is the
+	// seam that a future focus-mode can break follow through.
+	vp.GotoBottom()
+	return viewportBand(histLines(content), vh, vp.YOffset)
 }
-
-// visibleHistory returns the visible, bottom-anchored slice of the history
 
 // reviewRegionRows returns how many rows the review overlay region may occupy
 // when open (issue T06 AC1): at most reviewRegionMax rows, and never more than
@@ -1120,21 +1171,53 @@ func clipReviewRegion(content string, n int) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// content: the last vh lines, or the whole content when it fits. It is a pure
-// function of the rendered history and the available height — no viewport state
-// is kept on the model until T03/T04 add the persisted scroll/cache.
+// visibleHistory returns the visible, bottom-anchored slice of the history
+// content for a viewport of the given height — the stateless follow that the
+// persisted viewport component (T04, issue #108) replaces. It is kept as the
+// fallback for a model built without histViewport.
 func visibleHistory(content string, vh int) string {
+	lines := histLines(content)
+	return viewportBand(lines, vh, maxYOffset(content, vh))
+}
+
+// maxYOffset returns the maximum scroll offset for the given rendered scroll
+// content in a viewport of the given height: how far the newest line can sit
+// above the bottom before a scroll is possible. It mirrors the persisted
+// viewport's own max-offset logic and is used by the stateless visibleHistory
+// fallback to select the bottom-anchored slice.
+func maxYOffset(content string, vh int) int {
+	return max(0, len(histLines(content))-vh)
+}
+
+// histLines splits rendered scroll-region content into its content rows,
+// dropping a trailing newline's empty final line so it never counts as a row
+// (the same normalization visibleHistory applied).
+func histLines(content string) []string {
 	lines := strings.Split(content, "\n")
-	// A trailing newline yields one empty final line; drop it so it never counts
-	// as a content row.
 	if n := len(lines); n > 0 && lines[n-1] == "" {
 		lines = lines[:n-1]
 	}
+	return lines
+}
+
+// viewportBand returns the slice of history lines shown for a viewport of the
+// given height at the given Y offset, clamped to the scrollable range. It
+// mirrors the historical bottom-anchored output when the offset is at the
+// bottom, so the region seam's layout is byte-identical while the persisted
+// component owns the scroll position. When the whole history fits, the full
+// content is returned (no clipping).
+func viewportBand(lines []string, vh, y int) string {
 	if len(lines) <= vh {
 		// The whole history fits in the viewport; no clipping needed.
 		return strings.Join(lines, "\n")
 	}
-	return strings.Join(lines[len(lines)-vh:], "\n")
+	if y > len(lines)-vh {
+		y = len(lines) - vh
+	}
+	if y < 0 {
+		y = 0
+	}
+	return strings.Join(lines[y:y+vh], "\n")
 }
 
 // lineCount reports how many rendered terminal rows a region string occupies,
