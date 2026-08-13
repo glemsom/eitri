@@ -48,13 +48,13 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// never pauses the running agent loop.
 	feedTelemetry(e, te)
 	m := tui.NewModelCfg(tui.Dependencies{
-		Models:    discoveredModels(context.Background(), p),
+		Models: discoveredModels(context.Background(), p),
 		// The workspace directory is surfaced as read-only project state (issue
 		// #82 AC1): the run operates here, shown as a header above the transcript.
 		WorkspacePath: workspace,
-		Config:    cfg,
-		Save:      func(c config.Config) error { return config.Save(c, cfgPath) },
-		Telemetry: te,
+		Config:        cfg,
+		Save:          func(c config.Config) error { return config.Save(c, cfgPath) },
+		Telemetry:     te,
 		// The skills panel and `/skillname` slash activation sit on the same
 		// catalog the batch engine uses (T8): activation runs the `skill` tool
 		// through the registry, so a slash activation behaves identically to a
