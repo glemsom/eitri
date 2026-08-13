@@ -29,16 +29,8 @@ var (
 	// agentPaneStyle frames assistant answers as a left-bordered pane (issue
 	// #122 AC1); errorPaneStyle is the same pane with the error-colored border
 	// for failing turns so errors read as distinctly as answers.
-	agentPaneStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderLeft(true).
-			PaddingLeft(1).
-			BorderForeground(accentColor)
-	errorPaneStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderLeft(true).
-			PaddingLeft(1).
-			BorderForeground(errorColor)
+	agentPaneStyle = borderedPane(accentColor)
+	errorPaneStyle = borderedPane(errorColor)
 	// thinkingStyle renders the 🤔 collapsed reasoning hint (issue #122 AC2).
 	thinkingStyle = lipgloss.NewStyle().Faint(true).Foreground(accentColor)
 	// toolStyle renders the ⊕ tool-entry line (issue #122 AC2).
@@ -55,6 +47,17 @@ var (
 	// composer's own rows and break the band's bottom-pinned layout.
 	bandSeparatorStyle = lipgloss.NewStyle().Foreground(accentColor)
 )
+
+// borderedPane builds a left-bordered pane with the given border color — the
+// shared frame for assistant answers (agent accent) and failing turns (error
+// color), keeping the two pane styles from diverging.
+func borderedPane(color lipgloss.Color) lipgloss.Style {
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderLeft(true).
+		PaddingLeft(1).
+		BorderForeground(color)
+}
 
 // isToolFailure reports whether a delivered tool result is error-shaped: the
 // engine surfaces tool failures as plain-text result strings with these
