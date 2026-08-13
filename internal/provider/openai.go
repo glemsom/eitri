@@ -86,6 +86,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		Thinking:        thinkingControl(req),
 		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
 		MaxOutputTokens: maxOutputTokens(req),
+		ResponseFormat:  jsonObjectModeControl(req),
 	})
 	if err != nil {
 		return nil, err
@@ -129,6 +130,11 @@ type chatCompletionBody struct {
 	// Zero (the ordinary-turn default) omits the field so the byte-identical
 	// request head is never perturbed (docs/spec.md §4).
 	MaxOutputTokens int `json:"max_completion_tokens,omitempty"`
+	// ResponseFormat is the wire-backed JSON Object Mode (issue #59): non-nil
+	// on a JSON-Object-Mode finalization turn, emitted as
+	// response_format:{type:json_object}; nil on ordinary turns so the field is
+	// omitted and the request head stays byte-stable.
+	ResponseFormat *jsonObjectMode `json:"response_format,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
@@ -146,13 +152,19 @@ func thinkingControl(req Request) *thinkingEnabler {
 	return &thinkingEnabler{Type: "enabled"}
 }
 
+// jsonObjectMode is OpenAI's constrained-output response_format; its enabled
+// form asks the provider to return a valid JSON object (issue #59).
+type jsonObjectMode struct {
+	Type string `json:"type"`
+}
+
 // SupportedGenerationControls declares that this Chat-Completions client can
-// honor the Generation Budget control (it wire-emits max_completion_tokens on
-// special turns, docs/spec.md §13 / issue #60). Higher layers consult this via
-// NegotiateGenerationControls; the other three generation controls are not
-// supported here.
+// honor the Generation Budget and JSON Object Mode controls (it wire-emits
+// max_completion_tokens and response_format on special turns, docs/spec.md §13 /
+// issues #59–#60). Higher layers consult this via NegotiateGenerationControls;
+// the other two generation controls are not supported here.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget}, nil
+	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode}, nil
 }
 
 // maxOutputTokens returns the Generation Budget for req as an int usable as a
@@ -164,6 +176,16 @@ func maxOutputTokens(req Request) int {
 		return 0
 	}
 	return req.MaxOutputTokens
+}
+
+// jsonObjectModeControl returns the JSON Object Mode response_format for req
+// when the caller opted into it, else nil so the field is omitted. Only a JSON
+// Object Mode finalization special turn sets it (issue #59).
+func jsonObjectModeControl(req Request) *jsonObjectMode {
+	if !req.JSONObjectMode {
+		return nil
+	}
+	return &jsonObjectMode{Type: "json_object"}
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the

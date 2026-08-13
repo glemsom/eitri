@@ -154,6 +154,13 @@ type Request struct {
 	// control; local output must still be capped independently as the safety
 	// floor (docs/spec.md §13, ADR-0003 decision 4).
 	MaxOutputTokens int
+
+	// JSONObjectMode opts a special finalization turn into schema-constrained
+	// JSON Object Mode: on a supporting provider the request carries
+	// response_format:{type:json_object} so the final answer is guaranteed to be
+	// a valid JSON object (issue #59, docs/spec.md §13). Kept default-off so
+	// ordinary agent/tool turns never carry it and stay byte-identical.
+	JSONObjectMode bool
 }
 
 // NormalizeReasoningEffort maps DeepSeek's legacy effort values to the
