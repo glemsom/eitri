@@ -89,8 +89,9 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 }
 
 // TestModel_slashTabCyclesSettingsAndSkills verifies tab on a bare `/` walks the
-// full completion list — the built-in `/settings` command ahead of any matching
-// skill (issue #87 AC1) — filling the composer candidate-by-candidate.
+// full completion list — the built-in `/settings` and `/copy` commands ahead of
+// any matching skill (issue #87 AC1 / #123 AC2) — filling the composer
+// candidate-by-candidate.
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
@@ -99,15 +100,19 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "/")
 
-	// First tab picks `/settings` (first candidate); a second tab advances to
-	// the matching skill.
+	// First tab picks `/settings` (first built-in); the second tab advances to
+	// the `/copy` built-in; a third reaches the matching skill.
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/settings" {
 		t.Fatalf("first tab completion = %q, want /settings", got)
 	}
 	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "/copy" {
+		t.Fatalf("second tab completion = %q, want /copy", got)
+	}
+	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/review" {
-		t.Fatalf("second tab completion = %q, want /review", got)
+		t.Fatalf("third tab completion = %q, want /review", got)
 	}
 	// The completed line renders with the selected candidate marked up.
 	if !strings.Contains(m.View(), "▸ /review") {
