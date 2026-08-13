@@ -1407,7 +1407,7 @@ func (m Model) renderHistory(b *strings.Builder) {
 				b.WriteString(msg.reasoning + "\n")
 			}
 		}
-		md, _ := RenderMarkdown(msg.content, m.composer.Width())
+		md, _ := RenderMarkdown(msg.content, m.composer.Width(), m.deps.Config.Theme)
 		if msg.role == "you" {
 			fmt.Fprintf(b, "%s\n%s\n", headerStyle.Render("you"), md)
 		} else {

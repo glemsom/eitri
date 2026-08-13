@@ -24,6 +24,9 @@ func TestDefaults(t *testing.T) {
 		t.Fatalf("Provider = %q, want default opencode-go primary", cfg.Provider)
 	}
 	if cfg.Model != "deepseek-v4-flash" {
+		if cfg.Theme != "dark" {
+			t.Fatalf("Theme = %q, want default \"dark\"", cfg.Theme)
+		}
 		t.Fatalf("Model = %q, want default deepseek-v4-flash", cfg.Model)
 	}
 }
@@ -123,6 +126,44 @@ func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
 	}
 	if got.ReasoningEffort != "low" {
 		t.Fatalf("Load() ReasoningEffort = %q, want default \"low\" for absent field", got.ReasoningEffort)
+	}
+}
+
+// TestThemeAbsentDefaultsToDark verifies the theme acceptance criteria (issue
+// #129): a config file written before the theme feature (no `theme` key) loads
+// with the "dark" default rather than the empty zero value.
+func TestThemeAbsentDefaultsToDark(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte("{\"provider\": \"opencode-go\", \"reasoning_effort\": \"high\", \"thinking_enabled\": true}"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v, want nil", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.Theme != "dark" {
+		t.Fatalf("Load() Theme = %q, want default \"dark\" for absent field", got.Theme)
+	}
+}
+
+// TestThemePersists verifies a chosen theme round-trips through save/load so a
+// user's render-theme pick survives a reload (issue #129).
+func TestThemePersists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.Theme = "tokyo-night"
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.Theme != "tokyo-night" {
+		t.Fatalf("Load() Theme = %q, want persisted \"tokyo-night\"", got.Theme)
 	}
 }
 
