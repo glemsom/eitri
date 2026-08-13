@@ -10,10 +10,13 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// stubTUI replaces the TUI program launcher with a no-op that captures the
-// model, letting boot-path tests exercise Run without a real terminal.
+// stubTUI replaces the TUI program launcher with a no-op and reports a normal
+// interactive host terminal, letting boot-path tests exercise Run without a
+// real terminal and without tripping the non-interactive guard (T7, issue
+// #125).
 func stubTUI(t *testing.T) {
 	t.Helper()
+	stubTUIEnv(t, interactiveEnv)
 	orig := runProgram
 	runProgram = func(m tui.Model) error { return nil }
 	t.Cleanup(func() { runProgram = orig })

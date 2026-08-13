@@ -21,9 +21,10 @@ func TestCLISmoke(t *testing.T) {
 		cmd.Env = append(os.Environ(), "EITRI_DIR="+dataDir)
 		out, err := cmd.CombinedOutput()
 		// With no args, eitri boots then launches the interactive TUI. A
-		// headless run has no TTY, so we tolerate the clean TTY error while
-		// still asserting boot completed (the data dir was created).
-		if err != nil && !strings.Contains(string(out), "/dev/tty") {
+		// headless run has no TTY, so the non-interactive guard (T7, issue
+		// #125) refuses the TUI with a message directing the user to batch
+		// mode (-b) while boot still completes (the data dir was created).
+		if err != nil && !strings.Contains(string(out), "-b") {
 			t.Fatalf("eitri exit error = %v, output:\n%s", err, out)
 		}
 		fi, err := os.Stat(dataDir)
