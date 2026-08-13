@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/diff"
 )
@@ -100,7 +100,7 @@ func (m Model) buildReview() reviewPanel {
 // updateReview routes a keypress while the review panel is open. It keeps the
 // panel read-only: navigation and the open_in_browser escape hatch never modify
 // the repo or the live run (issue #90 AC4).
-func (m Model) updateReview(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateReview(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msgi.String()
 	if len(m.review.files) == 0 {
 		// No files: esc / ctrl+d return to the transcript; everything else no-ops.

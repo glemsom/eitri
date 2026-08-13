@@ -1,9 +1,10 @@
 package tui
 
 import (
+	"image/color"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // T4 styling identity (issue #122): a restrained dark palette with a single
@@ -51,12 +52,12 @@ var (
 // borderedPane builds a left-bordered pane with the given border color — the
 // shared frame for assistant answers (agent accent) and failing turns (error
 // color), keeping the two pane styles from diverging.
-func borderedPane(color lipgloss.Color) lipgloss.Style {
+func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderLeft(true).
 		PaddingLeft(1).
-		BorderForeground(color)
+		BorderForeground(c)
 }
 
 // isToolFailure reports whether a delivered tool result is error-shaped: the

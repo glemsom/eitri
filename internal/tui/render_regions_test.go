@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestRenderRegions_HistoryVsBandSeparation asserts the regioned render seam
@@ -170,7 +170,7 @@ func TestReviewRegion_ClipsTallDiff(t *testing.T) {
 
 	// Open the review panel and expand the focused file's inline diff.
 	m = reopenReview(t, m)
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	got := m.renderPane()
 	paneLines := len(strings.Split(strings.TrimRight(got, "\n"), "\n"))

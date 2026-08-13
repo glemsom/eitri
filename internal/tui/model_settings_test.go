@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -22,12 +22,12 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 
-	view := m.View()
-	if !strings.Contains(view, "Eitri Settings") {
-		t.Fatalf("settings view %q missing title", view)
+	content := view(m)
+	if !strings.Contains(content, "Eitri Settings") {
+		t.Fatalf("settings content %q missing title", content)
 	}
-	if !strings.Contains(view, "deepseek-v4-flash") && !strings.Contains(view, "grok-2") {
-		t.Fatalf("settings view %q missing the model row", view)
+	if !strings.Contains(content, "deepseek-v4-flash") && !strings.Contains(content, "grok-2") {
+		t.Fatalf("settings content %q missing the model row", content)
 	}
 }
 
@@ -139,6 +139,37 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	}
 }
 
+// TestModel_SettingsPathsSpaceTypesASpace asserts a space key types a literal
+// space in the free-form paths field (parity pass 2, issue #146): bubbletea v2
+// reports a space key's String() as "space", not " ", so the field must
+// append the key's Text to keep a hand-written path with spaces intact.
+func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldPaths; i++ {
+		m = keypress(t, m, "tab")
+	}
+	// The paths fixture value is "/srv"; a space must append " " (a literal
+	// space, not the four characters "space").
+	m = keypress(t, m, " ")
+	m = keypress(t, m, "v2")
+	for i := fieldPaths; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv v2" {
+		t.Fatalf("saved paths = %v, want [/srv v2] (space typed literally)", saved.ExtraWritablePaths)
+	}
+}
+
 // TestModel_SettingsThinkingTogglePersists verifies flipping the reasoning
 // mode off in the panel persists ThinkingEnabled=false through the Save seam
 // while retaining the effort dial (issue #56).
@@ -196,8 +227,8 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	if m.settings.discoverState != discoverLoading {
 		t.Fatalf("settings discoverState after open = %v, want discoverLoading", m.settings.discoverState)
 	}
-	if !strings.Contains(m.View(), "discovering models") {
-		t.Fatalf("settings view %q missing loading state", m.View())
+	if !strings.Contains(view(m), "discovering models") {
+		t.Fatalf("settings view %q missing loading state", view(m))
 	}
 
 	// The discovery command's delivery folds the model list into the panel.
@@ -234,13 +265,13 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	if m.settings.discoverErr == "" {
 		t.Fatal("settings discovery error message not recorded")
 	}
-	view := m.View()
+	content := view(m)
 	// The error surfaces to the panel, and the configured model remains selectable.
-	if !strings.Contains(view, "connection refused") {
-		t.Fatalf("settings view %q missing discovery error", view)
+	if !strings.Contains(content, "connection refused") {
+		t.Fatalf("settings content %q missing discovery error", content)
 	}
-	if !strings.Contains(view, cfgFixture().Model) {
-		t.Fatalf("settings view %q missing configured model after failed discovery", view)
+	if !strings.Contains(content, cfgFixture().Model) {
+		t.Fatalf("settings content %q missing configured model after failed discovery", content)
 	}
 }
 
@@ -323,35 +354,36 @@ func keypress(t *testing.T, m Model, key string) Model {
 	return asModel(t, nm)
 }
 
-// namedKey maps a textual key name to its tea.KeyMsg. Rune names ('y', 'n',
-// letters) become a keyrunes message so the composer/settings accumulate them.
+// namedKey maps a textual key name to its bubbletea v2 tea.KeyPressMsg. Rune
+// names ('y', 'n', letters) become a printable-text keypress so the
+// composer/settings accumulate them.
 func namedKey(name string) tea.Msg {
 	switch name {
 	case "ctrl+s":
-		return tea.KeyMsg{Type: tea.KeyCtrlS}
+		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	case "ctrl+c":
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return tea.KeyPressMsg{Code: tea.KeyEsc}
 	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
+		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return tea.KeyPressMsg{Code: tea.KeyDown}
 	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
 	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
+		return tea.KeyPressMsg{Code: tea.KeyRight}
 	case "backspace":
-		return tea.KeyMsg{Type: tea.KeyBackspace}
+		return tea.KeyPressMsg{Code: tea.KeyBackspace}
 	case "y":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}
+		return tea.KeyPressMsg{Code: 'y', Text: "y"}
 	case "n":
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}
+		return tea.KeyPressMsg{Code: 'n', Text: "n"}
 	default:
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(name)}
+		return tea.KeyPressMsg{Code: tea.KeyExtended, Text: name}
 	}
 }

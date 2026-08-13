@@ -58,8 +58,12 @@ func followRendered(m Model) (got string, histContent string, vh int) {
 func newestNonBlank(render string) string {
 	lines := strings.Split(strings.TrimRight(render, "\n"), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			return strings.TrimRight(lines[i], " ") + "\n"
+		// Strip ANSI styling first: lipgloss v2 always renders full-fidelity
+		// ANSI (downsampling moved to the output layer), so content rows carry
+		// SGR sequences even in tests.
+		clean := ansiStrip(lines[i])
+		if strings.TrimSpace(clean) != "" {
+			return strings.TrimRight(clean, " ") + "\n"
 		}
 	}
 	return ""
@@ -150,7 +154,7 @@ func TestModel_followViewportPersisted(t *testing.T) {
 	if m.histViewport == nil {
 		t.Fatalf("model must own a persisted viewport component")
 	}
-	if m.histViewport.Width != 0 || m.histViewport.Height != 0 {
-		t.Errorf("fresh viewport should start unsized until the first resize, got %dx%d", m.histViewport.Width, m.histViewport.Height)
+	if m.histViewport.Width() != 0 || m.histViewport.Height() != 0 {
+		t.Errorf("fresh viewport should start unsized until the first resize, got %dx%d", m.histViewport.Width(), m.histViewport.Height())
 	}
 }

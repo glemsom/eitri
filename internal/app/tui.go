@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
@@ -214,11 +214,11 @@ func discoveredModels(p provider.Provider) func(ctx context.Context) ([]string, 
 // runs the interactive TUI.
 var runProgram = func(m tui.Model) error {
 	// The TUI takes over the full terminal via the alternate screen (T1 pivot,
-	// issue #119): every frame is a clean repaint into the alt buffer, so a
-	// window resize re-flows the transcript cleanly with no primary-buffer
-	// duplicate/scatter residue. Mouse events are enabled so the transcript can
-	// scroll with the wheel over the history viewport (issue #120 AC1).
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// issue #119) and mouse-cell-motion mode — declared declaratively on the
+	// model's tea.View (View sets v.AltScreen and v.MouseMode) per bubbletea v2
+	// (pass 1, issue #145). The transcript scrolls with the wheel over the
+	// history viewport (issue #120 AC1) and click-drags select (issue #124).
+	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
 }

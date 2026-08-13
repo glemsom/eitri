@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // fakeSess turns returns a canned answer for tests that drive a Model turn.
@@ -106,13 +106,13 @@ func TestModelRailToggles(t *testing.T) {
 	}
 
 	// ctrl+b hides it.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	if m.railVisible() {
 		t.Fatal("ctrl+b should hide the rail on a wide window")
 	}
 	// ctrl+b again shows it.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	if !m.railVisible() {
 		t.Fatal("ctrl+b should re-show the rail")
@@ -139,13 +139,13 @@ func TestModelRailAutoHidesShort(t *testing.T) {
 		t.Fatal("rail must auto-hide on a wide-but-short window")
 	}
 	// ctrl+b still opens it on any size.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	if !m.railVisible() {
 		t.Fatal("ctrl+b must open the rail on a short window")
 	}
-	if !strings.Contains(m.View(), "STATS") {
-		t.Errorf("open rail missing STATS section, got: %q", m.View())
+	if !strings.Contains(view(m), "STATS") {
+		t.Errorf("open rail missing STATS section, got: %q", view(m))
 	}
 }
 
@@ -167,14 +167,14 @@ func TestModelRailAutoHidesNarrow(t *testing.T) {
 		t.Fatal("rail must auto-hide on a narrow window")
 	}
 	// ctrl+b opens it on any width.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	if !m.railVisible() {
 		t.Fatal("ctrl+b must open the rail on a narrow window")
 	}
-	view := m.View()
-	if !strings.Contains(view, "STATS") {
-		t.Errorf("open rail missing STATS section, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "STATS") {
+		t.Errorf("open rail missing STATS section, got: %q", content)
 	}
 }
 
@@ -192,8 +192,8 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	m = asModel(t, nm)
 
 	// Force it open and feed a live usage update.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
-	nm, _ = nm.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	nm, _ = nm.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
 	cmd := telemetryWait(te)
@@ -201,8 +201,8 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	nm, _ = m.Update(msg)
 	m = asModel(t, nm)
 
-	if !strings.Contains(m.View(), "cache 90%") {
-		t.Errorf("open rail not live-updating cache gauge, got: %q", m.View())
+	if !strings.Contains(view(m), "cache 90%") {
+		t.Errorf("open rail not live-updating cache gauge, got: %q", view(m))
 	}
 }
 
@@ -221,20 +221,20 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 	m = asModel(t, nm)
 	// ctrl+b forces the rail open on any size (AC3); auto-show would gate on
 	// the short height.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 
 	if !m.railVisible() {
 		t.Fatal("ctrl+b must force the rail open")
 	}
-	view := m.View()
+	content := view(m)
 
 	// The rail is clipped to the same height as the history viewport, so even
 	// though the raw rail block is ~16 lines the whole joined row stays within
 	// the terminal height. Before the clip the rail overflows independently
 	// while the history clips.
-	if n := len(strings.Split(strings.TrimRight(view, "\n"), "\n")); n > 12 {
-		t.Errorf("view (%d lines) exceeds terminal height 12 with the rail open, got:\n%q", n, view)
+	if n := len(strings.Split(strings.TrimRight(content, "\n"), "\n")); n > 12 {
+		t.Errorf("view (%d lines) exceeds terminal height 12 with the rail open, got:\n%q", n, content)
 	}
 }
 
@@ -243,8 +243,8 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 	m := NewModel(fakeSess("hi"))
 	m = resize(t, m)
-	view := m.View()
-	if strings.Contains(view, "STATS") {
-		t.Errorf("nil rail must render no rail, got: %q", view)
+	content := view(m)
+	if strings.Contains(content, "STATS") {
+		t.Errorf("nil rail must render no rail, got: %q", content)
 	}
 }

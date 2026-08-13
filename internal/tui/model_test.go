@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -30,24 +30,25 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 	m = typeText(t, m, "hello")
 	m = submitAndWait(t, m)
 
-	view := m.View()
-	if !strings.Contains(view, "you") || !strings.Contains(view, "eitri") {
-		t.Errorf("expected both role headers in view, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "you") || !strings.Contains(content, "eitri") {
+		t.Errorf("expected both role headers in view, got: %q", content)
 	}
 	// The assistant's markdown answer must render (bold "glad" carries SGR 1).
-	if !strings.Contains(view, "glad") {
-		t.Errorf("expected assistant answer text in view, got: %q", view)
+	if !strings.Contains(content, "glad") {
+		t.Errorf("expected assistant answer text in view, got: %q", content)
 	}
-	if !hasSGRBold(m.View()) {
-		t.Errorf("expected markdown bold to render in assistant answer, got: %q", m.View())
+	if !hasSGRBold(view(m)) {
+		t.Errorf("expected markdown bold to render in assistant answer, got: %q", view(m))
 	}
-	// The TUI renders into the primary buffer by default: the conversation view
-	// must never carry a clear-screen (\x1b[2J) or alt-screen (\x1b[?1049)
-	// sequence, so native scrollback/selection/search survive (docs/spec.md §9).
-	if strings.Contains(view, "\x1b[2J") {
+	// The conversation content must never itself carry a clear-screen
+	// (\x1b[2J) or alt-screen (\x1b[?1049) sequence: those live in the
+	// bubbletea program layer (the model's tea.View declares AltScreen), never
+	// in the rendered content string.
+	if strings.Contains(content, "\x1b[2J") {
 		t.Errorf("view carries a clear-screen sequence; must render to primary buffer")
 	}
-	if strings.Contains(view, "\x1b[?1049") {
+	if strings.Contains(content, "\x1b[?1049") {
 		t.Errorf("view carries an alt-screen sequence; must render to primary buffer")
 	}
 }
@@ -62,8 +63,8 @@ func TestModel_errorTurn(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	if !strings.Contains(m.View(), "provider") || !strings.Contains(m.View(), "exploded") {
-		t.Errorf("expected error words in view, got: %q", m.View())
+	if !strings.Contains(view(m), "provider") || !strings.Contains(view(m), "exploded") {
+		t.Errorf("expected error words in view, got: %q", view(m))
 	}
 }
 
@@ -85,18 +86,18 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	// Auto-collapsed after the turn: hint present, body absent by default.
-	view := m.View()
-	if !strings.Contains(view, "🤔") {
-		t.Errorf("expected a thinking hint in view, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "🤔") {
+		t.Errorf("expected a thinking hint in content, got: %q", content)
 	}
-	if strings.Contains(view, "I reason about it first") {
-		t.Errorf("reasoning body should be collapsed by default, got: %q", view)
+	if strings.Contains(content, "I reason about it first") {
+		t.Errorf("reasoning body should be collapsed by default, got: %q", content)
 	}
 
 	// Toggling with `tab` expands the reasoning body.
-	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
-	expanded := m.View()
+	expanded := view(m)
 	if !strings.Contains(expanded, "I reason about it first") {
 		t.Errorf("tab should expand the reasoning block, got: %q", expanded)
 	}
@@ -104,7 +105,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	// stream (never interleaved into the answer body). Glamour word-wraps the
 	// answer across ANSI runs, so match on the word rather than the full phrase.
 	if !strings.Contains(expanded, "plain") {
-		t.Errorf("answer still required in view, got: %q", expanded)
+		t.Errorf("answer still required in content, got: %q", expanded)
 	}
 	thinkingIdx := strings.Index(expanded, "I reason about it first")
 	eitriIdx := strings.Index(expanded, "eitri")
@@ -127,21 +128,21 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	view := m.View()
+	content := view(m)
 	// The hint labels the reasoning stream and carries the configured effort.
-	if !strings.Contains(view, "🤔") {
-		t.Errorf("collapsed state should show the thinking hint, got: %q", view)
+	if !strings.Contains(content, "🤔") {
+		t.Errorf("collapsed state should show the thinking hint, got: %q", content)
 	}
-	if !strings.Contains(view, "· medium") {
-		t.Errorf("hint should carry the reasoning-effort tier, got: %q", view)
+	if !strings.Contains(content, "· medium") {
+		t.Errorf("hint should carry the reasoning-effort tier, got: %q", content)
 	}
 	// A token estimate renders (thousands compact as X.Xk). The reasoning body
 	// stays hidden.
-	if !strings.Contains(view, "tok") {
-		t.Errorf("hint should carry a token count, got: %q", view)
+	if !strings.Contains(content, "tok") {
+		t.Errorf("hint should carry a token count, got: %q", content)
 	}
-	if strings.Contains(view, "reasoning words") {
-		t.Errorf("reasoning body must stay collapsed behind the hint, got: %q", view)
+	if strings.Contains(content, "reasoning words") {
+		t.Errorf("reasoning body must stay collapsed behind the hint, got: %q", content)
 	}
 }
 
@@ -156,16 +157,16 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	// First reasoning delta creates the block, then tab expands it (issue #85
 	// AC3: the user can watch reasoning on demand).
 	m = applyReasoningDelta(t, m, "hidden reasoning")
-	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
-	if !strings.Contains(m.View(), "hidden reasoning") {
-		t.Errorf("expanded block should show reasoning before answer lands, got: %q", m.View())
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("expanded block should show reasoning before answer lands, got: %q", view(m))
 	}
 	// The final answer lands; the block auto-collapses.
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
 	m = asModel(t, nm)
-	if strings.Contains(m.View(), "hidden reasoning") {
-		t.Errorf("thinking block should auto-collapse when the answer lands, got: %q", m.View())
+	if strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("thinking block should auto-collapse when the answer lands, got: %q", view(m))
 	}
 }
 
@@ -178,12 +179,12 @@ func TestModel_skillsPanelRenders(t *testing.T) {
 		Skills: &SkillsSurface{Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "project"}}},
 	})
 	m = resize(t, m)
-	view := m.View()
-	if !strings.Contains(view, "skills") {
-		t.Errorf("expected a skills panel header, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "skills") {
+		t.Errorf("expected a skills panel header, got: %q", content)
 	}
-	if !strings.Contains(view, "my-skill") || !strings.Contains(view, "project") {
-		t.Errorf("expected detected skill + scope in panel, got: %q", view)
+	if !strings.Contains(content, "my-skill") || !strings.Contains(content, "project") {
+		t.Errorf("expected detected skill + scope in panel, got: %q", content)
 	}
 }
 
@@ -210,13 +211,13 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
 	}
-	view := m.View()
-	if !strings.Contains(view, "payload") {
-		t.Errorf("skill payload should render in view, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "payload") {
+		t.Errorf("skill payload should render in content, got: %q", content)
 	}
 	// The activated skill shows ✓ in the panel.
-	if !strings.Contains(view, "✓") {
-		t.Errorf("activated skill should be marked active in panel, got: %q", view)
+	if !strings.Contains(content, "✓") {
+		t.Errorf("activated skill should be marked active in panel, got: %q", content)
 	}
 }
 
@@ -233,7 +234,7 @@ func TestModel_slashCompletionTab(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "/a")
 	// Tab completes the partial `/a` to `/alpha`.
-	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 	if got := m.composer.Value(); got != "/alpha" {
 		t.Errorf("tab completion = %q, want \"/alpha\"", got)
@@ -248,14 +249,14 @@ func resize(t *testing.T, m Model) Model {
 // typeText feeds the given runes to the composer in one keypress.
 func typeText(t *testing.T, m Model, s string) Model {
 	t.Helper()
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyExtended, Text: s})
 	return asModel(t, nm)
 }
 
 // submitAndWait feeds Enter to run the turn and then the async completion.
 func submitAndWait(t *testing.T, m Model) Model {
 	t.Helper()
-	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("turn command was nil after submit")
 	}
@@ -275,6 +276,11 @@ func asModel(t *testing.T, tm tea.Model) Model {
 	return md
 }
 
+// view renders the model's current surface as the view's content string
+// (bubbletea v2: View returns a tea.View struct whose Content is the rendered
+// surface; tests assert on that string).
+func view(m Model) string { return m.View().Content }
+
 // TestModel_shiftEnterInsertsNewline asserts Shift+Enter breaks a line in the
 // composer instead of submitting: the prompt text must sit on a new line, the
 // model must not go busy, and no turn command may be emitted (ticket #57).
@@ -288,7 +294,7 @@ func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 
 	// Feed the key bubbletea maps Shift+Enter to (line feed, \n) on terminals
 	// that report Enter and Shift+Enter distinctly.
-	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	m = asModel(t, newlined)
 
 	if got := m.composer.Value(); got != "line one\n" {
@@ -311,9 +317,9 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	view := m.View()
-	if !strings.Contains(view, "/tmp/acme-project") {
-		t.Errorf("expected workspace path surfaced in view (issue #82 AC1), got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "/tmp/acme-project") {
+		t.Errorf("expected workspace path surfaced in view (issue #82 AC1), got: %q", content)
 	}
 
 	// The workspace path is rendered as read-only header state, never in the
@@ -325,7 +331,7 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 	// No workspace supplied (the chat-only default) renders no such header.
 	bare := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil })
 	bare = resize(t, bare)
-	if strings.Contains(bare.View(), "workspace:") {
+	if strings.Contains(view(bare), "workspace:") {
 		t.Errorf("expected no workspace header when none is configured (issue #82 AC1)")
 	}
 }
@@ -341,7 +347,7 @@ func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
-	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	m = asModel(t, newlined)
 	m = typeText(t, m, "line two")
 
@@ -368,13 +374,13 @@ func TestModel_shiftEnterIgnoredWhileBusy(t *testing.T) {
 	// Drive into the busy state (submitting a non-empty prompt) without
 	// resolving the turn command.
 	m = typeText(t, m, "first")
-	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("expected a turn command on submit")
 	}
 	m = asModel(t, nm)
 
-	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	m = asModel(t, newlined)
 	if got := m.composer.Value(); got != "" {
 		t.Errorf("Shift+Enter while busy should not edit the composer, got %q", got)

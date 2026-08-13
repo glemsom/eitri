@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -370,7 +370,7 @@ func newClipboard(d Dependencies) func(text string) error {
 // reaching the bottom. The wheel delta of 3 matches the component's own default
 // MouseWheelDelta.
 func newHistoryViewport() *viewport.Model {
-	v := viewport.New(0, 0)
+	v := viewport.New()
 	v.MouseWheelEnabled = false
 	return &v
 }
@@ -472,7 +472,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncWidths()
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Settings surface open: route keys to it.
 		if m.settings != nil {
 			return m.updateSettings(msgi)
@@ -614,7 +614,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// alt+y toggles expanding tool-call entries to their full result (issue
 		// #84): collapsed by default so the transcript stays clean, expanded on
 		// demand so nothing is ever silently truncated.
-		if msgi.Alt && msgi.Type == tea.KeyRunes && string(msgi.Runes) == "y" {
+		if msgi.Mod.Contains(tea.ModAlt) && msgi.Text == "y" {
 			m.showToolResult = !m.showToolResult
 			return m, nil
 		}
@@ -642,6 +642,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// breaks follow, Down reaching the bottom re-engages it); a left-button
 		// drag over the history highlights a cell range and release copies it to
 		// the clipboard. Requires the Bubble Tea program enabled mouse events.
+		// bubbletea v2 delivers mouse events as an interface: updateMouse
+		// type-switches on the concrete wheel/click/motion/release messages.
 		m.updateMouse(msgi)
 		return m, nil
 
@@ -702,7 +704,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updatePrompt handles a keypress while a continuation prompt is pending.
-func (m Model) updatePrompt(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msgi.String() {
 	case "y", "Y", "enter":
 		m.prompting = false
@@ -746,7 +748,7 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 }
 
 // updateSettings drives the Settings surface from key input.
-func (m Model) updateSettings(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	s := m.settings
 	if s == nil {
 		return m, nil
@@ -772,12 +774,14 @@ func (m Model) updateSettings(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s.adjust(1)
 	default:
 		// Free-form editing on the paths field: type to append, backspace to
-		// delete the trailing char.
+		// delete the trailing char. msgi.Text (not String) is appended so a
+		// space types as " " — bubbletea v2 reports a space key's String() as
+		// "space", not " " (pass 2, issue #146).
 		if s.field == fieldPaths {
 			if msgi.String() == "backspace" && len(s.pathBuf) > 0 {
 				s.SetPathBuf(s.pathBuf[:len(s.pathBuf)-1])
 			} else if msgi.String() != "backspace" {
-				s.SetPathBuf(s.pathBuf + msgi.String())
+				s.SetPathBuf(s.pathBuf + msgi.Text)
 			}
 		}
 	}
@@ -1061,18 +1065,31 @@ func (m *Model) completeSlashCommand() {
 		m.slashIdx = 0
 	}
 	m.composer.SetValue(cands[m.slashIdx])
-	m.composer.SetCursor(len(cands[m.slashIdx]))
+	m.composer.SetCursorColumn(len(cands[m.slashIdx]))
 	m.syncComposerHeight()
 	// Advance for the next press so repeated tabs walk the whole list.
 	m.slashIdx = (m.slashIdx + 1) % len(cands)
 }
 
-// View renders the conversation plus composer. It renders committed messages
-// and the composer as a full-frame repaint; the alternate-screen renderer clears
-// stale surface state each frame, so a resize never duplicates or scatters text.
-// The Settings surface and the continuation prompt are rendered on top when
-// active.
-func (m Model) View() string {
+// View renders the conversation plus composer as a tea.View (bubbletea v2).
+// The view declares the alternate screen and mouse-cell-motion mode as fields
+// (pass 1, issue #145): every frame is a clean full-surface repaint into the
+// alt buffer, so a resize never duplicates or scatters text — the settings that
+// v1 pushed through program options (tea.WithAltScreen,
+// tea.WithMouseCellMotion) live here declaratively.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.viewString())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+// viewString renders the surface content string (the tea.View content). It
+// renders committed messages and the composer as a full-frame repaint; the
+// alternate-screen renderer clears stale surface state each frame, so a resize
+// never duplicates or scatters text. The Settings surface and the continuation
+// prompt are rendered on top when active.
+func (m Model) viewString() string {
 	if m.settings != nil {
 		return settingsView(*m.settings)
 	}
@@ -1265,8 +1282,8 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 	// earlier offset) the viewport holds that position across re-renders so
 	// reading stays put until a new submit re-engages follow. SetContent clamps
 	// an out-of-range offset so a content shrink never leaves a stale offset.
-	vp.Width = m.transcriptWidth()
-	vp.Height = vh
+	vp.SetWidth(m.transcriptWidth())
+	vp.SetHeight(vh)
 	// An in-progress drag selection highlights its cell range in the full
 	// content before the viewport clips it to the visible window (issue #124
 	// AC1): the reverse-video markers render only where the range is on screen.
@@ -1321,22 +1338,19 @@ func (m *Model) navigateHistory(key string) {
 // reaches the bottom. It never touches the composer, preserving input focus.
 // Bubble Tea delivers mouse events only when the program enables them
 // (internal/app/tui.go).
-func (m *Model) navigateMouse(msg tea.MouseMsg) {
-	if msg.Action != tea.MouseActionPress {
-		return
-	}
+func (m *Model) navigateMouse(msg tea.MouseWheelMsg) {
 	vp := m.histViewport
 	if vp == nil {
 		return
 	}
 	switch msg.Button {
-	case tea.MouseButtonWheelUp:
+	case tea.MouseWheelUp:
 		if vp.AtTop() {
 			return
 		}
 		vp.ScrollUp(3)
 		m.histFollow = false
-	case tea.MouseButtonWheelDown:
+	case tea.MouseWheelDown:
 		vp.ScrollDown(3)
 		if vp.AtBottom() {
 			m.histFollow = true

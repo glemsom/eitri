@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestModel_enterSubmitsAndClearsComposer asserts the plain Enter key submits
@@ -50,7 +50,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	}
 
 	m = typeText(t, m, "line one")
-	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	m = asModel(t, newlined)
 	m = typeText(t, m, "line two")
 	if h := m.composer.Height(); h != 2 {
@@ -60,7 +60,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	// Push the draft far past the bound: the composer must cap, never exceed.
 	for i := 0; i < maxComposerRows+4; i++ {
 		m = typeText(t, m, "draft")
-		newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 		m = asModel(t, newlined)
 	}
 	if h := m.composer.Height(); h != maxComposerRows {
@@ -103,7 +103,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	// Grow the draft far beyond the bound (band = status strip + composer).
 	for i := 0; i < maxComposerRows+10; i++ {
 		m = typeText(t, m, "draft line")
-		newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 		m = asModel(t, newlined)
 	}
 
@@ -114,14 +114,14 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 		t.Errorf("over-bound draft should render %d composer rows (internal scroll), got %d", maxComposerRows, len(compLines))
 	}
 
-	view := m.View()
-	trimmed := strings.TrimRight(view, "\n")
+	content := view(m)
+	trimmed := strings.TrimRight(content, "\n")
 	// The band (status strip + composer) is the last region: after it there is
 	// only whitespace.
 	if !strings.HasSuffix(trimmed, strings.TrimRight(comp, "\n")) {
-		t.Errorf("band must stay pinned at the bottom with an over-bound draft, got:\n%q", view)
+		t.Errorf("band must stay pinned at the bottom with an over-bound draft, got:\n%q", content)
 	}
-	// The whole view never exceeds the terminal: nothing is pushed off-screen.
+	// The whole content never exceeds the terminal: nothing is pushed off-screen.
 	if n := len(strings.Split(trimmed, "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with an over-bound draft, got:\n%q", n, trimmed)
 	}
@@ -130,7 +130,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 // TestModel_statusAndSlashPinnedAboveComposer asserts the status strip and the
 // slash-completion list stay pinned above the composer regardless of composer
 // height (issue #121 AC6): with a telemetry strip, a `/...` partial, and a
-// soft-wrapped grown composer all present, the view order is status strip,
+// soft-wrapped grown composer all present, the content order is status strip,
 // slash completion, then the composer as the final region.
 func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 	// A skill name long enough that its `/`-partial soft-wraps the composer to
@@ -151,8 +151,8 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 	m = resizeTo(t, m, 100, 24)
 	m = typeText(t, m, "/"+skillName)
 
-	view := m.View()
-	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	content := view(m)
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	comp := m.composer.View()
 	compLines := strings.Split(strings.TrimRight(comp, "\n"), "\n")
 	if len(compLines) < 2 {
@@ -161,8 +161,8 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 
 	// The composer is the final region.
 	compStart := len(lines) - len(compLines)
-	if !strings.HasSuffix(strings.TrimRight(view, "\n"), strings.TrimRight(comp, "\n")) {
-		t.Fatalf("composer must be the bottom region, got:\n%q", view)
+	if !strings.HasSuffix(strings.TrimRight(content, "\n"), strings.TrimRight(comp, "\n")) {
+		t.Fatalf("composer must be the bottom region, got:\n%q", content)
 	}
 
 	// Find the status strip row (the turns readout — the strip renders its
@@ -179,12 +179,12 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		}
 	}
 	if statusIdx == -1 {
-		t.Errorf("status strip missing from view, got:\n%q", view)
+		t.Errorf("status strip missing from content, got:\n%q", content)
 	} else if statusIdx >= compStart {
 		t.Errorf("status strip must stay above the composer (status %d, composer %d)", statusIdx, compStart)
 	}
 	if slashIdx == -1 {
-		t.Errorf("slash completion missing from view, got:\n%q", view)
+		t.Errorf("slash completion missing from content, got:\n%q", content)
 	} else if slashIdx >= compStart {
 		t.Errorf("slash completion must stay above the composer (slash %d, composer %d)", slashIdx, compStart)
 	}

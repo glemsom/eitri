@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
 )
 
 // The T4 styling pass (issue #122) gives the TUI its modern look: visually
@@ -40,16 +40,16 @@ func TestModel_stylingUserChipRightAligned(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	chip := lineContaining(m.View(), "you")
+	chip := lineContaining(view(m), "you")
 	if chip == "" {
-		t.Fatalf("expected a user chip in view, got: %q", m.View())
+		t.Fatalf("expected a user chip in view, got: %q", view(m))
 	}
 	if !strings.HasPrefix(chip, " ") {
 		t.Errorf("user chip must be right-aligned (leading padding), got line: %q", chip)
 	}
 	// The chip is a one-word label, not a full-width message: its visible text
 	// is just the role, padded left to the pane width.
-	if got := strings.TrimSpace(chip); got != "you" {
+	if got := strings.TrimSpace(ansiStrip(chip)); got != "you" {
 		t.Errorf("chip visible text = %q, want %q", got, "you")
 	}
 }
@@ -67,11 +67,11 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	pane := lineContaining(m.View(), "plain")
+	pane := lineContaining(view(m), "plain")
 	if pane == "" {
-		t.Fatalf("expected agent answer in view, got: %q", m.View())
+		t.Fatalf("expected agent answer in view, got: %q", view(m))
 	}
-	if !strings.HasPrefix(pane, "│") {
+	if !strings.HasPrefix(ansiStrip(pane), "│") {
 		t.Errorf("agent answer must render as a left-bordered pane, got line: %q", pane)
 	}
 }
@@ -94,21 +94,21 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	// A successful tool: ⊕ glyph kept, ✓ outcome tag added.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n"}})
-	view := m.View()
-	if !strings.Contains(view, "⊕ bash") {
-		t.Errorf("tool glyph ⊕ must remain, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "⊕ bash") {
+		t.Errorf("tool glyph ⊕ must remain, got: %q", content)
 	}
-	if !strings.Contains(view, "✓") {
-		t.Errorf("completed tool should carry a ✓ outcome tag, got: %q", view)
+	if !strings.Contains(content, "✓") {
+		t.Errorf("completed tool should carry a ✓ outcome tag, got: %q", content)
 	}
-	if strings.Contains(view, "✗") {
-		t.Errorf("successful tool must not carry a ✗ tag, got: %q", view)
+	if strings.Contains(content, "✗") {
+		t.Errorf("successful tool must not carry a ✗ tag, got: %q", content)
 	}
 
 	// A failed tool (engine error-shaped result): ✗ outcome tag.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"/nope"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "read", Result: "error executing tool: boom"}})
-	if view := m.View(); !strings.Contains(view, "✗") {
+	if view := view(m); !strings.Contains(view, "✗") {
 		t.Errorf("failed tool should carry a ✗ outcome tag, got: %q", view)
 	}
 }
@@ -126,15 +126,15 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	view := m.View()
-	if !strings.Contains(view, "⚠") {
-		t.Errorf("failing turn should render the ⚠ error marker, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "⚠") {
+		t.Errorf("failing turn should render the ⚠ error marker, got: %q", content)
 	}
-	pane := lineContaining(view, "provider")
+	pane := lineContaining(content, "provider")
 	if pane == "" {
-		t.Fatalf("expected error text in view, got: %q", view)
+		t.Fatalf("expected error text in content, got: %q", content)
 	}
-	if !strings.HasPrefix(pane, "│") {
+	if !strings.HasPrefix(ansiStrip(pane), "│") {
 		t.Errorf("error must render inside the bordered agent pane, got line: %q", pane)
 	}
 }
@@ -151,9 +151,9 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	hint := lineContaining(m.View(), "🤔")
+	hint := lineContaining(view(m), "🤔")
 	if hint == "" {
-		t.Fatalf("expected a thinking hint in view, got: %q", m.View())
+		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
 	}
 	if !strings.Contains(hint, "tok") {
 		t.Errorf("thinking hint should carry the token readout, got line: %q", hint)
@@ -181,7 +181,7 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 	bs := band.String()
 
 	borderRow := strings.Split(bs, "\n")[0]
-	if !strings.HasPrefix(borderRow, "─") {
+	if !strings.HasPrefix(ansiStrip(borderRow), "─") {
 		t.Errorf("band must open with a top-border separator row, got first line: %q", borderRow)
 	}
 	if !strings.Contains(bs, "cache:80%") {
@@ -199,29 +199,36 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 // surface degrades safely on a non-truecolor terminal (issue #122 AC4/AC5).
 func TestModel_stylingPaletteCentralized(t *testing.T) {
 	if got := userChipStyle.GetForeground(); got != accentColor {
-		t.Errorf("user chip foreground = %q, want accent %q", got, accentColor)
+		t.Errorf("user chip foreground = %v, want accent %v", got, accentColor)
 	}
 	if got := agentPaneStyle.GetBorderLeftForeground(); got != accentColor {
-		t.Errorf("agent pane border foreground = %q, want accent %q", got, accentColor)
+		t.Errorf("agent pane border foreground = %v, want accent %v", got, accentColor)
 	}
 	if got := errorPaneStyle.GetBorderLeftForeground(); got != errorColor {
-		t.Errorf("error pane border foreground = %q, want error color %q", got, errorColor)
+		t.Errorf("error pane border foreground = %v, want error color %v", got, errorColor)
 	}
-	// Every palette entry is a hex color: lipgloss maps hex to the active
-	// profile (256-color floor in a terminal), so no truecolor-only styling.
-	for name, c := range map[string]lipgloss.Color{
+	// Every palette entry is a hex color: lipgloss v2 maps a "#RRGGBB" string
+	// to a concrete color.RGBA value (ANSI colors stay ansi.BasicColor /
+	// ANSIColor), so a hex palette entry is detectable by its concrete type and
+	// adapts to any color profile (256-color floor in a terminal), never
+	// truecolor-only (issue #122 AC4/AC5).
+	for name, c := range map[string]color.Color{
 		"accent": accentColor,
 		"error":  errorColor,
 		"ok":     okColor,
 	} {
-		if !strings.HasPrefix(string(c), "#") {
-			t.Errorf("%s color = %q, want a hex color", name, c)
+		if _, ok := c.(color.RGBA); !ok {
+			t.Errorf("%s color = %T, want a hex-derived color.RGBA", name, c)
 		}
 	}
 
-	// Rendered output never carries a truecolor (38;2) sequence: the surface
-	// degrades to ANSI-256 or fewer colors when the terminal cannot do
-	// truecolor (issue #122 AC5).
+	// Color downsampling on a non-truecolor terminal moved to the output layer
+	// in lipgloss v2 / bubbletea v2 (issue #148): Render() always emits
+	// full-fidelity ANSI, and Bubble Tea v2 downsamples to the terminal's color
+	// profile at render time — so the model's view content carries truecolor
+	// sequences by design. The 256-color downsampling parity check is part of
+	// the v2 migration audit (issue #149 AC3, manual TUI smoke test), not a
+	// Render()-level assertion.
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -230,7 +237,5 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	if strings.Contains(m.View(), "38;2;") {
-		t.Errorf("view carries a truecolor sequence; must degrade to ANSI-256 floor")
-	}
+	_ = view(m)
 }

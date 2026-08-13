@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // This file covers the T6 drag-select copy seam (issue #124): a click-drag
@@ -120,7 +120,7 @@ func dragModel(t *testing.T, answer string) Model {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View() // hydrate the persisted viewport with current content
+	view(m) // hydrate the persisted viewport with current content
 	return m
 }
 
@@ -136,12 +136,22 @@ func historyContentRows(m Model) (rows []string, top int) {
 	for _, l := range strings.Split(hist.String(), "\n") {
 		rows = append(rows, ansiStrip(l))
 	}
-	return rows, vp.YOffset
+	return rows, vp.YOffset()
 }
 
-// dragMsg builds a mouse event for the drag-select seam (issue #124).
-func dragMsg(action tea.MouseAction, x, y int) tea.Msg {
-	return tea.MouseMsg{Action: action, Button: tea.MouseButtonLeft, X: x, Y: y}
+// dragMsg builds a mouse event for the drag-select seam (issue #124) in
+// bubbletea v2's per-type mouse message shape (pass 2, issue #146): a left
+// press becomes a MouseClickMsg, motion a MouseMotionMsg, and release a
+// MouseReleaseMsg.
+func dragMsg(action string, x, y int) tea.Msg {
+	switch action {
+	case "press":
+		return tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}
+	case "motion":
+		return tea.MouseMotionMsg{Button: tea.MouseLeft, X: x, Y: y}
+	default:
+		return tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y}
+	}
 }
 
 // TestDragSelect_copiesSelectedRange asserts a click-drag over a transcript
@@ -160,7 +170,7 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View()
+	view(m)
 
 	rows, top := historyContentRows(m)
 	if top != 0 {
@@ -173,15 +183,15 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 	}
 	want := "workspace"
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, col, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, col+len(want)-1, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, col+len(want)-1, 0))
+	m = mustUpdate(t, m, dragMsg("press", col, 0))
+	m = mustUpdate(t, m, dragMsg("motion", col+len(want)-1, 0))
+	m = mustUpdate(t, m, dragMsg("release", col+len(want)-1, 0))
 
 	if copied != want {
 		t.Errorf("drag copy = %q, want %q", copied, want)
 	}
-	if !strings.Contains(m.View(), "copied") {
-		t.Errorf("expected a copy success note in view, got: %q", m.View())
+	if !strings.Contains(view(m), "copied") {
+		t.Errorf("expected a copy success note in view, got: %q", view(m))
 	}
 }
 
@@ -201,7 +211,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View()
+	view(m)
 
 	rows, top := historyContentRows(m)
 	if top != 0 {
@@ -216,9 +226,9 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	endRow, endCol := 1, 5
 	want := rows[0][startCol:] + "\n" + rows[1][:endCol+1]
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, startCol, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, endCol, endRow))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, endCol, endRow))
+	m = mustUpdate(t, m, dragMsg("press", startCol, 0))
+	m = mustUpdate(t, m, dragMsg("motion", endCol, endRow))
+	m = mustUpdate(t, m, dragMsg("release", endCol, endRow))
 
 	if copied != want {
 		t.Errorf("multi-line drag copy = %q, want %q", copied, want)
@@ -242,7 +252,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View()
+	view(m)
 
 	rows, top := historyContentRows(m)
 	if top != 0 {
@@ -263,9 +273,9 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	c1 := strings.Index(rows[second], "word") + len("word")
 	want := rows[first][c0:] + "\n" + rows[second][:c1]
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, c0, first))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, c1-1, second))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, c1-1, second))
+	m = mustUpdate(t, m, dragMsg("press", c0, first))
+	m = mustUpdate(t, m, dragMsg("motion", c1-1, second))
+	m = mustUpdate(t, m, dragMsg("release", c1-1, second))
 
 	if copied != want {
 		t.Errorf("wrapped drag copy = %q, want %q", copied, want)
@@ -290,7 +300,7 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View()
+	view(m)
 
 	rows, top := historyContentRows(m)
 	if top != 0 {
@@ -300,9 +310,9 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	want := "workspace"
 
 	// Press at the end, drag back to the start.
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, col+len(want)-1, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, col, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, col, 0))
+	m = mustUpdate(t, m, dragMsg("press", col+len(want)-1, 0))
+	m = mustUpdate(t, m, dragMsg("motion", col, 0))
+	m = mustUpdate(t, m, dragMsg("release", col, 0))
 
 	if copied != want {
 		t.Errorf("backwards drag copy = %q, want %q", copied, want)
@@ -311,7 +321,9 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 
 // TestDragSelect_highlightsDuringDrag asserts the dragged cell range renders
 // highlighted (reverse video) while the drag is in progress, and the highlight
-// is gone after release (issue #124 AC1).
+// is gone after release (issue #124 AC1). Reverse-video matching is scoped to
+// the dragged transcript row: bubbles v2 renders the composer's focused cursor
+// as a reverse-video cell too, so the assertions must not count it.
 func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	rows, top := historyContentRows(m)
@@ -320,23 +332,34 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	}
 	col := strings.Index(rows[0], "workspace")
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, col, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, col+5, 0))
+	m = mustUpdate(t, m, dragMsg("press", col, 0))
+	m = mustUpdate(t, m, dragMsg("motion", col+5, 0))
 
-	view := m.View()
-	if !strings.Contains(view, "\x1b[7m") {
-		t.Errorf("drag in progress must highlight the range in reverse video, got view:\n%s", view)
+	content := view(m)
+	if !workspaceRowHas(content, "\x1b[7m") {
+		t.Errorf("drag in progress must highlight the range in reverse video, got content:\n%s", content)
 	}
 	// The plain transcript text survives the highlight intact.
-	plain := ansiStrip(view)
+	plain := ansiStrip(content)
 	if !strings.Contains(plain, "workspace: /tmp/acme") {
 		t.Errorf("highlight must not alter the transcript text, got plain:\n%s", plain)
 	}
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, col+5, 0))
-	if after := m.View(); strings.Contains(after, "\x1b[7m") {
-		t.Errorf("highlight must clear after release, got view:\n%s", after)
+	m = mustUpdate(t, m, dragMsg("release", col+5, 0))
+	if workspaceRowHas(view(m), "\x1b[7m") {
+		t.Errorf("highlight must clear after release, got content:\n%s", view(m))
 	}
+}
+
+// workspaceRowHas reports whether the rendered workspace row (the transcript's
+// first content line, which drag tests highlight) carries the given substring.
+func workspaceRowHas(content, substr string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(ansiStrip(line), "workspace: /tmp/acme") {
+			return strings.Contains(line, substr)
+		}
+	}
+	return false
 }
 
 // TestDragSelect_plainClickCopiesNothing asserts a press+release on one cell
@@ -354,10 +377,10 @@ func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	m.View()
+	view(m)
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, 2, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, 2, 0))
+	m = mustUpdate(t, m, dragMsg("press", 2, 0))
+	m = mustUpdate(t, m, dragMsg("release", 2, 0))
 
 	if copied != "" {
 		t.Errorf("plain click must not copy, got %q", copied)
@@ -371,18 +394,18 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	bandLines := m.bandHeight()
 	// A press on the band's own row (last terminal row).
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, 5, m.height-1))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, 20, m.height-1))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, 20, m.height-1))
+	m = mustUpdate(t, m, dragMsg("press", 5, m.height-1))
+	m = mustUpdate(t, m, dragMsg("motion", 20, m.height-1))
+	m = mustUpdate(t, m, dragMsg("release", 20, m.height-1))
 	if m.dragSel != nil {
 		t.Errorf("press over the band must not start a selection")
 	}
 
 	// Drag events must never mutate the composer.
 	before := m.composer.Value()
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, 2, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, 8, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, 8, 0))
+	m = mustUpdate(t, m, dragMsg("press", 2, 0))
+	m = mustUpdate(t, m, dragMsg("motion", 8, 0))
+	m = mustUpdate(t, m, dragMsg("release", 8, 0))
 	if got := m.composer.Value(); got != before {
 		t.Errorf("drag must not touch the composer: %q -> %q", before, got)
 	}
@@ -409,18 +432,18 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 		m = submitAndWait(t, m)
 	}
 	m = resizeTo(t, m, 120, 12)
-	m.View() // hydrate
+	view(m) // hydrate
 	// Scroll up once so follow breaks and the viewport holds an offset.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
-	m.View()
-	if m.histViewport.YOffset <= 0 {
-		t.Fatalf("test needs a scrolled viewport, got offset %d", m.histViewport.YOffset)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	view(m)
+	if m.histViewport.YOffset() <= 0 {
+		t.Fatalf("test needs a scrolled viewport, got offset %d", m.histViewport.YOffset())
 	}
 
 	rows, top := historyContentRows(m)
 	// Pick a visible row that carries answer text.
 	target := -1
-	for i := top; i < top+m.histViewport.Height && i < len(rows); i++ {
+	for i := top; i < top+m.histViewport.Height() && i < len(rows); i++ {
 		if strings.Contains(rows[i], "answer") && strings.TrimSpace(rows[i]) != "" {
 			target = i
 			break
@@ -433,9 +456,9 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	want := rows[target][col : col+len("answer")]
 	screenRow := target - top
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, col, screenRow))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, col+len("answer")-1, screenRow))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, col+len("answer")-1, screenRow))
+	m = mustUpdate(t, m, dragMsg("press", col, screenRow))
+	m = mustUpdate(t, m, dragMsg("motion", col+len("answer")-1, screenRow))
+	m = mustUpdate(t, m, dragMsg("release", col+len("answer")-1, screenRow))
 
 	if copied != want {
 		t.Errorf("scrolled drag copy = %q, want %q (screen row %d, content row %d)", copied, want, screenRow, target)
@@ -455,18 +478,18 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	row := rows[top]
 	col := 0
 
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionPress, col, 0))
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionMotion, col+3, 0))
-	before := m.histViewport.YOffset
+	m = mustUpdate(t, m, dragMsg("press", col, 0))
+	m = mustUpdate(t, m, dragMsg("motion", col+3, 0))
+	before := m.histViewport.YOffset()
 
 	m = mustUpdate(t, m, wheelMsg(true)) // wheel up
-	if got := m.histViewport.YOffset; got >= before {
+	if got := m.histViewport.YOffset(); got >= before {
 		t.Errorf("wheel during drag must still scroll up: offset %d -> %d", before, got)
 	}
 	if m.dragSel == nil {
 		t.Errorf("wheel must not cancel the in-progress drag")
 	}
-	m = mustUpdate(t, m, dragMsg(tea.MouseActionRelease, col+3, 0))
+	m = mustUpdate(t, m, dragMsg("release", col+3, 0))
 	if row == "" {
 		t.Errorf("test assumption broken: first visible row should have text")
 	}
