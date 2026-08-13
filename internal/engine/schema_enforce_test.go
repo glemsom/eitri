@@ -114,3 +114,45 @@ func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 		t.Fatalf("request ToolSchemaEnforcement = true, want false by default")
 	}
 }
+
+// TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive verifies the
+// second acceptance half of issue #62: even when provider-side Tool Schema
+// Enforcement is active on a supporting provider, Eitri's local tool-argument
+// validation remains the mandatory safety floor before execution — a
+// schema-violating tool call is still rejected and the executor is never
+// called, exactly as without enforcement.
+func TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive(t *testing.T) {
+	capable := &capableScriptedSchema{}
+	capable.Scripted = provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		if len(toolResultContents(req.Messages)) == 0 {
+			// bash requires "command"; the call omits it.
+			return provider.StreamFunc(
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_bad", Type: "function", Name: "bash", Arguments: `{"typo":"echo hi"}`},
+				}, Done: true},
+			), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "fixed"},
+			provider.Chunk{FinishReason: "stop", Done: true},
+		), nil
+	})
+	e := New(capable, &mockTranscript{})
+
+	rec := &mockToolRecorder{}
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools:                 strictToolDefs(),
+		Executor:              rec,
+		MaxTurns:              5,
+		ToolSchemaEnforcement: true,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if res.Answer != "fixed" {
+		t.Fatalf("Answer = %q, want recovery answer", res.Answer)
+	}
+	if len(rec.calls) != 0 {
+		t.Fatalf("executor called with %+v, want no calls for a schema-violating call even with provider enforcement active", rec.calls)
+	}
+}
