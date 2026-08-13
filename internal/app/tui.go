@@ -36,14 +36,20 @@ func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, ses
 // scrollback, selection, and search survive a session (docs/spec.md §9). The
 // Settings surface (ctrl+s) is seeded from the loaded config and provider model
 // discovery, and persists edits back through the config layer (eitri.md §2.7,
-// T12).
-func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog, workspace string) error {
+// T12). The right context rail (ctrl+b, issue #88) is seeded with the run's
+// static provider/model/effort and session context (id + temp path). sessionTemp
+// is the host-form ephemeral /tmp root for this run's session (ADR-0002).
+func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog, workspace string, sessionTemp string) error {
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
 	stream := tui.NewStreamer()
+	// The right context rail (issue #88): a fixed-width state pane beside the
+	// transcript, seeded with the run's static provider/model/effort/session
+	// context and fed live STATS from the telemetry surface below.
+	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	// The live tool-call feed (issue #84): engine tool events render as compact,
 	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
 	// demand to the full result.
@@ -64,6 +70,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Telemetry:     te,
 		Stream:        stream,
 		Tools:         tools,
+		Rail:          rail,
 		// The skills panel and `/skillname` slash activation sit on the same
 		// catalog the batch engine uses (T8): activation runs the `skill` tool
 		// through the registry, so a slash activation behaves identically to a

@@ -50,7 +50,13 @@ marker after a session compaction (`docs/spec.md` §4/§7). On narrow windows it
 collapses to the live counters so it never crowds the composer.
 The workspace directory the run acts on is shown as a **read-only workspace header**
 above the transcript, so you always see which directory the agent operates in
-(`docs/spec.md` §9).
+(`docs/spec.md` §9). A toggleable **right context rail** (`ctrl+b`) renders the
+run's *current state* beside the transcript — STATS (cache hit %, running cost,
+turns, token in/out), CONTEXT (active skills, session id, session temp path),
+and MODEL (provider/model/effort) — fed live from the same telemetry and skill
+surfaces. It auto-shows on wide terminals (≥ 120 cols) and auto-hides narrower
+so the primary buffer keeps full-width native selection; `ctrl+b` toggles it on
+any width (`docs/spec.md` §9, Layout A).
 
 ### Keyboard shortcuts
 
@@ -65,6 +71,7 @@ are handled by the composer; the shortcuts below drive the agent.
 | `ctrl+s`                   | Conversation  | Open the Settings panel         |
 | (`/settings`)              | Composer      | Same as `ctrl+s`                |
 | `ctrl+d`                   | Conversation  | Open / close the changed-file Review panel
+| `ctrl+b`                   | Conversation  | Toggle the right context rail (STATS / CONTEXT / MODEL)
 | `esc`                      | Settings      | Cancel / close without saving   |
 | `tab`                      | Composer      | Toggle the collapsible thinking stream |
 | `tab`                      | Slash command | Cycle `/settings` + skill completion |
