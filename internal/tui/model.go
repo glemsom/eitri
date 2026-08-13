@@ -201,6 +201,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			m.openSettings()
 			return m, nil
+		case "ctrl+j":
+			// Newline (Shift+Enter on terminals that report Enter and
+			// Shift+Enter distinctly — bubbletea delivers the line-feed
+			// "ctrl+j" key, never a plain "enter"). Inserts a line break
+			// instead of submitting; no-op while a turn is running (ticket #57).
+			if m.busy {
+				return m, nil
+			}
+			m.composer.InsertString("\n")
+			return m, nil
 		case "enter":
 			if m.busy {
 				return m, nil

@@ -216,3 +216,78 @@ func asModel(t *testing.T, tm tea.Model) Model {
 	}
 	return md
 }
+
+// TestModel_shiftEnterInsertsNewline asserts Shift+Enter breaks a line in the
+// composer instead of submitting: the prompt text must sit on a new line, the
+// model must not go busy, and no turn command may be emitted (ticket #57).
+func TestModel_shiftEnterInsertsNewline(t *testing.T) {
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		t.Fatalf("Shift+Enter must not submit a turn, got prompt %q", prompt)
+		return TurnResult{}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "line one")
+
+	// Feed the key bubbletea maps Shift+Enter to (line feed, \n) on terminals
+	// that report Enter and Shift+Enter distinctly.
+	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	m = asModel(t, newlined)
+
+	if got := m.composer.Value(); got != "line one\n" {
+		t.Errorf("Shift+Enter should insert a newline, composer = %q", got)
+	}
+	if m.busy {
+		t.Errorf("Shift+Enter must not mark the model busy")
+	}
+}
+
+// TestModel_shiftEnterThenSubmitSendsWholeMultiLine asserts a multi-line prompt
+// assembled with Shift+Enter is delivered whole to the engine when the final
+// plain Enter submits (ticket #57).
+func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
+	var got []string
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		got = append(got, prompt)
+		return TurnResult{Answer: "ok"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "line one")
+	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	m = asModel(t, newlined)
+	m = typeText(t, m, "line two")
+
+	if m.busy {
+		t.Fatalf("composing must keep the model idle until submit")
+	}
+
+	m = submitAndWait(t, m)
+	if len(got) != 1 {
+		t.Fatalf("expected one turn, engine saw %d", len(got))
+	}
+	if got[0] != "line one\nline two" {
+		t.Errorf("engine should receive the whole multi-line prompt, got %q", got[0])
+	}
+}
+
+// TestModel_shiftEnterIgnoredWhileBusy asserts Shift+Enter is a no-op (does not
+// touch the composer) while a prior turn is still running (ticket #57).
+func TestModel_shiftEnterIgnoredWhileBusy(t *testing.T) {
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		return TurnResult{Answer: "ok"}, nil
+	})
+	m = resize(t, m)
+	// Drive into the busy state (submitting a non-empty prompt) without
+	// resolving the turn command.
+	m = typeText(t, m, "first")
+	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("expected a turn command on submit")
+	}
+	m = asModel(t, nm)
+
+	newlined, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	m = asModel(t, newlined)
+	if got := m.composer.Value(); got != "" {
+		t.Errorf("Shift+Enter while busy should not edit the composer, got %q", got)
+	}
+}
