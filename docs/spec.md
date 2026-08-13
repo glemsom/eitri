@@ -174,6 +174,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 - **Four controls.** JSON Object Mode, Generation Budget, Sampling Policy, and provider-side Tool Schema Enforcement, keyed by `provider.GenerationControl`. (Issues #59–#62)
 - **Required vs optional.** A special turn marks each control it wants required or optional. `provider.NegotiateGenerationControls` pre-flights the plan against the provider capability **before any wire call**: an unsupported **required** control fails fast with a clean `UnsupportedRequiredControlError`; an unsupported **optional** control is dropped, and its absence from the returned honored set is the observable degradation. A control requested multiple times is honored once, and `required` wins over `optional`. The engine exposes the same seam as `Engine.NegotiateGenerationControls` for special turns. (Issue #58)
 - **Generation Budget wiring.** The compaction summary is the first special turn to emit a control: it requests `generation_budget` as **required** and, on a supporting provider, carries a hard wire-backed `max_completion_tokens` cap mirroring `SummaryMaxTokens` (issue #60). The local `capTokens` floor remains the mandatory output safety net regardless; ordinary agent/tool turns never carry a budget. A provider that cannot honor the required budget fails the negotiation contract, and the summary is skipped by the existing fail-safe path (eviction still frees context).
+- **JSON Object Mode wiring.** `Engine.RunJSONObjectMode` is an internal finalization path (issue #59): it runs a non-tool special turn that requires `json_object_mode` — an unsupported provider fails fast with `UnsupportedRequiredControlError` before any wire call — and, on a supporting provider, carries wire-backed `response_format:{type:json_object}` so the final answer is a valid JSON object. Ordinary agent/tool turns never carry `response_format` and are unaffected.
 
 ## Testing Decisions
 
@@ -187,6 +188,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
   - **Compaction engine**: 80%-trigger, overflow trigger, tail-floor eviction (incl. reasoning retention), anchored-summary re-injection into the head, fail-safe-skip, `["skill"]` ring-fence.
   - **Skill activation**: enum-constrained `name`, hide-not-block filtering, frontmatter-strip-on-activation, scope shadowing, dedupe, tag-ring-fence.
   - **Generation-control negotiation**: required-control fail-fast vs optional-control degradation, capability-surface absence, dedupe/required-wins semantics (§13 / issue #58).
+  - **JSON Object Mode finalization**: `RunJSONObjectMode` wire-emits `response_format` on a supporting provider and fails fast on an unsupported one, while ordinary turns carry no `response_format` (§13 / issue #59).
 - **Prior art in-repo:** none yet (spec-first project, no `src/`). Mirror the decision-doc rigor of `docs/research/*` and `docs/adr/*`, and keep the fake-provider fixtures as source-of-truth request/response samples alongside the tests the way the research docs carry canonical primary-source claims.
 
 ## Out of Scope

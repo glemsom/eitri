@@ -97,6 +97,55 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	return res, nil
 }
 
+// RunJSONObjectMode runs a JSON Object Mode finalization turn (issue #59,
+// docs/spec.md §13): an internal, non-tool special turn that requires
+// provider-side JSON Object Mode so the final answer is a valid JSON object
+// without mixing structured-output rules into an ordinary agent/tool loop. It
+// pre-flights the json_object_mode control as required — an unsupported
+// provider fails negotiation fast, before any wire call, via
+// provider.UnsupportedRequiredControlError — then streams a non-tool turn
+// flagged for JSON Object Mode and returns the finalized JSON answer.
+func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result, error) {
+	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+		{Control: provider.GenerationControlJSONObjectMode, Required: true},
+	}); err != nil {
+		return Result{}, err
+	}
+
+	s, err := e.provider.Stream(ctx, provider.Request{
+		Model:           req.Model,
+		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		SetCacheKey:     req.SessionKey != "",
+		SessionKey:      req.SessionKey,
+		ThinkingEnabled: req.ThinkingEnabled,
+		ReasoningEffort: req.ReasoningEffort,
+		JSONObjectMode:  true,
+	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	var res Result
+	for {
+		c, err := s.Next()
+		if err != nil {
+			return res, closeErr(err)
+		}
+		res.Answer += c.Content
+		res.Reasoning += c.ReasoningContent
+		if c.Usage != nil {
+			res.Usage = c.Usage
+		}
+		if c.Done {
+			break
+		}
+	}
+	if e.transcript != nil {
+		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, res.Answer))
+	}
+	return res, nil
+}
+
 // ToolExecutor executes an agent tool call. The tools registry implements it;
 // the engine depends on this seam so dispatch is testable without filesystem
 // side effects a specific tool might have.

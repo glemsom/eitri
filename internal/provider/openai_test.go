@@ -131,6 +131,63 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 }
 
 // TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
+// TestOpenAIEmitsJSONObjectMode verifies that a JSON-Object-Mode finalization
+// turn (issue #59) carries response_format:{type:json_object} on the wire, and
+// that an ordinary turn with the flag off omits the field entirely (bytes stay
+// clean for the shared request head, docs/spec.md §4).
+func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), "\"response_format\":{\"type\":\"json_object\"}") {
+			t.Errorf("request body missing JSON Object Mode: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:          "deepseek-v4-flash",
+		Messages:       []Message{{Role: RoleUser, Content: "finalize as JSON"}},
+		JSONObjectMode: true,
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+
+	// An ordinary turn with JSON Object Mode off must not leak the field.
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "response_format") {
+			t.Errorf("ordinary request leaked response_format: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer plain.Close()
+
+	cl0 := NewOpenAICompatible("test-key", plain.URL+"/v1/chat/completions")
+	s0, err := cl0.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() (ordinary) error = %v, want nil", err)
+	}
+	if _, _, err := consume(s0); err != nil {
+		t.Fatalf("consume (ordinary) error = %v, want nil", err)
+	}
+}
+
+// TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
 // byte-identical prefix (docs/spec.md §4, research/opencode-endpoints.md §4).
@@ -240,17 +297,19 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 }
 
 // TestOpenAIDeclaresGenerationBudgetSupport verifies the OpenAI-compatible
-// client advertises the generation_budget control through the generation-control
-// capability surface, so the engine can pre-flight a special turn's budget
-// (docs/spec.md §13 / issue #60) before any wire call.
+// TestOpenAIDeclaresGenerationBudgetSupport verifies the Chat-Completions
+// client advertises the generation_budget and json_object_mode controls through
+// the generation-control capability surface, so the engine can pre-flight a
+// special turn's budget and JSON-Object-Mode requirements (docs/spec.md §13 /
+// issues #59–#60) before any wire call.
 func TestOpenAIDeclaresGenerationBudgetSupport(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
 	if err != nil {
 		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
 	}
-	if len(supp) != 1 || supp[0] != GenerationControlGenerationBudget {
-		t.Fatalf("SupportedGenerationControls() = %v, want [generation_budget]", supp)
+	if len(supp) != 2 || supp[0] != GenerationControlGenerationBudget || supp[1] != GenerationControlJSONObjectMode {
+		t.Fatalf("SupportedGenerationControls() = %v, want [generation_budget json_object_mode]", supp)
 	}
 }
 
