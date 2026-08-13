@@ -114,8 +114,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	}
 
 	m = typeText(t, m, "line one")
-	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-	m = asModel(t, newlined)
+	m = newlineShiftEnter(t, m)
 	m = typeText(t, m, "line two")
 	if h := m.composer.Height(); h != 2 {
 		t.Errorf("two-line draft should grow the composer to 2 rows, got %d", h)
@@ -124,8 +123,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	// Push the draft far past the bound: the composer must cap, never exceed.
 	for i := 0; i < maxComposerRows+4; i++ {
 		m = typeText(t, m, "draft")
-		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-		m = asModel(t, newlined)
+		m = newlineShiftEnter(t, m)
 	}
 	if h := m.composer.Height(); h != maxComposerRows {
 		t.Errorf("draft beyond the bound should cap the composer at %d rows, got %d", maxComposerRows, h)
@@ -167,8 +165,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	// Grow the draft far beyond the bound (band = status strip + composer).
 	for i := 0; i < maxComposerRows+10; i++ {
 		m = typeText(t, m, "draft line")
-		newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
-		m = asModel(t, newlined)
+		m = newlineShiftEnter(t, m)
 	}
 
 	// The composer renders at most the bound: taller drafts scroll internally.
