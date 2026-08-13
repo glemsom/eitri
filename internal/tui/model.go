@@ -267,18 +267,22 @@ type Model struct {
 	// #88 AC1). Current when !railAuto.
 	railShown bool
 
+	// histFollow is true while the history viewport re-anchors to the newest
+	// output (the follow position, T1 alt-screen pivot issue #119). It is the
+	// default; T2 navigation (issue #120) breaks it when the user scrolls up
+	// (PgUp/Home/wheel up) so reading stays put instead of being yanked to the
+	// newest, and a new submit re-engages it so the fresh turn is followed.
+	histFollow bool
+
 	// histViewport is the persisted history scroll component (T1 alt-screen
 	// pivot, issue #119): a bubbletea/viewport that owns the scroll region's
 	// position + follow behaviour. The TUI renders into the alternate screen, so
 	// every frame is a clean repaint and the viewport natively owns the history
-	// clip + scroll — no primary-buffer compensation layer is needed. It
-	// re-anchors to the newest output (GotoBottom) on every render so the newest
-	// content stays in view through streamed appends and a mid-stream resize
-	// (issue #108 AC1/AC2); native terminal scroll remains the only navigation
-	// path (no paging/scroll keys are wired in, AC3), so the component is the
-	// seam a future focus-mode can break follow through. It is a pointer so
-	// scroll-state changes made by View (which runs on a value copy) survive
-	// across render cycles.
+	// clip + scroll — no primary-buffer compensation layer is needed. It owns
+	// user navigation (issue #120): PgUp/PgDn/Home/End and mouse-wheel scroll
+	// move it, scrolling up breaks follow (histFollow) so reading stays put, and
+	// a new submit re-engages follow. It is a pointer so scroll-state changes
+	// made by View (which runs on a value copy) survive across render cycles.
 	histViewport *viewport.Model
 }
 
@@ -309,6 +313,7 @@ func NewModelCfg(d Dependencies) Model {
 		toolFeed:        d.Tools,
 		rail:            d.Rail,
 		railAuto:        true,
+		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
 	}
@@ -319,13 +324,14 @@ func NewModelCfg(d Dependencies) Model {
 // pointer so scroll-state changes made by View (which runs on a value copy)
 // survive across render cycles. It starts unsized (0x0) until the first
 // WindowSizeMsg lands.
+//
+// Mouse-wheel handling is driven by the T2 seam (issue #120), not the
+// component's own Update: navigateMouse calls ScrollUp/ScrollDown directly so
+// the follow position (histFollow) can break on scroll-up and re-engage on
+// reaching the bottom. The wheel delta of 3 matches the component's own default
+// MouseWheelDelta.
 func newHistoryViewport() *viewport.Model {
 	v := viewport.New(0, 0)
-	// No re-implemented navigation (issue #108 AC3): the viewport only renders
-	// the follow position — native navigation is out of scope. Disabling
-	// mouse-wheel scrolling here makes that intent
-	// explicit rather than inherited from the component defaults (the Bubble Tea
-	// program does not enable mouse tracking anyway).
 	v.MouseWheelEnabled = false
 	return &v
 }
@@ -438,6 +444,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+s":
 			return m.startSettings()
+		case "pgup", "home":
+			// History scroll navigation (issue #120 AC2/AC3): PgUp pages up and
+			// Home jumps to the oldest output. Scrolling up breaks the follow
+			// position so the transcript stays put instead of being yanked to
+			// the newest; navigation never steals composer focus (the composer
+			// keeps arrow-key editing).
+			m.navigateHistory(msgi.String())
+			return m, nil
+		case "pgdown", "end":
+			// PgDn pages down and End jumps to the newest output. Reaching the
+			// bottom re-engages the follow position (issue #120 AC2/AC3).
+			m.navigateHistory(msgi.String())
+			return m, nil
 		case "ctrl+b":
 			// The right context rail (issue #88): ctrl+b toggles it between
 			// visible and hidden on any width, without stealing composer focus.
@@ -474,6 +493,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if prompt == "" {
 				return m, nil
 			}
+			// A new submitted turn re-engages the follow position (issue #120
+			// AC3): the user is now following new output, so the viewport stops
+			// holding a stale reading offset and re-anchors to the newest.
+			m.histFollow = true
 			m.composer.Reset()
 			m.slashIdx = 0
 			m.slashPrefix = ""
@@ -547,6 +570,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
+
+	case tea.MouseMsg:
+		// History mouse-wheel scroll (issue #120 AC1): wheel up/down over the
+		// transcript scrolls it (Up breaks follow, Down reaching the bottom
+		// re-engages it). Requires the Bubble Tea program enabled mouse events.
+		m.navigateMouse(msgi)
+		return m, nil
 
 	case turnDoneMsg:
 		m.busy = false
@@ -1013,12 +1043,12 @@ func (m Model) renderPane() string {
 //
 // The clip is served through the persisted bubbletea/viewport scroll component
 // (T1 alt-screen pivot, issue #119): the viewport natively owns the scroll
-// position + clip, and re-anchors to the newest output (GotoBottom) after every
-// append so the newest content stays in view through streamed appends and a
-// mid-stream resize (issue #108 AC1/AC2). No paging/mouse/scroll keys are wired
-// in — native navigation is out of scope in this change — so the component
-// re-follows each render and is the seam a future focus-mode can break follow
-// through.
+// position + clip, re-anchoring to the newest output (GotoBottom) while the
+// follow position is engaged so the newest content stays in view through
+// streamed appends and a mid-stream resize (issue #108 AC1/AC2). T2 (issue
+// #120) adds user navigation: PgUp/PgDn/Home/End and mouse-wheel scroll move
+// it, and scrolling up breaks follow (histFollow) so the viewport holds a
+// reading offset across re-renders until a new submit re-engages it.
 func (m Model) renderHistoryViewport(content string, reserved int) string {
 	if m.height <= 0 {
 		// No size has landed yet: the unclamped render, kept for lean embeds and
@@ -1038,14 +1068,83 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 	}
 	// Re-hydrate the persisted viewport with the fresh content + dimensions so
 	// it owns the scroll position relative to the current content, then follow
-	// the newest output: the newest content stays in view through streamed
-	// appends and a mid-stream resize. The viewport returns its own native clip,
-	// so a resize is always a clean rerender (no primary-buffer residue).
+	// the newest output unless the user has broken follow by scrolling up (T2,
+	// issue #120 AC3): while follow is engaged the newest content stays in view
+	// through streamed appends and a mid-stream resize; while broken (reading an
+	// earlier offset) the viewport holds that position across re-renders so
+	// reading stays put until a new submit re-engages follow. SetContent clamps
+	// an out-of-range offset so a content shrink never leaves a stale offset.
 	vp.Width = m.transcriptWidth()
 	vp.Height = vh
 	vp.SetContent(content)
-	vp.GotoBottom()
+	if m.histFollow {
+		vp.GotoBottom()
+	}
 	return vp.View()
+}
+
+// navigateHistory applies a T2 (issue #120) keyboard scroll command to the
+// persisted history viewport: PgUp/Home move toward the older output and break
+// the follow position; PgDn/End move toward the newest and re-engage follow
+// when they reach the bottom. It never touches the composer, so editing focus
+// is preserved (AC4). The viewport holds its scroll state across renders even
+// while the history re-renders each frame.
+func (m *Model) navigateHistory(key string) {
+	vp := m.histViewport
+	if vp == nil {
+		return
+	}
+	switch key {
+	case "pgup":
+		if vp.AtTop() {
+			return // already at the oldest output; nothing to do
+		}
+		vp.PageUp()
+		m.histFollow = false // scrolling up breaks follow
+	case "home":
+		if vp.AtTop() {
+			return
+		}
+		vp.GotoTop()
+		m.histFollow = false
+	case "pgdown":
+		vp.PageDown()
+		if vp.AtBottom() {
+			m.histFollow = true // paging to the newest re-engages follow
+		}
+	case "end":
+		vp.GotoBottom()
+		m.histFollow = true
+	}
+}
+
+// navigateMouse applies a T2 (issue #120 AC1) mouse-wheel scroll to the
+// persisted history viewport: wheel up scrolls toward older output and breaks
+// follow; wheel down scrolls toward the newest and re-engages follow once it
+// reaches the bottom. It never touches the composer, preserving input focus.
+// Bubble Tea delivers mouse events only when the program enables them
+// (internal/app/tui.go).
+func (m *Model) navigateMouse(msg tea.MouseMsg) {
+	if msg.Action != tea.MouseActionPress {
+		return
+	}
+	vp := m.histViewport
+	if vp == nil {
+		return
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		if vp.AtTop() {
+			return
+		}
+		vp.ScrollUp(3)
+		m.histFollow = false
+	case tea.MouseButtonWheelDown:
+		vp.ScrollDown(3)
+		if vp.AtBottom() {
+			m.histFollow = true
+		}
+	}
 }
 
 // reviewRegionRows returns how many rows the review overlay region may occupy

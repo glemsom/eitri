@@ -216,8 +216,9 @@ var runProgram = func(m tui.Model) error {
 	// The TUI takes over the full terminal via the alternate screen (T1 pivot,
 	// issue #119): every frame is a clean repaint into the alt buffer, so a
 	// window resize re-flows the transcript cleanly with no primary-buffer
-	// duplicate/scatter residue.
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// duplicate/scatter residue. Mouse events are enabled so the transcript can
+	// scroll with the wheel over the history viewport (issue #120 AC1).
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }

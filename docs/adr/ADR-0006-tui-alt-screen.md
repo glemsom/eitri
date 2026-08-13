@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-08-14
 - Supersedes: the earlier in-progress primary-buffer compensation plan (width-bucket scroll-cache, manual clip/anchor/band-height derivation)
-- Related: issue #118 (Full-terminal viewport TUI alt-screen pivot), issue #119 (T1 — Alt-screen full-terminal viewport)
+- Related: issue #118 (Full-terminal viewport TUI alt-screen pivot), issue #119 (T1 — Alt-screen full-terminal viewport), issue #120 (T2 — Scroll navigation)
 
 ## Context
 
@@ -30,7 +30,9 @@ buffer's incremental-render semantics.
 2. **The transcript lives in a native `bubbletea/viewport`.** The persisted
    history viewport component owns the scroll position, clipping, and follow
    behaviour (re-anchoring to newest output via `GotoBottom`), instead of manual
-   slice/anchor math.
+   slice/anchor math. T2 (issue #120) wires that viewport up to user navigation:
+   mouse-wheel + `PgUp`/`PgDn`/`Home`/`End` move it, scrolling up breaks follow
+   so reading stays put, and a new submit re-engages it.
 
 3. **The primary-buffer compensation layer is deleted.** The width-bucket
    scroll-cache, the manual clip/anchor slice helpers, and their field state
