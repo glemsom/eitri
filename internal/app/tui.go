@@ -61,7 +61,10 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// running agent loop.
 	feedEngineEvents(e, te, stream, tools)
 	m := tui.NewModelCfg(tui.Dependencies{
-		Models: discoveredModels(context.Background(), p),
+		// On-demand provider model discovery for the Settings panel (issue #89
+		// AC2): the provider's GET /v1/models list is fetched when the panel
+		// opens, with loading/error states surfaced instead of failing silently.
+		DiscoverModels: discoveredModels(p),
 		// The workspace directory is surfaced as read-only project state (issue
 		// #82 AC1): the run operates here, shown as a header above the transcript.
 		WorkspacePath: workspace,
@@ -181,22 +184,22 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	}
 }
 
-// discoveredModels surfaces the provider's available model ids via the optional
-// ModelLister capability; a provider without it (or an error) yields nil (no
-// discovery) rather than failing the TUI boot.
-func discoveredModels(ctx context.Context, p provider.Provider) []string {
-	if p == nil {
-		return nil
+// discoveredModels surfaces the provider's available model ids via the
+// optional ModelLister capability, as an on-demand seam for the Settings panel
+// (issue #89 AC2). A provider without the capability (or nil) returns a clean
+// ErrNoDiscovery rather than failing the TUI boot; the panel renders it as the
+// discovery error state.
+func discoveredModels(p provider.Provider) func(ctx context.Context) ([]string, error) {
+	return func(ctx context.Context) ([]string, error) {
+		if p == nil {
+			return nil, provider.ErrNoDiscovery
+		}
+		lister, ok := p.(provider.ModelLister)
+		if !ok {
+			return nil, provider.ErrNoDiscovery
+		}
+		return lister.Models(ctx)
 	}
-	lister, ok := p.(provider.ModelLister)
-	if !ok {
-		return nil
-	}
-	models, err := lister.Models(ctx)
-	if err != nil {
-		return nil
-	}
-	return models
 }
 
 // runProgram launches a Bubble Tea program. It is a package-level seam so tests

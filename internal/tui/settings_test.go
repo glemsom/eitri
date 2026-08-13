@@ -176,3 +176,35 @@ func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 		t.Fatalf("settings view %q missing focus marker", view)
 	}
 }
+
+// TestSettingsView_RendersLiveTelemetryReadout verifies the settings panel
+// surfaces the same live cache hit-ratio + cost readout the run tracks (issue
+// #89 AC4), so switching provider/model and watching cost happen in one pane.
+// It reflects the live Telemetry borrowed from the status strip, never the
+// agent loop itself (read-only).
+func TestSettingsView_RendersLiveTelemetryReadout(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "high", true, 250)
+	// 100k hit @0.0028/1M + 25k miss @0.14/1M + 10k output @0.28/1M.
+	// = 0.00028 + 0.0035 + 0.0028 = $0.00658; hit ratio 80%.
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+
+	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
+	f.telemetry = te
+	view := settingsView(f)
+	if !strings.Contains(view, "cache:80%") {
+		t.Fatalf("settings view %q missing live cache hit-ratio readout", view)
+	}
+	if !strings.Contains(view, "cost:$0.00658") {
+		t.Fatalf("settings view %q missing live cost readout", view)
+	}
+}
+
+// TestSettingsView_TelemetryReadoutZeroWhenNone verifies a settings panel with
+// no wired telemetry renders no readout line (the pre-telemetry default).
+func TestSettingsView_TelemetryReadoutZeroWhenNone(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{})
+	view := settingsView(f)
+	if strings.Contains(view, "cache:") {
+		t.Fatalf("settings view %q renders a readout without telemetry wired", view)
+	}
+}

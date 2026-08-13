@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -173,6 +174,74 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	// Other seeded knobs are untouched.
 	if saved.Provider != "opencode-go" || saved.MaxTurns != 250 {
 		t.Fatalf("saved config = %+v, want untouched provider/maxTurns", saved)
+	}
+}
+
+// TestModel_SettingsDiscoveryLoadsAsync verifies the settings panel reports a
+// loading state then folds in on-demand provider model discovery (issue #89
+// AC2): opening settings with no pre-seeded list and a DiscoverModels seam
+// starts discovery, which delives the model list back through the model loop.
+func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Config: cfgFixture(), // no Models seeded
+		DiscoverModels: func(ctx context.Context) ([]string, error) {
+			return []string{"deepseek-v4-flash", "grok-2"}, nil
+			return []string{"deepseek-v4-flash", "grok-2"}, nil
+		},
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// While discovery is in flight the panel shows a loading state and renders
+	// it, so the user knows a fetch is underway rather than seeing an empty list.
+	if m.settings.discoverState != discoverLoading {
+		t.Fatalf("settings discoverState after open = %v, want discoverLoading", m.settings.discoverState)
+	}
+	if !strings.Contains(m.View(), "discovering models") {
+		t.Fatalf("settings view %q missing loading state", m.View())
+	}
+
+	// The discovery command's delivery folds the model list into the panel.
+	nm, _ := m.Update(discoverDoneMsg{models: []string{"deepseek-v4-flash", "grok-2"}})
+	m = asModel(t, nm)
+	if m.settings.discoverState != discoverIdle {
+		t.Fatalf("settings discoverState after delivery = %v, want discoverIdle", m.settings.discoverState)
+	}
+	if got := m.settings.Model(); got != "deepseek-v4-flash" {
+		t.Fatalf("settings Model after discovery = %q, want deepseek-v4-flash", got)
+	}
+}
+
+// TestModel_SettingsDiscoveryErrorState verifies model discovery that fails
+// returns an error state in the panel rather than failing silently (issue #89
+// AC2), while the configured model still stays usable.
+func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Config: cfgFixture(), // no Models seeded
+		DiscoverModels: func(ctx context.Context) ([]string, error) {
+			return nil, errors.New("connection refused")
+		},
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// Fold in the discovery result (the async command's delivery).
+	nm, _ := m.Update(discoverDoneMsg{err: errors.New("connection refused")})
+	m = asModel(t, nm)
+
+	if m.settings.discoverState != discoverError {
+		t.Fatalf("settings discoverState after failing discovery = %v, want discoverError", m.settings.discoverState)
+	}
+	if m.settings.discoverErr == "" {
+		t.Fatal("settings discovery error message not recorded")
+	}
+	view := m.View()
+	// The error surfaces to the panel, and the configured model remains selectable.
+	if !strings.Contains(view, "connection refused") {
+		t.Fatalf("settings view %q missing discovery error", view)
+	}
+	if !strings.Contains(view, cfgFixture().Model) {
+		t.Fatalf("settings view %q missing configured model after failed discovery", view)
 	}
 }
 

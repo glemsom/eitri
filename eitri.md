@@ -74,7 +74,7 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 
 - Config stored in `~/.eitri/config.json` (path overridable via `EITRI_CONFIG`).
 - Key settings: `model` (default `deepseek-v4-flash`), `reasoning_effort` (default `low`; tiers `low`/`medium`/`high`/`max`; raised to trade cost for deeper chain-of-thought, lowered to save cost), `thinking_enabled` (default `true`; when off, runs emit non-thinking requests with no thinking toggle and no `reasoning_effort`, exactly like the compaction summarizer), `max_turns` (cap on tool-loop iterations), `compaction_fraction` (context-utilization trigger for auto-compaction), `extra_writable_paths` (additional writable roots for write/edit).
-- **Settings surface.** In the TUI, `ctrl+s` opens a Settings panel to pick the provider & model (models discovered from the configured provider) and set `reasoning_effort`, `max_turns`, `compaction_fraction`, and `extra_writable_paths`. Saving persists to `config.json` and takes effect on the next run — no hand-editing.
+- **Settings surface.** In the TUI, `ctrl+s` opens a Settings panel to pick the provider & model (models discovered from the configured provider, surfaced with loading/error states) and set `reasoning_effort`, `max_turns`, `compaction_fraction`, and `extra_writable_paths`. It shows the live cache hit-ratio + cost readout for the running session. Saving persists to `config.json` and takes effect on the next run — no hand-editing.
 - **Max-turns continuation.** On reaching the `max_turns` cap the engine pauses and prompts to continue (`y`/`n`) in the TUI; batch auto-denies and stops with an error.
 - Environment variables: `EITRI_CONFIG` (config path), `EITRI_DIR` (data dir).
 

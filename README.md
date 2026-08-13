@@ -176,10 +176,13 @@ custom OpenAI-compatible endpoints are formalized in T11). The batch engine
 injects a fake provider in tests via the `app.Options.Provider` seam.
 
 In the TUI, `ctrl+s` opens a **Settings** surface to pick the provider and
-model (models are discovered from the configured provider) and tune reasoning
-(the `thinking_enabled` on/off mode plus the `reasoning_effort` intensity
-when on), `max_turns`, `compaction_fraction`, and `extra_writable_paths`;
-saving persists to `~/.eitri/config.json` and takes effect on the next run.
+model (models are discovered from the configured provider via that provider's
+`GET /v1/models`, with a loading/error state shown should discovery be slow or
+fail) and tune reasoning (the `thinking_enabled` on/off mode plus the
+`reasoning_effort` intensity when on), `max_turns`, `compaction_fraction`, and
+`extra_writable_paths`; it also shows the live cache hit-ratio + cost readout
+for the running session. Saving persists to `~/.eitri/config.json` and takes
+effect on the next run.
 `ctrl+d` opens a **Review** panel on top of the transcript that answers
 "what did the agent change?": it lists every file the agent touched with
 `[+N, −M]` add/delete counts and status (modified/added/deleted), lets you
