@@ -145,6 +145,11 @@ type Dependencies struct {
 	// screen. Nil disables the escape hatch (the panel still shows the inline
 	// diff; issue #90 AC2 independently).
 	OpenInBrowser func(ctx context.Context, target string) error
+	// Rail, when non-nil, enables the toggleable right context rail (issue
+	// #88): a fixed-width pane alongside the transcript showing STATS / CONTEXT
+	// / MODEL, fed from the telemetry and skill surfaces. Nil hides the rail
+	// (the plain chat default).
+	Rail *Rail
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -222,6 +227,20 @@ type Model struct {
 	// accumulated file-mutating tool entries. Non-nil means the panel is open
 	// (ctrl+d toggles); nil means the transcript is the active surface.
 	review *reviewPanel
+
+	// rail is the right context pane (issue #88); nil disables it.
+	rail *Rail
+	// width is the terminal width of the last WindowSizeMsg, used to decide the
+	// rail's auto-hide and to size the transcript column (issue #88 AC3). It is
+	// 0 until the first resize lands.
+	width int
+	// railAuto is true until the user first presses ctrl+b: the rail then follows
+	// width (auto-show wide, auto-hide narrow). After a toggle it is false and
+	// railShown owns the decision explicitly, so ctrl+b works on any width.
+	railAuto bool
+	// railShown is the explicit rail visibility after the user toggles (issue
+	// #88 AC1). Current when !railAuto.
+	railShown bool
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -249,6 +268,8 @@ func NewModelCfg(d Dependencies) Model {
 		stream:       d.Stream,
 		curStream:    -1,
 		toolFeed:     d.Tools,
+		rail:         d.Rail,
+		railAuto:     true,
 	}
 }
 
@@ -336,7 +357,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, streamWait(m.stream)
 
 	case tea.WindowSizeMsg:
-		m.composer.SetWidth(msgi.Width - 2)
+		m.width = msgi.Width
+		m.syncWidths()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -357,6 +379,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+s":
 			m.openSettings()
+			return m, nil
+		case "ctrl+b":
+			// The right context rail (issue #88): ctrl+b toggles it between
+			// visible and hidden on any width, without stealing composer focus.
+			// No-op when the rail is not wired.
+			if m.rail != nil {
+				m.toggleRail()
+			}
 			return m, nil
 		case "ctrl+d":
 			// The review panel (issue #90): ctrl+d toggles the changed-file
@@ -752,6 +782,23 @@ func (m Model) View() string {
 		return promptView()
 	}
 
+	// The right context rail (issue #88, Layout A): when visible, the rendered
+	// transcript pane and the state rail sit side by side — one pane for time
+	// (transcript), one for state (rail). The rail never steals width from the
+	// primary buffer's native full-width selection except where it auto-shows
+	// wide (railVisible gates it, and the composer width already shrank so the
+	// transcript re-wraps to the freed space).
+	left := m.renderPane()
+	if m.rail != nil && m.railVisible() {
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, styledRail(m.rail.render(m.telemetry, m.skills)))
+	}
+	return left
+}
+
+// renderPane renders the transcript + composer surface into the left pane. It
+// is the historical single-pane view; the rail adds itself to the right when
+// visible. It works in the primary buffer, so nothing is cleared.
+func (m Model) renderPane() string {
 	var b strings.Builder
 	// Review panel open: it takes over the view (Layout B, issue #90), showing
 	// the dense changed-file summary + inline diff above the transcript.
