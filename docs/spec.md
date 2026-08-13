@@ -121,7 +121,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 
 ### 6. Thinking / reasoning model interaction
 
-- **Default: DeepSeek OpenAI-compatible thinking mode** for `deepseek-v4-flash`; `thinking` default-enabled, effort controlled by `reasoning_effort` (DeepSeek maps low/medium→high, xhigh→max; meaningful tiers **high**/max; default **high**). (Ticket #17)
+- **Default: DeepSeek OpenAI-compatible thinking mode** for `deepseek-v4-flash`; `thinking` default-enabled, effort controlled by `reasoning_effort` (`low`/`medium`/`high`/`max` are first-class tiers that pass through unchanged; `xhigh` is remapped → `high`; default **low**). (Ticket #17)
 - **Mode toggle:** reasoning is a per-session on/off mode (`thinking_enabled`, default on) surfaced in the TUI Settings panel alongside the `reasoning_effort` dial; turning it off omits the thinking toggle and `reasoning_effort` from the wire (non-thinking runs), while the effort selection is retained so re-enabling restores it. (Tickets #54/#55/#56)
 - **Surfacing:** reasoning arrives on streamed `reasoning_content`, hoisted per-turn into the assistant message — never merged into answer `content`. TUI: collapsible thinking block (auto-collapse after the turn). Batch stdout: suppressed by default; `-v` enables. (Ticket #17)
 - **The hard 400 constraint:** DeepSeek requires **all** assistant messages to carry `reasoning_content` (empty-ok); and real reasoning **must** persist on every intermediate tool-call turn until the final answer. Eitri always sets the field and never evicts reasoning from tool-call turns. (Tickets #17, #21)
@@ -206,7 +206,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 ## Further Notes
 
 - **Single authority:** where this spec, `eitri.md`, or a research doc disagree with a wayfinder decision ticket or ADR over a technical constraint, the **decision ticket / ADR** wins — this spec was written to reflect them (e.g. bwrap "no fallback" supersedes eitri.md §3's old "falls back to direct execution" line).
-- **Default `reasoning_effort: high`** for agent loops; `max` reserved for hard multi-step tasks; keep the effort setting per-session (byte-stable request head).
+- **Default `reasoning_effort: low`** for agent loops; `max` reserved for hard multi-step tasks; keep the effort setting per-session (byte-stable request head).
 - **Prompt-caching is the lynchpin economics.** Almost every optimization above (stable head, skill-as-tail-result, tail-message live state, `allowed_tools`) exists to preserve the byte-identical cache prefix. Preserve that invariant when adding anything to the request.
 - **Always keep the model's per-turn `usage` parsed** — it is the telemetry behind the cache gauge, the compaction trigger, and cost accounting.
 - The agent tool surface should be treated as a small, stable, strict-shaped set; grow it deliberately, because every added tool is paid in billed input tokens and dilutes tool-selection accuracy.
