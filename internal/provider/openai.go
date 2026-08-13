@@ -76,7 +76,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 	body, err := json.Marshal(chatCompletionBody{
 		Model:      req.Model,
 		Messages:   req.Messages,
-		Tools:      req.Tools,
+		Tools:      toolsForWire(req),
 		ToolChoice: req.ToolChoice,
 		Stream:     true,
 		StreamOptions: &streamOptions{
@@ -171,12 +171,13 @@ type jsonObjectMode struct {
 }
 
 // SupportedGenerationControls declares that this Chat-Completions client can
-// honor the Generation Budget and JSON Object Mode controls (it wire-emits
-// max_completion_tokens and response_format on special turns, docs/spec.md §13 /
-// issues #59–#60). Higher layers consult this via NegotiateGenerationControls;
-// the other two generation controls are not supported here.
+// honor the Generation Budget, JSON Object Mode, and Tool Schema Enforcement
+// controls (it wire-emits max_completion_tokens and response_format on special
+// turns and strict tool manifests when the caller opts in, docs/spec.md §13 /
+// issues #59–#60, #62). Higher layers consult this via NegotiateGenerationControls;
+// the remaining sampling-policy control is not supported here.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode}, nil
+	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlToolSchemaEnforcement}, nil
 }
 
 // maxOutputTokens returns the Generation Budget for req as an int usable as a
@@ -198,6 +199,27 @@ func jsonObjectModeControl(req Request) *jsonObjectMode {
 		return nil
 	}
 	return &jsonObjectMode{Type: "json_object"}
+}
+
+// toolsForWire returns the tool manifest to serialize for req. On an ordinary
+// turn with ToolSchemaEnforcement off it returns req.Tools unchanged, so the
+// request head stays byte-identical. When the generation-control seam opts the
+// turn into provider-side Tool Schema Enforcement (issue #62), it returns a
+// shallow-copied manifest with strict:true set on every function wrapper so a
+// supporting provider enforces the schema at generation time — the wire feature
+// unsupported providers simply omit. The underlying Parameters maps are shared
+// (never re-authored), preserving the canonical schema surface.
+func toolsForWire(req Request) []Tool {
+	if !req.ToolSchemaEnforcement || len(req.Tools) == 0 {
+		return req.Tools
+	}
+	out := make([]Tool, 0, len(req.Tools))
+	for _, t := range req.Tools {
+		fn := t.Function
+		fn.Strict = true
+		out = append(out, Tool{Type: t.Type, Function: fn})
+	}
+	return out
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the

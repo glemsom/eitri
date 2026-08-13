@@ -13,6 +13,34 @@ import (
 	"testing"
 )
 
+// strictToolList returns the canonical strict-shaped Chat-Completions tool
+// manifest the tool-schema-enforcement wire tests assert on: two strict-shaped
+// function tools (issue #62).
+func strictToolList() []Tool {
+	return []Tool{
+		{Type: "function", Function: ToolFunction{
+			Name:        "bash",
+			Description: "run a shell command",
+			Parameters: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties":           map[string]any{"command": map[string]any{"type": "string"}},
+				"required":             []any{"command"},
+			},
+		}},
+		{Type: "function", Function: ToolFunction{
+			Name:        "read",
+			Description: "read a file",
+			Parameters: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties":           map[string]any{"path": map[string]any{"type": "string"}},
+				"required":             []any{"path"},
+			},
+		}},
+	}
+}
+
 // TestOpenAIStreamsChatCompletions exercises the real Chat-Completions HTTP
 // client against a local text/event-stream server: the request body carries
 // model + messages, and the streamed deltas/usage/Done/EOF round-trip through
@@ -127,6 +155,84 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	}
 	if _, _, err := consume(s0); err != nil {
 		t.Fatalf("consume (no budget) error = %v, want nil", err)
+	}
+}
+
+// TestOpenAIEmitsToolSchemaEnforcement verifies that a request opted into
+// provider-side Tool Schema Enforcement (issue #62) re-emits the tool manifest
+// with strict:true on each tool function so a supporting provider enforces the
+// JSON-Schema at generation time; strict lives beside the parameters in the
+// function wrapper, exactly as the OpenAI structured-output wire expects.
+func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Errorf("request body not JSON: %v", err)
+		}
+		tools, _ := parsed["tools"].([]any)
+		if len(tools) != 2 {
+			t.Fatalf("tools = %d, want 2", len(tools))
+		}
+		for i, tool := range tools {
+			fn, ok := tool.(map[string]any)["function"].(map[string]any)
+			if !ok {
+				t.Fatalf("tool %d missing function wrapper", i)
+			}
+			if strict, _ := fn["strict"].(bool); !strict {
+				t.Errorf("tool %d function.strict = %v, want true (issue #62)", i, fn["strict"])
+			}
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:                 "deepseek-v4-flash",
+		Messages:              []Message{},
+		Tools:                 strictToolList(),
+		ToolSchemaEnforcement: true,
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+}
+
+// TestOpenAIOmitsToolSchemaEnforcementByDefault verifies the default wire shape
+// for an ordinary agent/tool turn: no strict marker on any tool function, so the
+// request head stays byte-identical to the pre-enforcement surface (docs/spec.md
+// §4 / issue #62).
+func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "strict") {
+			t.Errorf("ordinary request leaked strict tool marker: %s", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{},
+		Tools:    strictToolList(),
+	})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
 	}
 }
 
@@ -295,19 +401,25 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 	}
 }
 
-// TestOpenAIDeclaresGenerationBudgetSupport verifies the Chat-Completions
-// client advertises the generation_budget and json_object_mode controls through
-// the generation-control capability surface, so the engine can pre-flight a
-// special turn's budget and JSON-Object-Mode requirements (docs/spec.md §13 /
-// issues #59–#60) before any wire call.
-func TestOpenAIDeclaresGenerationBudgetSupport(t *testing.T) {
+// TestOpenAIDeclaresGenerationControlCapabilities verifies the Chat-Completions
+// client advertises the generation_budget, json_object_mode, and
+// tool_schema_enforcement controls through the generation-control capability
+// surface, so the engine can pre-flight a special/tool turn's requirements
+// (docs/spec.md §13 / issues #59–#62) before any wire call.
+func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
 	if err != nil {
 		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
 	}
-	if len(supp) != 2 || supp[0] != GenerationControlGenerationBudget || supp[1] != GenerationControlJSONObjectMode {
-		t.Fatalf("SupportedGenerationControls() = %v, want [generation_budget json_object_mode]", supp)
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlToolSchemaEnforcement}
+	if len(supp) != len(want) {
+		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+	}
+	for i := range want {
+		if supp[i] != want[i] {
+			t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+		}
 	}
 }
 

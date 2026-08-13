@@ -170,8 +170,17 @@ func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (strin
 type AgentOptions struct {
 	Tools      []provider.Tool
 	ToolChoice any
-	Executor   ToolExecutor
-	MaxTurns   int
+	// SchemaEnforcement opts a tool-capable agent loop into provider-side Tool
+	// Schema Enforcement (issue #62): when the provider honors the
+	// tool_schema_enforcement control, every turn's tool manifest carries
+	// strict:true so the provider rejects schema-violating tool arguments at
+	// generation time. Local tool-argument validation remains the mandatory
+	// safety floor before execution regardless. A provider that cannot honor it
+	// degrades deterministically (strict is simply omitted) — never a failure,
+	// since local validation already guards execution (docs/spec.md §13).
+	ToolSchemaEnforcement bool
+	Executor              ToolExecutor
+	MaxTurns              int
 
 	// CanContinue is asked when MaxTurns (>0) is reached and the loop wants to
 	// keep going. When nil — the batch/headless default — the loop stops with
@@ -215,6 +224,26 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	messages := []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}}
 	var final Result
 
+	// Optionally opt this agent loop into provider-side Tool Schema Enforcement
+	// (issue #62): pre-flight the control as an optional requirement so an
+	// unsupported provider degrades deterministically (strict is dropped) without
+	// blocking the loop — local validation remains the mandatory safety floor.
+	// This pre-flight is done once, before any wire call.
+	enforceSchema := false
+	if opts.ToolSchemaEnforcement {
+		honored, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+			{Control: provider.GenerationControlToolSchemaEnforcement, Required: false},
+		})
+		if err != nil {
+			return final, err
+		}
+		for _, c := range honored {
+			if c == provider.GenerationControlToolSchemaEnforcement {
+				enforceSchema = true
+			}
+		}
+	}
+
 	for turn := 0; ; turn++ {
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
 			// The cap is reached. Batch/headless (no hook) auto-denies: stop.
@@ -233,14 +262,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		}
 
 		s, err := e.provider.Stream(ctx, provider.Request{
-			Model:           req.Model,
-			Messages:        messages,
-			Tools:           opts.Tools,
-			ToolChoice:      opts.ToolChoice,
-			SetCacheKey:     req.SessionKey != "",
-			SessionKey:      req.SessionKey,
-			ThinkingEnabled: req.ThinkingEnabled,
-			ReasoningEffort: req.ReasoningEffort,
+			Model:                 req.Model,
+			Messages:              messages,
+			Tools:                 opts.Tools,
+			ToolChoice:            opts.ToolChoice,
+			ToolSchemaEnforcement: enforceSchema,
+			SetCacheKey:           req.SessionKey != "",
+			SessionKey:            req.SessionKey,
+			ThinkingEnabled:       req.ThinkingEnabled,
+			ReasoningEffort:       req.ReasoningEffort,
 		})
 		if err != nil {
 			// Emergency overflow trigger: a context-overflow below the proactive
