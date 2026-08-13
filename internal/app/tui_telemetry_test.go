@@ -82,8 +82,9 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 
 // TestFeedEngineEventsBridgesAnswerDelta asserts the engine's streamed
 // AnswerStream deltas are forwarded through the single engine listener into the
-// TUI streaming pane's channel, in stream order, while reasoning deltas are not
-// leaked into the answer pane (issue #83).
+// TUI streaming pane's channel as answer-kind updates, in stream order, while
+// ReasoningStream deltas are forwarded as reasoning-kind updates — reasoning is
+// never leaked into a stream update tagged as answer (issues #83, #85).
 func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -102,22 +103,40 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// The two answer deltas arrive in stream order.
-	want := []string{"Hello ", "**glad** to help."}
-	for _, w := range want {
-		u, ok := <-stream.Updates()
-		if !ok {
-			t.Fatalf("stream channel closed before %q", w)
-		}
-		if u.Delta != w {
-			t.Fatalf("answer delta = %q, want %q", u.Delta, w)
+	// Drain the stream: collect the deltas delivered into the streaming pane,
+	// tagging reasoning vs answer so the two channels never cross (issue #83
+	// / #85 AC4).
+	var answers, reasonings []string
+loop:
+	for {
+		select {
+		case u, ok := <-stream.Updates():
+			if !ok {
+				break loop
+			}
+			if u.Kind == tui.AnswerStream {
+				answers = append(answers, u.Delta)
+			} else if u.Kind == tui.ReasoningStream {
+				reasonings = append(reasonings, u.Delta)
+			}
+		default:
+			break loop
 		}
 	}
-	// Reasoning content must never surface on the answer pane channel.
-	select {
-	case u := <-stream.Updates():
-		t.Fatalf("unexpected extra stream update: %+v (reasoning must not leak into answer pane)", u)
-	default:
+
+	wantAnswers := []string{"Hello ", "**glad** to help."}
+	if len(answers) != len(wantAnswers) {
+		t.Fatalf("answer deltas = %v, want %v", answers, wantAnswers)
+	}
+	for i := range wantAnswers {
+		if answers[i] != wantAnswers[i] {
+			t.Errorf("answer delta %d = %q, want %q", i, answers[i], wantAnswers[i])
+		}
+	}
+	// The reasoning delta is delivered as its own reasoning-kind update, not
+	// squeezed into the answer channel (issue #85 AC4).
+	if len(reasonings) != 1 || reasonings[0] != "(thinking not for the answer pane)" {
+		t.Errorf("reasoning deltas = %v, want the single thinking chunk", reasonings)
 	}
 }
 

@@ -102,8 +102,14 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 	e.SetListener(func(evt engine.Event) {
 		switch ev := evt.(type) {
 		case engine.StreamEvent:
-			if ev.Kind == engine.AnswerStream {
-				pushStream(sCh, tui.StreamUpdate{Delta: ev.Delta})
+			switch ev.Kind {
+			case engine.AnswerStream:
+				pushStream(sCh, tui.StreamUpdate{Kind: tui.AnswerStream, Delta: ev.Delta})
+			case engine.ReasoningStream:
+				// Reasoning rides the same stream seam as the answer but tagged as a
+				// reasoning delta, so the TUI grows a distinct thinking block and
+				// never merges it into the answer (issue #85, docs/spec.md §6).
+				pushStream(sCh, tui.StreamUpdate{Kind: tui.ReasoningStream, Delta: ev.Delta})
 			}
 		case engine.UsageEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
