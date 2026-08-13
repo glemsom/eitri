@@ -14,8 +14,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.CompactionFraction != 0.8 {
 		t.Fatalf("CompactionFraction = %v, want default 0.8", cfg.CompactionFraction)
 	}
-	if cfg.ReasoningEffort != "high" {
-		t.Fatalf("ReasoningEffort = %q, want default \"high\"", cfg.ReasoningEffort)
+	if cfg.ReasoningEffort != "low" {
+		t.Fatalf("ReasoningEffort = %q, want default \"low\"", cfg.ReasoningEffort)
 	}
 	if !cfg.ThinkingEnabled {
 		t.Fatal("ThinkingEnabled = false, want default true (on)")
@@ -86,6 +86,43 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 	}
 	if got2.CustomOpenAI.BaseURL != "https://my.endpoint/v1/chat/completions" || got2.CustomOpenAI.Key != "k" {
 		t.Fatalf("Load() CustomOpenAI = %+v, want persisted endpoint+key", got2.CustomOpenAI)
+	}
+}
+
+// TestReasoningEffortDefaultAndPersist verifies the acceptance criteria for
+// the reasoning-effort default change (issue #76): a config written before the
+// change that stored "high" still loads "high", while an absent
+// reasoning_effort field loads the new "low" default.
+func TestReasoningEffortDefaultAndPersist(t *testing.T) {
+	// A present stored value is authoritative and survives the round-trip.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := Save(Config{ReasoningEffort: "high"}, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.ReasoningEffort != "high" {
+		t.Fatalf("Load() ReasoningEffort = %q, want persisted \"high\"", got.ReasoningEffort)
+	}
+}
+
+// A config file that never saved a reasoning_effort (older file) must load
+// with the new "low" default rather than the zero value.
+func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte("{\"provider\": \"opencode-go\", \"thinking_enabled\": true}"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v, want nil", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.ReasoningEffort != "low" {
+		t.Fatalf("Load() ReasoningEffort = %q, want default \"low\" for absent field", got.ReasoningEffort)
 	}
 }
 
