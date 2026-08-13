@@ -11,6 +11,7 @@ import (
 const (
 	fieldProvider = iota
 	fieldModel
+	fieldThinking
 	fieldEffort
 	fieldMaxTurns
 	fieldFraction
@@ -82,6 +83,11 @@ func (f *settingsForm) adjust(d int) {
 		if len(f.models) > 0 {
 			f.cfg.Model = cycle(f.cfg.Model, f.models, d)
 		}
+	case fieldThinking:
+		// Reasoning mode is a boolean on/off switch; either arrow flips it.
+		if d != 0 {
+			f.cfg.ThinkingEnabled = !f.cfg.ThinkingEnabled
+		}
 	case fieldEffort:
 		f.cfg.ReasoningEffort = cycle(f.cfg.ReasoningEffort, effortTiers, d)
 	case fieldMaxTurns:
@@ -112,6 +118,15 @@ func (f *settingsForm) draft() config.Config {
 
 // onSave reports whether the focused field is the Save button.
 func (f settingsForm) onSave() bool { return f.field == fieldSave }
+
+// thinkingModeLabel renders the reasoning mode value (on/off) for the Settings
+// panel, reflecting the thinking_enabled config (issue #56).
+func thinkingModeLabel(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
 
 func splitPaths(s string) []string {
 	var out []string
@@ -182,6 +197,7 @@ func settingsView(f settingsForm) string {
 	}{
 		{"Provider", f.cfg.Provider},
 		{"Model", f.Model()},
+		{"Thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
 		{"Reasoning", f.cfg.ReasoningEffort},
 		{"Max turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
 		{"Compaction", fmt.Sprintf("%.2f", f.cfg.CompactionFraction)},
