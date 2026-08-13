@@ -109,6 +109,44 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	}
 }
 
+// TestModel_SettingsThinkingTogglePersists verifies flipping the reasoning
+// mode off in the panel persists ThinkingEnabled=false through the Save seam
+// while retaining the effort dial (issue #56).
+func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(), // thinking on by default
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// Advance focus from Provider(0) to the Thinking mode field (2).
+	for i := fieldProvider; i < fieldThinking; i++ {
+		m = keypress(t, m, "tab")
+	}
+	// Toggle thinking off with an arrow.
+	m = keypress(t, m, "down")
+	// Advance to Save and persist.
+	for i := fieldThinking; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if saved.ThinkingEnabled {
+		t.Fatal("saved ThinkingEnabled = true, want false after toggling off in Settings")
+	}
+	// The effort dial is retained so re-enabling later restores it.
+	if saved.ReasoningEffort != "high" {
+		t.Fatalf("saved ReasoningEffort = %q, want retained \"high\"", saved.ReasoningEffort)
+	}
+	// Other seeded knobs are untouched.
+	if saved.Provider != "opencode-go" || saved.MaxTurns != 250 {
+		t.Fatalf("saved config = %+v, want untouched provider/maxTurns", saved)
+	}
+}
+
 // TestModel_ContinuationPromptAnswersYes verifies the interactive max-turns
 // path: an engine that hits the cap signals a prompt, the Model renders it, and
 // a "y" answer grants continuation (eitri.md §2.1). The engine-side hook

@@ -122,6 +122,7 @@ The following decisions are locked. Where a bullet cites an ADR or ticket, that 
 ### 6. Thinking / reasoning model interaction
 
 - **Default: DeepSeek OpenAI-compatible thinking mode** for `deepseek-v4-flash`; `thinking` default-enabled, effort controlled by `reasoning_effort` (DeepSeek maps low/medium→high, xhigh→max; meaningful tiers **high**/max; default **high**). (Ticket #17)
+- **Mode toggle:** reasoning is a per-session on/off mode (`thinking_enabled`, default on) surfaced in the TUI Settings panel alongside the `reasoning_effort` dial; turning it off omits the thinking toggle and `reasoning_effort` from the wire (non-thinking runs), while the effort selection is retained so re-enabling restores it. (Tickets #54/#55/#56)
 - **Surfacing:** reasoning arrives on streamed `reasoning_content`, hoisted per-turn into the assistant message — never merged into answer `content`. TUI: collapsible thinking block (auto-collapse after the turn). Batch stdout: suppressed by default; `-v` enables. (Ticket #17)
 - **The hard 400 constraint:** DeepSeek requires **all** assistant messages to carry `reasoning_content` (empty-ok); and real reasoning **must** persist on every intermediate tool-call turn until the final answer. Eitri always sets the field and never evicts reasoning from tool-call turns. (Tickets #17, #21)
 - **Budget:** reasoning is billed output tokens; `max` effort can emit ~384k. Effort is the cost/quality dial; drop effort, keep thinking on. (Ticket #17)

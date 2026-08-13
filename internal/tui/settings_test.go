@@ -13,6 +13,7 @@ func cfgFixture() config.Config {
 		Provider:           "opencode-go",
 		Model:              "deepseek-v4-flash",
 		ReasoningEffort:    "high",
+		ThinkingEnabled:    true,
 		MaxTurns:           250,
 		CompactionFraction: 0.8,
 		ExtraWritablePaths: []string{"/srv"},
@@ -64,6 +65,41 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 	}
 }
 
+// TestSettingsForm_ThinkingToggleRetainsEffort validates the reasoning mode
+// (on/off) toggles ThinkingEnabled while retaining the effort selection, so
+// toggling back on restores the original effort tier (issue #56).
+func TestSettingsForm_ThinkingToggleRetainsEffort(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.field = fieldThinking
+
+	// Toggle off.
+	f.adjust(1)
+	if f.draft().ThinkingEnabled {
+		t.Fatalf("ThinkingEnabled = true after a down on Thinking, want off")
+	}
+	// Effort selection is retained while off, so re-enabling restores it.
+	if got := f.draft().ReasoningEffort; got != "high" {
+		t.Fatalf("ReasoningEffort = %q after turning thinking off, want retained \"high\"", got)
+	}
+
+	// Toggle back on.
+	f.adjust(-1)
+	if !f.draft().ThinkingEnabled {
+		t.Fatalf("ThinkingEnabled = false after an up on Thinking, want on")
+	}
+}
+
+func TestSettingsForm_ThinkingToggleDirectionInsensitive(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.field = fieldThinking
+	// Both arrows flip the boolean mode; there is no meaningful directional
+	// order for an on/off switch.
+	f.adjust(-1)
+	if f.draft().ThinkingEnabled {
+		t.Fatalf("ThinkingEnabled = true after up on Thinking, want off")
+	}
+}
+
 func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{"deepseek-v4-flash", "grok-2"})
 	f.field = fieldModel
@@ -99,7 +135,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	// Discovery surfaces grok-2; the view shows the discovered selection.
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "high", "250", "0.80", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "0.80", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
