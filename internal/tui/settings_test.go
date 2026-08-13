@@ -17,6 +17,7 @@ func cfgFixture() config.Config {
 		MaxTurns:           250,
 		CompactionFraction: 0.8,
 		ExtraWritablePaths: []string{"/srv"},
+		Theme:              config.DefaultTheme,
 	}
 }
 
@@ -135,6 +136,52 @@ func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
 	}
 }
 
+// TestSettingsForm_ThemeCyclesAllThemes verifies the theme selector cycles
+// through every supported theme dark→light→dracula→tokyo-night→pink→notty→auto
+// and wraps back to dark (issue #130 AC2).
+func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
+	f.field = fieldTheme
+
+	want := []string{"light", "dracula", "tokyo-night", "pink", "notty", "auto", "dark"}
+	for _, w := range want {
+		f.adjust(1)
+		if got := f.draft().Theme; got != w {
+			t.Fatalf("theme after + = %q, want %q", got, w)
+		}
+	}
+}
+
+// TestSettingsForm_ThemeCyclesBackwardWraps verifies backward stepping wraps
+// dark→auto, so no theme is unreachable from the default (issue #130 AC2).
+func TestSettingsForm_ThemeCyclesBackwardWraps(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
+	f.field = fieldTheme
+	f.adjust(-1)
+	if got := f.draft().Theme; got != "auto" {
+		t.Fatalf("theme after - = %q, want auto", got)
+	}
+}
+
+// TestSettingsForm_InvalidThemeFirstAdjustSelectsValid verifies a hand-written
+// unknown theme in config shows raw and the first arrow press lands on a valid
+// theme, matching the hand-edited bad model value behaviour (issue #130 AC3).
+func TestSettingsForm_InvalidThemeFirstAdjustSelectsValid(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.Theme = "rainbow"
+	f := newSettingsForm(cfg, []string{})
+	f.field = fieldTheme
+
+	// The raw unknown value is displayed untouched until an arrow is pressed.
+	if got := f.draft().Theme; got != "rainbow" {
+		t.Fatalf("theme before adjust = %q, want raw unknown %q", "rainbow", got)
+	}
+	f.adjust(1)
+	if got := f.draft().Theme; got != "dark" {
+		t.Fatalf("theme after first + = %q, want first valid %q", "dark", got)
+	}
+}
+
 func TestSettingsForm_PathsRoundTrip(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldPaths
@@ -161,10 +208,40 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	// Discovery surfaces grok-2; the view shows the discovered selection.
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "0.80", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "0.80", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
+	}
+}
+
+// TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable verifies the Theme
+// row lands in the agreed position: after Compaction Fraction, before the
+// writable-paths field (issue #130 AC1).
+func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{})
+	view := settingsView(f)
+	compaction := strings.Index(view, "Compaction")
+	theme := strings.Index(view, "Theme")
+	writable := strings.Index(view, "Writable")
+	if compaction < 0 || theme < 0 || writable < 0 {
+		t.Fatalf("settings view %q missing Compaction/Theme/Writable rows", view)
+	}
+	if !(compaction < theme && theme < writable) {
+		t.Fatalf("settings view row order wrong: Compaction@%d Theme@%d Writable@%d", compaction, theme, writable)
+	}
+}
+
+// TestSettingsView_ShowsRawInvalidTheme verifies an unknown theme value from
+// config renders raw in the row, surfaced rather than silently rewritten
+// (issue #130 AC3).
+func TestSettingsView_ShowsRawInvalidTheme(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.Theme = "rainbow"
+	f := newSettingsForm(cfg, []string{})
+	view := settingsView(f)
+	if !strings.Contains(view, "rainbow") {
+		t.Fatalf("settings view %q missing raw invalid theme \"rainbow\"", view)
 	}
 }
 
