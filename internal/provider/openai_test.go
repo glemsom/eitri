@@ -348,6 +348,46 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	}
 }
 
+// TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a
+// non-thinking run (docs/spec.md §6 / issue #54): when the caller disables
+// thinking, the request body must omit both the DeepSeek `thinking` toggle and
+// `reasoning_effort` — exactly like the compaction summarizer's non-thinking
+// summary call. This is the acceptance guarantee that lets a user turn
+// reasoning off without the provider forcing chain-of-thought.
+func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Errorf("request body not JSON: %v", err)
+		}
+		if parsed["thinking"] != nil {
+			t.Errorf("request body %s has thinking control, want omitted when off", body)
+		}
+		if parsed["reasoning_effort"] != nil {
+			t.Errorf("request body %s has reasoning_effort, want omitted when thinking off", body)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("k", srv.URL+"/v1/chat/completions")
+	if _, err := cl.Stream(context.Background(), Request{
+		Model:           "deepseek-v4-flash",
+		Messages:        []Message{{Role: RoleUser, Content: "hi"}},
+		ThinkingEnabled: false,
+		// Effort is retained in config but must be dropped from the wire when
+		// thinking is off, so a re-enable restores it without a stale send.
+		ReasoningEffort: "high",
+	}); err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+}
+
 // TestNormalizeReasoningEffort tables the DeepSeek legacy→meaningful effort
 // mapping (docs/spec.md §6): low/medium→high, xhigh→max, meaningful tiers and
 // the default pass through unchanged.
