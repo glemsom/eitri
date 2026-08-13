@@ -180,6 +180,18 @@ type Model struct {
 	// activation so the panel reflects per-session active state.
 	skills []SkillItem
 
+	// slashIdx is the combo completion's currently selected candidate index into
+	// slashCandidates for the composer's current `/...` line (issue #87 AC1). It
+	// is the highlighted row of the on-screen completion list; 0 (the built-in
+	// /settings row) by default, advanced as the user tabs-through or edits.
+	slashIdx int
+	// slashPrefix is the raw `/...` prefix the user typed into the composer
+	// before any tab-autocompletion filled the remainder. The completion list
+	// and tab-cycling are driven off it so a bare `/` keeps its full candidate
+	// list even as tab fills one candidate in (tab walks the whole list, then
+	// wraps). It updates only while the user edits the line, never on tab-fill.
+	slashPrefix string
+
 	// telemetry is the live status strip state (issue #86); nil disables it.
 	telemetry *Telemetry
 
@@ -375,9 +387,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.composer.Reset()
-			// A slash command activates a detected skill directly (eitri.md §2.3):
-			// `/skillname` runs the T8 skill tool and surfaces the result, instead
-			// of sending the raw command as a chat prompt.
+			m.slashIdx = 0
+			m.slashPrefix = ""
+			// A slash command routes to its handler instead of the engine (issue
+			// #87 AC1): `/settings` opens the Settings surface; `/skillname`
+			// activates that skill via the T8 run (eitri.md §2.3), surfacing the
+			// result rather than sending the raw command as a chat prompt. Any
+			// other `/...` line is a normal prompt and is sent to the engine seam
+			// unchanged (issue #87 AC4: slash handling never swallows input).
+			if prompt == "/settings" {
+				m.openSettings()
+				return m, nil
+			}
 			if name, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name)
 			}
@@ -394,10 +415,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.turnCmd(prompt)
 		case "tab":
-			// Fresh `/` with tab completes the skill command: cycling through
-			// matching detected skills. Otherwise tab toggles the thinking stream.
-			if m.deps.Skills != nil && m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") {
-				m.completeSkillCommand()
+			// Fresh `/` with tab walks the slash completion list: the built-in
+			// `/settings` command plus matching detected skills (issue #87 AC1).
+			// Otherwise tab toggles the thinking stream.
+			if m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") && len(slashCandidates(m.composer.Value(), m.skills)) > 0 {
+				m.completeSlashCommand()
 				return m, nil
 			}
 			// Toggle the collapsible thinking stream (auto-collapsed by default).
@@ -414,6 +436,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Let the textarea handle editing (cursor, backspace, etc.).
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm
+		// Editing a `/...` line re-syncs the completion: the raw typed prefix is
+		// remembered (so tab can walk the full list even after filling one
+		// candidate) and the selection resets to the first candidate (issue #87
+		// AC1). Tab-selection survives because it returns before reaching here.
+		val := m.composer.Value()
+		if strings.HasPrefix(val, "/") {
+			m.slashPrefix = val
+			m.slashIdx = 0
+		}
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
 
@@ -662,33 +693,52 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 	})
 }
 
-// completeSkillCommand fills the composer with a `/skillname` completion cycling
-// through detected skills matching the current partial command.
-func (m *Model) completeSkillCommand() {
-	cur := m.composer.Value()
-	partial := strings.TrimSpace(strings.TrimPrefix(cur, "/"))
-	matches := make([]string, 0, len(m.skills))
-	for _, it := range m.skills {
+// slashCandidates returns the ordered slash-command completion candidates for
+// the current composer value (issue #87 AC1): the built-in `/settings` command
+// first, then every detected skill whose name starts with the `/...` partial.
+// A partial of "" means a bare `/`, listing every command & skill. It returns
+// nil when the value does not start with `/`.
+func slashCandidates(value string, skills []SkillItem) []string {
+	if !strings.HasPrefix(value, "/") {
+		return nil
+	}
+	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
+	cands := make([]string, 0, len(skills)+1)
+	if partial == "" || strings.HasPrefix("settings", partial) {
+		cands = append(cands, "/settings")
+	}
+	for _, it := range skills {
+		// The built-in /settings command owns the `settings` name; a skill of
+		// the same name is not separately completable to avoid a duplicate row.
+		if it.Name == "settings" {
+			continue
+		}
 		if strings.HasPrefix(it.Name, partial) {
-			matches = append(matches, it.Name)
+			cands = append(cands, "/"+it.Name)
 		}
 	}
-	if len(matches) == 0 {
+	return cands
+}
+
+// completeSlashCommand fills the composer with the next slash-command completion
+// candidate, cycling deterministicly through the built-in `/settings` command
+// and matching detected skills (issue #87 AC1). The candidate list is driven off
+// slashPrefix (the raw prefix the user typed, captured on edit), so repeated
+// tabs walk the whole list even after one candidate is filled in — the fill
+// never narrows the list of remaining options. The selection (slashIdx) moves
+// forward one candidate per press, wrapping around to the start.
+func (m *Model) completeSlashCommand() {
+	cands := slashCandidates(m.slashPrefix, m.skills)
+	if len(cands) == 0 {
 		return
 	}
-	// Cycle deterministically: advance one match per press.
-	var next string
-	for i, n := range matches {
-		if n == partial {
-			next = matches[(i+1)%len(matches)]
-			break
-		}
+	if m.slashIdx < 0 || m.slashIdx >= len(cands) {
+		m.slashIdx = 0
 	}
-	if next == "" {
-		next = matches[0]
-	}
-	m.composer.SetValue("/" + next)
-	m.composer.SetCursor(len("/") + len(next))
+	m.composer.SetValue(cands[m.slashIdx])
+	m.composer.SetCursor(len(cands[m.slashIdx]))
+	// Advance for the next press so repeated tabs walk the whole list.
+	m.slashIdx = (m.slashIdx + 1) % len(cands)
 }
 
 // View renders the conversation plus composer. It renders committed messages
@@ -750,6 +800,10 @@ func (m Model) View() string {
 		b.WriteString(statusStyle.Render(m.telemetry.render(m.composer.Width())))
 		b.WriteString("\n")
 	}
+	// The slash-command completion list (issue #87 AC1) sits above the composer
+	// whenever the input line is a `/...` command, listing the built-in
+	// /settings command + matching skills with the current selection marked.
+	renderSlashCompletion(&b, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
 	b.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		b.WriteString("\n" + statusStyle.Render(m.savedMsg))
@@ -770,6 +824,40 @@ func promptView() string {
 // (docs/spec.md §9, ticket #17).
 func thinkingHeader() string {
 	return statusStyle.Render("‹ thinking ›") + "\n"
+}
+
+// renderSlashCompletion appends the slash-command completion list to the view
+// above the composer (issue #87 AC1): the built-in `/settings` command plus any
+// matching detected skills, marking the currently-selected candidate (slashIdx)
+// so the user sees exactly what a tab/return would pick. It renders nothing for
+// a non-slash line or when there are no candidates, so normal typing is
+// unaffected (issue #87 AC4).
+func renderSlashCompletion(b *strings.Builder, value string, cur string, skills []SkillItem, selected int) {
+	cands := slashCandidates(value, skills)
+	if len(cands) == 0 {
+		return
+	}
+	// Highlight the candidate currently in the composer (tab-filled or typed);
+	// when the line is still a bare prefix, fall back to the tab selection
+	// (slashIdx) as the forward hint.
+	sel := selected
+	for i, c := range cands {
+		if c == cur {
+			sel = i
+			break
+		}
+	}
+	if sel < 0 || sel >= len(cands) {
+		sel = 0
+	}
+	for i, c := range cands {
+		marker := "  "
+		if i == sel {
+			marker = "▸ "
+		}
+		b.WriteString(statusStyle.Render(marker + c))
+		b.WriteString("\n")
+	}
 }
 
 // renderSkillsPanel appends the skills panel to the view: one line per detected

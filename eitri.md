@@ -47,7 +47,7 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 Eitri supports **Agent Skills** — modular skill packs, as described in https://agentskills.io/specification
 - Auto-discovery from fixed project, user, and workspace roots with last-wins precedence.
 - Per-session activation; skills can be injected per workspace.
-- Slash-command activation (`/skillname`) and `/` completion in the composer.
+- Slash-command surface: `/skillname` activates a skill, `/settings` opens the settings modal, and `/` shows a completion list mixing the built-in commands with matching skills. (Issue #87)
 - TUI shows detected and currently activated skills
 
 ### 2.4 Context management
