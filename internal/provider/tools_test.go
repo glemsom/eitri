@@ -67,6 +67,38 @@ func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 	}
 }
 
+// TestToolCallMarshalsNestedFunction verifies the resubmitted assistant
+// tool_calls carries the Chat Completions nested function shape. OpenCode Go
+// rejects a flat {type,id,name,arguments} entry ("missing field `function`")
+// with a 400/401, so the wire must nest name+arguments under function
+// (docs/research/tool-exposure.md §2).
+func TestToolCallMarshalsNestedFunction(t *testing.T) {
+	// wireShape mirrors the Chat Completions assistant tool_calls element.
+	type wireShape struct {
+		ID    string `json:"id"`
+		Type  string `json:"type"`
+		Func  struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	}
+
+	b, err := json.Marshal(ToolCall{ID: "call_1", Type: "function", Name: "bash", Arguments: `{"command":"whoami"}`})
+	if err != nil {
+		t.Fatalf("marshal error = %v", err)
+	}
+	var w wireShape
+	if err := json.Unmarshal(b, &w); err != nil {
+		t.Fatalf("unmarshal marshaled tool call: %v (%s)", err, b)
+	}
+	if w.ID != "call_1" || w.Type != "function" {
+		t.Fatalf("tool call head = %s, want id/type retained", b)
+	}
+	if w.Func.Name != "bash" || w.Func.Arguments != `{"command":"whoami"}` {
+		t.Fatalf("tool call function = %+v, want name+arguments nested", w.Func)
+	}
+}
+
 // toolFixtureStream replays hand-written data lines through the accumulator.
 type toolFixtureStream struct {
 	data []string

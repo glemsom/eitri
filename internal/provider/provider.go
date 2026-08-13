@@ -129,11 +129,39 @@ type Tool struct {
 
 // ToolCall is one assistant-invoked function call, streamed as fragments and
 // assembled into this complete form. Arguments is the raw JSON string.
+//
+// The struct fields are the internal reassembled form. MarshalJSON emits the
+// Chat Completions transport shape: the name+arguments nested under a
+// `function` object beside id/type. The OpenCode Go gateway rejects a resubmitted
+// assistant tool_calls entry that lacks the nested function object
+// ("missing field `function`") with a 400/401, so the wire must carry
+// {"id","type","function":{"name","arguments"}} (docs/research/tool-exposure.md §2).
 type ToolCall struct {
-	ID        string `json:"id,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
+	ID        string
+	Type      string
+	Name      string
+	Arguments string
+}
+
+// toolCallWire is the deterministic wire shape for a resubmitted assistant
+// tool call: id/type at the top level, name+arguments nested under function.
+type toolCallWire struct {
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name,omitempty"`
+		Arguments string `json:"arguments,omitempty"`
+	} `json:"function"`
+}
+
+// MarshalJSON serializes a ToolCall into the Chat Completions assistant
+// tool_calls element shape. The function sub-object is always present, so the
+// round-tripped assistant history the provider requires is preserved.
+func (t ToolCall) MarshalJSON() ([]byte, error) {
+	w := toolCallWire{ID: t.ID, Type: t.Type}
+	w.Function.Name = t.Name
+	w.Function.Arguments = t.Arguments
+	return json.Marshal(w)
 }
 
 // Request is one Chat-Completions turn.
