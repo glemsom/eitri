@@ -60,6 +60,7 @@ are handled by the composer; the shortcuts below drive the agent.
 | `Shift+Enter`              | Composer      | Break the prompt onto a new line (multi-line input; plain `Enter` still sends)
 | `ctrl+c`                   | Anywhere      | Quit                            |
 | `ctrl+s`                   | Conversation  | Open the Settings panel         |
+| `ctrl+d`                   | Conversation  | Open / close the changed-file Review panel
 | `esc`                      | Settings      | Cancel / close without saving   |
 | `tab`                      | Composer      | Toggle the collapsible thinking stream |
 | `tab`                      | Slash command | Cycle skill-name completion     |
@@ -167,7 +168,14 @@ In the TUI, `ctrl+s` opens a **Settings** surface to pick the provider and
 model (models are discovered from the configured provider) and tune reasoning
 (the `thinking_enabled` on/off mode plus the `reasoning_effort` intensity
 when on), `max_turns`, `compaction_fraction`, and `extra_writable_paths`;
-saving persists to `~/.eitri/config.json` and takes effect on the next run. When an agent run reaches the `max_turns` cap in the
+saving persists to `~/.eitri/config.json` and takes effect on the next run.
+`ctrl+d` opens a **Review** panel on top of the transcript that answers
+"what did the agent change?": it lists every file the agent touched with
+`[+N, −M]` add/delete counts and status (modified/added/deleted), lets you
+inspect a focused file's inline diff in the terminal (a pure-Go diff engine,
+no external renderer), and hands the file to the host browser/editor via the
+`open_in_browser` escape hatch for diffs too rich for the terminal. It is
+read-only against the repo and the live agent loop. When an agent run reaches the `max_turns` cap in the
 TUI it pauses and prompts to continue (`y`/`n`); batch mode instead
 auto-denies continuation and stops with an error.
 

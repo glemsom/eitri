@@ -271,6 +271,64 @@ func TestToolDeltaSeamReportsFileEditDelta(t *testing.T) {
 	}
 }
 
+// TestToolDeltaSeamReportsFileContent asserts the ToolDelta.Content seam (issue
+// #90) pairs a pre-edit snapshot (taken in Begin) with the post-edit on-disk
+// file and surfaces the before/after content plus host path on the
+// ToolResultEvent, so the TUI review panel can render an inline diff and hand
+// the file to the browser. A nil Content seam yields empty content.
+func TestToolDeltaSeamReportsFileContent(t *testing.T) {
+	delta := &ToolDelta{
+		Begin: func(_ context.Context, name, _ string) {
+			// real impl snapshots content here; stand-in just records
+			_ = name
+		},
+		End: func(_ context.Context, _ string, _ string) (int, int) { return 1, 1 },
+		Content: func(_ context.Context, name, _ string) (string, string, string) {
+			if name != "edit" {
+				return "", "", ""
+			}
+			return "pre\n", "post\n", "/w/f.go"
+		},
+	}
+	col := &eventCollector{}
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+			}
+		}
+		return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+			{ID: "c1", Name: "edit", Arguments: `{"path":"/w/f.go"}`},
+		}, Done: true}), nil
+	}), &mockTranscript{})
+	e.SetListener(col.on)
+
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "edit"},
+		AgentOptions{
+			Tools:    []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "edit"}}},
+			Executor: ExecutorFunc(func(_ context.Context, _, _ string) (string, error) { return "ok", nil }),
+			MaxTurns: 5, ToolDelta: delta,
+		}); err != nil {
+		t.Fatalf("RunAgent() error = %v", err)
+	}
+
+	var got *ToolResultEvent
+	for _, ev := range col.events {
+		if e, ok := ev.(ToolResultEvent); ok && e.Name == "edit" {
+			got = &e
+		}
+	}
+	if got == nil {
+		t.Fatal("no edit ToolResultEvent emitted")
+	}
+	if got.Before != "pre\n" || got.After != "post\n" {
+		t.Errorf("content = before %q after %q, want pre\n/post\n", got.Before, got.After)
+	}
+	if got.Path != "/w/f.go" {
+		t.Errorf("Path = %q, want /w/f.go", got.Path)
+	}
+}
+
 // an engine never subscribed to the event surface pushes nothing, so plain runs
 // behave byte-identically (docs/spec.md §10). This is the "no event surface
 // required, no regressions" acceptance criterion.

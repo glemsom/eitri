@@ -69,6 +69,10 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// through the registry, so a slash activation behaves identically to a
 		// model-invoked one (docs/spec.md §9, eitri.md §2.3, ticket #35).
 		Skills: skillSurface(reg, skills),
+		// The review panel's open_in_browser escape hatch (issue #90) reuses the
+		// registry's host-side browser launch seam that backs the open_in_browser
+		// tool, so a changed file's path opens in the host browser/editor.
+		OpenInBrowser: reg.Browser().Open,
 	})
 	m.SetTurn(runEngineTurn(e, cfg, reg, sessionKey, m.ContinueHook()))
 	return runProgram(m)
@@ -106,6 +110,7 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
 				Name: ev.Name, Result: ev.Result, Lines: ev.Lines, Dropped: ev.Dropped,
 				Compressed: ev.Compressed, Added: ev.Added, Removed: ev.Removed,
+				Before: ev.Before, After: ev.After, Path: ev.Path,
 			}})
 		}
 	})

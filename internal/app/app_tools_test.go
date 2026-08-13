@@ -296,6 +296,15 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	if got.Result == "" {
 		t.Error("ToolResultEvent.Result must carry the full delivered result")
 	}
+	// The fileLineDelta Content seam (issue #90) must also report the real
+	// before/after file content and host path so the TUI review panel can render
+	// an inline diff and hand the file to the browser.
+	if got.Before != "a\nb\n" || got.After != "a\nb\nc\nd\n" {
+		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", got.Before, got.After)
+	}
+	if got.Path != editResult {
+		t.Errorf("Path = %q, want %q", got.Path, editResult)
+	}
 }
 
 // issuing an open_in_browser turn on a session-temp file:// target, asserting the
