@@ -65,9 +65,6 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 	}
 }
 
-// TestSettingsForm_ThinkingToggleRetainsEffort validates the reasoning mode
-// (on/off) toggles ThinkingEnabled while retaining the effort selection, so
-// toggling back on restores the original effort tier (issue #56).
 // TestSettingsForm_EffortCyclesAllTiers verifies the reasoning-effort selector
 // cycles through every first-class tier low→medium→high→max (issue #74).
 func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
@@ -94,6 +91,9 @@ func TestSettingsForm_EffortCyclesBackwardWraps(t *testing.T) {
 	}
 }
 
+// TestSettingsForm_ThinkingToggleRetainsEffort validates the reasoning mode
+// (on/off) toggles ThinkingEnabled while retaining the effort selection, so
+// toggling back on restores the original effort tier (issue #56).
 func TestSettingsForm_ThinkingToggleRetainsEffort(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldThinking
