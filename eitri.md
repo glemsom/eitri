@@ -36,7 +36,7 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 
 - **Transcript copy.** In the TUI, `ctrl+o` copies the full conversation transcript (prompts, answers, reasoning, tool entries) to the system clipboard; the `/copy` slash command does the same from the command surface. Copy reports success/failure as a status note and never mutates the transcript or the agent loop (issue #123).
 
-- **Non-interactive fallback.** The full-screen TUI refuses to start when it cannot render cleanly: stdout is not a TTY (output piped), `TERM` is unset or `dumb`, or the window is narrower than 80 columns. It prints a message pointing at batch mode (`eitri -b "<prompt>"`) to stderr and exits, so no TUI reflow is ever written into a pipe or a dumb terminal (issue #125).
+- **Non-interactive fallback.** The full-screen TUI refuses to start when it cannot render cleanly: stdout is not a TTY (output piped), `TERM` is unset or `dumb` (any case, incl. `dumb-*` variants), or the window is narrower than 80 columns. It prints a message pointing at batch mode (`eitri -b "<prompt>"`) to stderr and exits, so no TUI reflow is ever written into a pipe or a dumb terminal (issue #125).
 
 - **Max-turns limit.** Configurable cap on loop iterations per run. Default is 250 turns, then interactive prompt to allow Eitri to continue with more turns.
 

@@ -35,131 +35,81 @@ func recordingTUI(t *testing.T) *bool {
 // interactiveEnv is the host-terminal context a normal interactive launch sees.
 var interactiveEnv = tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 120}
 
-// TestTUIBootErrorPipedStdout asserts the guard refuses the TUI when stdout is
-// not a TTY (T7 AC1): the refusal error wraps ErrTUINotInteractive and its
-// message directs the user to batch mode (-b).
-func TestTUIBootErrorPipedStdout(t *testing.T) {
-	err := tuiBootError(tuiEnv{stdoutTTY: false, term: "xterm-256color", width: 120})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("tuiBootError(piped) = %v, want ErrTUINotInteractive", err)
+// TestTUIBootError tables the guard decision across every host-terminal context
+// (T7, issue #125): stdout piped, unset/dumb TERM (any case, incl. dumb-*
+// variants), sub-threshold width, the 80-column boundary, a healthy interactive
+// launch, and an unknown width (0) which never refuses. Each refusal case must
+// wrap ErrTUINotInteractive and direct the user to batch mode (-b).
+func TestTUIBootError(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     tuiEnv
+		wantErr bool
+	}{
+		{"piped stdout", tuiEnv{stdoutTTY: false, term: "xterm-256color", width: 120}, true},
+		{"unset TERM", tuiEnv{stdoutTTY: true, term: "", width: 120}, true},
+		{"dumb TERM", tuiEnv{stdoutTTY: true, term: "dumb", width: 120}, true},
+		{"uppercase DUMB TERM", tuiEnv{stdoutTTY: true, term: "DUMB", width: 120}, true},
+		{"dumb-16color TERM", tuiEnv{stdoutTTY: true, term: "dumb-16color", width: 120}, true},
+		{"narrow terminal", tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 79}, true},
+		{"threshold width", tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 80}, false},
+		{"interactive terminal", interactiveEnv, false},
+		{"unknown width", tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 0}, false},
 	}
-	if !strings.Contains(err.Error(), "-b") {
-		t.Fatalf("refusal message %q does not direct the user to batch mode (-b)", err.Error())
-	}
-}
-
-// TestTUIBootErrorUnsetTerm asserts the guard refuses the TUI when TERM is
-// unset (T7 AC2).
-func TestTUIBootErrorUnsetTerm(t *testing.T) {
-	err := tuiBootError(tuiEnv{stdoutTTY: true, term: "", width: 120})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("tuiBootError(unset TERM) = %v, want ErrTUINotInteractive", err)
-	}
-}
-
-// TestTUIBootErrorDumbTerm asserts the guard refuses the TUI when TERM is
-// "dumb" (T7 AC2).
-func TestTUIBootErrorDumbTerm(t *testing.T) {
-	err := tuiBootError(tuiEnv{stdoutTTY: true, term: "dumb", width: 120})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("tuiBootError(dumb TERM) = %v, want ErrTUINotInteractive", err)
-	}
-}
-
-// TestTUIBootErrorNarrowTerminal asserts the guard refuses the TUI below the
-// minimum width threshold (T7 AC3): 79 columns refuses, 80 columns passes.
-func TestTUIBootErrorNarrowTerminal(t *testing.T) {
-	err := tuiBootError(tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 79})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("tuiBootError(width 79) = %v, want ErrTUINotInteractive", err)
-	}
-	if !strings.Contains(err.Error(), "-b") {
-		t.Fatalf("refusal message %q does not direct the user to batch mode (-b)", err.Error())
-	}
-	if err := tuiBootError(tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 80}); err != nil {
-		t.Fatalf("tuiBootError(width 80) = %v, want nil at the threshold", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tuiBootError(tt.env)
+			if tt.wantErr {
+				if !errors.Is(err, ErrTUINotInteractive) {
+					t.Fatalf("tuiBootError(%+v) = %v, want ErrTUINotInteractive", tt.env, err)
+				}
+				if !strings.Contains(err.Error(), "-b") {
+					t.Fatalf("refusal message %q does not direct the user to batch mode (-b)", err.Error())
+				}
+			} else if err != nil {
+				t.Fatalf("tuiBootError(%+v) = %v, want nil", tt.env, err)
+			}
+		})
 	}
 }
 
-// TestTUIBootErrorInteractiveTerminalOK asserts the guard lets a normal
-// interactive launch through: TTY stdout, a real TERM, and a wide-enough
-// window (T7 AC4).
-func TestTUIBootErrorInteractiveTerminalOK(t *testing.T) {
-	if err := tuiBootError(interactiveEnv); err != nil {
-		t.Fatalf("tuiBootError(interactive) = %v, want nil", err)
+// TestRunTUIGuard drives the boot seam: Run must refuse the TUI (and never
+// launch the interactive program) in every non-interactive context, and must
+// still enter the TUI on a normal interactive launch (T7 AC1–AC4).
+func TestRunTUIGuard(t *testing.T) {
+	tests := []struct {
+		name        string
+		env         tuiEnv
+		wantRefused bool
+	}{
+		{"piped stdout", tuiEnv{stdoutTTY: false, term: "xterm-256color", width: 120}, true},
+		{"dumb TERM", tuiEnv{stdoutTTY: true, term: "dumb", width: 120}, true},
+		{"narrow terminal", tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 60}, true},
+		{"interactive terminal", interactiveEnv, false},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubTUIEnv(t, tt.env)
+			launched := recordingTUI(t)
+			dir := t.TempDir()
 
-// TestTUIBootErrorUnknownWidthOK asserts an unknown width (0) does not refuse
-// the TUI: the size probe is best-effort and must never block a real TTY
-// launch when it fails.
-func TestTUIBootErrorUnknownWidthOK(t *testing.T) {
-	if err := tuiBootError(tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 0}); err != nil {
-		t.Fatalf("tuiBootError(unknown width) = %v, want nil", err)
-	}
-}
-
-// TestRunTUIRefusedWhenStdoutPiped drives the boot seam: with stdout not a
-// TTY, Run must refuse the TUI with ErrTUINotInteractive and never launch the
-// interactive program (T7 AC1 — no TUI reflow into the pipe).
-func TestRunTUIRefusedWhenStdoutPiped(t *testing.T) {
-	stubTUIEnv(t, tuiEnv{stdoutTTY: false, term: "xterm-256color", width: 120})
-	launched := recordingTUI(t)
-	dir := t.TempDir()
-
-	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("Run(piped) error = %v, want ErrTUINotInteractive", err)
-	}
-	if *launched {
-		t.Fatal("Run(piped) launched the TUI; it must refuse before the program starts")
-	}
-}
-
-// TestRunTUIRefusedWhenDumbTerm drives the boot seam: TERM=dumb refuses the
-// TUI (T7 AC2).
-func TestRunTUIRefusedWhenDumbTerm(t *testing.T) {
-	stubTUIEnv(t, tuiEnv{stdoutTTY: true, term: "dumb", width: 120})
-	launched := recordingTUI(t)
-	dir := t.TempDir()
-
-	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("Run(dumb TERM) error = %v, want ErrTUINotInteractive", err)
-	}
-	if *launched {
-		t.Fatal("Run(dumb TERM) launched the TUI; it must refuse before the program starts")
-	}
-}
-
-// TestRunTUIRefusedWhenNarrow drives the boot seam: a sub-threshold terminal
-// width refuses the TUI (T7 AC3).
-func TestRunTUIRefusedWhenNarrow(t *testing.T) {
-	stubTUIEnv(t, tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 60})
-	launched := recordingTUI(t)
-	dir := t.TempDir()
-
-	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath})
-	if !errors.Is(err, ErrTUINotInteractive) {
-		t.Fatalf("Run(narrow) error = %v, want ErrTUINotInteractive", err)
-	}
-	if *launched {
-		t.Fatal("Run(narrow) launched the TUI; it must refuse before the program starts")
-	}
-}
-
-// TestRunTUIProceedsWhenInteractive drives the boot seam: a normal interactive
-// context still enters the full-screen TUI (T7 AC4).
-func TestRunTUIProceedsWhenInteractive(t *testing.T) {
-	stubTUIEnv(t, interactiveEnv)
-	launched := recordingTUI(t)
-	dir := t.TempDir()
-
-	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath}); err != nil {
-		t.Fatalf("Run(interactive) error = %v, want nil", err)
-	}
-	if !*launched {
-		t.Fatal("Run(interactive) never launched the TUI")
+			err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath})
+			if tt.wantRefused {
+				if !errors.Is(err, ErrTUINotInteractive) {
+					t.Fatalf("Run(%s) error = %v, want ErrTUINotInteractive", tt.name, err)
+				}
+				if *launched {
+					t.Fatalf("Run(%s) launched the TUI; it must refuse before the program starts", tt.name)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Run(%s) error = %v, want nil", tt.name, err)
+				}
+				if !*launched {
+					t.Fatalf("Run(%s) never launched the TUI", tt.name)
+				}
+			}
+		})
 	}
 }
 

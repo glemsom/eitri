@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"golang.org/x/term"
@@ -83,18 +84,27 @@ var currentTUIEnv = func() tuiEnv {
 
 // tuiBootError decides whether the interactive TUI can render into the host
 // context: nil when it can, ErrTUINotInteractive when stdout is not a TTY,
-// TERM is unset or "dumb", or the window is narrower than minTUIWidth (T7,
-// issue #125). An unknown width (0) never refuses.
+// TERM is unset or a dumb terminfo (any case, incl. dumb-* variants), or the
+// window is narrower than minTUIWidth (T7, issue #125). An unknown width (0)
+// never refuses.
 func tuiBootError(env tuiEnv) error {
 	switch {
 	case !env.stdoutTTY:
 		return fmt.Errorf("%w: stdout is not an interactive terminal (output piped?)", ErrTUINotInteractive)
-	case env.term == "" || env.term == "dumb":
+	case isDumbTerm(env.term):
 		return fmt.Errorf("%w: TERM is %q; a real terminal emulator is required", ErrTUINotInteractive, env.term)
 	case env.width > 0 && env.width < minTUIWidth:
 		return fmt.Errorf("%w: terminal is %d columns wide; %d are required", ErrTUINotInteractive, env.width, minTUIWidth)
 	}
 	return nil
+}
+
+// isDumbTerm reports whether TERM denotes a non-interactive termcap: unset,
+// "dumb", or a dumb-* variant (e.g. dumb-16color), case-insensitively (T7,
+// issue #125).
+func isDumbTerm(term string) bool {
+	lower := strings.ToLower(term)
+	return lower == "" || lower == "dumb" || strings.HasPrefix(lower, "dumb-")
 }
 
 // Options control a single Run invocation.
