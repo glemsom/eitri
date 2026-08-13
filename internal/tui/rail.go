@@ -201,9 +201,8 @@ func (m *Model) syncWidths() {
 // rows when non-negative so the rail honours the same visible height as the
 // history viewport (issue T05): the two panes form one coherent row instead of
 // the rail overflowing while the history clips. The clamp keeps the rail's top
-// sections
-// (STATS / CONTEXT / start of MODEL) and drops the tail; a negative maxHeight
-// (no resize landed) leaves the rail unclamped.
+// sections (STATS / CONTEXT / start of MODEL) and drops the tail; a negative
+// maxHeight (no resize landed) leaves the rail unclamped.
 func styledRail(content string, maxHeight int) string {
 	if maxHeight >= 0 {
 		trimmed := strings.TrimRight(content, "\n")
