@@ -34,6 +34,10 @@ type message struct {
 	content   string
 	reasoning string // assistant chain-of-thought, rendered as a collapsible block
 	streaming bool   // true while this assistant reply is still growing from the answer stream
+	// thinkingExpanded is true while this turn's reasoning block is expanded
+	// (issue #85): it defaults false (auto-collapsed) so reasoning never clogs
+	// the final reply, and collapses back when the turn's answer lands.
+	thinkingExpanded bool
 }
 
 // toolEntry is one rendered tool call in the transcript (issue #84): the tool
@@ -190,10 +194,10 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
-	// showThinking expands the collapsible reasoning blocks in the log. It
-	// defaults false (auto-collapsed after a turn) and toggles on `tab` so the
-	// user can watch reasoning on demand (docs/spec.md §6/§9, ticket #17).
-	showThinking bool
+	// reasoningEffort is the run's reasoning-effort tier, rendered in the
+	// collapsed thinking hint (issue #85 AC2: "🤔 1.4k tok · medium"). Empty
+	// when reasoning is disabled, so the hint drops the effort suffix.
+	reasoningEffort string
 
 	// skills is the live list backing the skills panel, refreshed on slash
 	// activation so the panel reflects per-session active state.
@@ -272,18 +276,19 @@ func NewModelCfg(d Dependencies) Model {
 	tx.ShowLineNumbers = false
 
 	return Model{
-		composer:     tx,
-		turn:         d.Turn,
-		deps:         d,
-		continueReq:  make(chan struct{}, 1),
-		continueResp: make(chan bool, 1),
-		skills:       skillSnapshot(d),
-		telemetry:    d.Telemetry,
-		stream:       d.Stream,
-		curStream:    -1,
-		toolFeed:     d.Tools,
-		rail:         d.Rail,
-		railAuto:     true,
+		composer:        tx,
+		turn:            d.Turn,
+		deps:            d,
+		continueReq:     make(chan struct{}, 1),
+		continueResp:    make(chan bool, 1),
+		skills:          skillSnapshot(d),
+		telemetry:       d.Telemetry,
+		stream:          d.Stream,
+		curStream:       -1,
+		toolFeed:        d.Tools,
+		rail:            d.Rail,
+		railAuto:        true,
+		reasoningEffort: d.Config.ReasoningEffort,
 	}
 }
 
@@ -358,16 +363,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyToolUpdate(msgi.update)
 		return m, toolWait(m.toolFeed)
 
-	case answerDeltaMsg:
-		// A streamed answer-text delta arrived through the waiting command: grow
-		// the in-progress assistant message in place and immediately re-issue
-		// the waiter so the reply keeps streaming (issue #83). Deltas arriving
-		// after the turn completed (a race with the final delta) are dropped so
-		// they never spawn a spurious assistant message.
+	case streamDeltaMsg:
+		// A streamed delta (reasoning or answer text) arrived through the waiting
+		// command: grow the in-progress assistant message's thinking or answer
+		// buffer in place and immediately re-issue the waiter so the streams keep
+		// coming (issues #83, #85). Deltas arriving after the turn completed (a
+		// race with the final delta) are dropped so they never spawn a spurious
+		// assistant message.
 		if m.stream == nil || !m.busy {
 			return m, nil
 		}
-		m.appendAnswerDelta(msgi.delta)
+		m.appendStreamDelta(msgi.kind, msgi.delta)
 		return m, streamWait(m.stream)
 
 	case tea.WindowSizeMsg:
@@ -464,8 +470,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.completeSlashCommand()
 				return m, nil
 			}
-			// Toggle the collapsible thinking stream (auto-collapsed by default).
-			m.showThinking = !m.showThinking
+			// Toggle the current/last turn's collapsible thinking block (auto-collapsed
+			// by default; per-turn expansion, issue #85 AC2). Toggling the newest
+			// assistant block lets the user watch that turn's reasoning on demand.
+			if m.curStream >= 0 && m.curStream < len(m.messages) {
+				// During a stream, target the in-progress assistant message.
+				m.messages[m.curStream].thinkingExpanded = !m.messages[m.curStream].thinkingExpanded
+			} else {
+				// Otherwise expand/collapse the most recent assistant (eitri) message.
+				for i := len(m.messages) - 1; i >= 0; i-- {
+					if m.messages[i].role != "you" {
+						m.messages[i].thinkingExpanded = !m.messages[i].thinkingExpanded
+						break
+					}
+				}
+			}
 			return m, nil
 		}
 		// alt+y toggles expanding tool-call entries to their full result (issue
@@ -509,6 +528,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages[m.curStream].content = msgi.answer
 			m.messages[m.curStream].reasoning = msgi.reasoning
 			m.messages[m.curStream].streaming = false
+			// Auto-collapse the thinking block once the turn's final answer lands
+			// (issue #85 AC3): if the user expanded it mid-reasoning to watch, it
+			// settles back to the one-line hint so the styled answer takes focus.
+			m.messages[m.curStream].thinkingExpanded = false
 			m.curStream = -1
 		} else {
 			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
@@ -656,20 +679,30 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 	})
 }
 
-// appendAnswerDelta grows the in-progress assistant message by one streamed
-// answer delta (issue #83). It returns no additional command. On the first
-// delta of a turn it appends a new assistant message and records its index as
-// the current stream target; subsequent deltas extend that same message in
-// place so the Markdown render grows token by token.
-func (m *Model) appendAnswerDelta(delta string) {
+// appendStreamDelta grows the in-progress assistant message by one streamed
+// delta (issue #83 / #85). It returns no additional command. On the first delta
+// of a turn it appends a new assistant message and records its index as the
+// current stream target; subsequent deltas extend that same message in place so
+// the Markdown/thinking render grows token by token. Reasoning deltas accumulate
+// onto the message's reasoning buffer and the answer deltas onto its content
+// buffer; the two never interleave (docs/spec.md §6).
+func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	if delta == "" {
 		return
 	}
 	if m.curStream >= 0 && m.curStream < len(m.messages) && m.messages[m.curStream].streaming {
-		m.messages[m.curStream].content += delta
+		if kind == ReasoningStream {
+			m.messages[m.curStream].reasoning += delta
+		} else {
+			m.messages[m.curStream].content += delta
+		}
 		return
 	}
-	m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
+	if kind == ReasoningStream {
+		m.messages = append(m.messages, message{role: "eitri", reasoning: delta, streaming: true})
+	} else {
+		m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
+	}
 	m.curStream = len(m.messages) - 1
 }
 
@@ -873,11 +906,13 @@ func (m Model) renderPane() string {
 		b.WriteString("\n")
 	}
 	for i, msg := range m.messages {
-		// Reasoning renders as a distinct, collapsible stream — never merged
-		// into the answer. Auto-collapsed by default; `tab` expands (N17).
+		// Reasoning renders as a distinct, collapsible per-turn block — never
+		// merged into the answer. Collapsed it is a one-line hint carrying the
+		// token estimate + effort; `tab` expands just that turn's block (issue
+		// #85, docs/spec.md §6).
 		if msg.role != "you" && msg.reasoning != "" {
-			b.WriteString(thinkingHeader())
-			if m.showThinking {
+			b.WriteString(thinkingHeader(msg.reasoning, m.reasoningEffort))
+			if msg.thinkingExpanded {
 				b.WriteString(msg.reasoning + "\n")
 			}
 		}
@@ -925,12 +960,26 @@ func promptView() string {
 		"Continue the run with more turns? (" + statusStyle.Render("y") + "/" + statusStyle.Render("n") + ")"
 }
 
-// thinkingHeader renders the collapsible reasoning-stream header. It labels the
-// block distinctly from the answer so reasoning is recognizable but secondary;
-// the collapsed state reflects that the block is auto-collapsed after the turn
-// (docs/spec.md §9, ticket #17).
-func thinkingHeader() string {
-	return statusStyle.Render("‹ thinking ›") + "\n"
+// thinkingHeader renders a turn's collapsible reasoning block header. Collapsed
+// it is a one-line hint carrying a token estimate and the reasoning-effort tier
+// (issue #85 AC2: "🤔 1.4k tok · medium"); the block renders distinctly from the
+// answer so reasoning is recognizable but secondary, and settles back to this
+// hint when the turn's answer lands. reasoning is the accumulated thinking text;
+// effort is the run's reasoning-effort tier (empty drops the suffix).
+func thinkingHeader(reasoning, effort string) string {
+	hint := fmt.Sprintf("🤔 %s tok", formatTokens(tokenEstimate(reasoning)))
+	if effort != "" {
+		hint += " · " + effort
+	}
+	return statusStyle.Render(hint) + "\n"
+}
+
+// tokenEstimate estimates a reasoning stream's token count from its assembled
+// text length, using the conventional ~4 chars/token yardstick. It backs the
+// collapsed thinking hint's token readout so the user can gauge the turn's
+// reasoning cost at a glance (issue #85 AC2).
+func tokenEstimate(s string) int {
+	return len([]rune(s)) / 4
 }
 
 // renderSlashCompletion appends the slash-command completion list to the view

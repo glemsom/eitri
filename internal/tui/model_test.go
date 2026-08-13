@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // TestModel_greetingRoundTrip drives a greeting through the model over the
@@ -68,9 +70,9 @@ func TestModel_errorTurn(t *testing.T) {
 // resize installs a window size on the model.
 
 // TestModel_thinkingCollapsible asserts reasoning renders as a distinct,
-// auto-collapsed block: the header is always shown, the reasoning body is
-// hidden until `tab` expands it, and reasoning never leaks into the answer
-// (docs/spec.md §6, ticket #17).
+// auto-collapsed per-turn block: the collapsed hint line is always shown, the
+// reasoning body is hidden until `tab` expands the block, and reasoning never
+// leaks into the answer (docs/spec.md §6, ticket #17 / #85).
 func TestModel_thinkingCollapsible(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
 		return TurnResult{
@@ -82,10 +84,10 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	// Auto-collapsed after the turn: header present, body absent by default.
+	// Auto-collapsed after the turn: hint present, body absent by default.
 	view := m.View()
-	if !strings.Contains(view, "thinking") {
-		t.Errorf("expected a thinking header in view, got: %q", view)
+	if !strings.Contains(view, "🤔") {
+		t.Errorf("expected a thinking hint in view, got: %q", view)
 	}
 	if strings.Contains(view, "I reason about it first") {
 		t.Errorf("reasoning body should be collapsed by default, got: %q", view)
@@ -96,7 +98,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	m = asModel(t, toggled)
 	expanded := m.View()
 	if !strings.Contains(expanded, "I reason about it first") {
-		t.Errorf("tab should expand the reasoning body, got: %q", expanded)
+		t.Errorf("tab should expand the reasoning block, got: %q", expanded)
 	}
 	// The answer is still rendered, and reasoning appears before it as a distinct
 	// stream (never interleaved into the answer body). Glamour word-wraps the
@@ -108,6 +110,62 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	eitriIdx := strings.Index(expanded, "eitri")
 	if thinkingIdx == -1 || eitriIdx == -1 || thinkingIdx > eitriIdx {
 		t.Errorf("reasoning block must render as its own stream before the answer, got: %q", expanded)
+	}
+}
+
+// TestModel_thinkingHintReportsTokensAndEffort asserts the collapsed thinking
+// hint is a one-line summary carrying a reason-token estimate and the
+// reasoning-effort tier (issue #85 AC2: "🤔 1.4k tok · medium").
+func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: strings.Repeat("reasoning words. ", 400)}, nil
+		},
+		Config: config.Config{ReasoningEffort: "medium"},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	view := m.View()
+	// The hint labels the reasoning stream and carries the configured effort.
+	if !strings.Contains(view, "🤔") {
+		t.Errorf("collapsed state should show the thinking hint, got: %q", view)
+	}
+	if !strings.Contains(view, "· medium") {
+		t.Errorf("hint should carry the reasoning-effort tier, got: %q", view)
+	}
+	// A token estimate renders (thousands compact as X.Xk). The reasoning body
+	// stays hidden.
+	if !strings.Contains(view, "tok") {
+		t.Errorf("hint should carry a token count, got: %q", view)
+	}
+	if strings.Contains(view, "reasoning words") {
+		t.Errorf("reasoning body must stay collapsed behind the hint, got: %q", view)
+	}
+}
+
+// TestModel_thinkingAutoCollapsesOnAnswer asserts an expanded per-turn thinking
+// block collapses back to its hint when the turn's final answer lands (issue
+// #85 AC3: "auto-collapses once the turn's final answer lands").
+func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	// First reasoning delta creates the block, then tab expands it (issue #85
+	// AC3: the user can watch reasoning on demand).
+	m = applyReasoningDelta(t, m, "hidden reasoning")
+	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = asModel(t, toggled)
+	if !strings.Contains(m.View(), "hidden reasoning") {
+		t.Errorf("expanded block should show reasoning before answer lands, got: %q", m.View())
+	}
+	// The final answer lands; the block auto-collapses.
+	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
+	m = asModel(t, nm)
+	if strings.Contains(m.View(), "hidden reasoning") {
+		t.Errorf("thinking block should auto-collapse when the answer lands, got: %q", m.View())
 	}
 }
 
