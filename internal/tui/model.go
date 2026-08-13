@@ -54,6 +54,12 @@ type toolEntry struct {
 	removed    int
 	anchor     int // index of the triggering "you" message in messages
 	complete   bool
+	// before/after/path carry the file content and host path a file-mutating
+	// edit/write captured (issue #90): they back the review panel's inline diff
+	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
+	before string
+	after  string
+	path   string
 }
 
 type turnDoneMsg struct {
@@ -133,6 +139,12 @@ type Dependencies struct {
 	// collapsed `⊕ tool  args` one-liner that expands to the full result.
 	// Nil disables tool entries (the pre-seam default).
 	Tools *ToolFeed
+	// OpenInBrowser is the review panel's open_in_browser escape hatch (issue
+	// #90): a host-side seam that launches a changed file's path in the host
+	// browser/editor so a diff too rich for the terminal is reviewable off-
+	// screen. Nil disables the escape hatch (the panel still shows the inline
+	// diff; issue #90 AC2 independently).
+	OpenInBrowser func(ctx context.Context, target string) error
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -193,6 +205,11 @@ type Model struct {
 	// output on demand while keeping the transcript clean by default (issue #84
 	// AC2/AC4).
 	showToolResult bool
+
+	// review is the open changed-file review panel (issue #90), built from the
+	// accumulated file-mutating tool entries. Non-nil means the panel is open
+	// (ctrl+d toggles); nil means the transcript is the active surface.
+	review *reviewPanel
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -319,11 +336,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.prompting {
 			return m.updatePrompt(msgi)
 		}
+		// Review panel open: route keys to it before the composer.
+		if m.review != nil {
+			return m.updateReview(msgi)
+		}
 		switch msgi.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "ctrl+s":
 			m.openSettings()
+			return m, nil
+		case "ctrl+d":
+			// The review panel (issue #90): ctrl+d toggles the changed-file
+			// review over the transcript, or closes it when already open.
+			if m.review != nil {
+				m.review = nil
+				return m, nil
+			}
+			rp := m.buildReview()
+			m.review = &rp
 			return m, nil
 		case "ctrl+j":
 			// Newline (Shift+Enter on terminals that report Enter and
@@ -557,6 +588,9 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 				m.tools[i].compressed = u.Result.Compressed
 				m.tools[i].added = u.Result.Added
 				m.tools[i].removed = u.Result.Removed
+				m.tools[i].before = u.Result.Before
+				m.tools[i].after = u.Result.After
+				m.tools[i].path = u.Result.Path
 				m.tools[i].complete = true
 				return
 			}
@@ -669,6 +703,11 @@ func (m Model) View() string {
 	}
 
 	var b strings.Builder
+	// Review panel open: it takes over the view (Layout B, issue #90), showing
+	// the dense changed-file summary + inline diff above the transcript.
+	if m.review != nil {
+		m.renderReview(&b)
+	}
 	// Surface the project's read-only state (issue #82 AC1): the workspace
 	// directory the run operates in, rendered as an informational header above
 	// the transcript and never inside the composer the user types into.

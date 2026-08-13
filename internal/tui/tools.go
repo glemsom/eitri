@@ -56,6 +56,15 @@ type ToolResult struct {
 	Added int
 	// Removed is the line delta a file-mutating edit removed (0 for non-edits).
 	Removed int
+	// Before is the target file's full content before a file-mutating tool ran
+	// (empty when the run did not report it). It backs the review panel's inline
+	// diff of a changed file (issue #90).
+	Before string
+	// After is the target file's full content after a file-mutating tool ran.
+	After string
+	// Path is the host filesystem path of the target file, backing the review
+	// panel's open_in_browser escape hatch (issue #90).
+	Path string
 }
 
 // NewToolFeed builds a live tool feed ready to be handed to a Model via

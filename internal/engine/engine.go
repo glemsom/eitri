@@ -416,10 +416,16 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			result := execToolCall(ctx, opts, tc)
 			added, removed := 0, 0
+			before, after, path := "", "", ""
 			if opts.ToolDelta != nil && opts.ToolDelta.End != nil {
 				added, removed = opts.ToolDelta.End(ctx, tc.Name, tc.Arguments)
 			}
-			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result, added, removed))
+			// File content for the review panel's inline diff (issue #90): pair a
+			// Begin snapshot (taken before exec) with the current on-disk file.
+			if opts.ToolDelta != nil && opts.ToolDelta.Content != nil {
+				before, after, path = opts.ToolDelta.Content(ctx, tc.Name, tc.Arguments)
+			}
+			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result, added, removed, before, after, path))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,

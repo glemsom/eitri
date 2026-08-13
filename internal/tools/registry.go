@@ -60,6 +60,11 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 
+// Browser exposes the registry's host-side browser launch seam (the launcher
+// backing the open_in_browser tool, ADR-0001). The TUI's review panel reuses it
+// for the open_in_browser escape hatch (issue #90).
+func (r *Registry) Browser() BrowserLauncher { return r.browser }
+
 // Registry is the shared tool registry: it wires the single PathTranslator and
 // Validator (ADR-0002) once, plus the network and browser seams, then exposes
 // the fixed tool surface. Later tickets add web_fetch, open_in_browser, and

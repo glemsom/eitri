@@ -28,6 +28,8 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
   - `open_in_browser` — open a single URL or file in the host browser (Similar to `xdg_open`)
   - `skill` — activate an Agent Skill pack (Research the recommended way to do this, expecially for OpenAI compatible endpoints)
 
+- **Review surface.** In the TUI, `ctrl+d` opens a read-only Review panel over the transcript: a changed-file list with `[+N, −M]` deltas and status (modified/added/deleted), an in-terminal inline diff of the focused file (pure-Go diff engine, no external renderer), and `open_in_browser` as the escape hatch to the full file in the host browser/editor for diffs too rich for the terminal. It never mutates the repo or the live agent loop.
+
 - **Max-turns limit.** Configurable cap on loop iterations per run. Default is 250 turns, then interactive prompt to allow Eitri to continue with more turns.
 
 ### 2.2 LLM providers & models

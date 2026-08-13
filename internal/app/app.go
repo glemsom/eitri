@@ -282,6 +282,7 @@ func fileLineDelta(reg *tools.Registry) *engine.ToolDelta {
 	mu := &sync.Mutex{}
 	hostPath := ""
 	oldLines := 0
+	oldContent := ""
 	return &engine.ToolDelta{
 		Begin: func(_ context.Context, name, argsJSON string) {
 			if name != "edit" && name != "write" {
@@ -300,12 +301,14 @@ func fileLineDelta(reg *tools.Registry) *engine.ToolDelta {
 			if !filepath.IsAbs(host) {
 				host = filepath.Join(reg.Workspace(), host)
 			}
-			n, err := lineCount(host)
-			if err != nil {
-				return
-			}
+			// Snapshot the pre-edit file content and line count once, before the
+			// tool runs; both the line-delta tag (issue #84) and the review
+			// panel's inline diff (issue #90) read from this one snapshot.
+			content, err := os.ReadFile(host)
 			mu.Lock()
-			hostPath, oldLines = host, n
+			hostPath = host
+			oldContent = string(content)
+			oldLines = countLines(content, err)
 			mu.Unlock()
 		},
 		End: func(_ context.Context, name, _ string) (int, int) {
@@ -317,33 +320,47 @@ func fileLineDelta(reg *tools.Registry) *engine.ToolDelta {
 			if hostPath == "" {
 				return 0, 0
 			}
-			newLines, err := lineCount(hostPath)
-			hostPath = "" // one-shot: Begin/End pair back-to-back for one call
+			data, err := os.ReadFile(hostPath)
 			if err != nil {
 				return 0, 0
 			}
+			newLines := countLines(data, nil)
 			added, removed := 0, 0
 			if newLines > oldLines {
 				added = newLines - oldLines
-			} else {
+			} else if newLines < oldLines {
 				removed = oldLines - newLines
 			}
 			return added, removed
 		},
+		Content: func(ctx context.Context, name, _ string) (string, string, string) {
+			if name != "edit" && name != "write" {
+				return "", "", ""
+			}
+			mu.Lock()
+			h := hostPath
+			before := oldContent
+			mu.Unlock()
+			if h == "" {
+				return "", "", ""
+			}
+			data, err := os.ReadFile(h)
+			if err != nil {
+				return "", "", ""
+			}
+			return before, string(data), h
+		},
 	}
 }
 
-// lineCount returns the number of lines in the file at host path, or an error
-// when the file cannot be read (a best-effort telemetry degrade, not a failure).
-func lineCount(host string) (int, error) {
-	data, err := os.ReadFile(host)
-	if err != nil {
-		return 0, err
+// countLines returns the number of lines in file content, honoring a read
+// error: a failed or missing read yields zero (best-effort telemetry degrade,
+// never a failure).
+func countLines(data []byte, readErr error) int {
+	if readErr != nil || len(data) == 0 {
+		return 0
 	}
-	if len(data) == 0 {
-		return 0, nil
-	}
-	return bytes.Count(data, []byte{'\n'}) + 1, nil
+	return bytes.Count(data, []byte{'\n'}) + 1
 }
 
 // providerTools maps the registry's definitions to provider Chat-Completions
