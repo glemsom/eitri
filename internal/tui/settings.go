@@ -15,6 +15,7 @@ const (
 	fieldEffort
 	fieldMaxTurns
 	fieldFraction
+	fieldTheme
 	fieldPaths
 	fieldSave
 	fieldCount
@@ -120,6 +121,10 @@ func (f *settingsForm) adjust(d int) {
 		f.cfg.MaxTurns = stepInt(f.cfg.MaxTurns, d, 25, 0, 10000)
 	case fieldFraction:
 		f.cfg.CompactionFraction = stepFrac(f.cfg.CompactionFraction, d)
+	case fieldTheme:
+		// Unknown themes cycle to the first valid one on the first press, same
+		// as a hand-edited bad model value (issue #130 AC3).
+		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
 	case fieldPaths:
 		// Free-form edit is handled by the caller via SetPathBuf; adjust nudges
 		// the focused field forward so enter still lands on Save.
@@ -227,6 +232,7 @@ func settingsView(f settingsForm) string {
 		{"Reasoning", f.cfg.ReasoningEffort},
 		{"Max turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
 		{"Compaction", fmt.Sprintf("%.2f", f.cfg.CompactionFraction)},
+		{"Theme", f.cfg.Theme},
 		{"Writable", f.pathBuf},
 	}
 	for i, r := range rows {

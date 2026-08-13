@@ -123,7 +123,7 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus to the paths field (index 5).
+	// Advance focus to the paths field (index 7).
 	for i := fieldProvider; i < fieldPaths; i++ {
 		m = keypress(t, m, "tab")
 	}
@@ -187,7 +187,6 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 		Config: cfgFixture(), // no Models seeded
 		DiscoverModels: func(ctx context.Context) ([]string, error) {
 			return []string{"deepseek-v4-flash", "grok-2"}, nil
-			return []string{"deepseek-v4-flash", "grok-2"}, nil
 		},
 	})
 	m = resize(t, m)
@@ -242,6 +241,34 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	}
 	if !strings.Contains(view, cfgFixture().Model) {
 		t.Fatalf("settings view %q missing configured model after failed discovery", view)
+	}
+}
+
+// TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
+// panel (light) persists to config through the Save seam (issue #130 AC4).
+func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(), // theme "dark"
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	// Advance focus from Provider(0) to the Theme field (after Fraction).
+	for i := fieldProvider; i < fieldTheme; i++ {
+		m = keypress(t, m, "tab")
+	}
+	// From "dark", one down selects "light".
+	m = keypress(t, m, "down")
+	for i := fieldTheme; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if saved.Theme != "light" {
+		t.Fatalf("saved Theme = %q, want light", saved.Theme)
 	}
 }
 
