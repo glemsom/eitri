@@ -131,9 +131,8 @@ func formatTokens(n int) string {
 
 // rail constants: railWidth is the fixed right-pane width in columns;
 // railShowWidth / railShowHeight are the terminal size below which the rail
-// auto-hides, so a pane too narrow or too short to be useful (or to leave room
-// for the primary buffer's native full-width selection / scrollback) stays off
-// (issue #88 AC3; ADR-0006 decision 5, issue T05).
+// auto-hides, so a pane too narrow or too short to be useful stays off (issue
+// #88 AC3).
 const (
 	railWidth      = 30
 	railShowWidth  = 120
@@ -144,7 +143,7 @@ const (
 // the user has not explicitly toggled it (railAuto), it follows size: shown
 // only on windows that are both wide (>= railShowWidth) and tall (>
 // railShowHeight) so it never steals vertical room from the fixed bottom band
-// on a short terminal (ADR-0006 decision 5, issue T05 AC2). Once the user
+// on a short terminal (issue T05 AC2). Once the user
 // presses ctrl+b the choice becomes explicit (railShown), so the rail toggles
 // on any size (issue #88 AC1/AC3).
 func (m Model) railVisible() bool {
@@ -167,7 +166,6 @@ func (m *Model) toggleRail() {
 	m.railAuto = false
 	m.railShown = !was
 	m.syncWidths()
-	m.histVer++ // the transcript re-wrapped around the rail's freed/taken space
 }
 
 // transcriptWidth returns the column width the left transcript pane should use
@@ -199,13 +197,12 @@ func (m *Model) syncWidths() {
 
 // styledRail frames the rail's rendered sections into a fixed-width right
 // column with a left border, so it reads as a distinct state pane alongside the
-// transcript (Layout A, issue #88) without escaping the primary buffer. It
-// height-clamps the content to maxHeight rows when non-negative so the rail
-// honours the same visible height as the history viewport (ADR-0006 decision 5,
-// issue T05): the two panes form one coherent row instead of the rail
-// overflowing while the history clips. The clamp keeps the rail's top sections
-// (STATS / CONTEXT / start of MODEL) and drops the tail; a negative maxHeight
-// (no resize landed) leaves the rail unclamped.
+// transcript (Layout A, issue #88). It height-clamps the content to maxHeight
+// rows when non-negative so the rail honours the same visible height as the
+// history viewport (issue T05): the two panes form one coherent row instead of
+// the rail overflowing while the history clips. The clamp keeps the rail's top
+// sections (STATS / CONTEXT / start of MODEL) and drops the tail; a negative
+// maxHeight (no resize landed) leaves the rail unclamped.
 func styledRail(content string, maxHeight int) string {
 	if maxHeight >= 0 {
 		trimmed := strings.TrimRight(content, "\n")

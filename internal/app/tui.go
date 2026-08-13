@@ -31,14 +31,15 @@ func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, ses
 }
 
 // runTUI launches the interactive fullscreen TUI on the shared engine and
-// blocks until the user quits. It renders into the primary (normal) buffer:
-// Bubble Tea's default renderer does not enter the alt screen, so native
-// scrollback, selection, and search survive a session (docs/spec.md §9). The
-// Settings surface (ctrl+s) is seeded from the loaded config and provider model
-// discovery, and persists edits back through the config layer (eitri.md §2.7,
-// T12). The right context rail (ctrl+b, issue #88) is seeded with the run's
-// static provider/model/effort and session context (id + temp path). sessionTemp
-// is the host-form ephemeral /tmp root for this run's session (ADR-0002).
+// blocks until the user quits. It renders through the alternate screen (T1
+// pivot, issue #119): a full-terminal viewport where every frame is a clean
+// repaint into the alt buffer, so the transcript re-flows cleanly on resize
+// with no stale primary-buffer residue. The Settings surface (ctrl+s) is seeded
+// from the loaded config and provider model discovery, and persists edits back
+// through the config layer (eitri.md §2.7, T12). The right context rail
+// (ctrl+b, issue #88) is seeded with the run's static provider/model/effort and
+// session context (id + temp path). sessionTemp is the host-form ephemeral /tmp
+// root for this run's session (ADR-0002).
 func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog, workspace string, sessionTemp string) error {
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
@@ -212,7 +213,11 @@ func discoveredModels(p provider.Provider) func(ctx context.Context) ([]string, 
 // can exercise the boot path without a real terminal; the production default
 // runs the interactive TUI.
 var runProgram = func(m tui.Model) error {
-	p := tea.NewProgram(m)
+	// The TUI takes over the full terminal via the alternate screen (T1 pivot,
+	// issue #119): every frame is a clean repaint into the alt buffer, so a
+	// window resize re-flows the transcript cleanly with no primary-buffer
+	// duplicate/scatter residue.
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }

@@ -173,10 +173,11 @@ type Dependencies struct {
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
 // composer and the conversation log, and drives agent turns over the injected
-// Turn seam. It renders into the primary buffer via Bubble Tea's default
-// (non-alt-screen) renderer, so native scrollback/selection/search survive.
-// It also hosts the Settings surface (ctrl+s) and the interactive max-turns
-// continuation prompt.
+// Turn seam. It renders through the alternate screen (T1 pivot, issue #119), so
+// every frame is a clean full-surface repaint and the history scroll/clip lives
+// in a native viewport rather than a primary-buffer compensation layer. It also
+// hosts the Settings surface (ctrl+s) and the interactive max-turns continuation
+// prompt.
 type Model struct {
 	composer textarea.Model
 	turn     Turn
@@ -253,10 +254,10 @@ type Model struct {
 	// rail's auto-hide and to size the transcript column (issue #88 AC3). It is
 	// 0 until the first resize lands.
 	width int
-	// height is the terminal height of the last WindowSizeMsg (ADR-0006
-	// decision 3, issue T02): the history viewport clamps to it so the fixed
-	// bottom band never trails off-screen on a window shrink. It is 0 until the
-	// first resize lands, in which case the history renders unclamped.
+	// height is the terminal height of the last WindowSizeMsg: the history
+	// viewport clamps to it so the fixed bottom band never trails off-screen on a
+	// window shrink. It is 0 until the first resize lands, in which case the
+	// history renders unclamped.
 	height int
 	// railAuto is true until the user first presses ctrl+b: the rail then follows
 	// width (auto-show wide, auto-hide narrow). After a toggle it is false and
@@ -266,46 +267,19 @@ type Model struct {
 	// #88 AC1). Current when !railAuto.
 	railShown bool
 
-	// histVer bumps every time the scroll region's inputs change (message, tool
-	// entry, skills/active state, thinking expansion, busy flag, rail toggle) so
-	// a stale scroll-cache rebuild is detected rather than served (ADR-0006
-	// decision 4, issue T03). It is a value field bumped in Update and carried
-	// forward by the returned model copy.
-	histVer int
-	// histCache is the bounded scroll-region render cache (ADR-0006 decision 4,
-	// issue T03): it holds the rendered history content plus the width-bucket and
-	// content version it was built at, so a terminal resize reuses prior markdown
-	// instead of re-running the expensive Glamour pass over the whole history on
-	// every tick. It is a pointer so the content written by View (which runs on a
-	// value copy) survives across render cycles.
-	histCache *scrollCache
-
-	// histViewport is the persisted history scroll component (ADR-0006 decision 6,
-	// issue T04): a bubbletea/viewport that owns the scroll region's position +
-	// follow behaviour. It re-anchors to the newest output (GotoBottom) on every
-	// render so the newest content stays in view through streamed appends and a
-	// mid-stream resize (issue #108 AC1/AC2); native terminal scroll remains the
-	// only navigation path (no paging/scroll keys are wired in, AC3), so the
-	// component is the seam a future focus-mode can break follow through. It is a
-	// pointer so scroll-state changes made by View (which runs on a value copy)
-	// survive across render cycles, matching the histCache pointer.
+	// histViewport is the persisted history scroll component (T1 alt-screen
+	// pivot, issue #119): a bubbletea/viewport that owns the scroll region's
+	// position + follow behaviour. The TUI renders into the alternate screen, so
+	// every frame is a clean repaint and the viewport natively owns the history
+	// clip + scroll — no primary-buffer compensation layer is needed. It
+	// re-anchors to the newest output (GotoBottom) on every render so the newest
+	// content stays in view through streamed appends and a mid-stream resize
+	// (issue #108 AC1/AC2); native terminal scroll remains the only navigation
+	// path (no paging/scroll keys are wired in, AC3), so the component is the
+	// seam a future focus-mode can break follow through. It is a pointer so
+	// scroll-state changes made by View (which runs on a value copy) survive
+	// across render cycles.
 	histViewport *viewport.Model
-}
-
-// scrollCache is the bounded scroll-region render cache (ADR-0006 decision 4,
-// issue T03): the rendered history content string plus the transcript width-
-// bucket and history content version it was built at. A lookup hits when both
-// match the model's current bucket and version, and rebuilds exactly once when
-// either changes. rebuilds counts content rebuilds and is a test-only seam for
-// asserting bounded re-render on resize.
-type scrollCache struct {
-	content string
-	bkt     int
-	version int
-	// contentDone marks that a build has landed, so an genuinely-empty history
-	// is not mistaken for an unbuilt cache.
-	contentDone bool
-	rebuilds    int
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -323,36 +297,33 @@ func NewModelCfg(d Dependencies) Model {
 	tx.ShowLineNumbers = false
 
 	return Model{
-		composer:     tx,
-		turn:         d.Turn,
-		deps:         d,
-		continueReq:  make(chan struct{}, 1),
-		continueResp: make(chan bool, 1),
-		skills:       skillSnapshot(d),
-		telemetry:    d.Telemetry,
-		stream:       d.Stream,
-		curStream:    -1,
-		toolFeed:     d.Tools,
-		rail:         d.Rail,
-		railAuto:     true,
-		// Seed the bounded scroll-cache with a sentinel bucket so the first view
-		// always builds (an unbuilt empty cache must not be served as content).
-		histCache:       &scrollCache{bkt: -1},
+		composer:        tx,
+		turn:            d.Turn,
+		deps:            d,
+		continueReq:     make(chan struct{}, 1),
+		continueResp:    make(chan bool, 1),
+		skills:          skillSnapshot(d),
+		telemetry:       d.Telemetry,
+		stream:          d.Stream,
+		curStream:       -1,
+		toolFeed:        d.Tools,
+		rail:            d.Rail,
+		railAuto:        true,
 		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
 	}
 }
 
-// newHistoryViewport builds the persisted history scroll component (ADR-0006
-// decision 6, issue T04) as a heap-allocated bubbletea/viewport. It is a
+// newHistoryViewport builds the persisted history scroll component (T1
+// alt-screen pivot, issue #119) as a heap-allocated bubbletea/viewport. It is a
 // pointer so scroll-state changes made by View (which runs on a value copy)
-// survive across render cycles, matching the histCache pointer. It starts
-// unsized (0x0) until the first WindowSizeMsg lands.
+// survive across render cycles. It starts unsized (0x0) until the first
+// WindowSizeMsg lands.
 func newHistoryViewport() *viewport.Model {
 	v := viewport.New(0, 0)
-	// No re-implemented navigation (ADR-0006 decision 6, issue #108 AC3): the
-	// viewport only renders the follow position — native terminal scroll is the
-	// navigation path. Disabling mouse-wheel scrolling here makes that intent
+	// No re-implemented navigation (issue #108 AC3): the viewport only renders
+	// the follow position — native navigation is out of scope. Disabling
+	// mouse-wheel scrolling here makes that intent
 	// explicit rather than inherited from the component defaults (the Bubble Tea
 	// program does not enable mouse tracking anyway).
 	v.MouseWheelEnabled = false
@@ -519,7 +490,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.activateSkill(name)
 			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
-			m.histVer++ // a caller prompt scores into the scroll region
 			m.busy = true
 			m.curStream = -1
 			// Anchor new tool calls to this turn's prompt so entries interleave
@@ -554,7 +524,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			m.histVer++ // the thinking block's expansion changed the scroll region
 			return m, nil
 		}
 		// alt+y toggles expanding tool-call entries to their full result (issue
@@ -562,7 +531,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// demand so nothing is ever silently truncated.
 		if msgi.Alt && msgi.Type == tea.KeyRunes && string(msgi.Runes) == "y" {
 			m.showToolResult = !m.showToolResult
-			m.histVer++ // tool entries flip between collapsed and expanded
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -603,11 +571,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (issue #85 AC3): if the user expanded it mid-reasoning to watch, it
 			// settles back to the one-line hint so the styled answer takes focus.
 			m.messages[m.curStream].thinkingExpanded = false
-			m.histVer++ // the streamed answer settled to its final form
 			m.curStream = -1
 		} else {
 			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
-			m.histVer++ // the committed answer scores into the scroll region
 			return m, nil
 		}
 		return m, nil
@@ -629,7 +595,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
-		m.histVer++ // a skill result scores into the scroll region
 		return m, nil
 	}
 
@@ -771,7 +736,6 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 		} else {
 			m.messages[m.curStream].content += delta
 		}
-		m.histVer++ // the streaming message body grew
 		return
 	}
 	if kind == ReasoningStream {
@@ -779,7 +743,6 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	} else {
 		m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
 	}
-	m.histVer++ // a new streaming assistant message opened
 	m.curStream = len(m.messages) - 1
 }
 
@@ -795,7 +758,6 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 			args:   u.Start.Args,
 			anchor: m.curToolAnchor,
 		})
-		m.histVer++ // a new tool entry opened into the scroll region
 		return
 	}
 	if u.Result != nil {
@@ -812,7 +774,6 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 				m.tools[i].after = u.Result.After
 				m.tools[i].path = u.Result.Path
 				m.tools[i].complete = true
-				m.histVer++ // the tool entry's result settled into the scroll region
 				return
 			}
 		}
@@ -853,10 +814,8 @@ func slashCommand(prompt string, skills []SkillItem) (string, bool) {
 // result as an assistant note. It flips the local panel state to active.
 func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
-	m.histVer++ // a skill command prompt scores into the scroll region
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: "⚠ no skill activation available"})
-		m.histVer++ // the unavailable-skill rejection scored in
 		return m, nil
 	}
 	m.markActive(name)
@@ -868,7 +827,6 @@ func (m *Model) markActive(name string) {
 	for i := range m.skills {
 		if m.skills[i].Name == name {
 			m.skills[i].Active = true
-			m.histVer++ // the skills panel's active check changed the scroll region
 		}
 	}
 }
@@ -947,8 +905,10 @@ func (m *Model) completeSlashCommand() {
 }
 
 // View renders the conversation plus composer. It renders committed messages
-// and the composer; works in primary buffer, so nothing is cleared. The
-// Settings surface and the continuation prompt are rendered on top when active.
+// and the composer as a full-frame repaint; the alternate-screen renderer clears
+// stale surface state each frame, so a resize never duplicates or scatters text.
+// The Settings surface and the continuation prompt are rendered on top when
+// active.
 func (m Model) View() string {
 	if m.settings != nil {
 		return settingsView(*m.settings)
@@ -960,9 +920,9 @@ func (m Model) View() string {
 	// The right context rail (issue #88, Layout A): when visible, the rendered
 	// transcript pane and the state rail sit side by side — one pane for time
 	// (transcript), one for state (rail). The rail never steals width from the
-	// primary buffer's native full-width selection except where it auto-shows
-	// wide (railVisible gates it, and the composer width already shrank so the
-	// transcript re-wraps to the freed space).
+	// full-width except where it auto-shows wide (railVisible gates it, and the
+	// composer width already shrank so the transcript re-wraps to the freed
+	// space).
 	left := m.renderPane()
 	if m.rail != nil && m.railVisible() {
 		right := styledRail(m.rail.render(m.telemetry, m.skills), m.railClampHeight())
@@ -972,12 +932,12 @@ func (m Model) View() string {
 }
 
 // railClampHeight returns the maximum number of rows the right context rail may
-// occupy so it matches the history region's visible height (ADR-0006 decision
-// 5, issue T05 AC1): both panes clamp to the rows left over by the fixed bottom
-// band, so the two form one coherent row. It is -1 before the first resize
-// lands, leaving the rail unclamped — mirroring renderHistoryViewport; a
-// non-negative result is the actual row budget (0 when the band fills the whole
-// terminal, in which case the rail renders nothing).
+// occupy so it matches the history region's visible height (issue T05 AC1):
+// both panes clamp to the rows left over by the fixed bottom band, so the two
+// form one coherent row. It is -1 before the first resize lands, leaving the
+// rail unclamped — mirroring renderHistoryViewport; a non-negative result is
+// the actual row budget (0 when the band fills the whole terminal, in which
+// case the rail renders nothing).
 func (m Model) railClampHeight() int {
 	if m.height <= 0 {
 		return -1
@@ -993,37 +953,23 @@ func (m Model) railClampHeight() int {
 
 // bandHeight returns how many terminal rows the fixed bottom band (status
 // strip, slash completion, composer) occupies, so the scroll region and the
-// right rail can clamp to the rows it leaves behind (ADR-0006 decision 3/5).
+// right rail can clamp to the rows it leaves behind.
 func (m Model) bandHeight() int {
 	var band strings.Builder
 	m.renderBand(&band)
 	return lineCount(band.String())
 }
 
-// widthBucketCols is the width granularity of the history render cache: the
-// transcript width is bucketed into widthBucketCols-wide buckets, so a resize
-// that changes the terminal width but not the bucket reuses prior rendered
-// markdown instead of re-wrapping every message (ADR-0006 decision 4, issue
-// T03 AC1). Coarse enough to absorb small drag-resize jitter, fine enough that
-// a real rewrap does not wait several cols.
-const widthBucketCols = 16
-
-// widthBucket returns the render-cache bucket for a transcript width.
-func widthBucket(width int) int {
-	return width / widthBucketCols
-}
-
 // renderPane renders the transcript + composer surface into the left pane. It
-// is the historical single-pane view; the rail adds itself to the right when
-// visible. It works in the primary buffer, so nothing is cleared.
+// is the single-pane view; the rail adds itself to the right when visible. It
+// is used by the alternate-screen renderer, so every frame is a clean repaint.
 //
-// Render is split into explicit, ordered regions (ADR-0006 decision 6, issue
-// T01): the review overlay region (when open) on top, the scroll region
-// (history), then the fixed bottom band (status strip + composer). Each region
-// renders independently into its own builder; renderPane just concatenates them
-// in order. The scroll region is Height-aware (ADR-0006 decision 3, issue T02):
-// its content clamps to the terminal height, so the band stays pinned and only
-// the history scrolls.
+// Render is split into explicit, ordered regions (issue T01): the review
+// overlay region (when open) on top, the scroll region (history), then the
+// fixed bottom band (status strip + composer). Each region renders independently
+// into its own builder; renderPane just concatenates them in order. The scroll
+// region is Height-aware: its content clamps to the terminal height, so the band
+// stays pinned and only the history scrolls.
 
 func (m Model) renderPane() string {
 	var band strings.Builder
@@ -1045,65 +991,38 @@ func (m Model) renderPane() string {
 		reviewLines = m.reviewRegionRows(reviewStr, lineCount(bandStr))
 	}
 
-	// The scroll region is served from the width-bucket cache (ADR-0006
-	// decision 4, issue T03) so a resize reuses prior rendered history rather
-	// than re-running the whole markdown pass each tick.
-	histContent := m.historyContent()
+	// The scroll region renders through the native bubbletea/viewport component
+	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow; no
+	// width-bucket cache or manual clip/anchor compensation layer is needed.
+	var hist strings.Builder
+	m.renderHistory(&hist)
 	if m.review != nil {
 		// The review region is its own height-clipped overlay (issue T06).
 		reviewStr = clipReviewRegion(reviewStr, reviewLines)
 	}
-	return reviewStr + m.renderHistoryViewport(histContent, lineCount(bandStr)+reviewLines) + bandStr
+	return reviewStr + m.renderHistoryViewport(hist.String(), lineCount(bandStr)+reviewLines) + bandStr
 }
 
-// historyContent returns the scroll region's rendered content, bounded per
-// width-bucket (ADR-0006 decision 4, issue T03). It returns the cached history
-// string when the transcript width-bucket and the content version are both
-// unchanged since the last build — so a drag-resize that stays within a bucket,
-// or re-renders that touch nothing, cost nothing — and rebuilds exactly once
-// when either changes. The rebuild re-runs renderHistory and records the bucket
-// + version it was built at for the next look-up.
-func (m Model) historyContent() string {
-	bkt := widthBucket(m.transcriptWidth())
-	c := m.histCache
-	if c.contentDone && c.bkt == bkt && c.version == m.histVer {
-		return c.content
-	}
-	var hist strings.Builder
-	m.renderHistory(&hist)
-	// The cache is a heap pointer so the content written here (View runs on a
-	// value copy) survives across render cycles.
-	c.content = hist.String()
-	c.bkt = bkt
-	c.version = m.histVer
-	c.contentDone = true
-	c.rebuilds++
-	return c.content
-}
-
-// renderHistoryViewport returns the Height-clamped scroll region (ADR-0006
-// decision 3, issue T02): the rendered history content limited to the rows the
+// renderHistoryViewport returns the Height-clamped scroll region: the rendered
+// history content limited to the rows the
 // non-reserved regions (the fixed bottom band, plus the review overlay when
 // open — issue T06) do not occupy, so the band stays pinned at the very bottom
-// and only the history clips. Until the first resize lands (m.height ==
-// 0) the history renders unclamped — the historical pre-resize behaviour, kept
-// for lean embeds and tests that never size.
+// and only the history clips. Until the first resize lands (m.height == 0) the
+// history renders unclamped — the pre-session default, kept for lean embeds and
+// tests that never size.
 //
 // The clip is served through the persisted bubbletea/viewport scroll component
-// (ADR-0006 decision 6, issue T04): the viewport owns the scroll position, and
-// re-anchors to the newest output (GotoBottom) after every append so the newest
-// content stays in view through streamed appends and a mid-stream resize
-// (issue #108 AC1/AC2). Decision 6 keeps paging/mouse/scroll keys off here —
-// native terminal scroll is the only navigation path (AC3) — so the component
+// (T1 alt-screen pivot, issue #119): the viewport natively owns the scroll
+// position + clip, and re-anchors to the newest output (GotoBottom) after every
+// append so the newest content stays in view through streamed appends and a
+// mid-stream resize (issue #108 AC1/AC2). No paging/mouse/scroll keys are wired
+// in — native navigation is out of scope in this change — so the component
 // re-follows each render and is the seam a future focus-mode can break follow
-// through. The per-width render cache (T03, issue #107) bounds the markdown
-// rebuild cost independently of this scroll state. Line endings are preserved
-// so the primary buffer's native selection/scrollback stay clean (ADR-0006
-// decision 1).
+// through.
 func (m Model) renderHistoryViewport(content string, reserved int) string {
 	if m.height <= 0 {
-		// No size has landed yet: the historical unclamped render, kept for lean
-		// embeds and tests that never size.
+		// No size has landed yet: the unclamped render, kept for lean embeds and
+		// tests that never size.
 		return content
 	}
 	vh := m.height - reserved
@@ -1113,23 +1032,20 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 	}
 	vp := m.histViewport
 	if vp == nil {
-		// Fall back to the stateless bottom-anchored slice for a model built
-		// without the persisted component (should not occur via NewModelCfg).
-		return visibleHistory(content, vh)
+		// Without the persisted component (should not occur via NewModelCfg) the
+		// history clips to the viewport's bottom-anchored range.
+		return bottomSlice(content, vh)
 	}
 	// Re-hydrate the persisted viewport with the fresh content + dimensions so
-	// it owns the scroll position relative to the current content.
+	// it owns the scroll position relative to the current content, then follow
+	// the newest output: the newest content stays in view through streamed
+	// appends and a mid-stream resize. The viewport returns its own native clip,
+	// so a resize is always a clean rerender (no primary-buffer residue).
 	vp.Width = m.transcriptWidth()
 	vp.Height = vh
 	vp.SetContent(content)
-	// Follow the newest output after appends (ADR-0006 decision 6, issue #108
-	// AC1/AC2): the newest content stays in view through streamed appends and a
-	// mid-stream resize. With no scroll/paging keys wired in (decision 6, AC3)
-	// native terminal scroll is the only navigation path, so the viewport
-	// re-anchors to the newest on every render; the persisted component is the
-	// seam that a future focus-mode can break follow through.
 	vp.GotoBottom()
-	return viewportBand(histLines(content), vh, vp.YOffset)
+	return vp.View()
 }
 
 // reviewRegionRows returns how many rows the review overlay region may occupy
@@ -1171,53 +1087,19 @@ func clipReviewRegion(content string, n int) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// visibleHistory returns the visible, bottom-anchored slice of the history
-// content for a viewport of the given height — the stateless follow that the
-// persisted viewport component (T04, issue #108) replaces. It is kept as the
-// fallback for a model built without histViewport.
-func visibleHistory(content string, vh int) string {
-	lines := histLines(content)
-	return viewportBand(lines, vh, maxYOffset(content, vh))
-}
-
-// maxYOffset returns the maximum scroll offset for the given rendered scroll
-// content in a viewport of the given height: how far the newest line can sit
-// above the bottom before a scroll is possible. It mirrors the persisted
-// viewport's own max-offset logic and is used by the stateless visibleHistory
-// fallback to select the bottom-anchored slice.
-func maxYOffset(content string, vh int) int {
-	return max(0, len(histLines(content))-vh)
-}
-
-// histLines splits rendered scroll-region content into its content rows,
-// dropping a trailing newline's empty final line so it never counts as a row
-// (the same normalization visibleHistory applied).
-func histLines(content string) []string {
-	lines := strings.Split(content, "\n")
-	if n := len(lines); n > 0 && lines[n-1] == "" {
-		lines = lines[:n-1]
-	}
-	return lines
-}
-
-// viewportBand returns the slice of history lines shown for a viewport of the
-// given height at the given Y offset, clamped to the scrollable range. It
-// mirrors the historical bottom-anchored output when the offset is at the
-// bottom, so the region seam's layout is byte-identical while the persisted
-// component owns the scroll position. When the whole history fits, the full
-// content is returned (no clipping).
-func viewportBand(lines []string, vh, y int) string {
+// bottomSlice returns the bottom-anchored slice of the history content for a
+// viewport of the given height — the fallback used when the model has no
+// persisted viewport component (should not occur via NewModelCfg). It keeps the
+// newest lines, dropping the head when the history overflows the viewport.
+func bottomSlice(content string, vh int) string {
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) <= vh {
-		// The whole history fits in the viewport; no clipping needed.
-		return strings.Join(lines, "\n")
+		return content
 	}
-	if y > len(lines)-vh {
-		y = len(lines) - vh
+	if vh < 0 {
+		vh = 0
 	}
-	if y < 0 {
-		y = 0
-	}
-	return strings.Join(lines[y:y+vh], "\n")
+	return strings.Join(lines[len(lines)-vh:], "\n")
 }
 
 // lineCount reports how many rendered terminal rows a region string occupies,
