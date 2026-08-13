@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -294,6 +295,18 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	}
 	if tailAssistants < 2 {
 		t.Errorf("final request kept %d assistant legs, want the tail floor of >= 2 with reasoning", tailAssistants)
+	}
+
+	// The compacted head must remain a valid byte-stable cache prefix (spec
+	// §34/§135, issue #103 criterion 3): the base system prompt at [0] and the
+	// tool manifest are byte-identical to the pre-compaction requests, so the
+	// post-compaction request head (base + tools + verbatim tail) is a valid
+	// prompt-cache prefix. Only the freshly-anchored summary and the appended
+	// live tail may change.
+	for i, r := range h.requests {
+		if len(r.Tools) > 0 && !reflect.DeepEqual(r.Tools, strictToolDefs()) {
+			t.Errorf("request %d tools drifted from the canonical manifest (cache-prefix break): %v", i, r.Tools)
+		}
 	}
 
 	// Compaction keeps the session cache key (hard cache break, same key).
