@@ -263,15 +263,22 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Fatalf("summary generation request carried tools, want a non-tool call")
 	}
 
-	// The final request must carry the summary at the head and the verbatim
-	// tail (the last two tool legs, reasoning included) after it.
+	// The final request must carry the byte-stable base system prompt at [0]
+	// (spec §34 / issue #102), the anchored summary immediately after it (spec
+	// §135 / issue #103), and the verbatim tail (the last two tool legs,
+	// reasoning included) below.
 	final := h.requests[3]
-	if len(final.Messages) < 3 {
-		t.Fatalf("final request has %d messages, want >= 3 (summary head + tail floor)", len(final.Messages))
+	if len(final.Messages) < 4 {
+		t.Fatalf("final request has %d messages, want >= 4 (base + summary head + tail floor)", len(final.Messages))
 	}
-	head := final.Messages[0]
-	if head.Role != provider.RoleSystem || !strings.Contains(head.Content, "Objective") {
-		t.Errorf("final request head = role %q content %q, want a system summary anchored on Objective", head.Role, head.Content)
+	base := final.Messages[0]
+	if base.Role != provider.RoleSystem || base.Content != SystemPromptContent() {
+		t.Errorf("final request base = role %q, want the embedded system prompt at [0]", base.Role)
+	}
+	// The summary is re-anchored BELOW the immutable base prompt, never before it.
+	summary := final.Messages[1]
+	if summary.Role != provider.RoleSystem || !strings.Contains(summary.Content, "Objective") {
+		t.Errorf("final request summary = role %q content %q, want a system summary anchored on Objective immediately after the base prompt", summary.Role, summary.Content)
 	}
 
 	// The verbatim tail must survive byte-for-byte, including reasoning on the

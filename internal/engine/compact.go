@@ -87,16 +87,35 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		return messages, false
 	}
 
+	// Stable-head awareness (spec §34 / issue #102): the embedded base system
+	// prompt is the immutable request head, anchored at [0] on every run path.
+	// Pull it out before eviction so the body-folding and summary-anchoring
+	// never consume or displace it; it is reattached first in the rebuilt head.
+	stableHead := []provider.Message(nil)
+	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
+		stableHead = messages[:1]
+		messages = messages[1:]
+	}
+
 	body, tail := evict(cfg, messages)
 	if len(tail) == 0 || len(tail) == len(messages) {
+		// Nothing evictable; reattach the (unchanged) stable head and bail.
+		if stableHead != nil {
+			return append(stableHead, messages...), false
+		}
 		return messages, false
 	}
 
-	newPrefix := tail
+	newPrefix := append(append([]provider.Message(nil), stableHead...), tail...)
 	if len(body) > 0 {
 		summary := e.generateSummary(ctx, req, cfg, body)
 		if summary != "" {
-			newPrefix = append([]provider.Message{{Role: provider.RoleSystem, Content: summary}}, tail...)
+			// Re-anchor the compacted summary BELOW the immutable stable head:
+			// the base prompt stays at [0], the Objective/Next-Move summary
+			// follows it, then the verbatim tail (spec §135 / issue #103).
+			summaryHead := append(append([]provider.Message(nil), stableHead...),
+				provider.Message{Role: provider.RoleSystem, Content: summary})
+			newPrefix = append(summaryHead, tail...)
 		}
 	}
 

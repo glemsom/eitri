@@ -80,6 +80,16 @@ type Result struct {
 	Usage     *provider.Usage
 }
 
+// systemPromptHead returns the byte-stable embedded Eitri system prompt as the
+// immutable request-head message (spec §34 / issue #102). Every run path —
+// agent, special-turn, and headless batch — opens its message list with this
+// same message at [0], so the request head (system + tools + verbatim prior
+// turns) stays byte-identical across a session: the prompt-cache invariant the
+// economics hinge on.
+func systemPromptHead() []provider.Message {
+	return []provider.Message{{Role: provider.RoleSystem, Content: SystemPromptContent()}}
+}
+
 // Run performs a non-tool turn: it sends the model + a user message and streams
 // the provider response to a final assistant answer. Thinking is surfaced on a
 // separate channel (never merged into the answer) and the run is recorded on
@@ -87,7 +97,7 @@ type Result struct {
 func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model:           req.Model,
-		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
 		SetCacheKey:     req.SessionKey != "",
 		SessionKey:      req.SessionKey,
 		ThinkingEnabled: req.ThinkingEnabled,
@@ -156,7 +166,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model:           req.Model,
-		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
 		SetCacheKey:     req.SessionKey != "",
 		SessionKey:      req.SessionKey,
 		ThinkingEnabled: req.ThinkingEnabled,
@@ -188,7 +198,7 @@ func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy p
 
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model:           req.Model,
-		Messages:        []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}},
+		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
 		SetCacheKey:     req.SessionKey != "",
 		SessionKey:      req.SessionKey,
 		ThinkingEnabled: req.ThinkingEnabled,
@@ -285,7 +295,7 @@ func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provide
 // resubmits until the model stops calling tools. Result.Answer/Reasoning/Usage
 // reflect the final, tool-free turn.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
-	messages := []provider.Message{{Role: provider.RoleUser, Content: req.Prompt}}
+	messages := append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt})
 	var final Result
 
 	// Optionally opt this agent loop into provider-side Tool Schema Enforcement
