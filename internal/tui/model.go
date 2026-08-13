@@ -1422,11 +1422,26 @@ func (m Model) renderHistory(b *strings.Builder) {
 				b.WriteString(msg.reasoning + "\n")
 			}
 		}
-		md, _ := RenderMarkdown(msg.content, m.composer.Width(), m.deps.Config.Theme)
+		w := m.composer.Width()
 		if msg.role == "you" {
-			fmt.Fprintf(b, "%s\n%s\n", headerStyle.Render("you"), md)
+			// Right-aligned user chip (issue #122 AC1): the one-word role label
+			// pads to the pane width so prompts read distinctly from the
+			// left-bordered agent panes below them.
+			md, _ := RenderMarkdown(msg.content, w, m.deps.Config.Theme)
+			chip := userChipStyle.Render("you")
+			fmt.Fprintf(b, "%s\n%s\n", lipgloss.PlaceHorizontal(w, lipgloss.Right, chip), md)
 		} else {
-			fmt.Fprintf(b, "%s\n%s\n", headerStyle.Render("eitri"), md)
+			// Left-bordered agent pane (issue #122 AC1): the answer renders in
+			// a bordered pane; a failing turn (⚠) gets the error-colored border
+			// so errors are as readable as answers (issue #122 AC2).
+			md, _ := RenderMarkdown(msg.content, w-2, m.deps.Config.Theme)
+			pane := agentPaneStyle
+			if strings.HasPrefix(msg.content, "⚠ ") {
+				pane = errorPaneStyle
+			}
+			// Trim glamour's trailing blank line so the pane ends on its last
+			// content row instead of a lone border column.
+			fmt.Fprintf(b, "%s\n", pane.Render("eitri\n"+strings.TrimRight(md, "\n")))
 		}
 		// Interleave the turn's tool-call entries right after its prompting "you"
 		// message (issue #84): compact one-liners, collapsed by default, expanded
@@ -1448,20 +1463,31 @@ func (m Model) renderHistory(b *strings.Builder) {
 // plus the slash-command completion list and the composer, in that order. This
 // is the region T02+ pins at the bottom so it never scrolls away on resize.
 func (m Model) renderBand(b *strings.Builder) {
+	var inner strings.Builder
 	// Live status strip (issue #86), rendered above the composer so model,
 	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
 	if m.telemetry != nil {
-		b.WriteString(statusStyle.Render(m.telemetry.render(m.composer.Width())))
-		b.WriteString("\n")
+		inner.WriteString(statusStyle.Render(m.telemetry.render(m.composer.Width())))
+		inner.WriteString("\n")
 	}
 	// The slash-command completion list (issue #87 AC1) sits above the composer
 	// whenever the input line is a `/...` command, listing the built-in
 	// /settings command + matching skills with the current selection marked.
-	renderSlashCompletion(b, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
-	b.WriteString(m.composer.View())
+	renderSlashCompletion(&inner, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
+	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
-		b.WriteString("\n" + statusStyle.Render(m.savedMsg))
+		inner.WriteString("\n" + statusStyle.Render(m.savedMsg))
 	}
+	// The whole band is framed by an accent separator row so it reads as one
+	// coherent fixed region under the transcript (issue #122 AC3). The
+	// separator spans the transcript column (the rail joins to the right).
+	w := m.transcriptWidth()
+	if w < 2 {
+		w = 2
+	}
+	b.WriteString(bandSeparatorStyle.Render(strings.Repeat("─", w)))
+	b.WriteString("\n")
+	b.WriteString(inner.String())
 }
 
 // promptView renders the interactive max-turns continuation prompt.
@@ -1481,7 +1507,7 @@ func thinkingHeader(reasoning, effort string) string {
 	if effort != "" {
 		hint += " · " + effort
 	}
-	return statusStyle.Render(hint) + "\n"
+	return thinkingStyle.Render(hint) + "\n"
 }
 
 // tokenEstimate estimates a reasoning stream's token count from its assembled
@@ -1518,11 +1544,14 @@ func renderSlashCompletion(b *strings.Builder, value string, cur string, skills 
 		sel = 0
 	}
 	for i, c := range cands {
-		marker := "  "
 		if i == sel {
-			marker = "▸ "
+			// Selected candidate is highlighted with the agent accent so the
+			// completion list reads as part of the coherent band (issue #122
+			// AC3).
+			b.WriteString(slashSelectStyle.Render("▸ " + c))
+		} else {
+			b.WriteString(statusStyle.Render("  " + c))
 		}
-		b.WriteString(statusStyle.Render(marker + c))
 		b.WriteString("\n")
 	}
 }
@@ -1555,7 +1584,18 @@ func renderSkillsPanel(b *strings.Builder, skills []SkillItem) {
 // nothing is silently truncated — every collapse has an expand path.
 func renderToolEntry(te toolEntry, expanded bool) string {
 	var b strings.Builder
-	b.WriteString(statusStyle.Render(toolEntryHead(te)))
+	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
+	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
+	// glanceable without expanding the collapsed summary.
+	outcome := ""
+	if te.complete {
+		if isToolFailure(te.result) {
+			outcome = " " + outcomeErrStyle.Render("✗")
+		} else {
+			outcome = " " + outcomeOKStyle.Render("✓")
+		}
+	}
+	b.WriteString(toolStyle.Render(toolEntryHead(te)) + outcome)
 	b.WriteString("\n")
 
 	if !expanded {
@@ -1600,13 +1640,6 @@ func toolArgsHint(argsJSON string) string {
 	}
 	return ""
 }
-
-// statusStyle is a small Lip Gloss style for the in-progress indicator, kept
-// package-level so View stays deterministic enough to render-test.
-var (
-	headerStyle = lipgloss.NewStyle().Bold(true)
-	statusStyle = lipgloss.NewStyle().Faint(true)
-)
 
 // telemetryWait returns a command that blocks until the next live telemetry
 // update arrives on the engine seam channel, then delivers it to the UI loop as
