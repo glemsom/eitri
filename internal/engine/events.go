@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"regexp"
 	"strconv"
 	"strings"
@@ -74,13 +75,20 @@ type ToolCallEvent struct {
 // form, how many lines it spans, and how many lines were hidden behind the
 // explicit "+N more" tail marker. The metadata is derived from the delivered
 // result string, so no raw stream or internal history needs re-parsing
-// downstream.
+// downstream. It also carries the full delivered result (Result) so a collapse
+// always has an expand path (the lossless-recovery invariant is satisfied
+// end-to-end), and the Add/Remove line delta a file-mutating tool (edit/write)
+// performed, when the run reported one via the AgentOptions.ToolDelta seam.
 type ToolResultEvent struct {
 	Turn int
 	// ID matches the ToolCallEvent that initiated the call.
 	ID string
 	// Name is the tool that ran.
 	Name string
+	// Result is the full delivered result string, uncompressed. It backs the
+	// TUI's expand-to-full-result path: nothing is silently truncated (issue
+	// #84 AC4).
+	Result string
 	// Compressed is true when the delivered result is a truncated/compressed
 	// representation (it carries a "+N more" tail marker) rather than raw.
 	Compressed bool
@@ -90,6 +98,12 @@ type ToolResultEvent struct {
 	// Dropped is the number of content lines hidden behind the "+N more" tail
 	// (0 when the result is uncompressed / never truncated).
 	Dropped int
+	// Added is the count of lines a file-mutating edit added to its target
+	// file (0 for non-edit tools or when no delta was reported).
+	Added int
+	// Removed is the count of lines a file-mutating edit removed from its
+	// target file (0 for non-edit tools or when no delta was reported).
+	Removed int
 }
 
 // UsageEvent carries per-turn token telemetry (docs/spec.md §4): input/output
@@ -116,8 +130,10 @@ var markerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 // deriving the compression metadata deterministically from the result string
 // (without re-parsing raw stream or internal history downstream): a result
 // carrying the explicit "+N more" tail marker is the compressed form, and the
-// marker's count is the number of lines hidden behind it.
-func newToolResultEvent(turn int, id, name, result string) ToolResultEvent {
+// marker's count is the number of lines hidden behind it. It also carries the
+// full delivered result string and, when a file line delta was reported by the
+// run's ToolDelta seam, the added/removed line counts.
+func newToolResultEvent(turn int, id, name, result string, added, removed int) ToolResultEvent {
 	dropped, lines := 0, 0
 	if result != "" {
 		lines = strings.Count(result, "\n")
@@ -132,9 +148,12 @@ func newToolResultEvent(turn int, id, name, result string) ToolResultEvent {
 		Turn:       turn,
 		ID:         id,
 		Name:       name,
+		Result:     result,
 		Compressed: dropped > 0,
 		Lines:      lines,
 		Dropped:    dropped,
+		Added:      added,
+		Removed:    removed,
 	}
 }
 
@@ -145,3 +164,19 @@ func (ToolCallEvent) engineEvent()   {}
 func (ToolResultEvent) engineEvent() {}
 func (UsageEvent) engineEvent()      {}
 func (CompactedEvent) engineEvent()  {}
+
+// ToolDelta is the optional file line-delta seam the engine uses to tag a
+// file-mutating tool call (issue #84). Begin is invoked just before a tool
+// call executes so a caller can snapshot the target file's pre-edit line count;
+// End is invoked after execution and reports the added/removed line counts. A
+// nil seam (the batch/headless default) reports a zero delta and keeps runs
+// byte-identical; the delta is pure UI telemetry for the TUI's per-tool entry
+// and never affects the run or its message history.
+type ToolDelta struct {
+	// Begin snapshots pre-execution state for one tool call. Nil is allowed
+	// when no snapshot is needed (a zero Added/Removed is reported).
+	Begin func(ctx context.Context, name, argsJSON string)
+	// End diffs post-execution state and reports the tool call's added/removed
+	// line counts. Nil reports a zero delta.
+	End func(ctx context.Context, name, argsJSON string) (added, removed int)
+}

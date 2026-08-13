@@ -44,11 +44,16 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
 	stream := tui.NewStreamer()
-	// Subscribe the live status strip and the streaming answer pane to the
-	// engine's per-turn usage/turn/compaction events and AnswerStream deltas
-	// (issues #86, #83). Read-only: it only forwards telemetry and answer text
-	// and never pauses the running agent loop.
-	feedEngineEvents(e, te, stream)
+	// The live tool-call feed (issue #84): engine tool events render as compact,
+	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
+	// demand to the full result.
+	tools := tui.NewToolFeed()
+	// Subscribe the live status strip, the streaming answer pane, and the tool
+	// feed to the engine's per-turn usage/turn/compaction events, AnswerStream
+	// deltas, and tool call/result events (issues #86, #83, #84). Read-only: it
+	// only forwards telemetry, answer text, and tool events and never pauses the
+	// running agent loop.
+	feedEngineEvents(e, te, stream, tools)
 	m := tui.NewModelCfg(tui.Dependencies{
 		Models: discoveredModels(context.Background(), p),
 		// The workspace directory is surfaced as read-only project state (issue
@@ -58,6 +63,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Save:          func(c config.Config) error { return config.Save(c, cfgPath) },
 		Telemetry:     te,
 		Stream:        stream,
+		Tools:         tools,
 		// The skills panel and `/skillname` slash activation sit on the same
 		// catalog the batch engine uses (T8): activation runs the `skill` tool
 		// through the registry, so a slash activation behaves identically to a
@@ -69,14 +75,16 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 }
 
 // feedEngineEvents wires the engine's live event stream into the TUI's status
-// strip and streaming answer pane (issues #86 and #83). It forwards per-turn
-// usage, turn boundaries, and the compaction marker into the strip's buffered
-// channel, and each AnswerStream delta into the streaming pane's channel — both
+// strip, streaming answer pane, and tool feed (issues #86, #83, and #84). It
+// forwards per-turn usage, turn boundaries, and the compaction marker into the
+// strip's buffered channel, each AnswerStream delta into the streaming pane's
+// channel, and each tool call/result into the tool feed's channel — all
 // delivered non-blocking so a busy run never stalls. The TUI stays decoupled
 // from the engine: engine.Event is translated here into UI-facing updates.
-func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer) {
+func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed) {
 	teCh := te.UpdateChan()
 	sCh := stream.UpdateChan()
+	tCh := toolFeed.UpdateChan()
 	e.SetListener(func(evt engine.Event) {
 		switch ev := evt.(type) {
 		case engine.StreamEvent:
@@ -92,6 +100,13 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer)
 			}
 		case engine.CompactedEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
+		case engine.ToolCallEvent:
+			pushTool(tCh, tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}})
+		case engine.ToolResultEvent:
+			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
+				Name: ev.Name, Result: ev.Result, Lines: ev.Lines, Dropped: ev.Dropped,
+				Compressed: ev.Compressed, Added: ev.Added, Removed: ev.Removed,
+			}})
 		}
 	})
 }
@@ -112,6 +127,17 @@ func pushStream(ch chan<- tui.StreamUpdate, u tui.StreamUpdate) {
 // dropped, because the strip is best-effort telemetry that must never stall a
 // live run.
 func pushTelemetry(ch chan<- tui.TelemetryUpdate, u tui.TelemetryUpdate) {
+	select {
+	case ch <- u:
+	default:
+	}
+}
+
+// pushTool delivers a tool-call observation to the tool feed's channel without
+// blocking the engine's event-goroutine: if the buffered channel is full the
+// observation is dropped, because the tool render is best-effort that must
+// never stall a live run.
+func pushTool(ch chan<- tui.ToolUpdate, u tui.ToolUpdate) {
 	select {
 	case ch <- u:
 	default:

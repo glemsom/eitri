@@ -238,6 +238,14 @@ type AgentOptions struct {
 	Executor              ToolExecutor
 	MaxTurns              int
 
+	// ToolDelta, when non-nil, lets the run report the file line delta a
+	// file-mutating tool call (edit/write) performed, surfaced on the
+	// ToolResultEvent so the TUI can tag a one-line `⊕ edit path [+N,-M]` entry
+	// (issue #84). The engine invokes Begin before executing a tool and End
+	// after; a nil seam reports a zero delta and keeps runs byte-identical. It
+	// is pure UI telemetry and never affects the run or its message history.
+	ToolDelta *ToolDelta
+
 	// CanContinue is asked when MaxTurns (>0) is reached and the loop wants to
 	// keep going. When nil — the batch/headless default — the loop stops with
 	// ErrMaxTurns (auto-deny changes). When it returns true, the loop is granted
@@ -400,8 +408,18 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		messages = append(messages, assistant)
 		for _, tc := range done.ToolCalls {
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
+			// File line-delta telemetry (issue #84): Begin snapshots the target
+			// file's pre-edit state, End reports the added/removed line counts for
+			// file-mutating tools. Pure UI telemetry — a nil seam is a no-op.
+			if opts.ToolDelta != nil && opts.ToolDelta.Begin != nil {
+				opts.ToolDelta.Begin(ctx, tc.Name, tc.Arguments)
+			}
 			result := execToolCall(ctx, opts, tc)
-			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result))
+			added, removed := 0, 0
+			if opts.ToolDelta != nil && opts.ToolDelta.End != nil {
+				added, removed = opts.ToolDelta.End(ctx, tc.Name, tc.Arguments)
+			}
+			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result, added, removed))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,

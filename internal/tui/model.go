@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -33,6 +34,26 @@ type message struct {
 	content   string
 	reasoning string // assistant chain-of-thought, rendered as a collapsible block
 	streaming bool   // true while this assistant reply is still growing from the answer stream
+}
+
+// toolEntry is one rendered tool call in the transcript (issue #84): the tool
+// name + args, plus the delivered result and its deterministic compression and
+// file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
+// summary that collapses the result by default and expands on demand to the
+// full inline output (never silently truncated). anchor is the index into
+// messages of the "you" message whose turn this tool call belongs to, so View
+// can interleave the entry chronologically after its triggering prompt.
+type toolEntry struct {
+	name       string
+	args       string
+	result     string
+	lines      int
+	dropped    int
+	compressed bool
+	added      int
+	removed    int
+	anchor     int // index of the triggering "you" message in messages
+	complete   bool
 }
 
 type turnDoneMsg struct {
@@ -107,6 +128,11 @@ type Dependencies struct {
 	// one full-reply dump on completion. Nil falls back to the historical
 	// blocking answer-on-completion behaviour.
 	Stream *Streamer
+	// Tools, when non-nil, feeds the live tool-call stream (issue #84): each
+	// ToolCallEvent/ToolResultEvent arrives here and renders as a compact,
+	// collapsed `⊕ tool  args` one-liner that expands to the full result.
+	// Nil disables tool entries (the pre-seam default).
+	Tools *ToolFeed
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -151,6 +177,22 @@ type Model struct {
 	// rendering assistant message being grown by AnswerStream deltas. It is -1
 	// when no assistant reply is currently streaming.
 	curStream int
+
+	// toolFeed is the live tool-call stream (issue #84); nil disables tool
+	// entries.
+	toolFeed *ToolFeed
+	// tools is the ordered list of tool entries rendered in the transcript,
+	// in stream order. Entries stay after their turn completes so the user can
+	// expand a result on demand.
+	tools []toolEntry
+	// curToolAnchor is the index into messages of the current turn's "you"
+	// message, assigned on submit so new tool calls interleave after it.
+	curToolAnchor int
+	// showToolResult expands all tool entries to their full result (default
+	// false: collapsed); it toggles on alt+y so the user can read a full
+	// output on demand while keeping the transcript clean by default (issue #84
+	// AC2/AC4).
+	showToolResult bool
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -177,6 +219,7 @@ func NewModelCfg(d Dependencies) Model {
 		telemetry:    d.Telemetry,
 		stream:       d.Stream,
 		curStream:    -1,
+		toolFeed:     d.Tools,
 	}
 }
 
@@ -210,6 +253,9 @@ func (m Model) Init() tea.Cmd {
 	if m.stream != nil {
 		cmds = append(cmds, streamWait(m.stream))
 	}
+	if m.toolFeed != nil {
+		cmds = append(cmds, toolWait(m.toolFeed))
+	}
 	return tea.Batch(cmds...)
 }
 
@@ -236,6 +282,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.telemetry.apply(msgi.update)
 		return m, telemetryWait(m.telemetry)
+
+	case toolUpdateMsg:
+		// A tool-call observation arrived through the waiting command: fold it
+		// into the transcript's tool entries and immediately re-issue the waiter
+		// so further tool calls stream in (issue #84). Updates arriving when no
+		// feed is wired are dropped so they never spawn spurious entries.
+		if m.toolFeed == nil {
+			return m, nil
+		}
+		m.applyToolUpdate(msgi.update)
+		return m, toolWait(m.toolFeed)
 
 	case answerDeltaMsg:
 		// A streamed answer-text delta arrived through the waiting command: grow
@@ -296,6 +353,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
 			m.curStream = -1
+			// Anchor new tool calls to this turn's prompt so entries interleave
+			// after it (issue #84).
+			m.curToolAnchor = len(m.messages) - 1
 			// With a live answer stream, the composer turn and the stream waiter run
 			// concurrently so the reply grows in place as deltas arrive (issue #83).
 			if m.stream != nil {
@@ -311,6 +371,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Toggle the collapsible thinking stream (auto-collapsed by default).
 			m.showThinking = !m.showThinking
+			return m, nil
+		}
+		// alt+y toggles expanding tool-call entries to their full result (issue
+		// #84): collapsed by default so the transcript stays clean, expanded on
+		// demand so nothing is ever silently truncated.
+		if msgi.Alt && msgi.Type == tea.KeyRunes && string(msgi.Runes) == "y" {
+			m.showToolResult = !m.showToolResult
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -466,6 +533,37 @@ func (m *Model) appendAnswerDelta(delta string) {
 	m.curStream = len(m.messages) - 1
 }
 
+// applyToolUpdate folds one tool-call observation into the transcript's tool
+// entries (issue #84): a Start opens a new entry anchored to the current turn's
+// prompt; the matching Result fills it in with the delivered result and the
+// compression/line-delta metadata. Tool calls complete sequentially within a
+// turn, so the Result pairs with the most recent incomplete entry for its tool.
+func (m *Model) applyToolUpdate(u ToolUpdate) {
+	if u.Start != nil {
+		m.tools = append(m.tools, toolEntry{
+			name:   u.Start.Name,
+			args:   u.Start.Args,
+			anchor: m.curToolAnchor,
+		})
+		return
+	}
+	if u.Result != nil {
+		// Pair with the most recent not-yet-complete entry for this tool.
+		for i := len(m.tools) - 1; i >= 0; i-- {
+			if m.tools[i].name == u.Result.Name && !m.tools[i].complete {
+				m.tools[i].result = u.Result.Result
+				m.tools[i].lines = u.Result.Lines
+				m.tools[i].dropped = u.Result.Dropped
+				m.tools[i].compressed = u.Result.Compressed
+				m.tools[i].added = u.Result.Added
+				m.tools[i].removed = u.Result.Removed
+				m.tools[i].complete = true
+				return
+			}
+		}
+	}
+}
+
 // skillSnapshot captures the detected skills at construction so the panel has
 // a stable, renderable list even if the Dependencies snapshot is nil or empty.
 func skillSnapshot(d Dependencies) []SkillItem {
@@ -578,7 +676,7 @@ func (m Model) View() string {
 		b.WriteString(statusStyle.Render("workspace: " + m.deps.WorkspacePath))
 		b.WriteString("\n")
 	}
-	for _, msg := range m.messages {
+	for i, msg := range m.messages {
 		// Reasoning renders as a distinct, collapsible stream — never merged
 		// into the answer. Auto-collapsed by default; `tab` expands (N17).
 		if msg.role != "you" && msg.reasoning != "" {
@@ -592,6 +690,14 @@ func (m Model) View() string {
 			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("you"), md)
 		} else {
 			fmt.Fprintf(&b, "%s\n%s\n", headerStyle.Render("eitri"), md)
+		}
+		// Interleave the turn's tool-call entries right after its prompting "you"
+		// message (issue #84): compact one-liners, collapsed by default, expanded
+		// on demand to the full result.
+		for _, te := range m.tools {
+			if te.anchor == i {
+				b.WriteString(renderToolEntry(te, m.showToolResult))
+			}
 		}
 	}
 	renderSkillsPanel(&b, m.skills)
@@ -645,6 +751,68 @@ func renderSkillsPanel(b *strings.Builder, skills []SkillItem) {
 		b.WriteString(statusStyle.Render("  " + it.Name + " [" + it.Scope + "] " + state))
 		b.WriteString("\n")
 	}
+}
+
+// renderToolEntry renders one tool-call entry as a compact, glanceable line —
+// `⊕ tool  args` — with the result collapsed by default to a summary, never a
+// raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
+// line-delta tag, and a compressed result carries an explicit "+N more" tail
+// marker. When expanded (showToolResult), the full inline result is rendered so
+// nothing is silently truncated — every collapse has an expand path.
+func renderToolEntry(te toolEntry, expanded bool) string {
+	var b strings.Builder
+	head := "⊕ " + te.name
+	if arg := toolArgsHint(te.args); arg != "" {
+		head += "  " + arg
+	}
+	// Line-delta tag for file-edit tools (issue #84 AC3).
+	if te.name == "edit" || te.name == "write" {
+		head += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+	}
+	b.WriteString(statusStyle.Render(head))
+	b.WriteString("\n")
+
+	if !expanded {
+		// Collapsed summary: line count + explicit "+N more" tail marker when
+		// the result was compressed (docs/spec.md §5). Never a raw dump.
+		if te.lines > 0 || te.dropped > 0 {
+			summary := fmt.Sprintf("%d lines", te.lines)
+			if te.compressed && te.dropped > 0 {
+				summary += fmt.Sprintf(" (+%d more)", te.dropped)
+			}
+			b.WriteString(statusStyle.Render("  " + summary))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
+
+	// Expanded: render the full inline result.
+	if te.result != "" {
+		b.WriteString(strings.TrimSuffix(te.result, "\n"))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// toolArgsHint extracts a short display hint from a tool call's raw JSON args:
+// the `path` for file tools, the `command` for bash, else the raw string
+// trimmed to a single line. It keeps the one-line entry glanceable and never
+// throws away the model's full arguments (those stay in the engine transcript).
+func toolArgsHint(argsJSON string) string {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		s := strings.TrimSpace(argsJSON)
+		if s == "{}" {
+			return ""
+		}
+		return s
+	}
+	for _, key := range []string{"path", "command", "url"} {
+		if s, ok := args[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // statusStyle is a small Lip Gloss style for the in-progress indicator, kept
