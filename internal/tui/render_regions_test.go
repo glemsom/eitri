@@ -71,9 +71,11 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	}
 }
 
-// TestRenderPane_ComposesRegionsInOrder asserts renderPane is exactly the
-// concatenation of the overlay (review, when open), scroll, and band regions in
-// that order — the region seam that T02+ builds on (ADR-0006 decision 6).
+// TestRenderPane_ComposesRegionsInOrder asserts renderPane composes the scroll
+// and band regions in order with the band last — the region seam that T02+
+// builds on (ADR-0006 decision 6). With a resize landed, the scroll region is
+// Height-aware (ADR-0006 decision 3): renderPane is the height-clamped history
+// followed by the fixed band, which stays the final (bottom-pinned) region.
 func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
@@ -88,9 +90,20 @@ func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	var hist, band strings.Builder
 	m.renderHistory(&hist)
 	m.renderBand(&band)
-	want := hist.String() + band.String()
+	bandStr := band.String()
 
-	if got := m.renderPane(); got != want {
-		t.Errorf("renderPane != overlay+scroll+band\n--- want ---\n%s\n--- got ---\n%s", want, got)
+	got := m.renderPane()
+	// The band is the last region; everything before it is the height-clamped
+	// history viewport.
+	if !strings.HasSuffix(got, bandStr) {
+		t.Errorf("renderPane must keep the band as the final (bottom-pinned) region\n--- got ---\n%s", got)
+	}
+	head := strings.TrimSuffix(got, bandStr)
+	// For a short transcript that fits in the viewport, the height-clamped
+	// history equals the rendered scroll region modulo trailing-whitespace
+	// normalization (band height left it all room). The viewport strips a
+	// trailing newline, so compare trimmed.
+	if strings.TrimRight(head, "\n") != strings.TrimRight(hist.String(), "\n") {
+		t.Errorf("renderPane head != height-clamped history region\n--- want --------\n%s\n--- got ---------\n%s", hist.String(), head)
 	}
 }

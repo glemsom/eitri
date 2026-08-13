@@ -1,6 +1,6 @@
 # ADR 0006 — TUI resize handling: primary-buffer viewport
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-14
 - Related: docs/research/tui-resize-ux.md; ticket TUI responsive-resize (to file)
 
@@ -66,6 +66,16 @@ screen mode.
 - Settings, the continuation prompt, the review panel, and slash-completion get
   dedicated overlay regions: review its own height-clipped region, settings and
   the prompt a fixed region, slash-completion pinned above the composer.
+- Decisions 2 & 3 are implemented (issue #106 / T02): the composer, status
+  strip, and slash-completion sit in a fixed bottom band; the history region is
+  Height-aware — `Height` is captured from `WindowSizeMsg` and the history
+  clamps to the terminal, so only the history is scrollable and a drag-resize
+  keeps the band pinned and the composer on screen. Mouse/wheel routing is
+  deliberately off (decision 6: native scroll is the navigation path, and the
+  T04 follow seam drives live-stream auto-follow). The persisted
+  `bubbletea/viewport` component — its scroll position and per-width render
+  cache — lands with T03/T04 (its real state-hungry users); T02's clamp is a
+  pure height slice.
 - Resize feels correct rather than merely non-broken: the composer stays put
   and a drag-resize does not re-render the whole history.
 - A future ADR may obsolete this one if Eitri adopts an alternate-screen focus

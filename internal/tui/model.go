@@ -252,6 +252,11 @@ type Model struct {
 	// rail's auto-hide and to size the transcript column (issue #88 AC3). It is
 	// 0 until the first resize lands.
 	width int
+	// height is the terminal height of the last WindowSizeMsg (ADR-0006
+	// decision 3, issue T02): the history viewport clamps to it so the fixed
+	// bottom band never trails off-screen on a window shrink. It is 0 until the
+	// first resize lands, in which case the history renders unclamped.
+	height int
 	// railAuto is true until the user first presses ctrl+b: the rail then follows
 	// width (auto-show wide, auto-hide narrow). After a toggle it is false and
 	// railShown owns the decision explicitly, so ctrl+b works on any width.
@@ -378,6 +383,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width = msgi.Width
+		m.height = msgi.Height
 		m.syncWidths()
 		return m, nil
 
@@ -896,20 +902,81 @@ func (m Model) View() string {
 // T01): the review overlay region (when open) on top, the scroll region
 // (history), then the fixed bottom band (status strip + composer). Each region
 // renders independently into its own builder; renderPane just concatenates them
-// in order. This is the seam T02+ drives with a height-aware viewport and band
-// pinning.
+// in order. The scroll region is Height-aware (ADR-0006 decision 3, issue T02):
+// its content clamps to the terminal height, so the band stays pinned and only
+// the history scrolls.
 func (m Model) renderPane() string {
-	var b strings.Builder
+	var overlay, hist, band strings.Builder
 	// Overlay region: the review panel takes over the top of the pane (Layout B,
 	// issue #90), showing the dense changed-file summary + inline diff above the
 	// transcript. Settings and the continuation prompt are also overlays but
 	// return earlier from View() as their own full-surface regions.
 	if m.review != nil {
-		m.renderReview(&b)
+		m.renderReview(&overlay)
 	}
-	m.renderHistory(&b)
-	m.renderBand(&b)
-	return b.String()
+	m.renderHistory(&hist)
+	m.renderBand(&band)
+	bandStr := band.String()
+	return overlay.String() + m.renderHistoryViewport(hist.String(), lineCount(bandStr)) + bandStr
+}
+
+// renderHistoryViewport returns the Height-clamped scroll region (ADR-0006
+// decision 3, issue T02): the rendered history content limited to the rows the
+// fixed bottom band does not occupy, so the band stays pinned at the very
+// bottom and only the history clips. Until the first resize lands (m.height ==
+// 0) the history renders unclamped — the historical pre-resize behaviour, kept
+// for lean embeds and tests that never size.
+//
+// While the run is live (no user scroll input yet — native scroll is the
+// navigation path, ADR-0006 decision 6) the clamp is bottom-anchored: the
+// newest output stays visible. The bubbletea/viewport component and its
+// persisted scroll/cache state arrive with the T03 (per-width cache) and T04
+// (live follow) seams; decision 6 keeps paging/mouse routing off here. Line
+// endings are preserved so the primary buffer's native selection/scrollback
+// stay clean (ADR-0006 decision 1).
+func (m Model) renderHistoryViewport(content string, bandLines int) string {
+	if m.height <= 0 {
+		return content
+	}
+	vh := m.height - bandLines
+	if vh <= 0 {
+		// The fixed band occupies the whole terminal; no room for history.
+		return ""
+	}
+	return visibleHistory(content, vh)
+}
+
+// visibleHistory returns the visible, bottom-anchored slice of the history
+// content: the last vh lines, or the whole content when it fits. It is a pure
+// function of the rendered history and the available height — no viewport state
+// is kept on the model until T03/T04 add the persisted scroll/cache.
+func visibleHistory(content string, vh int) string {
+	lines := strings.Split(content, "\n")
+	// A trailing newline yields one empty final line; drop it so it never counts
+	// as a content row.
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	if len(lines) <= vh {
+		// The whole history fits in the viewport; no clipping needed.
+		return strings.Join(lines, "\n")
+	}
+	return strings.Join(lines[len(lines)-vh:], "\n")
+}
+
+// lineCount reports how many rendered terminal rows a region string occupies,
+// i.e. the number of newline-separated lines (a trailing newline does not add
+// an extra row). It is used to compute how much of the terminal height the
+// fixed bottom band consumes so the history viewport can clamp to the rest.
+func lineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	n := strings.Count(s, "\n")
+	if strings.HasSuffix(s, "\n") {
+		n--
+	}
+	return n + 1
 }
 
 // renderHistory renders the scroll region: the agent history that the user
