@@ -245,8 +245,7 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 }
 
 // TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
-// panel (tokyo-night) persists to config through the Save seam (issue #130
-// AC4).
+// panel (light) persists to config through the Save seam (issue #130 AC4).
 func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
