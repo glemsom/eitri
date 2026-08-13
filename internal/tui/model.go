@@ -299,6 +299,9 @@ func NewModelCfg(d Dependencies) Model {
 	tx.Focus()
 	tx.CharLimit = 0
 	tx.ShowLineNumbers = false
+	// Start compact: the composer grows with the draft up to maxComposerRows
+	// (issue #121 AC5), so an empty composer sits at a single row.
+	tx.SetHeight(1)
 
 	return Model{
 		composer:        tx,
@@ -476,14 +479,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.review = &rp
 			return m, nil
 		case "ctrl+j":
-			// Newline (Shift+Enter on terminals that report Enter and
-			// Shift+Enter distinctly — bubbletea delivers the line-feed
-			// "ctrl+j" key, never a plain "enter"). Inserts a line break
-			// instead of submitting; no-op while a turn is running (ticket #57).
+			// Shift+Enter newline (issue #121 AC2): terminals deliver Shift+Enter
+			// as the line-feed key, which Bubble Tea surfaces as KeyCtrlJ — there
+			// is no plain "shift+enter" key and no separate ctrl+j alias. Inserts
+			// a line break instead of submitting; no-op while a turn is running
+			// (ticket #57).
 			if m.busy {
 				return m, nil
 			}
 			m.composer.InsertString("\n")
+			m.syncComposerHeight()
 			return m, nil
 		case "enter":
 			if m.busy {
@@ -498,6 +503,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// holding a stale reading offset and re-anchors to the newest.
 			m.histFollow = true
 			m.composer.Reset()
+			m.syncComposerHeight()
 			m.slashIdx = 0
 			m.slashPrefix = ""
 			// A slash command routes to its handler instead of the engine (issue
@@ -568,6 +574,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.slashPrefix = val
 			m.slashIdx = 0
 		}
+		// The draft changed: re-grow the composer within the band (issue #121
+		// AC5), so the textarea's height tracks the new line count / wraps.
+		m.syncComposerHeight()
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
 
@@ -930,6 +939,7 @@ func (m *Model) completeSlashCommand() {
 	}
 	m.composer.SetValue(cands[m.slashIdx])
 	m.composer.SetCursor(len(cands[m.slashIdx]))
+	m.syncComposerHeight()
 	// Advance for the next press so repeated tabs walk the whole list.
 	m.slashIdx = (m.slashIdx + 1) % len(cands)
 }
@@ -979,6 +989,64 @@ func (m Model) railClampHeight() int {
 		return 0
 	}
 	return vh
+}
+
+// maxComposerRows is how tall the composer may grow inside the fixed bottom
+// band before it scrolls internally (issue #121 AC5): a long draft never
+// spills into the transcript — the textarea's own viewport scrolls past this
+// bound, and the band stays pinned while the history viewport yields rows.
+const maxComposerRows = 8
+
+// syncComposerHeight grows the composer with its draft up to maxComposerRows,
+// then lets the textarea scroll internally (issue #121 AC5): a one-line draft
+// keeps a compact single-row composer, each new line adds a row up to the
+// bound, and beyond it the composer's internal viewport scrolls so the band
+// never grows past the bound. It also clamps to the terminal height when a
+// resize has landed so the band can never push the composer off-screen. It is
+// re-run on every composer edit, on submit-reset, and on resize (soft wraps
+// depend on the width).
+func (m *Model) syncComposerHeight() {
+	rows := composerContentRows(m.composer)
+	if rows > maxComposerRows {
+		rows = maxComposerRows
+	}
+	if m.height > 0 {
+		// The band also holds the status strip and slash completion above the
+		// composer; leave at least one row for them.
+		if lim := m.height - 1; rows > lim {
+			rows = lim
+		}
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	m.composer.SetHeight(rows)
+}
+
+// composerContentRows estimates how many terminal rows the composer's current
+// value occupies once word-wrapped at the composer width: one row per hard
+// newline plus soft-wrap continuations, floored at one. It wraps at the same
+// width the textarea itself wraps at, so the grown height tracks what the user
+// sees; an off-by-one on a wrap boundary only trades a little internal scroll
+// room (issue #121 AC5).
+func composerContentRows(c textarea.Model) int {
+	w := c.Width()
+	if w < 1 {
+		w = 1
+	}
+	rows := 0
+	for _, line := range strings.Split(c.Value(), "\n") {
+		width := lipgloss.Width(line)
+		if width <= 0 {
+			rows++
+			continue
+		}
+		rows += (width + w - 1) / w
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 // bandHeight returns how many terminal rows the fixed bottom band (status

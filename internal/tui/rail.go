@@ -193,6 +193,9 @@ func (m Model) transcriptWidth() int {
 // called on every window resize and whenever the rail toggles visibility.
 func (m *Model) syncWidths() {
 	m.composer.SetWidth(m.transcriptWidth())
+	// A width change re-wraps the draft, so the composer's grown height must
+	// track the new soft-wrap layout (issue #121 AC5).
+	m.syncComposerHeight()
 }
 
 // styledRail frames the rail's rendered sections into a fixed-width right
