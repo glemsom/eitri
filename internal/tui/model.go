@@ -294,6 +294,13 @@ type Model struct {
 	// #123): Ctrl+O and /copy route here. It is the injected Dependencies
 	// seam, defaulting to the atotto/clipboard package's WriteAll.
 	clipboard func(text string) error
+
+	// dragSel tracks an in-progress click-drag selection over the history
+	// viewport (issue #124, T6): a left press inside the history region starts
+	// it, motion extends it, and release copies the selected plain-text range to
+	// the clipboard. Coordinates live in content space (see selection.go); nil
+	// means no drag is in progress.
+	dragSel *dragSelect
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -630,10 +637,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
-		// History mouse-wheel scroll (issue #120 AC1): wheel up/down over the
-		// transcript scrolls it (Up breaks follow, Down reaching the bottom
-		// re-engages it). Requires the Bubble Tea program enabled mouse events.
-		m.navigateMouse(msgi)
+		// History mouse-wheel scroll (issue #120 AC1) plus click-drag selection
+		// (issue #124, T6): wheel up/down over the transcript scrolls it (Up
+		// breaks follow, Down reaching the bottom re-engages it); a left-button
+		// drag over the history highlights a cell range and release copies it to
+		// the clipboard. Requires the Bubble Tea program enabled mouse events.
+		m.updateMouse(msgi)
 		return m, nil
 
 	case turnDoneMsg:
@@ -1258,6 +1267,12 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 	// an out-of-range offset so a content shrink never leaves a stale offset.
 	vp.Width = m.transcriptWidth()
 	vp.Height = vh
+	// An in-progress drag selection highlights its cell range in the full
+	// content before the viewport clips it to the visible window (issue #124
+	// AC1): the reverse-video markers render only where the range is on screen.
+	if m.dragSel != nil {
+		content = m.highlightSelection(content)
+	}
 	vp.SetContent(content)
 	if m.histFollow {
 		vp.GotoBottom()
