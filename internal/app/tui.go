@@ -38,10 +38,20 @@ func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, ses
 // discovery, and persists edits back through the config layer (eitri.md §2.7,
 // T12).
 func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog) error {
+	effort := cfg.ReasoningEffort
+	if !cfg.ThinkingEnabled {
+		effort = ""
+	}
+	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
+	// Subscribe the live status strip to the engine's per-turn usage/turn/
+	// compaction events (issue #86). Read-only: it only forwards telemetry and
+	// never pauses the running agent loop.
+	feedTelemetry(e, te)
 	m := tui.NewModelCfg(tui.Dependencies{
-		Models: discoveredModels(context.Background(), p),
-		Config: cfg,
-		Save:   func(c config.Config) error { return config.Save(c, cfgPath) },
+		Models:    discoveredModels(context.Background(), p),
+		Config:    cfg,
+		Save:      func(c config.Config) error { return config.Save(c, cfgPath) },
+		Telemetry: te,
 		// The skills panel and `/skillname` slash activation sit on the same
 		// catalog the batch engine uses (T8): activation runs the `skill` tool
 		// through the registry, so a slash activation behaves identically to a
@@ -50,6 +60,39 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	})
 	m.SetTurn(runEngineTurn(e, cfg, reg, sessionKey, m.ContinueHook()))
 	return runProgram(m)
+}
+
+// feedTelemetry wires the engine's live event stream into a TUI status-strip
+// collector (issue #86). It forwards only per-turn usage, turn boundaries, and
+// the compaction marker into the strip's buffered channel, delivered
+// non-blocking so a busy run never stalls on the strip. The TUI stays decoupled
+// from the engine: engine.Event is translated here into UI-facing updates.
+func feedTelemetry(e *engine.Engine, te *tui.Telemetry) {
+	ch := te.UpdateChan()
+	e.SetListener(func(evt engine.Event) {
+		switch ev := evt.(type) {
+		case engine.UsageEvent:
+			pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
+				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens})
+		case engine.TurnEvent:
+			if ev.Start {
+				pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})
+			}
+		case engine.CompactedEvent:
+			pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
+		}
+	})
+}
+
+// pushTelemetry delivers an update to the strip's channel without blocking the
+// engine's event-goroutine: if the buffered channel is full the update is
+// dropped, because the strip is best-effort telemetry that must never stall a
+// live run.
+func pushTelemetry(ch chan<- tui.TelemetryUpdate, u tui.TelemetryUpdate) {
+	select {
+	case ch <- u:
+	default:
+	}
 }
 
 // skillSurface adapts the run's skill catalog to the TUI's SkillsSurface seam.
