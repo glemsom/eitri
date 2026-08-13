@@ -24,8 +24,10 @@ const (
 var (
 	// providerFams are the documented provider families (eitri.md §2.2, T11).
 	providerFams = []string{"opencode-go", "github-copilot", "custom-openai"}
-	// effortTiers are the meaningful reasoning-effort tiers (docs/spec.md §6).
-	effortTiers = []string{"high", "max"}
+	// effortTiers are the meaningful reasoning-effort tiers in cycle order
+	// low→medium→high→max (docs/spec.md §6). Both low and medium are exposed
+	// as first-class options.
+	effortTiers = []string{"low", "medium", "high", "max"}
 )
 
 // settingsForm is the pure state behind the TUI Settings surface (T12). It
