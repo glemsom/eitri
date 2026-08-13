@@ -1018,11 +1018,11 @@ func (m Model) historyContent() string {
 //
 // While the run is live (no user scroll input yet — native scroll is the
 // navigation path, ADR-0006 decision 6) the clamp is bottom-anchored: the
-// newest output stays visible. The bubbletea/viewport component and its
-// persisted scroll/cache state arrive with the T03 (per-width cache) and T04
-// (live follow) seams; decision 6 keeps paging/mouse routing off here. Line
-// endings are preserved so the primary buffer's native selection/scrollback
-// stay clean (ADR-0006 decision 1).
+// newest output stays visible. The bubbletea/viewport scroll-position/follow
+// state (not just the per-width render cache from T03, which landed in issue
+// #107) arrives with the T04 live-follow seam (issue #108); decision 6 keeps
+// paging/mouse routing off here. Line endings are preserved so the primary
+// buffer's native selection/scrollback stay clean (ADR-0006 decision 1).
 func (m Model) renderHistoryViewport(content string, bandLines int) string {
 	if m.height <= 0 {
 		return content
