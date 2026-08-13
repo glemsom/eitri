@@ -121,7 +121,7 @@ func TestModelRailToggles(t *testing.T) {
 
 // TestModelRailAutoHidesShort asserts the rail auto-shows only when the
 // terminal is tall enough to host it beside the fixed bottom band, alongside
-// the width gate (ADR-0006 decision 5, issue T05 AC2): a wide-but-short window
+// the width gate (issue T05 AC2): a wide-but-short window
 // auto-hides the rail just like a narrow one. ctrl+b still forces it open on
 // any size.
 func TestModelRailAutoHidesShort(t *testing.T) {
@@ -207,8 +207,8 @@ func TestModelRailLiveUpdates(t *testing.T) {
 }
 
 // TestModelRailHeightMatchesHistory asserts the right rail honours the same
-// visible height as the history region (ADR-0006 decision 5, issue T05 AC1):
-// in a sized window where the rail content alone would overflow, the rail
+// visible height as the history region (issue T05 AC1): in a sized window where
+// the rail content alone would overflow, the rail
 // clips to the same row height as the history viewport so the two panes form
 // one coherent row and the whole view stays within the terminal height.
 func TestModelRailHeightMatchesHistory(t *testing.T) {

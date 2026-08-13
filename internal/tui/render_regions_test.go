@@ -10,8 +10,8 @@ import (
 )
 
 // TestRenderRegions_HistoryVsBandSeparation asserts the regioned render seam
-// (ADR-0006 decision 6, issue T01): the history is produced by the scroll
-// region (renderHistory) and the status strip + composer by the fixed band
+// (issue T01): the history is produced by the scroll region (renderHistory) and
+// the status strip + composer by the fixed band
 // (renderBand), with no content leaking across the seam. This is the region
 // boundary that T02+ later drives with height-aware viewport + band pinning.
 func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
@@ -84,8 +84,8 @@ func resizeTo(t *testing.T, m Model, width, height int) Model {
 
 // TestRenderPane_ComposesRegionsInOrder asserts renderPane composes the scroll
 // and band regions in order with the band last — the region seam that T02+
-// builds on (ADR-0006 decision 6). With a resize landed, the scroll region is
-// Height-aware (ADR-0006 decision 3): renderPane is the height-clamped history
+// builds on. With a resize landed, the scroll region is Height-aware:
+// renderPane is the height-clamped history
 // followed by the fixed band, which stays the final (bottom-pinned) region.
 func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -111,12 +111,36 @@ func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	}
 	head := strings.TrimSuffix(got, bandStr)
 	// For a short transcript that fits in the viewport, the height-clamped
-	// history equals the rendered scroll region modulo trailing-whitespace
-	// normalization (band height left it all room). The viewport strips a
-	// trailing newline, so compare trimmed.
-	if strings.TrimRight(head, "\n") != strings.TrimRight(hist.String(), "\n") {
-		t.Errorf("renderPane head != height-clamped history region\n--- want --------\n%s\n--- got ---------\n%s", hist.String(), head)
+	// history region equals the rendered scroll region modulo the native
+	// viewport's width padding: each row is padded to the pane width, and the
+	// region drops a trailing newline. Trim per-line whitespace and drop blank
+	// tail rows to compare content (not padding).
+	wantLines := normalizeRows(hist.String())
+	gotLines := normalizeRows(head)
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("renderPane head (%d rows) != height-clamped history region (%d rows)\n--- want --------\n%s\n--- got ---------\n%s", len(gotLines), len(wantLines), hist.String(), head)
 	}
+	for i := range wantLines {
+		if gotLines[i] != wantLines[i] {
+			t.Errorf("renderPane head row %d mismatch\n want: %q\n got: %q", i, wantLines[i], gotLines[i])
+		}
+	}
+}
+
+// normalizeRows splits a render string into its content rows, trimming each
+// row's trailing whitespace and dropping the blank padded tail rows that a
+// native viewport appends, so two renders with the same content but different
+// padding compare equal.
+func normalizeRows(s string) []string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, strings.TrimRight(l, " "))
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
 }
 
 // TestReviewRegion_ClipsTallDiff asserts the review overlay gets its own

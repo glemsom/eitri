@@ -9,8 +9,8 @@ import (
 )
 
 // TestModel_heightAwareClampsHistory asserts the history region is a
-// Height-aware viewport (ADR-0006 decision 3, issue T02): the terminal Height
-// is captured from WindowSizeMsg and the history clamps to it, so a long
+// Height-aware viewport (issue T02): the terminal Height is captured from
+// WindowSizeMsg and the history clamps to it, so a long
 // session never overflows the terminal — the composer + status band stay on
 // screen and only the history scrolls.
 func TestModel_heightAwareClampsHistory(t *testing.T) {
@@ -40,9 +40,9 @@ func TestModel_heightAwareClampsHistory(t *testing.T) {
 }
 
 // TestModel_bandPinnedOnResize asserts the composer + status band stay pinned
-// at the bottom across a window shrink and grow (ADR-0006 decision 2, issue
-// T02): resizing never lets the band trail off-screen and the band remains the
-// final region of the view at any height.
+// at the bottom across a window shrink and grow (issue T02): resizing never
+// lets the band trail off-screen and the band remains the final region of the
+// view at any height.
 func TestModel_bandPinnedOnResize(t *testing.T) {
 	m := newTallHistoryModel(t)
 

@@ -94,7 +94,9 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	expanded, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}, Alt: true})
 	m = asModel(t, expanded)
 	ex := m.View()
-	if !strings.Contains(ex, "a.go") || !strings.Contains(ex, "+3 more\n") {
+	// The native viewport pads each row to the pane width, so the trailing
+	// newline may be followed by padding; match on the result lines themselves.
+	if !strings.Contains(ex, "a.go") || !strings.Contains(ex, "+3 more") {
 		t.Errorf("expanded entry should show the full result, got: %q", ex)
 	}
 }
