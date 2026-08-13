@@ -524,8 +524,8 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 // TestOpenAIEmitsThinkingAndReasoningEffort verifies the request head carries
 // DeepSeek's reasoning controls — `thinking` default-enabled and a normalized
 // `reasoning_effort` — when the caller opts into them (docs/spec.md §6). The
-// effort is normalized (low/medium→high, xhigh→max) so the body emits only the
-// meaningful tiers the primary provider accepts.
+// effort is normalized (xhigh→high; low/medium/high/max pass through) so the
+// body emits only the tiers the primary provider accepts.
 func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -552,7 +552,7 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 		Model:           "deepseek-v4-flash",
 		Messages:        []Message{{Role: RoleUser, Content: "hi"}},
 		ThinkingEnabled: true,
-		ReasoningEffort: "medium", // legacy; normalized to high on the wire
+		ReasoningEffort: "xhigh", // legacy; normalized to high on the wire
 	}); err != nil {
 		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
 	}
@@ -598,17 +598,18 @@ func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 	}
 }
 
-// TestNormalizeReasoningEffort tables the DeepSeek legacy→meaningful effort
-// mapping (docs/spec.md §6): low/medium→high, xhigh→max, meaningful tiers and
-// the default pass through unchanged.
+// TestNormalizeReasoningEffort tables the reasoning-effort tier mapping
+// (docs/spec.md §6): low, medium, high and max are first-class tiers that pass
+// through unchanged; xhigh maps to high per the official API reference.
 func TestNormalizeReasoningEffort(t *testing.T) {
 	cases := map[string]string{
-		"low":    "high",
-		"medium": "high",
+		"low":    "low",
+		"medium": "medium",
 		"high":   "high",
-		"xhigh":  "max",
+		"xhigh":  "high",
 		"max":    "max",
 		"":       "",
+		"bogus":  "bogus",
 	}
 	for in, want := range cases {
 		if got := NormalizeReasoningEffort(in); got != want {

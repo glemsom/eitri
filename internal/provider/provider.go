@@ -150,8 +150,8 @@ type Request struct {
 	// not thinking, is how an operator trades speed (docs/spec.md §6).
 	ThinkingEnabled bool
 	// ReasoningEffort is the requested chain-of-thought effort level, normalized
-	// via NormalizeReasoningEffort before hitting the wire (low/medium→high,
-	// xhigh→max). Empty omits reasoning_effort from the body.
+	// via NormalizeReasoningEffort before hitting the wire (low/medium/high/max
+	// pass through, xhigh→high). Empty omits reasoning_effort from the body.
 	ReasoningEffort string
 
 	// MaxOutputTokens is a hard per-turn output cap for a special (non-tool)
@@ -215,19 +215,18 @@ type SamplingPolicy struct {
 	Value float64
 }
 
-// NormalizeReasoningEffort maps DeepSeek's legacy effort values to the
-// meaningful wire tiers (docs/spec.md §6): low/medium→high, xhigh→max. high
-// and max pass through unchanged; any other value (including empty) is
-// returned untouched so it can be omitted.
+// NormalizeReasoningEffort forwards reasoning-effort tiers to the wire
+// (docs/spec.md §6): low, medium, high and max are each first-class and pass
+// through unchanged. The official create-chat-completion reference lists only
+// [low, high, max] and maps medium and xhigh to high; Eitri exposes medium as
+// a first-class option even though the endpoint collapses its result, so
+// nothing is remapped client-side except xhigh → high. Any other value
+// (including empty) is returned untouched so it can be omitted.
 func NormalizeReasoningEffort(effort string) string {
-	switch effort {
-	case "low", "medium":
+	if effort == "xhigh" {
 		return "high"
-	case "xhigh":
-		return "max"
-	default:
-		return effort
 	}
+	return effort
 }
 
 // Chunk is one parsed piece of a streamed turn.
