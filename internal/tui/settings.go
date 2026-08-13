@@ -30,17 +30,41 @@ var (
 	effortTiers = []string{"low", "medium", "high", "max"}
 )
 
+// discoverState is the on-demand model-discovery lifecycle of the Settings
+// surface (issue #89 AC2). It lets the panel show where discovery stands
+// instead of failing silently when a provider has no cached model list.
+type discoverState int
+
+const (
+	// discoverIdle means no on-demand discovery is running: a model list is
+	// already known (pre-seeded) or discovery is unwired.
+	discoverIdle discoverState = iota
+	// discoverLoading means provider model discovery is in flight.
+	discoverLoading
+	// discoverError means discovery finished but failed; discoverErr carries it.
+	discoverError
+)
+
 // settingsForm is the pure state behind the TUI Settings surface (T12). It
 // edits a draft copy of config.Config and yields a saved config; navigation
 // and value stepping are deterministic so the panel is unit-testable without a
 // terminal. It is deliberately config-only: the model list is surfaced from
-// provider discovery but owned by the caller.
+// provider discovery but owned by the caller, and the live telemetry readout
+// (issue #89 AC4) is borrowed from the status strip.
 type settingsForm struct {
 	cfg    config.Config
 	models []string
 	field  int
 	// pathBuf holds the free-form extra_writable_paths draft while focused.
 	pathBuf string
+	// telemetry, when non-nil, backs the live cache hit-ratio + cost readout
+	// rendered in the panel (issue #89 AC4). It is the same read-only surface
+	// the status strip uses and is never mutated from the panel.
+	telemetry *Telemetry
+	// discoverState tracks on-demand provider model discovery (issue #89 AC2).
+	discoverState discoverState
+	// discoverErr is the surfaced failure when discoverState == discoverError.
+	discoverErr string
 }
 
 // newSettingsForm seeds the form with the loaded config and the discovered
@@ -215,6 +239,30 @@ func settingsView(f settingsForm) string {
 		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
 	}
 
+	// Provider model-discovery status (issue #89 AC2): loading/error/summary
+	// reflects what the list behind the Model row shows. Deterministic for
+	// render-testing.
+	switch f.discoverState {
+	case discoverLoading:
+		b.WriteString(statusStyle.Render("   discovering models…"))
+		b.WriteString("\n")
+	case discoverError:
+		b.WriteString(statusStyle.Render("   model discovery failed: " + f.discoverErr))
+		b.WriteString("\n")
+	default:
+		// Idle: already-loaded or unwired, so no status line is needed.
+	}
+
+	// Live telemetry readout (issue #89 AC4): the same cache hit-ratio + cost
+	// the status strip tracks, borrowed read-only so switching provider/model
+	// and watching cost happen in one pane.
+	if f.telemetry != nil {
+		b.WriteString(statusStyle.Render(fmt.Sprintf(
+			"   cache:%.0f%% · cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),
+		)))
+		b.WriteString("\n")
+	}
+
 	save := "[ Save ]"
 	cancel := "[ Cancel ]"
 	if f.field == fieldSave {
@@ -222,6 +270,6 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(statusStyle.Render("tab/enter: navigate · arrows/+/­−: adjust · esc: close"))
+	b.WriteString(statusStyle.Render("tab/enter: navigate · arrows/+/−: adjust · esc: close"))
 	return b.String()
 }

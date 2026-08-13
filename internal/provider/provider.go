@@ -25,6 +25,12 @@ var ErrMalformed = errors.New("malformed Chat Completions SSE event")
 // head, and retries rather than surfacing the raw overflow to the caller.
 var ErrContextOverflow = errors.New("context window overflow")
 
+// ErrNoDiscovery is returned by the provider model-discovery seam when the
+// configured provider has no ModelLister capability (or none is set). The
+// Settings panel surfaces it as the discovery error state (issue #89 AC2) so
+// model discovery never fails the TUI boot silently.
+var ErrNoDiscovery = errors.New("provider does not support model discovery")
+
 // IsContextOverflow reports whether err is a context-overflow signal that
 // should trigger emergency compaction: the ErrContextOverflow sentinel, or a
 // non-2xx provider response whose HTTP status is a 400-level client error

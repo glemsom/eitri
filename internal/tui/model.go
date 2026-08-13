@@ -81,6 +81,14 @@ type skillDoneMsg struct {
 	payload string
 }
 
+// discoverDoneMsg reports the outcome of an on-demand provider model discovery
+// started when the Settings surface opened (issue #89 AC2). models is the
+// discovered list on success; err carries the failure otherwise.
+type discoverDoneMsg struct {
+	models []string
+	err    error
+}
+
 // SkillItem is one detected skill surfaced to the TUI's skills panel: its
 // install scope and whether it is currently activated this session
 // (docs/spec.md §9, eitri.md §2.3).
@@ -113,6 +121,12 @@ type Dependencies struct {
 	WorkspacePath string
 	// Models is the provider-discovered model list surfaced in Settings.
 	Models []string
+	// DiscoverModels, when non-nil, is an on-demand provider model-discovery
+	// seam (issue #89 AC2): it is invoked when the Settings surface opens with
+	// no pre-seeded Models list, and the panel reports loading/error states
+	// rather than failing silently. Nil disables on-demand discovery (the
+	// pre-seeded list, or the configured model alone, is shown).
+	DiscoverModels func(ctx context.Context) ([]string, error)
 	// Config is the loaded config seeded into the Settings draft.
 	Config config.Config
 	// Save persists a Settings edit to the config layer. When nil, Settings can
@@ -378,8 +392,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "ctrl+s":
-			m.openSettings()
-			return m, nil
+			return m.startSettings()
 		case "ctrl+b":
 			// The right context rail (issue #88): ctrl+b toggles it between
 			// visible and hidden on any width, without stealing composer focus.
@@ -426,8 +439,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// other `/...` line is a normal prompt and is sent to the engine seam
 			// unchanged (issue #87 AC4: slash handling never swallows input).
 			if prompt == "/settings" {
-				m.openSettings()
-				return m, nil
+				return m.startSettings()
 			}
 			if name, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name)
@@ -503,6 +515,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case discoverDoneMsg:
+		// A provider model-discovery command finished (issue #89 AC2): fold the
+		// result into the open settings panel, or drop it if the panel has since
+		// closed (Save/esc while discovery was in flight).
+		if m.settings == nil {
+			return m, nil
+		}
+		m.settings.models = msgi.models
+		m.settings.discoverState = discoverIdle
+		if msgi.err != nil {
+			m.settings.discoverErr = msgi.err.Error()
+			m.settings.discoverState = discoverError
+		}
+		return m, nil
+
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
 		return m, nil
@@ -527,14 +554,35 @@ func (m Model) updatePrompt(msgi tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openSettings seeds the Settings form from the loaded config + discovery.
-func (m *Model) openSettings() {
+// openSettings seeds the Settings form from the loaded config + discovery,
+// borrowing the live telemetry for the cache/cost readout (issue #89 AC4).
+func (m *Model) openSettings() *settingsForm {
 	cfg := m.deps.Config
 	if cfg.Provider == "" {
 		cfg = config.Default()
 	}
 	sf := newSettingsForm(cfg, m.deps.Models)
+	sf.telemetry = m.telemetry
 	m.settings = &sf
+	return &sf
+}
+
+// startSettings opens the Settings surface and returns the command to run. When
+// no model list was pre-seeded and an on-demand discovery seam exists, it kicks
+// off provider model discovery and reports a loading state to the panel (issue
+// #89 AC2); otherwise it returns nil (no command), keeping the panel already
+// populated.
+func (m Model) startSettings() (tea.Model, tea.Cmd) {
+	sf := m.openSettings()
+	// On-demand discovery only when the panel was opened with no pre-seeded
+	// model list (issue #89 AC2): a seeded list is already loaded, so nothing
+	// to fetch. deps.Models (not sf.models) is the seed source; sf.models holds
+	// the configured-model fallback newSettingsForm installs.
+	if len(m.deps.Models) != 0 || m.deps.DiscoverModels == nil {
+		return m, nil
+	}
+	sf.discoverState = discoverLoading
+	return m, discoverCmd(m.deps.DiscoverModels)
 }
 
 // updateSettings drives the Settings surface from key input.
@@ -708,6 +756,18 @@ func (m *Model) markActive(name string) {
 			m.skills[i].Active = true
 		}
 	}
+}
+
+// discoverCmd runs one on-demand provider model discovery off the main loop and
+// reports its result (issue #89 AC2). It keeps the provider seam (Models) off
+// the UI goroutine so discovery latency never blocks rendering.
+func discoverCmd(discover func(ctx context.Context) ([]string, error)) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		models, err := discover(ctx)
+		return discoverDoneMsg{models: models, err: err}
+	})
 }
 
 // skillCmd runs a skill activation off the main loop and reports its payload.
