@@ -32,6 +32,8 @@ Eitri (named for the Norse blacksmith who forged Mjölnir) is an AI agent that r
 
 - **Transcript scroll navigation.** In the TUI the transcript is navigable (issue #120): the mouse wheel scrolls up/down, `PgUp`/`PgDn` page through it, and `Home`/`End` jump to the oldest/newest output. Scrolling up breaks the follow position so reading stays put instead of being yanked to the newest; submitting a new prompt re-follows the newest output. Navigation never steals composer input focus (arrow keys keep editing the prompt).
 
+- **Composer.** In the TUI, plain `Enter` submits the prompt; `Shift+Enter` inserts a newline for multi-line drafts. The composer grows with the draft within the fixed bottom band (one row per line, up to a bound), then scrolls internally so a long draft never spills into the transcript; the status strip and slash-completion list stay pinned above it (issue #121).
+
 - **Max-turns limit.** Configurable cap on loop iterations per run. Default is 250 turns, then interactive prompt to allow Eitri to continue with more turns.
 
 ### 2.2 LLM providers & models
