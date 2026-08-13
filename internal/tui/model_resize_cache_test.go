@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -32,19 +32,19 @@ func TestResize_KeepsNewestPinnedAcrossResize(t *testing.T) {
 	m = applyResize(t, m, 120, 24)
 
 	// Wide: the newest answer is present and not duplicated.
-	wide := m.View()
+	wide := view(m)
 	assertNewestOnce(t, wide, "answer q3")
 
 	// Shrink the window; the transcript must re-flow (re-word-wrap) without
 	// duplicating or scattering the newest committed output.
 	m = applyResize(t, m, 80, 18)
-	narrow := m.View()
+	narrow := view(m)
 	assertNewestOnce(t, narrow, "answer q3")
 
 	// Grow back: still a single coherent newest answer, never doubled by stale
 	// primary-buffer residue.
 	m = applyResize(t, m, 120, 24)
-	assertNewestOnce(t, m.View(), "answer q3")
+	assertNewestOnce(t, view(m), "answer q3")
 }
 
 // TestResize_ReFlowsHeadToNewWidth asserts resizing to a narrower width
@@ -55,7 +55,7 @@ func TestResize_ReFlowsHeadToNewWidth(t *testing.T) {
 	m = applyResize(t, m, 80, 12) // short viewport clips the oldest head
 
 	// The oldest prompt head is scrolled out of the pinned-to-bottom viewport.
-	clean := plain(m.View())
+	clean := plain(view(m))
 	if strings.Count(clean, "q1") != 0 {
 		t.Errorf("narrow viewport should pin to newest and clip the q1 head, got %d occurrences", strings.Count(clean, "q1"))
 	}

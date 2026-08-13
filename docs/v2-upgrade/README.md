@@ -1,11 +1,12 @@
 # Charm v2 upgrade guides
 
 Reference copies of the upstream `UPGRADE_GUIDE_V2.md` files for the four
-Charm v2 modules, captured for the v1 → v2 port passes (see issue #144 and
-follow-ups #145–#149).
-
-The v2 modules are already acquired in `go.mod` alongside the v1 modules;
-these guides are the reference material the port passes work from.
+Charm v2 modules. The v1 → v2 port (issues #145–#149) is complete: all code
+moved onto the v2 module paths, the v1 Charm modules and termenv were dropped
+from `go.mod` (`go mod tidy`), and the migration's behavioral parity
+(key strings, wheel scrolling, alt screen, colors, markdown) is covered by the
+test suite + the manual TUI smoke test. These guides stay as reference material
+for future Charm work.
 
 | Library              | Module path                 | Version in go.mod | Source                                                |
 | -------------------- | --------------------------- | ----------------- | ----------------------------------------------------- |

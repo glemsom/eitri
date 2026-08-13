@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // streamingTurn is a stand-in Turn seam that never completes on its own; the
@@ -23,7 +23,7 @@ func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 	if m.busy {
 		t.Fatalf("model already busy")
 	}
-	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("expected a turn command on submit")
 	}
@@ -64,26 +64,26 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 
 	// First delta creates the assistant message and renders partial markdown.
 	m = applyDelta(t, m, "Hello **glad**")
-	view := m.View()
+	content := view(m)
 	// The partial answer content is buffered on the in-progress assistant
 	// message, growing in place before completion (issue #83 AC1).
 	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad**" {
 		t.Errorf("first delta content = %q, want %q", got, "Hello **glad**")
 	}
 	// Partial markdown is styled through Glamour, not shown as raw syntax
-	// (issue #83 AC2): bold "glad" must carry SGR emphasis in the view.
-	if !hasSGRBold(view) {
-		t.Errorf("expected partial markdown bold to render (issue #83 AC2), got: %q", view)
+	// (issue #83 AC2): bold "glad" must carry SGR emphasis in the content.
+	if !hasSGRBold(content) {
+		t.Errorf("expected partial markdown bold to render (issue #83 AC2), got: %q", content)
 	}
 
 	// A second delta extends the same message in place.
 	m = applyDelta(t, m, " to help.")
-	view2 := m.View()
+	view2 := view(m)
 	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad** to help." {
 		t.Errorf("second delta content = %q, want %q", got, "Hello **glad** to help.")
 	}
 	if strings.Contains(view2, "Hello **glad**") {
-		t.Errorf("raw markdown must not leak into the view, got: %q", view2)
+		t.Errorf("raw markdown must not leak into the content, got: %q", view2)
 	}
 }
 
@@ -102,12 +102,12 @@ func TestModel_streamFinalize(t *testing.T) {
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "Hello **glad** to help."})
 	m = asModel(t, nm)
 
-	view := m.View()
+	content := view(m)
 	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad** to help." {
 		t.Errorf("final content = %q, want full answer", got)
 	}
-	if !hasSGRBold(view) {
-		t.Errorf("expected final markdown bold to render, got: %q", view)
+	if !hasSGRBold(content) {
+		t.Errorf("expected final markdown bold to render, got: %q", content)
 	}
 	if m.busy {
 		t.Errorf("completion must clear the busy state")
@@ -160,12 +160,12 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	}
 	// The thinking block is live but auto-collapsed: a hint renders, not the
 	// body, until the user expands it (issue #85 AC1/AC2).
-	view := m.View()
-	if !strings.Contains(view, "🤔") {
-		t.Errorf("live reasoning should render a thinking hint, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "🤔") {
+		t.Errorf("live reasoning should render a thinking hint, got: %q", content)
 	}
-	if strings.Contains(view, "I check the env.") {
-		t.Errorf("reasoning body should stay collapsed while streaming, got: %q", view)
+	if strings.Contains(content, "I check the env.") {
+		t.Errorf("reasoning body should stay collapsed while streaming, got: %q", content)
 	}
 
 	// An answer delta still grows the answer buffer untouched.
@@ -186,12 +186,12 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 
 	// First reasoning delta creates the (collapsed) block, then tab expands it.
 	m = applyReasoningDelta(t, m, "first ")
-	toggled, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 	// A subsequent reasoning delta must render live in the expanded block.
 	m = applyReasoningDelta(t, m, "reasoning")
-	if !strings.Contains(m.View(), "first reasoning") {
-		t.Errorf("expanded block should show streamed reasoning, got: %q", m.View())
+	if !strings.Contains(view(m), "first reasoning") {
+		t.Errorf("expanded block should show streamed reasoning, got: %q", view(m))
 	}
 }
 
@@ -205,11 +205,11 @@ func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
 	m, _ = submitBusy(t, m)
 	m = applyDelta(t, m, "streaming reply")
 
-	view := m.View()
-	if strings.Contains(view, "\x1b[2J") {
-		t.Errorf("streaming view carries a clear-screen sequence (issue #83 AC4)")
+	content := view(m)
+	if strings.Contains(content, "\x1b[2J") {
+		t.Errorf("streaming content carries a clear-screen sequence (issue #83 AC4)")
 	}
-	if strings.Contains(view, "\x1b[?1049") {
-		t.Errorf("streaming view carries an alt-screen sequence (issue #83 AC4)")
+	if strings.Contains(content, "\x1b[?1049") {
+		t.Errorf("streaming content carries an alt-screen sequence (issue #83 AC4)")
 	}
 }

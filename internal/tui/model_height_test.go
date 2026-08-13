@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestModel_heightAwareClampsHistory asserts the history region is a
@@ -20,44 +20,44 @@ func TestModel_heightAwareClampsHistory(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
 	m = asModel(t, nm)
 
-	view := m.View()
+	content := view(m)
 	// The band (status strip + composer) must be pinned at the bottom of the
-	// view, i.e. the final composer line is the last non-blank content.
+	// content, i.e. the final composer line is the last non-blank content.
 	comp := m.composer.View()
-	if !strings.Contains(view, comp) {
-		t.Fatalf("composer (band) missing from view, got:\n%q", view)
+	if !strings.Contains(content, comp) {
+		t.Fatalf("composer (band) missing from content, got:\n%q", content)
 	}
-	if !strings.HasSuffix(strings.TrimRight(view, "\n"), strings.TrimRight(comp, "\n")) {
-		t.Errorf("composer band must be the bottom (last) region of the view, got:\n%q", view)
+	if !strings.HasSuffix(strings.TrimRight(content, "\n"), strings.TrimRight(comp, "\n")) {
+		t.Errorf("composer band must be the bottom (last) region of the content, got:\n%q", content)
 	}
-	// Total rendered view must not exceed the terminal height (band + clamped
+	// Total rendered content must not exceed the terminal height (band + clamped
 	// history viewport). Spurious padding lines are permitted by Bubble Tea, but
 	// the visible content must be the band sitting at the terminal bottom.
-	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) > 10 {
-		t.Errorf("view exceeds terminal height (10), got %d lines:\n%q", len(lines), view)
+		t.Errorf("content exceeds terminal height (10), got %d lines:\n%q", len(lines), content)
 	}
 }
 
 // TestModel_bandPinnedOnResize asserts the composer + status band stay pinned
 // at the bottom across a window shrink and grow (issue T02): resizing never
 // lets the band trail off-screen and the band remains the final region of the
-// view at any height.
+// content at any height.
 func TestModel_bandPinnedOnResize(t *testing.T) {
 	m := newTallHistoryModel(t)
 
 	for _, h := range []int{24, 10, 14, 18} {
 		nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: h})
 		m = asModel(t, nm)
-		view := m.View()
+		content := view(m)
 		comp := m.composer.View()
-		if !strings.Contains(view, comp) {
-			t.Fatalf("composer band lost at height %d, got:\n%q", h, view)
+		if !strings.Contains(content, comp) {
+			t.Fatalf("composer band lost at height %d, got:\n%q", h, content)
 		}
 		// Band is the last region: after the composer there is only whitespace.
-		trimmed := strings.TrimRight(view, "\n")
+		trimmed := strings.TrimRight(content, "\n")
 		if !strings.HasSuffix(trimmed, strings.TrimRight(comp, "\n")) {
-			t.Errorf("band not pinned to bottom at height %d, got:\n%q", h, view)
+			t.Errorf("band not pinned to bottom at height %d, got:\n%q", h, content)
 		}
 		if n := len(strings.Split(trimmed, "\n")); n > h {
 			t.Errorf("view (%d lines) exceeds terminal height %d at resize, got:\n%q", n, h, trimmed)
@@ -81,7 +81,7 @@ func TestModel_historyClipHoldsNewestFollowSeam(t *testing.T) {
 	var hist strings.Builder
 	m.renderHistory(&hist)
 	histLines := len(strings.Split(strings.TrimRight(hist.String(), "\n"), "\n"))
-	viewLines := len(strings.Split(strings.TrimRight(m.View(), "\n"), "\n"))
+	viewLines := len(strings.Split(strings.TrimRight(view(m), "\n"), "\n"))
 	if viewLines >= histLines {
 		t.Errorf("history not clipped: view (%d lines) shows the whole %d-line history instead of height-aware viewport", viewLines, histLines)
 	}

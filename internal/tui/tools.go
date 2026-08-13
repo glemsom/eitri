@@ -1,7 +1,7 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // ToolFeed bridges a live run's tool-call stream into the TUI's rendering loop

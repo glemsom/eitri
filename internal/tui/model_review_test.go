@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // newReviewModel builds a model wired with a turn seam, a tool feed, and a
@@ -49,7 +49,7 @@ func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 // reopenReview opens the review panel (ctrl+d) and returns the model.
 func reopenReview(t *testing.T, m Model) Model {
 	t.Helper()
-	return mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlD})
+	return mustUpdate(t, m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 }
 
 // TestReview_togglesOpenAndClosed asserts ctrl+d opens the review panel listing
@@ -62,18 +62,18 @@ func TestReview_togglesOpenAndClosed(t *testing.T) {
 
 	// Open: the panel header and the changed file appear in the view.
 	m = reopenReview(t, m)
-	view := m.View()
-	if !strings.Contains(view, "Review changed files") {
-		t.Errorf("review panel not open after ctrl+d, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "Review changed files") {
+		t.Errorf("review panel not open after ctrl+d, got: %q", content)
 	}
-	if !strings.Contains(view, "main.go") {
-		t.Errorf("changed file list missing main.go, got: %q", view)
+	if !strings.Contains(content, "main.go") {
+		t.Errorf("changed file list missing main.go, got: %q", content)
 	}
 
 	// Close back to the transcript.
 	m = reopenReview(t, m)
-	if strings.Contains(m.View(), "Review changed files") {
-		t.Errorf("review panel did not close, got: %q", m.View())
+	if strings.Contains(view(m), "Review changed files") {
+		t.Errorf("review panel did not close, got: %q", view(m))
 	}
 }
 
@@ -89,14 +89,14 @@ func TestReview_listsFilesWithStatusAndDeltas(t *testing.T) {
 	m = reviewFeedEdit(t, &m, feed, "/w/del.go", "edit", "gone\n", "", 0, 1)       // deleted
 
 	m = reopenReview(t, m)
-	view := m.View()
+	content := view(m)
 	for _, want := range []string{"mod.go", "+0, −1]", "new.go", "+3,", "del.go"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("view missing %q:\n%s", want, view)
+		if !strings.Contains(content, want) {
+			t.Errorf("content missing %q:\n%s", want, content)
 		}
 	}
-	if !strings.Contains(view, "modified") || !strings.Contains(view, "added") || !strings.Contains(view, "deleted") {
-		t.Errorf("status vocabulary missing in view:\n%s", view)
+	if !strings.Contains(content, "modified") || !strings.Contains(content, "added") || !strings.Contains(content, "deleted") {
+		t.Errorf("status vocabulary missing in content:\n%s", content)
 	}
 }
 
@@ -110,10 +110,10 @@ func TestReview_inlineDiffWhenExpanded(t *testing.T) {
 
 	m = reopenReview(t, m)
 	// Expand the focused file's diff.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	view := m.View()
-	if !strings.Contains(view, "+world") || !strings.Contains(view, "-hello") {
-		t.Errorf("inline diff not rendered, got:\n%s", view)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	content := view(m)
+	if !strings.Contains(content, "+world") || !strings.Contains(content, "-hello") {
+		t.Errorf("inline diff not rendered, got:\n%s", content)
 	}
 }
 
@@ -127,7 +127,7 @@ func TestReview_openInBrowserEscapeHatch(t *testing.T) {
 	m = reviewFeedEdit(t, &m, feed, "/w/mod.go", "edit", "a\n", "b\n", 0, 1)
 
 	m = reopenReview(t, m)
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'o', Text: "o"})
 	if len(opened) != 1 || opened[0] != "/w/mod.go" {
 		t.Errorf("open_in_browser = %v, want [\"/w/mod.go\"]", opened)
 	}
@@ -139,7 +139,7 @@ func TestReview_noFilesIsGraceful(t *testing.T) {
 	m := newReviewModel(t, nil)
 	m = resize(t, m)
 	m = reopenReview(t, m)
-	if !strings.Contains(m.View(), "no changes") {
-		t.Errorf("empty review panel should say 'no changes', got:\n%s", m.View())
+	if !strings.Contains(view(m), "no changes") {
+		t.Errorf("empty review panel should say 'no changes', got:\n%s", view(m))
 	}
 }

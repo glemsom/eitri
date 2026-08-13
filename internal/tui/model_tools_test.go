@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // feedToolUpdate drives one tool update through the live-delivery path the
@@ -43,15 +43,15 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 		Name: "edit", Result: "Edit applied to internal/main.go\n", Added: 2, Removed: 0,
 	}})
 
-	view := m.View()
-	if !strings.Contains(view, "⊕ edit") {
-		t.Errorf("expected a one-line edit entry, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "⊕ edit") {
+		t.Errorf("expected a one-line edit entry, got: %q", content)
 	}
-	if !strings.Contains(view, "internal/main.go") {
-		t.Errorf("expected the edited path in the entry args, got: %q", view)
+	if !strings.Contains(content, "internal/main.go") {
+		t.Errorf("expected the edited path in the entry args, got: %q", content)
 	}
-	if !strings.Contains(view, "+2, −0") {
-		t.Errorf("expected [+N,−M] delta tag, got: %q", view)
+	if !strings.Contains(content, "+2, −0") {
+		t.Errorf("expected [+N,−M] delta tag, got: %q", content)
 	}
 }
 
@@ -77,23 +77,23 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 		Name: "bash", Result: "a.go\nb.go\nc.go\n+3 more\n", Lines: 4, Dropped: 3, Compressed: true,
 	}})
 
-	view := m.View()
-	if !strings.Contains(view, "⊕ bash") {
-		t.Errorf("expected a one-line bash entry, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "⊕ bash") {
+		t.Errorf("expected a one-line bash entry, got: %q", content)
 	}
-	if !strings.Contains(view, "+3 more") {
-		t.Errorf("expected the compression tail marker in the collapsed summary, got: %q", view)
+	if !strings.Contains(content, "+3 more") {
+		t.Errorf("expected the compression tail marker in the collapsed summary, got: %q", content)
 	}
 	// Raw body lines must not be dumped into the scroll when collapsed.
-	if strings.Contains(view, "c.go\n+3 more\n") && !m.showToolResult {
+	if strings.Contains(content, "c.go\n+3 more\n") && !m.showToolResult {
 		// c.go may legitimately appear if expanded; here it's collapsed.
-		t.Errorf("collapsed entry must not dump the raw result body, got: %q", view)
+		t.Errorf("collapsed entry must not dump the raw result body, got: %q", content)
 	}
 
 	// Expand on demand reveals the full result inline.
-	expanded, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}, Alt: true})
+	expanded, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyExtended, Text: "y", Mod: tea.ModAlt})
 	m = asModel(t, expanded)
-	ex := m.View()
+	ex := view(m)
 	// The native viewport pads each row to the pane width, so the trailing
 	// newline may be followed by padding; match on the result lines themselves.
 	if !strings.Contains(ex, "a.go") || !strings.Contains(ex, "+3 more") {

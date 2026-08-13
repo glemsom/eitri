@@ -1,9 +1,8 @@
 // Package tui provides the interactive fullscreen TUI a developer drives a
-// session in. It is built on the Charm stack (Bubble Tea + Lip Gloss +
-// Bubbles) with Glamour over goldmark for Markdown→ANSI, and renders into the
-// primary (normal) buffer using a differential renderer so the terminal's
-// native selection, scrollback, and search are preserved (docs/spec.md §9,
-// ticket #34).
+// session in. It is built on the Charm stack (Bubble Tea v2 + Lip Gloss v2 +
+// Bubbles v2) with Glamour v2 over goldmark for Markdown→ANSI, and renders
+// through the alternate screen (T1 pivot, issue #119) so every frame is a
+// clean full-surface repaint into the alt buffer (docs/spec.md §9).
 //
 // The TUI sits on the same run engine as batch mode: it reads and writes the
 // same session engine and transcript, so a conversation round-trips through
@@ -12,12 +11,14 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
-	"github.com/muesli/termenv"
 )
 
 // supportedThemes lists the render themes the user can pick from (issue
@@ -40,12 +41,18 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if !isSupportedTheme(theme) {
 		theme = config.DefaultTheme
 	}
+	// The "auto" theme (issue #129) resolves to dark/light by the terminal
+	// background, mirroring glamour v1's WithAutoStyle. glamour v2 is pure — it
+	// always renders the same output for the same style — and Bubble Tea v2
+	// downsamples colors at the output layer, so the v1 WithColorProfile forcing
+	// (termenv.ANSI256) is dropped (pass 4, issue #148). The TUI is the only
+	// caller and always runs on a color-capable TTY (the boot guard refuses
+	// non-interactive contexts), so no notty fallback is needed here.
+	if theme == "auto" {
+		theme = autoTheme()
+	}
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylePath(theme),
-		// Force a color profile: in a non-TTY/test sink glamour defaults to
-		// no-color, but the TUI always renders to a color-capable terminal
-		// (spec §9, Ghostty primary). ANSI-256 is the portable floor.
-		glamour.WithColorProfile(termenv.ANSI256),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {
@@ -56,6 +63,27 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
 	return strings.TrimSuffix(out, "\n"), nil
+}
+
+// autoTheme resolves the "auto" theme once and caches it: background
+// detection queries the terminal, and RenderMarkdown runs per frame during a
+// stream, so the query must not repeat every render (termenv v1 cached the
+// same detection internally). Detection happens on first use — always inside
+// the interactive TUI, which the boot guard restricts to a real terminal.
+var (
+	autoThemeOnce     sync.Once
+	autoThemeResolved string
+)
+
+func autoTheme() string {
+	autoThemeOnce.Do(func() {
+		if lipgloss.HasDarkBackground(os.Stdin, os.Stdout) {
+			autoThemeResolved = "dark"
+		} else {
+			autoThemeResolved = "light"
+		}
+	})
+	return autoThemeResolved
 }
 
 // isSupportedTheme reports whether theme is one of the 7 supported render

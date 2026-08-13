@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // This file covers the T2 scroll-navigation seam (issue #120): the history
@@ -23,18 +23,18 @@ func scrollOverflowModel(t *testing.T) Model {
 	// Hydrate the persisted viewport with the current content so navigation has
 	// a real scroll range.
 	got, _, _ := followRendered(m)
-	if vp := m.histViewport; vp == nil || vp.TotalLineCount() <= vp.Height {
+	if vp := m.histViewport; vp == nil || vp.TotalLineCount() <= vp.Height() {
 		t.Fatalf("test must overflow: viewport lines (%d) should exceed height (%d), got render:\n%s", mustVpLines(m), mustVpHeight(m), got)
 	}
 	return m
 }
 
 func mustVpLines(m Model) int  { return m.histViewport.TotalLineCount() }
-func mustVpHeight(m Model) int { return m.histViewport.Height }
+func mustVpHeight(m Model) int { return m.histViewport.Height() }
 
 // scrollOffset returns the persisted viewport's current Y offset.
 func scrollOffset(m Model) int {
-	return m.histViewport.YOffset
+	return m.histViewport.YOffset()
 }
 
 // TestScroll_pagingKeysNavigateTranscript asserts PgUp/PgDn move the transcript
@@ -49,27 +49,27 @@ func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 	}
 
 	// PgUp moves up by (roughly) a viewport height.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	up := scrollOffset(m)
 	if up >= start {
 		t.Errorf("PgUp must move the transcript up: offset %d -> %d", start, up)
 	}
 
 	// Home jumps straight to the top.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyHome})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	if top := scrollOffset(m); top != 0 {
 		t.Errorf("Home should jump to the transcript top, got offset %d", top)
 	}
 
 	// PgDn moves back down by (roughly) a viewport height.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown})
 	down := scrollOffset(m)
 	if down <= 0 {
 		t.Errorf("PgDn must move the transcript down from the top, got offset %d", down)
 	}
 
 	// End jumps to the newest output (the bottom).
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnd})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
 	if !m.histViewport.AtBottom() {
 		t.Errorf("End should jump to the transcript bottom, got offset %d", scrollOffset(m))
 	}
@@ -87,7 +87,7 @@ func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 	start := scrollOffset(m)
 
 	// Scroll up and confirm follow broke.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	if m.histFollow {
 		t.Errorf("scrolling up must break follow (histFollow should be false)")
 	}
@@ -104,13 +104,14 @@ func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 }
 
 // wheelMsg builds a mouse-wheel scroll event so the T2 wheel seam can be
-// driven through the model's Update (issue #120 AC1).
+// driven through the model's Update (issue #120 AC1). bubbletea v2 delivers
+// the wheel as its own tea.MouseWheelMsg (pass 2, issue #146).
 func wheelMsg(up bool) tea.Msg {
-	btn := tea.MouseButtonWheelDown
+	btn := tea.MouseWheelDown
 	if up {
-		btn = tea.MouseButtonWheelUp
+		btn = tea.MouseWheelUp
 	}
-	return tea.MouseMsg{Action: tea.MouseActionPress, Button: btn}
+	return tea.MouseWheelMsg{Button: btn}
 }
 
 // TestScroll_mouseWheelNavigatesTranscript asserts the mouse wheel scrolls the
@@ -132,7 +133,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 
 	// Wheel down scrolls back toward the newest; reaching the bottom re-engages
 	// follow. Repeatedly scroll down to the bottom from the top to guarantee it.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyHome})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	for i := 0; i < 50 && !m.histViewport.AtBottom(); i++ {
 		m = mustUpdate(t, m, wheelMsg(false))
 	}
@@ -151,7 +152,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 	m := scrollOverflowModel(t)
 	// Scroll up and confirm follow is broken.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	if m.histFollow {
 		t.Fatalf("precondition: PgUp must break follow")
 	}
@@ -189,15 +190,15 @@ func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {
 	}
 
 	// Paging the transcript leaves the composer value (and focus) untouched.
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyHome})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
 	if got := m.composer.Value(); got != "typed" {
 		t.Errorf("paging must not touch the composer value, got %q", got)
 	}
 	// Arrow keys still move the composer cursor (transcript arrow navigation
 	// is intentionally not wired so composer editing keeps primacy, AC4).
 	before := m.composer.LineInfo().ColumnOffset
-	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyLeft})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
 	if after := m.composer.LineInfo().ColumnOffset; after >= before {
 		t.Errorf("left arrow should move the composer cursor left, got col %d -> %d", before, after)
 	}

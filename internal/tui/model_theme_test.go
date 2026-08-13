@@ -20,7 +20,7 @@ func TestModel_unknownThemeStartupWarning(t *testing.T) {
 	cfg.Theme = "bogus"
 	m := NewModelCfg(Dependencies{Config: cfg})
 
-	first := m.View()
+	first := view(m)
 	if !strings.Contains(first, "unknown theme") {
 		t.Errorf("first view missing unknown-theme warning, got: %q", first)
 	}
@@ -34,7 +34,7 @@ func TestModel_unknownThemeStartupWarning(t *testing.T) {
 	// The warning is one-time: once any message lands (here a resize), it must
 	// not appear on the next frame.
 	m = resize(t, m)
-	if second := m.View(); strings.Contains(second, "unknown theme") {
+	if second := view(m); strings.Contains(second, "unknown theme") {
 		t.Errorf("warning repeated on second frame, got: %q", second)
 	}
 }
@@ -47,7 +47,7 @@ func TestModel_validThemeNoWarning(t *testing.T) {
 	m := NewModelCfg(Dependencies{Config: cfg})
 	m = resize(t, m)
 
-	if view := m.View(); strings.Contains(view, "unknown theme") {
+	if view := view(m); strings.Contains(view, "unknown theme") {
 		t.Errorf("valid theme must not warn, got: %q", view)
 	}
 }
@@ -69,12 +69,12 @@ func TestModel_statusNoteIsOneShot(t *testing.T) {
 
 	m = keypressCtrlO(t, m) // sets the "copied" note
 
-	if view := m.View(); !strings.Contains(view, "copied") {
+	if view := view(m); !strings.Contains(view, "copied") {
 		t.Fatalf("expected copy note on the frame after Ctrl+O, got: %q", view)
 	}
 	// A follow-up event (another resize) clears the note.
 	m = resize(t, m)
-	if view := m.View(); strings.Contains(view, "copied") {
+	if view := view(m); strings.Contains(view, "copied") {
 		t.Errorf("copy note repeated after a later update, got: %q", view)
 	}
 }

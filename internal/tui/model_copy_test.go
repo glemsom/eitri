@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestModel_ctrlOCopiesTranscript drives a one-turn conversation, presses
@@ -40,8 +40,8 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 	if strings.Contains(copied, "\x1b[") {
 		t.Errorf("copied text must be ANSI-free plain text, got: %q", copied)
 	}
-	if !strings.Contains(m.View(), "copied") {
-		t.Errorf("expected a copy success note in view, got: %q", m.View())
+	if !strings.Contains(view(m), "copied") {
+		t.Errorf("expected a copy success note in view, got: %q", view(m))
 	}
 }
 
@@ -73,8 +73,8 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 			t.Errorf("`/copy` must not reach the engine seam, got prompt %q", p)
 		}
 	}
-	if !strings.Contains(m.View(), "copied") {
-		t.Errorf("expected a copy success note in view, got: %q", m.View())
+	if !strings.Contains(view(m), "copied") {
+		t.Errorf("expected a copy success note in view, got: %q", view(m))
 	}
 }
 
@@ -93,8 +93,8 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 
 	m = keypressCtrlO(t, m)
 
-	if !strings.Contains(m.View(), "copy failed") {
-		t.Errorf("expected a copy failure note in view, got: %q", m.View())
+	if !strings.Contains(view(m), "copy failed") {
+		t.Errorf("expected a copy failure note in view, got: %q", view(m))
 	}
 }
 
@@ -137,8 +137,8 @@ func TestModel_copySlashShowsInCompletion(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/")
-	if !strings.Contains(m.View(), "/copy") {
-		t.Errorf("bare `/` completion should list /copy, got: %q", m.View())
+	if !strings.Contains(view(m), "/copy") {
+		t.Errorf("bare `/` completion should list /copy, got: %q", view(m))
 	}
 
 	// Tab cycles /settings then /copy.
@@ -155,6 +155,6 @@ func TestModel_copySlashShowsInCompletion(t *testing.T) {
 // keypressCtrlO sends Ctrl+O to the model and returns the updated model.
 func keypressCtrlO(t *testing.T, m Model) Model {
 	t.Helper()
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	return asModel(t, nm)
 }

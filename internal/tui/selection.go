@@ -3,16 +3,16 @@ package tui
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // This file implements the T6 drag-select copy seam (issue #124): a click-drag
 // over the history viewport highlights a cell range, and releasing the drag
 // copies the selected plain-text range to the clipboard. Selection is
-// hand-rolled from raw mouse cell state over the wrapped-lines transcript —
-// no bubbles v2 upgrade (the Highlighter/selection API lives in bubbles v2
-// which moved module paths, breaking the pinned v1 dependency tree).
+// hand-rolled from raw mouse cell state over the wrapped-lines transcript,
+// built on bubbletea v2's per-type mouse messages (tea.MouseClickMsg /
+// MouseMotionMsg / MouseReleaseMsg).
 //
 // Coordinates are tracked in *content* space, not screen space: line indexes
 // the full rendered history content (the same line array the persisted
@@ -40,24 +40,26 @@ func (d *dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
 }
 
 // updateMouse applies one mouse event to the model: wheel events scroll the
-// history viewport (T2, issue #120); a left-button press inside the history
+// history viewport (T2, issue #120); a left-button click inside the history
 // region starts a drag selection, motion extends it (clamped to the rendered
 // content), and release copies the selected plain-text range to the clipboard
 // through the same seam as Ctrl+O and /copy (T6, issue #124). Events outside
 // the history region and wheel events never touch the composer, so editing
 // focus is preserved (issue #124 AC4). Mouse input is ignored while the
-// Settings surface or the continuation prompt owns the screen.
+// Settings surface or the continuation prompt owns the screen. In bubbletea v2
+// the mouse event is an interface: wheel/click/motion/release arrive as their
+// own concrete message types instead of a single MouseMsg with an Action.
 func (m *Model) updateMouse(msg tea.MouseMsg) {
-	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+	switch msg := msg.(type) {
+	case tea.MouseWheelMsg:
 		m.navigateMouse(msg)
 		return
-	}
-	if m.settings != nil || m.prompting {
-		return
-	}
-	switch msg.Action {
-	case tea.MouseActionPress:
-		if msg.Button != tea.MouseButtonLeft {
+	case tea.MouseClickMsg:
+		// A left-button press starts a drag selection over the history.
+		if m.settings != nil || m.prompting {
+			return
+		}
+		if msg.Button != tea.MouseLeft {
 			return
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
@@ -69,7 +71,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			anchorLine: line, anchorCol: col,
 			endLine: line, endCol: col,
 		}
-	case tea.MouseActionMotion:
+	case tea.MouseMotionMsg:
 		if m.dragSel == nil {
 			return
 		}
@@ -80,7 +82,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.dragSel.endLine = line
 		m.dragSel.endCol = col
 		m.dragSel.moved = true
-	case tea.MouseActionRelease:
+	case tea.MouseReleaseMsg:
 		d := m.dragSel
 		m.dragSel = nil
 		if d == nil || !d.moved {
@@ -98,7 +100,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 // below it — or the viewport has not been sized yet.
 func (m Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	vp := m.histViewport
-	if vp == nil || vp.Height <= 0 || m.height <= 0 {
+	if vp == nil || vp.Height() <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
 	// The scroll region occupies the rows between the review overlay (when
@@ -115,10 +117,10 @@ func (m Model) mouseToContent(x, y int) (line, col int, ok bool) {
 		return 0, 0, false
 	}
 	row := y - reviewLines
-	if row < 0 || row >= vp.Height {
+	if row < 0 || row >= vp.Height() {
 		return 0, 0, false
 	}
-	line = vp.YOffset + row
+	line = vp.YOffset() + row
 	if line < 0 || line >= len(m.historyPlainLines()) {
 		return 0, 0, false
 	}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestModelStatusStripRenders asserts a status strip renders in the TUI view
@@ -23,17 +23,17 @@ func TestModelStatusStripRenders(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	view := m.View()
-	if !strings.Contains(view, "cache:80%") {
-		t.Errorf("status strip missing cache gauge, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "cache:80%") {
+		t.Errorf("status strip missing cache gauge, got: %q", content)
 	}
-	if !strings.Contains(view, "cost:$") {
-		t.Errorf("status strip missing cost, got: %q", view)
+	if !strings.Contains(content, "cost:$") {
+		t.Errorf("status strip missing cost, got: %q", content)
 	}
 	// 100k hit @0.0028/1M + 25k miss @0.14/1M + 10k output @0.28/1M.
 	// = 0.00028 + 0.0035 + 0.0028 = $0.00658.
-	if !strings.Contains(view, "cost:$0.00658") {
-		t.Errorf("status strip cost mismatch, got: %q", view)
+	if !strings.Contains(content, "cost:$0.00658") {
+		t.Errorf("status strip cost mismatch, got: %q", content)
 	}
 }
 
@@ -61,8 +61,8 @@ func TestModelStatusStripDrainsLiveUpdates(t *testing.T) {
 	nm, _ := m.Update(msg)
 	m = asModel(t, nm)
 
-	if !strings.Contains(m.View(), "cache:90%") {
-		t.Errorf("strip cache gauge did not update after drain, got: %q", m.View())
+	if !strings.Contains(view(m), "cache:90%") {
+		t.Errorf("strip cache gauge did not update after drain, got: %q", view(m))
 	}
 }
 
@@ -80,11 +80,11 @@ func TestModelStatusStripCollapsesNarrow(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
 	m = asModel(t, nm)
 
-	view := m.View()
-	if strings.Contains(view, "deepseek-v4-flash") {
-		t.Errorf("narrow strip should drop the model name, got: %q", view)
+	content := view(m)
+	if strings.Contains(content, "deepseek-v4-flash") {
+		t.Errorf("narrow strip should drop the model name, got: %q", content)
 	}
-	if !strings.Contains(view, "cache:") || !strings.Contains(view, "cost:$") {
-		t.Errorf("narrow strip must keep gauge+cost, got: %q", view)
+	if !strings.Contains(content, "cache:") || !strings.Contains(content, "cost:$") {
+		t.Errorf("narrow strip must keep gauge+cost, got: %q", content)
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestModel_slashSettingsOpensSurface verifies the `/settings` slash command
@@ -34,8 +34,8 @@ func TestModel_slashSettingsOpensSurface(t *testing.T) {
 	if prompted != "" {
 		t.Fatalf("`/settings` must not reach the engine seam, got prompt %q", prompted)
 	}
-	if !strings.Contains(m.View(), "Eitri Settings") {
-		t.Fatalf("settings view %q missing title", m.View())
+	if !strings.Contains(view(m), "Eitri Settings") {
+		t.Fatalf("settings view %q missing title", view(m))
 	}
 }
 
@@ -56,12 +56,12 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 
 	// A bare `/` lists the built-in settings command and the detected skills.
 	m = typeText(t, m, "/")
-	view := m.View()
-	if !strings.Contains(view, "/settings") {
-		t.Errorf("bare `/` completion should list /settings, got: %q", view)
+	content := view(m)
+	if !strings.Contains(content, "/settings") {
+		t.Errorf("bare `/` completion should list /settings, got: %q", content)
 	}
-	if !strings.Contains(view, "/review") || !strings.Contains(view, "/plan") {
-		t.Errorf("bare `/` completion should list detected skills, got: %q", view)
+	if !strings.Contains(content, "/review") || !strings.Contains(content, "/plan") {
+		t.Errorf("bare `/` completion should list detected skills, got: %q", content)
 	}
 
 	// A non-command slash line (e.g. a real path) still submits as a normal
@@ -77,7 +77,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/usr/bin/env")
-	out, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	out, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = asModel(t, out)
 	if cmd == nil {
 		t.Fatalf("`/usr/bin/env` should submit as a normal turn, got nil cmd")
@@ -115,7 +115,7 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 		t.Fatalf("third tab completion = %q, want /review", got)
 	}
 	// The completed line renders with the selected candidate marked up.
-	if !strings.Contains(m.View(), "▸ /review") {
-		t.Fatalf("completion selection marker missing, got: %q", m.View())
+	if !strings.Contains(view(m), "▸ /review") {
+		t.Fatalf("completion selection marker missing, got: %q", view(m))
 	}
 }
