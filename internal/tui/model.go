@@ -329,7 +329,7 @@ func NewModelCfg(d Dependencies) Model {
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
-		clipboard:       d.Clipboard,
+		clipboard:       newClipboard(d),
 	}
 }
 
@@ -862,6 +862,21 @@ func skillSnapshot(d Dependencies) []SkillItem {
 	return nil
 }
 
+// toolEntryHead renders the compact one-line `⊕ tool  args` head shared by the
+// transcript entry (issue #84) and the clipboard copy (issue #123): the tool
+// name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
+func toolEntryHead(te toolEntry) string {
+	head := "⊕ " + te.name
+	if arg := toolArgsHint(te.args); arg != "" {
+		head += "  " + arg
+	}
+	// Line-delta tag for file-edit tools (issue #84 AC3).
+	if te.name == "edit" || te.name == "write" {
+		head += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+	}
+	return head
+}
+
 // copyTranscript copies the plain-text transcript to the system clipboard
 // through the injected seam (issue #123): Ctrl+O and /copy both route here. The
 // outcome is surfaced as a band status note ("copied" or "copy failed: …");
@@ -898,10 +913,7 @@ func (m Model) transcriptText() string {
 			if te.anchor != i {
 				continue
 			}
-			b.WriteString("⊕ " + te.name)
-			if arg := toolArgsHint(te.args); arg != "" {
-				b.WriteString("  " + arg)
-			}
+			b.WriteString(toolEntryHead(te))
 			b.WriteString("\n")
 			if te.complete && te.result != "" {
 				b.WriteString("  " + strings.ReplaceAll(strings.TrimRight(te.result, "\n"), "\n", "\n  ") + "\n")
@@ -1529,15 +1541,7 @@ func renderSkillsPanel(b *strings.Builder, skills []SkillItem) {
 // nothing is silently truncated — every collapse has an expand path.
 func renderToolEntry(te toolEntry, expanded bool) string {
 	var b strings.Builder
-	head := "⊕ " + te.name
-	if arg := toolArgsHint(te.args); arg != "" {
-		head += "  " + arg
-	}
-	// Line-delta tag for file-edit tools (issue #84 AC3).
-	if te.name == "edit" || te.name == "write" {
-		head += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
-	}
-	b.WriteString(statusStyle.Render(head))
+	b.WriteString(statusStyle.Render(toolEntryHead(te)))
 	b.WriteString("\n")
 
 	if !expanded {
