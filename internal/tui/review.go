@@ -19,6 +19,13 @@ var (
 	diffDel = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
+// reviewRegionMax caps the review overlay's own height-clipped region (issue
+// T06 AC1): an expanded diff taller than this clips at the region boundary
+// instead of overflowing the terminal and pushing the fixed bottom band
+// (composer) off-screen. The cap keeps the changed-file header + list readable
+// on large terminals while still leaving the transcript viewport visible below.
+const reviewRegionMax = 12
+
 // reviewEntry is one changed file surfaced in the review panel (issue #90): its
 // host path, the before/after full content captured across the edit/write
 // tool call (which the engine seam reported as pure telemetry, never affecting

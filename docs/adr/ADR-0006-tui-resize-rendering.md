@@ -88,6 +88,17 @@ screen mode.
   rail overflowing while the history clips. The rail's auto-show/hide also
   responds to terminal height as well as width (`railShowHeight` gates
   `railVisible` alongside `railShowWidth`); `ctrl+b` still overrides on any size.
+- Decision 6's overlay-region work is implemented (issue #110 / T06): the
+  review panel renders in its own height-clipped region — `renderPane` clips the
+  overlay to at most `reviewRegionMax` rows (and never more than the terminal
+  leaves after the fixed band), so a tall expanded diff clips instead of pushing
+  the composer off-screen; `clipReviewRegion` keeps the header + file list and
+  drops the diff tail, and the history viewport (now taking `reserved` rows =
+  band + review) keeps the band bottom-pinned. Settings and the continuation
+  prompt remain fixed full-surface regions that return first from `View()` and
+  capture keys (`updateSettings`/`updatePrompt`), so they stay focused;
+  slash-completion stays pinned above the composer in the fixed band. Keyboard
+  routing to each overlay is unchanged.
 - Resize feels correct rather than merely non-broken: the composer stays put
   and a drag-resize does not re-render the whole history.
 - A future ADR may obsolete this one if Eitri adopts an alternate-screen focus

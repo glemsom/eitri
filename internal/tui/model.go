@@ -997,21 +997,34 @@ func widthBucket(width int) int {
 // the history scrolls.
 
 func (m Model) renderPane() string {
-	var overlay, band strings.Builder
+	var band strings.Builder
+	m.renderBand(&band)
+	bandStr := band.String()
+
 	// Overlay region: the review panel takes over the top of the pane (Layout B,
 	// issue #90), showing the dense changed-file summary + inline diff above the
-	// transcript. Settings and the continuation prompt are also overlays but
-	// return earlier from View() as their own full-surface regions.
+	// transcript. It is its own height-clipped region (issue T06): a tall
+	// expanded diff clips instead of overflowing the terminal, so the fixed
+	// bottom band stays pinned. Settings and the continuation prompt are also
+	// overlays but return earlier from View() as their own full-surface regions.
+	var review strings.Builder
+	reviewStr := ""
+	reviewLines := 0
 	if m.review != nil {
-		m.renderReview(&overlay)
+		m.renderReview(&review)
+		reviewStr = review.String()
+		reviewLines = m.reviewRegionRows(reviewStr, lineCount(bandStr))
 	}
+
 	// The scroll region is served from the width-bucket cache (ADR-0006
 	// decision 4, issue T03) so a resize reuses prior rendered history rather
 	// than re-running the whole markdown pass each tick.
 	histContent := m.historyContent()
-	m.renderBand(&band)
-	bandStr := band.String()
-	return overlay.String() + m.renderHistoryViewport(histContent, lineCount(bandStr)) + bandStr
+	if m.review != nil {
+		// The review region is its own height-clipped overlay (issue T06).
+		reviewStr = clipReviewRegion(reviewStr, reviewLines)
+	}
+	return reviewStr + m.renderHistoryViewport(histContent, lineCount(bandStr)+reviewLines) + bandStr
 }
 
 // historyContent returns the scroll region's rendered content, bounded per
@@ -1041,8 +1054,9 @@ func (m Model) historyContent() string {
 
 // renderHistoryViewport returns the Height-clamped scroll region (ADR-0006
 // decision 3, issue T02): the rendered history content limited to the rows the
-// fixed bottom band does not occupy, so the band stays pinned at the very
-// bottom and only the history clips. Until the first resize lands (m.height ==
+// non-reserved regions (the fixed bottom band, plus the review overlay when
+// open — issue T06) do not occupy, so the band stays pinned at the very bottom
+// and only the history clips. Until the first resize lands (m.height ==
 // 0) the history renders unclamped — the historical pre-resize behaviour, kept
 // for lean embeds and tests that never size.
 //
@@ -1053,19 +1067,59 @@ func (m Model) historyContent() string {
 // #107) arrives with the T04 live-follow seam (issue #108); decision 6 keeps
 // paging/mouse routing off here. Line endings are preserved so the primary
 // buffer's native selection/scrollback stay clean (ADR-0006 decision 1).
-func (m Model) renderHistoryViewport(content string, bandLines int) string {
+func (m Model) renderHistoryViewport(content string, reserved int) string {
 	if m.height <= 0 {
 		return content
 	}
-	vh := m.height - bandLines
+	vh := m.height - reserved
 	if vh <= 0 {
-		// The fixed band occupies the whole terminal; no room for history.
+		// The non-scroll regions occupy the whole terminal; no room for history.
 		return ""
 	}
 	return visibleHistory(content, vh)
 }
 
 // visibleHistory returns the visible, bottom-anchored slice of the history
+
+// reviewRegionRows returns how many rows the review overlay region may occupy
+// when open (issue T06 AC1): at most reviewRegionMax rows, and never more than
+// the terminal leaves after the fixed bottom band, so a tall expanded diff clips
+// instead of pushing the band (composer) off-screen while leaving the header +
+// file list readable. content is the fully rendered review; bandLines is the
+// fixed band's row count (already line-counted by the caller).
+func (m Model) reviewRegionRows(content string, bandLines int) int {
+	rrows := lineCount(content)
+	capRows := reviewRegionMax
+	if m.height > 0 {
+		avail := m.height - bandLines
+		if avail < capRows {
+			capRows = avail
+		}
+		if capRows < 0 {
+			capRows = 0
+		}
+	}
+	if rrows > capRows {
+		return capRows
+	}
+	return rrows
+}
+
+// clipReviewRegion keeps the first n rows of the rendered review region and
+// discards the tail, so an over-height diff clips at the review region boundary
+// (issue T06 AC1) instead of flowing over the history/band. A trailing newline
+// is preserved so the region stays cleanly separated from the scroll region.
+func clipReviewRegion(content string, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if n < len(lines) {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
 // content: the last vh lines, or the whole content when it fits. It is a pure
 // function of the rendered history and the available height — no viewport state
 // is kept on the model until T03/T04 add the persisted scroll/cache.
