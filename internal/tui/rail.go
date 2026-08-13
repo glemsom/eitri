@@ -130,18 +130,23 @@ func formatTokens(n int) string {
 }
 
 // rail constants: railWidth is the fixed right-pane width in columns;
-// railShowWidth is the terminal width below which the rail auto-hides so the
-// primary buffer keeps native full-width selection/scrollback (issue #88 AC3).
+// railShowWidth / railShowHeight are the terminal size below which the rail
+// auto-hides, so a pane too narrow or too short to be useful (or to leave room
+// for the primary buffer's native full-width selection / scrollback) stays off
+// (issue #88 AC3; ADR-0006 decision 5, issue T05).
 const (
-	railWidth     = 30
-	railShowWidth = 120
+	railWidth      = 30
+	railShowWidth  = 120
+	railShowHeight = 24
 )
 
 // railVisible reports whether the right context rail should render now. When
-// the user has not explicitly toggled it (railAuto), it follows width: shown
-// only on wide windows (>= railShowWidth) and auto-hidden narrow. Once the user
+// the user has not explicitly toggled it (railAuto), it follows size: shown
+// only on windows that are both wide (>= railShowWidth) and tall (>
+// railShowHeight) so it never steals vertical room from the fixed bottom band
+// on a short terminal (ADR-0006 decision 5, issue T05 AC2). Once the user
 // presses ctrl+b the choice becomes explicit (railShown), so the rail toggles
-// on any width (issue #88 AC1/AC3).
+// on any size (issue #88 AC1/AC3).
 func (m Model) railVisible() bool {
 	if m.rail == nil {
 		return false
@@ -149,7 +154,7 @@ func (m Model) railVisible() bool {
 	if !m.railAuto {
 		return m.railShown
 	}
-	return m.width >= railShowWidth
+	return m.width >= railShowWidth && m.height >= railShowHeight
 }
 
 // toggleRail flips the rail's explicit visibility and re-syncs the composer
@@ -194,8 +199,21 @@ func (m *Model) syncWidths() {
 
 // styledRail frames the rail's rendered sections into a fixed-width right
 // column with a left border, so it reads as a distinct state pane alongside the
-// transcript (Layout A, issue #88) without escaping the primary buffer.
-func styledRail(content string) string {
+// transcript (Layout A, issue #88) without escaping the primary buffer. It
+// height-clamps the content to maxHeight rows when non-negative so the rail
+// honours the same visible height as the history viewport (ADR-0006 decision 5,
+// issue T05): the two panes form one coherent row instead of the rail
+// overflowing while the history clips. The clamp keeps the rail's top sections
+// (STATS / CONTEXT / start of MODEL) and drops the tail; a negative maxHeight
+// (no resize landed) leaves the rail unclamped.
+func styledRail(content string, maxHeight int) string {
+	if maxHeight >= 0 {
+		trimmed := strings.TrimRight(content, "\n")
+		lines := strings.Split(trimmed, "\n")
+		if maxHeight < len(lines) {
+			content = strings.Join(lines[:maxHeight], "\n")
+		}
+	}
 	return lipgloss.NewStyle().
 		Width(railWidth).
 		PaddingLeft(1).

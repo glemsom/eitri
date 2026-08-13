@@ -81,6 +81,13 @@ screen mode.
   resize bursts coalesce to a single re-render instead of re-running the whole
   `RenderMarkdown` pass every tick. The persisted `bubbletea/viewport` scroll
   component's position + follow behaviour lands with T04.
+- Decision 5 is implemented (issue #109 / T05): the right context rail honours
+  the same visible height as the history region — `styledRail` height-clamps the
+  rendered rail to the rows the fixed bottom band does not occupy
+  (`railClampHeight`), so the two panes form one coherent row instead of the
+  rail overflowing while the history clips. The rail's auto-show/hide also
+  responds to terminal height as well as width (`railShowHeight` gates
+  `railVisible` alongside `railShowWidth`); `ctrl+b` still overrides on any size.
 - Resize feels correct rather than merely non-broken: the composer stays put
   and a drag-resize does not re-render the whole history.
 - A future ADR may obsolete this one if Eitri adopts an alternate-screen focus

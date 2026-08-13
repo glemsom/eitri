@@ -119,6 +119,36 @@ func TestModelRailToggles(t *testing.T) {
 	}
 }
 
+// TestModelRailAutoHidesShort asserts the rail auto-shows only when the
+// terminal is tall enough to host it beside the fixed bottom band, alongside
+// the width gate (ADR-0006 decision 5, issue T05 AC2): a wide-but-short window
+// auto-hides the rail just like a narrow one. ctrl+b still forces it open on
+// any size.
+func TestModelRailAutoHidesShort(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
+	m := NewModelCfg(Dependencies{
+		Turn:      fakeSess("hi"),
+		Telemetry: te,
+		Rail:      r,
+	})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 10})
+	m = asModel(t, nm)
+
+	if m.railVisible() {
+		t.Fatal("rail must auto-hide on a wide-but-short window")
+	}
+	// ctrl+b still opens it on any size.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	m = asModel(t, nm)
+	if !m.railVisible() {
+		t.Fatal("ctrl+b must open the rail on a short window")
+	}
+	if !strings.Contains(m.View(), "STATS") {
+		t.Errorf("open rail missing STATS section, got: %q", m.View())
+	}
+}
+
 // TestModelRailAutoHidesNarrow asserts the rail auto-hides below ~120 cols so
 // the primary buffer keeps full-width selection (issue #88 AC3), and ctrl+b
 // still forces it open on a narrow window.
@@ -173,6 +203,38 @@ func TestModelRailLiveUpdates(t *testing.T) {
 
 	if !strings.Contains(m.View(), "cache 90%") {
 		t.Errorf("open rail not live-updating cache gauge, got: %q", m.View())
+	}
+}
+
+// TestModelRailHeightMatchesHistory asserts the right rail honours the same
+// visible height as the history region (ADR-0006 decision 5, issue T05 AC1):
+// in a sized window where the rail content alone would overflow, the rail
+// clips to the same row height as the history viewport so the two panes form
+// one coherent row and the whole view stays within the terminal height.
+func TestModelRailHeightMatchesHistory(t *testing.T) {
+	m := newTallHistoryModel(t)
+	// Wire a rail whose STATS/CONTEXT/MODEL block is taller than the available
+	// history viewport in a short window.
+	m.deps.Rail = NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	m.rail = m.deps.Rail
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
+	m = asModel(t, nm)
+	// ctrl+b forces the rail open on any size (AC3); auto-show would gate on
+	// the short height.
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	m = asModel(t, nm)
+
+	if !m.railVisible() {
+		t.Fatal("ctrl+b must force the rail open")
+	}
+	view := m.View()
+
+	// The rail is clipped to the same height as the history viewport, so even
+	// though the raw rail block is ~16 lines the whole joined row stays within
+	// the terminal height. Before the clip the rail overflows independently
+	// while the history clips.
+	if n := len(strings.Split(strings.TrimRight(view, "\n"), "\n")); n > 12 {
+		t.Errorf("view (%d lines) exceeds terminal height 12 with the rail open, got:\n%q", n, view)
 	}
 }
 

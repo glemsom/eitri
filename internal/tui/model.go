@@ -936,9 +936,39 @@ func (m Model) View() string {
 	// transcript re-wraps to the freed space).
 	left := m.renderPane()
 	if m.rail != nil && m.railVisible() {
-		return lipgloss.JoinHorizontal(lipgloss.Top, left, styledRail(m.rail.render(m.telemetry, m.skills)))
+		right := styledRail(m.rail.render(m.telemetry, m.skills), m.railClampHeight())
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
 	return left
+}
+
+// railClampHeight returns the maximum number of rows the right context rail may
+// occupy so it matches the history region's visible height (ADR-0006 decision
+// 5, issue T05 AC1): both panes clamp to the rows left over by the fixed bottom
+// band, so the two form one coherent row. It is -1 before the first resize
+// lands, leaving the rail unclamped — mirroring renderHistoryViewport; a
+// non-negative result is the actual row budget (0 when the band fills the whole
+// terminal, in which case the rail renders nothing).
+func (m Model) railClampHeight() int {
+	if m.height <= 0 {
+		return -1
+	}
+	// The rail shares the history viewport's vertical budget: terminal height
+	// minus whatever the fixed bottom band occupies.
+	vh := m.height - m.bandHeight()
+	if vh < 0 {
+		return 0
+	}
+	return vh
+}
+
+// bandHeight returns how many terminal rows the fixed bottom band (status
+// strip, slash completion, composer) occupies, so the scroll region and the
+// right rail can clamp to the rows it leaves behind (ADR-0006 decision 3/5).
+func (m Model) bandHeight() int {
+	var band strings.Builder
+	m.renderBand(&band)
+	return lineCount(band.String())
 }
 
 // widthBucketCols is the width granularity of the history render cache: the
