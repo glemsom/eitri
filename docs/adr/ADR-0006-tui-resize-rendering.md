@@ -58,7 +58,11 @@ screen mode.
   scroll still reads it, but only over the latest painted frame.
 - `renderPane`/`View` move from one linear string to explicit ordered regions
   (scroll region + fixed band + overlay regions) — a structural refactor, done
-  first so behaviour is preserved.
+  first so behaviour is preserved. The region seam is implemented (issue #105):
+  `renderHistory` (scroll region), `renderBand` (fixed band), and the
+  review/settings/prompt overlays render independently and are composed in
+  order by `renderPane`/`View`, with byte-identical output to the former single
+  string.
 - Settings, the continuation prompt, the review panel, and slash-completion get
   dedicated overlay regions: review its own height-clipped region, settings and
   the prompt a fixed region, slash-completion pinned above the composer.
