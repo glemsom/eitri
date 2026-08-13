@@ -87,6 +87,8 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		ReasoningEffort: reasoningEffortControl(req),
 		MaxOutputTokens: maxOutputTokens(req),
 		ResponseFormat:  jsonObjectModeControl(req),
+		Temperature:     samplingTemperatureControl(req),
+		TopP:            samplingTopPControl(req),
 	})
 	if err != nil {
 		return nil, err
@@ -135,6 +137,15 @@ type chatCompletionBody struct {
 	// response_format:{type:json_object}; nil on ordinary turns so the field is
 	// omitted and the request head stays byte-stable.
 	ResponseFormat *jsonObjectMode `json:"response_format,omitempty"`
+	// Temperature is the wire-backed temperature Sampling Policy (issue #61):
+	// non-nil on a special turn that requests temperature-based sampling. It is
+	// mutually exclusive with TopP — the sampling seam emits exactly one of the
+	// two, never both, per the sampling contract (docs/spec.md §13).
+	Temperature *float64 `json:"temperature,omitempty"`
+	// TopP is the wire-backed nucleus (top-p) Sampling Policy (issue #61): non-nil
+	// on a special turn that requests nucleus-based sampling, emitted as top_p.
+	// Mutually exclusive with Temperature.
+	TopP *float64 `json:"top_p,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
@@ -171,13 +182,13 @@ type jsonObjectMode struct {
 }
 
 // SupportedGenerationControls declares that this Chat-Completions client can
-// honor the Generation Budget, JSON Object Mode, and Tool Schema Enforcement
-// controls (it wire-emits max_completion_tokens and response_format on special
-// turns and strict tool manifests when the caller opts in, docs/spec.md §13 /
-// issues #59–#60, #62). Higher layers consult this via NegotiateGenerationControls;
-// the remaining sampling-policy control is not supported here.
+// honor the Generation Budget, JSON Object Mode, Sampling Policy, and Tool
+// Schema Enforcement controls (it wire-emits max_completion_tokens,
+// response_format, temperature/top_p, and strict tool manifests on the relevant
+// special turns, docs/spec.md §13 / issues #59–#62). Higher layers consult this
+// via NegotiateGenerationControls.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlToolSchemaEnforcement}, nil
+	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement}, nil
 }
 
 // maxOutputTokens returns the Generation Budget for req as an int usable as a
@@ -199,6 +210,30 @@ func jsonObjectModeControl(req Request) *jsonObjectMode {
 		return nil
 	}
 	return &jsonObjectMode{Type: "json_object"}
+}
+
+// samplingTemperatureControl returns the pointer to emit as the wire
+// `temperature` when req requests temperature-based sampling (issue #61), else
+// nil so the field is omitted. A request never requests both sampling modes
+// (SamplingPolicy holds exactly one mode), so temperature and top_p are
+// mutually exclusive on the wire.
+func samplingTemperatureControl(req Request) *float64 {
+	if req.Sampling == nil || req.Sampling.Mode != SamplingTemperature {
+		return nil
+	}
+	v := req.Sampling.Value
+	return &v
+}
+
+// samplingTopPControl returns the pointer to emit as the wire `top_p` when req
+// requests nucleus (top-p) sampling (issue #61), else nil so the field is
+// omitted. Mutually exclusive with samplingTemperatureControl.
+func samplingTopPControl(req Request) *float64 {
+	if req.Sampling == nil || req.Sampling.Mode != SamplingNucleus {
+		return nil
+	}
+	v := req.Sampling.Value
+	return &v
 }
 
 // toolsForWire returns the tool manifest to serialize for req. On an ordinary

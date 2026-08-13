@@ -176,6 +176,43 @@ type Request struct {
 	// turns never carry strict and stay byte-identical; internal local
 	// validation remains the safety floor regardless.
 	ToolSchemaEnforcement bool
+
+	// Sampling, when set, opts a special (non-tool) turn into a requested
+	// Sampling Policy (issue #61, docs/spec.md §13): temperature- or
+	// nucleus-based sampling for a constrained generation, emitted on the wire as
+	// temperature or top_p respectively. A policy expresses exactly one of the two
+	// modes, so a provider request can never carry both sampling fields together.
+	// Kept default-nil so ordinary agent/tool turns stay on provider defaults and
+	// the byte-identical request head is preserved for the prompt cache
+	// (docs/spec.md §4).
+	Sampling *SamplingPolicy
+}
+
+// SamplingPolicyMode identifies which wire sampling knob a special turn
+// requests (docs/spec.md §13 / issue #61).
+type SamplingPolicyMode string
+
+// The two supported Sampling Policy modes.
+const (
+	// SamplingTemperature requests temperature-based sampling, emitted on the
+	// wire as temperature.
+	SamplingTemperature SamplingPolicyMode = "temperature"
+	// SamplingNucleus requests nucleus (top-p) sampling, emitted on the wire
+	// as top_p.
+	SamplingNucleus SamplingPolicyMode = "nucleus"
+)
+
+// SamplingPolicy is a special turn's requested sampling: exactly one mode plus
+// its value. A policy always selects one mode, so the wire emission derived from
+// it carries temperature or top_p — never both (issue #61).
+//
+// Value must be in the provider's valid range: [0,2] for temperature and (0,1]
+// for top_p per the OpenAI Chat-Completions contract. Validation of Value is the
+// caller's responsibility; the wire helper clamps nothing and emits the float as
+// given so a special turn's sampling is honored as declared.
+type SamplingPolicy struct {
+	Mode  SamplingPolicyMode
+	Value float64
 }
 
 // NormalizeReasoningEffort maps DeepSeek's legacy effort values to the
