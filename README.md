@@ -46,6 +46,7 @@ are handled by the composer; the shortcuts below drive the agent.
 | Shortcut                   | Context       | Action                          |
 | -------------------------- | ------------- | ------------------------------- |
 | `Enter`                    | Composer      | Send the current prompt (no-op while busy)
+| `Shift+Enter`              | Composer      | Break the prompt onto a new line (multi-line input; plain `Enter` still sends)
 | `ctrl+c`                   | Anywhere      | Quit                            |
 | `ctrl+s`                   | Conversation  | Open the Settings panel         |
 | `esc`                      | Settings      | Cancel / close without saving   |
