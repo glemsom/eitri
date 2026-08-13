@@ -29,7 +29,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedTelemetry(e, te)
+	feedEngineEvents(e, te, tui.NewStreamer())
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -63,7 +63,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedTelemetry(e, te)
+	feedEngineEvents(e, te, tui.NewStreamer())
 
 	// Two runs -> one turn-boundary update each, ahead of the usage update.
 	for i := 0; i < 2; i++ {
@@ -77,5 +77,46 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 		if u.Kind != tui.TelemetryTurn {
 			t.Fatalf("update kind = %v, want TelemetryTurn", u.Kind)
 		}
+	}
+}
+
+// TestFeedEngineEventsBridgesAnswerDelta asserts the engine's streamed
+// AnswerStream deltas are forwarded through the single engine listener into the
+// TUI streaming pane's channel, in stream order, while reasoning deltas are not
+// leaked into the answer pane (issue #83).
+func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
+	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(
+			provider.Chunk{Content: "Hello "},
+			provider.Chunk{ReasoningContent: "(thinking not for the answer pane)"},
+			provider.Chunk{Content: "**glad** to help."},
+			provider.Chunk{Done: true, FinishReason: "stop"},
+		), nil
+	}), mockTranscript{})
+
+	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	stream := tui.NewStreamer()
+	feedEngineEvents(e, te, stream)
+
+	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// The two answer deltas arrive in stream order.
+	want := []string{"Hello ", "**glad** to help."}
+	for _, w := range want {
+		u, ok := <-stream.Updates()
+		if !ok {
+			t.Fatalf("stream channel closed before %q", w)
+		}
+		if u.Delta != w {
+			t.Fatalf("answer delta = %q, want %q", u.Delta, w)
+		}
+	}
+	// Reasoning content must never surface on the answer pane channel.
+	select {
+	case u := <-stream.Updates():
+		t.Fatalf("unexpected extra stream update: %+v (reasoning must not leak into answer pane)", u)
+	default:
 	}
 }

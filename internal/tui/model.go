@@ -32,6 +32,7 @@ type message struct {
 	role      string // "you" or "eitri"
 	content   string
 	reasoning string // assistant chain-of-thought, rendered as a collapsible block
+	streaming bool   // true while this assistant reply is still growing from the answer stream
 }
 
 type turnDoneMsg struct {
@@ -100,6 +101,12 @@ type Dependencies struct {
 	// model, effort, thinking, turns/max, cost, and the cache hit-ratio gauge,
 	// fed live from the engine seam. Nil disables the strip.
 	Telemetry *Telemetry
+	// Stream, when non-nil, feeds the live assistant answer-text stream (issue
+	// #83): the engine's AnswerStream deltas arrive here and the in-progress
+	// assistant message re-renders in place, growing token by token instead of
+	// one full-reply dump on completion. Nil falls back to the historical
+	// blocking answer-on-completion behaviour.
+	Stream *Streamer
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -137,6 +144,13 @@ type Model struct {
 
 	// telemetry is the live status strip state (issue #86); nil disables it.
 	telemetry *Telemetry
+
+	// stream is the live answer-text stream (issue #83); nil disables streaming.
+	stream *Streamer
+	// curStream is the index into messages of the in-progress, incrementally
+	// rendering assistant message being grown by AnswerStream deltas. It is -1
+	// when no assistant reply is currently streaming.
+	curStream int
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -161,6 +175,8 @@ func NewModelCfg(d Dependencies) Model {
 		continueResp: make(chan bool, 1),
 		skills:       skillSnapshot(d),
 		telemetry:    d.Telemetry,
+		stream:       d.Stream,
+		curStream:    -1,
 	}
 }
 
@@ -187,10 +203,14 @@ func internalContinue(req chan struct{}, resp chan bool) bool {
 // the status strip starts refreshing from the engine seam immediately, even
 // with no keyboard input (issue #86).
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
 	if m.telemetry != nil {
-		return telemetryWait(m.telemetry)
+		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
-	return nil
+	if m.stream != nil {
+		cmds = append(cmds, streamWait(m.stream))
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update handles a UI event and returns the next state plus any commands.
@@ -216,6 +236,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.telemetry.apply(msgi.update)
 		return m, telemetryWait(m.telemetry)
+
+	case answerDeltaMsg:
+		// A streamed answer-text delta arrived through the waiting command: grow
+		// the in-progress assistant message in place and immediately re-issue
+		// the waiter so the reply keeps streaming (issue #83). Deltas arriving
+		// after the turn completed (a race with the final delta) are dropped so
+		// they never spawn a spurious assistant message.
+		if m.stream == nil || !m.busy {
+			return m, nil
+		}
+		m.appendAnswerDelta(msgi.delta)
+		return m, streamWait(m.stream)
 
 	case tea.WindowSizeMsg:
 		m.composer.SetWidth(msgi.Width - 2)
@@ -263,6 +295,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
+			m.curStream = -1
+			// With a live answer stream, the composer turn and the stream waiter run
+			// concurrently so the reply grows in place as deltas arrive (issue #83).
+			if m.stream != nil {
+				return m, tea.Batch(m.turnCmd(prompt), streamWait(m.stream))
+			}
 			return m, m.turnCmd(prompt)
 		case "tab":
 			// Fresh `/` with tab completes the skill command: cycling through
@@ -283,8 +321,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case turnDoneMsg:
 		m.busy = false
+		wasStreaming := m.curStream >= 0 && m.curStream < len(m.messages)
 		if msgi.err != nil {
+			// A streaming turn aborting with an error drops the partial reply and
+			// renders the error in its place; the incremental buffer is advisory.
+			m.curStream = -1
 			m.messages = append(m.messages, message{role: "eitri", content: "⚠ " + msgi.err.Error()})
+			return m, nil
+		}
+		if wasStreaming {
+			// Streaming turn: reconcile the incremental buffer with the full
+			// answer. When every delta already arrived the contents match, so
+			// this is a no-op visual diff (no flicker, no lost selection); when
+			// the last delta raced past completion, the full answer guarantees a
+			// correct final render (issue #83 AC1).
+			m.messages[m.curStream].content = msgi.answer
+			m.messages[m.curStream].reasoning = msgi.reasoning
+			m.messages[m.curStream].streaming = false
+			m.curStream = -1
 		} else {
 			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
 		}
@@ -393,6 +447,23 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 		}
 		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning}
 	})
+}
+
+// appendAnswerDelta grows the in-progress assistant message by one streamed
+// answer delta (issue #83). It returns no additional command. On the first
+// delta of a turn it appends a new assistant message and records its index as
+// the current stream target; subsequent deltas extend that same message in
+// place so the Markdown render grows token by token.
+func (m *Model) appendAnswerDelta(delta string) {
+	if delta == "" {
+		return
+	}
+	if m.curStream >= 0 && m.curStream < len(m.messages) && m.messages[m.curStream].streaming {
+		m.messages[m.curStream].content += delta
+		return
+	}
+	m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
+	m.curStream = len(m.messages) - 1
 }
 
 // skillSnapshot captures the detected skills at construction so the panel has

@@ -43,10 +43,12 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		effort = ""
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
-	// Subscribe the live status strip to the engine's per-turn usage/turn/
-	// compaction events (issue #86). Read-only: it only forwards telemetry and
-	// never pauses the running agent loop.
-	feedTelemetry(e, te)
+	stream := tui.NewStreamer()
+	// Subscribe the live status strip and the streaming answer pane to the
+	// engine's per-turn usage/turn/compaction events and AnswerStream deltas
+	// (issues #86, #83). Read-only: it only forwards telemetry and answer text
+	// and never pauses the running agent loop.
+	feedEngineEvents(e, te, stream)
 	m := tui.NewModelCfg(tui.Dependencies{
 		Models: discoveredModels(context.Background(), p),
 		// The workspace directory is surfaced as read-only project state (issue
@@ -55,6 +57,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Config:        cfg,
 		Save:          func(c config.Config) error { return config.Save(c, cfgPath) },
 		Telemetry:     te,
+		Stream:        stream,
 		// The skills panel and `/skillname` slash activation sit on the same
 		// catalog the batch engine uses (T8): activation runs the `skill` tool
 		// through the registry, so a slash activation behaves identically to a
@@ -65,26 +68,43 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	return runProgram(m)
 }
 
-// feedTelemetry wires the engine's live event stream into a TUI status-strip
-// collector (issue #86). It forwards only per-turn usage, turn boundaries, and
-// the compaction marker into the strip's buffered channel, delivered
-// non-blocking so a busy run never stalls on the strip. The TUI stays decoupled
+// feedEngineEvents wires the engine's live event stream into the TUI's status
+// strip and streaming answer pane (issues #86 and #83). It forwards per-turn
+// usage, turn boundaries, and the compaction marker into the strip's buffered
+// channel, and each AnswerStream delta into the streaming pane's channel — both
+// delivered non-blocking so a busy run never stalls. The TUI stays decoupled
 // from the engine: engine.Event is translated here into UI-facing updates.
-func feedTelemetry(e *engine.Engine, te *tui.Telemetry) {
-	ch := te.UpdateChan()
+func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer) {
+	teCh := te.UpdateChan()
+	sCh := stream.UpdateChan()
 	e.SetListener(func(evt engine.Event) {
 		switch ev := evt.(type) {
+		case engine.StreamEvent:
+			if ev.Kind == engine.AnswerStream {
+				pushStream(sCh, tui.StreamUpdate{Delta: ev.Delta})
+			}
 		case engine.UsageEvent:
-			pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
+			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
 				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens})
 		case engine.TurnEvent:
 			if ev.Start {
-				pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})
+				pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})
 			}
 		case engine.CompactedEvent:
-			pushTelemetry(ch, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
+			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
 		}
 	})
+}
+
+// pushStream delivers an answer-text delta to the streaming pane's channel
+// without blocking the engine's event-goroutine: if the buffered channel is
+// full the delta is dropped, because rendering is best-effort and must never
+// stall a live run.
+func pushStream(ch chan<- tui.StreamUpdate, u tui.StreamUpdate) {
+	select {
+	case ch <- u:
+	default:
+	}
 }
 
 // pushTelemetry delivers an update to the strip's channel without blocking the

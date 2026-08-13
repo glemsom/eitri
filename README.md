@@ -32,7 +32,10 @@ working through a session (`docs/spec.md` §9). Both the TUI and batch sit on th
 same run engine and session transcript: a conversation round-trips through the
 engine exactly like `-b` does. On each turn the model's reasoning is surfaced as
 its own **collapsible thinking stream** — auto-collapsed after the turn, expanded
-with `tab` — kept separate from the answer (`docs/spec.md` §9). When skills are
+with `tab` — kept separate from the answer (`docs/spec.md` §9). Assistant
+**answers stream in place** as Markdown→ANSI, growing token by token through the
+engine's event stream rather than one full-reply dump on completion, so a reply
+renders styled markdown live as it arrives. When skills are
 detected, a **skills panel** lists them with install scope and per-session
 activation state, and typing `/skillname` (or `/` + `tab` to complete) activates
 the skill directly through the same seam the engine uses (`docs/spec.md` §9,
