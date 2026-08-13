@@ -162,6 +162,7 @@ func (m *Model) toggleRail() {
 	m.railAuto = false
 	m.railShown = !was
 	m.syncWidths()
+	m.histVer++ // the transcript re-wrapped around the rail's freed/taken space
 }
 
 // transcriptWidth returns the column width the left transcript pane should use

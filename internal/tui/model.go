@@ -264,6 +264,36 @@ type Model struct {
 	// railShown is the explicit rail visibility after the user toggles (issue
 	// #88 AC1). Current when !railAuto.
 	railShown bool
+
+	// histVer bumps every time the scroll region's inputs change (message, tool
+	// entry, skills/active state, thinking expansion, busy flag, rail toggle) so
+	// a stale scroll-cache rebuild is detected rather than served (ADR-0006
+	// decision 4, issue T03). It is a value field bumped in Update and carried
+	// forward by the returned model copy.
+	histVer int
+	// histCache is the bounded scroll-region render cache (ADR-0006 decision 4,
+	// issue T03): it holds the rendered history content plus the width-bucket and
+	// content version it was built at, so a terminal resize reuses prior markdown
+	// instead of re-running the expensive Glamour pass over the whole history on
+	// every tick. It is a pointer so the content written by View (which runs on a
+	// value copy) survives across render cycles.
+	histCache *scrollCache
+}
+
+// scrollCache is the bounded scroll-region render cache (ADR-0006 decision 4,
+// issue T03): the rendered history content string plus the transcript width-
+// bucket and history content version it was built at. A lookup hits when both
+// match the model's current bucket and version, and rebuilds exactly once when
+// either changes. rebuilds counts content rebuilds and is a test-only seam for
+// asserting bounded re-render on resize.
+type scrollCache struct {
+	content string
+	bkt     int
+	version int
+	// contentDone marks that a build has landed, so an genuinely-empty history
+	// is not mistaken for an unbuilt cache.
+	contentDone bool
+	rebuilds    int
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -281,18 +311,21 @@ func NewModelCfg(d Dependencies) Model {
 	tx.ShowLineNumbers = false
 
 	return Model{
-		composer:        tx,
-		turn:            d.Turn,
-		deps:            d,
-		continueReq:     make(chan struct{}, 1),
-		continueResp:    make(chan bool, 1),
-		skills:          skillSnapshot(d),
-		telemetry:       d.Telemetry,
-		stream:          d.Stream,
-		curStream:       -1,
-		toolFeed:        d.Tools,
-		rail:            d.Rail,
-		railAuto:        true,
+		composer:     tx,
+		turn:         d.Turn,
+		deps:         d,
+		continueReq:  make(chan struct{}, 1),
+		continueResp: make(chan bool, 1),
+		skills:       skillSnapshot(d),
+		telemetry:    d.Telemetry,
+		stream:       d.Stream,
+		curStream:    -1,
+		toolFeed:     d.Tools,
+		rail:         d.Rail,
+		railAuto:     true,
+		// Seed the bounded scroll-cache with a sentinel bucket so the first view
+		// always builds (an unbuilt empty cache must not be served as content).
+		histCache:       &scrollCache{bkt: -1},
 		reasoningEffort: d.Config.ReasoningEffort,
 	}
 }
@@ -457,6 +490,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.activateSkill(name)
 			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
+			m.histVer++ // a caller prompt scores into the scroll region
 			m.busy = true
 			m.curStream = -1
 			// Anchor new tool calls to this turn's prompt so entries interleave
@@ -491,6 +525,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			m.histVer++ // the thinking block's expansion changed the scroll region
 			return m, nil
 		}
 		// alt+y toggles expanding tool-call entries to their full result (issue
@@ -498,6 +533,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// demand so nothing is ever silently truncated.
 		if msgi.Alt && msgi.Type == tea.KeyRunes && string(msgi.Runes) == "y" {
 			m.showToolResult = !m.showToolResult
+			m.histVer++ // tool entries flip between collapsed and expanded
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -538,9 +574,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (issue #85 AC3): if the user expanded it mid-reasoning to watch, it
 			// settles back to the one-line hint so the styled answer takes focus.
 			m.messages[m.curStream].thinkingExpanded = false
+			m.histVer++ // the streamed answer settled to its final form
 			m.curStream = -1
 		} else {
 			m.messages = append(m.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
+			m.histVer++ // the committed answer scores into the scroll region
+			return m, nil
 		}
 		return m, nil
 
@@ -561,6 +600,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
+		m.histVer++ // a skill result scores into the scroll region
 		return m, nil
 	}
 
@@ -702,6 +742,7 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 		} else {
 			m.messages[m.curStream].content += delta
 		}
+		m.histVer++ // the streaming message body grew
 		return
 	}
 	if kind == ReasoningStream {
@@ -709,6 +750,7 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	} else {
 		m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
 	}
+	m.histVer++ // a new streaming assistant message opened
 	m.curStream = len(m.messages) - 1
 }
 
@@ -724,6 +766,7 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 			args:   u.Start.Args,
 			anchor: m.curToolAnchor,
 		})
+		m.histVer++ // a new tool entry opened into the scroll region
 		return
 	}
 	if u.Result != nil {
@@ -740,6 +783,7 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 				m.tools[i].after = u.Result.After
 				m.tools[i].path = u.Result.Path
 				m.tools[i].complete = true
+				m.histVer++ // the tool entry's result settled into the scroll region
 				return
 			}
 		}
@@ -780,8 +824,10 @@ func slashCommand(prompt string, skills []SkillItem) (string, bool) {
 // result as an assistant note. It flips the local panel state to active.
 func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
+	m.histVer++ // a skill command prompt scores into the scroll region
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: "⚠ no skill activation available"})
+		m.histVer++ // the unavailable-skill rejection scored in
 		return m, nil
 	}
 	m.markActive(name)
@@ -793,6 +839,7 @@ func (m *Model) markActive(name string) {
 	for i := range m.skills {
 		if m.skills[i].Name == name {
 			m.skills[i].Active = true
+			m.histVer++ // the skills panel's active check changed the scroll region
 		}
 	}
 }
@@ -894,6 +941,19 @@ func (m Model) View() string {
 	return left
 }
 
+// widthBucketCols is the width granularity of the history render cache: the
+// transcript width is bucketed into widthBucketCols-wide buckets, so a resize
+// that changes the terminal width but not the bucket reuses prior rendered
+// markdown instead of re-wrapping every message (ADR-0006 decision 4, issue
+// T03 AC1). Coarse enough to absorb small drag-resize jitter, fine enough that
+// a real rewrap does not wait several cols.
+const widthBucketCols = 16
+
+// widthBucket returns the render-cache bucket for a transcript width.
+func widthBucket(width int) int {
+	return width / widthBucketCols
+}
+
 // renderPane renders the transcript + composer surface into the left pane. It
 // is the historical single-pane view; the rail adds itself to the right when
 // visible. It works in the primary buffer, so nothing is cleared.
@@ -905,8 +965,9 @@ func (m Model) View() string {
 // in order. The scroll region is Height-aware (ADR-0006 decision 3, issue T02):
 // its content clamps to the terminal height, so the band stays pinned and only
 // the history scrolls.
+
 func (m Model) renderPane() string {
-	var overlay, hist, band strings.Builder
+	var overlay, band strings.Builder
 	// Overlay region: the review panel takes over the top of the pane (Layout B,
 	// issue #90), showing the dense changed-file summary + inline diff above the
 	// transcript. Settings and the continuation prompt are also overlays but
@@ -914,10 +975,38 @@ func (m Model) renderPane() string {
 	if m.review != nil {
 		m.renderReview(&overlay)
 	}
-	m.renderHistory(&hist)
+	// The scroll region is served from the width-bucket cache (ADR-0006
+	// decision 4, issue T03) so a resize reuses prior rendered history rather
+	// than re-running the whole markdown pass each tick.
+	histContent := m.historyContent()
 	m.renderBand(&band)
 	bandStr := band.String()
-	return overlay.String() + m.renderHistoryViewport(hist.String(), lineCount(bandStr)) + bandStr
+	return overlay.String() + m.renderHistoryViewport(histContent, lineCount(bandStr)) + bandStr
+}
+
+// historyContent returns the scroll region's rendered content, bounded per
+// width-bucket (ADR-0006 decision 4, issue T03). It returns the cached history
+// string when the transcript width-bucket and the content version are both
+// unchanged since the last build — so a drag-resize that stays within a bucket,
+// or re-renders that touch nothing, cost nothing — and rebuilds exactly once
+// when either changes. The rebuild re-runs renderHistory and records the bucket
+// + version it was built at for the next look-up.
+func (m Model) historyContent() string {
+	bkt := widthBucket(m.transcriptWidth())
+	c := m.histCache
+	if c.contentDone && c.bkt == bkt && c.version == m.histVer {
+		return c.content
+	}
+	var hist strings.Builder
+	m.renderHistory(&hist)
+	// The cache is a heap pointer so the content written here (View runs on a
+	// value copy) survives across render cycles.
+	c.content = hist.String()
+	c.bkt = bkt
+	c.version = m.histVer
+	c.contentDone = true
+	c.rebuilds++
+	return c.content
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region (ADR-0006
@@ -929,11 +1018,11 @@ func (m Model) renderPane() string {
 //
 // While the run is live (no user scroll input yet — native scroll is the
 // navigation path, ADR-0006 decision 6) the clamp is bottom-anchored: the
-// newest output stays visible. The bubbletea/viewport component and its
-// persisted scroll/cache state arrive with the T03 (per-width cache) and T04
-// (live follow) seams; decision 6 keeps paging/mouse routing off here. Line
-// endings are preserved so the primary buffer's native selection/scrollback
-// stay clean (ADR-0006 decision 1).
+// newest output stays visible. The bubbletea/viewport scroll-position/follow
+// state (not just the per-width render cache from T03, which landed in issue
+// #107) arrives with the T04 live-follow seam (issue #108); decision 6 keeps
+// paging/mouse routing off here. Line endings are preserved so the primary
+// buffer's native selection/scrollback stay clean (ADR-0006 decision 1).
 func (m Model) renderHistoryViewport(content string, bandLines int) string {
 	if m.height <= 0 {
 		return content

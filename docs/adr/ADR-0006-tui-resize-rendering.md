@@ -72,10 +72,15 @@ screen mode.
   clamps to the terminal, so only the history is scrollable and a drag-resize
   keeps the band pinned and the composer on screen. Mouse/wheel routing is
   deliberately off (decision 6: native scroll is the navigation path, and the
-  T04 follow seam drives live-stream auto-follow). The persisted
-  `bubbletea/viewport` component — its scroll position and per-width render
-  cache — lands with T03/T04 (its real state-hungry users); T02's clamp is a
-  pure height slice.
+  T04 follow seam drives live-stream auto-follow). T02's clamp is a pure
+  height slice.
+- Decision 4 is implemented (issue #107 / T03): the scroll region's content is
+  cached per width-bucket (`widthBucketCols`), and rebuilt only when a message
+  actually changed (`histVer`) or the transcript crossed a width-bucket, so a
+  drag-resize that stays within a bucket reuses the prior markdown and rapid
+  resize bursts coalesce to a single re-render instead of re-running the whole
+  `RenderMarkdown` pass every tick. The persisted `bubbletea/viewport` scroll
+  component's position + follow behaviour lands with T04.
 - Resize feels correct rather than merely non-broken: the composer stays put
   and a drag-resize does not re-render the whole history.
 - A future ADR may obsolete this one if Eitri adopts an alternate-screen focus
