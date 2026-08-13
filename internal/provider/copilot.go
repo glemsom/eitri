@@ -103,7 +103,7 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 		ToolChoice:      req.ToolChoice,
 		Stream:          true,
 		StreamOptions:   &streamOptions{IncludeUsage: true},
-		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
+		ReasoningEffort: reasoningEffortControl(req),
 		MaxOutputTokens: maxOutputTokens(req),
 	})
 	if err != nil {

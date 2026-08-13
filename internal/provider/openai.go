@@ -84,7 +84,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		},
 		PromptCacheKey:  promptCacheKey(req),
 		Thinking:        thinkingControl(req),
-		ReasoningEffort: NormalizeReasoningEffort(req.ReasoningEffort),
+		ReasoningEffort: reasoningEffortControl(req),
 		MaxOutputTokens: maxOutputTokens(req),
 		ResponseFormat:  jsonObjectModeControl(req),
 	})
@@ -150,6 +150,18 @@ func thinkingControl(req Request) *thinkingEnabler {
 		return nil
 	}
 	return &thinkingEnabler{Type: "enabled"}
+}
+
+// reasoningEffortControl returns the normalized reasoning_effort for a
+// thinking-enabled run, else empty so the field is omitted. Effort is only
+// meaningful when thinking is on: a non-thinking run must carry neither a
+// thinking toggle nor a reasoning_effort (docs/spec.md §6 / issue #54), even
+// if a caller retains a non-empty effort while disabled.
+func reasoningEffortControl(req Request) string {
+	if !req.ThinkingEnabled {
+		return ""
+	}
+	return NormalizeReasoningEffort(req.ReasoningEffort)
 }
 
 // jsonObjectMode is OpenAI's constrained-output response_format; its enabled

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -186,5 +187,39 @@ func drainOne(s Stream) (string, error) {
 		if c.Done {
 			return content, nil
 		}
+	}
+}
+
+// TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
+// guarantee also holds on the Copilot provider (docs/spec.md §6 / issue #54):
+// when the caller disables thinking, `reasoning_effort` is dropped from the
+// request body even if a non-empty effort is retained. Copilot streams via the
+// same engine seam as the primary provider, so its non-thinking shape must
+// match the primary's, minus the Copilot-absent DeepSeek thinking toggle.
+func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
+	var sawEffort bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Errorf("request body not JSON: %v", err)
+		}
+		sawEffort = parsed["reasoning_effort"] != nil
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write(sseFixture(t))
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	if _, err := cp.Stream(context.Background(), Request{
+		Model:           "gpt-4o",
+		ThinkingEnabled: false,
+		ReasoningEffort: "high",
+	}); err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	if sawEffort {
+		t.Error("request carried reasoning_effort, want omitted when thinking off")
 	}
 }
