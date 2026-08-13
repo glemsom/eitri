@@ -175,7 +175,7 @@ func Run(opts Options) error {
 	// the same engine, session transcript, and tool registry as batch, and
 	// renders into the primary buffer (docs/spec.md §9).
 	if opts.Prompt == "" {
-		return runTUI(e, cfg, reg, key, p, cfgPath, skills)
+		return runTUI(e, cfg, reg, key, p, cfgPath, skills, workspace)
 	}
 
 	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil)
