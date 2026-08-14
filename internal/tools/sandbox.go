@@ -40,8 +40,11 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 // Sandbox runs shell commands inside the bubblewrap cage (ADR-0001). It is a
 // defense-in-depth boundary: root mounted read-only, the workspace mounted
 // read-write at its host path, the session temp mounted as sandbox /tmp, a
-// separate PID namespace, and host network (--share-net). It never falls back
-// to unsandboxed execution.
+// separate PID namespace, and host network (--share-net). A fresh procfs is
+// mounted on /proc (scoped to the pid namespace), a devtmpfs on /dev, and a
+// private tmpfs on /dev/shm, so the sandbox sees its own process table and
+// device tree instead of the host's. It never falls back to unsandboxed
+// execution.
 type Sandbox struct {
 	workspace string
 	tempHost  string
@@ -68,6 +71,9 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		"--share-net", // ADR-0001 decision 1: host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
+		"--proc", "/proc", // fresh procfs scoped to the pid namespace
+		"--dev", "/dev", // devtmpfs replaces the ro-bind host /dev
+		"--tmpfs", "/dev/shm", // devtmpfs has no /dev/shm; private writable shm
 		"--bind", s.workspace, s.workspace,
 		"--bind", s.tempHost, "/tmp",
 		"--chdir", s.workspace,

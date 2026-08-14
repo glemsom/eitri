@@ -21,7 +21,7 @@ func (b *bashTool) Name() string {
 }
 
 func (b *bashTool) Description() string {
-	return "Execute a shell command inside the bwrap sandbox. The workspace is writable, /tmp is the session temp, root is read-only, and the command has host network access. Returns combined stdout+stderr."
+	return "Execute a shell command inside the bwrap sandbox. The workspace is writable, /tmp is the session temp, root is read-only, /proc is a fresh pid-namespace-scoped procfs, /dev is a private devtmpfs with a writable /dev/shm, and the command has host network access. Returns combined stdout+stderr."
 }
 
 func (b *bashTool) Schema() map[string]any {

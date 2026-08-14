@@ -46,6 +46,9 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		"--share-net", // ADR-0001 decision 1: host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
+		"--proc", "/proc",
+		"--dev", "/dev",
+		"--tmpfs", "/dev/shm",
 		"--bind", "/home/u/proj", "/home/u/proj",
 		"--bind", "/tmp/eitri-abc", "/tmp",
 		"--chdir", "/home/u/proj",
@@ -120,6 +123,19 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	}
 	if _, err := os.Stat(tempHost + "/inside.tmp"); err != nil {
 		t.Fatalf("sandbox /tmp write did not land in session temp host dir: %v", err)
+	}
+	// Fresh procfs: PID 1 in the pid namespace is the bwrap supervisor (the
+	// in-ns reaper), never the host's PID 1 (systemd here).
+	if _, err := sb.Run(context.Background(), "test \"$(cat /proc/1/comm)\" = bwrap || exit 1"); err != nil {
+		t.Fatalf("sandbox /proc is not pid-namespace-scoped: %v", err)
+	}
+	// devtmpfs: device nodes exist and are not host devices.
+	if _, err := sb.Run(context.Background(), "test -c /dev/null && test -c /dev/zero || exit 1"); err != nil {
+		t.Fatalf("sandbox /dev lacks devtmpfs device nodes: %v", err)
+	}
+	// Private writable /dev/shm.
+	if _, err := sb.Run(context.Background(), "touch /dev/shm/shm-probe && test -f /dev/shm/shm-probe || exit 1"); err != nil {
+		t.Fatalf("sandbox /dev/shm not writable: %v", err)
 	}
 }
 
