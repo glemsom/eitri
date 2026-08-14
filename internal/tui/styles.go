@@ -423,18 +423,6 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail
 	return th
 }
 
-// Historical package-level aliases of the default theme's palette and styles,
-// kept under their original names so the existing styling tests keep asserting
-// the default look unmodified (issue #178 AC3). New code reads through the
-// model's theme field instead — these are the pre-seam globals, not the seam.
-var (
-	accentColor    = defaultTheme.accent
-	errorColor     = defaultTheme.error
-	okColor        = defaultTheme.ok
-	agentPaneStyle = defaultTheme.agentPaneStyle
-	errorPaneStyle = defaultTheme.errorPaneStyle
-)
-
 // railSection indexes the right context rail's three sections (issue #182) so
 // the per-section hues and styles stay positionally consistent between the
 // theme registry and the rail renderer. The SKILLS section was removed (issue
