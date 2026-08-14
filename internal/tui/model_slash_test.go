@@ -48,8 +48,8 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
 		Skills: &SkillsSurface{Items: []SkillItem{
-			{Name: "review", Description: "code review", Scope: "project"},
-			{Name: "plan", Description: "planning", Scope: "project"},
+			{Name: "review"},
+			{Name: "plan"},
 		}},
 	})
 	m = resize(t, m)
@@ -73,7 +73,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 			prompted = prompt
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review", Scope: "project"}}},
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/usr/bin/env")
@@ -95,7 +95,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
-		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review", Scope: "project"}}},
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/")

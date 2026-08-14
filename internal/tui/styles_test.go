@@ -66,15 +66,16 @@ func TestTheme_defaultPalette(t *testing.T) {
 
 // TestTheme_draculaPalette asserts the second curated palette (issue #179
 
-// TestTheme_railHues asserts every theme carries four distinct per-section
-// hues for the right context rail (issue #182): the STATS / CONTEXT / SKILLS /
-// MODEL sections each draw a distinct hue from the theme's palette registry,
-// and the derived rail styles render headers and bodies from those hues — so
-// a palette addition alone re-skins the rail.
+// TestTheme_railHues asserts every theme carries three distinct per-section
+// hues for the right context rail (issue #182): the STATS / CONTEXT / MODEL
+// sections each draw a distinct hue from the theme's palette registry, and the
+// derived rail styles render headers and bodies from those hues — so a palette
+// addition alone re-skins the rail. The SKILLS section hue is gone with the
+// section (issue #188).
 func TestTheme_railHues(t *testing.T) {
 	themes := []Theme{defaultTheme, newDraculaTheme(), newTokyoNightTheme(), newPinkTheme(), newLightTheme()}
 	for _, th := range themes {
-		// Four distinct hues, each a hex-derived color that adapts to any
+		// Three distinct hues, each a hex-derived color that adapts to any
 		// color profile (issue #182 AC5: safe fallback on non-truecolor).
 		seen := map[color.Color]bool{}
 		for i, c := range th.railHues {
@@ -87,7 +88,7 @@ func TestTheme_railHues(t *testing.T) {
 			}
 		}
 		// The derived styles draw from the palette entries.
-		for _, s := range []railSection{railStats, railContext, railSkills, railModel} {
+		for _, s := range []railSection{railStats, railContext, railModel} {
 			if got := th.railHeaderStyles[s].GetForeground(); got != th.railHues[s] {
 				t.Errorf("theme %v rail header style %d foreground = %v, want hue %v", th, s, got, th.railHues[s])
 			}

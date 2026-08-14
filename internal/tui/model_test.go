@@ -175,49 +175,52 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	}
 }
 
-// TestModel_skillsPanelRenders asserts detected skills render in the right
-// context rail with their install scope and activation state (docs/spec.md §9,
-// eitri.md §2.3): the rail auto-shows on a wide window, so the skills surface
-// is visible alongside the transcript without cluttering it.
-func TestModel_skillsPanelRenders(t *testing.T) {
+// TestModel_railRendersNoSkillsSection asserts the right context rail renders
+// STATS / CONTEXT / MODEL only — no SKILLS section, no skill listing, no
+// activation state — even on a wide window where the rail auto-shows with a
+// detected skills surface wired (issue #188). Skills still activate via the
+// slash-command surface, just not in the rail.
+func TestModel_railRendersNoSkillsSection(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
-		Skills: &SkillsSurface{Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "project"}}},
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "my-skill"}}},
 		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
 	})
 	m = resizeTo(t, m, 140, 24)
 	content := view(m)
-	if !strings.Contains(content, "SKILLS") {
-		t.Errorf("expected a SKILLS rail section, got: %q", content)
+	for _, want := range []string{"STATS", "CONTEXT", "MODEL"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("rail missing %s section, got: %q", want, content)
+		}
 	}
-	if !strings.Contains(content, "my-skill") || !strings.Contains(content, "project") {
-		t.Errorf("expected detected skill + scope in rail, got: %q", content)
+	if strings.Contains(content, "SKILLS") {
+		t.Errorf("rail must not render a SKILLS section, got: %q", content)
+	}
+	if strings.Contains(content, "my-skill") {
+		t.Errorf("rail must not list detected skills, got: %q", content)
 	}
 }
 
 // TestModel_slashCommandActivatesSkill drives `/skillname` through the TUI
-// slash-command path: the activation seam runs, the skill is marked active in
-// the panel, and the activation payload renders as an assistant note. This is
-// the TUI side of the engine-seam activation flow (ticket #35).
+// slash-command path: the activation seam runs and the activation payload
+// renders as an assistant note. This is the TUI side of the engine-seam
+// activation flow (ticket #35); the rail shows no ✓/✕ state for it (issue
+// #188).
 func TestModel_slashCommandActivatesSkill(t *testing.T) {
 	var activated string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
 		Skills: &SkillsSurface{
-			Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "user"}},
+			Items: []SkillItem{{Name: "my-skill"}},
 			Activate: func(_ context.Context, name string) (string, error) {
 				activated = name
 				return `<skill_content name="my-skill">payload</skill_content>`, nil
 			},
 		},
-		Rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill")
 	m = submitAndWait(t, m)
-	// Open the right rail so the activated skill's ✓ marker is visible.
-	nm, _ := m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
 
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
@@ -225,10 +228,6 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 	content := view(m)
 	if !strings.Contains(content, "payload") {
 		t.Errorf("skill payload should render in content, got: %q", content)
-	}
-	// The activated skill shows ✓ in the panel.
-	if !strings.Contains(content, "✓") {
-		t.Errorf("activated skill should be marked active in panel, got: %q", content)
 	}
 }
 
@@ -238,8 +237,8 @@ func TestModel_slashCompletionTab(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
 		Skills: &SkillsSurface{Items: []SkillItem{
-			{Name: "alpha", Scope: "user"},
-			{Name: "beta", Scope: "project"},
+			{Name: "alpha"},
+			{Name: "beta"},
 		}},
 	})
 	m = resize(t, m)

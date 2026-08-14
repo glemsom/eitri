@@ -95,20 +95,18 @@ type discoverDoneMsg struct {
 	err    error
 }
 
-// SkillItem is one detected skill surfaced to the TUI's skills panel: its
-// install scope and whether it is currently activated this session
-// (docs/spec.md §9, eitri.md §2.3).
+// SkillItem is one detected skill surfaced to the TUI's slash-command surface:
+// its name is what `/skillname` matches and what the `/` completion list
+// offers (eitri.md §2.3). The rail no longer carries a skills panel, so no
+// scope or activation state is tracked TUI-side (issue #188).
 type SkillItem struct {
-	Name        string
-	Description string
-	Scope       string
-	Active      bool
+	Name string
 }
 
-// SkillsSurface wires the TUI's skills panel and slash-command activation to
-// the run's tool layer (T8). Items lists the detected skills; Activate runs one
-// skill activation (the T8 `skill` tool via the engine/registry seam) and
-// returns the activation payload. Nil means no skills were detected.
+// SkillsSurface wires the TUI's slash-command activation to the run's tool
+// layer (T8). Items lists the detected skill names; Activate runs one skill
+// activation (the T8 `skill` tool via the engine/registry seam) and returns
+// the activation payload. Nil means no skills were detected.
 type SkillsSurface struct {
 	Items    []SkillItem
 	Activate func(ctx context.Context, name string) (string, error)
@@ -141,8 +139,9 @@ type Dependencies struct {
 	// SaveBack, when non-nil, is invoked with updated settings after Save so
 	// the app can refresh its in-process view.
 	SaveBack func(config.Config)
-	// Skills, when non-nil, backs the skills panel and slash-command activation.
-	// Nil hides the panel and disables `/skillname` commands (no skills).
+	// Skills, when non-nil, backs the slash-command surface: `/skillname`
+	// activation and the `/` completion list. Nil disables `/skillname`
+	// commands (no skills). The right rail never renders skills (issue #188).
 	Skills *SkillsSurface
 	// Telemetry, when non-nil, renders the live bottom status strip (issue #86):
 	// model, effort, thinking, turns/max, cost, and the cache hit-ratio gauge,
@@ -167,8 +166,8 @@ type Dependencies struct {
 	OpenInBrowser func(ctx context.Context, target string) error
 	// Rail, when non-nil, enables the toggleable right context rail (issue
 	// #88): a fixed-width pane alongside the transcript showing STATS / CONTEXT
-	// / MODEL, fed from the telemetry and skill surfaces. Nil hides the rail
-	// (the plain chat default).
+	// / MODEL, fed from the telemetry surface. Nil hides the rail (the plain
+	// chat default).
 	Rail *Rail
 	// Clipboard writes text to the system clipboard (issue #123): Ctrl+O and
 	// /copy copy the full transcript through it. Nil falls back to the
@@ -212,8 +211,8 @@ type Model struct {
 	// when reasoning is disabled, so the hint drops the effort suffix.
 	reasoningEffort string
 
-	// skills is the live list backing the skills panel, refreshed on slash
-	// activation so the panel reflects per-session active state.
+	// skills is the live list backing the slash-command completion, refreshed
+	// from the Dependencies snapshot at construction.
 	skills []SkillItem
 
 	// slashIdx is the combo completion's currently selected candidate index into
@@ -924,8 +923,9 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 	}
 }
 
-// skillSnapshot captures the detected skills at construction so the panel has
-// a stable, renderable list even if the Dependencies snapshot is nil or empty.
+// skillSnapshot captures the detected skills at construction so the slash
+// completion has a stable list even if the Dependencies snapshot is nil or
+// empty.
 func skillSnapshot(d Dependencies) []SkillItem {
 	if d.Skills != nil {
 		return d.Skills.Items
@@ -1017,24 +1017,14 @@ func slashCommand(prompt string, skills []SkillItem) (string, bool) {
 
 // activateSkill runs one slash-command activation through the SkillsSurface
 // activation seam (the T8 skill tool) on a detached command and renders the
-// result as an assistant note. It flips the local panel state to active.
+// result as an assistant note.
 func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: "⚠ no skill activation available"})
 		return m, nil
 	}
-	m.markActive(name)
 	return m, skillCmd(m.deps.Skills.Activate, name)
-}
-
-// markActive sets the local panel skill (and any skill tool feedback) active.
-func (m *Model) markActive(name string) {
-	for i := range m.skills {
-		if m.skills[i].Name == name {
-			m.skills[i].Active = true
-		}
-	}
 }
 
 // discoverCmd runs one on-demand provider model discovery off the main loop and
@@ -1153,7 +1143,7 @@ func (m Model) viewString() string {
 	// space).
 	left := m.renderPane()
 	if m.rail != nil && m.railVisible() {
-		right := styledRail(m.rail.render(m.telemetry, m.skills, m.theme), m.railClampHeight())
+		right := styledRail(m.rail.render(m.telemetry, m.theme), m.railClampHeight())
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
 	return left
@@ -1489,7 +1479,8 @@ func lineCount(s string) int {
 // reads and scrolls. It surfaces the workspace header, every committed message
 // (thinking blocks + markdown body), the interleaved tool entries, and the
 // busy indicator. It is the only region T02+ makes scrollable and height-
-// clamps. Detected skills live in the right context rail, not the transcript.
+// clamps. Detected skills surface through the slash-command completion list,
+// never as a panel in the transcript (issue #188).
 func (m Model) renderHistory(b *strings.Builder) {
 	// Surface the project's read-only state (issue #82 AC1): the workspace
 	// directory the run operates in, rendered as an informational header above

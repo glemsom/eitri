@@ -241,7 +241,7 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		},
 		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		Skills: &SkillsSurface{Items: []SkillItem{
-			{Name: skillName, Description: "d", Scope: "user"},
+			{Name: skillName},
 		}},
 	})
 	// Width 100: wide enough for the full status strip (collapseWidth), narrow

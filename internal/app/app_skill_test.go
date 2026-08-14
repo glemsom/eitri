@@ -183,8 +183,8 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	if surface == nil {
 		t.Fatalf("skillSurface = nil, want non-nil for a discovered skill")
 	}
-	if len(surface.Items) != 1 || surface.Items[0].Name != "tui-skill" || surface.Items[0].Scope != "project" {
-		t.Fatalf("surface items = %+v, want the project-scoped tui-skill", surface.Items)
+	if len(surface.Items) != 1 || surface.Items[0].Name != "tui-skill" {
+		t.Fatalf("surface items = %+v, want the tui-skill entry", surface.Items)
 	}
 
 	payload, err := surface.Activate(context.Background(), "tui-skill")
@@ -194,18 +194,10 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	if !strings.Contains(payload, "<skill_content name=\"tui-skill\">") || !strings.Contains(payload, "Do the tui thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
 	}
-	// The catalog and its panel items reflect the skill as active.
+	// The catalog reflects the skill as active; the rail shows no skill state
+	// (issue #188), so there is no panel accessor to check.
 	if !skills.IsActive("tui-skill") {
 		t.Fatalf("tui-skill not marked active after slash activation")
-	}
-	foundActive := false
-	for _, it := range skills.Items() {
-		if it.Name == "tui-skill" && it.Active {
-			foundActive = true
-		}
-	}
-	if !foundActive {
-		t.Fatalf("panel items do not reflect tui-skill as active")
 	}
 }
 

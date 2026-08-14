@@ -29,9 +29,10 @@ type Theme struct {
 	skill  color.Color // semantic color for skill tool entries (skill, ⊕)
 
 	// railHues are the per-section hues for the right context rail (issue
-	// #182): [stats, context, skills, model], each distinct so a glance tells
-	// the sections apart under any palette.
-	railHues [4]color.Color
+	// #182): [stats, context, model], each distinct so a glance tells the
+	// sections apart under any palette. The skills section hue is gone with
+	// the section (issue #188).
+	railHues [3]color.Color
 
 	// Derived styles, drawn from the palette entries.
 	headerStyle        lipgloss.Style // bold section header (settings title, prompts)
@@ -54,8 +55,8 @@ type Theme struct {
 
 	// railHeaderStyles / railBodyStyles render the right rail's sections
 	// (issue #182): bold headers and body lines, each in its section's hue.
-	railHeaderStyles [4]lipgloss.Style
-	railBodyStyles   [4]lipgloss.Style
+	railHeaderStyles [3]lipgloss.Style
+	railBodyStyles   [3]lipgloss.Style
 }
 
 // defaultTheme is the default (dark) theme: exactly the pre-seam palette and
@@ -77,10 +78,9 @@ func newDefaultTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#BB9AF7"), // web
 		lipgloss.Color("#FF87D7"), // skill
-		[4]color.Color{
+		[3]color.Color{
 			lipgloss.Color("#E0AF68"),
 			lipgloss.Color("#7DCFFF"),
-			lipgloss.Color("#FF87D7"),
 			lipgloss.Color("#9ECE6A"),
 		},
 	)
@@ -101,10 +101,9 @@ func newDraculaTheme() Theme {
 		lipgloss.Color("#8BE9FD"), // file
 		lipgloss.Color("#FF79C6"), // web
 		lipgloss.Color("#F1FA8C"), // skill
-		[4]color.Color{
+		[3]color.Color{
 			lipgloss.Color("#FFB86C"),
 			lipgloss.Color("#8BE9FD"),
-			lipgloss.Color("#F1FA8C"),
 			lipgloss.Color("#50FA7B"),
 		},
 	)
@@ -125,10 +124,9 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#2AC3DE"), // web
 		lipgloss.Color("#73DACA"), // skill
-		[4]color.Color{
+		[3]color.Color{
 			lipgloss.Color("#FF9E64"),
 			lipgloss.Color("#7DCFFF"),
-			lipgloss.Color("#73DACA"),
 			lipgloss.Color("#9ECE6A"),
 		},
 	)
@@ -149,10 +147,9 @@ func newPinkTheme() Theme {
 		lipgloss.Color("#39C0ED"), // file
 		lipgloss.Color("#A78BFA"), // web
 		lipgloss.Color("#60A5FA"), // skill
-		[4]color.Color{
+		[3]color.Color{
 			lipgloss.Color("#FFB224"),
 			lipgloss.Color("#39C0ED"),
-			lipgloss.Color("#60A5FA"),
 			lipgloss.Color("#69DB8C"),
 		},
 	)
@@ -173,10 +170,9 @@ func newLightTheme() Theme {
 		lipgloss.Color("#0E7490"), // file
 		lipgloss.Color("#6D28D9"), // web
 		lipgloss.Color("#A21CAF"), // skill
-		[4]color.Color{
+		[3]color.Color{
 			lipgloss.Color("#B45309"),
 			lipgloss.Color("#0E7490"),
-			lipgloss.Color("#A21CAF"),
 			lipgloss.Color("#00875F"),
 		},
 	)
@@ -213,7 +209,7 @@ func themeFor(name string) Theme {
 // draw from them. It is the only place derived styles are constructed: every
 // palette (default, dracula, future ones) shares the same style wiring, so
 // palettes differ by hue alone and can never drift apart structurally.
-func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [4]color.Color) Theme {
+func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [3]color.Color) Theme {
 	th := Theme{
 		accent:   accent,
 		error:    err,
@@ -285,15 +281,15 @@ var (
 	errorPaneStyle = defaultTheme.errorPaneStyle
 )
 
-// railSection indexes the right context rail's four sections (issue #182) so
+// railSection indexes the right context rail's three sections (issue #182) so
 // the per-section hues and styles stay positionally consistent between the
-// theme registry and the rail renderer.
+// theme registry and the rail renderer. The SKILLS section was removed (issue
+// #188); the rail is STATS / CONTEXT / MODEL.
 type railSection int
 
 const (
 	railStats railSection = iota
 	railContext
-	railSkills
 	railModel
 )
 

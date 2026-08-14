@@ -61,25 +61,18 @@ func TestSkillDiscoverScopes(t *testing.T) {
 		t.Fatalf("unexpected warnings = %d (%v), want 0", cb.count, cb.warns)
 	}
 
-	// The TUI's skills panel reads install scope + activation state via Items.
+	// Install scopes stay queryable per-name; the Items accessor that fed the
+	// TUI's rail skills panel is gone with the panel (issue #188).
 	if catalog.Scope("user-skill") != "user" || catalog.Scope("proj-skill") != "project" {
 		t.Fatalf("install scopes unexpected: user-skill=%q proj-skill=%q", catalog.Scope("user-skill"), catalog.Scope("proj-skill"))
 	}
-	active := 0
-	for _, it := range catalog.Items() {
-		if it.Active {
-			active++
-		}
+	// A fresh catalog has nothing active, and activation dedupe still tracks.
+	if catalog.IsActive("user-skill") {
+		t.Fatal("fresh catalog reports user-skill active, want inactive")
 	}
-	if active != 0 {
-		t.Fatalf("fresh catalog has %d active skills, want 0", active)
-	}
-	// Marking a skill active is reflected in Items for the panel.
 	catalog.MarkActive("user-skill")
-	for _, it := range catalog.Items() {
-		if it.Name == "user-skill" && !it.Active {
-			t.Fatalf("user-skill should be active after MarkActive: %+v", it)
-		}
+	if !catalog.IsActive("user-skill") {
+		t.Fatal("user-skill should be active after MarkActive")
 	}
 }
 
