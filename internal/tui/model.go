@@ -1153,7 +1153,7 @@ func (m Model) viewString() string {
 	// space).
 	left := m.renderPane()
 	if m.rail != nil && m.railVisible() {
-		right := styledRail(m.rail.render(m.telemetry, m.skills), m.railClampHeight())
+		right := styledRail(m.rail.render(m.telemetry, m.skills, m.theme), m.railClampHeight())
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
 	return left
@@ -1551,7 +1551,7 @@ func (m Model) renderBand(b *strings.Builder) {
 	// Live status strip (issue #86), rendered above the composer so model,
 	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
 	if m.telemetry != nil {
-		inner.WriteString(m.theme.statusStyle.Render(m.telemetry.render(m.composer.Width())))
+		inner.WriteString(m.theme.bandStatusStyle.Render(m.telemetry.render(m.composer.Width())))
 		inner.WriteString("\n")
 	}
 	// The slash-command completion list (issue #87 AC1) sits above the composer

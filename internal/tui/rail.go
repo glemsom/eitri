@@ -42,16 +42,35 @@ func (r *Rail) line(b *strings.Builder, key, val string) {
 	b.WriteString("  " + key + " " + val + "\n")
 }
 
-// render returns the rail's rendered STATS/CONTEXT/MODEL block. It borrows the
-// live status-strip telemetry (te) for the STATS numbers and the session's
-// detected skills (skills) for the SKILLS section, so every value reflects
-// the run's current state (issue #88 AC4). te may be nil when no strip is wired;
-// the rail then renders zeroed STATS.
-func (r *Rail) render(te *Telemetry, skills []SkillItem) string {
+// render returns the rail's rendered STATS/CONTEXT/SKILLS/MODEL block, each
+// section tinted with its per-section hue from the theme palette (issue #182
+// AC1) — the header bold, the body lines in the same hue — so the sections
+// read apart at a glance. It borrows the live status-strip telemetry (te) for
+// the STATS numbers and the session's detected skills (skills) for the SKILLS
+// section, so every value reflects the run's current state (issue #88 AC4); te
+// may be nil when no strip is wired, the rail then renders zeroed STATS with
+// no sparkline. Rendering stays read-only against the agent loop: it only
+// reads the telemetry surface on the UI goroutine.
+func (r *Rail) render(te *Telemetry, skills []SkillItem, th Theme) string {
 	var b strings.Builder
+	b.WriteString(r.renderStats(te, th))
+	b.WriteString("\n")
+	b.WriteString(r.renderContext(th))
+	b.WriteString("\n")
+	b.WriteString(r.renderSkills(skills, th))
+	b.WriteString("\n")
+	b.WriteString(r.renderModel(th))
+	return b.String()
+}
 
-	// STATS — the live money/usage picture from the telemetry surface.
-	b.WriteString("STATS\n")
+// renderStats renders the STATS section: the live money/usage picture from the
+// telemetry surface plus the usage-history sparklines (issue #182 AC2) drawn
+// from the same telemetry — per-turn token and cost shapes that update live as
+// usage lands.
+func (r *Rail) renderStats(te *Telemetry, th Theme) string {
+	var b strings.Builder
+	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
+
 	hits, misses, out := 0, 0, 0
 	turns := 0
 	compacted := false
@@ -71,53 +90,74 @@ func (r *Rail) render(te *Telemetry, skills []SkillItem) string {
 		cost = te.cost()
 		maxTurns = te.maxTurns
 	}
-	r.line(&b, "cache", fmt.Sprintf("%.0f%%", pct))
-	r.line(&b, "cost", formatCost(cost))
-	r.line(&b, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
-	r.line(&b, "tokens", fmt.Sprintf("%s in · %s out", formatTokens(totalIn), formatTokens(out)))
+	var body strings.Builder
+	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct))
+	r.line(&body, "cost", formatCost(cost))
+	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
+	r.line(&body, "tokens", fmt.Sprintf("%s in · %s out", formatTokens(totalIn), formatTokens(out)))
 	if compacted {
-		r.line(&b, "state", "compacted")
+		r.line(&body, "state", "compacted")
 	}
-	b.WriteString("\n")
+	if te != nil {
+		// The usage-history sparklines: unicode block elements (U+2581..U+2588)
+		// so history reads as a shape, not a row of numbers. They are plain
+		// glyphs — the shape survives a monochrome terminal, color is only a
+		// layer on top (issue #182 AC2/AC5).
+		r.line(&body, "usage", te.tokenSparkline(sparkWidth))
+		r.line(&body, "cost ", te.costSparkline(sparkWidth))
+	}
+	return b.String() + th.railBody(railStats, strings.TrimRight(body.String(), "\n"))
+}
 
-	// CONTEXT — the active session surface.
-	b.WriteString("CONTEXT\n")
-	r.line(&b, "session", r.sessionID)
-	r.line(&b, "temp", r.sessionTemp)
-	b.WriteString("\n")
+// renderContext renders the CONTEXT section: the active session surface.
+func (r *Rail) renderContext(th Theme) string {
+	var b strings.Builder
+	b.WriteString(th.railHeader(railContext, "CONTEXT") + "\n")
+	var body strings.Builder
+	r.line(&body, "session", r.sessionID)
+	r.line(&body, "temp", r.sessionTemp)
+	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
+}
 
-	// SKILLS — detected + per-session active skills (eitri.md §2.3). One line
-	// per skill with its install scope and ✓/✕ activation state; the section
-	// renders a "none detected" line when the catalog is empty.
-	b.WriteString("SKILLS\n")
+// renderSkills renders the SKILLS section: detected + per-session active
+// skills (eitri.md §2.3). One line per skill with its install scope and ✓/✕
+// activation state; the section renders a "none detected" line when the
+// catalog is empty.
+func (r *Rail) renderSkills(skills []SkillItem, th Theme) string {
+	var b strings.Builder
+	b.WriteString(th.railHeader(railSkills, "SKILLS") + "\n")
+	var body strings.Builder
 	if len(skills) == 0 {
-		r.line(&b, "none", "detected")
+		r.line(&body, "none", "detected")
 	} else {
 		for _, it := range skills {
 			state := "✕"
 			if it.Active {
 				state = "✓"
 			}
-			r.line(&b, it.Name+" ["+it.Scope+"]", state)
+			r.line(&body, it.Name+" ["+it.Scope+"]", state)
 		}
 	}
-	b.WriteString("\n")
+	return b.String() + th.railBody(railSkills, strings.TrimRight(body.String(), "\n"))
+}
 
-	// MODEL — the provider/model/effort surface.
-	b.WriteString("MODEL\n")
-	r.line(&b, r.provider+"/"+r.model, "")
+// renderModel renders the MODEL section: the provider/model/effort surface.
+func (r *Rail) renderModel(th Theme) string {
+	var b strings.Builder
+	b.WriteString(th.railHeader(railModel, "MODEL") + "\n")
+	var body strings.Builder
+	r.line(&body, r.provider+"/"+r.model, "")
 	effort := r.effort
 	if effort == "" {
 		effort = "n/a"
 	}
-	r.line(&b, "effort", effort)
+	r.line(&body, "effort", effort)
 	thinking := "off"
 	if r.thinking {
 		thinking = "on"
 	}
-	r.line(&b, "thinking", thinking)
-
-	return b.String()
+	r.line(&body, "thinking", thinking)
+	return b.String() + th.railBody(railModel, strings.TrimRight(body.String(), "\n"))
 }
 
 // formatTokens renders a token count compactly: thousands as X.Xk, millions as
@@ -141,6 +181,10 @@ const (
 	railWidth      = 30
 	railShowWidth  = 120
 	railShowHeight = 24
+	// sparkWidth is the column width of each usage-history sparkline row in
+	// STATS (issue #182): the last sparkWidth per-turn samples render as the
+	// shape, newest on the right.
+	sparkWidth = 12
 )
 
 // railVisible reports whether the right context rail should render now. When

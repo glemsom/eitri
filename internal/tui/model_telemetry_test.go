@@ -24,6 +24,12 @@ func TestModelStatusStripRenders(t *testing.T) {
 	m = resize(t, m)
 
 	content := view(m)
+	// The strip carries the accent treatment (issue #182 AC4) so the band
+	// matches the colorized rail: the telemetry line renders in the theme's
+	// accent hue, not plain faint text.
+	if strip := lineContaining(content, "cache:80%"); !strings.Contains(strip, "\x1b[38;2;122;162;247m") {
+		t.Errorf("status strip must render in the accent hue, got line: %q", strip)
+	}
 	if !strings.Contains(content, "cache:80%") {
 		t.Errorf("status strip missing cache gauge, got: %q", content)
 	}

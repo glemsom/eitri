@@ -23,7 +23,7 @@ func TestRailRenderStats(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, nil)
+	view := r.render(te, nil, defaultTheme)
 
 	if !strings.Contains(view, "STATS") {
 		t.Errorf("rail missing STATS section, got: %q", view)
@@ -47,7 +47,7 @@ func TestRailRenderStats(t *testing.T) {
 // provider/model/effort/thinking (issue #88).
 func TestRailRenderModel(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), nil)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), nil, defaultTheme)
 
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
@@ -72,7 +72,7 @@ func TestRailRenderContext(t *testing.T) {
 		{Name: "go-guidelines", Scope: "user", Active: true},
 		{Name: "security-review", Scope: "project", Active: false},
 	}
-	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), skills)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), skills, defaultTheme)
 
 	if !strings.Contains(view, "CONTEXT") {
 		t.Errorf("rail missing CONTEXT section, got: %q", view)
@@ -97,6 +97,94 @@ func TestRailRenderContext(t *testing.T) {
 }
 
 // TestModelRailToggles asserts ctrl+b toggles the rail between visible and
+
+// TestRailRenderSectionHues asserts each rail section renders with a distinct
+// hue from the theme palette (issue #182 AC1): the STATS / CONTEXT / SKILLS /
+// MODEL headers and their body lines carry the per-section hue's truecolor
+// sequence under the default theme, so the four sections read apart at a
+// glance.
+func TestRailRenderSectionHues(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
+	view := r.render(te, []SkillItem{{Name: "go-guidelines", Scope: "user", Active: true}}, defaultTheme)
+
+	// Default-theme rail hues, as lipgloss truecolor sequences (issue #178:
+	// every palette entry is a hex value; the output layer downsamples for
+	// non-truecolor terminals).
+	cases := []struct {
+		section string
+		hue     string
+	}{
+		{"STATS", "\x1b[1;38;2;224;175;104m"},   // stats amber #E0AF68
+		{"CONTEXT", "\x1b[1;38;2;125;207;255m"}, // context light-blue #7DCFFF
+		{"SKILLS", "\x1b[1;38;2;255;135;215m"},  // skills pink #FF87D7
+		{"MODEL", "\x1b[1;38;2;158;206;106m"},   // model green #9ECE6A
+	}
+	for _, tc := range cases {
+		hdr := lineContaining(view, tc.section)
+		if hdr == "" {
+			t.Fatalf("rail missing %s section, got: %q", tc.section, view)
+		}
+		if !strings.Contains(hdr, tc.hue) {
+			t.Errorf("%s header = %q, want hue %q", tc.section, hdr, tc.hue)
+		}
+	}
+	// Body lines pick up the section hue too — a STATS value carries the stats
+	// amber, not a different section's hue.
+	if cache := lineContaining(view, "cache 80%"); !strings.Contains(cache, "\x1b[38;2;224;175;104m") {
+		t.Errorf("STATS body line = %q, want the stats hue", cache)
+	}
+	if model := lineContaining(view, "opencode-go/deepseek-v4-flash"); !strings.Contains(model, "\x1b[38;2;158;206;106m") {
+		t.Errorf("MODEL body line = %q, want the model hue", model)
+	}
+}
+
+// TestRailRenderSparkline asserts the STATS section carries the compact
+// usage-history sparklines (issue #182 AC2): a usage + cost row of unicode
+// block characters, drawn from the live telemetry history and updating with
+// it. The plain text still reads without color — the blocks are the shape.
+func TestRailRenderSparkline(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	// Two turns of unequal usage so the shape is not flat.
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 100, Output: 100})
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 300, Output: 300})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
+	view := r.render(te, nil, defaultTheme)
+
+	usage := lineContaining(view, "usage")
+	if usage == "" {
+		t.Fatalf("STATS missing usage sparkline row, got: %q", view)
+	}
+	if !strings.Contains(usage, "▁▁▁▁▁▁▁▁▁▁▃█") {
+		t.Errorf("usage sparkline = %q, want the two-turn shape", usage)
+	}
+	cost := lineContaining(view, "cost  ")
+	if cost == "" {
+		t.Fatalf("STATS missing cost sparkline row, got: %q", view)
+	}
+	if !strings.Contains(cost, "▁▁▁▁▁▁▁▁▁▁▃█") {
+		t.Errorf("cost sparkline = %q, want the two-turn shape", cost)
+	}
+}
+
+// TestRailRenderNoSparklineWithoutTelemetry asserts the rail renders zeroed
+// STATS without sparkline rows when no status-strip telemetry is wired (the
+// pre-sparkline behavior): the history has nothing to draw from.
+func TestRailRenderNoSparklineWithoutTelemetry(t *testing.T) {
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
+	view := r.render(nil, nil, defaultTheme)
+	if strings.Contains(view, "▁▂▃") || strings.Contains(view, "usage") {
+		t.Errorf("nil telemetry must render no sparkline rows, got: %q", view)
+	}
+	if !strings.Contains(view, "cache 0%") {
+		t.Errorf("nil telemetry STATS must stay zeroed, got: %q", view)
+	}
+}
+
 // hidden on any width without disturbing the transcript (issue #88 AC1).
 func TestModelRailToggles(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
@@ -212,6 +300,11 @@ func TestModelRailLiveUpdates(t *testing.T) {
 
 	if !strings.Contains(view(m), "cache 90%") {
 		t.Errorf("open rail not live-updating cache gauge, got: %q", view(m))
+	}
+	// The live usage sparkline rides the same drained update: the drained
+	// sample renders as a block shape in STATS (issue #182 AC2).
+	if !strings.Contains(view(m), "usage ▁▁▁▁▁▁▁▁▁▁▁█") {
+		t.Errorf("open rail must show the live usage sparkline, got: %q", view(m))
 	}
 }
 
