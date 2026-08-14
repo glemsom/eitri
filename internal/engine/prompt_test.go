@@ -30,6 +30,16 @@ func TestSystemPromptTokenBudget(t *testing.T) {
 	}
 }
 
+// TestSystemPromptNamesAgent locks the identity invariant from issue #196:
+// the system prompt must introduce the agent as Eitri, so the model answers
+// to its own name in every session.
+func TestSystemPromptNamesAgent(t *testing.T) {
+	p := SystemPromptContent()
+	if !strings.Contains(p, "You are Eitri") {
+		t.Fatalf("system prompt does not introduce the agent as Eitri:\n%s", p)
+	}
+}
+
 // TestSystemPromptIsStatic guards the byte-stable-head invariant (spec §34):
 // Eitri's system prompt must be constant text. Live session state (time, cwd)
 // rides a tail message (spec §35), never here.
