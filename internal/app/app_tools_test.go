@@ -238,11 +238,11 @@ func scriptedEditTurn(ws string) *provider.Scripted {
 // TestBatchEditToolReportsLineDelta drives a real edit tool call through the
 // app's shared registry and asserts the TUI-side delta observer (issue #174)
 // computes the same before/after line delta the engine's ToolDelta seam used
-// to report (issue #84 AC3): the file gains two lines as one is swapped for
-// three, so the observer reports +2, -0. The observer is fed from the engine's
-// event stream (ToolCallEvent → pre-edit snapshot, ToolResultEvent → diff)
-// exactly as the app's TUI listener wires it, and the engine itself carries no
-// ToolDelta seam — the batch run stays byte-identical.
+// to report (issue #84 AC3, removed in issue #175): the file gains two lines
+// as one is swapped for three, so the observer reports +2, -0. The observer is
+// fed from the engine's event stream (ToolCallEvent → pre-edit snapshot,
+// ToolResultEvent → diff) exactly as the app's TUI listener wires it, and the
+// engine itself carries no ToolDelta seam — the batch run stays byte-identical.
 func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

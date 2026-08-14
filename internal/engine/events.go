@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"context"
 	"regexp"
 	"strconv"
 	"strings"
@@ -77,10 +76,8 @@ type ToolCallEvent struct {
 // result string, so no raw stream or internal history needs re-parsing
 // downstream. It also carries the full delivered result (Result) so a collapse
 // always has an expand path (the lossless-recovery invariant is satisfied
-// end-to-end), the Add/Remove line delta a file-mutating tool (edit/write)
-// performed when the run reported one via the AgentOptions.ToolDelta seam, and
-// the before/after file content (when reported) that backs the TUI's review
-// panel inline diff (issue #90).
+// end-to-end). File line-delta and before/after content live on the TUI side
+// of the seam, computed by the delta observer (issue #174).
 type ToolResultEvent struct {
 	Turn int
 	// ID matches the ToolCallEvent that initiated the call.
@@ -100,23 +97,6 @@ type ToolResultEvent struct {
 	// Dropped is the number of content lines hidden behind the "+N more" tail
 	// (0 when the result is uncompressed / never truncated).
 	Dropped int
-	// Added is the count of lines a file-mutating edit added to its target
-	// file (0 for non-edit tools or when no delta was reported).
-	Added int
-	// Removed is the count of lines a file-mutating edit removed from its
-	// target file (0 for non-edit tools or when no delta was reported).
-	Removed int
-	// Before is the target file's full content before a file-mutating tool ran
-	// (empty when the run did not report content, e.g. batch or non-edit tools).
-	// It backs the review panel's inline diff of a changed file (issue #90).
-	Before string
-	// After is the target file's full content after a file-mutating tool ran
-	// (empty when the run did not report content).
-	After string
-	// Path is the host filesystem path of the target file (empty when the run
-	// did not report one). It backs the review panel's open_in_browser escape
-	// hatch (issue #90).
-	Path string
 }
 
 // UsageEvent carries per-turn token telemetry (docs/spec.md §4): input/output
@@ -144,10 +124,8 @@ var markerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 // (without re-parsing raw stream or internal history downstream): a result
 // carrying the explicit "+N more" tail marker is the compressed form, and the
 // marker's count is the number of lines hidden behind it. It also carries the
-// full delivered result string and, when a file line delta was reported by the
-// run's ToolDelta seam, the added/removed line counts and before/after file
-// content (the review panel's inline-diff source, issue #90).
-func newToolResultEvent(turn int, id, name, result string, added, removed int, before, after, path string) ToolResultEvent {
+// full delivered result string so a collapse always has an expand path.
+func newToolResultEvent(turn int, id, name, result string) ToolResultEvent {
 	dropped, lines := 0, 0
 	if result != "" {
 		lines = strings.Count(result, "\n")
@@ -166,11 +144,6 @@ func newToolResultEvent(turn int, id, name, result string, added, removed int, b
 		Compressed: dropped > 0,
 		Lines:      lines,
 		Dropped:    dropped,
-		Added:      added,
-		Removed:    removed,
-		Before:     before,
-		After:      after,
-		Path:       path,
 	}
 }
 
@@ -181,27 +154,3 @@ func (ToolCallEvent) engineEvent()   {}
 func (ToolResultEvent) engineEvent() {}
 func (UsageEvent) engineEvent()      {}
 func (CompactedEvent) engineEvent()  {}
-
-// ToolDelta is the optional file-delta seam the engine uses to tag a
-// file-mutating tool call (issues #84 and #90). Begin is invoked just before a
-// tool call executes so a caller can snapshot the target file's pre-edit
-// state; End is invoked after execution and reports the added/removed line
-// counts; Content reports the before/after full file content that backs the
-// TUI review panel's inline diff. A nil seam (the batch/headless default)
-// reports zero deltas and no content and keeps runs byte-identical; the seam
-// is pure UI telemetry for the TUI and never affects the run or its message
-// history.
-type ToolDelta struct {
-	// Begin snapshots pre-execution state for one tool call. Nil is allowed
-	// when no snapshot is needed (a zero Added/Removed is reported).
-	Begin func(ctx context.Context, name, argsJSON string)
-	// End diffs post-execution state and reports the tool call's added/removed
-	// line counts. Nil reports a zero delta.
-	End func(ctx context.Context, name, argsJSON string) (added, removed int)
-	// Content reports the target file's before/after full content for a
-	// file-mutating tool call so the review panel can render an inline diff
-	// (issue #90), plus the resolved host path for the open_in_browser escape
-	// hatch. It must pair a content snapshot taken in Begin with the current
-	// on-disk file. Nil reports empty content (no inline diff).
-	Content func(ctx context.Context, name, argsJSON string) (before, after, hostPath string)
-}
