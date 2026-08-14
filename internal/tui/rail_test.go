@@ -128,13 +128,14 @@ func TestRailRenderSectionHues(t *testing.T) {
 	}
 }
 
-// TestRailRenderSparkline asserts the STATS section carries the compact
-// usage-history sparklines (issue #182 AC2): a usage + cost row of unicode
-// block characters, drawn from the live telemetry history and updating with
-// it. The plain text still reads without color — the blocks are the shape.
-func TestRailRenderSparkline(t *testing.T) {
+// TestRailRenderStatsNoGraph asserts the STATS section renders numeric lines
+// only — cache %, cost, turns, token in/out — with no usage-history graph rows
+// in any state (issue #189): the per-turn token/cost sparklines are removed,
+// so no unicode-block shape ever appears next to the numbers, even with a
+// populated telemetry history.
+func TestRailRenderStatsNoGraph(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	// Two turns of unequal usage so the shape is not flat.
+	// Two turns of unequal usage: the shape the sparkline would have drawn.
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 100, Output: 100})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -143,33 +144,19 @@ func TestRailRenderSparkline(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	view := r.render(te, defaultTheme)
 
-	usage := lineContaining(view, "usage")
-	if usage == "" {
-		t.Fatalf("STATS missing usage sparkline row, got: %q", view)
+	// No graph rows: no usage/cost sparkline labels, no block glyphs.
+	if line := lineContaining(view, "usage"); line != "" {
+		t.Errorf("STATS must render no usage graph row, got: %q", line)
 	}
-	if !strings.Contains(usage, "▁▁▁▁▁▁▁▁▁▁▃█") {
-		t.Errorf("usage sparkline = %q, want the two-turn shape", usage)
+	if strings.Contains(view, "▁") {
+		t.Errorf("STATS must render no sparkline block glyphs, got: %q", view)
 	}
-	cost := lineContaining(view, "cost  ")
-	if cost == "" {
-		t.Fatalf("STATS missing cost sparkline row, got: %q", view)
-	}
-	if !strings.Contains(cost, "▁▁▁▁▁▁▁▁▁▁▃█") {
-		t.Errorf("cost sparkline = %q, want the two-turn shape", cost)
-	}
-}
-
-// TestRailRenderNoSparklineWithoutTelemetry asserts the rail renders zeroed
-// STATS without sparkline rows when no status-strip telemetry is wired (the
-// pre-sparkline behavior): the history has nothing to draw from.
-func TestRailRenderNoSparklineWithoutTelemetry(t *testing.T) {
-	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(nil, defaultTheme)
-	if strings.Contains(view, "▁▂▃") || strings.Contains(view, "usage") {
-		t.Errorf("nil telemetry must render no sparkline rows, got: %q", view)
-	}
-	if !strings.Contains(view, "cache 0%") {
-		t.Errorf("nil telemetry STATS must stay zeroed, got: %q", view)
+	// The numeric readouts stay, fed by the same telemetry (0 hits, 400 in,
+	// 400 out @ $0.14/$0.28 per 1M = $0.000168).
+	for _, want := range []string{"cache 0%", "cost $0.000168", "turns 2/250", "400 in", "400 out"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("STATS missing numeric readout %q, got: %q", want, view)
+		}
 	}
 }
 
@@ -289,10 +276,11 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	if !strings.Contains(view(m), "cache 90%") {
 		t.Errorf("open rail not live-updating cache gauge, got: %q", view(m))
 	}
-	// The live usage sparkline rides the same drained update: the drained
-	// sample renders as a block shape in STATS (issue #182 AC2).
-	if !strings.Contains(view(m), "usage ▁▁▁▁▁▁▁▁▁▁▁█") {
-		t.Errorf("open rail must show the live usage sparkline, got: %q", view(m))
+	// No graph rows in the live view either: the per-turn usage/cost sparklines
+	// are removed (issue #189), so a drained usage update shows in the numeric
+	// readouts only.
+	if strings.Contains(view(m), "usage") || strings.Contains(view(m), "▁") {
+		t.Errorf("open rail must not render graph rows, got: %q", view(m))
 	}
 }
 
