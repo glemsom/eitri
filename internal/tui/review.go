@@ -10,14 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/diff"
 )
 
-// diffAdd/diffDel are the historical package-level aliases of the default
-// theme's diff styles, kept for compatibility with any out-of-package callers;
-// new code reads the theme's diffAddStyle/diffDelStyle through renderDiff.
-var (
-	diffAdd = defaultTheme.diffAddStyle
-	diffDel = defaultTheme.diffDelStyle
-)
-
 // reviewRegionMax caps the review overlay's own height-clipped region (issue
 // T06 AC1): an expanded diff taller than this clips at the region boundary
 // instead of overflowing the terminal and pushing the fixed bottom band

@@ -113,22 +113,6 @@ func markdownRemapFor(th Theme) map[string]string {
 	}
 }
 
-func mustHex(b string) int {
-	n := 0
-	for _, c := range b {
-		n *= 16
-		switch {
-		case c >= '0' && c <= '9':
-			n += int(c - '0')
-		case c >= 'a' && c <= 'f':
-			n += int(c-'a') + 10
-		case c >= 'A' && c <= 'F':
-			n += int(c-'A') + 10
-		}
-	}
-	return n
-}
-
 // sgrParamRe matches a full SGR sequence (ESC [ params m).
 var sgrParamRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
