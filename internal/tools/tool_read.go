@@ -19,7 +19,7 @@ func (r *readTool) Name() string {
 }
 
 func (r *readTool) Description() string {
-	return "Read a file, optionally limited to a line range (start_line..end_line, 1-based). Returns the requested lines with content; paths resolve in the shared path namespace."
+	return "Read a file. Omitted or null start_line/end_line read the ENTIRE file (start_line defaults to 1, end_line to EOF) — no error, a full dump into context. Explicit 1-based line ranges are the cheap path: prefer them for large files. Output is line-numbered; oversized results are truncated at the tool-result boundary with an explicit \"+N more\" marker (never silent). Paths resolve in the shared path namespace."
 }
 
 func (r *readTool) Schema() map[string]any {
