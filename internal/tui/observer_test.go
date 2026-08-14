@@ -20,9 +20,10 @@ func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 
 // TestDeltaObserver_computesEditLineDelta asserts a paired edit tool start +
 // result produces the same [+N,-M] line delta and before/after content the
-// engine's ToolDelta seam used to report (issue #174): the observer snapshots
-// the target file on start and diffs it on result. The fixture gains two lines
-// as one is swapped for three, so the observer reports +2, -0.
+// engine's ToolDelta seam used to report (issue #174, removed in issue #175):
+// the observer snapshots the target file on start and diffs it on result. The
+// fixture gains two lines as one is swapped for three, so the observer reports
+// +2, -0.
 func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 	obs, dir := newObserverFixture(t)
 	path := filepath.Join(dir, "main.go")
