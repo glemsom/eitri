@@ -1548,8 +1548,10 @@ func (m Model) renderHistory(b *strings.Builder) {
 // is the region T02+ pins at the bottom so it never scrolls away on resize.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	// Live status strip (issue #86), rendered above the composer so model,
-	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
+	// Live status strip (issues #86, #182), rendered above the composer so
+	// model, effort, thinking, turns/max, cost, and the cache gauge stay
+	// glanceable; it carries the accent hue to match the colorized rail (issue
+	// #182 AC4).
 	if m.telemetry != nil {
 		inner.WriteString(m.theme.bandStatusStyle.Render(m.telemetry.render(m.composer.Width())))
 		inner.WriteString("\n")
