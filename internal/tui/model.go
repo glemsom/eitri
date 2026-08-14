@@ -319,6 +319,10 @@ func NewModelCfg(d Dependencies) Model {
 	// Start compact: the composer grows with the draft up to maxComposerRows
 	// (issue #121 AC5), so an empty composer sits at a single row.
 	tx.SetHeight(1)
+	// The composer's caret is the terminal's hardware cursor (issue #168): the
+	// textarea's software reverse-video caret cell is disabled so the terminal
+	// itself draws the caret at the edit position.
+	tx.SetVirtualCursor(false)
 
 	m := Model{
 		composer:        tx,
@@ -1078,9 +1082,14 @@ func (m *Model) completeSlashCommand() {
 // v1 pushed through program options (tea.WithAltScreen,
 // tea.WithMouseCellMotion) live here declaratively.
 func (m Model) View() tea.View {
-	v := tea.NewView(m.viewString())
+	content := m.viewString()
+	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	// The composer's caret is the terminal's hardware cursor (issue #168): the
+	// textarea's software caret cell is disabled, so the frame attaches the
+	// caret at the composer's true edit cell instead.
+	v.Cursor = m.composerCursor(content)
 	return v
 }
 
@@ -1517,6 +1526,47 @@ func (m Model) renderBand(b *strings.Builder) {
 	b.WriteString(bandSeparatorStyle.Render(strings.Repeat("─", w)))
 	b.WriteString("\n")
 	b.WriteString(inner.String())
+}
+
+// composerCursor returns the composer's hardware caret for the current frame,
+// or nil when the composer is not the active editing surface (issue #168). The
+// textarea reports its caret relative to its own top-left cell; the band is
+// pinned to the bottom of the frame, so the caret is offset by the rows that
+// render above the composer — everything above the band, plus the band's own
+// pre-composer rows (separator, status strip, slash completion). content is the
+// frame's rendered content, whose line count is the frame height.
+func (m Model) composerCursor(content string) *tea.Cursor {
+	if m.settings != nil || m.prompting {
+		// Settings and the continuation prompt are full-surface overlays: the
+		// composer is not on screen, so no caret (full hiding of the inert
+		// states is issue #169).
+		return nil
+	}
+	cur := m.composer.Cursor()
+	if cur == nil {
+		return nil
+	}
+	var band strings.Builder
+	m.renderBand(&band)
+	pre := m.composerPreRows()
+	// The left pane starts at column 0, so the textarea's own X offset (prompt
+	// + internal padding) is already frame-absolute; only the row needs the
+	// band offset.
+	cur.Y += lineCount(content) - lineCount(band.String()) + pre
+	return cur
+}
+
+// composerPreRows returns how many band rows render above the composer: the
+// accent separator, the live status strip (when wired), and one row per
+// slash-completion candidate (issue #168). It mirrors renderBand's ordering so
+// the caret lands on the composer's true frame row; savedMsg rows sit below
+// the composer and are excluded.
+func (m Model) composerPreRows() int {
+	n := 1 // accent separator
+	if m.telemetry != nil {
+		n++
+	}
+	return n + len(slashCandidates(m.slashPrefix, m.skills))
 }
 
 // promptView renders the interactive max-turns continuation prompt.

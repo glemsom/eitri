@@ -321,9 +321,9 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 
 // TestDragSelect_highlightsDuringDrag asserts the dragged cell range renders
 // highlighted (reverse video) while the drag is in progress, and the highlight
-// is gone after release (issue #124 AC1). Reverse-video matching is scoped to
-// the dragged transcript row: bubbles v2 renders the composer's focused cursor
-// as a reverse-video cell too, so the assertions must not count it.
+// is gone after release (issue #124 AC1). The whole surface is scanned for
+// the reverse-video marker: the composer paints no software caret cell
+// anymore, so no row needs excluding (issue #168).
 func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	rows, top := historyContentRows(m)
@@ -336,7 +336,7 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("motion", col+5, 0))
 
 	content := view(m)
-	if !workspaceRowHas(content, "\x1b[7m") {
+	if !strings.Contains(content, "\x1b[7m") {
 		t.Errorf("drag in progress must highlight the range in reverse video, got content:\n%s", content)
 	}
 	// The plain transcript text survives the highlight intact.
@@ -346,20 +346,9 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	}
 
 	m = mustUpdate(t, m, dragMsg("release", col+5, 0))
-	if workspaceRowHas(view(m), "\x1b[7m") {
+	if strings.Contains(view(m), "\x1b[7m") {
 		t.Errorf("highlight must clear after release, got content:\n%s", view(m))
 	}
-}
-
-// workspaceRowHas reports whether the rendered workspace row (the transcript's
-// first content line, which drag tests highlight) carries the given substring.
-func workspaceRowHas(content, substr string) bool {
-	for _, line := range strings.Split(content, "\n") {
-		if strings.Contains(ansiStrip(line), "workspace: /tmp/acme") {
-			return strings.Contains(line, substr)
-		}
-	}
-	return false
 }
 
 // TestDragSelect_plainClickCopiesNothing asserts a press+release on one cell
