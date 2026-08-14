@@ -309,6 +309,26 @@ func NewModel(t Turn) Model {
 	return NewModelCfg(Dependencies{Turn: t})
 }
 
+// Composer caret style policy (issue #170): the composer's hardware caret is
+// deliberately a steady (non-blinking) block rather than whatever the textarea
+// or terminal defaults would draw.
+//
+// Shape is block: it keeps the visual identity of the software reverse-video
+// block caret the hardware caret replaced (issue #168) and matches the
+// near-universal terminal default, so a terminal that ignores the shape request
+// degrades to the same visible block — the caret is never hidden by the policy.
+//
+// Blink is off and fixed (not the terminal default): the caret's presence
+// already signals editability — it is attached only while the composer is the
+// active editing surface and hidden otherwise (issue #169) — so blinking adds
+// noise without carrying information. As with shape, a terminal that ignores
+// the steady bit falls back to its own default (typically a blinking block);
+// the caret stays visible either way.
+const (
+	composerCaretShape = tea.CursorBlock
+	composerCaretBlink = false
+)
+
 // NewModelCfg builds a TUI model wired to the given dependencies.
 func NewModelCfg(d Dependencies) Model {
 	tx := textarea.New()
@@ -323,6 +343,12 @@ func NewModelCfg(d Dependencies) Model {
 	// textarea's software reverse-video caret cell is disabled so the terminal
 	// itself draws the caret at the edit position.
 	tx.SetVirtualCursor(false)
+	// Apply the explicit caret style policy (issue #170) instead of inheriting
+	// the textarea default (block + blink).
+	st := tx.Styles()
+	st.Cursor.Shape = composerCaretShape
+	st.Cursor.Blink = composerCaretBlink
+	tx.SetStyles(st)
 
 	m := Model{
 		composer:        tx,
