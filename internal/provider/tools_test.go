@@ -75,9 +75,9 @@ func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 func TestToolCallMarshalsNestedFunction(t *testing.T) {
 	// wireShape mirrors the Chat Completions assistant tool_calls element.
 	type wireShape struct {
-		ID    string `json:"id"`
-		Type  string `json:"type"`
-		Func  struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+		Func struct {
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
 		} `json:"function"`

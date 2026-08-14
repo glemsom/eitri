@@ -2,8 +2,8 @@ package tui
 
 import (
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 

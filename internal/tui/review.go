@@ -215,7 +215,7 @@ func (m Model) renderReview(b *strings.Builder) {
 		b.WriteString("\n")
 		r.openErr = ""
 	}
-	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff "+g("·", ".")+" o: open_in_browser "+g("·", ".")+" ctrl+d: close"))
+	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff " + g("·", ".") + " o: open_in_browser " + g("·", ".") + " ctrl+d: close"))
 	b.WriteString("\n")
 }
 

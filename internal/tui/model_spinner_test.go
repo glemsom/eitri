@@ -125,6 +125,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 		t.Errorf("sub-second tool must not render a timer, got: %q", content2)
 	}
 }
+
 // TestComposerRail_modeColor asserts the composer's prompt rail encodes edit
 // state as color: the full accent while idle, a dimmed accent while a turn
 // runs (composer inert) and while the review panel owns the keys, and back to

@@ -122,10 +122,7 @@ func splitLines(s string) []string {
 	if s == "" {
 		return nil
 	}
-	if strings.HasSuffix(s, "\n") {
-		s = strings.TrimSuffix(s, "\n")
-	}
-	return strings.Split(s, "\n")
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
 // screenProgressFrames collapses carriage-return progress output. Downloaded

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/tools"
 )
 
 // scriptedSkillTurn drives the engine seam through a provider that (1) activates

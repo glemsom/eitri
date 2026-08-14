@@ -41,19 +41,19 @@ type Theme struct {
 	railHues [3]color.Color
 
 	// Derived styles, drawn from the palette entries.
-	headerStyle        lipgloss.Style // bold section header (settings title, prompts)
-	statusStyle        lipgloss.Style // faint secondary text (strips, hints, tool lines)
-	agentPaneStyle     lipgloss.Style // left-bordered pane framing assistant answers
-	errorPaneStyle     lipgloss.Style // the same pane with the error-colored border
-	userBubbleStyle    lipgloss.Style // the carded background fill for user prompts
-	thinkingStyle      lipgloss.Style // the 🤔 collapsed reasoning hint
-	toolStyle          lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
-	toolShellStyle     lipgloss.Style // the ⊕ tool-entry line, shell category
-	toolFileStyle      lipgloss.Style // the ⊕ tool-entry line, file category
-	toolWebStyle       lipgloss.Style // the ⊕ tool-entry line, web category
-	toolSkillStyle     lipgloss.Style // the ⊕ tool-entry line, skill category
-	outcomeOKStyle     lipgloss.Style // the ✓ tool-outcome tag
-	outcomeErrStyle    lipgloss.Style // the ✗ tool-outcome tag
+	headerStyle     lipgloss.Style // bold section header (settings title, prompts)
+	statusStyle     lipgloss.Style // faint secondary text (strips, hints, tool lines)
+	agentPaneStyle  lipgloss.Style // left-bordered pane framing assistant answers
+	errorPaneStyle  lipgloss.Style // the same pane with the error-colored border
+	userBubbleStyle lipgloss.Style // the carded background fill for user prompts
+	thinkingStyle   lipgloss.Style // the 🤔 collapsed reasoning hint
+	toolStyle       lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
+	toolShellStyle  lipgloss.Style // the ⊕ tool-entry line, shell category
+	toolFileStyle   lipgloss.Style // the ⊕ tool-entry line, file category
+	toolWebStyle    lipgloss.Style // the ⊕ tool-entry line, web category
+	toolSkillStyle  lipgloss.Style // the ⊕ tool-entry line, skill category
+	outcomeOKStyle  lipgloss.Style // the ✓ tool-outcome tag
+	outcomeErrStyle lipgloss.Style // the ✗ tool-outcome tag
 	// diffAddStyle / diffDelStyle render the review panel's inline diff lines:
 	// the ok/error hue on a dimmed background fill of the same hue, so added/
 	// removed lines carry the conventional green/red vocabulary in the theme's

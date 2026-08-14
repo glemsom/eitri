@@ -263,19 +263,19 @@ func TestThemeFor_auto(t *testing.T) {
 // the renderer.
 func TestThemeFor_mapsConfigNames(t *testing.T) {
 	for name, want := range map[string]color.Color{
-		"dracula":            lipgloss.Color("#BD93F9"),
-		"tokyo-night":        lipgloss.Color("#BB9AF7"),
-		"pink":               lipgloss.Color("#FF87D7"),
-		"light":              lipgloss.Color("#005FFF"),
-		"nord":               lipgloss.Color("#88C0D0"),
-		"gruvbox":            lipgloss.Color("#83A598"),
-		"solarized":          lipgloss.Color("#268BD2"),
-		"dark-daltonized":    lipgloss.Color("#56B4E9"),
-		"light-daltonized":   lipgloss.Color("#0072B2"),
-		"dark":               defaultTheme.accent,
-		"notty":              defaultTheme.accent,
-		"bogus":              defaultTheme.accent,
-		"":                   defaultTheme.accent,
+		"dracula":          lipgloss.Color("#BD93F9"),
+		"tokyo-night":      lipgloss.Color("#BB9AF7"),
+		"pink":             lipgloss.Color("#FF87D7"),
+		"light":            lipgloss.Color("#005FFF"),
+		"nord":             lipgloss.Color("#88C0D0"),
+		"gruvbox":          lipgloss.Color("#83A598"),
+		"solarized":        lipgloss.Color("#268BD2"),
+		"dark-daltonized":  lipgloss.Color("#56B4E9"),
+		"light-daltonized": lipgloss.Color("#0072B2"),
+		"dark":             defaultTheme.accent,
+		"notty":            defaultTheme.accent,
+		"bogus":            defaultTheme.accent,
+		"":                 defaultTheme.accent,
 	} {
 		if got := themeFor(name).accent; got != want {
 			t.Errorf("themeFor(%q) accent = %v, want %v", name, got, want)
