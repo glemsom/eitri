@@ -44,9 +44,9 @@ var defaultTheme = newDefaultTheme()
 
 // newDefaultTheme builds the default theme: the T4 styling identity (issue
 // #122) — a restrained dark palette with a single agent accent — as a palette
-// registry plus the derived styles that draw from it. It is the only place hex
-// values may live (issue #178 AC2: no hardcoded hex outside the palette
-// registry).
+// registry plus the derived styles that draw from it. Palette constructors are
+// the only place hex values may live (issue #178 AC2: no hardcoded hex outside
+// the palette registry).
 func newDefaultTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#7AA2F7"), // accent
