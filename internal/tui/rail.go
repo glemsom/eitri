@@ -48,8 +48,8 @@ func (r *Rail) line(b *strings.Builder, key, val string) {
 // read apart at a glance. It borrows the live status-strip telemetry (te) for
 // the STATS numbers, so every value reflects the run's current state (issue
 // #88 AC4); te may be nil when no strip is wired, the rail then renders zeroed
-// STATS with no sparkline. Rendering stays read-only against the agent loop:
-// it only reads the telemetry surface on the UI goroutine.
+// STATS. Rendering stays read-only against the agent loop: it only reads the
+// telemetry surface on the UI goroutine.
 func (r *Rail) render(te *Telemetry, th Theme) string {
 	var b strings.Builder
 	b.WriteString(r.renderStats(te, th))
@@ -61,9 +61,8 @@ func (r *Rail) render(te *Telemetry, th Theme) string {
 }
 
 // renderStats renders the STATS section: the live money/usage picture from the
-// telemetry surface plus the usage-history sparklines (issue #182 AC2) drawn
-// from the same telemetry — per-turn token and cost shapes that update live as
-// usage lands.
+// telemetry surface as numeric lines only — cache hit %, cost, turns, and
+// token in/out (issue #189 removed the usage-history sparkline rows).
 func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
@@ -94,14 +93,6 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	r.line(&body, "tokens", fmt.Sprintf("%s in · %s out", formatTokens(totalIn), formatTokens(out)))
 	if compacted {
 		r.line(&body, "state", "compacted")
-	}
-	if te != nil {
-		// The usage-history sparklines: unicode block elements (U+2581..U+2588)
-		// so history reads as a shape, not a row of numbers. They are plain
-		// glyphs — the shape survives a monochrome terminal, color is only a
-		// layer on top (issue #182 AC2/AC5).
-		r.line(&body, "usage", te.tokenSparkline(sparkWidth))
-		r.line(&body, "cost ", te.costSparkline(sparkWidth))
 	}
 	return b.String() + th.railBody(railStats, strings.TrimRight(body.String(), "\n"))
 }
@@ -156,10 +147,6 @@ const (
 	railWidth      = 30
 	railShowWidth  = 120
 	railShowHeight = 24
-	// sparkWidth is the column width of each usage-history sparkline row in
-	// STATS (issue #182): the last sparkWidth per-turn samples render as the
-	// shape, newest on the right.
-	sparkWidth = 12
 )
 
 // railVisible reports whether the right context rail should render now. When
