@@ -152,6 +152,48 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	}
 }
 
+// TestComposer_CaretHiddenWhileBusy asserts no hardware caret is attached while
+// an agent turn is running — the composer is on screen but inert, its keys are
+// ignored (ticket #57), so a blinking caret would promise editability the
+// surface does not have (issue #169 AC2). The caret returns as soon as the
+// turn completes and the composer regains the editing surface (issue #169 AC3).
+func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	if c := m.View().Cursor; c != nil {
+		t.Errorf("agent turn running must not attach a caret, got %+v", c)
+	}
+	// The turn completes: the composer is the active editing surface again.
+	m = mustUpdate(t, m, turnDoneMsg{prompt: "hi", answer: "ok"})
+	if c := m.View().Cursor; c == nil {
+		t.Error("completing the turn must restore the hardware caret")
+	}
+}
+
+// TestComposer_CaretHiddenOnReviewPanel asserts no hardware caret is attached
+// while the review panel is open — the panel routes keys (up/down/enter), so
+// the composer is not editable there (issue #169 AC1). Closing the panel
+// restores the caret on the next frame (issue #169 AC3).
+func TestComposer_CaretHiddenOnReviewPanel(t *testing.T) {
+	var feed = NewToolFeed()
+	m := newReviewModel(t, nil)
+	m = resize(t, m)
+	m = reviewFeedEdit(t, &m, feed, "/w/main.go", "edit", "old\n", "new\n", 0, 1)
+	m = reopenReview(t, m)
+	if m.review == nil {
+		t.Fatal("review panel must be open after ctrl+d")
+	}
+	if c := m.View().Cursor; c != nil {
+		t.Errorf("review panel open must not attach a caret, got %+v", c)
+	}
+	m = reopenReview(t, m)
+	if c := m.View().Cursor; c == nil {
+		t.Error("closing the review panel must restore the hardware caret")
+	}
+}
+
 // caretAtEndOfVisibleRow asserts the hardware caret sits right after the last
 // character of the composer's visible row that renders needle: the caret's
 // column equals that row's plain width and its row equals that row's frame

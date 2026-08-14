@@ -1529,17 +1529,20 @@ func (m Model) renderBand(b *strings.Builder) {
 }
 
 // composerCursor returns the composer's hardware caret for the current frame,
-// or nil when the composer is not the active editing surface (issue #168). The
+// or nil when the composer is not the active editing surface (issues #168, #169). The
 // textarea reports its caret relative to its own top-left cell; the band is
 // pinned to the bottom of the frame, so the caret is offset by the rows that
 // render above the composer — everything above the band, plus the band's own
 // pre-composer rows (separator, status strip, slash completion). content is the
 // frame's rendered content, whose line count is the frame height.
 func (m Model) composerCursor(content string) *tea.Cursor {
-	if m.settings != nil || m.prompting {
-		// Settings and the continuation prompt are full-surface overlays: the
-		// composer is not on screen, so no caret (full hiding of the inert
-		// states is issue #169).
+	if m.settings != nil || m.prompting || m.review != nil || m.busy {
+		// The composer is not the active editing surface, so no caret (issue #169):
+		// Settings and the continuation prompt are full-surface overlays (no
+		// composer on screen), the review panel routes keys away from the
+		// composer, and while a turn is running the composer is inert (keys are
+		// ignored, ticket #57). The caret returns on the next frame once the
+		// composer is editable again.
 		return nil
 	}
 	cur := m.composer.Cursor()
