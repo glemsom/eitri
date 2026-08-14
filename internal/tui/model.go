@@ -358,7 +358,7 @@ func NewModelCfg(d Dependencies) Model {
 		composer:        tx,
 		turn:            d.Turn,
 		deps:            d,
-		theme:           defaultTheme,
+		theme:           themeFor(d.Config.Theme),
 		continueReq:     make(chan struct{}, 1),
 		continueResp:    make(chan bool, 1),
 		skills:          skillSnapshot(d),
@@ -841,6 +841,12 @@ func (s *settingsForm) save(m *Model) {
 	if m.deps.SaveBack != nil {
 		m.deps.SaveBack(cfg)
 	}
+	// The theme selection re-skins the surface live (issue #179): the model's
+	// chrome palette and its render config both follow the saved value, so the
+	// chrome and the Markdown body pick up the new theme immediately instead
+	// of waiting for the next run.
+	m.deps.Config = cfg
+	m.theme = themeFor(cfg.Theme)
 	m.settings = nil
 }
 

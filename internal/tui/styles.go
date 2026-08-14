@@ -48,10 +48,45 @@ var defaultTheme = newDefaultTheme()
 // values may live (issue #178 AC2: no hardcoded hex outside the palette
 // registry).
 func newDefaultTheme() Theme {
-	accent := lipgloss.Color("#7AA2F7")
-	err := lipgloss.Color("#F7768E")
-	ok := lipgloss.Color("#9ECE6A")
+	return newTheme(
+		lipgloss.Color("#7AA2F7"), // accent
+		lipgloss.Color("#F7768E"), // error
+		lipgloss.Color("#9ECE6A"), // ok
+	)
+}
 
+// newDraculaTheme is the second curated chrome palette (issue #179 AC3): the
+// canonical dracula hues — purple accent, red error, green ok — built on the
+// same constructor pattern as the default, proving a new palette is a registry
+// addition with no consumer change.
+func newDraculaTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#BD93F9"), // accent
+		lipgloss.Color("#FF5555"), // error
+		lipgloss.Color("#50FA7B"), // ok
+	)
+}
+
+// themeFor maps a config theme name to its chrome palette (issue #179): the
+// Markdown render theme selection now also selects the TUI chrome palette, so
+// choosing a theme re-skins the whole surface, not just the Markdown body.
+// "dracula" selects the second curated palette; every other supported render
+// name (dark, light, tokyo-night, pink, notty, auto) keeps the default
+// palette, and an unknown value falls back to default — exactly the
+// renderer's fallback behavior (issue #179 AC4), so the chrome and Markdown
+// never disagree about a theme.
+func themeFor(name string) Theme {
+	if name == "dracula" {
+		return newDraculaTheme()
+	}
+	return defaultTheme
+}
+
+// newTheme builds a Theme from its three palette entries; the derived styles
+// draw from them. It is the only place derived styles are constructed: every
+// palette (default, dracula, future ones) shares the same style wiring, so
+// palettes differ by hue alone and can never drift apart structurally.
+func newTheme(accent, err, ok color.Color) Theme {
 	return Theme{
 		accent: accent,
 		error:  err,
