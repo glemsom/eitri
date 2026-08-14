@@ -217,16 +217,32 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	if len(rows) < 2 {
-		t.Fatalf("need at least two visible rows, got %q", rows)
+	// Locate the prompt row and the answer row on the visible surface; the
+	// drag spans the rows between them (blank separator rows included).
+	startRow, endRow := -1, -1
+	for i, r := range rows {
+		if startRow < 0 && strings.Contains(r, "hi") {
+			startRow = i
+		}
+		if strings.Contains(r, "plain") {
+			endRow = i
+		}
 	}
-	// Drag from mid row 0 to mid row 1; the expected text is derived from the
-	// visible surface alone.
+	if startRow < 0 || endRow < 0 || endRow < startRow {
+		t.Fatalf("need prompt and answer rows, got %q", rows)
+	}
+	// Drag from mid startRow to mid endRow; the expected text is derived from
+	// the visible surface alone.
 	startCol := 3
-	endRow, endCol := 1, 5
-	want := rows[0][startCol:] + "\n" + rows[1][:endCol+1]
+	endCol := 5
+	var want string
+	if startRow == endRow {
+		want = rows[startRow][startCol : endCol+1]
+	} else {
+		want = rows[startRow][startCol:] + "\n" + strings.Join(rows[startRow+1:endRow], "\n") + "\n" + rows[endRow][:endCol+1]
+	}
 
-	m = mustUpdate(t, m, dragMsg("press", startCol, 0))
+	m = mustUpdate(t, m, dragMsg("press", startCol, startRow))
 	m = mustUpdate(t, m, dragMsg("motion", endCol, endRow))
 	m = mustUpdate(t, m, dragMsg("release", endCol, endRow))
 
@@ -464,11 +480,20 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	if top <= 0 {
 		t.Fatalf("overflowed follow should be scrolled to the bottom, got top %d", top)
 	}
-	row := rows[top]
+	// The first visible row can be a blank separator; anchor the drag on the
+	// first non-blank visible row so the press starts a real selection.
+	screenRow := 0
+	for top+screenRow < len(rows) && strings.TrimSpace(rows[top+screenRow]) == "" {
+		screenRow++
+	}
+	if top+screenRow >= len(rows) {
+		t.Fatalf("no non-blank visible row, got rows %q", rows)
+	}
+	row := rows[top+screenRow]
 	col := 0
 
-	m = mustUpdate(t, m, dragMsg("press", col, 0))
-	m = mustUpdate(t, m, dragMsg("motion", col+3, 0))
+	m = mustUpdate(t, m, dragMsg("press", col, screenRow))
+	m = mustUpdate(t, m, dragMsg("motion", col+3, screenRow))
 	before := m.histViewport.YOffset()
 
 	m = mustUpdate(t, m, wheelMsg(true)) // wheel up
@@ -478,7 +503,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	if m.dragSel == nil {
 		t.Errorf("wheel must not cancel the in-progress drag")
 	}
-	m = mustUpdate(t, m, dragMsg("release", col+3, 0))
+	m = mustUpdate(t, m, dragMsg("release", col+3, screenRow))
 	if row == "" {
 		t.Errorf("test assumption broken: first visible row should have text")
 	}

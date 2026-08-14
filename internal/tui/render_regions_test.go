@@ -45,7 +45,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 
 	// Scroll region: history + workspace header + tool entry; never the
 	// composer or the status strip (both live in the fixed band).
-	for _, want := range []string{"eitri", "workspace: /tmp/acme-project", "⊕ edit"} {
+	for _, want := range []string{"workspace: /tmp/acme-project", "⊕ edit"} {
 		if !strings.Contains(hs, want) {
 			t.Errorf("scroll region missing %q, got:\n%s", want, hs)
 		}

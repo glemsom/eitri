@@ -151,6 +151,9 @@ func TestBatchSkillThroughEngineSeam(t *testing.T) {
 // as active (docs/spec.md §9, eitri.md §2.3).
 func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	ws := t.TempDir()
+	// Isolate from any real user-global skills so only the project pack below
+	// is discoverable.
+	t.Setenv("HOME", t.TempDir())
 	skillDir := filepath.Join(ws, ".agents", "skills", "tui-skill")
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
@@ -203,5 +206,33 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	}
 	if !foundActive {
 		t.Fatalf("panel items do not reflect tui-skill as active")
+	}
+}
+
+// TestDiscoverSkillsUserGlobalRoot verifies discoverSkills resolves the
+// user-global skill root as ~/.agents/skills (dot-prefixed, the Agent Skills
+// convention), not ~/agents/skills, so user-installed skills are discoverable.
+func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
+	home := t.TempDir()
+	skillDir := filepath.Join(home, ".agents", "skills", "user-skill")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: user-skill\ndescription: a user-global demo\n---\n\n# User Skill\n\nDo the user thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	t.Setenv("HOME", home)
+	skills := discoverSkills(t.TempDir())
+	if skills == nil || skills.Skill("user-skill") == nil {
+		names := "<nil>"
+		if skills != nil {
+			names = strings.Join(skills.Names(), ",")
+		}
+		t.Fatalf("user-global skill not discovered; catalog names = %s, want user-skill", names)
+	}
+	if got := skills.Scope("user-skill"); got != "user" {
+		t.Fatalf("user-skill scope = %q, want user", got)
 	}
 }

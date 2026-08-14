@@ -35,7 +35,7 @@ func busyStreamingModel(t *testing.T) Model {
 	// Stream a long answer that dwarfs the viewport: the newest tokens must
 	// stay in view while busy.
 	for i := 0; i < 6; i++ {
-		m = applyDelta(t, m, " tok"+string(rune('a'+i)))
+		m = applyDelta(t, m, strings.Repeat("word ", 20))
 	}
 	return m
 }

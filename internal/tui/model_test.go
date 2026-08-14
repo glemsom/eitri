@@ -31,8 +31,13 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	content := view(m)
-	if !strings.Contains(content, "you") || !strings.Contains(content, "eitri") {
-		t.Errorf("expected both role headers in view, got: %q", content)
+	// The prompt and the answer both render in the transcript; no role labels
+	// ("you"/"eitri") prefix either side.
+	if !strings.Contains(content, "hello") || !strings.Contains(content, "glad") {
+		t.Errorf("expected prompt and answer in view, got: %q", content)
+	}
+	if strings.Contains(content, "you") || strings.Contains(content, "eitri") {
+		t.Errorf("role labels must not render in the transcript, got: %q", content)
 	}
 	// The assistant's markdown answer must render (bold "glad" carries SGR 1).
 	if !strings.Contains(content, "glad") {
@@ -108,8 +113,8 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 		t.Errorf("answer still required in content, got: %q", expanded)
 	}
 	thinkingIdx := strings.Index(expanded, "I reason about it first")
-	eitriIdx := strings.Index(expanded, "eitri")
-	if thinkingIdx == -1 || eitriIdx == -1 || thinkingIdx > eitriIdx {
+	answerIdx := strings.Index(expanded, "plain")
+	if thinkingIdx == -1 || answerIdx == -1 || thinkingIdx > answerIdx {
 		t.Errorf("reasoning block must render as its own stream before the answer, got: %q", expanded)
 	}
 }
@@ -170,21 +175,23 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	}
 }
 
-// TestModel_skillsPanelRenders asserts the skills panel lists detected skills
-// with their install scope and activation state (docs/spec.md §9, eitri.md
-// §2.3).
+// TestModel_skillsPanelRenders asserts detected skills render in the right
+// context rail with their install scope and activation state (docs/spec.md §9,
+// eitri.md §2.3): the rail auto-shows on a wide window, so the skills surface
+// is visible alongside the transcript without cluttering it.
 func TestModel_skillsPanelRenders(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
 		Skills: &SkillsSurface{Items: []SkillItem{{Name: "my-skill", Description: "a demo", Scope: "project"}}},
+		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
 	})
-	m = resize(t, m)
+	m = resizeTo(t, m, 140, 24)
 	content := view(m)
-	if !strings.Contains(content, "skills") {
-		t.Errorf("expected a skills panel header, got: %q", content)
+	if !strings.Contains(content, "SKILLS") {
+		t.Errorf("expected a SKILLS rail section, got: %q", content)
 	}
 	if !strings.Contains(content, "my-skill") || !strings.Contains(content, "project") {
-		t.Errorf("expected detected skill + scope in panel, got: %q", content)
+		t.Errorf("expected detected skill + scope in rail, got: %q", content)
 	}
 }
 
@@ -203,10 +210,14 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 				return `<skill_content name="my-skill">payload</skill_content>`, nil
 			},
 		},
+		Rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill")
 	m = submitAndWait(t, m)
+	// Open the right rail so the activated skill's ✓ marker is visible.
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
+	m = asModel(t, nm)
 
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)

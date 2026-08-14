@@ -114,8 +114,14 @@ func (t *Telemetry) hitPercent() float64 {
 }
 
 // formatCost renders the running cost in dollars, dropping trailing zeros.
+// Fixed-point with 8 decimals, never scientific (%.4g renders $1e-05 for
+// sub-cent costs — unreadable at a glance); rounding below 8 decimals is
+// fine for a glanceable readout.
 func formatCost(c float64) string {
-	return fmt.Sprintf("$%.4g", c)
+	s := fmt.Sprintf("%.8f", c)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return "$" + s
 }
 
 // collapseWidth is the terminal width below which the status strip drops the

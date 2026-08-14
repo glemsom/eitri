@@ -63,8 +63,9 @@ func TestRailRenderModel(t *testing.T) {
 	}
 }
 
-// TestRailRenderContext asserts the CONTEXT section reflects the session id,
-// session temp path, and active skills (issue #88).
+// TestRailRenderContext asserts the CONTEXT section reflects the session id
+// and session temp path, and the SKILLS section lists detected skills with
+// their scope + activation state (issue #88).
 func TestRailRenderContext(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	skills := []SkillItem{
@@ -76,8 +77,16 @@ func TestRailRenderContext(t *testing.T) {
 	if !strings.Contains(view, "CONTEXT") {
 		t.Errorf("rail missing CONTEXT section, got: %q", view)
 	}
-	if !strings.Contains(view, "skills 1 active") {
-		t.Errorf("rail CONTEXT missing active-skill count, got: %q", view)
+	if !strings.Contains(view, "SKILLS") {
+		t.Errorf("rail missing SKILLS section, got: %q", view)
+	}
+	if !strings.Contains(view, "go-guidelines [user] ✓") {
+		t.Errorf("rail SKILLS missing active skill row, got: %q", view)
+	}
+	if !strings.Contains(view, "security-review [project] ✕") {
+		t.Errorf("rail SKILLS missing inactive skill row, got: %q", view)
+	}
+	if !strings.Contains(view, "session eitri-9f2c") {
 	}
 	if !strings.Contains(view, "session eitri-9f2c") {
 		t.Errorf("rail CONTEXT missing session id, got: %q", view)
@@ -236,6 +245,42 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 	if n := len(strings.Split(strings.TrimRight(content, "\n"), "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with the rail open, got:\n%q", n, content)
 	}
+}
+
+// TestModelRailStaysOnScreen asserts the joined transcript+rail row never runs
+// off the terminal's right edge: every rendered row fits the window width, the
+// band separator starts its own row (column 0), and the rail's left border is
+// visible on screen. Regression for the history viewport region rendering
+// newline-joined rows with no trailing newline, which fused the band separator
+// onto the viewport's last padded row — doubling that row's width and shoving
+// the separator (and the rail) past the right edge (issue #88, T1 pivot).
+func TestModelRailStaysOnScreen(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: fakeSess("hi"),
+		Rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a"),
+	})
+	m = typeText(t, m, "hello there")
+	m = submitAndWait(t, m)
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = asModel(t, nm)
+	if !m.railVisible() {
+		t.Fatal("rail should auto-show at 120x30")
+	}
+
+	content := plain(view(m))
+	for i, ln := range strings.Split(content, "\n") {
+		if w := len([]rune(ln)); w > 120 {
+			t.Errorf("row %d is %d columns wide (terminal 120): %q", i, w, ln)
+		}
+	}
+	// The band separator must begin at column 0 on its own row, not glued onto
+	// the tail of the scroll region's last (padded) row.
+	for _, ln := range strings.Split(content, "\n") {
+		if strings.HasPrefix(ln, "─") {
+			return // separator on its own row, rail intact
+		}
+	}
+	t.Errorf("band separator is not on its own row; rail+separator overflow right edge:\n%q", content)
 }
 
 // TestModelRailNoPanicWithoutFeed asserts the model renders fine with a nil

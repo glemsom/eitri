@@ -32,6 +32,29 @@ func TestTelemetryAggregatesUsage(t *testing.T) {
 	}
 }
 
+// TestTelemetryFormatCostNoScientific asserts formatCost renders sub-cent
+// costs in plain decimal (a $0.00001 session cost shows as "$0.00001", never
+// the %.4g "$1e-05") while keeping mid-size costs and trimming trailing zeros.
+func TestTelemetryFormatCostNoScientific(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{0.00658, "$0.00658"},
+		{0.00001, "$0.00001"},
+		{0.8456, "$0.8456"},
+		{0, "$0"},
+	}
+	for _, tc := range cases {
+		if got := formatCost(tc.in); got != tc.want {
+			t.Errorf("formatCost(%g) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if s := formatCost(0.00000028); strings.Contains(s, "e") {
+		t.Errorf("formatCost must never use scientific notation, got %q", s)
+	}
+}
+
 // TestTelemetryTurnCounting asserts a status strip counts one turn per turn
 // Start event, reflected in the turns/N rendered text.
 func TestTelemetryTurnCounting(t *testing.T) {

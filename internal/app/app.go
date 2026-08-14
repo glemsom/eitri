@@ -283,7 +283,7 @@ func discoverSkills(workspace string) *tools.Catalog {
 		return &tools.Catalog{}
 	}
 	c, err := tools.Discover(
-		filepath.Join(home, "agents", "skills"),
+		filepath.Join(home, ".agents", "skills"),
 		filepath.Join(workspace, ".agents", "skills"),
 		stderrWarner{},
 	)

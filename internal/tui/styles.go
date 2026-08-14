@@ -25,8 +25,7 @@ var (
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
 	// statusStyle is the faint secondary text (strips, hints, tool lines).
 	statusStyle = lipgloss.NewStyle().Faint(true)
-	// userChipStyle renders the right-aligned "you" chip (issue #122 AC1).
-	userChipStyle = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
+	// agentPaneStyle frames assistant answers as a left-bordered pane (issue
 	// agentPaneStyle frames assistant answers as a left-bordered pane (issue
 	// #122 AC1); errorPaneStyle is the same pane with the error-colored border
 	// for failing turns so errors read as distinctly as answers.

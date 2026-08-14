@@ -9,8 +9,8 @@ import (
 
 // Rail enables a fixed-width right pane in the TUI surface (issue #88, Layout A
 // "The Ledger"): the "true right now" state — STATS (cache hit %, cost, turns,
-// token in/out), CONTEXT (active skills, session id, session temp path), and
-// MODEL (provider/model/effort) — rendered alongside, not into, the transcript
+// token in/out), CONTEXT (session id, session temp path), SKILLS (detected
+// skills with scope + activation state), and MODEL (provider/model/effort) — rendered alongside, not into, the transcript
 // so the conversation log stays clean. It is read-only against the agent loop:
 // the live STATS numbers are borrowed from the status-strip Telemetry (issue
 // #86) on the UI goroutine, so the rail never pauses or blocks a run.
@@ -44,8 +44,8 @@ func (r *Rail) line(b *strings.Builder, key, val string) {
 
 // render returns the rail's rendered STATS/CONTEXT/MODEL block. It borrows the
 // live status-strip telemetry (te) for the STATS numbers and the session's
-// currently-active skills (skills) for CONTEXT, so every value reflects the
-// run's current state (issue #88 AC4). te may be nil when no strip is wired;
+// detected skills (skills) for the SKILLS section, so every value reflects
+// the run's current state (issue #88 AC4). te may be nil when no strip is wired;
 // the rail then renders zeroed STATS.
 func (r *Rail) render(te *Telemetry, skills []SkillItem) string {
 	var b strings.Builder
@@ -80,23 +80,27 @@ func (r *Rail) render(te *Telemetry, skills []SkillItem) string {
 	}
 	b.WriteString("\n")
 
-	// CONTEXT — the active session/skill surface.
+	// CONTEXT — the active session surface.
 	b.WriteString("CONTEXT\n")
-	active := 0
-	var names []string
-	for _, it := range skills {
-		if it.Active {
-			active++
-			names = append(names, it.Name)
-		}
-	}
-	if len(names) == 0 {
-		r.line(&b, "skills", "none active")
-	} else {
-		r.line(&b, "skills", fmt.Sprintf("%d active · %s", active, strings.Join(names, ", ")))
-	}
 	r.line(&b, "session", r.sessionID)
 	r.line(&b, "temp", r.sessionTemp)
+	b.WriteString("\n")
+
+	// SKILLS — detected + per-session active skills (eitri.md §2.3). One line
+	// per skill with its install scope and ✓/✕ activation state; the section
+	// renders a "none detected" line when the catalog is empty.
+	b.WriteString("SKILLS\n")
+	if len(skills) == 0 {
+		r.line(&b, "none", "detected")
+	} else {
+		for _, it := range skills {
+			state := "✕"
+			if it.Active {
+				state = "✓"
+			}
+			r.line(&b, it.Name+" ["+it.Scope+"]", state)
+		}
+	}
 	b.WriteString("\n")
 
 	// MODEL — the provider/model/effort surface.

@@ -61,6 +61,43 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 	}
 }
 
+// TestModel_shiftEnterCsiUInsertsNewline asserts Shift+Enter delivered through
+// the enhanced (CSI u / kitty) keyboard protocol — decoded by Bubble Tea v2 as
+// Code KeyEnter with ModShift, String() "shift+enter" — inserts a line break
+// instead of submitting (issue #121 AC2). Terminals with keyboard
+// enhancements enabled (kitty, WezTerm, ghostty, Windows Terminal) send CSI u
+// for Shift+Enter rather than the legacy line-feed byte, so the plain "ctrl+j"
+// case never sees it and the key currently falls through as a no-op.
+func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
+	var got []string
+	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+		got = append(got, prompt)
+		return TurnResult{Answer: "ok"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "line one")
+	m = newlineShiftEnterCsiU(t, m)
+	m = typeText(t, m, "line two")
+
+	if len(got) != 0 {
+		t.Fatalf("Shift+Enter must not submit; engine saw %q", got)
+	}
+	if v := m.composer.Value(); v != "line one\nline two" {
+		t.Errorf("Shift+Enter should insert a newline into the draft, value = %q", v)
+	}
+	if h := m.composer.Height(); h != 2 {
+		t.Errorf("two-line draft should sit at 2 rows, got %d", h)
+	}
+}
+
+// newlineShiftEnterCsiU drives the Shift+Enter newline key as delivered by the
+// enhanced keyboard protocol: KeyEnter with the shift modifier held.
+func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
+	t.Helper()
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
+	return asModel(t, nm)
+}
+
 // TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
 // composer cycle (issue #126 AC3 / #121 AC2): Shift+Enter builds a two-line
 // draft, plain Enter submits it verbatim to the engine seam, and the composer

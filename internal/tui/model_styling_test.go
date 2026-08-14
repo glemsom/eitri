@@ -27,10 +27,10 @@ func lineContaining(s, want string) string {
 	return ""
 }
 
-// TestModel_stylingUserChipRightAligned asserts user prompts render as a
-// right-aligned "you" chip: the label line leads with padding to the pane
-// width (issue #122 AC1: "right-aligned user chips").
-func TestModel_stylingUserChipRightAligned(t *testing.T) {
+// TestModel_stylingNoRoleLabels asserts the transcript renders prompt and
+// answer without any "you"/"eitri" role labels: the user prompt is plain
+// markdown, and only the agent pane's left border marks the answer side.
+func TestModel_stylingNoRoleLabels(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -40,17 +40,12 @@ func TestModel_stylingUserChipRightAligned(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	chip := lineContaining(view(m), "you")
-	if chip == "" {
-		t.Fatalf("expected a user chip in view, got: %q", view(m))
+	content := view(m)
+	if !strings.Contains(content, "hi") || !strings.Contains(content, "plain") {
+		t.Errorf("expected prompt and answer in view, got: %q", content)
 	}
-	if !strings.HasPrefix(chip, " ") {
-		t.Errorf("user chip must be right-aligned (leading padding), got line: %q", chip)
-	}
-	// The chip is a one-word label, not a full-width message: its visible text
-	// is just the role, padded left to the pane width.
-	if got := strings.TrimSpace(ansiStrip(chip)); got != "you" {
-		t.Errorf("chip visible text = %q, want %q", got, "you")
+	if strings.Contains(content, "you") || strings.Contains(content, "eitri") {
+		t.Errorf("role labels must not render in the transcript, got: %q", content)
 	}
 }
 
@@ -198,9 +193,6 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 // and every color is a hex value lipgloss adapts to any color profile — so the
 // surface degrades safely on a non-truecolor terminal (issue #122 AC4/AC5).
 func TestModel_stylingPaletteCentralized(t *testing.T) {
-	if got := userChipStyle.GetForeground(); got != accentColor {
-		t.Errorf("user chip foreground = %v, want accent %v", got, accentColor)
-	}
 	if got := agentPaneStyle.GetBorderLeftForeground(); got != accentColor {
 		t.Errorf("agent pane border foreground = %v, want accent %v", got, accentColor)
 	}

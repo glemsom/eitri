@@ -321,9 +321,7 @@ func NewModel(t Turn) Model {
 // Blink is off and fixed (not the terminal default): the caret's presence
 // already signals editability — it is attached only while the composer is the
 // active editing surface and hidden otherwise (issue #169) — so blinking adds
-// noise without carrying information. As with shape, a terminal that ignores
-// the steady bit falls back to its own default (typically a blinking block);
-// the caret stays visible either way.
+// noise without carrying information.
 const (
 	composerCaretShape = tea.CursorBlock
 	composerCaretBlink = false
@@ -557,12 +555,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// transcript or the agent loop.
 			m.copyTranscript()
 			return m, nil
-		case "ctrl+j":
+		case "ctrl+j", "shift+enter":
 			// Shift+Enter newline (issue #121 AC2): terminals deliver Shift+Enter
-			// as the line-feed key, which Bubble Tea surfaces as KeyCtrlJ — there
-			// is no plain "shift+enter" key and no separate ctrl+j alias. Inserts
-			// a line break instead of submitting; no-op while a turn is running
-			// (ticket #57).
+			// two ways. Legacy terminals send the line-feed byte, which Bubble Tea
+			// surfaces as KeyCtrlJ; terminals with the enhanced (CSI u / kitty)
+			// keyboard protocol send an explicit Shift+Enter key, decoded as
+			// "shift+enter". Both insert a line break instead of submitting;
+			// no-op while a turn is running (ticket #57).
 			if m.busy {
 				return m, nil
 			}
@@ -1273,7 +1272,17 @@ func (m Model) renderPane() string {
 		// The review region is its own height-clipped overlay (issue T06).
 		reviewStr = clipReviewRegion(reviewStr, reviewLines)
 	}
-	return reviewStr + m.renderHistoryViewport(hist.String(), lineCount(bandStr)+reviewLines) + bandStr
+	histRegion := m.renderHistoryViewport(hist.String(), lineCount(bandStr)+reviewLines)
+	// The scroll region must end on its own row before the band joins: the
+	// persisted viewport renders its rows newline-joined with no trailing
+	// newline (and pads to the scroll height), so without this terminator the
+	// band separator fuses onto the viewport's last padded row — doubling that
+	// row's width and shoving the separator (and the rail, when visible) past
+	// the terminal's right edge.
+	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
+		histRegion += "\n"
+	}
+	return reviewStr + histRegion + bandStr
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered
@@ -1464,9 +1473,9 @@ func lineCount(s string) int {
 
 // renderHistory renders the scroll region: the agent history that the user
 // reads and scrolls. It surfaces the workspace header, every committed message
-// (thinking blocks + markdown body), the interleaved tool entries, the skills
-// panel, and the busy indicator. It is the only region T02+ makes scrollable
-// and height-clamps.
+// (thinking blocks + markdown body), the interleaved tool entries, and the
+// busy indicator. It is the only region T02+ makes scrollable and height-
+// clamps. Detected skills live in the right context rail, not the transcript.
 func (m Model) renderHistory(b *strings.Builder) {
 	// Surface the project's read-only state (issue #82 AC1): the workspace
 	// directory the run operates in, rendered as an informational header above
@@ -1488,12 +1497,10 @@ func (m Model) renderHistory(b *strings.Builder) {
 		}
 		w := m.composer.Width()
 		if msg.role == "you" {
-			// Right-aligned user chip (issue #122 AC1): the one-word role label
-			// pads to the pane width so prompts read distinctly from the
-			// left-bordered agent panes below them.
+			// User prompts render as plain markdown in the transcript — no role
+			// chip; the bordered agent panes below keep user vs agent distinct.
 			md, _ := RenderMarkdown(msg.content, w, m.deps.Config.Theme)
-			chip := userChipStyle.Render("you")
-			fmt.Fprintf(b, "%s\n%s\n", lipgloss.PlaceHorizontal(w, lipgloss.Right, chip), md)
+			b.WriteString(md + "\n")
 		} else {
 			// Left-bordered agent pane (issue #122 AC1): the answer renders in
 			// a bordered pane; a failing turn (⚠) gets the error-colored border
@@ -1505,7 +1512,7 @@ func (m Model) renderHistory(b *strings.Builder) {
 			}
 			// Trim glamour's trailing blank line so the pane ends on its last
 			// content row instead of a lone border column.
-			fmt.Fprintf(b, "%s\n", pane.Render("eitri\n"+strings.TrimRight(md, "\n")))
+			fmt.Fprintf(b, "%s\n", pane.Render(strings.TrimRight(md, "\n")))
 		}
 		// Interleave the turn's tool-call entries right after its prompting "you"
 		// message (issue #84): compact one-liners, collapsed by default, expanded
@@ -1516,7 +1523,6 @@ func (m Model) renderHistory(b *strings.Builder) {
 			}
 		}
 	}
-	renderSkillsPanel(b, m.skills)
 	if m.busy {
 		b.WriteString(statusStyle.Render("… thinking"))
 		b.WriteString("\n")
@@ -1660,26 +1666,6 @@ func renderSlashCompletion(b *strings.Builder, value string, cur string, skills 
 		} else {
 			b.WriteString(statusStyle.Render("  " + c))
 		}
-		b.WriteString("\n")
-	}
-}
-
-// renderSkillsPanel appends the skills panel to the view: one line per detected
-// skill showing its install scope and activation state, so the interactive TUI
-// surfaces detected + currently-activated skills (docs/spec.md §9, eitri.md
-// §2.3). It renders nothing when no skills were detected.
-func renderSkillsPanel(b *strings.Builder, skills []SkillItem) {
-	if len(skills) == 0 {
-		return
-	}
-	b.WriteString(statusStyle.Render("skills"))
-	b.WriteString("\n")
-	for _, it := range skills {
-		state := "✕"
-		if it.Active {
-			state = "✓"
-		}
-		b.WriteString(statusStyle.Render("  " + it.Name + " [" + it.Scope + "] " + state))
 		b.WriteString("\n")
 	}
 }
