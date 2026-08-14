@@ -128,6 +128,10 @@ func (f *settingsForm) adjust(d int) {
 		// Unknown themes cycle to the first valid one on the first press, same
 		// as a hand-edited bad model value (issue #130 AC3).
 		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
+		// The chrome palette follows the selection live (issue #179 AC5): the
+		// panel's own chrome re-skins as the arrow cycle moves through themes,
+		// proving the mechanism end-to-end before Save.
+		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
 		// Free-form edit is handled by the caller via SetPathBuf; adjust nudges
 		// the focused field forward so enter still lands on Save.

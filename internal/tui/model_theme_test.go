@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -49,6 +51,70 @@ func TestModel_validThemeNoWarning(t *testing.T) {
 
 	if view := view(m); strings.Contains(view, "unknown theme") {
 		t.Errorf("valid theme must not warn, got: %q", view)
+	}
+}
+
+// TestModel_configThemeSkinsChromeAtStartup asserts a theme set in config
+// skins the chrome from the first frame (issue #179): choosing dracula in
+// config re-skins the whole surface, not just the Markdown body, with no
+// interaction needed.
+func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.Theme = "dracula"
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer"}, nil
+		},
+		Config: cfg,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	if pane := lineContaining(view(m), "plain"); !strings.Contains(pane, "\x1b[38;2;189;147;249m") {
+		t.Errorf("dracula config must skin the chrome at startup, got: %q", pane)
+	}
+}
+
+// TestModel_settingsThemeSaveReskinsChrome asserts saving a theme selection in
+// the panel re-skins the transcript chrome immediately (issue #179 AC1/AC5):
+// the model's theme and its render config both follow the saved value, so the
+// agent pane border and the Markdown body pick up the new palette without a
+// restart.
+func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer"}, nil
+		},
+		Config: cfgFixture(), // theme "dark"
+		Save:   func(config.Config) error { return nil },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+	if pane := lineContaining(view(m), "plain"); !strings.Contains(pane, "\x1b[38;2;122;162;247m") {
+		t.Fatalf("default chrome expected before save, got: %q", pane)
+	}
+
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldTheme; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "down") // dark -> light
+	m = keypress(t, m, "down") // light -> dracula
+	for i := fieldTheme; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if m.deps.Config.Theme != "dracula" {
+		t.Fatalf("config theme after save = %q, want dracula", m.deps.Config.Theme)
+	}
+	if got := m.theme.accent; got != lipgloss.Color("#BD93F9") {
+		t.Fatalf("model theme accent after save = %v, want dracula accent", got)
+	}
+	if pane := lineContaining(view(m), "plain"); !strings.Contains(pane, "\x1b[38;2;189;147;249m") {
+		t.Errorf("chrome must re-skin to dracula after save, got: %q", pane)
 	}
 }
 

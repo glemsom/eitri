@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -36,6 +38,29 @@ func TestSettingsForm_ModelFallsBackToConfiguredWhenNoneDiscovered(t *testing.T)
 	f := newSettingsForm(cfgFixture(), nil)
 	if got := f.Model(); got != "deepseek-v4-flash" {
 		t.Fatalf("Model() = %q, want configured deepseek-v4-flash (no discovery)", got)
+	}
+}
+
+// TestSettingsForm_ThemeAdjustReskinsPanel asserts cycling the theme field
+// re-skins the Settings chrome live (issue #179 AC5): the form's theme tracks
+// the newly selected palette as the arrow cycle moves, so the panel visibly
+// follows the selection before Save — the mechanism proven end-to-end, not
+// just persisted on Save.
+func TestSettingsForm_ThemeAdjustReskinsPanel(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), nil)
+	f.field = fieldTheme
+	// From "dark", one step lands on "light" (default chrome palette).
+	f.adjust(1)
+	if got := f.theme.accent; got != defaultTheme.accent {
+		t.Fatalf("light theme accent = %v, want default accent", got)
+	}
+	// A second step lands on "dracula": the chrome follows the selection.
+	f.adjust(1)
+	if f.cfg.Theme != "dracula" {
+		t.Fatalf("cfg.Theme = %q, want dracula", f.cfg.Theme)
+	}
+	if got := f.theme.accent; got != lipgloss.Color("#BD93F9") {
+		t.Fatalf("dracula theme accent = %v, want dracula accent", got)
 	}
 }
 
