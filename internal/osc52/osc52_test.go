@@ -57,6 +57,8 @@ type fdBuf struct {
 	bytes.Buffer
 }
 
+// Fd reports a descriptor that is never a terminal in a test process, so
+// term.IsTerminal reliably fails and the guard path is exercised.
 func (*fdBuf) Fd() uintptr { return 12345 }
 
 // A terminal-backed writer that is not a TTY returns a clean error and emits
