@@ -29,7 +29,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed())
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil))
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -63,7 +63,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed())
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil))
 
 	// Two runs -> one turn-boundary update each, ahead of the usage update.
 	for i := 0; i < 2; i++ {
@@ -97,7 +97,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	stream := tui.NewStreamer()
-	feedEngineEvents(e, te, stream, tui.NewToolFeed())
+	feedEngineEvents(e, te, stream, tui.NewToolFeed(), tui.NewDeltaObserver(nil))
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -161,12 +161,13 @@ func scriptedToolEditTurn() *provider.Scripted {
 
 // TestFeedEngineEventsBridgesToolEvents asserts the engine's ToolCallEvent and
 // ToolResultEvent are forwarded through the single engine listener into the TUI
-// tool feed's channel as a paired Start+Result carrying the full result and the
-// file line-delta metadata (issue #84), read-only against the run.
+// tool feed's channel as a paired Start+Result carrying the full result (issue
+// #84) and the file line-delta metadata computed by the TUI-side delta observer
+// (issue #174), read-only against the run.
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	feed := tui.NewToolFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed)
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed, tui.NewDeltaObserver(nil))
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{

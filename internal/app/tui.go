@@ -55,12 +55,19 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
 	// demand to the full result.
 	tools := tui.NewToolFeed()
+	// File line-delta + review-panel content (issue #174): a TUI-side observer
+	// fed by the engine's tool-call event stream snapshots each edit/write
+	// target on tool-call start and diffs it on tool result, so the `⊕ edit
+	// path [+N,-M]` tag and the review panel's inline diff compute entirely on
+	// the TUI side of the seam. The injected path-resolution seam wires the
+	// registry's shared path translator + workspace root.
+	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	// Subscribe the live status strip, the streaming answer pane, and the tool
 	// feed to the engine's per-turn usage/turn/compaction events, AnswerStream
 	// deltas, and tool call/result events (issues #86, #83, #84). Read-only: it
 	// only forwards telemetry, answer text, and tool events and never pauses the
 	// running agent loop.
-	feedEngineEvents(e, te, stream, tools)
+	feedEngineEvents(e, te, stream, tools, observer)
 	m := tui.NewModelCfg(tui.Dependencies{
 		// On-demand provider model discovery for the Settings panel (issue #89
 		// AC2): the provider's GET /v1/models list is fetched when the panel
@@ -94,9 +101,12 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 // forwards per-turn usage, turn boundaries, and the compaction marker into the
 // strip's buffered channel, each AnswerStream delta into the streaming pane's
 // channel, and each tool call/result into the tool feed's channel — all
-// delivered non-blocking so a busy run never stalls. The TUI stays decoupled
-// from the engine: engine.Event is translated here into UI-facing updates.
-func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed) {
+// delivered non-blocking so a busy run never stalls. The delta observer (issue
+// #174) is fed the paired tool start/result events so the feed's entries carry
+// the file line-delta and before/after content computed entirely on the TUI
+// side of the engine seam. The TUI stays decoupled from the engine:
+// engine.Event is translated here into UI-facing updates.
+func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed, obs *tui.DeltaObserver) {
 	teCh := te.UpdateChan()
 	sCh := stream.UpdateChan()
 	tCh := toolFeed.UpdateChan()
@@ -122,12 +132,18 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 		case engine.CompactedEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
 		case engine.ToolCallEvent:
+			// Snapshot the target file's pre-edit state before the tool runs; the
+			// paired result diffs it (issue #174).
+			obs.Start(ev.ID, ev.Name, ev.Arguments)
 			pushTool(tCh, tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}})
 		case engine.ToolResultEvent:
+			// The line delta, before/after content, and host path come from the
+			// TUI-side observer's diff, not from the engine seam (issue #174).
+			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
 				Name: ev.Name, Result: ev.Result, Lines: ev.Lines, Dropped: ev.Dropped,
-				Compressed: ev.Compressed, Added: ev.Added, Removed: ev.Removed,
-				Before: ev.Before, After: ev.After, Path: ev.Path,
+				Compressed: ev.Compressed, Added: added, Removed: removed,
+				Before: before, After: after, Path: path,
 			}})
 		}
 	})

@@ -37,8 +37,11 @@ type ToolStart struct {
 }
 
 // ToolResult is the trailing half of a tool entry: the tool's delivered result
-// plus the deterministic compression and line-delta metadata the TUI renders
-// (docs/spec.md §5, issue #84).
+// plus the deterministic compression metadata the TUI renders (docs/spec.md
+// §5, issue #84) and the file line-delta / before-after content computed by the
+// TUI-side delta observer from the paired tool start/result events (issue
+// #174) — the source of the `⊕ edit path [+N,-M]` tag and the review panel's
+// inline diff (issue #90).
 type ToolResult struct {
 	// Name is the tool that ran (matches its ToolStart).
 	Name string
@@ -52,13 +55,15 @@ type ToolResult struct {
 	Dropped int
 	// Compressed is true when the delivered result carries the "+N more" tail.
 	Compressed bool
-	// Added is the line delta a file-mutating edit added (0 for non-edits).
+	// Added is the line delta a file-mutating edit added (0 for non-edits),
+	// computed by the TUI-side delta observer (issue #174).
 	Added int
 	// Removed is the line delta a file-mutating edit removed (0 for non-edits).
+	// Computed by the TUI-side delta observer (issue #174).
 	Removed int
-	// Before is the target file's full content before a file-mutating tool ran
-	// (empty when the run did not report it). It backs the review panel's inline
-	// diff of a changed file (issue #90).
+	// Before is the target file's full content before a file-mutating tool ran,
+	// captured by the TUI-side delta observer (issue #174). It backs the review
+	// panel's inline diff of a changed file (issue #90).
 	Before string
 	// After is the target file's full content after a file-mutating tool ran.
 	After string
