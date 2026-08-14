@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -95,6 +97,48 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 
 	if !strings.Contains(view(m), "copy failed") {
 		t.Errorf("expected a copy failure note in view, got: %q", view(m))
+	}
+}
+
+// TestModel_copyFallsBackToOSC52 drives Ctrl+O with a failing injected
+// clipboard and a captured fallback output: the copy succeeds through the OSC
+// 52 terminal-clipboard sequence, the transcript text lands in the captured
+// writer, and the band reports "copied" (issue #201 AC1, AC6). The injected
+// OSC52Out stands in for os.Stdout so no real terminal is needed.
+func TestModel_copyFallsBackToOSC52(t *testing.T) {
+	var out bytes.Buffer
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer"}, nil
+		},
+		Clipboard: func(string) error { return errors.New("no display") },
+		OSC52Out:  &out,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hello")
+	m = submitAndWait(t, m)
+
+	m = keypressCtrlO(t, m)
+
+	seq := out.String()
+	if !strings.HasPrefix(seq, "\x1b]52;c;") {
+		t.Errorf("fallback output must be an OSC 52 sequence, got: %q", seq)
+	}
+	if !strings.HasSuffix(seq, "\x07") {
+		t.Errorf("fallback output must end with the BEL terminator, got: %q", seq)
+	}
+	// The payload is base64-encoded UTF-8 (issue #200); decode it to assert the
+	// full transcript text reached the fallback writer.
+	payload := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b]52;c;"), "\x07")
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatalf("fallback payload %q is not valid base64: %v", payload, err)
+	}
+	if !strings.Contains(string(decoded), "you: hello") {
+		t.Errorf("fallback output missing the transcript, got: %q", decoded)
+	}
+	if !strings.Contains(view(m), "copied") {
+		t.Errorf("expected a copy success note in view, got: %q", view(m))
 	}
 }
 
