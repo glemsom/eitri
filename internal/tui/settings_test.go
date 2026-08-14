@@ -42,17 +42,17 @@ func TestSettingsForm_ModelFallsBackToConfiguredWhenNoneDiscovered(t *testing.T)
 }
 
 // TestSettingsForm_ThemeAdjustReskinsPanel asserts cycling the theme field
-// re-skins the Settings chrome live (issue #179 AC5): the form's theme tracks
-// the newly selected palette as the arrow cycle moves, so the panel visibly
-// follows the selection before Save — the mechanism proven end-to-end, not
-// just persisted on Save.
+// re-skins the Settings chrome live (issue #179 AC5, extended by issue #180):
+// the form's theme tracks the newly selected palette as the arrow cycle
+// moves, so the panel visibly follows the selection before Save — the
+// mechanism proven end-to-end, not just persisted on Save.
 func TestSettingsForm_ThemeAdjustReskinsPanel(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), nil)
 	f.field = fieldTheme
-	// From "dark", one step lands on "light" (default chrome palette).
+	// From "dark", one step lands on "light": the curated light palette.
 	f.adjust(1)
-	if got := f.theme.accent; got != defaultTheme.accent {
-		t.Fatalf("light theme accent = %v, want default accent", got)
+	if got := f.theme.accent; got != lipgloss.Color("#005FFF") {
+		t.Fatalf("light theme accent = %v, want light palette accent", got)
 	}
 	// A second step lands on "dracula": the chrome follows the selection.
 	f.adjust(1)

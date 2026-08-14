@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-
-	"github.com/glemsom/eitri/internal/config"
 )
 
 // The theme seam (issue #178) converts the hardcoded lipgloss style globals
@@ -100,17 +98,148 @@ func TestTheme_draculaPalette(t *testing.T) {
 	}
 }
 
-// TestThemeFor_mapsConfigNames asserts the config-theme → chrome-palette map
-// (issue #179 AC1/AC4): "dracula" selects the second curated palette; the
-// default theme and every other supported render name keep the default
-// palette; an unknown value falls back to default, matching the renderer.
-func TestThemeFor_mapsConfigNames(t *testing.T) {
-	if got := themeFor("dracula").accent; got != lipgloss.Color("#BD93F9") {
-		t.Errorf("themeFor(dracula) accent = %v, want dracula palette", got)
+// TestTheme_tokyoNightPalette asserts the tokyo-night chrome palette (issue
+// #180): the canonical tokyo-night hues — purple accent (glamour's heading
+// color for the theme), red error, green ok — as a full Theme value on the
+// same constructor pattern, so tokyo-night reads as one surface with its
+// Markdown counterpart instead of inheriting the default chrome.
+func TestTheme_tokyoNightPalette(t *testing.T) {
+	th := newTokyoNightTheme()
+
+	for name, want := range map[string]color.Color{
+		"accent": lipgloss.Color("#BB9AF7"),
+		"error":  lipgloss.Color("#F7768E"),
+		"ok":     lipgloss.Color("#9ECE6A"),
+	} {
+		var got color.Color
+		switch name {
+		case "accent":
+			got = th.accent
+		case "error":
+			got = th.error
+		case "ok":
+			got = th.ok
+		}
+		if got != want {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+		if _, ok := color.Color(got).(color.RGBA); !ok {
+			t.Errorf("%s color = %T, want a hex-derived color.RGBA", name, color.Color(got))
+		}
 	}
-	for _, name := range []string{"", config.DefaultTheme, "light", "tokyo-night", "pink", "notty", "auto", "bogus"} {
-		if got := themeFor(name).accent; got != defaultTheme.accent {
-			t.Errorf("themeFor(%q) accent = %v, want default accent", name, got)
+
+	if got := th.agentPaneStyle.GetBorderLeftForeground(); got != th.accent {
+		t.Errorf("agent pane border foreground = %v, want accent %v", got, th.accent)
+	}
+}
+
+// TestTheme_pinkPalette asserts the pink chrome palette (issue #180): the
+// glamour pink theme's hot-pink heading hue as the accent, with a crimson
+// error and a soft green ok — ✓/✗ outcomes and the error pane stay
+// distinguishable from the pink accent, so pink chrome reads as one surface
+// with the pink Markdown theme.
+func TestTheme_pinkPalette(t *testing.T) {
+	th := newPinkTheme()
+
+	for name, want := range map[string]color.Color{
+		"accent": lipgloss.Color("#FF87D7"),
+		"error":  lipgloss.Color("#E5484D"),
+		"ok":     lipgloss.Color("#69DB8C"),
+	} {
+		var got color.Color
+		switch name {
+		case "accent":
+			got = th.accent
+		case "error":
+			got = th.error
+		case "ok":
+			got = th.ok
+		}
+		if got != want {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+		if _, ok := color.Color(got).(color.RGBA); !ok {
+			t.Errorf("%s color = %T, want a hex-derived color.RGBA", name, color.Color(got))
+		}
+	}
+
+	if got := th.errorPaneStyle.GetBorderLeftForeground(); got != th.error {
+		t.Errorf("error pane border foreground = %v, want error %v", got, th.error)
+	}
+	if got := th.outcomeOKStyle.GetForeground(); got != th.ok {
+		t.Errorf("ok outcome foreground = %v, want ok %v", got, th.ok)
+	}
+}
+
+// TestTheme_lightPalette asserts the light chrome palette (issue #180 AC3):
+// hues readable on a light terminal background — the glamour light theme's
+// heading blue as the accent, with a dark red error and a dark teal-green ok,
+// each contrast-checked against white (≥ 4.5:1) — so light terminals get a
+// light-surface chrome instead of the default dark one.
+func TestTheme_lightPalette(t *testing.T) {
+	th := newLightTheme()
+
+	for name, want := range map[string]color.Color{
+		"accent": lipgloss.Color("#005FFF"),
+		"error":  lipgloss.Color("#C92A2A"),
+		"ok":     lipgloss.Color("#00875F"),
+	} {
+		var got color.Color
+		switch name {
+		case "accent":
+			got = th.accent
+		case "error":
+			got = th.error
+		case "ok":
+			got = th.ok
+		}
+		if got != want {
+			t.Errorf("%s = %v, want %v", name, got, want)
+		}
+		if _, ok := color.Color(got).(color.RGBA); !ok {
+			t.Errorf("%s color = %T, want a hex-derived color.RGBA", name, color.Color(got))
+		}
+	}
+
+	if got := th.headerStyle.GetForeground(); got != th.accent {
+		t.Errorf("header foreground = %v, want accent %v", got, th.accent)
+	}
+}
+
+// TestThemeFor_auto asserts the "auto" theme resolves its chrome palette by
+// the terminal background exactly like the renderer (issue #180 AC3): "auto"
+// delegates to the same resolution autoTheme() computes for Markdown, so the
+// chrome and Markdown always agree — light terminal → light palette, dark
+// terminal → default dark palette. The assertion compares against the
+// resolved theme rather than a hardcoded palette because autoTheme() queries
+// the ambient terminal.
+func TestThemeFor_auto(t *testing.T) {
+	if got := themeFor("auto").accent; got != themeFor(autoTheme()).accent {
+		t.Errorf("themeFor(auto) accent = %v, want resolved theme %q accent %v", got, autoTheme(), themeFor(autoTheme()).accent)
+	}
+}
+
+// TestThemeFor_mapsConfigNames asserts the config-theme → chrome-palette map
+// (issue #179 AC1/AC4, extended by issue #180): "dracula" selects the second
+// curated palette; "tokyo-night" selects the tokyo-night palette; "pink" and
+// "light" select their curated palettes (light-terminal resolution for the
+// latter is asserted in TestThemeFor_auto); "notty" keeps the default palette
+// deliberately (unreachable in the TUI — the boot guard refuses
+// non-interactive contexts); an unknown value falls back to default, matching
+// the renderer.
+func TestThemeFor_mapsConfigNames(t *testing.T) {
+	for name, want := range map[string]color.Color{
+		"dracula":     lipgloss.Color("#BD93F9"),
+		"tokyo-night": lipgloss.Color("#BB9AF7"),
+		"pink":        lipgloss.Color("#FF87D7"),
+		"light":       lipgloss.Color("#005FFF"),
+		"dark":        defaultTheme.accent,
+		"notty":       defaultTheme.accent,
+		"bogus":       defaultTheme.accent,
+		"":            defaultTheme.accent,
+	} {
+		if got := themeFor(name).accent; got != want {
+			t.Errorf("themeFor(%q) accent = %v, want %v", name, got, want)
 		}
 	}
 }
