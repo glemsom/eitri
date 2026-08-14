@@ -139,3 +139,16 @@ func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 		t.Errorf("missing-start delta/content = +%d-%d %q->%q path %q, want zeros", added, removed, before, after, path)
 	}
 }
+
+// TestDeltaObserver_nilResolverIsFailClosed asserts a nil path-resolution seam
+// degrades to unresolvable (zero delta, no content) instead of reading sandbox
+// paths as host paths — a forgotten wiring must never misreport edits (issue
+// #174).
+func TestDeltaObserver_nilResolverIsFailClosed(t *testing.T) {
+	obs := NewDeltaObserver(nil)
+	obs.Start("call_e", "edit", `{"path":"main.go"}`)
+	added, removed, before, after, path := obs.Result("call_e", "edit")
+	if added != 0 || removed != 0 || before != "" || after != "" || path != "" {
+		t.Errorf("nil-resolver delta/content = +%d-%d %q->%q path %q, want zeros", added, removed, before, after, path)
+	}
+}

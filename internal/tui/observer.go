@@ -18,7 +18,7 @@ import (
 type DeltaObserver struct {
 	// resolve translates a tool-argument path to the host path to read. The
 	// empty string means unresolvable (the observer reports zero delta and no
-	// content). A nil seam defaults to identity.
+	// content). A nil seam degrades to unresolvable (fail-closed).
 	resolve func(sandboxPath string) string
 	// pending holds the pre-edit snapshot for each in-flight file-mutating tool
 	// call, keyed by the provider-assigned tool_call id, so each result diffs
@@ -34,11 +34,13 @@ type fileSnapshot struct {
 }
 
 // NewDeltaObserver builds a DeltaObserver that reads files at the host paths
-// produced by resolve. A nil resolve defaults to the identity (paths are
-// already host paths), which is what tests that don't exercise real edits use.
+// produced by resolve. A nil resolve degrades to unresolvable (zero delta, no
+// content) — fail-closed, so a forgotten wiring never reads sandbox paths as
+// host paths. The app always wires the registry-backed seam; nil only appears
+// in tests that don't exercise real edits.
 func NewDeltaObserver(resolve func(sandboxPath string) string) *DeltaObserver {
 	if resolve == nil {
-		resolve = func(p string) string { return p }
+		resolve = func(string) string { return "" }
 	}
 	return &DeltaObserver{resolve: resolve, pending: map[string]fileSnapshot{}}
 }
