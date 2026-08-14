@@ -187,7 +187,7 @@ func parseSkill(packDir string) (*Skill, skillParseStatus) {
 	if !ok || name == "" {
 		return nil, skillUnparseable
 	}
-	desc, _ := meta["description"]
+	desc := meta["description"]
 	desc = strings.TrimSpace(desc)
 	if desc == "" {
 		return nil, skillUnparseable

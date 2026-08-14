@@ -75,7 +75,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	for i := fieldModel; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if saved.Model != "grok-2" {
 		t.Fatalf("saved Model = %q, want grok-2 after down in Settings", saved.Model)
@@ -104,7 +104,7 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	for i := fieldEffort; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if saved.ReasoningEffort != "medium" {
 		t.Fatalf("saved ReasoningEffort = %q, want medium", saved.ReasoningEffort)
@@ -132,7 +132,7 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	for i := fieldPaths; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv" {
 		t.Fatalf("saved paths = %v, want [/srv] after append+backspace", saved.ExtraWritablePaths)
@@ -163,7 +163,7 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	for i := fieldPaths; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv v2" {
 		t.Fatalf("saved paths = %v, want [/srv v2] (space typed literally)", saved.ExtraWritablePaths)
@@ -193,7 +193,7 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	for i := fieldThinking; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if saved.ThinkingEnabled {
 		t.Fatal("saved ThinkingEnabled = true, want false after toggling off in Settings")
@@ -296,7 +296,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	for i := fieldTheme; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
-	m = keypress(t, m, "enter")
+	keypress(t, m, "enter")
 
 	if saved.Theme != "light" {
 		t.Fatalf("saved Theme = %q, want light", saved.Theme)

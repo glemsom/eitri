@@ -20,10 +20,10 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/login/device/code" {
-			w.Write([]byte(`{"device_code":"dev-x","user_code":"ZZ-AA","verification_uri":"https://github.com/login/device","expires_in":900}`))
+			_, _ = w.Write([]byte(`{"device_code":"dev-x","user_code":"ZZ-AA","verification_uri":"https://github.com/login/device","expires_in":900}`))
 			return
 		}
-		w.Write([]byte(`{"access_token":"tui-fresh-access","refresh_token":"tui-fresh-refresh","expires_in":28800}`))
+		_, _ = w.Write([]byte(`{"access_token":"tui-fresh-access","refresh_token":"tui-fresh-refresh","expires_in":28800}`))
 	}))
 	defer srv.Close()
 

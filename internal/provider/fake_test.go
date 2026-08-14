@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -11,7 +12,7 @@ import (
 // content, reasoning_content surface, terminal usage, Done, then io.EOF.
 func TestFakeProviderStreamsFixture(t *testing.T) {
 	fp := NewFake("testdata/hello.sse")
-	s, err := fp.Stream(nil, Request{Model: "deepseek-v4-flash"})
+	s, err := fp.Stream(context.TODO(), Request{Model: "deepseek-v4-flash"})
 	if err != nil {
 		t.Fatalf("Fake.Stream() error = %v, want nil", err)
 	}
@@ -58,7 +59,7 @@ func TestFakeProviderStreamsFixture(t *testing.T) {
 // usage in its terminal chunk still terminates with Done + EOF.
 func TestFakeProviderCompletesWithUsageOnlyChunk(t *testing.T) {
 	fp := NewFake("testdata/usage-final.sse")
-	s, err := fp.Stream(nil, Request{})
+	s, err := fp.Stream(context.TODO(), Request{})
 	if err != nil {
 		t.Fatalf("Fake.Stream() error = %v, want nil", err)
 	}

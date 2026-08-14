@@ -78,7 +78,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "/usr/bin/env")
 	out, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = asModel(t, out)
+	asModel(t, out)
 	if cmd == nil {
 		t.Fatalf("`/usr/bin/env` should submit as a normal turn, got nil cmd")
 	}

@@ -21,7 +21,7 @@ func TestDeviceFlowStartRequestsCode(t *testing.T) {
 		contentType = r.Header.Get("Content-Type")
 		_ = r.ParseForm()
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"device_code":"dev-1","user_code":"AB12-CD","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}`))
+		_, _ = w.Write([]byte(`{"device_code":"dev-1","user_code":"AB12-CD","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}`))
 	}))
 	defer srv.Close()
 
@@ -54,7 +54,7 @@ func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 			t.Errorf("device_code = %q, want dev-9", r.Form.Get("device_code"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"acc-new","refresh_token":"ref-new","expires_in":28800}`))
+		_, _ = w.Write([]byte(`{"access_token":"acc-new","refresh_token":"ref-new","expires_in":28800}`))
 	}))
 	defer srv.Close()
 
@@ -76,7 +76,7 @@ func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 func TestDeviceFlowPollAuthorizationPending(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"error":"authorization_pending"}`))
+		_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
 	}))
 	defer srv.Close()
 
@@ -94,10 +94,10 @@ func TestDeviceFlowToConfig(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/login/device/code" {
-			w.Write([]byte(`{"device_code":"d","user_code":"U","verification_uri":"u","expires_in":900}`))
+			_, _ = w.Write([]byte(`{"device_code":"d","user_code":"U","verification_uri":"u","expires_in":900}`))
 			return
 		}
-		w.Write([]byte(`{"access_token":"a","refresh_token":"r","expires_in":3600}`))
+		_, _ = w.Write([]byte(`{"access_token":"a","refresh_token":"r","expires_in":3600}`))
 	}))
 	defer srv.Close()
 
@@ -126,7 +126,7 @@ func TestDeviceFlowToConfig(t *testing.T) {
 // TestDeviceFlowConcurrentSafe guards the shared poll against data races.
 func TestDeviceFlowConcurrentSafe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte(`{"access_token":"a","expires_in":60}`))
+		_, _ = w.Write([]byte(`{"access_token":"a","expires_in":60}`))
 	}))
 	defer srv.Close()
 	d := NewDeviceFlow(srv.Client(), codeEndpoints(srv))
