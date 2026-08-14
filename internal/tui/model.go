@@ -1766,15 +1766,27 @@ func readRangeHint(argsJSON string) string {
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return ""
 	}
-	start, ok := args["start_line"].(float64)
-	if !ok || start != math.Trunc(start) || start < 1 {
+	start, ok := lineArg(args, "start_line")
+	if !ok {
 		return ""
 	}
-	end, ok := args["end_line"].(float64)
-	if !ok || end != math.Trunc(end) || end < 1 {
+	end, ok := lineArg(args, "end_line")
+	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("%d-%d", int(start), int(end))
+	return fmt.Sprintf("%d-%d", start, end)
+}
+
+// lineArg reads a 1-based integer tool argument from raw JSON args. It reports
+// ok=false when the arg is absent, null, non-numeric, fractional, or
+// non-positive, so range parsing can never emit a bogus tag from an unexpected
+// argument shape.
+func lineArg(args map[string]any, key string) (int, bool) {
+	v, ok := args[key].(float64)
+	if !ok || v != math.Trunc(v) || v < 1 {
+		return 0, false
+	}
+	return int(v), true
 }
 
 // toolArgsHint extracts a short display hint from a tool call's raw JSON args:
