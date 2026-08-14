@@ -306,7 +306,9 @@ type Model struct {
 
 	// clipboard writes the plain-text transcript to the system clipboard (issue
 	// #123): Ctrl+O and /copy route here. It is the injected Dependencies
-	// seam, defaulting to the atotto/clipboard package's WriteAll.
+	// seam, defaulting to the atotto/clipboard package's WriteAll wrapped in
+	// the OSC 52 fallback (issue #201) so a failing system-clipboard path still
+	// copies through an OSC 52-capable terminal.
 	clipboard func(text string) error
 
 	// dragSel tracks an in-progress click-drag selection over the history

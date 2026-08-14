@@ -21,6 +21,10 @@ func clipboardWithOSCFallback(primary func(text string) error, out io.Writer) fu
 		if err := primary(text); err == nil {
 			return nil
 		}
+		// The OSC 52 sequence lands on the same fd the TUI renders through; the
+		// write is a single write(2) syscall and the tty line discipline
+		// serializes writes, so it cannot interleave mid-sequence with a render
+		// flush (issue #201).
 		return osc52.New(out).Write(text)
 	}
 }
