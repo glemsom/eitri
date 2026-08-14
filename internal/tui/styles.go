@@ -67,17 +67,65 @@ func newDraculaTheme() Theme {
 	)
 }
 
-// themeFor maps a config theme name to its chrome palette (issue #179): the
-// Markdown render theme selection now also selects the TUI chrome palette, so
-// choosing a theme re-skins the whole surface, not just the Markdown body.
-// "dracula" selects the second curated palette; every other supported render
-// name (dark, light, tokyo-night, pink, notty, auto) keeps the default
-// palette, and an unknown value falls back to default — exactly the
-// renderer's fallback behavior (issue #179 AC4), so the chrome and Markdown
-// never disagree about a theme.
+// newTokyoNightTheme is the curated tokyo-night chrome palette (issue #180):
+// the canonical tokyo-night hues — purple accent (glamour's heading color for
+// the theme), red error, green ok — so choosing tokyo-night for Markdown also
+// re-skins the chrome with the same family instead of inheriting the default.
+func newTokyoNightTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#BB9AF7"), // accent
+		lipgloss.Color("#F7768E"), // error
+		lipgloss.Color("#9ECE6A"), // ok
+	)
+}
+
+// newPinkTheme is the curated pink chrome palette (issue #180): the glamour
+// pink theme's hot-pink heading hue as the accent, with a crimson error and a
+// soft green ok that keep ✓/✗ outcomes and the error pane distinguishable
+// from the pink accent.
+func newPinkTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#FF87D7"), // accent
+		lipgloss.Color("#E5484D"), // error
+		lipgloss.Color("#69DB8C"), // ok
+	)
+}
+
+// newLightTheme is the curated light chrome palette (issue #180): hues
+// readable on a light terminal background — the glamour light theme's heading
+// blue as the accent, with a dark red error and a dark teal-green ok, each
+// contrast-checked against white (≥ 4.5:1).
+func newLightTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#005FFF"), // accent
+		lipgloss.Color("#C92A2A"), // error
+		lipgloss.Color("#00875F"), // ok
+	)
+}
+
+// themeFor maps a config theme name to its chrome palette (issue #179,
+// extended by issue #180): the Markdown render theme selection also selects
+// the TUI chrome palette, so choosing a theme re-skins the whole surface, not
+// just the Markdown body. "dracula", "tokyo-night", "pink" and "light"
+// select their curated palettes; "auto" resolves to light or dark by the
+// terminal background, mirroring the renderer's own auto resolution; "notty"
+// keeps the default palette deliberately (the TUI never runs under notty —
+// the boot guard refuses non-interactive contexts); an unknown value falls
+// back to default — exactly the renderer's fallback behavior (issue #179
+// AC4), so the chrome and Markdown never disagree about a theme.
 func themeFor(name string) Theme {
-	if name == "dracula" {
+	if name == "auto" {
+		return themeFor(autoTheme())
+	}
+	switch name {
+	case "dracula":
 		return newDraculaTheme()
+	case "tokyo-night":
+		return newTokyoNightTheme()
+	case "pink":
+		return newPinkTheme()
+	case "light":
+		return newLightTheme()
 	}
 	return defaultTheme
 }
