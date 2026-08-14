@@ -11,9 +11,10 @@ import (
 // Hardware caret policy (issue #168): the composer's caret is the terminal's
 // hardware cursor — not the reverse-video software cell bubbles v2 paints by
 // default — and it must track the true edit position across every composer
-// state. Tests drive the public Update/View seam and assert on the attached
-// tea.View.Cursor (cell coordinates, 0-indexed from the frame's top-left) and
-// the rendered surface.
+// state. Its shape and blink follow the explicit caret style policy (issue
+// #170): a steady block. Tests drive the public Update/View seam and assert on
+// the attached tea.View.Cursor (cell coordinates, 0-indexed from the frame's
+// top-left) and the rendered surface.
 //
 // The composer's internal viewport scrolls as the draft wraps/grows, so the
 // caret's expected frame position is derived from the rendered surface — the
@@ -62,6 +63,22 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 		t.Errorf("composer must not render a software reverse-video caret cell, got:\n%s", view(m))
 	}
 	caret(t, m)
+}
+
+// TestComposer_CaretStylePolicy asserts the explicit caret style policy
+// (issue #170): the composer's hardware caret is a steady (non-blinking) block,
+// requested deliberately rather than inherited from the textarea default or the
+// terminal's own settings. A terminal that ignores the shape request falls back
+// to its own default block caret — still visible, never hidden.
+func TestComposer_CaretStylePolicy(t *testing.T) {
+	m := caretModel(t)
+	c := caret(t, m)
+	if c.Shape != tea.CursorBlock {
+		t.Errorf("caret shape = %v, want block", c.Shape)
+	}
+	if c.Blink {
+		t.Error("caret must be steady (no blink)")
+	}
 }
 
 // TestComposer_CaretTracksTyping asserts the hardware caret follows the edit
