@@ -61,7 +61,7 @@ Eitri supports **Agent Skills** — modular skill packs, as described in https:/
 - Auto-discovery from fixed project, user, and workspace roots with last-wins precedence.
 - Per-session activation; skills can be injected per workspace.
 - Slash-command surface: `/skillname` activates a skill, `/settings` opens the settings modal, and `/` shows a completion list mixing the built-in commands with matching skills. (Issue #87)
-- The TUI surfaces detected skills through that slash-command completion list; the right context rail is STATS / CONTEXT / MODEL only
+- The TUI surfaces detected skills through that slash-command completion list; the right context rail is STATS / CONTEXT / MODEL only.
 
 ### 2.4 Context management
 
