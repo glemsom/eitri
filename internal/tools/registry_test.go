@@ -64,7 +64,6 @@ func TestReadSchemaNullableUnion(t *testing.T) {
 	}
 }
 
-
 func argMap(kv ...string) map[string]any {
 	m := map[string]any{}
 	for i := 0; i+1 < len(kv); i += 2 {
