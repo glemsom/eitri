@@ -307,7 +307,7 @@ func TestTheme_toolCategoryPalettes(t *testing.T) {
 		"tokyo-night": {
 			"shell": lipgloss.Color("#FF9E64"),
 			"file":  lipgloss.Color("#7DCFFF"),
-			"web":   lipgloss.Color("#BB9AF7"),
+			"web":   lipgloss.Color("#2AC3DE"),
 			"skill": lipgloss.Color("#73DACA"),
 		},
 		"pink": {
@@ -342,6 +342,21 @@ func TestTheme_toolCategoryPalettes(t *testing.T) {
 			if _, ok := color.Color(got).(color.RGBA); !ok {
 				t.Errorf("%s %s color = %T, want a hex-derived color.RGBA", name, cat, color.Color(got))
 			}
+		}
+		// The seven palette entries are mutually distinct within a theme: a
+		// category hue must never collide with the accent/error/ok trio or
+		// another category, or the transcript would stop skimming by color
+		// (issue #181 AC1).
+		seen := map[color.Color]string{}
+		entries := map[string]color.Color{
+			"accent": th.accent, "error": th.error, "ok": th.ok,
+			"shell": th.shell, "file": th.file, "web": th.web, "skill": th.skill,
+		}
+		for entry, c := range entries {
+			if prev, dup := seen[c]; dup {
+				t.Errorf("%s %s collides with %s: both %v", name, entry, prev, c)
+			}
+			seen[c] = entry
 		}
 	}
 }

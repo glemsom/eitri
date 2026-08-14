@@ -90,7 +90,7 @@ func newDraculaTheme() Theme {
 // the theme), red error, green ok — so choosing tokyo-night for Markdown also
 // re-skins the chrome with the same family instead of inheriting the default.
 // The tool categories use the tokyo-night secondary hues (orange, light blue,
-// teal); web deliberately reuses the purple accent, matching the family.
+// cyan, teal), each distinct from the accent/error/ok trio (issue #181 AC1).
 func newTokyoNightTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#BB9AF7"), // accent
@@ -98,7 +98,7 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#9ECE6A"), // ok
 		lipgloss.Color("#FF9E64"), // shell
 		lipgloss.Color("#7DCFFF"), // file
-		lipgloss.Color("#BB9AF7"), // web
+		lipgloss.Color("#2AC3DE"), // web
 		lipgloss.Color("#73DACA"), // skill
 	)
 }
