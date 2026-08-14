@@ -65,6 +65,39 @@ func TestTheme_defaultPalette(t *testing.T) {
 }
 
 // TestTheme_draculaPalette asserts the second curated palette (issue #179
+
+// TestTheme_railHues asserts every theme carries four distinct per-section
+// hues for the right context rail (issue #182): the STATS / CONTEXT / SKILLS /
+// MODEL sections each draw a distinct hue from the theme's palette registry,
+// and the derived rail styles render headers and bodies from those hues — so
+// a palette addition alone re-skins the rail.
+func TestTheme_railHues(t *testing.T) {
+	themes := []Theme{defaultTheme, newDraculaTheme(), newTokyoNightTheme(), newPinkTheme(), newLightTheme()}
+	for _, th := range themes {
+		// Four distinct hues, each a hex-derived color that adapts to any
+		// color profile (issue #182 AC5: safe fallback on non-truecolor).
+		seen := map[color.Color]bool{}
+		for i, c := range th.railHues {
+			if seen[c] {
+				t.Errorf("theme %v rail hue %d duplicates another section hue", th, i)
+			}
+			seen[c] = true
+			if _, ok := c.(color.RGBA); !ok {
+				t.Errorf("theme %v rail hue %d = %T, want a hex-derived color.RGBA", th, i, c)
+			}
+		}
+		// The derived styles draw from the palette entries.
+		for _, s := range []railSection{railStats, railContext, railSkills, railModel} {
+			if got := th.railHeaderStyles[s].GetForeground(); got != th.railHues[s] {
+				t.Errorf("theme %v rail header style %d foreground = %v, want hue %v", th, s, got, th.railHues[s])
+			}
+			if got := th.railBodyStyles[s].GetForeground(); got != th.railHues[s] {
+				t.Errorf("theme %v rail body style %d foreground = %v, want hue %v", th, s, got, th.railHues[s])
+			}
+		}
+	}
+}
+
 // AC3) is a full Theme value on the same constructor pattern as the default:
 // distinct hex palette entries and the derived styles drawn from them, so a
 // non-default theme fully re-skins the chrome.

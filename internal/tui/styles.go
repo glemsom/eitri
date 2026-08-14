@@ -28,6 +28,11 @@ type Theme struct {
 	web    color.Color // semantic color for web tool entries (web_fetch, ⊕)
 	skill  color.Color // semantic color for skill tool entries (skill, ⊕)
 
+	// railHues are the per-section hues for the right context rail (issue
+	// #182): [stats, context, skills, model], each distinct so a glance tells
+	// the sections apart under any palette.
+	railHues [4]color.Color
+
 	// Derived styles, drawn from the palette entries.
 	headerStyle        lipgloss.Style // bold section header (settings title, prompts)
 	statusStyle        lipgloss.Style // faint secondary text (strips, hints, tool lines)
@@ -43,6 +48,14 @@ type Theme struct {
 	outcomeErrStyle    lipgloss.Style // the ✗ tool-outcome tag
 	slashSelectStyle   lipgloss.Style // the selected slash-completion candidate
 	bandSeparatorStyle lipgloss.Style // the separator row framing the bottom band
+	// bandStatusStyle renders the live status strip in the accent hue so the
+	// bottom band matches the colorized right rail (issue #182 AC4).
+	bandStatusStyle lipgloss.Style
+
+	// railHeaderStyles / railBodyStyles render the right rail's sections
+	// (issue #182): bold headers and body lines, each in its section's hue.
+	railHeaderStyles [4]lipgloss.Style
+	railBodyStyles   [4]lipgloss.Style
 }
 
 // defaultTheme is the default (dark) theme: exactly the pre-seam palette and
@@ -64,6 +77,12 @@ func newDefaultTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#BB9AF7"), // web
 		lipgloss.Color("#FF87D7"), // skill
+		[4]color.Color{
+			lipgloss.Color("#E0AF68"),
+			lipgloss.Color("#7DCFFF"),
+			lipgloss.Color("#FF87D7"),
+			lipgloss.Color("#9ECE6A"),
+		},
 	)
 }
 
@@ -82,6 +101,12 @@ func newDraculaTheme() Theme {
 		lipgloss.Color("#8BE9FD"), // file
 		lipgloss.Color("#FF79C6"), // web
 		lipgloss.Color("#F1FA8C"), // skill
+		[4]color.Color{
+			lipgloss.Color("#FFB86C"),
+			lipgloss.Color("#8BE9FD"),
+			lipgloss.Color("#F1FA8C"),
+			lipgloss.Color("#50FA7B"),
+		},
 	)
 }
 
@@ -100,6 +125,12 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#2AC3DE"), // web
 		lipgloss.Color("#73DACA"), // skill
+		[4]color.Color{
+			lipgloss.Color("#FF9E64"),
+			lipgloss.Color("#7DCFFF"),
+			lipgloss.Color("#73DACA"),
+			lipgloss.Color("#9ECE6A"),
+		},
 	)
 }
 
@@ -118,6 +149,12 @@ func newPinkTheme() Theme {
 		lipgloss.Color("#39C0ED"), // file
 		lipgloss.Color("#A78BFA"), // web
 		lipgloss.Color("#60A5FA"), // skill
+		[4]color.Color{
+			lipgloss.Color("#FFB224"),
+			lipgloss.Color("#39C0ED"),
+			lipgloss.Color("#60A5FA"),
+			lipgloss.Color("#69DB8C"),
+		},
 	)
 }
 
@@ -136,6 +173,12 @@ func newLightTheme() Theme {
 		lipgloss.Color("#0E7490"), // file
 		lipgloss.Color("#6D28D9"), // web
 		lipgloss.Color("#A21CAF"), // skill
+		[4]color.Color{
+			lipgloss.Color("#B45309"),
+			lipgloss.Color("#0E7490"),
+			lipgloss.Color("#A21CAF"),
+			lipgloss.Color("#00875F"),
+		},
 	)
 }
 
@@ -170,15 +213,16 @@ func themeFor(name string) Theme {
 // draw from them. It is the only place derived styles are constructed: every
 // palette (default, dracula, future ones) shares the same style wiring, so
 // palettes differ by hue alone and can never drift apart structurally.
-func newTheme(accent, err, ok, shell, file, web, skill color.Color) Theme {
-	return Theme{
-		accent: accent,
-		error:  err,
-		ok:     ok,
-		shell:  shell,
-		file:   file,
-		web:    web,
-		skill:  skill,
+func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [4]color.Color) Theme {
+	th := Theme{
+		accent:   accent,
+		error:    err,
+		ok:       ok,
+		shell:    shell,
+		file:     file,
+		web:      web,
+		skill:    skill,
+		railHues: rail,
 
 		headerStyle: lipgloss.NewStyle().Bold(true).Foreground(accent),
 		statusStyle: lipgloss.NewStyle().Faint(true),
@@ -214,7 +258,19 @@ func newTheme(accent, err, ok, shell, file, web, skill color.Color) Theme {
 		// which would re-pad the composer's own rows and break the band's
 		// bottom-pinned layout.
 		bandSeparatorStyle: lipgloss.NewStyle().Foreground(accent),
+		// The status strip (issue #182 AC4) shares the accent with the band
+		// separator, so the whole fixed bottom band reads as one accent-treated
+		// region under the colorized rail.
+		bandStatusStyle: lipgloss.NewStyle().Foreground(accent),
 	}
+	// The rail's per-section styles draw from its hues: a bold header plus the
+	// body lines, so the section reads as a colored block with a distinct
+	// header (issue #182). Color is a layer on top of the plain section text.
+	for i, c := range rail {
+		th.railHeaderStyles[i] = lipgloss.NewStyle().Bold(true).Foreground(c)
+		th.railBodyStyles[i] = lipgloss.NewStyle().Foreground(c)
+	}
+	return th
 }
 
 // Historical package-level aliases of the default theme's palette and styles,
@@ -228,6 +284,30 @@ var (
 	agentPaneStyle = defaultTheme.agentPaneStyle
 	errorPaneStyle = defaultTheme.errorPaneStyle
 )
+
+// railSection indexes the right context rail's four sections (issue #182) so
+// the per-section hues and styles stay positionally consistent between the
+// theme registry and the rail renderer.
+type railSection int
+
+const (
+	railStats railSection = iota
+	railContext
+	railSkills
+	railModel
+)
+
+// railHeader renders a rail section header in its section's hue (issue #182).
+func (th Theme) railHeader(s railSection, text string) string {
+	return th.railHeaderStyles[s].Render(text)
+}
+
+// railBody renders a rail section's body lines in its section's hue (issue
+// #182). Color is a layer on top: the section text stays plain, so a
+// monochrome terminal still reads every value.
+func (th Theme) railBody(s railSection, text string) string {
+	return th.railBodyStyles[s].Render(text)
+}
 
 // borderedPane builds a left-bordered pane with the given border color — the
 // shared frame for assistant answers (agent accent) and failing turns (error
