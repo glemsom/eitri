@@ -134,6 +134,97 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 	}
 }
 
+// TestModel_stylingToolCategoryColors asserts tool entries render with the
+// per-category hue from the theme palette (issue #181 AC1): shell tools in the
+// shell color, file tools in the file color, web tools in the web color and
+// skill activations in the skill color, while an unknown tool keeps the
+// generic faint line. The ⊕ glyph stays on every entry — meaning never rides
+// on color alone (issue #181 AC5).
+func TestModel_stylingToolCategoryColors(t *testing.T) {
+	feed := NewToolFeed()
+	m := NewModelCfg(Dependencies{
+		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Tools: feed,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "go")
+	m = submitAndWait(t, m)
+
+	// Per-category tool entries, each rendered through the model's default
+	// theme: shell amber, file light-blue, web purple, skill pink.
+	cases := []struct {
+		tool string
+		hue  string
+	}{
+		{"bash", "\x1b[38;2;224;175;104m"},            // shell #E0AF68
+		{"read", "\x1b[38;2;125;207;255m"},            // file #7DCFFF
+		{"write", "\x1b[38;2;125;207;255m"},           // file
+		{"edit", "\x1b[38;2;125;207;255m"},            // file
+		{"web_fetch", "\x1b[38;2;187;154;247m"},       // web #BB9AF7
+		{"open_in_browser", "\x1b[38;2;187;154;247m"}, // web
+		{"skill", "\x1b[38;2;255;135;215m"},           // skill #FF87D7
+	}
+	for _, tc := range cases {
+		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})
+		m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: tc.tool, Result: "done"}})
+		line := lineContaining(view(m), "⊕ "+tc.tool)
+		if line == "" {
+			t.Fatalf("expected ⊕ %s entry, got: %q", tc.tool, view(m))
+		}
+		if !strings.Contains(line, tc.hue) {
+			t.Errorf("⊕ %s entry = %q, want category hue %q", tc.tool, line, tc.hue)
+		}
+		if !strings.Contains(line, "⊕") {
+			t.Errorf("⊕ %s entry lost its glyph, got: %q", tc.tool, line)
+		}
+	}
+
+	// An unknown tool falls back to the generic faint entry — no category hue.
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "future_tool", Args: "{}"}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "future_tool", Result: "done"}})
+	line := lineContaining(view(m), "⊕ future_tool")
+	if line == "" {
+		t.Fatalf("expected ⊕ future_tool entry, got: %q", view(m))
+	}
+	for _, hue := range []string{"38;2;224;175;104", "38;2;125;207;255", "38;2;187;154;247", "38;2;255;135;215"} {
+		if strings.Contains(line, hue) {
+			t.Errorf("unknown tool entry must not carry a category hue %q, got: %q", hue, line)
+		}
+	}
+}
+
+// TestModel_stylingThinkingDistinct asserts the thinking hint renders as a
+// visually distinct treatment from the assistant answer body (issue #181
+// AC2): the collapsed 🤔 line carries the accent hue and italic, while the
+// answer text itself stays plain — the 🤔 glyph plus the accent+italic pair
+// mark the hint, never color alone (issue #181 AC5).
+func TestModel_stylingThinkingDistinct(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	hint := lineContaining(view(m), "🤔")
+	if hint == "" {
+		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
+	}
+	// lipgloss merges italic + faint + foreground into one escape: the hint
+	// line opens with \x1b[3;2; then the accent's truecolor pair.
+	if !strings.Contains(hint, "\x1b[3;2;") {
+		t.Errorf("thinking hint should render italic, got line: %q", hint)
+	}
+	if !strings.Contains(hint, "\x1b[3;2;38;2;122;162;247m") {
+		t.Errorf("thinking hint should carry the accent hue, got line: %q", hint)
+	}
+	if ans := lineContaining(view(m), "plain"); strings.Contains(ans, "\x1b[3m") || strings.Contains(ans, "\x1b[3;") {
+		t.Errorf("answer body must stay non-italic, got line: %q", ans)
+	}
+}
+
 // TestModel_stylingThinkingMarker asserts the thinking block keeps its 🤔
 // marker (issue #122 AC2: "thinking (🤔)") on the collapsed hint line.
 func TestModel_stylingThinkingMarker(t *testing.T) {

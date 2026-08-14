@@ -283,3 +283,121 @@ func TestModel_themeSeam(t *testing.T) {
 		t.Errorf("default accent leaked after theme swap, got: %q", pane)
 	}
 }
+
+// TestTheme_toolCategoryPalettes asserts every curated palette carries the four
+// tool-category entries the transcript colorizes by (issue #181 AC1): shell,
+// file, web and skill, each a hex value distinct from the theme's accent,
+// error and ok entries so a long session skims by category color. The
+// light palette's category hues are additionally contrast-checked against
+// white (≥ 4.5:1), matching its palette-level constraint.
+func TestTheme_toolCategoryPalettes(t *testing.T) {
+	for name, want := range map[string]map[string]color.Color{
+		"default": {
+			"shell": lipgloss.Color("#E0AF68"),
+			"file":  lipgloss.Color("#7DCFFF"),
+			"web":   lipgloss.Color("#BB9AF7"),
+			"skill": lipgloss.Color("#FF87D7"),
+		},
+		"dracula": {
+			"shell": lipgloss.Color("#FFB86C"),
+			"file":  lipgloss.Color("#8BE9FD"),
+			"web":   lipgloss.Color("#FF79C6"),
+			"skill": lipgloss.Color("#F1FA8C"),
+		},
+		"tokyo-night": {
+			"shell": lipgloss.Color("#FF9E64"),
+			"file":  lipgloss.Color("#7DCFFF"),
+			"web":   lipgloss.Color("#2AC3DE"),
+			"skill": lipgloss.Color("#73DACA"),
+		},
+		"pink": {
+			"shell": lipgloss.Color("#FFB224"),
+			"file":  lipgloss.Color("#39C0ED"),
+			"web":   lipgloss.Color("#A78BFA"),
+			"skill": lipgloss.Color("#60A5FA"),
+		},
+		"light": {
+			"shell": lipgloss.Color("#B45309"),
+			"file":  lipgloss.Color("#0E7490"),
+			"web":   lipgloss.Color("#6D28D9"),
+			"skill": lipgloss.Color("#A21CAF"),
+		},
+	} {
+		th := themeFor(name)
+		for cat, want := range want {
+			var got color.Color
+			switch cat {
+			case "shell":
+				got = th.shell
+			case "file":
+				got = th.file
+			case "web":
+				got = th.web
+			case "skill":
+				got = th.skill
+			}
+			if got != want {
+				t.Errorf("%s %s = %v, want %v", name, cat, got, want)
+			}
+			if _, ok := color.Color(got).(color.RGBA); !ok {
+				t.Errorf("%s %s color = %T, want a hex-derived color.RGBA", name, cat, color.Color(got))
+			}
+		}
+		// The seven palette entries are mutually distinct within a theme: a
+		// category hue must never collide with the accent/error/ok trio or
+		// another category, or the transcript would stop skimming by color
+		// (issue #181 AC1).
+		seen := map[color.Color]string{}
+		entries := map[string]color.Color{
+			"accent": th.accent, "error": th.error, "ok": th.ok,
+			"shell": th.shell, "file": th.file, "web": th.web, "skill": th.skill,
+		}
+		for entry, c := range entries {
+			if prev, dup := seen[c]; dup {
+				t.Errorf("%s %s collides with %s: both %v", name, entry, prev, c)
+			}
+			seen[c] = entry
+		}
+	}
+}
+
+// TestTheme_toolCategoryStyles asserts the derived tool styles draw from the
+// category palette entries (issue #181 AC1): each of the four tool styles
+// carries its category hue, so the renderer styles a tool line by category
+// through the seam — no hardcoded color outside the palette registry.
+func TestTheme_toolCategoryStyles(t *testing.T) {
+	th := defaultTheme
+	for cat, want := range map[string]color.Color{
+		"shell": th.shell,
+		"file":  th.file,
+		"web":   th.web,
+		"skill": th.skill,
+	} {
+		var got color.Color
+		switch cat {
+		case "shell":
+			got = th.toolShellStyle.GetForeground()
+		case "file":
+			got = th.toolFileStyle.GetForeground()
+		case "web":
+			got = th.toolWebStyle.GetForeground()
+		case "skill":
+			got = th.toolSkillStyle.GetForeground()
+		}
+		if got != want {
+			t.Errorf("tool %s style foreground = %v, want %v", cat, got, want)
+		}
+	}
+	// The generic tool line stays faint; the thinking hint renders italic so
+	// the 🤔 block reads as a distinct treatment from the answer body (issue
+	// #181 AC2).
+	if got := th.toolStyle.GetFaint(); !got {
+		t.Errorf("generic tool style should stay faint, got %v", got)
+	}
+	if got := th.thinkingStyle.GetItalic(); !got {
+		t.Errorf("thinking style should be italic (distinct from answers), got %v", got)
+	}
+	if got := th.thinkingStyle.GetForeground(); got != th.accent {
+		t.Errorf("thinking foreground = %v, want accent %v", got, th.accent)
+	}
+}

@@ -1694,7 +1694,10 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
 	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
-	// glanceable without expanding the collapsed summary.
+	// glanceable without expanding the collapsed summary. The entry line
+	// itself renders in the tool's category hue (shell/file/web/skill, issue
+	// #181 AC1), with the glyph + color pair keeping meaning from ever
+	// depending on color alone (issue #181 AC5).
 	outcome := ""
 	if te.complete {
 		if isToolFailure(te.result) {
@@ -1703,7 +1706,7 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 			outcome = " " + th.outcomeOKStyle.Render("✓")
 		}
 	}
-	b.WriteString(th.toolStyle.Render(toolEntryHead(te)) + outcome)
+	b.WriteString(th.toolCategoryStyle(toolCategoryOf(te.name)).Render(toolEntryHead(te)) + outcome)
 	b.WriteString("\n")
 
 	if !expanded {
