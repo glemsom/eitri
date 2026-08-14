@@ -180,7 +180,7 @@ func (m Model) renderReview(b *strings.Builder) {
 	fmt.Fprintf(b, "~ ctrl+d  Review changed files (%d) ~", len(r.files))
 	b.WriteString("\n")
 	if len(r.files) == 0 {
-		b.WriteString(statusStyle.Render("  no changes yet"))
+		b.WriteString(m.theme.statusStyle.Render("  no changes yet"))
 		b.WriteString("\n")
 		return
 	}
@@ -194,14 +194,14 @@ func (m Model) renderReview(b *strings.Builder) {
 	}
 	if r.expanded && r.cursor < len(r.files) {
 		f := r.files[r.cursor]
-		b.WriteString(renderDiff(f))
+		b.WriteString(renderDiff(f, m.theme))
 	}
 	if r.openErr != "" {
-		b.WriteString(statusStyle.Render("open_in_browser: " + r.openErr))
+		b.WriteString(m.theme.statusStyle.Render("open_in_browser: " + r.openErr))
 		b.WriteString("\n")
 		r.openErr = ""
 	}
-	b.WriteString(statusStyle.Render("  enter: toggle diff · o: open_in_browser · ctrl+d: close"))
+	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff · o: open_in_browser · ctrl+d: close"))
 	b.WriteString("\n")
 }
 
@@ -209,9 +209,9 @@ func (m Model) renderReview(b *strings.Builder) {
 // git-style @@ header plus +/-/context lines, styled distinctly from the
 // transcript. A file with no content-diff (e.g. a pure flag change the engine
 // couldn't snapshot) falls back to the count summary.
-func renderDiff(f reviewEntry) string {
+func renderDiff(f reviewEntry, th Theme) string {
 	if len(f.hunks) == 0 {
-		return statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
+		return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
 	}
 	var sb strings.Builder
 	for _, h := range f.hunks {
