@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 
@@ -963,6 +964,14 @@ func toolEntryHead(te toolEntry) string {
 	head := "⊕ " + te.name
 	if arg := toolArgsHint(te.args); arg != "" {
 		head += "  " + arg
+		// Invoked line range for range-limited reads, alongside the path hint
+		// (issue #204 AC1): `⊕ read  path:start-end`. Whole-file reads and
+		// malformed limits render no range tag.
+		if te.name == "read" {
+			if r := readRangeHint(te.args); r != "" {
+				head += ":" + r
+			}
+		}
 	}
 	// Line-delta tag for file-edit tools (issue #84 AC3).
 	if te.name == "edit" || te.name == "write" {
@@ -1745,6 +1754,39 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// readRangeHint extracts the explicit 1-based line range a `read` call was
+// invoked with from its raw JSON args (issue #204). Both start_line and
+// end_line must be present as positive integers; omitted or null limits
+// (whole-file reads), fractional values, and malformed shapes return "" so the
+// entry head falls back to the path-only rendering — never a crash.
+func readRangeHint(argsJSON string) string {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return ""
+	}
+	start, ok := lineArg(args, "start_line")
+	if !ok {
+		return ""
+	}
+	end, ok := lineArg(args, "end_line")
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", start, end)
+}
+
+// lineArg reads a 1-based integer tool argument from raw JSON args. It reports
+// ok=false when the arg is absent, null, non-numeric, fractional, or
+// non-positive, so range parsing can never emit a bogus tag from an unexpected
+// argument shape.
+func lineArg(args map[string]any, key string) (int, bool) {
+	v, ok := args[key].(float64)
+	if !ok || v != math.Trunc(v) || v < 1 {
+		return 0, false
+	}
+	return int(v), true
 }
 
 // toolArgsHint extracts a short display hint from a tool call's raw JSON args:
