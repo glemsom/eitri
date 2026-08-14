@@ -82,10 +82,12 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Stream:        stream,
 		Tools:         tools,
 		Rail:          rail,
-		// The skills panel and `/skillname` slash activation sit on the same
-		// catalog the batch engine uses (T8): activation runs the `skill` tool
-		// through the registry, so a slash activation behaves identically to a
-		// model-invoked one (docs/spec.md §9, eitri.md §2.3, ticket #35).
+		// `/skillname` slash activation sits on the same catalog the batch
+		// engine uses (T8): activation runs the `skill` tool through the
+		// registry, so a slash activation behaves identically to a model-
+		// invoked one (docs/spec.md §9, eitri.md §2.3, ticket #35). The rail
+		// shows no skills panel (issue #188); the surface only feeds slash
+		// completion and activation.
 		Skills: skillSurface(reg, skills),
 		// The review panel's open_in_browser escape hatch (issue #90) reuses the
 		// registry's host-side browser launch seam that backs the open_in_browser
@@ -182,22 +184,17 @@ func pushTool(ch chan<- tui.ToolUpdate, u tui.ToolUpdate) {
 	}
 }
 
-// skillSurface adapts the run's skill catalog to the TUI's SkillsSurface seam.
-// Items reflects detected + per-session active state; Activate runs the `skill`
-// tool through the registry (a no-op registry when the tool is unregistered,
-// i.e. no skills).
+// skillSurface adapts the run's skill catalog to the TUI's slash-command
+// surface: Items lists the detected skill names for `/` completion and
+// Activate runs the `skill` tool through the registry (a no-op registry when
+// the tool is unregistered, i.e. no skills).
 func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	if c == nil || len(c.Names()) == 0 {
 		return nil
 	}
 	items := make([]tui.SkillItem, 0, len(c.Names()))
-	for _, it := range c.Items() {
-		items = append(items, tui.SkillItem{
-			Name:        it.Name,
-			Description: it.Description,
-			Scope:       it.Scope,
-			Active:      it.Active,
-		})
+	for _, name := range c.Names() {
+		items = append(items, tui.SkillItem{Name: name})
 	}
 	return &tui.SkillsSurface{
 		Items: items,

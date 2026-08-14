@@ -23,7 +23,7 @@ func TestRailRenderStats(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, nil, defaultTheme)
+	view := r.render(te, defaultTheme)
 
 	if !strings.Contains(view, "STATS") {
 		t.Errorf("rail missing STATS section, got: %q", view)
@@ -47,7 +47,7 @@ func TestRailRenderStats(t *testing.T) {
 // provider/model/effort/thinking (issue #88).
 func TestRailRenderModel(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), nil, defaultTheme)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme)
 
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
@@ -64,29 +64,18 @@ func TestRailRenderModel(t *testing.T) {
 }
 
 // TestRailRenderContext asserts the CONTEXT section reflects the session id
-// and session temp path, and the SKILLS section lists detected skills with
-// their scope + activation state (issue #88).
+// and session temp path, and that the rail renders no SKILLS section — the
+// rail is STATS / CONTEXT / MODEL only (issue #188), so detected skills and
+// their activation state never appear in the right pane.
 func TestRailRenderContext(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	skills := []SkillItem{
-		{Name: "go-guidelines", Scope: "user", Active: true},
-		{Name: "security-review", Scope: "project", Active: false},
-	}
-	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), skills, defaultTheme)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme)
 
 	if !strings.Contains(view, "CONTEXT") {
 		t.Errorf("rail missing CONTEXT section, got: %q", view)
 	}
-	if !strings.Contains(view, "SKILLS") {
-		t.Errorf("rail missing SKILLS section, got: %q", view)
-	}
-	if !strings.Contains(view, "go-guidelines [user] ✓") {
-		t.Errorf("rail SKILLS missing active skill row, got: %q", view)
-	}
-	if !strings.Contains(view, "security-review [project] ✕") {
-		t.Errorf("rail SKILLS missing inactive skill row, got: %q", view)
-	}
-	if !strings.Contains(view, "session eitri-9f2c") {
+	if strings.Contains(view, "SKILLS") {
+		t.Errorf("rail must not render a SKILLS section, got: %q", view)
 	}
 	if !strings.Contains(view, "session eitri-9f2c") {
 		t.Errorf("rail CONTEXT missing session id, got: %q", view)
@@ -99,15 +88,15 @@ func TestRailRenderContext(t *testing.T) {
 // TestModelRailToggles asserts ctrl+b toggles the rail between visible and
 
 // TestRailRenderSectionHues asserts each rail section renders with a distinct
-// hue from the theme palette (issue #182 AC1): the STATS / CONTEXT / SKILLS /
-// MODEL headers and their body lines carry the per-section hue's truecolor
-// sequence under the default theme, so the four sections read apart at a
-// glance.
+// hue from the theme palette (issue #182 AC1): the STATS / CONTEXT / MODEL
+// headers and their body lines carry the per-section hue's truecolor sequence
+// under the default theme, so the three sections read apart at a glance. The
+// SKILLS section hue is gone with the section (issue #188).
 func TestRailRenderSectionHues(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(te, []SkillItem{{Name: "go-guidelines", Scope: "user", Active: true}}, defaultTheme)
+	view := r.render(te, defaultTheme)
 
 	// Default-theme rail hues, as lipgloss truecolor sequences (issue #178:
 	// every palette entry is a hex value; the output layer downsamples for
@@ -118,7 +107,6 @@ func TestRailRenderSectionHues(t *testing.T) {
 	}{
 		{"STATS", "\x1b[1;38;2;224;175;104m"},   // stats amber #E0AF68
 		{"CONTEXT", "\x1b[1;38;2;125;207;255m"}, // context light-blue #7DCFFF
-		{"SKILLS", "\x1b[1;38;2;255;135;215m"},  // skills pink #FF87D7
 		{"MODEL", "\x1b[1;38;2;158;206;106m"},   // model green #9ECE6A
 	}
 	for _, tc := range cases {
@@ -153,7 +141,7 @@ func TestRailRenderSparkline(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 300, Output: 300})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(te, nil, defaultTheme)
+	view := r.render(te, defaultTheme)
 
 	usage := lineContaining(view, "usage")
 	if usage == "" {
@@ -176,7 +164,7 @@ func TestRailRenderSparkline(t *testing.T) {
 // pre-sparkline behavior): the history has nothing to draw from.
 func TestRailRenderNoSparklineWithoutTelemetry(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(nil, nil, defaultTheme)
+	view := r.render(nil, defaultTheme)
 	if strings.Contains(view, "▁▂▃") || strings.Contains(view, "usage") {
 		t.Errorf("nil telemetry must render no sparkline rows, got: %q", view)
 	}

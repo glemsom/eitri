@@ -9,8 +9,8 @@ import (
 
 // Rail enables a fixed-width right pane in the TUI surface (issue #88, Layout A
 // "The Ledger"): the "true right now" state — STATS (cache hit %, cost, turns,
-// token in/out), CONTEXT (session id, session temp path), SKILLS (detected
-// skills with scope + activation state), and MODEL (provider/model/effort) — rendered alongside, not into, the transcript
+// token in/out), CONTEXT (session id, session temp path), and MODEL
+// (provider/model/effort) — rendered alongside, not into, the transcript
 // so the conversation log stays clean. It is read-only against the agent loop:
 // the live STATS numbers are borrowed from the status-strip Telemetry (issue
 // #86) on the UI goroutine, so the rail never pauses or blocks a run.
@@ -42,22 +42,19 @@ func (r *Rail) line(b *strings.Builder, key, val string) {
 	b.WriteString("  " + key + " " + val + "\n")
 }
 
-// render returns the rail's rendered STATS/CONTEXT/SKILLS/MODEL block, each
+// render returns the rail's rendered STATS/CONTEXT/MODEL block, each
 // section tinted with its per-section hue from the theme palette (issue #182
 // AC1) — the header bold, the body lines in the same hue — so the sections
 // read apart at a glance. It borrows the live status-strip telemetry (te) for
-// the STATS numbers and the session's detected skills (skills) for the SKILLS
-// section, so every value reflects the run's current state (issue #88 AC4); te
-// may be nil when no strip is wired, the rail then renders zeroed STATS with
-// no sparkline. Rendering stays read-only against the agent loop: it only
-// reads the telemetry surface on the UI goroutine.
-func (r *Rail) render(te *Telemetry, skills []SkillItem, th Theme) string {
+// the STATS numbers, so every value reflects the run's current state (issue
+// #88 AC4); te may be nil when no strip is wired, the rail then renders zeroed
+// STATS with no sparkline. Rendering stays read-only against the agent loop:
+// it only reads the telemetry surface on the UI goroutine.
+func (r *Rail) render(te *Telemetry, th Theme) string {
 	var b strings.Builder
 	b.WriteString(r.renderStats(te, th))
 	b.WriteString("\n")
 	b.WriteString(r.renderContext(th))
-	b.WriteString("\n")
-	b.WriteString(r.renderSkills(skills, th))
 	b.WriteString("\n")
 	b.WriteString(r.renderModel(th))
 	return b.String()
@@ -117,28 +114,6 @@ func (r *Rail) renderContext(th Theme) string {
 	r.line(&body, "session", r.sessionID)
 	r.line(&body, "temp", r.sessionTemp)
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
-}
-
-// renderSkills renders the SKILLS section: detected + per-session active
-// skills (eitri.md §2.3). One line per skill with its install scope and ✓/✕
-// activation state; the section renders a "none detected" line when the
-// catalog is empty.
-func (r *Rail) renderSkills(skills []SkillItem, th Theme) string {
-	var b strings.Builder
-	b.WriteString(th.railHeader(railSkills, "SKILLS") + "\n")
-	var body strings.Builder
-	if len(skills) == 0 {
-		r.line(&body, "none", "detected")
-	} else {
-		for _, it := range skills {
-			state := "✕"
-			if it.Active {
-				state = "✓"
-			}
-			r.line(&body, it.Name+" ["+it.Scope+"]", state)
-		}
-	}
-	return b.String() + th.railBody(railSkills, strings.TrimRight(body.String(), "\n"))
 }
 
 // renderModel renders the MODEL section: the provider/model/effort surface.
