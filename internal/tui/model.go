@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -173,6 +175,13 @@ type Dependencies struct {
 	// /copy copy the full transcript through it. Nil falls back to the
 	// atotto/clipboard package default.
 	Clipboard func(text string) error
+	// OSC52Out, when non-nil, is the terminal output the copy fallback writes
+	// its OSC 52 sequence to (issue #201): when the Clipboard path fails (e.g.
+	// no xclip/wl-clipboard), the copy emits the OSC 52 clipboard sequence to
+	// this writer and the terminal puts the text on the system clipboard. Nil
+	// defaults to os.Stdout, so the fallback works out of the box in the
+	// interactive TUI.
+	OSC52Out io.Writer
 }
 
 // Model is the Bubble Tea state backing the TUI. It owns a single textarea
@@ -384,12 +393,24 @@ func NewModelCfg(d Dependencies) Model {
 
 // newClipboard returns the clipboard write seam (issue #123): the injected
 // Dependencies.Clipboard when set, else the atotto/clipboard package default so
-// Ctrl+O and /copy work out of the box.
+// Ctrl+O and /copy work out of the box. The returned seam is wrapped in the
+// OSC 52 fallback (issue #201): when the primary path fails, the copy re-routes
+// through the OSC 52 terminal-clipboard sequence to Dependencies.OSC52Out
+// (os.Stdout by default), so a machine without xclip/wl-clipboard still copies
+// through any OSC 52-capable terminal. Every copy path — Ctrl+O, /copy, and
+// drag-release — routes through this single seam.
 func newClipboard(d Dependencies) func(text string) error {
+	var primary func(text string) error
 	if d.Clipboard != nil {
-		return d.Clipboard
+		primary = d.Clipboard
+	} else {
+		primary = clipboard.WriteAll
 	}
-	return clipboard.WriteAll
+	out := d.OSC52Out
+	if out == nil {
+		out = os.Stdout
+	}
+	return clipboardWithOSCFallback(primary, out)
 }
 
 // newHistoryViewport builds the persisted history scroll component (T1
