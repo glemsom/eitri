@@ -182,9 +182,10 @@ func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 
 // composerRows returns the plain (ANSI-stripped), right-trimmed rows of the
 // composer region: the rows after the band's accent separator. The separator
-// row is located as the bottom-most row containing ─ (it fuses onto the last
-// history row before the WIP trailing-newline fix lands, and sits standalone
-// after); draft rows in these tests never contain ─.
+// row is located as the bottom-most row containing ─ — some frames fuse it
+// onto the last history row (no trailing newline between regions), others
+// render it standalone; both forms are accepted. Draft rows in these tests
+// never contain ─.
 func composerRows(m Model) []string {
 	lines := frameLines(m)
 	sep := -1

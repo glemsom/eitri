@@ -322,6 +322,8 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 // TestDragSelect_highlightsDuringDrag asserts the dragged cell range renders
 // highlighted (reverse video) while the drag is in progress, and the highlight
 // is gone after release (issue #124 AC1). The whole surface is scanned for
+// the reverse-video marker: the composer paints no software caret cell
+// anymore, so no row needs excluding (issue #168).
 func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	rows, top := historyContentRows(m)
@@ -348,7 +350,6 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 		t.Errorf("highlight must clear after release, got content:\n%s", view(m))
 	}
 }
-
 
 // TestDragSelect_plainClickCopiesNothing asserts a press+release on one cell
 // (no drag) never reaches the clipboard — only an actual drag copies (issue
