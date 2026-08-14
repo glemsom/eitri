@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -253,12 +256,21 @@ func settingsView(f settingsForm) string {
 		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
 	}
 
+	// Palette swatch: the selected theme's hues as full-block chips, so the
+	// theme picker previews the palette live as the arrows cycle (benchmark
+	// §4.4 live-preview pattern; esc discards, so the preview always reverts).
+	b.WriteString(th.statusStyle.Render("   palette"))
+	for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
+		b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
+	}
+	b.WriteString("\n")
+
 	// Provider model-discovery status (issue #89 AC2): loading/error/summary
 	// reflects what the list behind the Model row shows. Deterministic for
 	// render-testing.
 	switch f.discoverState {
 	case discoverLoading:
-		b.WriteString(th.statusStyle.Render("   discovering models…"))
+		b.WriteString(th.statusStyle.Render("   discovering models"+g("…", "...")))
 		b.WriteString("\n")
 	case discoverError:
 		b.WriteString(th.statusStyle.Render("   model discovery failed: " + f.discoverErr))
@@ -272,7 +284,7 @@ func settingsView(f settingsForm) string {
 	// and watching cost happen in one pane.
 	if f.telemetry != nil {
 		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
-			"   cache:%.0f%% · cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),
+			"   cache:%.0f%% "+g("·", ".")+" cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),
 		)))
 		b.WriteString("\n")
 	}
@@ -284,6 +296,6 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render("tab/enter: navigate · arrows/+/−: adjust · esc: close"))
+	b.WriteString(th.statusStyle.Render("tab/enter: navigate "+g("·", ".")+" arrows/+"+g("−", "-")+": adjust "+g("·", ".")+" esc: close"))
 	return b.String()
 }

@@ -11,7 +11,9 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -22,10 +24,12 @@ import (
 )
 
 // supportedThemes lists the render themes the user can pick from (issue
-// #129). These are glamour's built-in styles minus "ascii", which is
-// deliberately excluded.
+// #129). These are glamour's built-in styles plus the chrome-only themes
+// (nord/gruvbox/solarized) whose markdown body pairs with a glamour style and
+// whose hues remap onto the chrome palette.
 var supportedThemes = []string{
-	"dark", "light", "dracula", "tokyo-night", "pink", "notty", "auto",
+	"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized",
+	"dark-daltonized", "light-daltonized", "notty", "auto",
 }
 
 // RenderMarkdown converts Markdown source to ANSI-styled terminal output at
@@ -52,7 +56,7 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 		theme = autoTheme()
 	}
 	r, err := glamour.NewTermRenderer(
-		glamour.WithStylePath(theme),
+		glamour.WithStylePath(glamourStyleFor(theme)),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {
@@ -62,7 +66,96 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
+	out = remapMarkdownColors(out, themeFor(theme))
 	return strings.TrimSuffix(out, "\n"), nil
+}
+
+// glamourStyleFor maps a supported theme to the glamour style that renders its
+// markdown body. Chrome-only themes (nord/gruvbox/solarized) pair with a
+// glamour style of the same brightness family; the chrome palette then re-tints
+// the body through remapMarkdownColors, so the pair never drifts.
+func glamourStyleFor(theme string) string {
+	switch theme {
+	case "nord", "gruvbox", "solarized", "dark-daltonized":
+		return "dark"
+	case "light-daltonized":
+		return "light"
+	}
+	return theme
+}
+
+// markdownRemapFor builds the per-theme remap from glamour's fixed 256-color
+// semantic indices (per styles/{dark,light}.json) onto the active chrome
+// palette's truecolor hues (issue #212): glamour renders with its own ANSI-256
+// indices (heading blue 38;5;39 = #00afff), which clash with the chrome
+// palette's truecolor tokens — two blue families on one surface. Remapping the
+// semantic indices (heading, link, code, image, …) to the matching chrome hues
+// makes markdown and chrome read as one design system under every theme.
+// Gray-ramp indices (240/243/244/251/252/187) stay untouched.
+func markdownRemapFor(th Theme) map[string]string {
+	rgb := func(c color.Color) string {
+		r, g, b, _ := c.RGBA() // 16-bit channels per image/color
+		return fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)
+	}
+	return map[string]string{
+		"38;5;30":  "38;2;" + rgb(th.file),   // link teal -> file
+		"38;5;35":  "38;2;" + rgb(th.ok),     // h6/link_text green -> ok
+		"38;5;39":  "38;2;" + rgb(th.accent), // heading blue -> accent
+		"38;5;42":  "38;2;" + rgb(th.ok),     // code green -> ok
+		"38;5;48":  "38;2;" + rgb(th.ok),     // name_function green -> ok
+		"38;5;203": "38;2;" + rgb(th.error),  // code red -> error
+		"38;5;212": "38;2;" + rgb(th.skill),  // image pink -> skill
+		"38;5;228": "38;2;" + rgb(th.shell),  // h1 yellow -> shell
+		"38;5;27":  "38;2;" + rgb(th.accent), // light heading -> accent
+		"38;5;29":  "38;2;" + rgb(th.ok),     // light link_text -> ok
+		"38;5;36":  "38;2;" + rgb(th.file),   // light link -> file
+		"38;5;205": "38;2;" + rgb(th.skill),  // light image -> skill
+	}
+}
+
+func mustHex(b string) int {
+	n := 0
+	for _, c := range b {
+		n *= 16
+		switch {
+		case c >= '0' && c <= '9':
+			n += int(c - '0')
+		case c >= 'a' && c <= 'f':
+			n += int(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			n += int(c-'A') + 10
+		}
+	}
+	return n
+}
+
+// sgrParamRe matches a full SGR sequence (ESC [ params m).
+var sgrParamRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// remapMarkdownColors rewrites mapped 256-color foreground indices in a
+// glamour-rendered string to the given theme's chrome-family truecolor
+// equivalents. Unmapped indices and background codes pass through untouched. A
+// 38;5;N token becomes 38;2;R;G;B wherever it appears in the params list.
+func remapMarkdownColors(s string, th Theme) string {
+	m := markdownRemapFor(th)
+	if len(m) == 0 {
+		return s
+	}
+	return sgrParamRe.ReplaceAllStringFunc(s, func(seq string) string {
+		params := strings.Split(seq[2:len(seq)-1], ";")
+		var out []string
+		for i := 0; i < len(params); i++ {
+			if params[i] == "38" && i+2 < len(params) && params[i+1] == "5" {
+				if repl, ok := m["38;5;"+params[i+2]]; ok {
+					out = append(out, strings.Split(repl, ";")...)
+					i += 2
+					continue
+				}
+			}
+			out = append(out, params[i])
+		}
+		return "\x1b[" + strings.Join(out, ";") + "m"
+	})
 }
 
 // autoTheme resolves the "auto" theme once and caches it: background

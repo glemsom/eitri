@@ -51,6 +51,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// transcript, seeded with the run's static provider/model/effort/session
 	// context and fed live STATS from the telemetry surface below.
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
+	// The workspace's checked-out branch joins the CONTEXT section (statusline
+	// telemetry, benchmark §4.1): a pure .git/HEAD read, no subprocess.
+	rail.SetBranch(tui.GitBranch(workspace))
 	// The live tool-call feed (issue #84): engine tool events render as compact,
 	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
 	// demand to the full result.

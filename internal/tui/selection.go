@@ -85,10 +85,20 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 	case tea.MouseReleaseMsg:
 		d := m.dragSel
 		m.dragSel = nil
-		if d == nil || !d.moved {
-			return // plain click; no snippet to copy
+		if d == nil {
+			return
 		}
-		m.copySelection(*d)
+		if d.moved {
+			m.copySelection(*d)
+			return
+		}
+		// A plain click (press+release on one cell, no drag) toggles the tool
+		// entry under the pointer: click-to-expand a collapsed tool result, or
+		// collapse an expanded one (benchmark §4.4 mouse ergonomics). Clicks
+		// off any tool row stay inert, preserving drag-select's copy semantics.
+		if idx, _, ok := m.toolEntryAtLine(d.anchorLine); ok {
+			m.toggleToolEntry(idx)
+		}
 	}
 }
 
@@ -151,7 +161,7 @@ func (m Model) mouseToContent(x, y int) (line, col int, ok bool) {
 // content line indexes agree between selection and the rendered transcript.
 func (m Model) historyPlainLines() []string {
 	var hist strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	lines := strings.Split(hist.String(), "\n")
 	for i := range lines {
 		lines[i] = ansiStrip(lines[i])

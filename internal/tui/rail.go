@@ -21,6 +21,10 @@ type Rail struct {
 	thinking    bool
 	sessionID   string
 	sessionTemp string
+	// branch is the workspace's checked-out git branch (empty when not a
+	// worktree), surfaced in the CONTEXT section (benchmark §4.1 statusline
+	// telemetry). Set via SetBranch by the caller after construction.
+	branch string
 }
 
 // NewRail builds the right-context rail seeded with the run's static session
@@ -37,9 +41,32 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 	}
 }
 
-// line is a helper to append one indented rail entry.
+// railContentWidth is the usable column width of a rail row: the fixed rail
+// width minus the left border and padding, so a row never wraps onto a second
+// line (long session GUIDs / temp paths / provider.model names would
+// otherwise fold and break the section alignment).
+const railContentWidth = railWidth - 2
+
+// line appends one indented rail entry, truncating an over-long row with a
+// trailing ellipsis so the rail stays single-line.
 func (r *Rail) line(b *strings.Builder, key, val string) {
-	b.WriteString("  " + key + " " + val + "\n")
+	s := "  " + key
+	if val != "" {
+		s += " " + val
+	}
+	if lipgloss.Width(s) > railContentWidth {
+		var sb strings.Builder
+		w := 0
+		for _, ru := range s {
+			if w+1 > railContentWidth-1 {
+				break
+			}
+			sb.WriteRune(ru)
+			w++
+		}
+		s = sb.String() + g("…", "...")
+	}
+	b.WriteString(s + "\n")
 }
 
 // render returns the rail's rendered STATS/CONTEXT/MODEL block, each
@@ -90,12 +117,17 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct))
 	r.line(&body, "cost", formatCost(cost))
 	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
-	r.line(&body, "tokens", fmt.Sprintf("%s in · %s out", formatTokens(totalIn), formatTokens(out)))
+	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)))
 	if compacted {
 		r.line(&body, "state", "compacted")
 	}
 	return b.String() + th.railBody(railStats, strings.TrimRight(body.String(), "\n"))
 }
+
+// SetBranch records the workspace's checked-out git branch for the CONTEXT
+// section. It is a setter (not a NewRail param) so the rail's construction
+// signature stays stable across callers without branch context.
+func (r *Rail) SetBranch(branch string) { r.branch = branch }
 
 // renderContext renders the CONTEXT section: the active session surface.
 func (r *Rail) renderContext(th Theme) string {
@@ -104,6 +136,9 @@ func (r *Rail) renderContext(th Theme) string {
 	var body strings.Builder
 	r.line(&body, "session", r.sessionID)
 	r.line(&body, "temp", r.sessionTemp)
+	if r.branch != "" {
+		r.line(&body, "branch", r.branch)
+	}
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
 
@@ -227,7 +262,7 @@ func styledRail(content string, maxHeight int) string {
 	return lipgloss.NewStyle().
 		Width(railWidth).
 		PaddingLeft(1).
-		Border(lipgloss.Border{Left: "│"}).
+		Border(lipgloss.Border{Left: g("│", "|")}).
 		BorderLeft(true).
 		Render(strings.TrimRight(content, "\n"))
 }

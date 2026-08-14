@@ -39,7 +39,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	m = typeText(t, m, "/")
 
 	var hist, band strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	m.renderBand(&band)
 	hs, bs := hist.String(), band.String()
 
@@ -99,7 +99,7 @@ func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	var hist, band strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	m.renderBand(&band)
 	bandStr := band.String()
 

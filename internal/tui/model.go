@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -17,6 +19,70 @@ import (
 
 	"github.com/glemsom/eitri/internal/config"
 )
+
+// Busy-state motion (issue #211): the static "… thinking" line is the
+// reduced-motion fallback; the default is an animated braille spinner advanced
+// every busySpinnerTick while a turn runs. Braille spinners read calmer than
+// bar spinners and are the modern agent-TUI default (benchmark §4.3).
+const busySpinnerTick = 80 * time.Millisecond
+
+// busySpinnerFrames is the OpenCode-style braille frame set. The muted style +
+// glyph pairing keeps the working state glanceable without flashing.
+var busySpinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+
+// spinnerTickMsg advances the busy spinner by one frame. It is issued only
+// while a turn runs and motion is enabled, so an idle TUI never ticks.
+type spinnerTickMsg struct{}
+
+// spinnerTick returns the command that delivers the next spinner frame after
+// busySpinnerTick.
+func spinnerTick() tea.Cmd {
+	return tea.Tick(busySpinnerTick, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
+// motion gate: animated indicators run unless the user opts out (EITRI_NO_MOTION
+// set) or the locale cannot render braille (non-UTF-8), mirroring the
+// benchmark's reduced-motion + ASCII-fallback requirements (§4.3). The env
+// opt-out is re-checked per call (tests flip it); the locale sniff is cached —
+// the process locale cannot change mid-run.
+var (
+	localeOnce sync.Once
+	localeUTF8 bool
+)
+
+// localeSupportsUTF8 sniffs the process locale once: an explicit non-UTF-8
+// locale (LC_ALL/LC_CTYPE/LANG without UTF-8/UTF8) means non-ASCII glyphs and
+// braille would render as tofu, so the surface degrades to ASCII (see glyphs.go
+// and motionEnabled). An unset or UTF-8 locale keeps the full glyph set.
+func localeSupportsUTF8() bool {
+	localeOnce.Do(func() {
+		localeUTF8 = true
+		for _, v := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+			if l := os.Getenv(v); l != "" && !strings.Contains(strings.ToUpper(l), "UTF-8") && !strings.Contains(strings.ToUpper(l), "UTF8") {
+				localeUTF8 = false // explicit non-UTF-8 locale: braille would render as tofu
+				return
+			}
+		}
+	})
+	return localeUTF8
+}
+
+func motionEnabled() bool {
+	if os.Getenv("EITRI_NO_MOTION") != "" {
+		return false
+	}
+	return localeSupportsUTF8()
+}
+
+// busyLine renders the in-progress working indicator: the animated braille
+// spinner with a "working" label when motion is enabled, the static "… thinking"
+// line otherwise. The label stays plain so a monochrome terminal still reads it.
+func busyLine(idx int) string {
+	if !motionEnabled() || len(busySpinnerFrames) == 0 {
+		return "… thinking"
+	}
+	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " working"
+}
 
 // Turn runs one agent conversation turn (user prompt -> assistant answer) over
 // the shared engine seam. It is what the model depends on; both the real engine
@@ -63,6 +129,16 @@ type toolEntry struct {
 	removed    int
 	anchor     int // index of the triggering "you" message in messages
 	complete   bool
+	// startedAt/doneAt bound the tool's execution window for the elapsed-time
+	// readout (benchmark §4.1: tool cards carry elapsed time). startedAt is set
+	// when the tool begins, doneAt when its result lands; a running tool's live
+	// elapsed re-renders while the busy spinner ticks.
+	startedAt time.Time
+	doneAt    time.Time
+	// expanded is the per-entry expansion state toggled by a mouse click on the
+	// entry's rows (click-to-expand, benchmark §4.4); alt+y remains the global
+	// all-entries toggle.
+	expanded bool
 	// before/after/path carry the file content and host path a file-mutating
 	// edit/write captured (issue #90): they back the review panel's inline diff
 	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
@@ -204,7 +280,17 @@ type Model struct {
 	theme Theme
 
 	messages []message
-	busy     bool
+	// busy is true from the moment a turn is submitted until its final answer
+	// lands (or the turn errors). While busy the composer is inert (ticket #57)
+	// and the spinner advances.
+	busy    bool
+	// spinner is the current busy-spinner frame index, advanced by
+	// spinnerTickMsg while busy (issue #211). It is 0 when no turn runs.
+	spinner int
+	// vimNormal is the composer's vim normal mode (benchmark §4.4): esc toggles
+	// it, and while active h/j/k/l navigate the draft instead of inserting
+	// text (see vimKey).
+	vimNormal bool
 
 	// settings state: non-nil means the Settings surface is open.
 	settings *settingsForm
@@ -347,7 +433,12 @@ const (
 // NewModelCfg builds a TUI model wired to the given dependencies.
 func NewModelCfg(d Dependencies) Model {
 	tx := textarea.New()
-	tx.Placeholder = "Ask Eitri something…"
+	tx.Placeholder = g("Ask Eitri something…", "Ask Eitri something...")
+	if !localeSupportsUTF8() {
+		tx.Prompt = "| " // ASCII composer rail
+	} else {
+		tx.Prompt = g("┃ ", "| ")
+	}
 	tx.Focus()
 	tx.CharLimit = 0
 	tx.ShowLineNumbers = false
@@ -359,17 +450,21 @@ func NewModelCfg(d Dependencies) Model {
 	// itself draws the caret at the edit position.
 	tx.SetVirtualCursor(false)
 	// Apply the explicit caret style policy (issue #170) instead of inheriting
-	// the textarea default (block + blink).
+	// the textarea default (block + blink), and give the composer rail the
+	// agent accent so the input surface reads as accent-framed (benchmark
+	// §4.4: mode-colored composer border).
+	th := themeFor(d.Config.Theme)
 	st := tx.Styles()
 	st.Cursor.Shape = composerCaretShape
 	st.Cursor.Blink = composerCaretBlink
+	st.Focused.Prompt = lipgloss.NewStyle().Foreground(th.accent)
 	tx.SetStyles(st)
 
 	m := Model{
 		composer:        tx,
 		turn:            d.Turn,
 		deps:            d,
-		theme:           themeFor(d.Config.Theme),
+		theme:           th,
 		continueReq:     make(chan struct{}, 1),
 		continueResp:    make(chan bool, 1),
 		skills:          skillSnapshot(d),
@@ -451,10 +546,22 @@ func internalContinue(req chan struct{}, resp chan bool) bool {
 	return <-resp
 }
 
+// clockTickMsg re-renders the surface once per second so the statusline's
+// live session-elapsed timer advances even with no input or stream activity.
+// It is a telemetry refresh, not decoration, so it runs regardless of the
+// reduced-motion gate (the strip's numbers change, the layout does not).
+type clockTickMsg struct{}
+
+// clockTick returns the command that delivers the next one-second clock tick.
+func clockTick() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return clockTickMsg{} })
+}
+
 // Init returns any startup commands. None are needed; input drives everything.
 // Init returns any startup commands. It schedules the live telemetry waiter so
 // the status strip starts refreshing from the engine seam immediately, even
-// with no keyboard input (issue #86).
+// with no keyboard input (issue #86), plus the one-second clock that keeps the
+// session-elapsed timer live.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if m.telemetry != nil {
@@ -466,6 +573,7 @@ func (m Model) Init() tea.Cmd {
 	if m.toolFeed != nil {
 		cmds = append(cmds, toolWait(m.toolFeed))
 	}
+	cmds = append(cmds, clockTick())
 	return tea.Batch(cmds...)
 }
 
@@ -543,9 +651,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.review != nil {
 			return m.updateReview(msgi)
 		}
+		// Vim normal mode (benchmark §4.4 table stakes): while active, the
+		// composer accepts no text — h/j/k/l and w/b/0/$ move the caret through
+		// the textarea's own movement handlers, i/a/enter/esc return to insert
+		// mode. Routed before the composer switch so submit/edit keys never
+		// fire from normal mode.
+		if m.vimNormal {
+			return m.vimKey(msgi)
+		}
 		switch msgi.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "esc":
+			// No overlay open: esc toggles vim normal mode in the composer.
+			// Overlays (settings/review/prompt) close on esc before this case.
+			m.vimNormal = true
+			m.syncComposerRail()
+			return m, nil
 		case "ctrl+s":
 			return m.startSettings()
 		case "pgup", "home":
@@ -574,10 +696,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// review over the transcript, or closes it when already open.
 			if m.review != nil {
 				m.review = nil
+				m.syncComposerRail()
 				return m, nil
 			}
 			rp := m.buildReview()
 			m.review = &rp
+			m.syncComposerRail()
 			return m, nil
 		case "ctrl+o":
 			// Copy the full transcript to the system clipboard (issue #123 AC1),
@@ -636,13 +760,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
 			m.curStream = -1
+			m.syncComposerRail()
 			// Anchor new tool calls to this turn's prompt so entries interleave
 			// after it (issue #84).
 			m.curToolAnchor = len(m.messages) - 1
 			// With a live answer stream, the composer turn and the stream waiter run
-			// concurrently so the reply grows in place as deltas arrive (issue #83).
+			// concurrently so the reply grows in place as deltas arrive (issue #83);
+			// the spinner tick rides the same batch so the busy indicator animates
+			// (issue #211). The non-streaming fallback keeps the single turn
+			// command — tests drive it synchronously.
 			if m.stream != nil {
-				return m, tea.Batch(m.turnCmd(prompt), streamWait(m.stream))
+				return m, tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
 			}
 			return m, m.turnCmd(prompt)
 		case "tab":
@@ -708,12 +836,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case turnDoneMsg:
 		m.busy = false
+		m.spinner = 0
+		m.syncComposerRail()
 		wasStreaming := m.curStream >= 0 && m.curStream < len(m.messages)
 		if msgi.err != nil {
 			// A streaming turn aborting with an error drops the partial reply and
 			// renders the error in its place; the incremental buffer is advisory.
 			m.curStream = -1
-			m.messages = append(m.messages, message{role: "eitri", content: "⚠ " + msgi.err.Error()})
+			m.messages = append(m.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error()})
 			return m, nil
 		}
 		if wasStreaming {
@@ -735,6 +865,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+
+	case clockTickMsg:
+		// One-second telemetry refresh: re-issue the tick and re-render so the
+		// session-elapsed timer in the status strip stays live.
+		return m, clockTick()
+
+	case spinnerTickMsg:
+		// Advance the busy spinner by one frame and re-issue the tick while the
+		// turn still runs, so the indicator animates without keyboard input. A
+		// tick that lands after the turn completed (or motion disabled) stops the
+		// chain silently.
+		if !m.busy || !motionEnabled() {
+			m.spinner = 0
+			return m, nil
+		}
+		m.spinner = (m.spinner + 1) % len(busySpinnerFrames)
+		return m, spinnerTick()
 
 	case discoverDoneMsg:
 		// A provider model-discovery command finished (issue #89 AC2): fold the
@@ -921,9 +1068,10 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 func (m *Model) applyToolUpdate(u ToolUpdate) {
 	if u.Start != nil {
 		m.tools = append(m.tools, toolEntry{
-			name:   u.Start.Name,
-			args:   u.Start.Args,
-			anchor: m.curToolAnchor,
+			name:      u.Start.Name,
+			args:      u.Start.Args,
+			anchor:    m.curToolAnchor,
+			startedAt: time.Now(),
 		})
 		return
 	}
@@ -940,6 +1088,7 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 				m.tools[i].before = u.Result.Before
 				m.tools[i].after = u.Result.After
 				m.tools[i].path = u.Result.Path
+				m.tools[i].doneAt = time.Now()
 				m.tools[i].complete = true
 				return
 			}
@@ -957,27 +1106,39 @@ func skillSnapshot(d Dependencies) []SkillItem {
 	return nil
 }
 
+// toolEntryLabel renders the category-colored `⊕ tool` label part of the
+// entry head (issue #181 AC1).
+func toolEntryLabel(te toolEntry) string {
+	return g("⊕ ", "+ ") + te.name
+}
+
+// toolEntryArgs renders the dimmed detail part of the entry head: the display
+// args hint, the invoked line range for range-limited reads (issue #204 AC1:
+// `⊕ read  path:start-end`), and the line-delta tag for file-edit tools (issue
+// #84 AC3: `[+N, −M]`). Split from the label so the transcript can color the
+// tool name and dim the command detail (benchmark §4.1: label + dimmed path on
+// tool cards).
+func toolEntryArgs(te toolEntry) string {
+	s := ""
+	if arg := toolArgsHint(te.args); arg != "" {
+		s += "  " + arg
+		if te.name == "read" {
+			if r := readRangeHint(te.args); r != "" {
+				s += ":" + r
+			}
+		}
+	}
+	if te.name == "edit" || te.name == "write" {
+		s += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+	}
+	return s
+}
+
 // toolEntryHead renders the compact one-line `⊕ tool  args` head shared by the
 // transcript entry (issue #84) and the clipboard copy (issue #123): the tool
 // name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
 func toolEntryHead(te toolEntry) string {
-	head := "⊕ " + te.name
-	if arg := toolArgsHint(te.args); arg != "" {
-		head += "  " + arg
-		// Invoked line range for range-limited reads, alongside the path hint
-		// (issue #204 AC1): `⊕ read  path:start-end`. Whole-file reads and
-		// malformed limits render no range tag.
-		if te.name == "read" {
-			if r := readRangeHint(te.args); r != "" {
-				head += ":" + r
-			}
-		}
-	}
-	// Line-delta tag for file-edit tools (issue #84 AC3).
-	if te.name == "edit" || te.name == "write" {
-		head += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
-	}
-	return head
+	return toolEntryLabel(te) + toolEntryArgs(te)
 }
 
 // copyTranscript copies the plain-text transcript to the system clipboard
@@ -1053,7 +1214,7 @@ func slashCommand(prompt string, skills []SkillItem) (string, bool) {
 func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
-		m.messages = append(m.messages, message{role: "eitri", content: "⚠ no skill activation available"})
+		m.messages = append(m.messages, message{role: "eitri", content: failurePrefix() + "no skill activation available"})
 		return m, nil
 	}
 	return m, skillCmd(m.deps.Skills.Activate, name)
@@ -1303,7 +1464,7 @@ func (m Model) renderPane() string {
 	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow; no
 	// width-bucket cache or manual clip/anchor compensation layer is needed.
 	var hist strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	if m.review != nil {
 		// The review region is its own height-clipped overlay (issue T06).
 		reviewStr = clipReviewRegion(reviewStr, reviewLines)
@@ -1507,19 +1668,49 @@ func lineCount(s string) int {
 	return n + 1
 }
 
+// toolRowRange maps a rendered history row span to the tool entry that owns
+// it, so a mouse click on a collapsed tool head can toggle that entry's
+// expansion (click-to-expand, benchmark §4.4). start/end are content-line
+// indexes in the viewport's split space (the same space mouseToContent maps
+// into); idx indexes m.tools.
+type toolRowRange struct {
+	start, end, idx int
+}
+
 // renderHistory renders the scroll region: the agent history that the user
 // reads and scrolls. It surfaces the workspace header, every committed message
 // (thinking blocks + markdown body), the interleaved tool entries, and the
 // busy indicator. It is the only region T02+ makes scrollable and height-
 // clamps. Detected skills surface through the slash-command completion list,
 // never as a panel in the transcript (issue #188).
-func (m Model) renderHistory(b *strings.Builder) {
+//
+// toolRows, when non-nil, receives the row span of every tool entry written,
+// in content-line coordinates, so click handling can map a pointer to the tool
+// under it without re-deriving the layout. Every block ends on a newline, so
+// the newline count before a write equals the content row index where it
+// starts.
+func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
+	if toolRows != nil {
+		*toolRows = (*toolRows)[:0]
+	}
+	nl := 0
+	emit := func(s string) {
+		b.WriteString(s)
+		nl += strings.Count(s, "\n")
+	}
 	// Surface the project's read-only state (issue #82 AC1): the workspace
 	// directory the run operates in, rendered as an informational header above
 	// the transcript and never inside the composer the user types into.
 	if m.deps.WorkspacePath != "" {
-		b.WriteString(m.theme.statusStyle.Render("workspace: " + m.deps.WorkspacePath))
-		b.WriteString("\n")
+		emit(m.theme.statusStyle.Render("workspace: " + m.deps.WorkspacePath))
+		emit("\n")
+	}
+	// The empty-transcript welcome: a one-line brand mark plus a hint, so a
+	// fresh session reads as a designed surface instead of a blank scroll
+	// region (first-run discoverability). It disappears on the first turn
+	// (submit appends the "you" message before busy flips).
+	if len(m.messages) == 0 && !m.busy {
+		emit(idleWelcome(m.theme))
 	}
 	for i, msg := range m.messages {
 		// Reasoning renders as a distinct, collapsible per-turn block — never
@@ -1527,43 +1718,184 @@ func (m Model) renderHistory(b *strings.Builder) {
 		// token estimate + effort; `tab` expands just that turn's block (issue
 		// #85, docs/spec.md §6).
 		if msg.role != "you" && msg.reasoning != "" {
-			b.WriteString(thinkingHeader(m.theme, msg.reasoning, m.reasoningEffort))
+			emit(thinkingHeader(m.theme, msg.reasoning, m.reasoningEffort))
 			if msg.thinkingExpanded {
-				b.WriteString(msg.reasoning + "\n")
+				emit(msg.reasoning + "\n")
 			}
 		}
 		w := m.composer.Width()
 		if msg.role == "you" {
-			// User prompts render as plain markdown in the transcript — no role
-			// chip; the bordered agent panes below keep user vs agent distinct.
-			md, _ := RenderMarkdown(msg.content, w, m.deps.Config.Theme)
-			b.WriteString(md + "\n")
+			// User prompts render as a carded bubble: the theme's near-background
+			// tint with breathing padding fills the pane width, so the user side
+			// reads as a card against the bare agent panes (benchmark §4.1). The
+			// markdown wraps inside the padding at pane width minus the 2-col
+			// gutter; the fill always spans the pane, never hugging ragged lines.
+			md, _ := RenderMarkdown(msg.content, w-4, m.deps.Config.Theme)
+			bubble := m.theme.userBubbleStyle.Width(w).Render(strings.TrimRight(md, "\n"))
+			emit(bubble + "\n")
 		} else {
 			// Left-bordered agent pane (issue #122 AC1): the answer renders in
 			// a bordered pane; a failing turn (⚠) gets the error-colored border
 			// so errors are as readable as answers (issue #122 AC2).
 			md, _ := RenderMarkdown(msg.content, w-2, m.deps.Config.Theme)
-			pane := m.theme.agentPaneStyle
-			if strings.HasPrefix(msg.content, "⚠ ") {
-				pane = m.theme.errorPaneStyle
-			}
+		pane := m.theme.agentPaneStyle
+		if strings.HasPrefix(msg.content, failurePrefix()) {
+			pane = m.theme.errorPaneStyle
+		}
+			// The pane border char follows the glyph charter at render time: the
+			// default theme's styles are built at package init, before any ASCII
+			// override is known, so the char is re-applied per frame.
+			pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 			// Trim glamour's trailing blank line so the pane ends on its last
 			// content row instead of a lone border column.
-			fmt.Fprintf(b, "%s\n", pane.Render(strings.TrimRight(md, "\n")))
+			emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
 		}
 		// Interleave the turn's tool-call entries right after its prompting "you"
 		// message (issue #84): compact one-liners, collapsed by default, expanded
-		// on demand to the full result.
-		for _, te := range m.tools {
+		// on demand to the full result (per-entry via mouse click, globally via
+		// alt+y).
+		for ti, te := range m.tools {
 			if te.anchor == i {
-				b.WriteString(renderToolEntry(m.theme, te, m.showToolResult))
+				// While a turn runs the live elapsed ticks (the busy spinner drives
+				// the re-render); idle frames pass a zero time so completed tools
+				// freeze their span.
+				now := time.Time{}
+				if m.busy {
+					now = time.Now()
+				}
+				start := nl
+				s := renderToolEntry(m.theme, te, m.showToolResult || te.expanded, now, w)
+				rows := strings.Count(s, "\n")
+				emit(s)
+				if toolRows != nil && rows > 0 {
+					*toolRows = append(*toolRows, toolRowRange{start: start, end: start + rows - 1, idx: ti})
+				}
 			}
 		}
 	}
-	if m.busy {
-		b.WriteString(m.theme.statusStyle.Render("… thinking"))
-		b.WriteString("\n")
+	// The busy indicator normally lives in the always-visible status strip
+	// (renderBand), so the working state never scrolls away with the history
+	// (benchmark §4.3: spinner + working label in the statusline). Lean embeds
+	// and tests without a telemetry strip keep the history footer row instead.
+	if m.busy && m.telemetry == nil {
+		emit(m.theme.statusStyle.Render(busyLine(m.spinner)))
+		emit("\n")
 	}
+}
+
+// toolEntryAtLine returns the tool entry whose rendered rows include the given
+// content line, and whether that entry is currently collapsed (a click on a
+// collapsed head toggles it open; on an open entry it toggles closed). The
+// lookup re-renders the history with row accounting — the same split space the
+// viewport and mouse coordinates use — so it never drifts from what the user
+// sees.
+func (m Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
+	var hist strings.Builder
+	var rows []toolRowRange
+	m.renderHistory(&hist, &rows)
+	for _, r := range rows {
+		if line >= r.start && line <= r.end {
+			if r.idx < len(m.tools) {
+				return r.idx, !m.tools[r.idx].expanded, true
+			}
+			return 0, false, false
+		}
+	}
+	return 0, false, false
+}
+
+// toggleToolEntry flips one tool entry's expansion state (mouse click
+// click-to-expand). It never touches other entries or the global alt+y flag.
+func (m *Model) toggleToolEntry(idx int) {
+	if idx < 0 || idx >= len(m.tools) {
+		return
+	}
+	m.tools[idx].expanded = !m.tools[idx].expanded
+}
+
+// vimKey routes a keypress while the composer is in vim normal mode: motion
+// keys map onto the textarea's own movement handlers (so caret geometry stays
+// consistent), i/a/enter/esc return to insert mode without inserting or
+// submitting, and every other printable key is ignored — normal mode never
+// types. ctrl+c still quits.
+func (m Model) vimKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	var mapped *tea.KeyPressMsg
+	switch msg.String() {
+	case "h":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "l":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyRight}
+	case "j":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyDown}
+	case "k":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyUp}
+	case "w":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModAlt} // word forward
+	case "b":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModAlt} // word backward
+	case "0":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyHome}
+	case "$":
+		mapped = &tea.KeyPressMsg{Code: tea.KeyEnd}
+	case "i", "a", "enter", "esc":
+		// Return to insert mode: the key is consumed (never inserted, never
+		// submitted) so the draft is untouched by the mode switch.
+		m.vimNormal = false
+		m.syncComposerRail()
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	default:
+		return m, nil // normal mode ignores everything else
+	}
+	nm, cmd := m.composer.Update(*mapped)
+	m.composer = nm
+	return m, cmd
+}
+
+// syncComposerRail recolors the composer's prompt rail by editing state: the
+// accent rail signals an editable composer, while a running turn or an open
+// review panel makes the composer inert, so the rail dims to a muted accent
+// (state-as-color — the mode-colored composer border pattern, benchmark
+// §4.3/§4.4). The rail's glyph and width never change, so the caret geometry
+// is untouched.
+func (m *Model) syncComposerRail() {
+	c := m.theme.accent
+	switch {
+	case m.vimNormal:
+		// Vim normal mode: the rail sits between accent (insert) and the busy
+		// dim — a distinct, calmer shade signals "navigating, not typing".
+		c = dimmed(m.theme.accent, 0.6)
+	case m.busy || m.review != nil:
+		c = dimmed(m.theme.accent, 0.45)
+	}
+	st := m.composer.Styles()
+	st.Focused.Prompt = lipgloss.NewStyle().Foreground(c)
+	m.composer.SetStyles(st)
+}
+
+// idleWelcome renders the empty-transcript welcome block (issue #212): the
+// brand mark in the accent hue plus faint capability + keybinding hints, so
+// the first launch reads as a designed surface. One accent, no decoration —
+// the restrained brand treatment, not a logo wall.
+func idleWelcome(th Theme) string {
+	return th.headerStyle.Render("Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
+		th.statusStyle.Render("  ask me to fix a bug, refactor code, explain a system, or run the tests") + "\n" +
+		th.statusStyle.Render("  ctrl+s settings · ctrl+b rail · / for commands") + "\n"
+}
+
+// bandHints returns the right-aligned keybinding hint strip for the status
+// row (benchmark §4.4: one consistent hint system from the central keymap).
+// Hints are the real, wired bindings — never advertised keys that no-op.
+func bandHints(m Model) string {
+	if m.vimNormal {
+		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
+	}
+	hints := []string{"ctrl+s settings", "ctrl+b rail", "ctrl+d review", "ctrl+o copy"}
+	if m.review != nil {
+		hints = []string{"enter diff", "o browser", "ctrl+d close"}
+	}
+	return strings.Join(hints, g(" · ", " . "))
 }
 
 // renderBand renders the fixed bottom band: the live status strip (when wired)
@@ -1574,9 +1906,35 @@ func (m Model) renderBand(b *strings.Builder) {
 	// Live status strip (issues #86, #182), rendered above the composer so
 	// model, effort, thinking, turns/max, cost, and the cache gauge stay
 	// glanceable; it carries the accent hue to match the colorized rail (issue
-	// #182 AC4).
+	// #182 AC4). On wide enough terminals the keybinding hints right-align onto
+	// the same row and the strip uses its compact telemetry form (the model/
+	// effort/thinking details already live in the right rail), so the row never
+	// grows and the band height is unchanged; narrow windows drop the hints and
+	// keep the full strip.
+	w := m.transcriptWidth()
 	if m.telemetry != nil {
-		inner.WriteString(m.theme.bandStatusStyle.Render(m.telemetry.render(m.composer.Width())))
+		stripW := w
+		hints := ""
+		if w >= 100 {
+			hints = m.theme.statusStyle.Render(bandHints(m))
+			stripW = collapseWidth - 1 // compact telemetry makes room for hints
+		}
+		strip := m.theme.bandStatusStyle.Render(m.telemetry.render(stripW))
+		// While a turn runs the spinner also rides the always-visible strip, so
+		// the working state stays glanceable even when the history is scrolled
+		// away from the busy footer row (the spinner tick drives the re-render).
+		if m.busy {
+			strip = m.theme.bandStatusStyle.Render(busyLine(m.spinner)) + "  " + strip
+		}
+		if hints != "" {
+			pad := w - lipgloss.Width(strip) - lipgloss.Width(hints)
+			if pad <= 2 {
+				hints = "" // no room: keep the strip alone rather than clipping hints
+			} else {
+				strip += strings.Repeat(" ", pad) + hints
+			}
+		}
+		inner.WriteString(strip)
 		inner.WriteString("\n")
 	}
 	// The slash-command completion list (issue #87 AC1) sits above the composer
@@ -1590,11 +1948,11 @@ func (m Model) renderBand(b *strings.Builder) {
 	// The whole band is framed by an accent separator row so it reads as one
 	// coherent fixed region under the transcript (issue #122 AC3). The
 	// separator spans the transcript column (the rail joins to the right).
-	w := m.transcriptWidth()
-	if w < 2 {
-		w = 2
+	tw := m.transcriptWidth()
+	if tw < 2 {
+		tw = 2
 	}
-	b.WriteString(m.theme.bandSeparatorStyle.Render(strings.Repeat("─", w)))
+	b.WriteString(m.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), tw)))
 	b.WriteString("\n")
 	b.WriteString(inner.String())
 }
@@ -1645,8 +2003,12 @@ func (m Model) composerPreRows() int {
 
 // promptView renders the interactive max-turns continuation prompt.
 func promptView(th Theme) string {
-	return th.headerStyle.Render("run paused at the max-turns cap") + "\n" +
-		"Continue the run with more turns? (" + th.statusStyle.Render("y") + "/" + th.statusStyle.Render("n") + ")"
+	// The max-turns continuation decision, framed like the other overlays: an
+	// accent title, the question, and the honest y/n/esc bindings from
+	// updatePrompt.
+	return th.headerStyle.Render("run paused at the max-turns cap") + "\n\n" +
+		"  Continue the run with more turns?\n" +
+		"  " + th.statusStyle.Render("y") + " continue" + g(" · ", " . ") + th.statusStyle.Render("n") + " stop" + g(" · ", " . ") + th.statusStyle.Render("esc") + " cancel\n"
 }
 
 // thinkingHeader renders a turn's collapsible reasoning block header. Collapsed
@@ -1656,9 +2018,9 @@ func promptView(th Theme) string {
 // hint when the turn's answer lands. reasoning is the accumulated thinking text;
 // effort is the run's reasoning-effort tier (empty drops the suffix).
 func thinkingHeader(th Theme, reasoning, effort string) string {
-	hint := fmt.Sprintf("🤔 %s tok", formatTokens(tokenEstimate(reasoning)))
+	hint := fmt.Sprintf("%s %s tok", g("🤔", "?"), formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
-		hint += " · " + effort
+		hint += g(" · ", " . ") + effort
 	}
 	return th.thinkingStyle.Render(hint) + "\n"
 }
@@ -1701,7 +2063,7 @@ func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur strin
 			// Selected candidate is highlighted with the agent accent so the
 			// completion list reads as part of the coherent band (issue #122
 			// AC3).
-			b.WriteString(th.slashSelectStyle.Render("▸ " + c))
+			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
 		} else {
 			b.WriteString(th.statusStyle.Render("  " + c))
 		}
@@ -1715,7 +2077,7 @@ func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur strin
 // line-delta tag, and a compressed result carries an explicit "+N more" tail
 // marker. When expanded (showToolResult), the full inline result is rendered so
 // nothing is silently truncated — every collapse has an expand path.
-func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
+func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
 	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
@@ -1726,19 +2088,50 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 	outcome := ""
 	if te.complete {
 		if isToolFailure(te.result) {
-			outcome = " " + th.outcomeErrStyle.Render("✗")
+			outcome = " " + th.outcomeErrStyle.Render(g("✗", "X"))
 		} else {
-			outcome = " " + th.outcomeOKStyle.Render("✓")
+			outcome = " " + th.outcomeOKStyle.Render(g("✓", "ok"))
 		}
 	}
-	b.WriteString(th.toolCategoryStyle(toolCategoryOf(te.name)).Render(toolEntryHead(te)) + outcome)
+	// The entry head splits into the category-colored ⊕ tool label and the
+	// dimmed command detail (args/range/delta): color marks the tool kind, the
+	// detail recedes so a busy session reads calmly (benchmark §4.1 tool-cards:
+	// label + dimmed path). Long details truncate to the pane width with an
+	// ellipsis so a huge URL or command never cuts abruptly at the edge; the
+	// full arguments stay in the clipboard copy and the expanded result.
+	label := toolEntryLabel(te)
+	args := toolEntryArgs(te)
+	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
+	if budget > 1 && lipgloss.Width(args) > budget {
+		args = truncateWidth(args, budget-1) + g("…", "...")
+	}
+	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
+	if args != "" {
+		head += th.statusStyle.Render(args)
+	}
+	b.WriteString(head + outcome)
+	// Elapsed-time readout on the entry head (benchmark §4.1): sub-second tools
+	// stay silent — only a tool worth waiting on earns a timer. Completed tools
+	// freeze the span; a running tool (non-zero now, e.g. while the busy
+	// spinner ticks) shows the live elapsed.
+	if !te.startedAt.IsZero() {
+		var d time.Duration
+		if te.complete && !te.doneAt.IsZero() {
+			d = te.doneAt.Sub(te.startedAt)
+		} else if !now.IsZero() {
+			d = now.Sub(te.startedAt)
+		}
+		if d >= time.Second {
+			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
+		}
+	}
 	b.WriteString("\n")
 
 	if !expanded {
 		// Collapsed summary: line count + explicit "+N more" tail marker when
 		// the result was compressed (docs/spec.md §5). Never a raw dump.
 		if te.lines > 0 || te.dropped > 0 {
-			summary := fmt.Sprintf("%d lines", te.lines)
+			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
 			if te.compressed && te.dropped > 0 {
 				summary += fmt.Sprintf(" (+%d more)", te.dropped)
 			}
@@ -1748,12 +2141,62 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 		return b.String()
 	}
 
-	// Expanded: render the full inline result.
+	// Expanded: the full result framed as a card — a left border in the
+	// entry's category hue with the content plain, so an expanded tool reads
+	// as one designed block instead of a raw text dump (benchmark §4.1: tool
+	// cards; the border color repeats the label's category color).
 	if te.result != "" {
-		b.WriteString(strings.TrimSuffix(te.result, "\n"))
+		frame := lipgloss.NewStyle().
+			Border(lipgloss.Border{Left: g("│", "|")}).
+			BorderLeft(true).
+			PaddingLeft(1).
+			BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
+		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// formatElapsed renders a duration in the tool-timer vocabulary (Codex-style):
+// seconds under a minute, minutes+seconds under an hour, hours+minutes beyond.
+func formatElapsed(d time.Duration) string {
+	s := int(d.Seconds())
+	if s < 60 {
+		return fmt.Sprintf("%ds", s)
+	}
+	m := s / 60
+	if m < 60 {
+		return fmt.Sprintf("%dm %02ds", m, s%60)
+	}
+	return fmt.Sprintf("%dh %02dm", m/60, m%60)
+}
+
+// plural returns the English plural suffix for a count: "" for one, "s"
+// otherwise ("1 line", "3 lines").
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// truncateWidth keeps the longest rune prefix of s whose display width is at
+// most w (the caller appends the ellipsis). It is the width-aware truncation
+// shared by the tool-entry args and any other fixed-width single-line detail.
+func truncateWidth(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	var sb strings.Builder
+	cw := 0
+	for _, r := range s {
+		if cw+1 > w {
+			break
+		}
+		sb.WriteRune(r)
+		cw++
+	}
+	return sb.String()
 }
 
 // readRangeHint extracts the explicit 1-based line range a `read` call was

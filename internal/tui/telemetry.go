@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"time"
+	"strconv"
 	"strings"
 )
 
@@ -55,6 +57,11 @@ type Telemetry struct {
 	output    int
 	compacted bool
 
+	// startedAt is when the session began (NewTelemetry), backing the live
+	// session-elapsed readout on the status strip (benchmark §4.1 statusline
+	// telemetry: elapsed time). It is set once and never mutated.
+	startedAt time.Time
+
 	// updates is the buffered feed the app's engine listener writes to; the
 	// model drains it on the UI goroutine via apply.
 	updates chan TelemetryUpdate
@@ -66,11 +73,12 @@ type Telemetry struct {
 // per-turn updates into UpdateChan.
 func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
 	return &Telemetry{
-		model:    model,
-		effort:   effort,
-		thinking: thinking,
-		maxTurns: maxTurns,
-		updates:  make(chan TelemetryUpdate, 64),
+		model:     model,
+		effort:    effort,
+		thinking:  thinking,
+		maxTurns:  maxTurns,
+		startedAt: time.Now(),
+		updates:   make(chan TelemetryUpdate, 64),
 	}
 }
 
@@ -113,12 +121,24 @@ func (t *Telemetry) hitPercent() float64 {
 	return float64(t.cacheHit) / float64(in) * 100
 }
 
-// formatCost renders the running cost in dollars, dropping trailing zeros.
-// Fixed-point with 8 decimals, never scientific (%.4g renders $1e-05 for
-// sub-cent costs — unreadable at a glance); rounding below 8 decimals is
-// fine for a glanceable readout.
+// formatCost renders the running cost in dollars, decimal notation with 4
+// significant figures and trailing zeros trimmed — never scientific (%.4g
+// renders $1e-05 for sub-cent costs — unreadable at a glance). Significant
+// figures keep an accumulated $0.00112672 readable as $0.001127 instead of an
+// eight-decimal wall in the status strip.
 func formatCost(c float64) string {
-	s := fmt.Sprintf("%.8f", c)
+	if c == 0 {
+		return "$0"
+	}
+	dec := 3 // 4 significant figures for costs >= $1
+	if c < 1 {
+		z := 0 // leading zeros after the decimal point
+		for v := c; v < 0.1; v *= 10 {
+			z++
+		}
+		dec = z + 4
+	}
+	s := strconv.FormatFloat(c, 'f', dec, 64)
 	s = strings.TrimRight(s, "0")
 	s = strings.TrimRight(s, ".")
 	return "$" + s
@@ -144,7 +164,9 @@ func (t *Telemetry) render(width int) string {
 		compacted = " [compacted]"
 	}
 
-	// Static session details only on wide-enough terminals.
+	// Static session details only on wide-enough terminals; the live elapsed
+	// timer rides both forms (it is session telemetry, not a static detail).
+	elapsed := g(" · ", " . ") + formatElapsed(time.Since(t.startedAt))
 	if width >= collapseWidth {
 		return strings.Join([]string{
 			t.model,
@@ -153,7 +175,7 @@ func (t *Telemetry) render(width int) string {
 			turns,
 			gauge,
 			cost,
-		}, " · ") + compacted
+		}, g(" · ", " . ")) + elapsed + compacted
 	}
-	return strings.Join([]string{turns, gauge, cost}, " · ") + compacted
+	return strings.Join([]string{turns, gauge, cost}, g(" · ", " . ")) + elapsed + compacted
 }

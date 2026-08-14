@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+
+	"charm.land/lipgloss/v2"
 	"strings"
 	"testing"
 
@@ -122,5 +124,94 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	}
 	if m.tools[0].name != "read" || m.tools[0].result != "contents" {
 		t.Errorf("tool entry = %+v, want read/contents", m.tools[0])
+	}
+}
+
+// TestModel_stylingToolHeadSplitsLabelAndArgs asserts the tool entry head
+// splits into a category-colored `⊕ tool` label and a dimmed (faint) command
+// detail — color marks the tool kind while the args recede, so a busy session
+// reads calmly (benchmark §4.1 tool-cards: label + dimmed path). The ✓
+// outcome marker keeps its own hue.
+func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: NewToolFeed(),
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
+
+	line := lineContaining(view(m), "⊕ bash")
+	if line == "" {
+		t.Fatalf("tool head row missing, got: %q", view(m))
+	}
+	// The label carries the shell category hue and the args the faint style.
+	if !strings.Contains(line, "\x1b[38;2;224;175;104m⊕ bash\x1b[m\x1b[2m  go test ./...") {
+		t.Errorf("tool head must color the label and dim the args, got line: %q", line)
+	}
+}
+
+// TestModel_stylingExpandedResultFramed asserts an expanded tool result renders
+// as a card: a left border in the entry's category hue framing the plain
+// content (benchmark §4.1 tool-cards), so expansion reads as one designed
+// block instead of a raw text dump.
+func TestModel_stylingExpandedResultFramed(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: NewToolFeed(),
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (2.1s)\n  PASS  TestLogin", Lines: 2})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModAlt, Text: "y"})
+
+	line := lineContaining(view(m), "PASS  TestLogin")
+	if line == "" {
+		t.Fatalf("expanded result missing, got: %q", view(m))
+	}
+	// The result row carries the frame's left border in the shell category hue
+	// (the border char + category color, content plain).
+	if !strings.Contains(line, "\x1b[38;2;224;175;104m│\x1b[m") && !strings.Contains(line, "\x1b[38;2;224;175;104m│") {
+		t.Errorf("expanded result must carry the category-colored left border, got line: %q", line)
+	}
+}
+
+// TestModel_toolArgsTruncateToWidth asserts a long tool detail (URL/command)
+// truncates to the pane width with an ellipsis instead of cutting abruptly at
+// the edge — while the full arguments remain in the clipboard copy path.
+func TestModel_toolArgsTruncateToWidth(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: NewToolFeed(),
+	})
+	m = resizeTo(t, m, 80, 24)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
+	m = toolResult(t, m, ToolResult{Name: "web_fetch", Result: "error: fetch failed", Lines: 1})
+
+	line := lineContaining(view(m), "⊕ web_fetch")
+	if line == "" {
+		t.Fatalf("tool row missing, got: %q", view(m))
+	}
+	if !strings.Contains(line, g("…", "...")) {
+		t.Errorf("long args must truncate with an ellipsis, got: %q", line)
+	}
+	if width := lipgloss.Width(ansiStrip(line)); width > 78 {
+		t.Errorf("tool row %d cols overflows the 80-col pane, want <= 78", width)
+	}
+	// The copy path keeps the full URL.
+	if !strings.Contains(m.transcriptText(), "Retry-After") {
+		t.Errorf("copy must keep the full args, got: %q", m.transcriptText())
 	}
 }
