@@ -188,6 +188,12 @@ type Model struct {
 	turn     Turn
 	deps     Dependencies
 
+	// theme is the styling surface for the TUI chrome (issue #178): a palette
+	// registry plus derived styles the whole surface draws from. It defaults
+	// to the pre-seam dark palette; swapping it re-skins the chrome with no
+	// consumer change.
+	theme Theme
+
 	messages []message
 	busy     bool
 
@@ -352,6 +358,7 @@ func NewModelCfg(d Dependencies) Model {
 		composer:        tx,
 		turn:            d.Turn,
 		deps:            d,
+		theme:           defaultTheme,
 		continueReq:     make(chan struct{}, 1),
 		continueResp:    make(chan bool, 1),
 		skills:          skillSnapshot(d),
@@ -753,6 +760,7 @@ func (m *Model) openSettings() *settingsForm {
 		cfg = config.Default()
 	}
 	sf := newSettingsForm(cfg, m.deps.Models)
+	sf.theme = m.theme
 	sf.telemetry = m.telemetry
 	m.settings = &sf
 	return &sf
@@ -1128,7 +1136,7 @@ func (m Model) viewString() string {
 		return settingsView(*m.settings)
 	}
 	if m.prompting {
-		return promptView()
+		return promptView(m.theme)
 	}
 
 	// The right context rail (issue #88, Layout A): when visible, the rendered
@@ -1481,7 +1489,7 @@ func (m Model) renderHistory(b *strings.Builder) {
 	// directory the run operates in, rendered as an informational header above
 	// the transcript and never inside the composer the user types into.
 	if m.deps.WorkspacePath != "" {
-		b.WriteString(statusStyle.Render("workspace: " + m.deps.WorkspacePath))
+		b.WriteString(m.theme.statusStyle.Render("workspace: " + m.deps.WorkspacePath))
 		b.WriteString("\n")
 	}
 	for i, msg := range m.messages {
@@ -1490,7 +1498,7 @@ func (m Model) renderHistory(b *strings.Builder) {
 		// token estimate + effort; `tab` expands just that turn's block (issue
 		// #85, docs/spec.md §6).
 		if msg.role != "you" && msg.reasoning != "" {
-			b.WriteString(thinkingHeader(msg.reasoning, m.reasoningEffort))
+			b.WriteString(thinkingHeader(m.theme, msg.reasoning, m.reasoningEffort))
 			if msg.thinkingExpanded {
 				b.WriteString(msg.reasoning + "\n")
 			}
@@ -1506,9 +1514,9 @@ func (m Model) renderHistory(b *strings.Builder) {
 			// a bordered pane; a failing turn (⚠) gets the error-colored border
 			// so errors are as readable as answers (issue #122 AC2).
 			md, _ := RenderMarkdown(msg.content, w-2, m.deps.Config.Theme)
-			pane := agentPaneStyle
+			pane := m.theme.agentPaneStyle
 			if strings.HasPrefix(msg.content, "⚠ ") {
-				pane = errorPaneStyle
+				pane = m.theme.errorPaneStyle
 			}
 			// Trim glamour's trailing blank line so the pane ends on its last
 			// content row instead of a lone border column.
@@ -1519,12 +1527,12 @@ func (m Model) renderHistory(b *strings.Builder) {
 		// on demand to the full result.
 		for _, te := range m.tools {
 			if te.anchor == i {
-				b.WriteString(renderToolEntry(te, m.showToolResult))
+				b.WriteString(renderToolEntry(m.theme, te, m.showToolResult))
 			}
 		}
 	}
 	if m.busy {
-		b.WriteString(statusStyle.Render("… thinking"))
+		b.WriteString(m.theme.statusStyle.Render("… thinking"))
 		b.WriteString("\n")
 	}
 }
@@ -1537,16 +1545,16 @@ func (m Model) renderBand(b *strings.Builder) {
 	// Live status strip (issue #86), rendered above the composer so model,
 	// effort, thinking, turns/max, cost, and the cache gauge stay glanceable.
 	if m.telemetry != nil {
-		inner.WriteString(statusStyle.Render(m.telemetry.render(m.composer.Width())))
+		inner.WriteString(m.theme.statusStyle.Render(m.telemetry.render(m.composer.Width())))
 		inner.WriteString("\n")
 	}
 	// The slash-command completion list (issue #87 AC1) sits above the composer
 	// whenever the input line is a `/...` command, listing the built-in
 	// /settings command + matching skills with the current selection marked.
-	renderSlashCompletion(&inner, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
+	renderSlashCompletion(&inner, m.theme, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
-		inner.WriteString("\n" + statusStyle.Render(m.savedMsg))
+		inner.WriteString("\n" + m.theme.statusStyle.Render(m.savedMsg))
 	}
 	// The whole band is framed by an accent separator row so it reads as one
 	// coherent fixed region under the transcript (issue #122 AC3). The
@@ -1555,7 +1563,7 @@ func (m Model) renderBand(b *strings.Builder) {
 	if w < 2 {
 		w = 2
 	}
-	b.WriteString(bandSeparatorStyle.Render(strings.Repeat("─", w)))
+	b.WriteString(m.theme.bandSeparatorStyle.Render(strings.Repeat("─", w)))
 	b.WriteString("\n")
 	b.WriteString(inner.String())
 }
@@ -1605,9 +1613,9 @@ func (m Model) composerPreRows() int {
 }
 
 // promptView renders the interactive max-turns continuation prompt.
-func promptView() string {
-	return headerStyle.Render("run paused at the max-turns cap") + "\n" +
-		"Continue the run with more turns? (" + statusStyle.Render("y") + "/" + statusStyle.Render("n") + ")"
+func promptView(th Theme) string {
+	return th.headerStyle.Render("run paused at the max-turns cap") + "\n" +
+		"Continue the run with more turns? (" + th.statusStyle.Render("y") + "/" + th.statusStyle.Render("n") + ")"
 }
 
 // thinkingHeader renders a turn's collapsible reasoning block header. Collapsed
@@ -1616,12 +1624,12 @@ func promptView() string {
 // answer so reasoning is recognizable but secondary, and settles back to this
 // hint when the turn's answer lands. reasoning is the accumulated thinking text;
 // effort is the run's reasoning-effort tier (empty drops the suffix).
-func thinkingHeader(reasoning, effort string) string {
+func thinkingHeader(th Theme, reasoning, effort string) string {
 	hint := fmt.Sprintf("🤔 %s tok", formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
 		hint += " · " + effort
 	}
-	return thinkingStyle.Render(hint) + "\n"
+	return th.thinkingStyle.Render(hint) + "\n"
 }
 
 // tokenEstimate estimates a reasoning stream's token count from its assembled
@@ -1639,7 +1647,7 @@ func tokenEstimate(s string) int {
 // tab-cycling candidate (slashIdx) as a forward hint. It renders nothing for a
 // non-slash line or when there are no candidates, so normal typing is
 // unaffected (issue #87 AC4).
-func renderSlashCompletion(b *strings.Builder, value string, cur string, skills []SkillItem, selected int) {
+func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur string, skills []SkillItem, selected int) {
 	cands := slashCandidates(value, skills)
 	if len(cands) == 0 {
 		return
@@ -1662,9 +1670,9 @@ func renderSlashCompletion(b *strings.Builder, value string, cur string, skills 
 			// Selected candidate is highlighted with the agent accent so the
 			// completion list reads as part of the coherent band (issue #122
 			// AC3).
-			b.WriteString(slashSelectStyle.Render("▸ " + c))
+			b.WriteString(th.slashSelectStyle.Render("▸ " + c))
 		} else {
-			b.WriteString(statusStyle.Render("  " + c))
+			b.WriteString(th.statusStyle.Render("  " + c))
 		}
 		b.WriteString("\n")
 	}
@@ -1676,7 +1684,7 @@ func renderSlashCompletion(b *strings.Builder, value string, cur string, skills 
 // line-delta tag, and a compressed result carries an explicit "+N more" tail
 // marker. When expanded (showToolResult), the full inline result is rendered so
 // nothing is silently truncated — every collapse has an expand path.
-func renderToolEntry(te toolEntry, expanded bool) string {
+func renderToolEntry(th Theme, te toolEntry, expanded bool) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
 	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
@@ -1684,12 +1692,12 @@ func renderToolEntry(te toolEntry, expanded bool) string {
 	outcome := ""
 	if te.complete {
 		if isToolFailure(te.result) {
-			outcome = " " + outcomeErrStyle.Render("✗")
+			outcome = " " + th.outcomeErrStyle.Render("✗")
 		} else {
-			outcome = " " + outcomeOKStyle.Render("✓")
+			outcome = " " + th.outcomeOKStyle.Render("✓")
 		}
 	}
-	b.WriteString(toolStyle.Render(toolEntryHead(te)) + outcome)
+	b.WriteString(th.toolStyle.Render(toolEntryHead(te)) + outcome)
 	b.WriteString("\n")
 
 	if !expanded {
@@ -1700,7 +1708,7 @@ func renderToolEntry(te toolEntry, expanded bool) string {
 			if te.compressed && te.dropped > 0 {
 				summary += fmt.Sprintf(" (+%d more)", te.dropped)
 			}
-			b.WriteString(statusStyle.Render("  " + summary))
+			b.WriteString(th.statusStyle.Render("  " + summary))
 			b.WriteString("\n")
 		}
 		return b.String()

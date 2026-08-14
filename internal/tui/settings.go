@@ -53,6 +53,9 @@ const (
 // provider discovery but owned by the caller, and the live telemetry readout
 // (issue #89 AC4) is borrowed from the status strip.
 type settingsForm struct {
+	// theme is the styling surface for the Settings chrome (issue #178); the
+	// model seeds it from its own theme when the panel opens.
+	theme  Theme
 	cfg    config.Config
 	models []string
 	field  int
@@ -71,7 +74,7 @@ type settingsForm struct {
 // newSettingsForm seeds the form with the loaded config and the discovered
 // model list.
 func newSettingsForm(cfg config.Config, models []string) settingsForm {
-	f := settingsForm{cfg: cfg, models: models, field: 0}
+	f := settingsForm{cfg: cfg, models: models, field: 0, theme: defaultTheme}
 	if len(models) == 0 {
 		f.models = []string{cfg.Model}
 	}
@@ -218,8 +221,9 @@ func stepFrac(v float64, d int) float64 {
 // the focused row highlighted, a Save/Cancel footer. It is deterministic for
 // render-testing.
 func settingsView(f settingsForm) string {
+	th := f.theme
 	var b strings.Builder
-	b.WriteString(headerStyle.Render("Eitri Settings"))
+	b.WriteString(th.headerStyle.Render("Eitri Settings"))
 	b.WriteString("\n")
 
 	rows := []struct {
@@ -250,10 +254,10 @@ func settingsView(f settingsForm) string {
 	// render-testing.
 	switch f.discoverState {
 	case discoverLoading:
-		b.WriteString(statusStyle.Render("   discovering models…"))
+		b.WriteString(th.statusStyle.Render("   discovering models…"))
 		b.WriteString("\n")
 	case discoverError:
-		b.WriteString(statusStyle.Render("   model discovery failed: " + f.discoverErr))
+		b.WriteString(th.statusStyle.Render("   model discovery failed: " + f.discoverErr))
 		b.WriteString("\n")
 	default:
 		// Idle: already-loaded or unwired, so no status line is needed.
@@ -263,7 +267,7 @@ func settingsView(f settingsForm) string {
 	// the status strip tracks, borrowed read-only so switching provider/model
 	// and watching cost happen in one pane.
 	if f.telemetry != nil {
-		b.WriteString(statusStyle.Render(fmt.Sprintf(
+		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
 			"   cache:%.0f%% · cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),
 		)))
 		b.WriteString("\n")
@@ -272,10 +276,10 @@ func settingsView(f settingsForm) string {
 	save := "[ Save ]"
 	cancel := "[ Cancel ]"
 	if f.field == fieldSave {
-		save = "[" + statusStyle.Render(" Save ") + "]"
+		save = "[" + th.statusStyle.Render(" Save ") + "]"
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(statusStyle.Render("tab/enter: navigate · arrows/+/−: adjust · esc: close"))
+	b.WriteString(th.statusStyle.Render("tab/enter: navigate · arrows/+/−: adjust · esc: close"))
 	return b.String()
 }
