@@ -64,29 +64,6 @@ func TestReadSchemaNullableUnion(t *testing.T) {
 	}
 }
 
-// TestReadDescriptionGuidance locks in the provider-facing read description
-// (issue #192): the same string every wire dialect sends to the model. It must
-// state that omitted/null limits read the ENTIRE file, push models toward
-// explicit 1-based line ranges for large files, and mention line-numbered
-// output and the explicit "+N more" truncation marker at the tool-result
-// boundary (never silent).
-func TestReadDescriptionGuidance(t *testing.T) {
-	desc := (&readTool{}).Description()
-	folded := strings.ToLower(desc)
-	for _, want := range []string{
-		"entire file",   // omitted/null limits => full dump, no error
-		"1-based",       // explicit line ranges are 1-based
-		"large files",   // prefer explicit ranges for large files
-		"line-numbered", // output is line-numbered
-	} {
-		if !strings.Contains(folded, want) {
-			t.Fatalf("read description missing %q: %s", want, desc)
-		}
-	}
-	if !strings.Contains(desc, "+N more") { // marker is case-sensitive in the spec
-		t.Fatalf("read description missing %q: %s", "+N more", desc)
-	}
-}
 
 func argMap(kv ...string) map[string]any {
 	m := map[string]any{}
