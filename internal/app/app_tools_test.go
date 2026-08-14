@@ -13,6 +13,7 @@ import (
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
+	"github.com/glemsom/eitri/internal/tui"
 )
 
 // scriptedBashOnly answers with a single bash tool call, then echoes the tool
@@ -209,8 +210,8 @@ func scriptedBrowserTurn() *provider.Scripted {
 }
 
 // scriptedEditTurn drives a scripted provider through one edit tool call on a
-// workspace file, then confirms. It exercises the app's real file line-delta
-// seam (issue #84) end-to-end against the shared registry path resolution.
+// workspace file, then confirms. It exercises the app's real edit tool path
+// end-to-end against the shared registry path resolution (issue #174).
 func scriptedEditTurn(ws string) *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -235,10 +236,13 @@ func scriptedEditTurn(ws string) *provider.Scripted {
 }
 
 // TestBatchEditToolReportsLineDelta drives a real edit tool call through the
-// app's shared registry and asserts the engine's ToolResultEvent carries the
-// before/after line delta computed by the fileLineDelta seam (issue #84 AC3):
-// the file gains two lines as one is swapped for three, so the event reports
-// +2, -0. The full delivered result is also present, backing the expand path.
+// app's shared registry and asserts the TUI-side delta observer (issue #174)
+// computes the same before/after line delta the engine's ToolDelta seam used
+// to report (issue #84 AC3): the file gains two lines as one is swapped for
+// three, so the observer reports +2, -0. The observer is fed from the engine's
+// event stream (ToolCallEvent → pre-edit snapshot, ToolResultEvent → diff)
+// exactly as the app's TUI listener wires it, and the engine itself carries no
+// ToolDelta seam — the batch run stays byte-identical.
 func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -258,11 +262,18 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 		TempHost:  filepath.Join(t.TempDir(), "eitri-tmp"),
 		Runner:    tools.RealRunner,
 	})
+	// The observer's path-resolution seam is the same wiring runTUI uses: the
+	// registry's shared path translator + workspace root (issue #174).
+	obs := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	e := engine.New(scriptedEditTurn(ws), mockTranscript{})
-	var got *engine.ToolResultEvent
+	var gotAdded, gotRemoved int
+	var gotBefore, gotAfter, gotPath string
 	e.SetListener(func(ev engine.Event) {
-		if tr, ok := ev.(engine.ToolResultEvent); ok && tr.Name == "edit" {
-			got = &tr
+		switch ev := ev.(type) {
+		case engine.ToolCallEvent:
+			obs.Start(ev.ID, ev.Name, ev.Arguments)
+		case engine.ToolResultEvent:
+			gotAdded, gotRemoved, gotBefore, gotAfter, gotPath = obs.Result(ev.ID, ev.Name)
 		}
 	})
 
@@ -276,8 +287,7 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 				}
 				return reg.Run(ctx, name, args)
 			}),
-			ToolDelta: fileLineDelta(reg),
-			MaxTurns:  5,
+			MaxTurns: 5,
 		})
 	if err != nil {
 		t.Fatalf("RunAgent(edit) error = %v", err)
@@ -287,23 +297,17 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	if data, _ := os.ReadFile(editResult); string(data) != "a\nb\nc\nd\n" {
 		t.Errorf("fixture after edit = %q, want \"a\nb\nc\nd\n\"", string(data))
 	}
-	if got == nil {
-		t.Fatal("no edit ToolResultEvent emitted")
+	if gotAdded != 2 || gotRemoved != 0 {
+		t.Errorf("edit delta = +%d-%d, want +2-0", gotAdded, gotRemoved)
 	}
-	if got.Added != 2 || got.Removed != 0 {
-		t.Errorf("edit delta = +%d-%d, want +2-0", got.Added, got.Removed)
+	// The observer must also report the real before/after file content and host
+	// path so the TUI review panel can render an inline diff and hand the file
+	// to the browser (issue #90 / #174).
+	if gotBefore != "a\nb\n" || gotAfter != "a\nb\nc\nd\n" {
+		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", gotBefore, gotAfter)
 	}
-	if got.Result == "" {
-		t.Error("ToolResultEvent.Result must carry the full delivered result")
-	}
-	// The fileLineDelta Content seam (issue #90) must also report the real
-	// before/after file content and host path so the TUI review panel can render
-	// an inline diff and hand the file to the browser.
-	if got.Before != "a\nb\n" || got.After != "a\nb\nc\nd\n" {
-		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", got.Before, got.After)
-	}
-	if got.Path != editResult {
-		t.Errorf("Path = %q, want %q", got.Path, editResult)
+	if gotPath != editResult {
+		t.Errorf("Path = %q, want %q", gotPath, editResult)
 	}
 }
 
