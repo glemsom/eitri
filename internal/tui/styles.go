@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image/color"
 	"strings"
 
@@ -27,6 +28,11 @@ type Theme struct {
 	file   color.Color // semantic color for file tool entries (read/write/edit, ⊕)
 	web    color.Color // semantic color for web tool entries (web_fetch, ⊕)
 	skill  color.Color // semantic color for skill tool entries (skill, ⊕)
+	// bubble is the subtle background fill for user prompts, carding the user
+	// side of the transcript (benchmark §4.1: message bubbles on a filled
+	// background). It is a near-background tint per theme, never a saturated
+	// hue — the fill must read as a card, not a highlight.
+	bubble color.Color
 
 	// railHues are the per-section hues for the right context rail (issue
 	// #182): [stats, context, model], each distinct so a glance tells the
@@ -39,6 +45,7 @@ type Theme struct {
 	statusStyle        lipgloss.Style // faint secondary text (strips, hints, tool lines)
 	agentPaneStyle     lipgloss.Style // left-bordered pane framing assistant answers
 	errorPaneStyle     lipgloss.Style // the same pane with the error-colored border
+	userBubbleStyle    lipgloss.Style // the carded background fill for user prompts
 	thinkingStyle      lipgloss.Style // the 🤔 collapsed reasoning hint
 	toolStyle          lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
 	toolShellStyle     lipgloss.Style // the ⊕ tool-entry line, shell category
@@ -47,6 +54,12 @@ type Theme struct {
 	toolSkillStyle     lipgloss.Style // the ⊕ tool-entry line, skill category
 	outcomeOKStyle     lipgloss.Style // the ✓ tool-outcome tag
 	outcomeErrStyle    lipgloss.Style // the ✗ tool-outcome tag
+	// diffAddStyle / diffDelStyle render the review panel's inline diff lines:
+	// the ok/error hue on a dimmed background fill of the same hue, so added/
+	// removed lines carry the conventional green/red vocabulary in the theme's
+	// own palette (benchmark §4.2: diff colors are theme-aware, bg-filled).
+	diffAddStyle       lipgloss.Style
+	diffDelStyle       lipgloss.Style
 	slashSelectStyle   lipgloss.Style // the selected slash-completion candidate
 	bandSeparatorStyle lipgloss.Style // the separator row framing the bottom band
 	// bandStatusStyle renders the live status strip in the accent hue so the
@@ -78,6 +91,7 @@ func newDefaultTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#BB9AF7"), // web
 		lipgloss.Color("#FF87D7"), // skill
+		lipgloss.Color("#2A2F3A"), // bubble tint (near-background gray-blue)
 		[3]color.Color{
 			lipgloss.Color("#E0AF68"),
 			lipgloss.Color("#7DCFFF"),
@@ -101,6 +115,7 @@ func newDraculaTheme() Theme {
 		lipgloss.Color("#8BE9FD"), // file
 		lipgloss.Color("#FF79C6"), // web
 		lipgloss.Color("#F1FA8C"), // skill
+		lipgloss.Color("#3D3F51"), // bubble tint (dracula comment family)
 		[3]color.Color{
 			lipgloss.Color("#FFB86C"),
 			lipgloss.Color("#8BE9FD"),
@@ -124,6 +139,7 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#7DCFFF"), // file
 		lipgloss.Color("#2AC3DE"), // web
 		lipgloss.Color("#73DACA"), // skill
+		lipgloss.Color("#292E42"), // bubble tint (tokyo-night bg-adjacent)
 		[3]color.Color{
 			lipgloss.Color("#FF9E64"),
 			lipgloss.Color("#7DCFFF"),
@@ -147,6 +163,7 @@ func newPinkTheme() Theme {
 		lipgloss.Color("#39C0ED"), // file
 		lipgloss.Color("#A78BFA"), // web
 		lipgloss.Color("#60A5FA"), // skill
+		lipgloss.Color("#33202E"), // bubble tint (pink-family dark)
 		[3]color.Color{
 			lipgloss.Color("#FFB224"),
 			lipgloss.Color("#39C0ED"),
@@ -170,10 +187,119 @@ func newLightTheme() Theme {
 		lipgloss.Color("#0E7490"), // file
 		lipgloss.Color("#6D28D9"), // web
 		lipgloss.Color("#A21CAF"), // skill
+		lipgloss.Color("#EAEAEF"), // bubble tint (near-white gray)
 		[3]color.Color{
 			lipgloss.Color("#B45309"),
 			lipgloss.Color("#0E7490"),
 			lipgloss.Color("#00875F"),
+		},
+	)
+}
+
+// newNordTheme is the curated nord chrome palette: the polar-night family —
+// frosted blue accent, nord red error, nord green ok — with the secondary hues
+// (yellow, frost, aurora purple, orange) for the tool categories.
+func newNordTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#88C0D0"), // accent (frost)
+		lipgloss.Color("#BF616A"), // error (aurora red)
+		lipgloss.Color("#A3BE8C"), // ok (aurora green)
+		lipgloss.Color("#EBCB8B"), // shell (aurora yellow)
+		lipgloss.Color("#81A1C1"), // file (frost blue)
+		lipgloss.Color("#B48EAD"), // web (aurora purple)
+		lipgloss.Color("#D08770"), // skill (aurora orange)
+		lipgloss.Color("#2E3440"), // bubble tint (polar-night bg)
+		[3]color.Color{
+			lipgloss.Color("#EBCB8B"),
+			lipgloss.Color("#81A1C1"),
+			lipgloss.Color("#A3BE8C"),
+		},
+	)
+}
+
+// newGruvboxTheme is the curated gruvbox chrome palette: the dark-medium
+// family — gruv blue accent, bright red error, bright green ok — with the
+// secondary hues (yellow, aqua, purple, orange) for the tool categories.
+func newGruvboxTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#83A598"), // accent (gruv blue)
+		lipgloss.Color("#FB4934"), // error (bright red)
+		lipgloss.Color("#B8BB26"), // ok (bright green)
+		lipgloss.Color("#FABD2F"), // shell (bright yellow)
+		lipgloss.Color("#8EC07C"), // file (aqua)
+		lipgloss.Color("#D3869B"), // web (purple)
+		lipgloss.Color("#FE8019"), // skill (orange)
+		lipgloss.Color("#3C3836"), // bubble tint (bg1)
+		[3]color.Color{
+			lipgloss.Color("#FABD2F"),
+			lipgloss.Color("#8EC07C"),
+			lipgloss.Color("#B8BB26"),
+		},
+	)
+}
+
+// newSolarizedTheme is the curated solarized chrome palette: the dark family —
+// solarized blue accent, red error, green ok — with the secondary hues
+// (yellow, cyan, violet, magenta) for the tool categories.
+func newSolarizedTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#268BD2"), // accent (blue)
+		lipgloss.Color("#DC322F"), // error (red)
+		lipgloss.Color("#859900"), // ok (green)
+		lipgloss.Color("#B58900"), // shell (yellow)
+		lipgloss.Color("#2AA198"), // file (cyan)
+		lipgloss.Color("#6C71C4"), // web (violet)
+		lipgloss.Color("#D33682"), // skill (magenta)
+		lipgloss.Color("#073642"), // bubble tint (bg)
+		[3]color.Color{
+			lipgloss.Color("#B58900"),
+			lipgloss.Color("#2AA198"),
+			lipgloss.Color("#859900"),
+		},
+	)
+}
+
+// newDarkDaltonizedTheme is the curated deuteranopia/protanopia-safe dark
+// chrome palette, built on the Okabe-Ito colorblind-safe set: error is a
+// vermillion orange and ok a bluish green, so the ✓/✗ outcomes and the diff
+// added/removed fills stay distinguishable without red-green hue alone (the
+// pair most commonly confused). The tool categories draw from the remaining
+// Okabe-Ito hues (yellow, blue, reddish-purple, golden orange).
+func newDarkDaltonizedTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#56B4E9"), // accent (sky blue)
+		lipgloss.Color("#D55E00"), // error (vermillion orange)
+		lipgloss.Color("#009E73"), // ok (bluish green)
+		lipgloss.Color("#F0E442"), // shell (yellow)
+		lipgloss.Color("#5796D8"), // file (bright blue)
+		lipgloss.Color("#CC79A7"), // web (reddish purple)
+		lipgloss.Color("#E69F00"), // skill (golden orange)
+		lipgloss.Color("#232A36"), // bubble tint (neutral blue-gray)
+		[3]color.Color{
+			lipgloss.Color("#F0E442"),
+			lipgloss.Color("#5796D8"),
+			lipgloss.Color("#009E73"),
+		},
+	)
+}
+
+// newLightDaltonizedTheme is the light-terminal variant of the daltonized
+// palette: the same Okabe-Ito hues (already ≥4.5:1 on white for the
+// semantic pair) with a near-white bubble tint.
+func newLightDaltonizedTheme() Theme {
+	return newTheme(
+		lipgloss.Color("#0072B2"), // accent (Okabe-Ito blue, dark on light)
+		lipgloss.Color("#D55E00"), // error (vermillion orange)
+		lipgloss.Color("#009E73"), // ok (bluish green)
+		lipgloss.Color("#B58900"), // shell (dark yellow, readable on white)
+		lipgloss.Color("#0E7490"), // file (dark cyan)
+		lipgloss.Color("#6D28D9"), // web (violet)
+		lipgloss.Color("#A21CAF"), // skill (magenta)
+		lipgloss.Color("#E9E9EF"), // bubble tint (near-white)
+		[3]color.Color{
+			lipgloss.Color("#B58900"),
+			lipgloss.Color("#0E7490"),
+			lipgloss.Color("#009E73"),
 		},
 	)
 }
@@ -201,6 +327,16 @@ func themeFor(name string) Theme {
 		return newPinkTheme()
 	case "light":
 		return newLightTheme()
+	case "nord":
+		return newNordTheme()
+	case "gruvbox":
+		return newGruvboxTheme()
+	case "solarized":
+		return newSolarizedTheme()
+	case "dark-daltonized":
+		return newDarkDaltonizedTheme()
+	case "light-daltonized":
+		return newLightDaltonizedTheme()
 	}
 	return defaultTheme
 }
@@ -209,7 +345,7 @@ func themeFor(name string) Theme {
 // draw from them. It is the only place derived styles are constructed: every
 // palette (default, dracula, future ones) shares the same style wiring, so
 // palettes differ by hue alone and can never drift apart structurally.
-func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [3]color.Color) Theme {
+func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail [3]color.Color) Theme {
 	th := Theme{
 		accent:   accent,
 		error:    err,
@@ -218,10 +354,19 @@ func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [3]colo
 		file:     file,
 		web:      web,
 		skill:    skill,
+		bubble:   bubble,
 		railHues: rail,
 
 		headerStyle: lipgloss.NewStyle().Bold(true).Foreground(accent),
 		statusStyle: lipgloss.NewStyle().Faint(true),
+		// userBubbleStyle cards user prompts on the theme's bubble tint: a
+		// subtle near-background fill with breathing padding, so the user side
+		// of the transcript reads as a card against the bare agent panes
+		// (benchmark §4.1). Padding is set here; width is applied per render
+		// because the pane width changes with the rail.
+		userBubbleStyle: lipgloss.NewStyle().
+			Background(bubble).
+			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1),
 		// agentPaneStyle frames assistant answers as a left-bordered pane
 		// (issue #122 AC1); errorPaneStyle is the same pane with the
 		// error-colored border for failing turns so errors read as distinctly
@@ -245,6 +390,15 @@ func newTheme(accent, err, ok, shell, file, web, skill color.Color, rail [3]colo
 		// outcomeOKStyle / outcomeErrStyle render the ✓/✗ tool-outcome tags.
 		outcomeOKStyle:  lipgloss.NewStyle().Foreground(ok),
 		outcomeErrStyle: lipgloss.NewStyle().Foreground(err),
+		// Diff lines keep the git vocabulary but in the theme's hues: the ok/error
+		// foreground on a dimmed same-hue background fill (the fill is derived,
+		// so every palette gets a coherent diff without hand-tuning per theme).
+		diffAddStyle: lipgloss.NewStyle().
+			Foreground(ok).
+			Background(dimmed(ok, 0.14)),
+		diffDelStyle: lipgloss.NewStyle().
+			Foreground(err).
+			Background(dimmed(err, 0.14)),
 		// slashSelectStyle highlights the selected slash-completion candidate.
 		slashSelectStyle: lipgloss.NewStyle().Bold(true).Foreground(accent),
 		// bandSeparatorStyle draws the separator row that frames the fixed
@@ -303,6 +457,16 @@ func (th Theme) railHeader(s railSection, text string) string {
 // monochrome terminal still reads every value.
 func (th Theme) railBody(s railSection, text string) string {
 	return th.railBodyStyles[s].Render(text)
+}
+
+// dimmed scales a color's RGB toward black by the given factor, for use as a
+// same-hue background fill (diff lines, subtle cards). The result is a hex
+// lipgloss color, so it degrades with the terminal's color profile like any
+// other palette color.
+func dimmed(c color.Color, f float64) color.Color {
+	r, g, b, _ := c.RGBA() // 16-bit channels per image/color
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x",
+		uint8(float64(r>>8)*f), uint8(float64(g>>8)*f), uint8(float64(b>>8)*f)))
 }
 
 // borderedPane builds a left-bordered pane with the given border color — the

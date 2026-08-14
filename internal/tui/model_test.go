@@ -264,6 +264,9 @@ func typeText(t *testing.T, m Model, s string) Model {
 }
 
 // submitAndWait feeds Enter to run the turn and then the async completion.
+// The submit command may be a tea.BatchMsg (turn command batched with the
+// stream waiter and/or the spinner tick); each sub-command runs synchronously
+// and its message is delivered in order so the completion always lands.
 func submitAndWait(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -271,10 +274,28 @@ func submitAndWait(t *testing.T, m Model) Model {
 		t.Fatalf("turn command was nil after submit")
 	}
 	out := asModel(t, nm)
-	// Run the command to completion synchronously: it returns the done message.
-	done := cmd()
-	out2, _ := out.Update(done)
-	return asModel(t, out2)
+	return runSubmitted(t, out, cmd)
+}
+
+// runSubmitted executes a submitted command synchronously, unwrapping a
+// tea.BatchMsg into its sub-commands, and delivers each resulting message to
+// the model. Waiter commands (streamWait) block until their channel yields —
+// callers of submitAndWait must not wire a live stream (stream tests use
+// submitBusy instead).
+func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	msg := cmd()
+	if bm, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range bm {
+			m = runSubmitted(t, m, c)
+		}
+		return m
+	}
+	if msg == nil {
+		return m
+	}
+	nm, _ := m.Update(msg)
+	return asModel(t, nm)
 }
 
 func asModel(t *testing.T, tm tea.Model) Model {

@@ -52,8 +52,8 @@ func TestRailRenderModel(t *testing.T) {
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
 	}
-	if !strings.Contains(view, "opencode-go/deepseek-v4-flash") {
-		t.Errorf("rail MODEL missing provider/model, got: %q", view)
+	if !strings.Contains(view, "opencode-go/deepseek-v4-f…") {
+		t.Errorf("rail MODEL missing provider/model (truncated to the rail width), got: %q", view)
 	}
 	if !strings.Contains(view, "effort high") {
 		t.Errorf("rail MODEL missing effort, got: %q", view)
@@ -123,7 +123,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 	if cache := lineContaining(view, "cache 80%"); !strings.Contains(cache, "\x1b[38;2;224;175;104m") {
 		t.Errorf("STATS body line = %q, want the stats hue", cache)
 	}
-	if model := lineContaining(view, "opencode-go/deepseek-v4-flash"); !strings.Contains(model, "\x1b[38;2;158;206;106m") {
+	if model := lineContaining(view, "opencode-go/deepseek-v4-f…"); !strings.Contains(model, "\x1b[38;2;158;206;106m") {
 		t.Errorf("MODEL body line = %q, want the model hue", model)
 	}
 }

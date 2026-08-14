@@ -6,17 +6,16 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/diff"
 )
 
-// diffAdd/diffDel give an added/removed line a distinct, conventional hue in the
-// inline review diff (green for additions, red for removals) so changes read at
-// a glance, mirroring the git/VS Code diff vocabulary (issue #90).
+// diffAdd/diffDel are the historical package-level aliases of the default
+// theme's diff styles, kept for compatibility with any out-of-package callers;
+// new code reads the theme's diffAddStyle/diffDelStyle through renderDiff.
 var (
-	diffAdd = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	diffDel = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	diffAdd = defaultTheme.diffAddStyle
+	diffDel = defaultTheme.diffDelStyle
 )
 
 // reviewRegionMax caps the review overlay's own height-clipped region (issue
@@ -106,12 +105,14 @@ func (m Model) updateReview(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// No files: esc / ctrl+d return to the transcript; everything else no-ops.
 		if key == "esc" || key == "ctrl+d" {
 			m.review = nil
+			m.syncComposerRail()
 		}
 		return m, nil
 	}
 	switch key {
 	case "esc", "ctrl+d":
 		m.review = nil
+		m.syncComposerRail()
 	case "up":
 		m.review.move(-1)
 	case "down":
@@ -177,7 +178,9 @@ func (m Model) renderReview(b *strings.Builder) {
 	if r == nil {
 		return
 	}
-	fmt.Fprintf(b, "~ ctrl+d  Review changed files (%d) ~", len(r.files))
+	// Header: the ctrl+d binding faint, the title in the accent — the same
+	// chrome-vs-detail hierarchy as the rest of the surface.
+	b.WriteString(m.theme.statusStyle.Render("ctrl+d  ") + m.theme.headerStyle.Render(fmt.Sprintf("Review changed files (%d)", len(r.files))))
 	b.WriteString("\n")
 	if len(r.files) == 0 {
 		b.WriteString(m.theme.statusStyle.Render("  no changes yet"))
@@ -187,9 +190,20 @@ func (m Model) renderReview(b *strings.Builder) {
 	for i, f := range r.files {
 		marker := " "
 		if i == r.cursor {
-			marker = "▶"
+			marker = m.theme.headerStyle.Render(g("▶", ">")) // accent cursor marker
 		}
-		fmt.Fprintf(b, "%s %s  %s  %s", marker, f.path, deltaTag(f.added, f.removed), f.status)
+		// The file path stays plain; the delta tag recedes faint; the status
+		// word carries its semantic hue (added=ok, deleted=error, modified=
+		// accent) — state-as-color, consistent with the transcript.
+		status := m.theme.statusStyle.Render(f.status)
+		switch f.status {
+		case "added":
+			status = m.theme.outcomeOKStyle.Render(f.status)
+		case "deleted":
+			status = m.theme.outcomeErrStyle.Render(f.status)
+		}
+		fmt.Fprintf(b, "%s %s  %s  %s", marker, f.path,
+			m.theme.statusStyle.Render(deltaTag(f.added, f.removed)), status)
 		b.WriteString("\n")
 	}
 	if r.expanded && r.cursor < len(r.files) {
@@ -201,14 +215,15 @@ func (m Model) renderReview(b *strings.Builder) {
 		b.WriteString("\n")
 		r.openErr = ""
 	}
-	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff · o: open_in_browser · ctrl+d: close"))
+	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff "+g("·", ".")+" o: open_in_browser "+g("·", ".")+" ctrl+d: close"))
 	b.WriteString("\n")
 }
 
 // renderDiff renders a changed file's inline hunks as a terminal diff with the
 // git-style @@ header plus +/-/context lines, styled distinctly from the
-// transcript. A file with no content-diff (e.g. a pure flag change the engine
-// couldn't snapshot) falls back to the count summary.
+// transcript through the theme's diff tokens (ok/error hue on a dimmed
+// same-hue fill). A file with no content-diff (e.g. a pure flag change the
+// engine couldn't snapshot) falls back to the count summary.
 func renderDiff(f reviewEntry, th Theme) string {
 	if len(f.hunks) == 0 {
 		return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
@@ -216,12 +231,25 @@ func renderDiff(f reviewEntry, th Theme) string {
 	var sb strings.Builder
 	for _, h := range f.hunks {
 		fmt.Fprintf(&sb, "@@ -%d,%d +%d,%d @@\n", h.OldStart, h.OldLines, h.NewStart, h.NewLines)
-		for _, l := range h.Lines {
+		for i := 0; i < len(h.Lines); i++ {
+			l := h.Lines[i]
 			switch l.Type {
 			case '+':
-				sb.WriteString(diffAdd.Render("+" + l.Text))
+				sb.WriteString(th.diffAddStyle.Render("+" + l.Text))
 			case '-':
-				sb.WriteString(diffDel.Render("-" + l.Text))
+				// A removed line followed by an added line is the paired half of a
+				// modification: render both on their own rows with word-level
+				// emphasis (bold on the changed words). Standalone additions and
+				// removals render whole-line.
+				if i+1 < len(h.Lines) && h.Lines[i+1].Type == '+' {
+					oldToks, newToks := wordDiff(l.Text, h.Lines[i+1].Text)
+					sb.WriteString(renderWordDiff(oldToks, th.diffDelStyle, "-"))
+					sb.WriteString("\n")
+					sb.WriteString(renderWordDiff(newToks, th.diffAddStyle, "+"))
+					i++ // consume the paired addition
+				} else {
+					sb.WriteString(th.diffDelStyle.Render("-" + l.Text))
+				}
 			default:
 				sb.WriteString(" " + l.Text)
 			}
@@ -235,5 +263,5 @@ func renderDiff(f reviewEntry, th Theme) string {
 // the review file list and the no-diff fallback, so the count formatting lives
 // in one place.
 func deltaTag(added, removed int) string {
-	return fmt.Sprintf("[+%d, −%d]", added, removed)
+	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
 }

@@ -132,7 +132,7 @@ func dragModel(t *testing.T, answer string) Model {
 func historyContentRows(m Model) (rows []string, top int) {
 	vp := m.histViewport
 	var hist strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	for _, l := range strings.Split(hist.String(), "\n") {
 		rows = append(rows, ansiStrip(l))
 	}
@@ -506,5 +506,78 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("release", col+3, screenRow))
 	if row == "" {
 		t.Errorf("test assumption broken: first visible row should have text")
+	}
+}
+
+// TestClickToExpand_togglesToolEntry asserts a plain mouse click (press +
+// release on one cell, no drag) on a collapsed tool entry toggles just that
+// entry open, and a second click collapses it — while clicks on non-tool rows
+// stay inert and the global alt+y flag is never touched (benchmark §4.4
+// mouse ergonomics: click-to-expand tool results).
+func TestClickToExpand_togglesToolEntry(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: NewToolFeed(),
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	headRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "⊕ bash") {
+			headRow = i
+			break
+		}
+	}
+	if headRow < 0 {
+		t.Fatalf("tool head row not found, got %q", rows)
+	}
+	// The row accounting must map the head row to this tool's entry.
+	if idx, _, ok := m.toolEntryAtLine(headRow); !ok || idx != 0 {
+		t.Fatalf("toolEntryAtLine(%d) = %d/%v, want entry 0", headRow, idx, ok)
+	}
+
+	// Click on the head row: press + release on one cell, no drag.
+	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
+	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
+	if !strings.Contains(view(m), "full output line one") {
+		t.Errorf("click must expand the entry, got: %q", view(m))
+	}
+	if m.showToolResult {
+		t.Error("click must not set the global showToolResult flag")
+	}
+
+	// Second click collapses it again.
+	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
+	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
+	if strings.Contains(view(m), "full output line one") {
+		t.Errorf("second click must collapse the entry, got: %q", view(m))
+	}
+
+	// Click on a non-tool row (the prompt row) stays inert.
+	promptRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "run it") {
+			promptRow = i
+			break
+		}
+	}
+	if promptRow < 0 {
+		t.Fatalf("prompt row not found, got %q", rows)
+	}
+	m = mustUpdate(t, m, dragMsg("press", 2, promptRow))
+	m = mustUpdate(t, m, dragMsg("release", 2, promptRow))
+	if strings.Contains(view(m), "full output line one") {
+		t.Errorf("click off a tool row must not expand anything, got: %q", view(m))
 	}
 }

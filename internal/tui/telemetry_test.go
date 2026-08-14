@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 	"testing"
 )
 
@@ -43,6 +44,8 @@ func TestTelemetryFormatCostNoScientific(t *testing.T) {
 		{0.00658, "$0.00658"},
 		{0.00001, "$0.00001"},
 		{0.8456, "$0.8456"},
+		{0.00112672, "$0.001127"}, // 4 sig figs: no eight-decimal wall
+		{1.2345, "$1.234"},
 		{0, "$0"},
 	}
 	for _, tc := range cases {
@@ -113,5 +116,24 @@ func TestTelemetryStripCollapsesBelowWidth(t *testing.T) {
 	// Both forms keep the cache gauge and cost so telemetry is never lost.
 	if !strings.Contains(collapsed, "%") || !strings.Contains(collapsed, "$") {
 		t.Errorf("narrow strip must keep gauge+cost, got: %q", collapsed)
+	}
+}
+
+// TestTelemetryStripShowsElapsed asserts the status strip carries the live
+// session-elapsed timer in both the full and collapsed forms (benchmark §4.1
+// statusline telemetry: elapsed time), seeded at NewTelemetry.
+func TestTelemetryStripShowsElapsed(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100, Miss: 25, Output: 10})
+	for _, w := range []int{140, 60} {
+		s := te.render(w)
+		if !strings.Contains(s, "0s") {
+			t.Errorf("render(%d) missing elapsed timer, got: %q", w, s)
+		}
+	}
+	// The elapsed advances with the wall clock.
+	te.startedAt = time.Now().Add(-65 * time.Second)
+	if s := te.render(140); !strings.Contains(s, "1m 05s") {
+		t.Errorf("render after 65s = %q, want 1m 05s", s)
 	}
 }

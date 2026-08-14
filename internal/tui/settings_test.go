@@ -162,13 +162,13 @@ func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
 }
 
 // TestSettingsForm_ThemeCyclesAllThemes verifies the theme selector cycles
-// through every supported theme dark→light→dracula→tokyo-night→pink→notty→auto
-// and wraps back to dark (issue #130 AC2).
+// through every supported theme dark→light→dracula→tokyo-night→pink→nord→
+// gruvbox→solarized→notty→auto and wraps back to dark (issue #130 AC2).
 func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
 
-	want := []string{"light", "dracula", "tokyo-night", "pink", "notty", "auto", "dark"}
+	want := []string{"light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "notty", "auto", "dark"}
 	for _, w := range want {
 		f.adjust(1)
 		if got := f.draft().Theme; got != w {
@@ -308,5 +308,29 @@ func TestSettingsView_TelemetryReadoutZeroWhenNone(t *testing.T) {
 	view := settingsView(f)
 	if strings.Contains(view, "cache:") {
 		t.Fatalf("settings view %q renders a readout without telemetry wired", view)
+	}
+}
+
+// TestSettingsView_PaletteSwatchTracksTheme verifies the palette swatch row
+// previews the selected theme's hues and re-renders as the theme field cycles
+// (benchmark §4.4 live-preview pattern): arrowing from dark to light swaps the
+// chip colors to the light palette before Save, and the row always carries the
+// full-block chip glyph.
+func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
+	f.field = fieldTheme
+
+	view := settingsView(f)
+	if !strings.Contains(view, "palette") || !strings.Contains(view, "\u2588\u2588") {
+		t.Fatalf("settings view %q missing the palette swatch row", view)
+	}
+	if !strings.Contains(view, "\x1b[38;2;122;162;247m") {
+		t.Fatalf("dark swatch must carry the default accent chip, got: %q", view)
+	}
+
+	f.adjust(1) // dark -> light
+	view = settingsView(f)
+	if !strings.Contains(view, "\x1b[38;2;0;95;255m") {
+		t.Fatalf("light swatch must carry the light accent chip, got: %q", view)
 	}
 }

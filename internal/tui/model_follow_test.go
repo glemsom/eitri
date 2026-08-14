@@ -45,7 +45,7 @@ func busyStreamingModel(t *testing.T) Model {
 // and the viewport height — for asserting the newest output is visible.
 func followRendered(m Model) (got string, histContent string, vh int) {
 	var hist strings.Builder
-	m.renderHistory(&hist)
+	m.renderHistory(&hist, nil)
 	histContent = hist.String()
 	reserved := m.bandHeight()
 	vh = m.height - reserved
@@ -89,7 +89,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 	}
 	// During busy the viewport shows the newest output (not a stale head): the
 	// busy thinking footer is the last non-blank rendered row.
-	if got := newestNonBlank(got); got != "… thinking\n" {
+	if got := newestNonBlank(got); got != "⠋ working\n" {
 		t.Errorf("busy follow must hold the newest output at the bottom, got last row %q\n%s", got, got)
 	}
 }
@@ -110,7 +110,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 			// No vertical room for the history this small; nothing to follow.
 			continue
 		}
-		if row := newestNonBlank(got); row != "… thinking\n" {
+		if row := newestNonBlank(got); row != "⠋ working\n" {
 			t.Errorf("resize to height %d lost the newest output (follow should hold the bottom row %q)\n%s", h, row, got)
 		}
 	}
