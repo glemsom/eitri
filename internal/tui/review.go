@@ -134,49 +134,7 @@ func (m *Model) openFocused() {
 // (the VS Code Agents-window lexicon), plus the focused file's inline diff when
 // expanded, and a hint for the open_in_browser escape hatch.
 func (m Model) renderReview(b *strings.Builder) {
-	r := m.review
-	if r == nil {
-		return
-	}
-	// Header: the ctrl+d binding faint, the title in the accent — the same
-	// chrome-vs-detail hierarchy as the rest of the surface.
-	b.WriteString(m.theme.statusStyle.Render("ctrl+d  ") + m.theme.headerStyle.Render(fmt.Sprintf("Review changed files (%d)", len(r.files))))
-	b.WriteString("\n")
-	if len(r.files) == 0 {
-		b.WriteString(m.theme.statusStyle.Render("  no changes yet"))
-		b.WriteString("\n")
-		return
-	}
-	for i, f := range r.files {
-		marker := " "
-		if i == r.cursor {
-			marker = m.theme.headerStyle.Render(g("▶", ">")) // accent cursor marker
-		}
-		// The file path stays plain; the delta tag recedes faint; the status
-		// word carries its semantic hue (added=ok, deleted=error, modified=
-		// accent) — state-as-color, consistent with the transcript.
-		status := m.theme.statusStyle.Render(f.status)
-		switch f.status {
-		case "added":
-			status = m.theme.outcomeOKStyle.Render(f.status)
-		case "deleted":
-			status = m.theme.outcomeErrStyle.Render(f.status)
-		}
-		fmt.Fprintf(b, "%s %s  %s  %s", marker, f.path,
-			m.theme.statusStyle.Render(deltaTag(f.added, f.removed)), status)
-		b.WriteString("\n")
-	}
-	if r.expanded && r.cursor < len(r.files) {
-		f := r.files[r.cursor]
-		b.WriteString(renderDiff(f, m.theme))
-	}
-	if r.openErr != "" {
-		b.WriteString(m.theme.statusStyle.Render("open_in_browser: " + r.openErr))
-		b.WriteString("\n")
-		r.openErr = ""
-	}
-	b.WriteString(m.theme.statusStyle.Render("  enter: toggle diff " + g("·", ".") + " o: open_in_browser " + g("·", ".") + " ctrl+d: close"))
-	b.WriteString("\n")
+	newTranscript(m).renderReview(b)
 }
 
 // renderDiff renders a changed file's inline hunks as a terminal diff with the

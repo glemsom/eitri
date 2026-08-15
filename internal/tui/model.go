@@ -1377,111 +1377,26 @@ func (m Model) bandHeight() int {
 // is the single-pane view; when the rail is visible it is overlaid onto the
 // pane's top-right by viewString's surfaceWithRail (issue #232) rather than
 // joined to the pane's right, so the full-width bottom band stays edge-to-edge.
-// It is used by the alternate-screen renderer, so every frame is a clean repaint.
-//
-// Render is split into explicit, ordered regions (issue T01): the review
-// overlay region (when open) on top, the scroll region (history), then the
-// fixed bottom band (status strip + composer). Each region renders independently
-// into its own builder; renderPane just concatenates them in order. The scroll
-// region is Height-aware: its content clamps to the terminal height, so the band
-// stays pinned and only the history scrolls.
-
+// It is used by the alternate-screen renderer, so every frame is a clean
+// repaint. The band (status strip + composer) is a Model-owned composer
+// concern; the transcript region's render delegates to the Transcript value
+// (issue #243), which composes the review overlay + scroll region and passes
+// the band in below them (see Transcript.renderPane).
 func (m Model) renderPane() string {
 	var band strings.Builder
 	m.renderBand(&band)
-	bandStr := band.String()
-
-	// Overlay region: the review panel takes over the top of the pane (Layout B,
-	// issue #90), showing the dense changed-file summary + inline diff above the
-	// transcript. It is its own height-clipped region (issue T06): a tall
-	// expanded diff clips instead of overflowing the terminal, so the fixed
-	// bottom band stays pinned. Settings and the continuation prompt are also
-	// overlays but return earlier from View() as their own full-surface regions.
-	var review strings.Builder
-	reviewStr := ""
-	reviewLines := 0
-	if m.review != nil {
-		m.renderReview(&review)
-		reviewStr = review.String()
-		reviewLines = m.reviewRegionRows(reviewStr, lineCount(bandStr))
-	}
-
-	// The scroll region renders through the native bubbletea/viewport component
-	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow; no
-	// width-bucket cache or manual clip/anchor compensation layer is needed.
-	var hist strings.Builder
-	m.renderHistory(&hist, nil, nil)
-	if m.review != nil {
-		// The review region is its own height-clipped overlay (issue T06).
-		reviewStr = clipReviewRegion(reviewStr, reviewLines)
-	}
-	histRegion := m.renderHistoryViewport(hist.String(), lineCount(bandStr)+reviewLines)
-	// The scroll region must end on its own row before the band joins: the
-	// persisted viewport renders its rows newline-joined with no trailing
-	// newline (and pads to the scroll height), so without this terminator the
-	// band separator fuses onto the viewport's last padded row — doubling that
-	// row's width and shoving the separator (and the rail, when visible) past
-	// the terminal's right edge.
-	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
-		histRegion += "\n"
-	}
-	return reviewStr + histRegion + bandStr
+	t := newTranscript(m)
+	return t.renderPane(band.String())
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered
-// history content limited to the rows the
-// non-reserved regions (the fixed bottom band, plus the review overlay when
-// open — issue T06) do not occupy, so the band stays pinned at the very bottom
-// and only the history clips. Until the first resize lands (m.height == 0) the
-// history renders unclamped — the pre-session default, kept for lean embeds and
-// tests that never size.
-//
-// The clip is served through the persisted bubbletea/viewport scroll component
-// (T1 alt-screen pivot, issue #119): the viewport natively owns the scroll
-// position + clip, re-anchoring to the newest output (GotoBottom) while the
-// follow position is engaged so the newest content stays in view through
-// streamed appends and a mid-stream resize (issue #108 AC1/AC2). T2 (issue
-// #120) adds user navigation: PgUp/PgDn/Home/End and mouse-wheel scroll move
-// it, and scrolling up breaks follow (histFollow) so the viewport holds a
-// reading offset across re-renders until a new submit re-engages it.
+// history content limited to the rows the non-reserved regions (the fixed
+// bottom band, plus the review overlay when open — issue T06) do not occupy, so
+// the band stays pinned at the very bottom and only the history clips. It
+// delegates to the Transcript value's viewport clip (issue #243): see
+// Transcript.renderHistoryViewport for the height/viewport/follow behaviour.
 func (m Model) renderHistoryViewport(content string, reserved int) string {
-	if m.height <= 0 {
-		// No size has landed yet: the unclamped render, kept for lean embeds and
-		// tests that never size.
-		return content
-	}
-	vh := m.height - reserved
-	if vh <= 0 {
-		// The non-scroll regions occupy the whole terminal; no room for history.
-		return ""
-	}
-	vp := m.histViewport
-	if vp == nil {
-		// Without the persisted component (should not occur via NewModelCfg) the
-		// history clips to the viewport's bottom-anchored range.
-		return bottomSlice(content, vh)
-	}
-	// Re-hydrate the persisted viewport with the fresh content + dimensions so
-	// it owns the scroll position relative to the current content, then follow
-	// the newest output unless the user has broken follow by scrolling up (T2,
-	// issue #120 AC3): while follow is engaged the newest content stays in view
-	// through streamed appends and a mid-stream resize; while broken (reading an
-	// earlier offset) the viewport holds that position across re-renders so
-	// reading stays put until a new submit re-engages follow. SetContent clamps
-	// an out-of-range offset so a content shrink never leaves a stale offset.
-	vp.SetWidth(m.transcriptWidth())
-	vp.SetHeight(vh)
-	// An in-progress drag selection highlights its cell range in the full
-	// content before the viewport clips it to the visible window (issue #124
-	// AC1): the reverse-video markers render only where the range is on screen.
-	if m.dragSel != nil {
-		content = m.highlightSelection(content)
-	}
-	vp.SetContent(content)
-	if m.histFollow {
-		vp.GotoBottom()
-	}
-	return vp.View()
+	return newTranscript(m).renderHistoryViewport(content, reserved)
 }
 
 // navigateHistory applies a T2 (issue #120) keyboard scroll command to the
@@ -1552,21 +1467,7 @@ func (m *Model) navigateMouse(msg tea.MouseWheelMsg) {
 // file list readable. content is the fully rendered review; bandLines is the
 // fixed band's row count (already line-counted by the caller).
 func (m Model) reviewRegionRows(content string, bandLines int) int {
-	rrows := lineCount(content)
-	capRows := reviewRegionMax
-	if m.height > 0 {
-		avail := m.height - bandLines
-		if avail < capRows {
-			capRows = avail
-		}
-		if capRows < 0 {
-			capRows = 0
-		}
-	}
-	if rrows > capRows {
-		return capRows
-	}
-	return rrows
+	return newTranscript(m).reviewRegionRows(content, bandLines)
 }
 
 // toolRowRange maps a rendered history row span to the tool entry that owns
@@ -1578,7 +1479,6 @@ type toolRowRange struct {
 	start, end, idx int
 }
 
-
 // msgRowRange maps a rendered history row span to the message that owns it, so
 // the transcript exposes a row->message index (issue #242 AC1) alongside the
 // row->tool-entry index. start/end are content-line indexes in the viewport's
@@ -1586,6 +1486,7 @@ type toolRowRange struct {
 type msgRowRange struct {
 	start, end, idx int
 }
+
 // transcriptLayout is the persistent layout cache for the history region
 // (issue #242): one batched renderHistory pass captures the row->tool-entry
 // mapping (rows), the row->message mapping (msgs), both in content-line
@@ -1602,123 +1503,19 @@ type transcriptLayout struct {
 }
 
 // renderHistory renders the scroll region: the agent history that the user
-// reads and scrolls. It surfaces the workspace header, every committed message
-// (thinking blocks + markdown body), the interleaved tool entries, and the
-// busy indicator. It is the only region T02+ makes scrollable and height-
-// clamps. Detected skills surface through the slash-command completion list,
-// never as a panel in the transcript (issue #188).
+// reads and scrolls. It routes through the Transcript value (issue #243) — see
+// Transcript.renderHistory for the render body. It surfaces the workspace
+// header, every committed message (thinking blocks + markdown body), the
+// interleaved tool entries, and the busy indicator. It is the only region T02+
+// makes scrollable and height-clamps. Detected skills surface through the
+// slash-command completion list, never as a panel (issue #188).
 //
 // toolRows, when non-nil, receives the row span of every tool entry written,
-// in content-line coordinates, so click handling can map a pointer to the tool
-// under it without re-deriving the layout. Every block ends on a newline, so
-// the newline count before a write equals the content row index where it
-// starts.
-// msgRows, when non-nil, receives the row span of every message written, in the
-// same content-line coordinates, so the transcript exposes a row->message index
-// (issue #242 AC1) alongside the tool-entry index.
+// in content-line coordinates; msgRows receives the row span of every message
+// written (issue #242 AC1). Every block ends on a newline, so the newline count
+// before a write equals the content row index where it starts.
 func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
-	if toolRows != nil {
-		*toolRows = (*toolRows)[:0]
-	}
-	if msgRows != nil {
-		*msgRows = (*msgRows)[:0]
-	}
-	nl := 0
-	emit := func(s string) {
-		b.WriteString(s)
-		nl += strings.Count(s, "\n")
-	}
-	// Surface the project's read-only state (issue #82 AC1): the workspace
-	// directory the run operates in, rendered as an informational header above
-	// the transcript and never inside the composer the user types into.
-	if m.deps.WorkspacePath != "" {
-		emit(m.theme.statusStyle.Render("workspace: " + m.deps.WorkspacePath))
-		emit("\n")
-	}
-	// The empty-transcript welcome: a one-line brand mark plus a hint, so a
-	// fresh session reads as a designed surface instead of a blank scroll
-	// region (first-run discoverability). It disappears on the first turn
-	// (submit appends the "you" message before busy flips).
-	if len(m.messages) == 0 && !m.busy {
-		emit(idleWelcome(m.theme))
-	}
-	for i, msg := range m.messages {
-		msgStart := nl // content row where this message's block begins
-		// Reasoning renders as a distinct, collapsible per-turn block — never
-		// merged into the answer. Collapsed it is a one-line hint carrying the
-		// token estimate + effort; `tab` expands just that turn's block (issue
-		// #85).
-		if msg.role != "you" && msg.reasoning != "" {
-			emit(thinkingHeader(m.theme, msg.reasoning, m.reasoningEffort))
-			if msg.thinkingExpanded {
-				emit(msg.reasoning + "\n")
-			}
-		}
-		// Wrap the history content at the rail-shrunk transcript width, decoupled
-		// from the composer/band width (issue #232 AC4): the band now spans the
-		// full terminal width under the rail, but the history pane must keep
-		// wrapping to leave room for the rail — otherwise long lines wrap at the
-		// full band width and hard-truncate at the rail column.
-		w := m.transcriptWidth()
-		if msg.role == "you" {
-			// User prompts render as a carded bubble: the theme's near-background
-			// tint with breathing padding fills the pane width, so the user side
-			// reads as a card against the bare agent panes (benchmark §4.1). The
-			// markdown wraps inside the padding at pane width minus the 2-col
-			// gutter; the fill always spans the pane, never hugging ragged lines.
-			md, _ := RenderMarkdown(msg.content, w-4, m.deps.Config.Theme)
-			bubble := renderUserPromptCard(m.theme, md, w)
-			emit(bubble + "\n")
-		} else {
-			// Left-bordered agent pane (issue #122 AC1): the answer renders in
-			// a bordered pane; a failing turn (⚠) gets the error-colored border
-			// so errors are as readable as answers (issue #122 AC2).
-			md, _ := RenderMarkdown(msg.content, w-2, m.deps.Config.Theme)
-			pane := m.theme.agentPaneStyle
-			if strings.HasPrefix(msg.content, failurePrefix()) {
-				pane = m.theme.errorPaneStyle
-			}
-			// The pane border char follows the glyph charter at render time: the
-			// default theme's styles are built at package init, before any ASCII
-			// override is known, so the char is re-applied per frame.
-			pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-			// Trim glamour's trailing blank line so the pane ends on its last
-			// content row instead of a lone border column.
-			emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-		}
-		// Interleave the turn's tool-call entries right after its prompting "you"
-		// message (issue #84): compact one-liners, collapsed by default, expanded
-		// on demand to the full result (per-entry via mouse click, globally via
-		// alt+y). Rendering and the content-row accounting share one layout pass
-		// owned by the tool log (issue #208), so the hit-test never drifts from
-		// what is rendered.
-		// While a turn runs the live elapsed ticks (the busy spinner drives the
-		// re-render); idle frames pass a zero time so completed tools freeze
-		// their span.
-		now := time.Time{}
-		if m.busy {
-			now = time.Now()
-		}
-		blockStart := nl
-		toolBlock, blockRows := m.log.Render(m.theme, m.showToolResult, now, w, i)
-		emit(toolBlock)
-		if toolRows != nil {
-			for _, r := range blockRows {
-				*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
-			}
-		}
-		if msgRows != nil {
-			*msgRows = append(*msgRows, msgRowRange{start: msgStart, end: nl - 1, idx: i})
-		}
-	}
-	// The busy indicator normally lives in the always-visible status strip
-	// (renderBand), so the working state never scrolls away with the history
-	// (benchmark §4.3: spinner + working label in the statusline). Lean embeds
-	// and tests without a telemetry strip keep the history footer row instead.
-	if m.busy && m.telemetry == nil {
-		emit(m.theme.statusStyle.Render(busyLine(m.spinner)))
-		emit("\n")
-	}
+	newTranscript(m).renderHistory(b, toolRows, msgRows)
 }
 
 // ensureLayout lazily builds the persistent transcript layout cache (issue
