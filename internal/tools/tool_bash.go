@@ -10,7 +10,7 @@ import (
 // bashTool runs a shell command inside the bwrap sandbox with host network,
 // returning the combined stdout+stderr (token-efficient single stream). Its
 // output is routed through the deterministic tool-output compressor so noisy
-// `ls`/`find`/`grep`/`rg` reads stay cheap (docs/spec.md §5); the never-inflate
+// `ls`/`find`/`grep`/`rg` reads stay cheap; the never-inflate
 // gate keeps terse output untouched, and recovery is a re-run of the command.
 type bashTool struct {
 	sb *Sandbox
@@ -43,7 +43,7 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (string, error)
 		return o.Combined(), err
 	}
 	// Compress at the tool-result boundary so the compressed bytes land in the
-	// cache prefix (docs/spec.md §5). Never-inflate gate preserves terse output.
+	// cache prefix. Never-inflate gate preserves terse output.
 	return compress.Compress(o.Combined()), nil
 }
 

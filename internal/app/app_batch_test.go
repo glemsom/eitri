@@ -34,7 +34,7 @@ func TestRunBatchReturnsAnswer(t *testing.T) {
 }
 
 // TestRunBatchSuppressesThinkingByDefault verifies reasoning is not printed to
-// stdout unless Verbose is set (docs/spec.md §6).
+// stdout unless Verbose is set.
 func TestRunBatchSuppressesThinkingByDefault(t *testing.T) {
 	var out bytes.Buffer
 	dir := t.TempDir()

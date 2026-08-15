@@ -81,7 +81,7 @@ type Turn func(ctx context.Context, prompt string) (TurnResult, error)
 // TurnResult is the outcome of one conversation turn: the final assistant
 // answer plus any reasoning produced along the way. Reasoning is kept on a
 // separate channel so the TUI can render it as a collapsible thinking block and
-// never merge it into the answer (docs/spec.md §6, ticket #17).
+// never merge it into the answer (ticket #17).
 type TurnResult struct {
 	Answer    string
 	Reasoning string
@@ -128,7 +128,7 @@ type discoverDoneMsg struct {
 
 // SkillItem is one detected skill surfaced to the TUI's slash-command surface:
 // its name is what `/skillname` matches and what the `/` completion list
-// offers (eitri.md §2.3). The rail no longer carries a skills panel, so no
+// offers. The rail no longer carries a skills panel, so no
 // scope or activation state is tracked TUI-side (issue #188).
 type SkillItem struct {
 	Name string
@@ -690,7 +690,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.slashPrefix = ""
 			// A slash command routes to its handler instead of the engine (issue
 			// #87 AC1): `/settings` opens the Settings surface; `/skillname`
-			// activates that skill via the T8 run (eitri.md §2.3), surfacing the
+			// activates that skill via the T8 run, surfacing the
 			// result rather than sending the raw command as a chat prompt. Any
 			// other `/...` line is a normal prompt and is sent to the engine seam
 			// unchanged (issue #87 AC4: slash handling never swallows input).
@@ -989,7 +989,7 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 // current stream target; subsequent deltas extend that same message in place so
 // the Markdown/thinking render grows token by token. Reasoning deltas accumulate
 // onto the message's reasoning buffer and the answer deltas onto its content
-// buffer; the two never interleave (docs/spec.md §6).
+// buffer; the two never interleave.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	if delta == "" {
 		return
@@ -1544,7 +1544,7 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 		// Reasoning renders as a distinct, collapsible per-turn block — never
 		// merged into the answer. Collapsed it is a one-line hint carrying the
 		// token estimate + effort; `tab` expands just that turn's block (issue
-		// #85, docs/spec.md §6).
+		// #85).
 		if msg.role != "you" && msg.reasoning != "" {
 			emit(thinkingHeader(m.theme, msg.reasoning, m.reasoningEffort))
 			if msg.thinkingExpanded {

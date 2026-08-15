@@ -12,7 +12,7 @@ import (
 // of every turn it receives, then drives a two-turn tool round trip before a
 // final answer. tools stay fixed and only the tail (tool messages) grows, so
 // the request head must stay byte-identical across turns — the whole point of
-// prompt-caching discipline (docs/spec.md §4, ticket T6 #31).
+// prompt-caching discipline (ticket T6 #31).
 type captureHandler struct {
 	requests []provider.Request
 }
@@ -47,7 +47,7 @@ func (c *captureHandler) stream(ctx context.Context, req provider.Request) (prov
 // TestRunAgentMaintainsByteIdenticalCacheHead drives a multi-turn tool loop
 // through the engine seam with a session cache key and asserts the emitted
 // request head (the stable prefix before the growing tool tail) is
-// byte-identical across turns — the prompt-cache invariant (docs/spec.md §4).
+// byte-identical across turns — the prompt-cache invariant.
 func TestRunAgentMaintainsByteIdenticalCacheHead(t *testing.T) {
 	c := &captureHandler{}
 	e := New(provider.NewScripted(c.stream), nil)

@@ -8,7 +8,7 @@ import (
 )
 
 // Provider family identifiers, matching the documented families surfaced in the
-// Settings surface (eitri.md §2.2 / T11). The saved config.Provider value
+// Settings surface (T11). The saved config.Provider value
 // selects which transport/credential a run uses, honored across TUI and batch.
 const (
 	ProviderOpenCodeGo   = "opencode-go"

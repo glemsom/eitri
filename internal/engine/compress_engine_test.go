@@ -13,7 +13,7 @@ import (
 // noisy listing through the engine seam and asserts the tool result carried
 // back into the conversation is the compressed form: truncated with the
 // explicit "+ more" marker, strictly shorter than the raw bytes, and
-// deterministic so a re-run recovers the full output (docs/spec.md §5).
+// deterministic so a re-run recovers the full output.
 func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 	var raw strings.Builder
 	for i := 0; i < 500; i++ {

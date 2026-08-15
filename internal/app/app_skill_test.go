@@ -148,7 +148,7 @@ func TestBatchSkillThroughEngineSeam(t *testing.T) {
 // path (T9b) runs through the same `skill` tool the batch engine uses (T8): the
 // SkillsSurface built by skillSurface drives reg.Run(ctx, "skill", ...) and
 // returns the wrapped agentskills-io payload, and the catalog reflects the skill
-// as active (docs/spec.md §9, eitri.md §2.3).
+// as active.
 func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	ws := t.TempDir()
 	// Isolate from any real user-global skills so only the project pack below

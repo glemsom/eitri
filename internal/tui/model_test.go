@@ -78,7 +78,7 @@ func TestModel_errorTurn(t *testing.T) {
 // TestModel_thinkingCollapsible asserts reasoning renders as a distinct,
 // auto-collapsed per-turn block: the collapsed hint line is always shown, the
 // reasoning body is hidden until `tab` expands the block, and reasoning never
-// leaks into the answer (docs/spec.md §6, ticket #17 / #85).
+// leaks into the answer (ticket #17 / #85).
 func TestModel_thinkingCollapsible(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
 		return TurnResult{
@@ -232,7 +232,7 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 }
 
 // TestModel_slashCompletionTab asserts `/` + tab cycles a skill-name completion
-// in the composer (eitri.md §2.3).
+// in the composer.
 func TestModel_slashCompletionTab(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },

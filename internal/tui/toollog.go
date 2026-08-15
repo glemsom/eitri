@@ -383,7 +383,7 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 
 	if !expanded {
 		// Collapsed summary: line count + explicit "+N more" tail marker when
-		// the result was compressed (docs/spec.md §5). Never a raw dump.
+		// the result was compressed. Never a raw dump.
 		if te.lines > 0 || te.dropped > 0 {
 			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
 			if te.compressed && te.dropped > 0 {

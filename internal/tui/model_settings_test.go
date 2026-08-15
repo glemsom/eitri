@@ -33,7 +33,7 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 
 // TestModel_SettingsSavePersistsAndCloses verifies navigating to Save and
 // pressing Enter invokes the Save seam with the edited config and closes the
-// Settings surface (eitri.md §2.7).
+// Settings surface.
 func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
@@ -305,7 +305,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 
 // TestModel_ContinuationPromptAnswersYes verifies the interactive max-turns
 // path: an engine that hits the cap signals a prompt, the Model renders it, and
-// a "y" answer grants continuation (eitri.md §2.1). The engine-side hook
+// a "y" answer grants continuation. The engine-side hook
 // blocks on the Model's channels, which the main loop services; this test
 // drives the Model side deterministically.
 func TestModel_ContinuationPromptAnswersYes(t *testing.T) {

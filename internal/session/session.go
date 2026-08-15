@@ -1,7 +1,6 @@
 // Package session provides the on-disk session trail: every run gets a GUID
 // transcript directory under the data dir (sessions/<GUID>/), and debug mode
-// attaches a pluggable HTTP trace sink for deep-dive provider debugging
-// (eitri.md §2.5/§2.7, docs/spec.md §11).
+// attaches a pluggable HTTP trace sink for deep-dive provider debugging.
 package session
 
 import (

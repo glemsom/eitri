@@ -187,7 +187,7 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 }
 
 // TestCompactionSkipsSummaryWhenBudgetUnsupported verifies the generation-control
-// contract (docs/spec.md §13 / issue #60): a special turn that requires the
+// contract (issue #60): a special turn that requires the
 // Generation Budget on a provider that cannot honor it fails negotiation, and the
 // summary is skipped via the fail-safe path rather than silently running without
 // the hard cap. Compaction still happens (eviction frees context) and the run

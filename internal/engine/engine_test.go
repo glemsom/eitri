@@ -81,7 +81,7 @@ func contains(s, sub string) bool {
 
 // capturedRequests records every provider.Request the engine issues, so a test
 // can assert the reasoning-control head (thinking + normalized effort) is
-// threaded through the engine seam (docs/spec.md §6).
+// threaded through the engine seam.
 type capturedRequests struct {
 	reqs []provider.Request
 }
@@ -121,7 +121,7 @@ func TestRunThreadsThinkingAndEffort(t *testing.T) {
 // turn two streams real reasoning and the final answer. The engine must keep
 // the reasoning on the assistant message it re-emits for the tool turn (so the
 // resubmitted history never strips it, tripping DeepSeek's 400) and surface
-// the final turn's reasoning on the result (docs/spec.md §6).
+// the final turn's reasoning on the result.
 func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	assistantTurn := 0
 	var assistantReasons []string // reasoning_content the engine re-emits per assistant turn
@@ -183,7 +183,7 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 
 // capableScripted is a Provider that both scripts turns and declares a fixed set
 // of supported generation controls, exercising the engine's negotiation seam
-// (docs/spec.md §13 / issue #58).
+// (issue #58).
 type capableScripted struct {
 	*provider.Scripted
 	supported []provider.GenerationControl

@@ -12,7 +12,7 @@ import (
 
 // captureThinking records the thinking-control head of every provider request,
 // so a test can assert the run seam reads config.ThinkingEnabled instead of
-// hardcoding thinking on (eitri.md §2.7 / #55).
+// hardcoding thinking on (#55).
 type captureThinking struct {
 	seen []bool
 }

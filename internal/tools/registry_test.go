@@ -101,7 +101,7 @@ func TestBashRunsInSandbox(t *testing.T) {
 }
 
 // TestBashCompressesNoisyOutputAtBoundary verifies a noisy, high-volume bash
-// read is compressed at the tool-result boundary (docs/spec.md §5): the output
+// read is compressed at the tool-result boundary: the output
 // returned into the conversation is truncated with the explicit "+ more" marker
 // and is strictly shorter, but the raw command can be re-run for recovery.
 func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {

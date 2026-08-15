@@ -8,7 +8,7 @@ import (
 
 // TestTelemetryAggregatesUsage asserts the live telemetry accumulates per-turn
 // token usage into cache hit/miss and running cost with known-good literals
-// from the deepseek-v4-flash price table (docs/spec.md §4 / ADR-0003:
+// from the deepseek-v4-flash price table (ADR-0003:
 // $0.14/1M input miss, $0.28/1M output, $0.0028/1M cache hit).
 func TestTelemetryAggregatesUsage(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)

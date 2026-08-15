@@ -47,7 +47,7 @@ func typeName(e Event) string {
 // TestRunEmitsStreamAndUsageAndTurnEvents verifies a plain non-tool turn pushes
 // streamed thinking/answer deltas, per-turn usage, and turn boundaries onto the
 // subscriber in order — the (a), (b), (d), (e) event surface for the
-// shared drain path (docs/spec.md §6; the reasoning delta is never merged into
+// shared drain path (the reasoning delta is never merged into
 // the answer).
 func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 	col := &eventCollector{}
@@ -111,8 +111,8 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 }
 
 // compressExpr returns a ToolExecutor whose tool result is a compressed,
-// truncated listing carrying the explicit "+3 more" tail marker (docs/spec.md
-// §5) — the shape the real bash tool emits — so the compression-metadata event
+// truncated listing carrying the explicit "+3 more" tail marker
+// — the shape the real bash tool emits — so the compression-metadata event
 // can be asserted against a known-good marker.
 func compressExec() ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (string, error) {
@@ -199,7 +199,7 @@ func TestRunAgentEmitsToolEventsInOrder(t *testing.T) {
 }
 
 // an engine never subscribed to the event surface pushes nothing, so plain runs
-// behave byte-identically (docs/spec.md §10). This is the "no event surface
+// behave byte-identically. This is the "no event surface
 // required, no regressions" acceptance criterion.
 func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
 	col := &eventCollector{}
@@ -239,8 +239,8 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 	}
 }
 
-// TestRunAgentEmitsCompactionEvent verifies the compaction marker (docs/spec.md
-// §7) is surfaced as a CompactedEvent on the subscriber when the proactive 80%
+// TestRunAgentEmitsCompactionEvent verifies the compaction marker
+// is surfaced as a CompactedEvent on the subscriber when the proactive 80%
 // threshold is crossed — the (f) event surface for the compaction marker.
 func TestRunAgentEmitsCompactionEvent(t *testing.T) {
 	col := &eventCollector{}

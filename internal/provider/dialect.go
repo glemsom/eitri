@@ -2,7 +2,7 @@ package provider
 
 // Dialect re-expression: one canonical JSON-Schema per tool is authored once
 // (in the tool registry) and serialized here into each wire dialect's tool
-// wrapper (docs/spec.md §2, ticket #10). Never author per-dialect copies — the
+// wrapper (ticket #10). Never author per-dialect copies — the
 // same schema map feeds every wrapper, so the strict-shape guarantee holds on
 // every transport. T11 routes real requests through this same layer; today the
 // tests assert the emitted wrappers.

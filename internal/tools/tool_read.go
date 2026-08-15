@@ -29,7 +29,7 @@ func (r *readTool) Schema() map[string]any {
 			"description": "The file path, in the shared path namespace (workspace or sandbox /tmp).",
 		},
 		// Strict-shaped (all-required) with optionals expressed as nullable
-		// unions per docs/spec.md §2: a model omits an optional by sending null.
+		// unions: a model omits an optional by sending null.
 		// The union is the OpenAI-compatible type-array form so the provider's
 		// schema validator accepts it (a bare []any marshals to a plain JSON
 		// array, which OpenCode Go rejects with HTTP 400).
@@ -84,7 +84,7 @@ func argInt(args map[string]any, key string, def int) (int, error) {
 	v, ok := args[key]
 	if !ok || v == nil {
 		// Treat a nullable-union optional expressed as null (strict-shaped
-		// schemas, docs/spec.md §2) as absent so it falls to its default.
+		// schemas) as absent so it falls to its default.
 		return def, nil
 	}
 	var out int

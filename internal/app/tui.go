@@ -15,7 +15,7 @@ import (
 // runEngineTurn adapts the shared runAgent turn to the tui.Turn seam. It runs
 // one agent turn over the same engine, session transcript, and tool registry as
 // batch, so a TUI greeting round-trips through the engine exactly like batch
-// (docs/spec.md §9, eitri.md §2.6). canContinue enables interactive max-turns
+// canContinue enables interactive max-turns
 // continuation (nil auto-denies, the batch default).
 func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, canContinue func() bool) tui.Turn {
 	return func(ctx context.Context, prompt string) (tui.TurnResult, error) {
@@ -25,7 +25,7 @@ func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, ses
 		}
 		// Reasoning rides the same turn seam as the answer so the TUI can render
 		// it as a collapsible block (T9b); batch still suppresses it on stdout
-		// unless -v (docs/spec.md §6).
+		// unless -v.
 		return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning}, nil
 	}
 }
@@ -36,7 +36,7 @@ func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, ses
 // repaint into the alt buffer, so the transcript re-flows cleanly on resize
 // with no stale primary-buffer residue. The Settings surface (ctrl+s) is seeded
 // from the loaded config and provider model discovery, and persists edits back
-// through the config layer (eitri.md §2.7, T12). The right context rail
+// through the config layer (T12). The right context rail
 // (ctrl+b, issue #88) is seeded with the run's static provider/model/effort and
 // session context (id + temp path). sessionTemp is the host-form ephemeral /tmp
 // root for this run's session (ADR-0002).
@@ -88,7 +88,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// `/skillname` slash activation sits on the same catalog the batch
 		// engine uses (T8): activation runs the `skill` tool through the
 		// registry, so a slash activation behaves identically to a model-
-		// invoked one (docs/spec.md §9, eitri.md §2.3, ticket #35). The rail
+		// invoked one (ticket #35). The rail
 		// shows no skills panel (issue #188); the surface only feeds slash
 		// completion and activation.
 		Skills: skillSurface(reg, skills),
@@ -124,7 +124,7 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			case engine.ReasoningStream:
 				// Reasoning rides the same stream seam as the answer but tagged as a
 				// reasoning delta, so the TUI grows a distinct thinking block and
-				// never merges it into the answer (issue #85, docs/spec.md §6).
+				// never merges it into the answer (issue #85).
 				pushStream(sCh, tui.StreamUpdate{Kind: tui.ReasoningStream, Delta: ev.Delta})
 			}
 		case engine.UsageEvent:

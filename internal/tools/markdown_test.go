@@ -7,7 +7,7 @@ import (
 
 // TestHTMLToMarkdownRendersBlocks locks the representative block coverage the
 // converter is expected to render: headings, paragraphs, bold/italic, links,
-// code fences, and lists — the shapes web content needs (docs/spec.md §2).
+// code fences, and lists — the shapes web content needs.
 func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
 	html := `<html><body>` +
 		`<h1>Heading</h1>` +
@@ -35,7 +35,7 @@ func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
 }
 
 // TestHTMLToMarkdownDropsChrome verifies script/style/nav bodies never reach the
-// output — untrusted web chrome stays out (docs/spec.md §2).
+// output — untrusted web chrome stays out.
 func TestHTMLToMarkdownDropsChrome(t *testing.T) {
 	html := `<html><head><style>.x{}</style></head><body><nav><a>hidden</a></nav><script>evil()</script><p>keep</p></body></html>`
 	out, err := htmlToMarkdown(strings.NewReader(html))

@@ -7,7 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// Session compaction constants (ADR-0003, docs/spec.md §7). The engine compacts
+// Session compaction constants (ADR-0003). The engine compacts
 // proactively at a configurable fraction of the context window and
 // emergently on a provider context-overflow, keeping a verbatim tail and
 // folding the evicted body into an anchored summary re-injected at the head.
@@ -123,8 +123,7 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		opts.OnCompacted()
 	}
 	// Surface the compaction marker on the observer seam (issue #81): the TUI
-	// renders a read-only [compacted] status entry, never blocking the run
-	// (docs/spec.md §7).
+	// renders a read-only [compacted] status entry, never blocking the run.
 	e.emit(CompactedEvent{Turn: turn})
 	return newPrefix, true
 }
@@ -166,7 +165,7 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 	}
 	// Skill-content ring-fence: when Prune is on, never evict a message that is
 	// part of a skill activation, even if the soft budget would drop it
-	// (ADR-0003 decision 5, docs/spec.md §7).
+	// (ADR-0003 decision 5).
 	if cfg.Prune {
 		for i := 0; i < len(messages); i++ {
 			if isSkillMessage(messages[i]) {
@@ -198,7 +197,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
 
 	// The summary generation is a special turn that opts into a hard Generation
-	// Budget (issue #60, docs/spec.md §13): it requests generation_budget as
+	// Budget (issue #60): it requests generation_budget as
 	// required, so negotiation either honors it (a required control is always
 	// honored when it is supported) or fails fast before any wire call. The
 	// request carries a hard max_completion_tokens cap on a supporting provider;
@@ -250,7 +249,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 }
 
 // isSkillMessage reports whether a message belongs to a skill activation and so
-// is ring-fenced from eviction when Prune is enabled (docs/spec.md §7, ADR-0003
+// is ring-fenced from eviction when Prune is enabled (ADR-0003
 // decision 5). An assistant message that carries a tool call naming the built-in
 // "skill" tool, or the matching tool result, is protected.
 func isSkillMessage(m provider.Message) bool {

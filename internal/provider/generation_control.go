@@ -6,7 +6,7 @@ import (
 )
 
 // This file defines the generation-control capability negotiation seam (issue
-// #58 / docs/spec.md §13): how a special turn declares which provider-side
+// #58): how a special turn declares which provider-side
 // generation controls it wants, and how higher layers learn which of those a
 // provider can actually honor — before any wire call. The four controls are the
 // constrained-output levers Eitri may request on internal (non-tool) turns:
