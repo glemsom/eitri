@@ -6,12 +6,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
+	"github.com/glemsom/eitri/internal/tui"
 )
 
 // scriptedSkillTurn drives the engine seam through a provider that (1) activates
@@ -293,4 +296,197 @@ func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
 	if got := skills.Scope("user-skill"); got != "user" {
 		t.Fatalf("user-skill scope = %q, want user", got)
 	}
+}
+
+// TestTUISlashHiddenSkillThroughEngineSeamWithArgs closes AC criterion 4 of
+// issue #240: a hidden (disable-model-invocation) command skill must remain
+// slash-activatable WITH args through the real engine/skill surface, and the
+// trailing args must be threaded verbatim to the TUI Turn seam as a follow-up
+// user turn. The TUI-level tests (TestModel_slashSkillWithArgs et al.) exercise
+// the same flow against a fake my-skill surface, and TestTUISlashListsHiddenSkill
+// proves the hidden skill surfaces + bare activation at the app level — but
+// neither drives a hidden skill's args path end to end. This test wires a real
+// SkillsSurface built by skillSurface from the discovered hidden skill and a
+// recording Turn stub, then types `/improve-codebase-architecture <args>` and
+// asserts the args land verbatim on the turn seam in note-then-args ordering.
+func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
+	const wantArgs = "Let us improve this codebase"
+
+	ws := t.TempDir()
+	// Isolate from any real user-global skills so only the project pack below
+	// is discoverable.
+	t.Setenv("HOME", t.TempDir())
+	skillDir := filepath.Join(ws, ".agents", "skills", "improve-codebase-architecture")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("slash-hidden-args-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatalf("skillSurface = nil, want non-nil (hidden command skill must back the slash surface)")
+	}
+	var names []string
+	for _, it := range surface.Items {
+		names = append(names, it.Name)
+	}
+	if !slices.Contains(names, "improve-codebase-architecture") {
+		t.Fatalf("slash completion items = %v, want the hidden command skill suggested", names)
+	}
+
+	// Drive a TUI model with the real surface and a recording Turn seam, exactly
+	// as runTUI wires them (but with the engine turn replaced by a recording
+	// stub). The recording asserts the args reach the turn seam verbatim.
+	var turnPrompts []string
+	m := tui.NewModelCfg(tui.Dependencies{
+		Turn: func(_ context.Context, prompt string) (tui.TurnResult, error) {
+			turnPrompts = append(turnPrompts, prompt)
+			return tui.TurnResult{Answer: "ok"}, nil
+		},
+		Skills: surface,
+	})
+	m = appTestResize(t, m)
+	m = appTestTypeText(t, m, "/improve-codebase-architecture "+wantArgs)
+	m = appTestSubmitAndWait(t, m)
+
+	// (a) The args turn lands verbatim on the seam — the core of criterion 4.
+	if len(turnPrompts) != 1 || turnPrompts[0] != wantArgs {
+		t.Fatalf("args turn seam = %v, want [%q]", turnPrompts, wantArgs)
+	}
+
+	// (b) The skill activation payload renders as a note BEFORE the args user
+	// turn (note-then-args ordering, mirroring TestModel_slashSkillWithArgs).
+	content := appTestANSIStrip(appTestView(m))
+	n := strings.Index(content, "<skill_content name=\"improve-codebase-architecture\">")
+	if n < 0 {
+		t.Fatalf("skill activation payload not rendered;\n%s", content)
+	}
+	if strings.Index(content, "Do the architecture thing") < 0 {
+		t.Fatalf("skill body not rendered;\n%s", content)
+	}
+	if a := strings.Index(content, wantArgs); a < 0 {
+		t.Fatalf("args message not rendered;\n%s", content)
+	} else if n > a {
+		t.Fatalf("skill note index %d must precede args index %d (note renders before args turn)", n, a)
+	}
+
+	// (c) The catalog reflects the hidden skill as active after slash activation.
+	if !skills.IsActive("improve-codebase-architecture") {
+		t.Fatalf("improve-codebase-architecture not marked active after slash activation")
+	}
+
+	// (d) The hidden skill stays excluded from the model-invoker `skill` tool
+	// enum — hidden from the model, available to the human slash surface.
+	var defs []tools.Definition
+	for _, d := range reg.Definitions() {
+		if d.Name == "skill" {
+			defs = append(defs, d)
+		}
+	}
+	if len(defs) != 1 {
+		t.Fatalf("skill tool definitions = %d, want 1", len(defs))
+	}
+	props, _ := defs[0].Parameters["properties"].(map[string]any)
+	nameProp, _ := props["name"].(map[string]any)
+	enum, _ := nameProp["enum"].([]any)
+	for _, e := range enum {
+		if e == "improve-codebase-architecture" {
+			t.Fatalf("skill enum %v must exclude the hidden command skill", enum)
+		}
+	}
+}
+
+// appTestResize resizes a TUI model to the standard test viewport so rendering
+// assertions are stable. It is the app-package twin of the tui test helper
+// resize; the tui helpers are package-private, so the app tests that drive a
+// real tui.Model through its exported Update/View reproduce the minimal
+// keystroke logic here (issue #240).
+func appTestResize(t *testing.T, m tui.Model) tui.Model {
+	t.Helper()
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	return appTestAsModel(t, nm)
+}
+
+// appTestTypeText feeds a run of text to the composer in one keypress, mirroring
+// the tui package's typeText helper.
+func appTestTypeText(t *testing.T, m tui.Model, s string) tui.Model {
+	t.Helper()
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyExtended, Text: s})
+	return appTestAsModel(t, nm)
+}
+
+// appTestSubmitAndWait feeds Enter to run the turn and then the async completion,
+// unwrapping any tea.BatchMsg so the (possibly chained) skill-args follow-up turn
+// runs and its message lands. It throttles into the shared appTestRunSubmitted
+// helper, mirroring submitAndWait/runSubmitted from the tui package.
+func appTestSubmitAndWait(t *testing.T, m tui.Model) tui.Model {
+	t.Helper()
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("turn command was nil after submit")
+	}
+	return appTestRunSubmitted(t, appTestAsModel(t, nm), cmd)
+}
+
+// appTestRunSubmitted executes a submitted command synchronously, unwrapping a
+// tea.BatchMsg, delivering each resulting message, and threading any follow-up
+// command so a skill-args turn (queued by the skillDoneMsg handler, issue #239)
+// chains through to its Turn seam invocation.
+func appTestRunSubmitted(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
+	t.Helper()
+	if cmd == nil {
+		return m
+	}
+	msg := cmd()
+	if bm, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range bm {
+			m = appTestRunSubmitted(t, m, c)
+		}
+		return m
+	}
+	if msg == nil {
+		return m
+	}
+	nm, next := m.Update(msg)
+	m = appTestAsModel(t, nm)
+	return appTestRunSubmitted(t, m, next)
+}
+
+// appTestAsModel type-asserts a tea.Model from Update back to the concrete
+// tui.Model, mirroring the tui package's asModel helper.
+func appTestAsModel(t *testing.T, tm tea.Model) tui.Model {
+	t.Helper()
+	md, ok := tm.(tui.Model)
+	if !ok {
+		t.Fatalf("tea.Model is %T, want tui.Model", tm)
+	}
+	return md
+}
+
+// appTestView renders the model's current view content.
+func appTestView(m tui.Model) string { return m.View().Content }
+
+// appTestANSIStrip removes SGR escape sequences so content-ordering assertions
+// aren't derailed by style runs between words (mirrors tui's ansiStrip).
+func appTestANSIStrip(s string) string {
+	return regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(s, "")
 }
