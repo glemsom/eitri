@@ -581,8 +581,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		tx := newTranscript(m)
 		tx.apply(msgi.update) // tool updates route through the Transcript (issue #245)
-		m.log = tx.log        // persist the Transcript's log back into Model
-		m.layout.dirty = true // an entry changed the tool log's rendered rows
+		m.log = tx.log // persist the Transcript's log back into Model
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -774,7 +773,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msgi.Mod.Contains(tea.ModAlt) && msgi.Text == "y" {
 			tx := newTranscript(m)
 			m.showToolResult = tx.toggleShowToolResult() // alt+y routes through the Transcript (issue #245)
-			m.layout.dirty = true // showing/hiding all tool results re-wraps the log
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -1498,14 +1496,6 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRo
 func (m *Model) ensureLayout() {
 	tx := newTranscript(*m)
 	tx.ensureLayout()
-}
-
-// recordLayout is a forwarding shim kept for the persistent-cache test seam
-// (issue #242): it delegates the single batched layout pass to the Transcript,
-// which builds into the shared layout pointer. See Transcript.recordLayout.
-func (m *Model) recordLayout() {
-	tx := newTranscript(*m)
-	tx.recordLayout()
 }
 
 // toolEntryAtLine forwards the click-to-expand hit-test to the Transcript,

@@ -489,13 +489,19 @@ func (t Transcript) highlightSelection(content string) string {
 // persists across a drag's motion events — and across the value copies View
 // makes, because the cache itself stays in one shared location.
 func (t *Transcript) ensureLayout() {
+	if t.layoutPtr().dirty {
+		t.recordLayout()
+	}
+}
+
+// layoutPtr guarantees the shared layout cache exists, lazily allocating it on
+// first use. All tool-log and hit-test routes allocate through this so the
+// nil-guard lives in one place instead of five.
+func (t *Transcript) layoutPtr() *transcriptLayout {
 	if t.layout == nil {
 		t.layout = &transcriptLayout{dirty: true}
 	}
-	if !t.layout.dirty {
-		return
-	}
-	t.recordLayout()
+	return t.layout
 }
 
 // recordLayout performs the one batched layout pass behind the persistent cache
@@ -505,20 +511,18 @@ func (t *Transcript) ensureLayout() {
 // incremented here backs the issue #242 AC4 test hook, which asserts a repeated
 // hit-test reuses the recorded index (one build).
 func (t *Transcript) recordLayout() {
-	if t.layout == nil {
-		t.layout = &transcriptLayout{dirty: true}
-	}
+	l := t.layoutPtr()
 	var hist strings.Builder
-	t.layout.rows = t.layout.rows[:0]
-	t.layout.msgs = t.layout.msgs[:0]
-	t.renderHistory(&hist, &t.layout.rows, &t.layout.msgs)
+	l.rows = l.rows[:0]
+	l.msgs = l.msgs[:0]
+	t.renderHistory(&hist, &l.rows, &l.msgs)
 	lines := strings.Split(hist.String(), "\n")
-	t.layout.plain = t.layout.plain[:0]
-	for _, l := range lines {
-		t.layout.plain = append(t.layout.plain, ansiStrip(l))
+	l.plain = l.plain[:0]
+	for _, line := range lines {
+		l.plain = append(l.plain, ansiStrip(line))
 	}
-	t.layout.dirty = false
-	t.layout.builds++
+	l.dirty = false
+	l.builds++
 }
 
 // toolEntryAtLine returns the tool entry whose rendered rows include the given
@@ -543,10 +547,7 @@ func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool
 // persists the mutated log back into its own copy (issue #248 removes it).
 func (t *Transcript) toggleToolEntry(idx int) {
 	t.log.Toggle(idx)
-	if t.layout == nil {
-		t.layout = &transcriptLayout{dirty: true}
-	}
-	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
 }
 
 
@@ -558,10 +559,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 // log back into its state (issue #248 removes the duplicate).
 func (t *Transcript) apply(u ToolUpdate) {
 	t.log.Apply(u)
-	if t.layout == nil {
-		t.layout = &transcriptLayout{dirty: true}
-	}
-	t.layout.dirty = true // an entry changed the tool log's rendered rows
+	t.layoutPtr().dirty = true // an entry changed the tool log's rendered rows
 }
 
 // toggleShowToolResult flips the global all-entries expansion state (issue #245
@@ -570,9 +568,6 @@ func (t *Transcript) apply(u ToolUpdate) {
 // hiding all tool results re-wraps the log.
 func (t *Transcript) toggleShowToolResult() bool {
 	t.showToolResult = !t.showToolResult
-	if t.layout == nil {
-		t.layout = &transcriptLayout{dirty: true}
-	}
-	t.layout.dirty = true // showing/hiding all tool results re-wraps the log
+	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
 	return t.showToolResult
 }
