@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -223,4 +224,124 @@ func TestModelComposerCaretStaysCorrectWithRailWrapped(t *testing.T) {
 		t.Fatalf("draft must wrap to at least two composer rows, got %d", len(rows))
 	}
 	caretAtEndOfVisibleRow(t, m, "a")
+}
+
+// tallBandHeights is the issue #233 regression-lock size sweep: tall rail-visible
+// windows (height > 25 rows) where the rail's ~14-row content is shorter than the
+// room above the band, so the pre-#232 layout left a dead railWidth x bandHeight
+// blank corner under the rail (the band stopped at the rail-shrunk transcript
+// width) and the rail stopped many rows above the band. Keeping width fixed at
+// 120 keeps the rail visible at every height, stressing the exact reported
+// symptom across the tall range.
+var tallBandHeights = []int{26, 30, 35, 40, 50}
+
+// rowRole names a band row by its role for precise, single-row failure messages.
+// The band carries exactly three rows: index 0 separator, 1 status strip, then
+// composer (possibly wrapped onto extra rows when a draft wraps).
+func rowRole(i int) string {
+	switch i {
+	case 0:
+		return "separator"
+	case 1:
+		return "status strip"
+	default:
+		return "composer"
+	}
+}
+
+// bandRowsForHeight renders a tall rail-visible model at the given height and
+// classifies its band rows (separator, status strip, composer) so the
+// full-width assertions below fail by the specific row that shortens. It returns
+// the band separator frame-row index and the band row strings (separator
+// inclusive, rune-counted plain).
+func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
+	t.Helper()
+	m := railBandModel(t, 120, h)
+	if !m.railVisible() {
+		t.Fatalf("rail must stay visible at 120x%d", h)
+	}
+	plain := plain(view(m))
+	sep, rows = bandRowsFrom(plain)
+	if sep < 0 {
+		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+	}
+	if len(rows) < 3 {
+		t.Fatalf("band has %d rows, want separator+status+composer >= 3:\n%s", len(rows), plain)
+	}
+	return sep, rows
+}
+
+// TestModelBandSpansFullWidthUnderRailTallSweep pins issue #233 AC1/AC3 across
+// ALL tall rail-visible window sizes, not just the single 120x40 case the #232
+// tests use. Pre-#232 the bandWidth seam was rail-shrunk, so at every tall
+// height the band stopped at transcriptWidth and left a dead railWidth x
+// bandHeight blank corner under the rail. This test sweeps the tall range and
+// asserts every band row — separator, status strip, composer — reaches the full
+// terminal width (minus the 2-col gutter) all the way under the rail, at every
+// height, and that the rail's left border never appears on a band row (no
+// overlap).
+func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
+	for _, h := range tallBandHeights {
+		h := h
+		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {
+			m := railBandModel(t, 120, h)
+			if !m.railVisible() {
+				t.Fatal("rail must stay visible at 120x", h)
+			}
+			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw <= tw {
+				t.Errorf("h=%d bandWidth=%d must exceed rail-shrunk transcriptWidth=%d across the tall range", h, bw, tw)
+			}
+			if w := m.bandWidth(); w != 120-2 {
+				t.Errorf("h=%d bandWidth=%d, want full terminal width minus gutter=%d", h, w, 120-2)
+			}
+
+			sep, rows := bandRowsForHeight(t, h)
+			want := 120 - 2
+			for i, r := range rows {
+				if got := plainWidth(r); got != want {
+					t.Errorf("h=%d %s row (frame row %d) is %d wide, want full terminal width %d (dead corner under rail must be gone)", h, rowRole(i), sep+i, got, want)
+				}
+				if strings.Contains(r, "│") {
+					t.Errorf("h=%d %s row (frame row %d) contains the rail's left border; rail must float above the band, not overlap it", h, rowRole(i), sep+i)
+				}
+			}
+		})
+	}
+}
+
+// TestModelRailEndsOneRowAboveBandTallSweep pins issue #233 AC2 across ALL tall
+// rail-visible window sizes: the rail's content must fill down to exactly one
+// row above the band top — never overlapping it and never stopping early above
+// it — at every height in the sweep. Pre-#232 styledRail trimmed long content
+// but did NOT pad short content, so on tall windows (where the ~14-row rail
+// block is shorter than the room above the band) the rail stopped many rows
+// above the band and left a dead gap. This sweep asserts the rail's last
+// rendered border row == band separator row - 1 at every tall height.
+func TestModelRailEndsOneRowAboveBandTallSweep(t *testing.T) {
+	for _, h := range tallBandHeights {
+		h := h
+		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {
+			m := railBandModel(t, 120, h)
+			if !m.railVisible() {
+				t.Fatal("rail must stay visible at 120x", h)
+			}
+			sep, _ := bandRowsForHeight(t, h)
+			framePlain := plain(view(m))
+			lastRail := -1
+			for i, ln := range strings.Split(framePlain, "\n") {
+				if strings.Contains(ln, "│") {
+					lastRail = i
+				}
+			}
+			if lastRail < 0 {
+				t.Fatalf("no rail border row in frame at 120x%d", h)
+			}
+			if want := sep - 1; lastRail != want {
+				t.Errorf("h=%d rail's last border row=%d, want exactly one row above the band top at row %d (rail must fill down to the band at every tall height)", h, lastRail, want)
+			}
+			if lastRail >= sep {
+				t.Errorf("h=%d rail overlaps the band", h)
+			}
+		})
+	}
 }
