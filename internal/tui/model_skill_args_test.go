@@ -20,7 +20,7 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 	var activated string
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return TurnResult{Answer: "done"}, nil
 		},
@@ -65,7 +65,7 @@ func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 	want := "Let us improve this codebase"
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return TurnResult{Answer: "ok"}, nil
 		},
@@ -91,7 +91,7 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 	var activated string
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return TurnResult{Answer: "ok"}, nil
 		},
@@ -123,7 +123,7 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 func TestModel_slashSkillActivationError(t *testing.T) {
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return TurnResult{Answer: "ok"}, nil
 		},

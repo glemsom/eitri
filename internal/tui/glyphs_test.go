@@ -35,7 +35,7 @@ func TestGlyph_charter(t *testing.T) {
 func TestToolEntry_asciiGlyphs(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		Tools: NewToolFeed(),

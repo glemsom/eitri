@@ -10,7 +10,7 @@ import (
 
 // fakeSess turns returns a canned answer for tests that drive a Model turn.
 func fakeSess(prompt string) Turn {
-	return func(ctx context.Context, p string, _ SkillInject) (TurnResult, error) {
+	return func(ctx context.Context, p string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "hi"}, nil
 	}
 }

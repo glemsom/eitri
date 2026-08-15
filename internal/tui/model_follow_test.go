@@ -147,7 +147,7 @@ func TestModel_liveFollowTracksAppends(t *testing.T) {
 // replaces.
 func TestModel_followViewportPersisted(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "answer"}, nil
 		},
 	})

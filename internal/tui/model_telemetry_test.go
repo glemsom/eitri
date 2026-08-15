@@ -14,7 +14,7 @@ import (
 func newTelemetryModel(t *testing.T, te *Telemetry, rail *Rail) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "hi"}, nil
 		},
 		Telemetry: te,

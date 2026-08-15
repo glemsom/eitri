@@ -111,7 +111,7 @@ func TestHighlightRange_SingleCellAndOutOfRange(t *testing.T) {
 func dragModel(t *testing.T, answer string) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: answer}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -161,7 +161,7 @@ func dragMsg(action string, x, y int) tea.Msg {
 func TestDragSelect_copiesSelectedRange(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -202,7 +202,7 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -259,7 +259,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	var copied string
 	long := strings.Repeat("word ", 40) // wraps across several display rows
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: long}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -307,7 +307,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -373,7 +373,7 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
 	copied := ""
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -426,7 +426,7 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "answer " + prompt}, nil
 		},
 		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
@@ -516,7 +516,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 // mouse ergonomics: click-to-expand tool results).
 func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: NewToolFeed(),

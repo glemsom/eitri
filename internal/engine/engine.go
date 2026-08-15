@@ -312,16 +312,16 @@ func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provide
 // resubmits until the model stops calling tools. Result.Answer/Reasoning/Usage
 // reflect the final, tool-free turn.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
-	messages := append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt})
-	// A slash-activated skill payload rides ahead of the user turn as a system
-	// message (issue #260): without it the args turn reaches the provider with the
-	// skill body missing from context. systemPromptHead is a fresh slice each call,
-	// so appending the inject never mutates the shared head.
+	// Build the message head once from a conditional skill prefix (issue #260):
+	// the system prompt sits at [0], the slash-activated skill payload (when
+	// present) follows as a second RoleSystem message, then the user args. The
+	// no-inject path stays byte-identical to the historical [system, user] head.
+	messages := systemPromptHead()
 	if req.SkillInject != nil {
-		messages = append(systemPromptHead(),
-			provider.Message{Role: provider.RoleSystem, Content: *req.SkillInject},
-			provider.Message{Role: provider.RoleUser, Content: req.Prompt})
+		messages = append(messages,
+			provider.Message{Role: provider.RoleSystem, Content: *req.SkillInject})
 	}
+	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: req.Prompt})
 	var final Result
 
 	// Optionally opt this agent loop into provider-side Tool Schema Enforcement

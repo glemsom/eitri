@@ -31,7 +31,7 @@ func feedToolUpdate(t *testing.T, m *Model, f *ToolFeed, u ToolUpdate) Model {
 func TestModel_toolEditEntryRenders(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: feed,
@@ -66,7 +66,7 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: feed,
@@ -112,7 +112,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: feed,
@@ -140,7 +140,7 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 // outcome marker keeps its own hue.
 func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: NewToolFeed(),
@@ -167,7 +167,7 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 // block instead of a raw text dump.
 func TestModel_stylingExpandedResultFramed(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: NewToolFeed(),
@@ -195,7 +195,7 @@ func TestModel_stylingExpandedResultFramed(t *testing.T) {
 // the edge — while the full arguments remain in the clipboard copy path.
 func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: NewToolFeed(),

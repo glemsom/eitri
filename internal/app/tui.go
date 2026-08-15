@@ -18,10 +18,12 @@ import (
 // canContinue enables interactive max-turns
 // continuation (nil auto-denies, the batch default).
 func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, canContinue func() bool) tui.Turn {
-	return func(ctx context.Context, prompt string, inject tui.SkillInject) (tui.TurnResult, error) {
+	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
+		// Thread a plain payload from the Turn seam into the engine as a *string:
+		// an empty payload stays nil at the runAgent boundary (no injection).
 		var skillInject *string
-		if inject.Payload != "" {
-			skillInject = &inject.Payload
+		if payload != "" {
+			skillInject = &payload
 		}
 		res, err := runAgent(e, cfg, reg, sessionKey, prompt, skillInject, canContinue)
 		if err != nil {

@@ -360,7 +360,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	// stub). The recording asserts the args reach the turn seam verbatim.
 	var turnPrompts []string
 	m := tui.NewModelCfg(tui.Dependencies{
-		Turn: func(_ context.Context, prompt string, _ tui.SkillInject) (tui.TurnResult, error) {
+		Turn: func(_ context.Context, prompt string, _ string) (tui.TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return tui.TurnResult{Answer: "ok"}, nil
 		},

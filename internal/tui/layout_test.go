@@ -17,7 +17,7 @@ import (
 // mouseToContent calls must not re-run the layout pass (issue #242 AC3/AC4).
 func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -63,7 +63,7 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 // persistent layout records every owner the transcript renders.
 func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
@@ -101,7 +101,7 @@ func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 // for a non-message row (the workspace header) without re-building layout.
 func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
