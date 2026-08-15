@@ -584,7 +584,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		tx := newTranscript(m)
 		tx.apply(msgi.update) // tool updates route through the Transcript (issue #245)
-		m.log = tx.log // persist the Transcript's log back into Model
+		m.log = tx.log        // persist the Transcript's log back into Model
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -727,23 +727,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if name, args, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name, args)
 			}
-			m.messages = append(m.messages, message{role: "you", content: prompt})
-			m.busy = true
-			m.curStream = -1
-			m.layout.dirty = true // a new turn appended to the transcript
-			m.syncComposerRail()
-			// Anchor new tool calls to this turn's prompt so entries interleave
-			// after it (issue #84).
-			m.log.SetAnchor(len(m.messages) - 1)
-			// With a live answer stream, the composer turn and the stream waiter run
-			// concurrently so the reply grows in place as deltas arrive (issue #83);
-			// the spinner tick rides the same batch so the busy indicator animates
-			// (issue #211). The non-streaming fallback keeps the single turn
-			// command — tests drive it synchronously.
-			if m.stream != nil {
-				return m, tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
-			}
-			return m, m.turnCmd(prompt)
+			cmd := m.startTurn(prompt)
+			return m, cmd
 		case "tab":
 			// Fresh `/` with tab walks the slash completion list: the built-in
 			// `/settings` command plus matching detected skills (issue #87 AC1).
@@ -886,12 +871,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// turn AFTER the injected skill note so message order renders
 			// note-then-args (issue #239). Bare `/skillname` has empty args and
 			// dispatches no turn.
-			m.messages = append(m.messages, message{role: "you", content: msgi.args})
-			m.layout.dirty = true
-			if m.stream != nil {
-				return m, tea.Batch(m.turnCmd(msgi.args), streamWait(m.stream), spinnerTick())
-			}
-			return m, m.turnCmd(msgi.args)
+			cmd := m.startTurn(msgi.args)
+			return m, cmd
 		}
 		return m, nil
 	}
@@ -1024,6 +1005,32 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 		}
 		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning}
 	})
+}
+
+// startTurn appends a user message and dispatches it as a turn through the
+// engine, mirroring the composer submit path (busy/anchor/rail set up; stream-
+// batched when a live answer stream is attached). It is the single place that
+// turns a prompt into a "you" message + busy state and returns the dispatch
+// command, shared by the composer submit path and the skillDoneMsg args branch
+// (issue #239) so a follow-up args turn behaves exactly like a normal user turn.
+func (m *Model) startTurn(prompt string) tea.Cmd {
+	m.messages = append(m.messages, message{role: "you", content: prompt})
+	m.busy = true
+	m.curStream = -1
+	m.layout.dirty = true // a new turn appended to the transcript
+	m.syncComposerRail()
+	// Anchor new tool calls to this turn's prompt so entries interleave
+	// after it (issue #84).
+	m.log.SetAnchor(len(m.messages) - 1)
+	// With a live answer stream, the composer turn and the stream waiter run
+	// concurrently so the reply grows in place as deltas arrive (issue #83);
+	// the spinner tick rides the same batch so the busy indicator animates
+	// (issue #211). The non-streaming fallback keeps the single turn
+	// command — tests drive it synchronously.
+	if m.stream != nil {
+		return tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
+	}
+	return m.turnCmd(prompt)
 }
 
 // appendStreamDelta grows the in-progress assistant message by one streamed

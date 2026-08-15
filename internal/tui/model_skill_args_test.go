@@ -5,41 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
 )
 
-// drainCommands drives `/skillname <args>` to completion, capturing every
-// chained command the model emits. submitAndWait only runs the first command
-// and drops the follow-up turnCmd returned by the skillDoneMsg handler, so
-// this helper delivers each command's message via Update, threads the model,
-// and recurses on any command the handler returns (unwrapping BatchMsg).
-func drainCommands(t *testing.T, m Model) Model {
-	t.Helper()
-	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // submit composer
-	m = asModel(t, nm)
-	return drainLoop(t, m, cmd)
-}
-
-func drainLoop(t *testing.T, m Model, cmd tea.Cmd) Model {
-	t.Helper()
-	if cmd == nil {
-		return m
-	}
-	msg := cmd()
-	if bm, ok := msg.(tea.BatchMsg); ok {
-		for _, c := range bm {
-			m = drainLoop(t, m, c)
-		}
-		return m
-	}
-	if msg == nil {
-		return m
-	}
-	nm, next := m.Update(msg)
-	m = asModel(t, nm)
-	return drainLoop(t, m, next)
-}
+// The args follow-up turn is dispatched through the shared composer submit
+// path (startTurn), so submitAndWait — whose runSubmitted helper now threads the
+// command returned by Update — drives the whole chain: submit the /skillname
+// line, run the activation, then run the follow-up args turn.
 
 // TestModel_slashSkillWithArgs threads `/skillname <args>` through activation:
 // the activation seam runs with the bare skill name, the payload renders as an
@@ -63,7 +34,7 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill improve this")
-	m = drainCommands(t, m)
+	m = submitAndWait(t, m)
 
 	// (a) activation seam sees the bare name, NOT "/my-skill improve this".
 	if activated != "my-skill" {
@@ -107,7 +78,7 @@ func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill "+want)
-	m = drainCommands(t, m)
+	m = submitAndWait(t, m)
 
 	if len(turnPrompts) != 1 || turnPrompts[0] != want {
 		t.Errorf("multi-word args in turn seam = %v, want [%q]", turnPrompts, want)

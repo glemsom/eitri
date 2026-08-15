@@ -284,6 +284,9 @@ func submitAndWait(t *testing.T, m Model) Model {
 // submitBusy instead).
 func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
+	if cmd == nil {
+		return m
+	}
 	msg := cmd()
 	if bm, ok := msg.(tea.BatchMsg); ok {
 		for _, c := range bm {
@@ -294,8 +297,13 @@ func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	if msg == nil {
 		return m
 	}
-	nm, _ := m.Update(msg)
-	return asModel(t, nm)
+	nm, next := m.Update(msg)
+	m = asModel(t, nm)
+	// Thread the returned command through so a follow-up turn (e.g. a skill-
+	// args turn queued by a skillDoneMsg handler, issue #239) chains: the next
+	// command runs and its message is delivered in order. Plain turns return
+	// nil here so this is a no-op for them.
+	return runSubmitted(t, m, next)
 }
 
 func asModel(t *testing.T, tm tea.Model) Model {
