@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -9,7 +8,7 @@ import (
 
 // deepseek-v4-flash pricing, per 1M tokens (ADR-0003). These
 // are the canonical rates that turn the engine seam's cached/cold token
-// telemetry into the running cost readout on the status strip.
+// telemetry into the running cost readout on the right rail (issue #228).
 const (
 	costPerInputMiss = 0.14   // $/1M uncached input tokens
 	costPerOutput    = 0.28   // $/1M output tokens
@@ -41,10 +40,12 @@ type TelemetryUpdate struct {
 	Output int
 }
 
-// Telemetry is the live session telemetry rendered in the bottom status strip
-// (issue #86). It holds the run's static config (model, effort, thinking,
-// max turns) plus live counters updated from the engine seam. It is read-only
-// against the agent loop: nothing here ever pauses or blocks a run.
+// Telemetry is the live session telemetry surface (issue #86), now consumed by
+// the right rail's STATS section (issue #227) and the settings readout — the
+// bottom status strip no longer renders telemetry numbers (issue #228). It
+// holds the run's static config (model, effort, thinking, max turns) plus live
+// counters updated from the engine seam. It is read-only against the agent
+// loop: nothing here ever pauses or blocks a run.
 type Telemetry struct {
 	model    string
 	effort   string
@@ -58,8 +59,8 @@ type Telemetry struct {
 	compacted bool
 
 	// startedAt is when the session began (NewTelemetry), backing the live
-	// session-elapsed readout on the status strip (benchmark §4.1 statusline
-	// telemetry: elapsed time). It is set once and never mutated.
+	// session-elapsed readout in the right rail STATS (benchmark §4.1
+	// statusline telemetry: elapsed time). It is set once and never mutated.
 	startedAt time.Time
 
 	// updates is the buffered feed the app's engine listener writes to; the
@@ -67,8 +68,8 @@ type Telemetry struct {
 	updates chan TelemetryUpdate
 }
 
-// NewTelemetry builds a status-strip collector seeded with the run's static
-// session state (issue #86), returning the live Telemetry ready to be handed
+// NewTelemetry builds the live session telemetry surface seeded with the run's
+// static session state (issue #86), returning the Telemetry ready to be handed
 // to a Model via Dependencies. The caller wires the engine event seam's
 // per-turn updates into UpdateChan.
 func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
@@ -142,40 +143,4 @@ func formatCost(c float64) string {
 	s = strings.TrimRight(s, "0")
 	s = strings.TrimRight(s, ".")
 	return "$" + s
-}
-
-// collapseWidth is the terminal width below which the status strip drops the
-// static session details (model/effort/thinking) and keeps only the live
-// telemetry, so it stays glanceable and never crowds the composer.
-const collapseWidth = 100
-
-// render returns the status-strip line. It is compact and glanceable at normal
-// widths, and collapses to the live telemetry on narrow windows.
-func (t *Telemetry) render(width int) string {
-	thinking := "on"
-	if !t.thinking {
-		thinking = "off"
-	}
-	turns := fmt.Sprintf("%d/%d", t.turns, t.maxTurns)
-	gauge := fmt.Sprintf("cache:%.0f%%", t.hitPercent())
-	cost := "cost:" + formatCost(t.cost())
-	compacted := ""
-	if t.compacted {
-		compacted = " [compacted]"
-	}
-
-	// Static session details only on wide-enough terminals; the live elapsed
-	// timer rides both forms (it is session telemetry, not a static detail).
-	elapsed := g(" · ", " . ") + formatElapsed(time.Since(t.startedAt))
-	if width >= collapseWidth {
-		return strings.Join([]string{
-			t.model,
-			"effort:" + t.effort,
-			"thinking:" + thinking,
-			turns,
-			gauge,
-			cost,
-		}, g(" · ", " . ")) + elapsed + compacted
-	}
-	return strings.Join([]string{turns, gauge, cost}, g(" · ", " . ")) + elapsed + compacted
 }

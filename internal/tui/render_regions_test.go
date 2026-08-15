@@ -58,12 +58,13 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	if strings.Contains(hs, m.composer.View()) {
 		t.Errorf("composer leaked into the scroll region, got:\n%s", hs)
 	}
-	if strings.Contains(hs, "cache:80%") {
+	if strings.Contains(hs, "ctrl+s settings") {
 		t.Errorf("status strip leaked into the scroll region, got:\n%s", hs)
 	}
 
-	// Fixed band: status strip + composer; never the message body.
-	if !strings.Contains(bs, "cache:80%") {
+	// Fixed band: status strip (now hints-only, issue #228) + composer; never
+	// the message body.
+	if !strings.Contains(bs, "ctrl+s settings") {
 		t.Errorf("band missing status strip, got:\n%s", bs)
 	}
 	if !strings.Contains(bs, m.composer.View()) {

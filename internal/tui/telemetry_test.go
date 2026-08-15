@@ -3,7 +3,6 @@ package tui
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestTelemetryAggregatesUsage asserts the live telemetry accumulates per-turn
@@ -58,8 +57,8 @@ func TestTelemetryFormatCostNoScientific(t *testing.T) {
 	}
 }
 
-// TestTelemetryTurnCounting asserts a status strip counts one turn per turn
-// Start event, reflected in the turns/N rendered text.
+// TestTelemetryTurnCounting asserts the live telemetry counts one turn per turn
+// Start event.
 func TestTelemetryTurnCounting(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 10)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -69,13 +68,14 @@ func TestTelemetryTurnCounting(t *testing.T) {
 	if te.turns != 3 {
 		t.Fatalf("turns = %d, want 3", te.turns)
 	}
-	if !strings.Contains(te.render(120), "3/10") {
-		t.Errorf("status strip should show turns/max \"3/10\", got: %q", te.render(120))
-	}
+	// The turns/max readout now lives only in the right rail's STATS section
+	// (issue #228); the bottom status strip renders no telemetry numbers, so
+	// the (now-removed) strip-level render is not asserted here — see
+	// rail_test for the rail turn readout.
 }
 
-// TestTelemetryCompactionMarker asserts a compaction event surfaces a
-// read-only [compacted] marker in the strip.
+// TestTelemetryCompactionMarker asserts a compaction event sets the read-only
+// compaction flag.
 func TestTelemetryCompactionMarker(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
@@ -83,57 +83,6 @@ func TestTelemetryCompactionMarker(t *testing.T) {
 	if !te.compacted {
 		t.Fatal("compacted flag not set after compaction event")
 	}
-	if !strings.Contains(te.render(120), "[compacted]") {
-		t.Errorf("status strip missing [compacted] marker, got: %q", te.render(120))
-	}
-}
-
-// TestTelemetryStripShowsStaticSession asserts the strip renders model, effort,
-// and thinking on/off from the run's static config at boot, before any events
-// arrive.
-func TestTelemetryStripShowsStaticSession(t *testing.T) {
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	s := te.render(140)
-
-	for _, want := range []string{"deepseek-v4-flash", "effort", "low", "thinking", "on", "0/250", "$0"} {
-		if !strings.Contains(s, want) {
-			t.Errorf("status strip missing %q, got: %q", want, s)
-		}
-	}
-}
-
-// TestTelemetryStripCollapsesBelowWidth asserts the status strip collapses to a
-// compact one-line form on narrow windows so it never overlaps the composer.
-func TestTelemetryStripCollapsesBelowWidth(t *testing.T) {
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
-	full := te.render(140)
-	collapsed := te.render(60)
-
-	if len(full) <= len(collapsed) {
-		t.Errorf("narrow strip should be more compact: full len=%d coll len=%d", len(full), len(collapsed))
-	}
-	// Both forms keep the cache gauge and cost so telemetry is never lost.
-	if !strings.Contains(collapsed, "%") || !strings.Contains(collapsed, "$") {
-		t.Errorf("narrow strip must keep gauge+cost, got: %q", collapsed)
-	}
-}
-
-// TestTelemetryStripShowsElapsed asserts the status strip carries the live
-// session-elapsed timer in both the full and collapsed forms (benchmark §4.1
-// statusline telemetry: elapsed time), seeded at NewTelemetry.
-func TestTelemetryStripShowsElapsed(t *testing.T) {
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100, Miss: 25, Output: 10})
-	for _, w := range []int{140, 60} {
-		s := te.render(w)
-		if !strings.Contains(s, "0s") {
-			t.Errorf("render(%d) missing elapsed timer, got: %q", w, s)
-		}
-	}
-	// The elapsed advances with the wall clock.
-	te.startedAt = time.Now().Add(-65 * time.Second)
-	if s := te.render(140); !strings.Contains(s, "1m 05s") {
-		t.Errorf("render after 65s = %q, want 1m 05s", s)
-	}
+	// The [compacted] marker now renders only in the right rail STATS section
+	// (issue #228); the bottom status strip no longer shows telemetry.
 }

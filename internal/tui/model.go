@@ -1680,43 +1680,31 @@ func (m *Model) syncComposerRail() {
 	m.composer.SetStyles(st)
 }
 
-// renderBand renders the fixed bottom band: the live status strip (when wired)
+// renderBand renders the fixed bottom band: the hints-only status row (when
+// telemetry is wired; the row carries keybinding hints plus the busy spinner,
+// never telemetry numbers — issue #228)
 // plus the slash-command completion list and the composer, in that order. This
 // is the region T02+ pins at the bottom so it never scrolls away on resize.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	// Live status strip (issues #86, #182), rendered above the composer so
-	// model, effort, thinking, turns/max, cost, and the cache gauge stay
-	// glanceable; it carries the accent hue to match the colorized rail (issue
-	// #182 AC4). On wide enough terminals the keybinding hints right-align onto
-	// the same row and the strip uses its compact telemetry form (the model/
-	// effort/thinking details already live in the right rail), so the row never
-	// grows and the band height is unchanged; narrow windows drop the hints and
-	// keep the full strip.
-	w := m.transcriptWidth()
+	// Status row (issues #86, #227, #228): the bottom band is now the only
+	// home of the keybinding hints, since the right rail (#227) is the sole,
+	// permanent stats surface. The strip renders no telemetry numbers
+	// (turns/max, cache gauge, cost, elapsed all live in the rail's STATS
+	// section); it is a clean single line of keybinding hints, with the busy
+	// spinner leading while a turn runs so the working state stays glanceable
+	// even when the history is scrolled away (the spinner tick drives the
+	// re-render). The hints are always shown; no width/collapse threshold cuts
+	// into the telemetry anymore (there is none to collapse).
+	statusRow := ""
 	if m.telemetry != nil {
-		stripW := w
-		hints := ""
-		if w >= 100 {
-			hints = m.theme.statusStyle.Render(bandHints(m.vimNormal, m.review != nil))
-			stripW = collapseWidth - 1 // compact telemetry makes room for hints
-		}
-		strip := m.theme.bandStatusStyle.Render(m.telemetry.render(stripW))
-		// While a turn runs the spinner also rides the always-visible strip, so
-		// the working state stays glanceable even when the history is scrolled
-		// away from the busy footer row (the spinner tick drives the re-render).
+		// The live working indicator rides the always-visible status row,
+		// accent-tinted to match the rail, while a turn runs.
 		if m.busy {
-			strip = m.theme.bandStatusStyle.Render(busyLine(m.spinner)) + "  " + strip
+			statusRow = m.theme.bandStatusStyle.Render(busyLine(m.spinner)) + "  "
 		}
-		if hints != "" {
-			pad := w - lipgloss.Width(strip) - lipgloss.Width(hints)
-			// Only right-align the hints when there's room; a narrow transcript keeps the
-			// strip alone rather than clipping the hints at the edge.
-			if pad > 2 {
-				strip += strings.Repeat(" ", pad) + hints
-			}
-		}
-		inner.WriteString(strip)
+		statusRow += m.theme.statusStyle.Render(bandHints(m.vimNormal, m.review != nil))
+		inner.WriteString(statusRow)
 		inner.WriteString("\n")
 	}
 	// The slash-command completion list (issue #87 AC1) sits above the composer

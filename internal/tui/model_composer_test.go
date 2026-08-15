@@ -263,13 +263,13 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		t.Fatalf("composer must be the bottom region, got:\n%q", content)
 	}
 
-	// Find the status strip row (the turns readout — the strip renders its
-	// collapsed form at the 98-col composer width) and the slash
+	// Find the status strip row (the keybinding hints — the bottom band's
+	// status line is hints-only now, issue #228) and the slash
 	// completion row (the ▸ marker of the candidate list); both above the
 	// composer block.
 	statusIdx, slashIdx := -1, -1
 	for i, ln := range lines {
-		if strings.Contains(ln, "0/250") && statusIdx == -1 {
+		if strings.Contains(ln, "ctrl+s settings") && statusIdx == -1 {
 			statusIdx = i
 		}
 		if strings.Contains(ln, "▸") && slashIdx == -1 {
