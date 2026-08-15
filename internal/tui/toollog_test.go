@@ -138,3 +138,94 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 		t.Errorf("PlainText must indent the result lines, got %q", out)
 	}
 }
+
+// TestToolLog_PlainTextCollapsedAndExpanded asserts PlainText renders the head
+// alone for an entry whose result has not landed yet (collapsed) and the head
+// plus the indented full result once it is complete (expanded) — the two
+// shapes the clipboard transcript never truncates (issue #123, #208 US2).
+func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	// A Start with no Result: incomplete, so the head is all there is.
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	// A completed entry whose head carries the delta tag and whose result is indented.
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "edit", Result: "change\n", Lines: 1,
+		Before: "a", After: "b", Path: "a.go", Added: 1, Removed: 1}})
+
+	out := l.PlainText(0)
+	if out != "⊕ bash  ls\n⊕ edit  a.go  [+1, −1]\n  change\n" {
+		t.Errorf("PlainText shape mismatch, got %q", out)
+	}
+}
+
+// TestToolLog_ReviewClassifiesAddDeleteModify asserts Review classifies each
+// file-mutating entry by its before/after content span into added/deleted/
+// modified, keeping the same behaviour as the historical review builder (issue
+// #90, #208 US5).
+func TestToolLog_ReviewClassifiesAddDeleteModify(t *testing.T) {
+	applyFile := func(l *toolLog, name, path, before, after string) {
+		l.SetAnchor(0)
+		l.Apply(ToolUpdate{Start: &ToolStart{Name: name, Args: `{"path":"` + path + `"}`}})
+		l.Apply(ToolUpdate{Result: &ToolResult{Name: name, Result: "done", Lines: 1,
+			Before: before, After: after, Path: path}})
+	}
+
+	cases := []struct {
+		name   string
+		before string
+		after  string
+		want   string
+	}{
+		{name: "added", before: "", after: "package a\n", want: "added"},
+		{name: "deleted", before: "package a\n", after: "", want: "deleted"},
+		{name: "modified", before: "a", after: "b", want: "modified"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var l toolLog
+			applyFile(&l, "edit", "f.go", c.before, c.after)
+			rev := l.Review()
+			if len(rev) != 1 {
+				t.Fatalf("expected one reviewed file, got %d", len(rev))
+			}
+			if rev[0].status != c.want {
+				t.Errorf("status = %q, want %q", rev[0].status, c.want)
+			}
+		})
+	}
+}
+
+// TestToolLog_HeadForms asserts the shared head builders render the compact
+// `⊕ tool  args` head in its three forms — plain args, the read `:start-end`
+// range, and the file-edit `[+N, −M]` delta tag (issue #204, #84, #208 US4).
+func TestToolLog_HeadForms(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry toolEntry
+		want  string
+	}{
+		{
+			name:  "plain args",
+			entry: toolEntry{name: "bash", args: `{"command":"ls"}`},
+			want:  "⊕ bash  ls",
+		},
+		{
+			name:  "read range",
+			entry: toolEntry{name: "read", args: `{"path":"a.txt","start_line":3,"end_line":7}`},
+			want:  "⊕ read  a.txt:3-7",
+		},
+		{
+			name:  "edit delta",
+			entry: toolEntry{name: "edit", args: `{"path":"a.go"}`, added: 2, removed: 1},
+			want:  "⊕ edit  a.go  [+2, −1]",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := toolEntryHead(c.entry); got != c.want {
+				t.Errorf("toolEntryHead = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
