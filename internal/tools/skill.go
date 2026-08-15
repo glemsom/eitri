@@ -33,6 +33,7 @@ type Skill struct {
 type Catalog struct {
 	skills    map[string]*Skill
 	scopes    map[string]string // skill name -> install scope ("user" or "project")
+	hidden    map[string]bool   // skill name -> hide-not-block (disable-model-invocation)
 	order     []string
 	activated map[string]bool
 }
@@ -60,11 +61,17 @@ func (c *Catalog) Scope(name string) string {
 	return c.scopes[name]
 }
 
-// Enum returns the strict-schema enum values: the valid, filtered skill names.
+// Enum returns the strict-schema enum values: only the names the model may
+// invoke. Hidden (disable-model-invocation) skills are human-invoked via the
+// slash surface and so are excluded from the model-facing enum (hide-not-
+// block), even though Names() still surfaces them for the `/` completion.
 func (c *Catalog) Enum() []any {
-	out := make([]any, len(c.order))
-	for i, n := range c.order {
-		out[i] = n
+	out := make([]any, 0, len(c.order))
+	for _, n := range c.order {
+		if c.hidden[n] {
+			continue
+		}
+		out = append(out, n)
 	}
 	return out
 }
@@ -93,6 +100,7 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
 		skills:    map[string]*Skill{},
 		scopes:    map[string]string{},
+		hidden:    map[string]bool{},
 		activated: map[string]bool{},
 	}
 
@@ -116,19 +124,18 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 type skillParseStatus int
 
 const (
-	// skillCataloged: the pack parsed and is model-invocable; add it.
+	// skillCataloged: the pack parsed and is cataloged (hidden-or-invocable; the
+	// disable-model-invocation distinction rides on the hidden bool).
 	skillCataloged skillParseStatus = iota
-	// skillHidden: the pack parsed but declares disable-model-invocation: true,
-	// so it is hidden from the catalog and the tool enum (hide-not-block).
-	skillHidden
 	// skillUnparseable: the frontmatter is invalid; omit fail-closed with a warn.
 	skillUnparseable
 )
 
-// discoverScope walks root for skill pack directories and folds the model-
-// invocable ones into c. root is the scope's <scope>/skills parent (may not
-// exist). Hidden (disable-model-invocation) and unparseable packs are omitted
-// per hide-not-block; only unparseable ones warn.
+// discoverScope walks root for skill pack directories and folds them into c.
+// root is the scope's <scope>/skills parent (may not exist). Unparseable packs
+// are omitted fail-closed with a warn; disable-model-invocation packs are kept
+// (human slash-invocable) but flagged hidden so Enum() excludes them from the
+// model-facing surface.
 func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -146,13 +153,8 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			continue
 		}
 		packDir := filepath.Join(root, name)
-		skill, status := parseSkill(packDir)
-		switch status {
-		case skillHidden:
-			// Hide-not-block: a disable-model-invocation pack is not listed for
-			// the model, so it is never returned to be blocked at call time.
-			continue
-		case skillUnparseable:
+		skill, hidden, status := parseSkill(packDir)
+		if status == skillUnparseable {
 			if w != nil {
 				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s", name, scope)
 			}
@@ -162,39 +164,41 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 		// one) by simple overwrite of the same keyed name.
 		c.skills[name] = skill
 		c.scopes[name] = scope
+		// Hide-not-block: a disable-model-invocation pack is still human-
+		// invocable via the slash `/` surface (it lists+activates it), but is
+		// excluded from the model-facing enum by Enum(). Zero value stays false
+		// for invocable packs; shadowing overwrites it per winning scope.
+		c.hidden[name] = hidden
 	}
 	return nil
 }
 
 // parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and
-// collects the packaged resources. It reports skillUnparseable (fail-closed)
-// when the frontmatter cannot be parsed validly, and skillHidden when the pack
-// declares disable-model-invocation: true (hidden from the model, hide-not-
-// block).
-func parseSkill(packDir string) (*Skill, skillParseStatus) {
+// collects the packaged resources. It returns the parsed skill, a hidden bool
+// (disable-model-invocation: true, aliased to human-only invocation), and
+// skillUnparseable (fail-closed) when the frontmatter cannot be parsed.
+func parseSkill(packDir string) (*Skill, bool, skillParseStatus) {
 	md := filepath.Join(packDir, "SKILL.md")
 	data, err := os.ReadFile(md)
 	if err != nil {
-		return nil, skillUnparseable
+		return nil, false, skillUnparseable
 	}
 	body, front, ok := splitFrontmatter(string(data))
 	if !ok {
-		return nil, skillUnparseable
+		return nil, false, skillUnparseable
 	}
 	meta := parseFrontmatter(front)
 	name, ok := meta["name"]
 	name = strings.TrimSpace(name)
 	if !ok || name == "" {
-		return nil, skillUnparseable
+		return nil, false, skillUnparseable
 	}
 	desc := meta["description"]
 	desc = strings.TrimSpace(desc)
 	if desc == "" {
-		return nil, skillUnparseable
+		return nil, false, skillUnparseable
 	}
-	if disableModelInvocation(meta["disable-model-invocation"]) {
-		return nil, skillHidden
-	}
+	hidden := disableModelInvocation(meta["disable-model-invocation"])
 
 	res := bundledResources(packDir, md)
 	return &Skill{
@@ -202,7 +206,7 @@ func parseSkill(packDir string) (*Skill, skillParseStatus) {
 		Body:        strings.TrimPrefix(body, "\n"),
 		Resources:   res,
 		Dir:         packDir,
-	}, skillCataloged
+	}, hidden, skillCataloged
 }
 
 // disableModelInvocation reports whether the disable-model-invocation

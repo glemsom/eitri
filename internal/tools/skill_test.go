@@ -252,8 +252,10 @@ func TestSkillSchemaEnumConstrained(t *testing.T) {
 }
 
 // TestSkillDisableModelInvocationHidden verifies hide-not-block: a valid pack
-// declaring disable-model-invocation: true is omitted from the catalog and the
-// tool enum (filtered, not listed to be blocked at call time).
+// declaring disable-model-invocation: true stays discoverable for the human
+// slash `/` surface (it lists and activates it), but is excluded from the
+// model-facing enum. It is filtered from what the model may invoke, not
+// blocked at call time.
 func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	user := t.TempDir()
 	writeSkill(t, user, "normal", "invocable", "body n", nil)
@@ -272,14 +274,38 @@ func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
+	// The hidden pack stays in the slash-visible name list with its body
+	// activatable, so the `/` surface can suggest and run it.
 	names := catalog.Names()
-	if len(names) != 1 || names[0] != "normal" {
-		t.Fatalf("names = %v, want exactly [normal] (manual hidden by disable-model-invocation)", names)
+	if !contains(names, "normal") || !contains(names, "manual") {
+		t.Fatalf("names = %v, want both normal and the hidden manual (slash surface must list it)", names)
+	}
+	if s := catalog.Skill("manual"); s == nil || !strings.Contains(s.Body, "manual body") {
+		t.Fatalf("hidden skill not activatable via Skill(): %+v", s)
+	}
+	// But it is excluded from the model-facing enum (the skill tool schema).
+	for _, e := range catalog.Enum() {
+		if e == "manual" {
+			t.Fatalf("enum = %v, must exclude hidden manual from model invocation", catalog.Enum())
+		}
+	}
+	if !containsEnum(t, catalog.Enum(), "normal") {
+		t.Fatalf("enum = %v, must still include the invocable normal skill", catalog.Enum())
 	}
 	// Hiding is not an error, so it must not warn.
 	if cb.count != 0 {
 		t.Fatalf("unexpected warnings = %d, want 0 (hidden != unparseable)", cb.count)
 	}
+}
+
+func containsEnum(t *testing.T, enum []any, want string) bool {
+	t.Helper()
+	for _, e := range enum {
+		if e == want {
+			return true
+		}
+	}
+	return false
 }
 
 // testDeps builds registry deps for a skill test with an injected catalog and a

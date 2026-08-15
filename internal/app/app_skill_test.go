@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -198,6 +199,71 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	// (issue #188), so there is no panel accessor to check.
 	if !skills.IsActive("tui-skill") {
 		t.Fatalf("tui-skill not marked active after slash activation")
+	}
+}
+
+// TestTUISlashListsHiddenSkill verifies a disable-model-invocation skill still
+// surfaces on the slash `/` completion list and stays activatable from the TUI —
+// it is hidden only from the model's automated invocation, never from the human
+// slash surface. This is the exact symptom where `/improve-codebase-architecture`
+// failed to suggest a present command skill.
+func TestTUISlashListsHiddenSkill(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	skillDir := filepath.Join(ws, ".agents", "skills", "improve-codebase-architecture")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("slash-hidden-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatalf("skillSurface = nil, want non-nil (hidden command skill must back the slash surface)")
+	}
+	var names []string
+	for _, it := range surface.Items {
+		names = append(names, it.Name)
+	}
+	if !slices.Contains(names, "improve-codebase-architecture") {
+		t.Fatalf("slash completion items = %v, want the hidden command skill suggested", names)
+	}
+
+	payload, err := surface.Activate(context.Background(), "improve-codebase-architecture")
+	if err != nil {
+		t.Fatalf("slash activation of hidden skill error = %v, want nil", err)
+	}
+	if !strings.Contains(payload, "<skill_content name=\"improve-codebase-architecture\">") || !strings.Contains(payload, "Do the architecture thing") {
+		t.Fatalf("slash activation payload wrong:\n%s", payload)
+	}
+
+	// The model must still not be able to auto-invoke it: its name is not in
+	// the skill tool's enum.
+	var defs []tools.Definition
+	for _, d := range reg.Definitions() {
+		if d.Name == "skill" {
+			defs = append(defs, d)
+		}
+	}
+	if len(defs) != 1 {
+		t.Fatalf("skill tool definitions = %d, want 1", len(defs))
+	}
+	props, _ := defs[0].Parameters["properties"].(map[string]any)
+	nameProp, _ := props["name"].(map[string]any)
+	enum, _ := nameProp["enum"].([]any)
+	for _, e := range enum {
+		if e == "improve-codebase-architecture" {
+			t.Fatalf("skill enum %v must exclude the hidden command skill", enum)
+		}
 	}
 }
 
