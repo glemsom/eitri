@@ -191,11 +191,12 @@ func drainOne(s Stream) (string, error) {
 }
 
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
-// guarantee also holds on the Copilot provider (issue #54):
+// guarantee also holds on the Copilot provider (issues #54, #263):
 // when the caller disables thinking, `reasoning_effort` is dropped from the
-// request body even if a non-empty effort is retained. Copilot streams via the
-// same engine seam as the primary provider, so its non-thinking shape must
-// match the primary's, minus the Copilot-absent DeepSeek thinking toggle.
+// request body even if a non-empty effort is retained. Unlike the primary
+// provider (which omits the toggle entirely), the Copilot backend follows its
+// reasoning-on server default unless told otherwise, so the request carries an
+// explicit `thinking:{type:disabled}` suppression instead.
 func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 	var sawEffort, thinkingDisabled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
