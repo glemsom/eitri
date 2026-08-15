@@ -58,9 +58,24 @@ type Transcript struct {
 	// (issue #82 AC1). Empty renders no header.
 	workspacePath string
 	// log is the deep tool-call log rendered in the transcript (issue #208).
+	// Since issue #245 the Transcript owns every tool-log operation — the
+	// start/result pairing (apply), per-entry and all-entry expansion (toggle, the
+	// click-to-expand hit-test), and the persistent row->entry layout index surface.
 	log toolLog
 	// showToolResult expands all tool entries to their full result (issue #84).
+	// It lives on the Transcript (issue #245): alt+y toggles it through
+	// toggleShowToolResult so the render reads Transcript state directly.
 	showToolResult bool
+	// layout is the persistent transcript layout cache (issue #242), shared with
+	// Model through a pointer (like histViewport): one batched renderHistory pass
+	// records the row->tool-entry index, the row->message index, and the
+	// ANSI-stripped plain-row space the hit-tests read back instead of re-deriving
+	// layout on every pointer event. Since issue #245 the click-to-expand hit-test
+	// (toolEntryAtLine) reads this recorded index on the Transcript. It is
+	// advisory for performance — correctness is guaranteed because renderHistory
+	// here is the very pass that builds it. dirty is true while a
+	// transcript-affecting change makes the cached index stale.
+	layout *transcriptLayout
 	// telemetry is the live status-strip surface (issue #86); nil disables the
 	// busy footer fallback row.
 	telemetry *Telemetry
@@ -101,6 +116,7 @@ func newTranscript(m Model) Transcript {
 		workspacePath:   m.deps.WorkspacePath,
 		log:             m.log,
 		showToolResult:  m.showToolResult,
+		layout:          m.layout,
 		telemetry:       m.telemetry,
 		review:          m.review,
 		dragSel:         m.dragSel,
@@ -460,4 +476,103 @@ func (t Transcript) highlightSelection(content string) string {
 		lines[i] = highlightRange(lines[i], from, to)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ensureLayout lazily builds the persistent transcript layout cache (issue
+// #242) when it is dirty, exactly once per transcript change. It runs ONE
+// renderHistory pass into a scratch builder, capturing the row->tool-entry
+// index AND building the ANSI-stripped plain-row space (the drag-select copy
+// coordinates) from the same builder, then clears dirty so repeated hit-tests
+// (mouse motion, toolEntryAtLine) reuse the recorded index until the next
+// transcript-affecting change. The layout is a pointer shared with Model, so the
+// cache recorded by a Transcript forwarded from Update (which runs on a *Model)
+// persists across a drag's motion events — and across the value copies View
+// makes, because the cache itself stays in one shared location.
+func (t *Transcript) ensureLayout() {
+	if t.layout == nil {
+		t.layout = &transcriptLayout{dirty: true}
+	}
+	if !t.layout.dirty {
+		return
+	}
+	t.recordLayout()
+}
+
+// recordLayout performs the one batched layout pass behind the persistent cache
+// (issue #242): it renders the history into a scratch builder, captures the
+// toolRows and msgRows out-params, and derives the ANSI-stripped plain rows from
+// the same builder, storing both indexes and clearing dirty. The builds count
+// incremented here backs the issue #242 AC4 test hook, which asserts a repeated
+// hit-test reuses the recorded index (one build).
+func (t *Transcript) recordLayout() {
+	if t.layout == nil {
+		t.layout = &transcriptLayout{dirty: true}
+	}
+	var hist strings.Builder
+	t.layout.rows = t.layout.rows[:0]
+	t.layout.msgs = t.layout.msgs[:0]
+	t.renderHistory(&hist, &t.layout.rows, &t.layout.msgs)
+	lines := strings.Split(hist.String(), "\n")
+	t.layout.plain = t.layout.plain[:0]
+	for _, l := range lines {
+		t.layout.plain = append(t.layout.plain, ansiStrip(l))
+	}
+	t.layout.dirty = false
+	t.layout.builds++
+}
+
+// toolEntryAtLine returns the tool entry whose rendered rows include the given
+// content line, and whether that entry is currently collapsed (a click on a
+// collapsed head toggles it open; on an open entry it toggles closed). It
+// reads the persistent layout cache (issue #242) owned by the Transcript (issue
+// #245): it lazily builds the row->tool-entry index once per transcript change
+// (via recordLayout, the shared renderHistory pass the viewport and mouse
+// coordinates use), so it never drifts from what the user sees and a drag
+// reuses the recorded index instead of re-deriving layout each event (AC3).
+// It is a pointer receiver because it mutates the shared layout cache.
+func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
+	t.ensureLayout()
+	return t.log.AtLine(line, t.layout.rows)
+}
+
+// toggleToolEntry flips one tool entry's expansion state (mouse click
+// click-to-expand, issue #245 AC1). It delegates to the tool log's
+// bounds-checked Toggle, never touches other entries or the global alt+y flag,
+// and marks the shared layout dirty so an expanded/collapsed entry's new row
+// span is re-recorded before the next hit-test. Model forwards here and
+// persists the mutated log back into its own copy (issue #248 removes it).
+func (t *Transcript) toggleToolEntry(idx int) {
+	t.log.Toggle(idx)
+	if t.layout == nil {
+		t.layout = &transcriptLayout{dirty: true}
+	}
+	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+}
+
+
+// apply folds one tool-call observation into the transcript's log (issue #245
+// AC1/AC2): tool updates now route through the Transcript so they land in the
+// same log renderPane reads. It delegates to the tool log's Apply (start/result
+// pairing) and marks the shared layout dirty so the new entry's rows are
+// re-recorded. Model keeps its own log copy for now and persists the resulting
+// log back into its state (issue #248 removes the duplicate).
+func (t *Transcript) apply(u ToolUpdate) {
+	t.log.Apply(u)
+	if t.layout == nil {
+		t.layout = &transcriptLayout{dirty: true}
+	}
+	t.layout.dirty = true // an entry changed the tool log's rendered rows
+}
+
+// toggleShowToolResult flips the global all-entries expansion state (issue #245
+// AC2): alt+y on the Model forwards here, reports the new value back so the
+// Model can persist it, and marks the shared layout dirty because showing or
+// hiding all tool results re-wraps the log.
+func (t *Transcript) toggleShowToolResult() bool {
+	t.showToolResult = !t.showToolResult
+	if t.layout == nil {
+		t.layout = &transcriptLayout{dirty: true}
+	}
+	t.layout.dirty = true // showing/hiding all tool results re-wraps the log
+	return t.showToolResult
 }
