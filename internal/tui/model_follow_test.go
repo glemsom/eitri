@@ -45,11 +45,11 @@ func busyStreamingModel(t *testing.T) Model {
 // and the viewport height — for asserting the newest output is visible.
 func followRendered(m Model) (got string, histContent string, vh int) {
 	var hist strings.Builder
-	m.renderHistory(&hist, nil, nil)
+	m.tx.renderHistory(&hist, nil, nil)
 	histContent = hist.String()
 	reserved := m.bandHeight()
-	vh = m.height - reserved
-	return m.renderHistoryViewport(histContent, reserved), histContent, vh
+	vh = m.tx.height - reserved
+	return m.tx.renderHistoryViewport(histContent, reserved), histContent, vh
 }
 
 // newestNonBlank returns the last non-blank content row of a rendered viewport,
@@ -76,7 +76,7 @@ func newestNonBlank(render string) string {
 // it does not stare at a stale head.
 func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 	m := busyStreamingModel(t)
-	if !m.busy {
+	if !m.tx.busy {
 		t.Fatalf("test model must be mid-run (busy)")
 	}
 	got, histContent, vh := followRendered(m)
@@ -100,7 +100,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 // rather than leaving it staring at a stale head.
 func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 	m := busyStreamingModel(t)
-	if !m.busy {
+	if !m.tx.busy {
 		t.Fatalf("test model must be mid-run (busy)")
 	}
 	for _, h := range []int{6, 12, 14, 10} {
@@ -151,10 +151,10 @@ func TestModel_followViewportPersisted(t *testing.T) {
 			return TurnResult{Answer: "answer"}, nil
 		},
 	})
-	if m.histViewport == nil {
+	if m.tx.histViewport == nil {
 		t.Fatalf("model must own a persisted viewport component")
 	}
-	if m.histViewport.Width() != 0 || m.histViewport.Height() != 0 {
-		t.Errorf("fresh viewport should start unsized until the first resize, got %dx%d", m.histViewport.Width(), m.histViewport.Height())
+	if m.tx.histViewport.Width() != 0 || m.tx.histViewport.Height() != 0 {
+		t.Errorf("fresh viewport should start unsized until the first resize, got %dx%d", m.tx.histViewport.Width(), m.tx.histViewport.Height())
 	}
 }

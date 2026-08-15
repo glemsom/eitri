@@ -53,7 +53,8 @@ func (d *dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
 func (m *Model) updateMouse(msg tea.MouseMsg) {
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
-		m.navigateMouse(msg)
+		// Wheel scroll lives on the owned Transcript (issue #244/#248).
+		m.tx.navigateMouse(msg)
 		return
 	case tea.MouseClickMsg:
 		// A left-button press starts a drag selection over the history.
@@ -65,27 +66,27 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
-			m.dragSel = nil
+			m.tx.dragSel = nil
 			return
 		}
-		m.dragSel = &dragSelect{
+		m.tx.dragSel = &dragSelect{
 			anchorLine: line, anchorCol: col,
 			endLine: line, endCol: col,
 		}
 	case tea.MouseMotionMsg:
-		if m.dragSel == nil {
+		if m.tx.dragSel == nil {
 			return
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			return // the drag left the region; keep the last valid end
 		}
-		m.dragSel.endLine = line
-		m.dragSel.endCol = col
-		m.dragSel.moved = true
+		m.tx.dragSel.endLine = line
+		m.tx.dragSel.endCol = col
+		m.tx.dragSel.moved = true
 	case tea.MouseReleaseMsg:
-		d := m.dragSel
-		m.dragSel = nil
+		d := m.tx.dragSel
+		m.tx.dragSel = nil
 		if d == nil {
 			return
 		}
@@ -97,8 +98,8 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// entry under the pointer: click-to-expand a collapsed tool result, or
 		// collapse an expanded one (benchmark §4.4 mouse ergonomics). Clicks
 		// off any tool row stay inert, preserving drag-select's copy semantics.
-		if idx, _, ok := m.toolEntryAtLine(d.anchorLine); ok {
-			m.toggleToolEntry(idx)
+		if idx, _, ok := m.tx.toolEntryAtLine(d.anchorLine); ok {
+			m.tx.toggleToolEntry(idx)
 		}
 	}
 }
@@ -110,8 +111,8 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 // viewport region — over the review overlay above it or the fixed bottom band
 // below it — or the viewport has not been sized yet.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
-	vp := m.histViewport
-	if vp == nil || vp.Height() <= 0 || m.height <= 0 {
+	vp := m.tx.histViewport
+	if vp == nil || vp.Height() <= 0 || m.tx.height <= 0 {
 		return 0, 0, false
 	}
 	// The scroll region occupies the rows between the review overlay (when
@@ -119,12 +120,12 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	// math so screen rows map to the viewport's visible lines exactly.
 	bandLines := m.bandHeight()
 	reviewLines := 0
-	if m.review != nil {
+	if m.tx.review != nil {
 		var review strings.Builder
-		m.renderReview(&review)
-		reviewLines = m.reviewRegionRows(review.String(), bandLines)
+		m.tx.renderReview(&review)
+		reviewLines = m.tx.reviewRegionRows(review.String(), bandLines)
 	}
-	if y < reviewLines || y >= m.height-bandLines {
+	if y < reviewLines || y >= m.tx.height-bandLines {
 		return 0, 0, false
 	}
 	row := y - reviewLines
@@ -132,15 +133,15 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 		return 0, 0, false
 	}
 	line = vp.YOffset() + row
-	if line < 0 || line >= len(m.historyPlainLines()) {
+	if line < 0 || line >= len(m.tx.plainLines()) {
 		return 0, 0, false
 	}
 	col = x
 	// Clamp to the plain width of the content line and the viewport's own
 	// horizontal clip (transcript width), so a pointer over the rail or past a
 	// short line selects to that line's last visible cell.
-	width := lipgloss.Width(m.historyPlainLines()[line])
-	if tw := m.transcriptWidth(); tw > 0 && width > tw {
+	width := lipgloss.Width(m.tx.plainLines()[line])
+	if tw := m.tx.transcriptWidth(); tw > 0 && width > tw {
 		width = tw
 	}
 	if width <= 0 {
@@ -156,18 +157,6 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	return line, col, true
 }
 
-// historyPlainLines returns the history scroll content as plain text per
-// rendered row (ANSI stripped) — the coordinate space drag selection maps
-// into. The split matches the persisted viewport's own line split exactly, so
-// content line indexes agree between selection and the rendered transcript.
-// It is lazy + cached (issue #242): it reads the persistent layout cache,
-// rebuilding it once per transcript change via recordLayout so a drag's motion
-// events reuse the recorded plain-row space instead of re-rendering each one.
-func (m *Model) historyPlainLines() []string {
-	m.ensureLayout()
-	return m.layout.plain
-}
-
 // copySelection copies the plain text covered by a finished drag selection to
 // the clipboard through the same seam as Ctrl+O and /copy (issue #124 AC2):
 // a single-line range copies the cell substring; a multi-line range joins the
@@ -176,7 +165,7 @@ func (m *Model) historyPlainLines() []string {
 // ("copied" / "copy failed: …") the other copy paths use.
 func (m *Model) copySelection(d dragSelect) {
 	startLine, startCol, endLine, endCol := d.selRange()
-	lines := m.historyPlainLines()
+	lines := m.tx.plainLines()
 	if len(lines) == 0 {
 		m.savedMsg = "copy failed: empty transcript"
 		return
@@ -228,10 +217,6 @@ func (m *Model) copySelection(d dragSelect) {
 // video across the full rendered history content; the persisted viewport clips
 // it to the visible window (issue #124 AC1). Lines and cells outside the range
 // keep their exact original bytes, so surrounding styling never breaks.
-func (m Model) highlightSelection(content string) string {
-	return newTranscript(m).highlightSelection(content)
-}
-
 // highlightRange wraps the plain cells [from,to] (inclusive, 0-based) of an
 // ANSI-styled line in reverse-video escapes, preserving every original
 // sequence and character outside the range. Reverse video is used because it

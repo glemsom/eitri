@@ -191,7 +191,7 @@ func TestModelRailAlwaysOn(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			nm, _ := m.Update(tea.WindowSizeMsg{Width: tc.w, Height: tc.h})
 			mm := asModel(t, nm)
-			if !mm.railVisible() {
+			if !mm.tx.railVisible() {
 				t.Fatalf("rail must stay visible at %dx%d (permanent surface)", tc.w, tc.h)
 			}
 			if content := view(mm); !strings.Contains(content, "STATS") {
@@ -218,10 +218,10 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 	// the rail is visible, but the transcript columns are floored, never 0.
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 	m = asModel(t, nm)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible on an extreme-minimum terminal")
 	}
-	if tw := m.transcriptWidth(); tw < 20 {
+	if tw := m.tx.transcriptWidth(); tw < 20 {
 		t.Errorf("transcriptWidth = %d on a 40-col window, want the hard floor >= 20", tw)
 	}
 }
@@ -242,7 +242,7 @@ func TestModelRailNoToggle(t *testing.T) {
 
 	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("ctrl+b must not hide the rail (no toggle exists)")
 	}
 	if !strings.Contains(view(m), "STATS") {
@@ -291,12 +291,12 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 	// Wire a rail whose STATS/CONTEXT/MODEL block is taller than the available
 	// history viewport in a short window.
 	m.deps.Rail = NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	m.rail = m.deps.Rail
+	m.tx.rail = m.deps.Rail
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
 	m = asModel(t, nm)
 
 	// The rail is always on (issue #227), even on a short window.
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible on a short window")
 	}
 	content := view(m)
@@ -326,7 +326,7 @@ func TestModelRailStaysOnScreen(t *testing.T) {
 	m = submitAndWait(t, m)
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = asModel(t, nm)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail should stay visible at 120x30 (permanent surface)")
 	}
 
@@ -387,17 +387,17 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			nm, _ := m.Update(tea.WindowSizeMsg{Width: tc.w, Height: 30})
 			m = asModel(t, nm)
-			if !m.railVisible() {
+			if !m.tx.railVisible() {
 				t.Fatalf("rail must stay visible at %dx30", tc.w)
 			}
-			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw <= tw {
+			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
 				t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk (issue #232)", bw, tw)
 			}
-			if bw := m.bandWidth(); bw != tc.w-2 {
+			if bw := m.tx.bandWidth(); bw != tc.w-2 {
 				t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d (issue #232 AC1)", bw, tc.w-2)
 			}
-			if m.bandWidth() < 2 {
-				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.bandWidth())
+			if m.tx.bandWidth() < 2 {
+				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.tx.bandWidth())
 			}
 		})
 	}
@@ -411,10 +411,10 @@ func TestModelBandWidthRailHiddenTiny(t *testing.T) {
 	m := NewModel(fakeSess("hi")) // no rail wired -> railVisible() == false
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 3, Height: 8})
 	m = asModel(t, nm)
-	if m.railVisible() {
+	if m.tx.railVisible() {
 		t.Fatal("model without a wired rail must not show the rail")
 	}
-	if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
+	if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw != tw {
 		t.Errorf("rail-hidden tiny window: bandWidth = %d, transcriptWidth = %d; seam must be byte-identical (issue #231 AC3)", bw, tw)
 	}
 }
@@ -438,18 +438,18 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 
 	// Changing the composer's width drives the composer's own wrap, but must not
 	// influence the band: bandWidth() has its own terminal-width source.
-	before := m.bandWidth()
+	before := m.tx.bandWidth()
 	m.composer.SetWidth(200)
-	after := m.bandWidth()
+	after := m.tx.bandWidth()
 	if before != after {
 		t.Errorf("bandWidth changed %d -> %d after composer width changed; band must be independent of composer width (issue #231)", before, after)
 	}
 
 	// transcriptWidth() must be derived solely from the terminal width and the
 	// rail, never the composer width, once a resize has landed.
-	twA := m.transcriptWidth()
+	twA := m.tx.transcriptWidth()
 	m.composer.SetWidth(5)
-	twB := m.transcriptWidth()
+	twB := m.tx.transcriptWidth()
 	if twA != twB {
 		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width (issue #231)", twA, twB)
 	}

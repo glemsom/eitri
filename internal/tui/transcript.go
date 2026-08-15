@@ -10,29 +10,29 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Transcript is the named value surface for the transcript region: the
+// Transcript is the single owner of the transcript region: the
 // layout/scroll/follow/render concerns that used to live in the TUI Model
-// god-object (issue #243). It is an "expand" seam: it owns the height/width,
-// the follow position, the persisted scroll viewport, and the render of the
-// agent-history scroll region, so the transcript renders without reaching
-// through the rest of Model.
+// god-object (issue #243), and since the contract step (#248) the ONLY home of
+// the transcript state. It owns the height/width, the messages, the tool log,
+// the review overlay, the right context rail, the follow position, the
+// drag-select, and the render of the agent-history scroll region.
 //
-// It is deliberately a value type constructed from Model state (newTranscript):
-// Model keeps its own transcript fields for now (a later contract step #248
-// removes them and makes Transcript standalone), so nothing breaks — the two
-// share the same render output. The fixture that proves the seam is real: a
-// test constructs a Transcript directly and renders through it, independent of
-// Model.
+// Model holds a live Transcript value as its owned tx field (issue #248): the
+// Transcript is a genuinely owned, mutating surface rather than a per-frame
+// value rebuilt from duplicated Model fields. NewModelCfg constructs it once;
+// Model mutates it in place (appends messages, applies tool updates, toggles
+// the review, drives navigation) and the render paths read it directly.
 //
-// The one pointer field is the persisted viewport (histViewport). It is shared
-// with Model — and across Model's value copies in View — so scroll-state
-// changes made during a render survive the next re-render cycle. Every other
-// field is plain value state the constructor copies out of Model.
+// The one pointer field is the persisted viewport (histViewport): it is shared
+// with the value copies Bubble Tea makes during View (which runs on a value
+// Model holding the same tx), so scroll-state changes made during a render
+// survive the next re-render cycle. The layout cache (layout) and drag-select
+// (dragSel) and review (review) are likewise heap-allocated pointers so their
+// state survives those value copies.
 //
 // Since issue #244 the Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
-// and return the resulting follow flag so a forwarding Model can persist the
-// decision into its own histFollow copy.
+// and mutate the follow flag in place.
 //
 // Scope note: Transcript owns the scroll region (the history the user reads),
 // the review overlay that sits above it in the same pane, and the right
@@ -96,43 +96,15 @@ type Transcript struct {
 	// (issue #119); T2 navigation (issue #120) breaks it on scroll-up.
 	histFollow bool
 	// histViewport is the persisted history scroll component (issue #119),
-	// shared with Model so scroll state survives render cycles.
+	// shared across Model's value copies so scroll state survives render cycles.
 	histViewport *viewport.Model
-	// rail is the right context pane (issue #88); nil disables it. Since issue
-	// #247 the rail is owned by the Transcript: its visibility (railVisible),
-	// band/transcript width accounting (bandWidth/transcriptWidth), clamp height
-	// (railClampHeight), and render (viewWithRail) all resolve on this surface, so
-	// the transcript width yields room for it (issue #227).
-	rail *Rail
-}
 
-// newTranscript builds a Transcript value from a Model, extracting the
-// transcript-relevant state so the render paths can run without reaching
-// through the rest of the Model god-object (issue #243). Model keeps its own
-// fields for now; this constructor is the single adapter between them, so the
-// two can never drift in what they render.
-func newTranscript(m Model) Transcript {
-	t := Transcript{
-		theme:           m.theme,
-		messages:        m.messages,
-		busy:            m.busy,
-		spinner:         m.spinner,
-		reasoningEffort: m.reasoningEffort,
-		configTheme:     m.deps.Config.Theme,
-		workspacePath:   m.deps.WorkspacePath,
-		log:             m.log,
-		showToolResult:  m.showToolResult,
-		layout:          m.layout,
-		telemetry:       m.telemetry,
-		review:          m.review,
-		dragSel:         m.dragSel,
-		width:           m.width,
-		height:          m.height,
-		histFollow:      m.histFollow,
-		histViewport:    m.histViewport,
-		rail:            m.rail,
-	}
-	return t
+	// rail is the right context pane (issue #88); nil disables it. Its
+	// visibility (railVisible), band/transcript width accounting
+	// (bandWidth/transcriptWidth), clamp height (railClampHeight), and render
+	// (viewWithRail) all resolve on this surface, so the transcript width
+	// yields room for it (issue #227).
+	rail *Rail
 }
 
 // railVisible reports whether the right context rail should render now. The
@@ -377,9 +349,9 @@ func (t Transcript) buildReview() reviewPanel {
 }
 
 // toggleReview flips the changed-file review overlay open or closed (issue
-// #90, #246 AC2): ctrl+d on the Model forwards here. When closed it builds the
-// panel from the transcript's tool log; when open it dismisses it back to the
-// transcript surface.
+// #90, #246 AC2): ctrl+d on the Model routes here (issue #248). When closed it
+// builds the panel from the transcript's tool log; when open it dismisses it
+// back to the transcript surface.
 func (t *Transcript) toggleReview() {
 	if t.review != nil {
 		t.review = nil
@@ -517,9 +489,8 @@ func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 // state across renders even while the history re-renders each frame.
 //
 // The method is a pointer receiver because the viewport (histViewport) is a
-// pointer shared with Model, and it returns the resulting follow flag so the
-// Model that forwarded the key can persist the Transcript's decision back into
-// its own histFollow copy (issue #244).
+// pointer shared across Model's value copies, and it mutates the follow flag in
+// place; the returned flag reports the resulting state (issue #244).
 func (t *Transcript) navigateHistory(key string) bool {
 	vp := t.histViewport
 	if vp == nil {
@@ -557,9 +528,9 @@ func (t *Transcript) navigateHistory(key string) bool {
 // preserving input focus. Bubble Tea delivers mouse events only when the
 // program enables them (internal/app/tui.go).
 //
-// Like navigateHistory it is a pointer receiver on the shared viewport and
-// returns the resulting follow flag for the forwarding Model to persist (issue
-// #244).
+// Like navigateHistory it is a pointer receiver on the shared viewport that
+// mutates the follow flag in place; the returned flag reports the resulting
+// state (issue #244).
 func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	vp := t.histViewport
 	if vp == nil {
@@ -672,8 +643,8 @@ func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool
 // click-to-expand, issue #245 AC1). It delegates to the tool log's
 // bounds-checked Toggle, never touches other entries or the global alt+y flag,
 // and marks the shared layout dirty so an expanded/collapsed entry's new row
-// span is re-recorded before the next hit-test. Model forwards here and
-// persists the mutated log back into its own copy (issue #248 removes it).
+// span is re-recorded before the next hit-test. The Transcript owns the log
+// (issue #248).
 func (t *Transcript) toggleToolEntry(idx int) {
 	t.log.Toggle(idx)
 	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
@@ -683,19 +654,45 @@ func (t *Transcript) toggleToolEntry(idx int) {
 // AC1/AC2): tool updates now route through the Transcript so they land in the
 // same log renderPane reads. It delegates to the tool log's Apply (start/result
 // pairing) and marks the shared layout dirty so the new entry's rows are
-// re-recorded. Model keeps its own log copy for now and persists the resulting
-// log back into its state (issue #248 removes the duplicate).
+// re-recorded. The Transcript owns the log (issue #248).
 func (t *Transcript) apply(u ToolUpdate) {
 	t.log.Apply(u)
 	t.layoutPtr().dirty = true // an entry changed the tool log's rendered rows
 }
 
 // toggleShowToolResult flips the global all-entries expansion state (issue #245
-// AC2): alt+y on the Model forwards here, reports the new value back so the
-// Model can persist it, and marks the shared layout dirty because showing or
-// hiding all tool results re-wraps the log.
+// AC2): alt+y on the Model routes here (issue #248), and it marks the shared
+// layout dirty because showing or hiding all tool results re-wraps the log.
 func (t *Transcript) toggleShowToolResult() bool {
 	t.showToolResult = !t.showToolResult
 	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
 	return t.showToolResult
+}
+
+// plainLines returns the history scroll content as plain text per rendered row
+// (ANSI stripped) — the coordinate space drag selection maps into. The split
+// matches the persisted viewport's own line split exactly, so content line
+// indexes agree between selection and the rendered transcript. It is lazy +
+// cached (issue #242): it reads the persistent layout cache, rebuilding it once
+// per transcript change via recordLayout so a drag's motion events reuse the
+// recorded plain-row space instead of re-rendering each one. It is owned by the
+// Transcript (issue #248).
+func (t *Transcript) plainLines() []string {
+	t.ensureLayout()
+	return t.layout.plain
+}
+
+// messageAtLine returns the message whose rendered rows include the given
+// content line, via the persistent row->message index (issue #242 AC1). It reads
+// the same lazy cache as toolEntryAtLine, so it never re-derives layout and
+// cannot drift from what the transcript renders. ok is false when the line maps
+// to no committed message (the workspace header, idle welcome, or busy footer).
+func (t *Transcript) messageAtLine(line int) (idx int, ok bool) {
+	t.ensureLayout()
+	for _, r := range t.layout.msgs {
+		if line >= r.start && line <= r.end {
+			return r.idx, true
+		}
+	}
+	return 0, false
 }

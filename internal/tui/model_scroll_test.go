@@ -23,18 +23,18 @@ func scrollOverflowModel(t *testing.T) Model {
 	// Hydrate the persisted viewport with the current content so navigation has
 	// a real scroll range.
 	got, _, _ := followRendered(m)
-	if vp := m.histViewport; vp == nil || vp.TotalLineCount() <= vp.Height() {
+	if vp := m.tx.histViewport; vp == nil || vp.TotalLineCount() <= vp.Height() {
 		t.Fatalf("test must overflow: viewport lines (%d) should exceed height (%d), got render:\n%s", mustVpLines(m), mustVpHeight(m), got)
 	}
 	return m
 }
 
-func mustVpLines(m Model) int  { return m.histViewport.TotalLineCount() }
-func mustVpHeight(m Model) int { return m.histViewport.Height() }
+func mustVpLines(m Model) int  { return m.tx.histViewport.TotalLineCount() }
+func mustVpHeight(m Model) int { return m.tx.histViewport.Height() }
 
 // scrollOffset returns the persisted viewport's current Y offset.
 func scrollOffset(m Model) int {
-	return m.histViewport.YOffset()
+	return m.tx.histViewport.YOffset()
 }
 
 // TestScroll_pagingKeysNavigateTranscript asserts PgUp/PgDn move the transcript
@@ -70,10 +70,10 @@ func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 
 	// End jumps to the newest output (the bottom).
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
-	if !m.histViewport.AtBottom() {
+	if !m.tx.histViewport.AtBottom() {
 		t.Errorf("End should jump to the transcript bottom, got offset %d", scrollOffset(m))
 	}
-	if !m.histFollow {
+	if !m.tx.histFollow {
 		t.Errorf("End reaching the bottom should re-engage follow, got histFollow=false")
 	}
 }
@@ -88,7 +88,7 @@ func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 
 	// Scroll up and confirm follow broke.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if m.histFollow {
+	if m.tx.histFollow {
 		t.Errorf("scrolling up must break follow (histFollow should be false)")
 	}
 	up := scrollOffset(m)
@@ -127,20 +127,20 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	if up := scrollOffset(m); up >= start {
 		t.Errorf("wheel up must scroll up, offset %d -> %d", start, up)
 	}
-	if m.histFollow {
+	if m.tx.histFollow {
 		t.Errorf("wheel up must break follow, got histFollow=true")
 	}
 
 	// Wheel down scrolls back toward the newest; reaching the bottom re-engages
 	// follow. Repeatedly scroll down to the bottom from the top to guarantee it.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
-	for i := 0; i < 50 && !m.histViewport.AtBottom(); i++ {
+	for i := 0; i < 50 && !m.tx.histViewport.AtBottom(); i++ {
 		m = mustUpdate(t, m, wheelMsg(false))
 	}
-	if !m.histViewport.AtBottom() {
+	if !m.tx.histViewport.AtBottom() {
 		t.Fatalf("wheel down should reach the bottom, got offset %d", scrollOffset(m))
 	}
-	if !m.histFollow {
+	if !m.tx.histFollow {
 		t.Errorf("reaching the bottom by wheel down should re-engage follow, got histFollow=false")
 	}
 }
@@ -153,21 +153,21 @@ func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 	m := scrollOverflowModel(t)
 	// Scroll up and confirm follow is broken.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
-	if m.histFollow {
+	if m.tx.histFollow {
 		t.Fatalf("precondition: PgUp must break follow")
 	}
 
 	// Type a new prompt and submit a real turn.
 	m = typeText(t, m, "new turn")
 	m = submitAndWait(t, m)
-	if !m.histFollow {
+	if !m.tx.histFollow {
 		t.Errorf("a new submit must re-engage follow, got histFollow=false")
 	}
 	// The next render re-anchors the viewport to the newest output (bottom)
 	// rather than holding the stale reading offset — the flag flips follow on
 	// submit, the render performs the GotoBottom.
 	got, _, _ := followRendered(m)
-	if !m.histViewport.AtBottom() {
+	if !m.tx.histViewport.AtBottom() {
 		t.Errorf("a new submit should re-follow to the newest output, got offset %d (not at bottom)", scrollOffset(m))
 	}
 	// The newest turn's answer is the last visible content row. Glamour's

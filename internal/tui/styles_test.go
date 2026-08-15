@@ -309,10 +309,13 @@ func TestModel_themeSeam(t *testing.T) {
 	}
 
 	// An alternate palette re-colors the chrome through the same render path.
+	// The chrome palette lives on both Model (composer/band) and its owned
+	// Transcript (history/rail); swapping must reach both (issue #248).
 	alt := defaultTheme
 	alt.accent = lipgloss.Color("#FF0000")
 	alt.agentPaneStyle = borderedPane(alt.accent)
 	m.theme = alt
+	m.tx.theme = alt
 
 	pane = lineContaining(view(m), "plain")
 	if !strings.Contains(pane, "\x1b[38;2;255;0;0m") {

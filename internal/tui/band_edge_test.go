@@ -51,15 +51,15 @@ func bandRowsFrom(plain string) (sep int, rows []string) {
 // full width, and the rail floats above the band without ever overlapping.
 func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	m := railBandModel(t, 120, 40)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible at 120x40")
 	}
 	// The seam: bandWidth stretches to the full terminal width while
 	// transcriptWidth stays rail-shrunk so the history keeps wrapping.
-	if bw, tw := m.bandWidth(), m.transcriptWidth(); bw <= tw {
+	if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
 		t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d (band spans full terminal width, history stays rail-shrunk)", bw, tw)
 	}
-	if w := m.bandWidth(); w != 120-2 {
+	if w := m.tx.bandWidth(); w != 120-2 {
 		t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d", w, 120-2)
 	}
 
@@ -102,14 +102,14 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 	if !strings.Contains(p, "XYZEND") {
 		t.Errorf(
 			"history wrapped at the full band width, truncating the prompt tail %q behind the rail (transcriptWidth=%d bandWidth=%d); must wrap at transcriptWidth",
-			"XYZEND", m.transcriptWidth(), m.bandWidth(),
+			"XYZEND", m.tx.transcriptWidth(), m.tx.bandWidth(),
 		)
 	}
 	// The tail must sit on the transcript side of the rail border, never hidden
 	// at or past column transcriptWidth.
 	for _, ln := range strings.Split(p, "\n") {
-		if i := strings.Index(ln, "XYZEND"); i >= 0 && i >= m.transcriptWidth() {
-			t.Errorf("history tail column %d not below transcriptWidth=%d (rail-shrunk wrap width)", i, m.transcriptWidth())
+		if i := strings.Index(ln, "XYZEND"); i >= 0 && i >= m.tx.transcriptWidth() {
+			t.Errorf("history tail column %d not below transcriptWidth=%d (rail-shrunk wrap width)", i, m.tx.transcriptWidth())
 		}
 	}
 }
@@ -122,7 +122,7 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 func TestModelRailEndsOneRowAboveBand(t *testing.T) {
 	// Short height: the ~14-row rail block dwarfs the ~7 rows the band leaves.
 	m := railBandModel(t, 120, 10)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible at 120x10")
 	}
 
@@ -161,7 +161,7 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 	// Tall height: the ~14-row rail block leaves ~36 rows between the top and the
 	// band; without padding the rail would stop ~22 rows short of the band.
 	m := railBandModel(t, 120, 40)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible at 120x40")
 	}
 
@@ -257,7 +257,7 @@ func rowRole(i int) string {
 func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
 	t.Helper()
 	m := railBandModel(t, 120, h)
-	if !m.railVisible() {
+	if !m.tx.railVisible() {
 		t.Fatalf("rail must stay visible at 120x%d", h)
 	}
 	plain := plain(view(m))
@@ -285,13 +285,13 @@ func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
 		h := h
 		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {
 			m := railBandModel(t, 120, h)
-			if !m.railVisible() {
+			if !m.tx.railVisible() {
 				t.Fatal("rail must stay visible at 120x", h)
 			}
-			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw <= tw {
+			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
 				t.Errorf("h=%d bandWidth=%d must exceed rail-shrunk transcriptWidth=%d across the tall range", h, bw, tw)
 			}
-			if w := m.bandWidth(); w != 120-2 {
+			if w := m.tx.bandWidth(); w != 120-2 {
 				t.Errorf("h=%d bandWidth=%d, want full terminal width minus gutter=%d", h, w, 120-2)
 			}
 
@@ -322,7 +322,7 @@ func TestModelRailEndsOneRowAboveBandTallSweep(t *testing.T) {
 		h := h
 		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {
 			m := railBandModel(t, 120, h)
-			if !m.railVisible() {
+			if !m.tx.railVisible() {
 				t.Fatal("rail must stay visible at 120x", h)
 			}
 			sep, _ := bandRowsForHeight(t, h)

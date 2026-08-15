@@ -191,57 +191,15 @@ func formatTokens(n int) string {
 // railWidth is the fixed right-pane width in columns.
 const railWidth = 30
 
-// railVisible reports whether the right context rail should render now. The
-// rail is the sole, permanent stats surface (issue #227): it is always on
-// whenever it is wired — no auto-hide on small windows and no ctrl+b toggle.
-// The transcript keeps a hard floor via transcriptWidth, so on an
-// extreme-minimum terminal the rail yields width so the transcript stays
-// readable (issue #227 AC3).
-func (m Model) railVisible() bool {
-	return newTranscript(m).railVisible()
-}
-
-// bandWidth returns the column width the bottom band renders at: the terminal
-// width (or a sane non-composer default before the first resize lands) minus the
-// 2-col gutter. The band is the edge-to-edge bottom region (issue #232): it
-// spans the full terminal width all the way under the right rail, so its
-// separator row, status strip, and composer run to the width's edge — no
-// railWidth x bandHeight dead corner. It is independent of transcriptWidth() in
-// the call graph (it never calls transcriptWidth and never reads the composer's
-// width).
-//
-// bandWidth is the SEAM for issue #232: it is the single width source for the
-// bottom band, independent of transcriptWidth(). transcriptWidth() stays
-// rail-shrunk so the history keeps wrapping to leave the rail room; bandWidth
-// does not — it spans full width under the rail.
-func (m Model) bandWidth() int {
-	return newTranscript(m).bandWidth()
-}
-
-// transcriptWidth returns the column width the left transcript pane should use
-// for wrapping: the terminal width (or a sane non-composer default when no
-// resize has landed) minus the 2-col gutter, and minus the rail + separator when
-// the rail is visible, so the transcript re-wraps to occupy the freed space
-// (issue #88 AC3). A floor keeps the pane usable on tiny windows. It is the
-// dedicated rail-shrunk history/selection width and never reads the composer's
-// width (decoupled in issue #231).
-func (m Model) transcriptWidth() int {
-	return newTranscript(m).transcriptWidth()
-}
-
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
 // composer box align with the edge-to-edge bottom band (issue #232). The
 // composer tracks the band (not transcriptWidth) because the band is what frames
 // the composer; bandWidth spans the full terminal width under the rail, so the
-// composer input line is full-width too. It is called on every window resize and
-// whenever the rail toggles visibility.
+// composer input line is full-width too. It is called on every window resize
+// and whenever the rail toggles visibility. The width source lives on the owned
+// Transcript (issue #247/#248).
 func (m *Model) syncWidths() {
-	// The composer is a Model-owned concern (issue #248 keeps it there), so
-	// syncWidths itself stays on Model; only its width source moved to the
-	// Transcript, which now owns bandWidth (issue #247). The composer tracks the
-	// band (not transcriptWidth) because the band is what frames the composer;
-	// bandWidth spans the full terminal width under the rail.
-	m.composer.SetWidth(newTranscript(*m).bandWidth())
+	m.composer.SetWidth(m.tx.bandWidth())
 	// A width change re-wraps the draft, so the composer's grown height must
 	// track the new soft-wrap layout (issue #121 AC5).
 	m.syncComposerHeight()
