@@ -218,10 +218,3 @@ func renderDiff(f reviewEntry, th Theme) string {
 	}
 	return sb.String()
 }
-
-// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
-// the review file list and the no-diff fallback, so the count formatting lives
-// in one place.
-func deltaTag(added, removed int) string {
-	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
-}

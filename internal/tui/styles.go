@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"image/color"
-	"strings"
 
 	"charm.land/lipgloss/v2"
 )
@@ -466,48 +465,6 @@ func borderedPane(c color.Color) lipgloss.Style {
 		BorderLeft(true).
 		PaddingLeft(1).
 		BorderForeground(c)
-}
-
-// isToolFailure reports whether a delivered tool result is error-shaped: the
-// engine surfaces tool failures as plain-text result strings with these
-// prefixes (internal/engine/engine.go), so the TUI can tag them ✗ without
-// coupling to the engine package's error types.
-func isToolFailure(result string) bool {
-	return strings.HasPrefix(result, "error executing tool:") ||
-		strings.HasPrefix(result, "invalid tool arguments:")
-}
-
-// toolCategory groups tool entries by the work the tool does (issue #181 AC1)
-// so the transcript can colorize a long session by category: shell commands,
-// file reads/writes/edits, web fetches and browser opens, and skill
-// activations. Tools no category recognizes fall back to the generic faint
-// entry — color is a layer on top of the persistent ⊕ glyph (issue #181 AC5),
-// never the only signal.
-type toolCategory int
-
-const (
-	catOther toolCategory = iota
-	catShell
-	catFile
-	catWeb
-	catSkill
-)
-
-// toolCategoryOf maps a tool name to its transcript category (issue #181 AC1).
-// Unknown names (future tools) report catOther so they keep the generic faint
-// tool line instead of inventing a hue.
-func toolCategoryOf(name string) toolCategory {
-	switch name {
-	case "bash":
-		return catShell
-	case "read", "write", "edit":
-		return catFile
-	case "web_fetch", "open_in_browser":
-		return catWeb
-	case "skill":
-		return catSkill
-	}
-	return catOther
 }
 
 // toolCategoryStyle returns the theme style for a tool category: the
