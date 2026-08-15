@@ -48,6 +48,13 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 // otherwise fold and break the section alignment).
 const railContentWidth = railWidth - 2
 
+// presizeBandWidthDefault is the non-composer fallback terminal width used by
+// bandWidth and transcriptWidth before the first window resize lands (m.width ==
+// 0). TranscriptWidth previously fell back to the composer's width here; that
+// coupling is removed in issue #231 so both widths derive solely from the
+// terminal width and the rail.
+const presizeBandWidthDefault = 80
+
 // line appends one indented rail entry, truncating an over-long row with a
 // trailing ellipsis so the rail stays single-line.
 func (r *Rail) line(b *strings.Builder, key, val string) {
@@ -193,15 +200,49 @@ func (m Model) railVisible() bool {
 	return m.rail != nil
 }
 
+// bandWidth returns the column width the bottom band renders at: the terminal
+// width (or a sane non-composer default before the first resize lands) minus the
+// 2-col gutter, and minus the rail + separator when the rail is visible, so the
+// band sits in the freed rail-shrunk space under the transcript (issue #122 AC3).
+// A small floor keeps the accent separator so it still reads as a line on tiny
+// windows.
+//
+// bandWidth is the SEAM for issue #232: it is the single full-width source for
+// the edge-to-edge bottom band, deliberately INDEPENDENT of transcriptWidth()
+// (it never calls transcriptWidth, and never reads the composer's width). Until
+// #232 lands it reproduces the same rail-shrunk number transcriptWidth returns
+// so no rendered pixel moves; #232 will drop the rail subtraction below to span
+// the full terminal width under the rail.
+func (m Model) bandWidth() int {
+	base := m.width
+	if base == 0 {
+		base = presizeBandWidthDefault // no resize yet; use a sane full-width start
+	}
+	w := base - 2
+	if m.railVisible() {
+		w -= railWidth + 1
+	}
+	// Small floor so the band's accent separator stays a readable line (issue
+	// #232 keeps this seam; it widens the band, never below this floor).
+	if w < 2 {
+		w = 2
+	}
+	return w
+}
+
 // transcriptWidth returns the column width the left transcript pane should use
-// for wrapping: the terminal width (or the composer fallback when no resize has
-// landed) minus the 2-col gutter, and minus the rail + separator when the rail
-// is visible, so the transcript re-wraps to occupy the freed space (issue #88
-// AC3). A floor keeps the pane usable on tiny windows.
+// for wrapping: the terminal width (or a sane non-composer default when no
+// resize has landed) minus the 2-col gutter, and minus the rail + separator when
+// the rail is visible, so the transcript re-wraps to occupy the freed space
+// (issue #88 AC3). A floor keeps the pane usable on tiny windows. It is the
+// dedicated rail-shrunk history/selection width and never reads the composer's
+// width (decoupled in issue #231).
 func (m Model) transcriptWidth() int {
-	base := m.composer.Width() + 2 // back-compat fallback before first resize
-	if m.width > 0 {
-		base = m.width
+	base := m.width
+	if base == 0 {
+		// Back-compat fallback before the first resize: a sane default terminal
+		// width, never the composer's width (issue #231 decoupling).
+		base = presizeBandWidthDefault
 	}
 	w := base - 2
 	if m.railVisible() {
@@ -216,11 +257,15 @@ func (m Model) transcriptWidth() int {
 	return w
 }
 
-// syncWidths re-sizes the composer to the transcript width so markdown wraps
-// and the composer box align with the (possibly rail-shrunk) left pane. It is
-// called on every window resize and whenever the rail toggles visibility.
+// syncWidths re-sizes the composer to the band width so markdown wraps and the
+// composer box align with the (possibly rail-shrunk) bottom band. The composer
+// tracks the band (not transcriptWidth) because the band is what frames the
+// composer, and both derive the same rail-shrunk width today (issue #231 seam);
+// issue #232 will widen the band across the full terminal width and the
+// composer follows. It is called on every window resize and whenever the rail
+// toggles visibility.
 func (m *Model) syncWidths() {
-	m.composer.SetWidth(m.transcriptWidth())
+	m.composer.SetWidth(m.bandWidth())
 	// A width change re-wraps the draft, so the composer's grown height must
 	// track the new soft-wrap layout (issue #121 AC5).
 	m.syncComposerHeight()
