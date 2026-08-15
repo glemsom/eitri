@@ -208,6 +208,10 @@ func (t Transcript) renderReview(b *strings.Builder) {
 	if r.openErr != "" {
 		b.WriteString(t.theme.statusStyle.Render("open_in_browser: " + r.openErr))
 		b.WriteString("\n")
+		// The open_in_browser error is a one-shot band note: it renders once the
+		// frame after the failure, then clears so subsequent frames don't redraw it
+		// (issue #90). r is the shared *reviewPanel, so clearing here persists.
+		r.openErr = ""
 	}
 	b.WriteString(t.theme.statusStyle.Render("  enter: toggle diff " + g("·", ".") + " o: open_in_browser " + g("·", ".") + " ctrl+d: close"))
 	b.WriteString("\n")

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -141,5 +142,35 @@ func TestReview_noFilesIsGraceful(t *testing.T) {
 	m = reopenReview(t, m)
 	if !strings.Contains(view(m), "no changes") {
 		t.Errorf("empty review panel should say 'no changes', got:\n%s", view(m))
+	}
+}
+
+// TestReview_openInBrowserErrorIsOneShot asserts the open_in_browser failure
+// note renders on exactly the frame after the failure, then clears — it is a
+// one-shot band note (issue #90), so later frames must not redraw a stale error
+// (regression: the Transcript renderReview lost the reset on the expand step,
+// issue #243).
+func TestReview_openInBrowserErrorIsOneShot(t *testing.T) {
+	feed := NewToolFeed()
+	m := NewModelCfg(Dependencies{
+		Turn:          func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Tools:         feed,
+		OpenInBrowser: func(ctx context.Context, target string) error { return fmt.Errorf("boom") },
+	})
+	m = resize(t, m)
+	m = reviewFeedEdit(t, &m, feed, "/w/mod.go", "edit", "a\n", "b\n", 0, 1)
+	m = reopenReview(t, m)
+
+	// Trigger the failing open_in_browser hook so the panel records the error.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'o', Text: "o"})
+	// The error note renders on the frame after the failure…
+	first := view(m)
+	if !strings.Contains(first, "open_in_browser: boom") {
+		t.Fatalf("first frame should show the open_in_browser error, got:\n%s", first)
+	}
+	// …then clears so a stale error never persists across later frames.
+	sub := view(m)
+	if strings.Contains(sub, "open_in_browser: boom") {
+		t.Errorf("open_in_browser error note must be one-shot, redrawn on:\n%s", sub)
 	}
 }
