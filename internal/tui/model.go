@@ -315,13 +315,6 @@ type Model struct {
 	// window shrink. It is 0 until the first resize lands, in which case the
 	// history renders unclamped.
 	height int
-	// railAuto is true until the user first presses ctrl+b: the rail then follows
-	// width (auto-show wide, auto-hide narrow). After a toggle it is false and
-	// railShown owns the decision explicitly, so ctrl+b works on any width.
-	railAuto bool
-	// railShown is the explicit rail visibility after the user toggles (issue
-	// #88 AC1). Current when !railAuto.
-	railShown bool
 
 	// histFollow is true while the history viewport re-anchors to the newest
 	// output (the follow position, T1 alt-screen pivot issue #119). It is the
@@ -423,7 +416,6 @@ func NewModelCfg(d Dependencies) Model {
 		curStream:       -1,
 		toolFeed:        d.Tools,
 		rail:            d.Rail,
-		railAuto:        true,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		reasoningEffort: d.Config.ReasoningEffort,
@@ -634,12 +626,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.navigateHistory(msgi.String())
 			return m, nil
 		case "ctrl+b":
-			// The right context rail (issue #88): ctrl+b toggles it between
-			// visible and hidden on any width, without stealing composer focus.
-			// No-op when the rail is not wired.
-			if m.rail != nil {
-				m.toggleRail()
-			}
+			// Reserved no-op: the right context rail is the permanent stats
+			// surface (issue #227) with no show/hide toggle, so ctrl+b is no
+			// longer bound. The key stays unused rather than re-mapped, keeping
+			// the composer's caret/selection editing untouched.
 			return m, nil
 		case "ctrl+d":
 			// The review panel (issue #90): ctrl+d toggles the changed-file
@@ -1201,14 +1191,13 @@ func (m Model) viewString() string {
 		return promptView(m.theme)
 	}
 
-	// The right context rail (issue #88, Layout A): when visible, the rendered
-	// transcript pane and the state rail sit side by side — one pane for time
-	// (transcript), one for state (rail). The rail never steals width from the
-	// full-width except where it auto-shows wide (railVisible gates it, and the
-	// composer width already shrank so the transcript re-wraps to the freed
-	// space).
+	// The right context rail (issue #88, Layout A): the rendered transcript pane
+	// and the state rail sit side by side — one pane for time (transcript), one
+	// for state (rail). The rail is the always-on stats surface (issue #227): it
+	// renders whenever it is wired, and the composer width already shrank so the
+	// transcript re-wraps to leave it room.
 	left := m.renderPane()
-	if m.rail != nil && m.railVisible() {
+	if m.railVisible() {
 		right := styledRail(m.rail.render(m.telemetry, m.theme), m.railClampHeight())
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}

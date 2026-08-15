@@ -16,7 +16,9 @@ func fakeSess(prompt string) Turn {
 }
 
 // TestRailRenderStats asserts the rail's STATS section reflects the live
-// telemetry: cache hit %, cost, turns, and token in/out (issue #88).
+// telemetry: cache hit %, cost, turns, elapsed session time, and token in/out
+// (issue #88; issue #227 added the elapsed readout so the rail carries the
+// full stats picture permanently).
 func TestRailRenderStats(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -36,6 +38,11 @@ func TestRailRenderStats(t *testing.T) {
 	}
 	if !strings.Contains(view, "cost $0.00658") {
 		t.Errorf("rail STATS missing cost, got: %q", view)
+	}
+	// The elapsed readout is the session wall-clock (issue #227): freshly
+	// constructed, the session has run for just enough time to show "0s".
+	if !strings.Contains(view, "elapsed 0s") {
+		t.Errorf("rail STATS missing elapsed readout, got: %q", view)
 	}
 	// 100k hit + 25k miss = 125k in; 10k out.
 	if !strings.Contains(view, "125.0k in") || !strings.Contains(view, "10.0k out") {
@@ -84,8 +91,6 @@ func TestRailRenderContext(t *testing.T) {
 		t.Errorf("rail CONTEXT missing session temp path, got: %q", view)
 	}
 }
-
-// TestModelRailToggles asserts ctrl+b toggles the rail between visible and
 
 // TestRailRenderSectionHues asserts each rail section renders with a distinct
 // hue from the theme palette (issue #182 AC1): the STATS / CONTEXT / MODEL
@@ -160,43 +165,11 @@ func TestRailRenderStatsNoGraph(t *testing.T) {
 	}
 }
 
-// hidden on any width without disturbing the transcript (issue #88 AC1).
-func TestModelRailToggles(t *testing.T) {
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
-	m := NewModelCfg(Dependencies{
-		Turn: fakeSess("hi"),
-		// Wide window: default auto-shows the rail.
-		Telemetry: te,
-		Rail:      r,
-	})
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
-	m = asModel(t, nm)
-
-	if !m.railVisible() {
-		t.Fatal("rail should auto-show on a wide window")
-	}
-
-	// ctrl+b hides it.
-	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
-	if m.railVisible() {
-		t.Fatal("ctrl+b should hide the rail on a wide window")
-	}
-	// ctrl+b again shows it.
-	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
-	if !m.railVisible() {
-		t.Fatal("ctrl+b should re-show the rail")
-	}
-}
-
-// TestModelRailAutoHidesShort asserts the rail auto-shows only when the
-// terminal is tall enough to host it beside the fixed bottom band, alongside
-// the width gate (issue T05 AC2): a wide-but-short window
-// auto-hides the rail just like a narrow one. ctrl+b still forces it open on
-// any size.
-func TestModelRailAutoHidesShort(t *testing.T) {
+// TestModelRailAlwaysOn asserts the rail is the permanent stats surface (issue
+// #227): it renders on any window size — wide or narrow, tall or short — and
+// ctrl+b no longer toggles it off. The rail only yields on an
+// extreme-minimum terminal via the transcript floor (tested separately).
+func TestModelRailAlwaysOn(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -204,27 +177,59 @@ func TestModelRailAutoHidesShort(t *testing.T) {
 		Telemetry: te,
 		Rail:      r,
 	})
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 10})
-	m = asModel(t, nm)
 
-	if m.railVisible() {
-		t.Fatal("rail must auto-hide on a wide-but-short window")
-	}
-	// ctrl+b still opens it on any size.
-	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
-	if !m.railVisible() {
-		t.Fatal("ctrl+b must open the rail on a short window")
-	}
-	if !strings.Contains(view(m), "STATS") {
-		t.Errorf("open rail missing STATS section, got: %q", view(m))
+	for _, tc := range []struct {
+		name string
+		w    int
+		h    int
+	}{
+		{"wide", 140, 24},
+		{"narrow", 80, 24},
+		{"short", 140, 10},
+		{"tiny", 60, 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nm, _ := m.Update(tea.WindowSizeMsg{Width: tc.w, Height: tc.h})
+			mm := asModel(t, nm)
+			if !mm.railVisible() {
+				t.Fatalf("rail must stay visible at %dx%d (permanent surface)", tc.w, tc.h)
+			}
+			if content := view(mm); !strings.Contains(content, "STATS") {
+				t.Errorf("visible rail missing STATS section at %dx%d, got: %q", tc.w, tc.h, content)
+			}
+		})
 	}
 }
 
-// TestModelRailAutoHidesNarrow asserts the rail auto-hides below ~120 cols so
-// the primary buffer keeps full-width selection (issue #88 AC3), and ctrl+b
-// still forces it open on a narrow window.
-func TestModelRailAutoHidesNarrow(t *testing.T) {
+// TestModelRailTranscriptFloor asserts the transcript keeps a usable hard
+// floor on an extreme-minimum terminal (issue #227 AC3): with the rail always
+// on, a window too narrow to host a real pane beside it still reserves the
+// floor so the transcript stays readable rather than being squeezed away.
+func TestModelRailTranscriptFloor(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
+	m := NewModelCfg(Dependencies{
+		Turn:      fakeSess("hi"),
+		Telemetry: te,
+		Rail:      r,
+	})
+
+	// An extreme-minimum terminal (narrower than railWidth + floor + gutter):
+	// the rail is visible, but the transcript columns are floored, never 0.
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = asModel(t, nm)
+	if !m.railVisible() {
+		t.Fatal("rail must stay visible on an extreme-minimum terminal")
+	}
+	if tw := m.transcriptWidth(); tw < 20 {
+		t.Errorf("transcriptWidth = %d on a 40-col window, want the hard floor >= 20", tw)
+	}
+}
+
+// TestModelRailNoToggle asserts ctrl+b no longer hides the rail (issue #227 AC2
+// — there is no show/hide toggle for the permanent stats surface): pressing it
+// leaves the rail visible, and no stray STATS/CONTEXT loss follows.
+func TestModelRailNoToggle(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -235,18 +240,13 @@ func TestModelRailAutoHidesNarrow(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = asModel(t, nm)
 
-	if m.railVisible() {
-		t.Fatal("rail must auto-hide on a narrow window")
-	}
-	// ctrl+b opens it on any width.
 	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 	if !m.railVisible() {
-		t.Fatal("ctrl+b must open the rail on a narrow window")
+		t.Fatal("ctrl+b must not hide the rail (no toggle exists)")
 	}
-	content := view(m)
-	if !strings.Contains(content, "STATS") {
-		t.Errorf("open rail missing STATS section, got: %q", content)
+	if !strings.Contains(view(m), "STATS") {
+		t.Errorf("rail still missing after ctrl+b, got: %q", view(m))
 	}
 }
 
@@ -263,10 +263,7 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
 	m = asModel(t, nm)
 
-	// Force it open and feed a live usage update.
-	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	nm, _ = nm.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
+	// The rail is the always-on stats surface (issue #227); feed a live update.
 	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
 	cmd := telemetryWait(te)
 	msg := cmd()
@@ -297,13 +294,10 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 	m.rail = m.deps.Rail
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
 	m = asModel(t, nm)
-	// ctrl+b forces the rail open on any size (AC3); auto-show would gate on
-	// the short height.
-	nm, _ = m.Update(tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
 
+	// The rail is always on (issue #227), even on a short window.
 	if !m.railVisible() {
-		t.Fatal("ctrl+b must force the rail open")
+		t.Fatal("rail must stay visible on a short window")
 	}
 	content := view(m)
 
@@ -333,7 +327,7 @@ func TestModelRailStaysOnScreen(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = asModel(t, nm)
 	if !m.railVisible() {
-		t.Fatal("rail should auto-show at 120x30")
+		t.Fatal("rail should stay visible at 120x30 (permanent surface)")
 	}
 
 	content := plain(view(m))

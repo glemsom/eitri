@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
@@ -88,8 +89,10 @@ func (r *Rail) render(te *Telemetry, th Theme) string {
 }
 
 // renderStats renders the STATS section: the live money/usage picture from the
-// telemetry surface as numeric lines only — cache hit %, cost, turns, and
-// token in/out (issue #189 removed the usage-history sparkline rows).
+// telemetry surface as numeric lines only — cache hit %, cost, turns, elapsed
+// session time, and token in/out (issue #189 removed the usage-history
+// sparkline rows; the elapsed readout rounds out the rail as the permanent
+// stats surface, issue #227).
 func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
@@ -97,10 +100,12 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	hits, misses, out := 0, 0, 0
 	turns := 0
 	compacted := false
+	elapsed := time.Duration(0)
 	if te != nil {
 		hits, misses, out = te.cacheHit, te.cacheMiss, te.output
 		turns = te.turns
 		compacted = te.compacted
+		elapsed = time.Since(te.startedAt)
 	}
 	totalIn := hits + misses
 	pct := 0.0
@@ -117,6 +122,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct))
 	r.line(&body, "cost", formatCost(cost))
 	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
+	r.line(&body, "elapsed", formatElapsed(elapsed))
 	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)))
 	if compacted {
 		r.line(&body, "state", "compacted")
@@ -174,43 +180,17 @@ func formatTokens(n int) string {
 	}
 }
 
-// rail constants: railWidth is the fixed right-pane width in columns;
-// railShowWidth / railShowHeight are the terminal size below which the rail
-// auto-hides, so a pane too narrow or too short to be useful stays off (issue
-// #88 AC3).
-const (
-	railWidth      = 30
-	railShowWidth  = 120
-	railShowHeight = 24
-)
+// railWidth is the fixed right-pane width in columns.
+const railWidth = 30
 
-// railVisible reports whether the right context rail should render now. When
-// the user has not explicitly toggled it (railAuto), it follows size: shown
-// only on windows that are both wide (>= railShowWidth) and tall (>
-// railShowHeight) so it never steals vertical room from the fixed bottom band
-// on a short terminal (issue T05 AC2). Once the user
-// presses ctrl+b the choice becomes explicit (railShown), so the rail toggles
-// on any size (issue #88 AC1/AC3).
+// railVisible reports whether the right context rail should render now. The
+// rail is the sole, permanent stats surface (issue #227): it is always on
+// whenever it is wired — no auto-hide on small windows and no ctrl+b toggle.
+// The transcript keeps a hard floor via transcriptWidth, so on an
+// extreme-minimum terminal the rail yields width so the transcript stays
+// readable (issue #227 AC3).
 func (m Model) railVisible() bool {
-	if m.rail == nil {
-		return false
-	}
-	if !m.railAuto {
-		return m.railShown
-	}
-	return m.width >= railShowWidth && m.height >= railShowHeight
-}
-
-// toggleRail flips the rail's explicit visibility and re-syncs the composer
-// width so the transcript takes over the freed space (issue #88).
-func (m *Model) toggleRail() {
-	// Capture the effective visibility before flipping off auto mode: the
-	// toggle always reverses whatever is currently showing, whichever basis
-	// (width or explicit) drove it (issue #88 AC1).
-	was := m.railVisible()
-	m.railAuto = false
-	m.railShown = !was
-	m.syncWidths()
+	return m.rail != nil
 }
 
 // transcriptWidth returns the column width the left transcript pane should use
@@ -226,6 +206,9 @@ func (m Model) transcriptWidth() int {
 	w := base - 2
 	if m.railVisible() {
 		w -= railWidth + 1
+		// Hard floor (issue #227 AC3): on an extreme-minimum terminal too narrow
+		// for the rail to sit beside a full transcript, the rail yields so the
+		// transcript pane stays readable rather than being squeezed away.
 		if w < 20 {
 			w = 20
 		}

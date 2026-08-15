@@ -42,7 +42,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name: "brand-and-hints",
 			want: "Eitri - your terminal coding agent\n" +
 				"  ask me to fix a bug, refactor code, explain a system, or run the tests\n" +
-				"  ctrl+s settings · ctrl+b rail · / for commands\n",
+				"  ctrl+s settings · / for commands\n",
 		},
 	}
 	for _, c := range cases {
@@ -143,7 +143,7 @@ func TestRender_bandHints(t *testing.T) {
 			name:       "normal",
 			vimNormal:  false,
 			reviewOpen: false,
-			want:       "ctrl+s settings . ctrl+b rail . ctrl+d review . ctrl+o copy",
+			want:       "ctrl+s settings . ctrl+d review . ctrl+o copy",
 		},
 		{
 			name:       "vim-normal",
