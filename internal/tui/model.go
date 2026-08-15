@@ -239,13 +239,6 @@ type Model struct {
 	// place and never keeps a second transcript state copy. See transcript.go.
 	tx Transcript
 
-	// theme is the styling surface for the TUI chrome (issue #178): a palette
-	// registry plus derived styles the chrome draws from (band, settings). It
-	// defaults to the pre-seam dark palette; swapping it re-skins the global
-	// surface. The Transcript carries its own copy (tx.theme) so the two render
-	// regions draw from the same palette without Model re-deriving it.
-	theme Theme
-
 	// vimNormal is the composer's vim normal mode (benchmark §4.4): esc toggles
 	// it, and while active h/j/k/l navigate the draft instead of inserting
 	// text (see vimKey).
@@ -375,7 +368,6 @@ func NewModelCfg(d Dependencies) Model {
 		turn:         d.Turn,
 		deps:         d,
 		tx:           transcript,
-		theme:        th,
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
 		skills:       skillSnapshot(d),
@@ -845,7 +837,7 @@ func (m *Model) openSettings() *settingsForm {
 		cfg = config.Default()
 	}
 	sf := newSettingsForm(cfg, m.deps.Models)
-	sf.theme = m.theme
+	sf.theme = m.tx.theme
 	sf.telemetry = m.telemetry
 	m.settings = &sf
 	return &sf
@@ -926,13 +918,12 @@ func (s *settingsForm) save(m *Model) {
 	if m.deps.SaveBack != nil {
 		m.deps.SaveBack(cfg)
 	}
-	// The theme selection re-skins the surface live (issue #179): the model's
-	// chrome palette and the Transcript's render config both follow the saved
-	// value, so the chrome and the Markdown body pick up the new theme
-	// immediately instead of waiting for the next run.
+	// The theme selection re-skins the surface live (issue #179): the
+	// Transcript is the single owner of the palette, so the chrome (which reads
+	// m.tx.theme) and the Markdown body (tx.configTheme) both follow the saved
+	// value immediately instead of waiting for the next run.
 	m.deps.Config = cfg
-	m.theme = themeFor(cfg.Theme)
-	m.tx.theme = m.theme
+	m.tx.theme = themeFor(cfg.Theme)
 	m.tx.configTheme = cfg.Theme
 	m.settings = nil
 }
@@ -1206,7 +1197,7 @@ func (m Model) viewString() string {
 		return settingsView(*m.settings)
 	}
 	if m.prompting {
-		return promptView(m.theme)
+		return promptView(m.tx.theme)
 	}
 
 	// The right context rail (issue #88, Layout A): the rendered transcript pane
@@ -1381,14 +1372,14 @@ func (m Model) vimKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // §4.3/§4.4). The rail's glyph and width never change, so the caret geometry
 // is untouched.
 func (m *Model) syncComposerRail() {
-	c := m.theme.accent
+	c := m.tx.theme.accent
 	switch {
 	case m.vimNormal:
 		// Vim normal mode: the rail sits between accent (insert) and the busy
 		// dim — a distinct, calmer shade signals "navigating, not typing".
-		c = dimmed(m.theme.accent, 0.6)
+		c = dimmed(m.tx.theme.accent, 0.6)
 	case m.tx.busy || m.tx.review != nil:
-		c = dimmed(m.theme.accent, 0.45)
+		c = dimmed(m.tx.theme.accent, 0.45)
 	}
 	st := m.composer.Styles()
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(c)
@@ -1417,9 +1408,9 @@ func (m Model) renderBand(b *strings.Builder) {
 		// accent-tinted to match the rail, while a turn runs. The busy/spinner
 		// state lives on the owned Transcript (issue #248).
 		if m.tx.busy {
-			statusRow = m.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
+			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
 		}
-		statusRow += m.theme.statusStyle.Render(bandHints(m.vimNormal, m.tx.review != nil))
+		statusRow += m.tx.theme.statusStyle.Render(bandHints(m.vimNormal, m.tx.review != nil))
 		// The status strip is edge-to-edge with the rest of the band (issue
 		// #232 AC1): pad it to the full band width so it runs under the rail's
 		// right column instead of stopping short. The separator and composer
@@ -1431,10 +1422,10 @@ func (m Model) renderBand(b *strings.Builder) {
 	// The slash-command completion list (issue #87 AC1) sits above the composer
 	// whenever the input line is a `/...` command, listing the built-in
 	// /settings command + matching skills with the current selection marked.
-	renderSlashCompletion(&inner, m.theme, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
+	renderSlashCompletion(&inner, m.tx.theme, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
-		inner.WriteString("\n" + m.theme.statusStyle.Render(m.savedMsg))
+		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
 	}
 	// The whole band is framed by an accent separator row so it reads as one
 	// coherent fixed region under the transcript (issue #122 AC3). The
@@ -1444,7 +1435,7 @@ func (m Model) renderBand(b *strings.Builder) {
 	if tw < 2 {
 		tw = 2
 	}
-	b.WriteString(m.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), tw)))
+	b.WriteString(m.tx.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), tw)))
 	b.WriteString("\n")
 	b.WriteString(inner.String())
 }

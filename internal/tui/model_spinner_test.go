@@ -140,7 +140,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Fatalf("idle rail = %v, want the full accent", rail)
 	}
 
@@ -150,13 +150,13 @@ func TestComposerRail_modeColor(t *testing.T) {
 	if !m.tx.busy {
 		t.Fatalf("model must be busy after submit")
 	}
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Errorf("busy rail must dim from the accent, still accent")
 	}
 
 	// Turn completes: rail restores.
 	m = upd(t, m, turnDoneMsg{prompt: "hi", answer: "done"})
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Errorf("rail must restore the accent after the turn, got %v", rail)
 	}
 
@@ -169,11 +169,11 @@ func TestComposerRail_modeColor(t *testing.T) {
 	m = upd(t, m, toolUpdateMsg{update: ToolUpdate{Result: &ToolResult{Name: "edit", Path: "a.go", Result: "ok", Lines: 1, Before: "x", After: "y"}}})
 	m = upd(t, m, turnDoneMsg{prompt: "again", answer: "done"})
 	m = keypress(t, m, "ctrl+d")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Errorf("review-open rail must dim from the accent")
 	}
 	m = keypress(t, m, "esc")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Errorf("rail must restore the accent after the review closes, got %v", rail)
 	}
 }
@@ -223,7 +223,7 @@ func TestVimNormalMode(t *testing.T) {
 	if !m.vimNormal {
 		t.Fatal("esc must enter vim normal mode")
 	}
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Error("normal-mode rail must differ from the accent")
 	}
 	before := m.composer.Cursor()
