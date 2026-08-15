@@ -400,6 +400,22 @@ func TestModelBandWidthMatchesTranscriptWidth(t *testing.T) {
 	}
 }
 
+// TestModelBandWidthRailHiddenTiny pins the byte-identical seam on a rail-hidden
+// tiny window too (issue #231 AC3 coverage gap): with no right rail, bandWidth
+// and transcriptWidth follow the same formula and must still agree, even on a
+// sliver where renderBand's own clamp keeps the separator readable.
+func TestModelBandWidthRailHiddenTiny(t *testing.T) {
+	m := NewModel(fakeSess("hi")) // no rail wired -> railVisible() == false
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 3, Height: 8})
+	m = asModel(t, nm)
+	if m.railVisible() {
+		t.Fatal("model without a wired rail must not show the rail")
+	}
+	if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
+		t.Errorf("rail-hidden tiny window: bandWidth = %d, transcriptWidth = %d; seam must be byte-identical (issue #231 AC3)", bw, tw)
+	}
+}
+
 // TestModelBandWidthIndependentOfComposer pins the decoupling of issue #231: the
 // band width must be derived from its own source and never read the composer's
 // width. Flipping the composer width (via SetWidth) must not move bandWidth(),

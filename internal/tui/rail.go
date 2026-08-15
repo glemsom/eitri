@@ -48,12 +48,12 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 // otherwise fold and break the section alignment).
 const railContentWidth = railWidth - 2
 
-// presizeBandWidthDefault is the non-composer fallback terminal width used by
+// presizeTerminalWidth is the non-composer fallback terminal width used by
 // bandWidth and transcriptWidth before the first window resize lands (m.width ==
 // 0). TranscriptWidth previously fell back to the composer's width here; that
 // coupling is removed in issue #231 so both widths derive solely from the
 // terminal width and the rail.
-const presizeBandWidthDefault = 80
+const presizeTerminalWidth = 80
 
 // line appends one indented rail entry, truncating an over-long row with a
 // trailing ellipsis so the rail stays single-line.
@@ -208,16 +208,16 @@ func (m Model) railVisible() bool {
 // transcriptWidth so the separator never collapses below the rail-shrunk read
 // width; renderBand clamps a rail-hidden sliver up to 2 separately.
 //
-// bandWidth is the SEAM for issue #232: it is the single full-width source for
-// the edge-to-edge bottom band, deliberately INDEPENDENT of transcriptWidth()
-// (it never calls transcriptWidth, and never reads the composer's width). Until
-// #232 lands it reproduces the same rail-shrunk number transcriptWidth returns
-// so no rendered pixel moves; #232 will drop the rail subtraction below to span
-// the full terminal width under the rail.
+// bandWidth is the SEAM for issue #232: it is the single width source for the
+// bottom band, independent of transcriptWidth() in the call graph (it never
+// calls transcriptWidth and never reads the composer's width). Until #232 lands
+// it reproduces the same rail-shrunk number transcriptWidth returns — the two
+// share the same formula today — so no rendered pixel moves; #232 will drop the
+// rail subtraction below to span the full terminal width under the rail.
 func (m Model) bandWidth() int {
 	base := m.width
 	if base == 0 {
-		base = presizeBandWidthDefault // no resize yet; use a sane full-width start
+		base = presizeTerminalWidth // no resize yet; use a sane full-width start
 	}
 	w := base - 2
 	if m.railVisible() {
@@ -245,7 +245,7 @@ func (m Model) transcriptWidth() int {
 	if base == 0 {
 		// Back-compat fallback before the first resize: a sane default terminal
 		// width, never the composer's width (issue #231 decoupling).
-		base = presizeBandWidthDefault
+		base = presizeTerminalWidth
 	}
 	w := base - 2
 	if m.railVisible() {
