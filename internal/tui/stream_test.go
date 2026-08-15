@@ -20,7 +20,7 @@ func streamingTurn(ctx context.Context, prompt string) (TurnResult, error) {
 // streaming and completion messages can be applied by hand.
 func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 	t.Helper()
-	if m.busy {
+	if m.tx.busy {
 		t.Fatalf("model already busy")
 	}
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -28,7 +28,7 @@ func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 		t.Fatalf("expected a turn command on submit")
 	}
 	out := asModel(t, nm)
-	if !out.busy {
+	if !out.tx.busy {
 		t.Fatalf("model should be busy after submit")
 	}
 	return out, cmd
@@ -67,7 +67,7 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 	content := view(m)
 	// The partial answer content is buffered on the in-progress assistant
 	// message, growing in place before completion (issue #83 AC1).
-	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad**" {
+	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "Hello **glad**" {
 		t.Errorf("first delta content = %q, want %q", got, "Hello **glad**")
 	}
 	// Partial markdown is styled through Glamour, not shown as raw syntax
@@ -79,7 +79,7 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 	// A second delta extends the same message in place.
 	m = applyDelta(t, m, " to help.")
 	view2 := view(m)
-	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad** to help." {
+	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "Hello **glad** to help." {
 		t.Errorf("second delta content = %q, want %q", got, "Hello **glad** to help.")
 	}
 	if strings.Contains(view2, "Hello **glad**") {
@@ -103,13 +103,13 @@ func TestModel_streamFinalize(t *testing.T) {
 	m = asModel(t, nm)
 
 	content := view(m)
-	if got := m.messages[len(m.messages)-1].content; got != "Hello **glad** to help." {
+	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "Hello **glad** to help." {
 		t.Errorf("final content = %q, want full answer", got)
 	}
 	if !hasSGRBold(content) {
 		t.Errorf("expected final markdown bold to render, got: %q", content)
 	}
-	if m.busy {
+	if m.tx.busy {
 		t.Errorf("completion must clear the busy state")
 	}
 }
@@ -124,7 +124,7 @@ func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	if got := m.messages[len(m.messages)-1].content; got != "plain answer" {
+	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "plain answer" {
 		t.Errorf("expected non-streaming answer content, got %q", got)
 	}
 }
@@ -151,12 +151,12 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	// buffer, distinct from the answer buffer.
 	m = applyReasoningDelta(t, m, "I check the env.")
 	m = applyReasoningDelta(t, m, " Then I edit.")
-	n := len(m.messages) - 1
-	if got := m.messages[n].reasoning; got != "I check the env. Then I edit." {
+	n := len(m.tx.messages) - 1
+	if got := m.tx.messages[n].reasoning; got != "I check the env. Then I edit." {
 		t.Errorf("streamed reasoning = %q, want accumulated thinking", got)
 	}
-	if m.messages[n].content != "" {
-		t.Errorf("reasoning must not write into the answer buffer, got %q", m.messages[n].content)
+	if m.tx.messages[n].content != "" {
+		t.Errorf("reasoning must not write into the answer buffer, got %q", m.tx.messages[n].content)
 	}
 	// The thinking block is live but auto-collapsed: a hint renders, not the
 	// body, until the user expands it (issue #85 AC1/AC2).
@@ -170,7 +170,7 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 
 	// An answer delta still grows the answer buffer untouched.
 	m = applyDelta(t, m, "Hi there.")
-	if got := m.messages[n].content; got != "Hi there." {
+	if got := m.tx.messages[n].content; got != "Hi there." {
 		t.Errorf("answer delta content = %q, want %q (reasoning not merged into answer)", got, "Hi there.")
 	}
 }

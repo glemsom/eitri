@@ -49,31 +49,32 @@ type reviewPanel struct {
 
 // updateReview routes a keypress while the review panel is open. It keeps the
 // panel read-only: navigation and the open_in_browser escape hatch never modify
-// the repo or the live run (issue #90 AC4).
+// the repo or the live run (issue #90 AC4). The open panel lives on the owned
+// Transcript surface (issue #246/#248).
 func (m Model) updateReview(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msgi.String()
-	if len(m.review.files) == 0 {
+	if len(m.tx.review.files) == 0 {
 		// No files: esc / ctrl+d return to the transcript; everything else no-ops.
 		if key == "esc" || key == "ctrl+d" {
-			m.review = nil
+			m.tx.review = nil
 			m.syncComposerRail()
 		}
 		return m, nil
 	}
 	switch key {
 	case "esc", "ctrl+d":
-		m.review = nil
+		m.tx.review = nil
 		m.syncComposerRail()
 	case "up":
-		m.review.move(-1)
+		m.tx.review.move(-1)
 	case "down":
-		m.review.move(1)
+		m.tx.review.move(1)
 	case "enter", "tab", "i":
 		// Toggle the focused file's inline diff in place (no alt-screen).
-		if m.review.files[m.review.cursor].hunks == nil {
-			m.review.computeHunks(m.review.cursor)
+		if m.tx.review.files[m.tx.review.cursor].hunks == nil {
+			m.tx.review.computeHunks(m.tx.review.cursor)
 		}
-		m.review.expanded = !m.review.expanded
+		m.tx.review.expanded = !m.tx.review.expanded
 	case "o":
 		m.openFocused()
 	}
@@ -112,20 +113,12 @@ func (r *reviewPanel) computeHunks(idx int) {
 // open_in_browser escape hatch (issue #90 AC3). It is a best-effort host-side
 // launch; errors degrade to an on-panel note. Read-only against the live loop.
 func (m *Model) openFocused() {
-	if m.deps.OpenInBrowser == nil || m.review == nil || len(m.review.files) == 0 {
+	if m.deps.OpenInBrowser == nil || m.tx.review == nil || len(m.tx.review.files) == 0 {
 		return
 	}
-	if err := m.deps.OpenInBrowser(context.Background(), m.review.focused().path); err != nil {
-		m.review.openErr = err.Error()
+	if err := m.deps.OpenInBrowser(context.Background(), m.tx.review.focused().path); err != nil {
+		m.tx.review.openErr = err.Error()
 	}
-}
-
-// renderReview renders the review panel over the transcript: a dense,
-// code-review-style summary of touched files with add/delete counts and status
-// (the VS Code Agents-window lexicon), plus the focused file's inline diff when
-// expanded, and a hint for the open_in_browser escape hatch.
-func (m Model) renderReview(b *strings.Builder) {
-	newTranscript(m).renderReview(b)
 }
 
 // renderDiff renders a changed file's inline hunks as a terminal diff with the

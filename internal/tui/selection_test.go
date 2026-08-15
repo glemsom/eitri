@@ -130,9 +130,9 @@ func dragModel(t *testing.T, answer string) Model {
 // row. The content rows are unpadded — the viewport pads rows to the terminal
 // width only when rendering — so they are the exact text a selection copies.
 func historyContentRows(m Model) (rows []string, top int) {
-	vp := m.histViewport
+	vp := m.tx.histViewport
 	var hist strings.Builder
-	m.renderHistory(&hist, nil, nil)
+	m.tx.renderHistory(&hist, nil, nil)
 	for _, l := range strings.Split(hist.String(), "\n") {
 		rows = append(rows, ansiStrip(l))
 	}
@@ -399,10 +399,10 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	bandLines := m.bandHeight()
 	// A press on the band's own row (last terminal row).
-	m = mustUpdate(t, m, dragMsg("press", 5, m.height-1))
-	m = mustUpdate(t, m, dragMsg("motion", 20, m.height-1))
-	m = mustUpdate(t, m, dragMsg("release", 20, m.height-1))
-	if m.dragSel != nil {
+	m = mustUpdate(t, m, dragMsg("press", 5, m.tx.height-1))
+	m = mustUpdate(t, m, dragMsg("motion", 20, m.tx.height-1))
+	m = mustUpdate(t, m, dragMsg("release", 20, m.tx.height-1))
+	if m.tx.dragSel != nil {
 		t.Errorf("press over the band must not start a selection")
 	}
 
@@ -441,14 +441,14 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	// Scroll up once so follow breaks and the viewport holds an offset.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	view(m)
-	if m.histViewport.YOffset() <= 0 {
-		t.Fatalf("test needs a scrolled viewport, got offset %d", m.histViewport.YOffset())
+	if m.tx.histViewport.YOffset() <= 0 {
+		t.Fatalf("test needs a scrolled viewport, got offset %d", m.tx.histViewport.YOffset())
 	}
 
 	rows, top := historyContentRows(m)
 	// Pick a visible row that carries answer text.
 	target := -1
-	for i := top; i < top+m.histViewport.Height() && i < len(rows); i++ {
+	for i := top; i < top+m.tx.histViewport.Height() && i < len(rows); i++ {
 		if strings.Contains(rows[i], "answer") && strings.TrimSpace(rows[i]) != "" {
 			target = i
 			break
@@ -494,13 +494,13 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 
 	m = mustUpdate(t, m, dragMsg("press", col, screenRow))
 	m = mustUpdate(t, m, dragMsg("motion", col+3, screenRow))
-	before := m.histViewport.YOffset()
+	before := m.tx.histViewport.YOffset()
 
 	m = mustUpdate(t, m, wheelMsg(true)) // wheel up
-	if got := m.histViewport.YOffset(); got >= before {
+	if got := m.tx.histViewport.YOffset(); got >= before {
 		t.Errorf("wheel during drag must still scroll up: offset %d -> %d", before, got)
 	}
-	if m.dragSel == nil {
+	if m.tx.dragSel == nil {
 		t.Errorf("wheel must not cancel the in-progress drag")
 	}
 	m = mustUpdate(t, m, dragMsg("release", col+3, screenRow))
@@ -543,7 +543,7 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 		t.Fatalf("tool head row not found, got %q", rows)
 	}
 	// The row accounting must map the head row to this tool's entry.
-	if idx, _, ok := m.toolEntryAtLine(headRow); !ok || idx != 0 {
+	if idx, _, ok := m.tx.toolEntryAtLine(headRow); !ok || idx != 0 {
 		t.Fatalf("toolEntryAtLine(%d) = %d/%v, want entry 0", headRow, idx, ok)
 	}
 
@@ -553,7 +553,7 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	if !strings.Contains(view(m), "full output line one") {
 		t.Errorf("click must expand the entry, got: %q", view(m))
 	}
-	if m.showToolResult {
+	if m.tx.showToolResult {
 		t.Error("click must not set the global showToolResult flag")
 	}
 

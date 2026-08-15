@@ -199,7 +199,7 @@ func TestComposer_CaretHiddenOnReviewPanel(t *testing.T) {
 	m = resize(t, m)
 	m = reviewFeedEdit(t, &m, feed, "/w/main.go", "edit", "old\n", "new\n", 0, 1)
 	m = reopenReview(t, m)
-	if m.review == nil {
+	if m.tx.review == nil {
 		t.Fatal("review panel must be open after ctrl+d")
 	}
 	if c := m.View().Cursor; c != nil {

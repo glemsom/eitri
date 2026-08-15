@@ -155,19 +155,19 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hello")
 	m = submitAndWait(t, m)
-	before := m.messages
+	before := m.tx.messages
 
 	m = keypressCtrlO(t, m)
 
-	if len(m.messages) != len(before) {
-		t.Errorf("copy changed the message count: got %d, want %d", len(m.messages), len(before))
+	if len(m.tx.messages) != len(before) {
+		t.Errorf("copy changed the message count: got %d, want %d", len(m.tx.messages), len(before))
 	}
 	for i := range before {
-		if before[i] != m.messages[i] {
-			t.Errorf("message %d changed by copy: got %+v, want %+v", i, m.messages[i], before[i])
+		if before[i] != m.tx.messages[i] {
+			t.Errorf("message %d changed by copy: got %+v, want %+v", i, m.tx.messages[i], before[i])
 		}
 	}
-	if m.busy {
+	if m.tx.busy {
 		t.Errorf("copy must not mark the model busy")
 	}
 }

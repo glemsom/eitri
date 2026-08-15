@@ -87,7 +87,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 		t.Errorf("expected the compression tail marker in the collapsed summary, got: %q", content)
 	}
 	// Raw body lines must not be dumped into the scroll when collapsed.
-	if strings.Contains(content, "c.go\n+3 more\n") && !m.showToolResult {
+	if strings.Contains(content, "c.go\n+3 more\n") && !m.tx.showToolResult {
 		// c.go may legitimately appear if expanded; here it's collapsed.
 		t.Errorf("collapsed entry must not dump the raw result body, got: %q", content)
 	}
@@ -116,13 +116,13 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
 
-	if m.log.Len() != 1 {
-		t.Fatalf("expected one tool entry after start+result, got %d", m.log.Len())
+	if m.tx.log.Len() != 1 {
+		t.Fatalf("expected one tool entry after start+result, got %d", m.tx.log.Len())
 	}
-	if !m.log.Entry(0).complete {
+	if !m.tx.log.Entry(0).complete {
 		t.Errorf("tool entry should be complete after its result arrives")
 	}
-	if e := m.log.Entry(0); e.name != "read" || e.result != "contents" {
+	if e := m.tx.log.Entry(0); e.name != "read" || e.result != "contents" {
 		t.Errorf("tool entry = %+v, want read/contents", e)
 	}
 }

@@ -29,14 +29,14 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("spinner tick must re-issue while busy")
 	}
-	first := m.spinner
+	first := m.tx.spinner
 	nm, _ = m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.spinner != (first+1)%len(busySpinnerFrames) {
-		t.Fatalf("spinner frame did not advance: %d -> %d", first, m.spinner)
+	if m.tx.spinner != (first+1)%len(busySpinnerFrames) {
+		t.Fatalf("spinner frame did not advance: %d -> %d", first, m.tx.spinner)
 	}
 	// The rendered line carries the current braille glyph.
-	frame := string(busySpinnerFrames[m.spinner])
+	frame := string(busySpinnerFrames[m.tx.spinner])
 	if !strings.Contains(view(m), frame+" working") {
 		t.Errorf("busy line must render frame %q, got: %q", frame, view(m))
 	}
@@ -45,11 +45,11 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 	// issued (the completion path returns no spinner command).
 	nm, _ = m.Update(turnDoneMsg{prompt: "hi", answer: "final answer"})
 	m = asModel(t, nm)
-	if m.busy {
+	if m.tx.busy {
 		t.Fatalf("turn completion must clear busy")
 	}
-	if m.spinner != 0 {
-		t.Errorf("spinner must reset after completion, got %d", m.spinner)
+	if m.tx.spinner != 0 {
+		t.Errorf("spinner must reset after completion, got %d", m.tx.spinner)
 	}
 }
 
@@ -72,8 +72,8 @@ func TestBusySpinner_reducedMotionFallsBack(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("spinner tick must not re-issue under reduced motion")
 	}
-	if m.spinner != 0 {
-		t.Errorf("spinner frame must stay 0 under reduced motion, got %d", m.spinner)
+	if m.tx.spinner != 0 {
+		t.Errorf("spinner frame must stay 0 under reduced motion, got %d", m.tx.spinner)
 	}
 	_ = time.Second // keep the import honest if assertions change
 }
@@ -104,7 +104,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 	m = submitAndWait(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (2.1s)", Lines: 1})
-	m.log.SetStart(0, m.log.Entry(0).doneAt.Add(-2*time.Second))
+	m.tx.log.SetStart(0, m.tx.log.Entry(0).doneAt.Add(-2*time.Second))
 
 	content := view(m)
 	if !strings.Contains(content, "2s") {
@@ -140,23 +140,23 @@ func TestComposerRail_modeColor(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Fatalf("idle rail = %v, want the full accent", rail)
 	}
 
 	// Busy (turn in flight): the rail dims.
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = asModel(t, nm)
-	if !m.busy {
+	if !m.tx.busy {
 		t.Fatalf("model must be busy after submit")
 	}
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Errorf("busy rail must dim from the accent, still accent")
 	}
 
 	// Turn completes: rail restores.
 	m = upd(t, m, turnDoneMsg{prompt: "hi", answer: "done"})
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Errorf("rail must restore the accent after the turn, got %v", rail)
 	}
 
@@ -169,11 +169,11 @@ func TestComposerRail_modeColor(t *testing.T) {
 	m = upd(t, m, toolUpdateMsg{update: ToolUpdate{Result: &ToolResult{Name: "edit", Path: "a.go", Result: "ok", Lines: 1, Before: "x", After: "y"}}})
 	m = upd(t, m, turnDoneMsg{prompt: "again", answer: "done"})
 	m = keypress(t, m, "ctrl+d")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Errorf("review-open rail must dim from the accent")
 	}
 	m = keypress(t, m, "esc")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
 		t.Errorf("rail must restore the accent after the review closes, got %v", rail)
 	}
 }
@@ -223,7 +223,7 @@ func TestVimNormalMode(t *testing.T) {
 	if !m.vimNormal {
 		t.Fatal("esc must enter vim normal mode")
 	}
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
 		t.Error("normal-mode rail must differ from the accent")
 	}
 	before := m.composer.Cursor()
@@ -261,8 +261,8 @@ func TestVimNormalMode(t *testing.T) {
 	if m.vimNormal {
 		t.Fatal("enter must exit normal mode")
 	}
-	if m.busy || len(m.messages) != 0 {
-		t.Fatalf("enter in normal mode must not submit: busy=%v messages=%d", m.busy, len(m.messages))
+	if m.tx.busy || len(m.tx.messages) != 0 {
+		t.Fatalf("enter in normal mode must not submit: busy=%v messages=%d", m.tx.busy, len(m.tx.messages))
 	}
 
 	// ctrl+c still quits from normal mode.

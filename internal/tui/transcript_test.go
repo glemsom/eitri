@@ -96,33 +96,40 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 	}
 }
 
-// TestTranscript_matchesModelRender asserts the Transcript value renders the
-// scroll region byte-for-byte identically to the Model render it replaces
-// (issue #243 AC3): Model delegates to newTranscript, so the two must agree on
-// the history content for the same state.
+// TestTranscript_matchesModelRender asserts the Model renders the scroll region
+// through its OWNED Transcript (issue #248): the Model's tx field produces the
+// same history content an independently-constructed Transcript with the same
+// transcript state does, so the contract step left one transcript renderer with
+// no per-frame rebuild from duplicated Model fields.
 func TestTranscript_matchesModelRender(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	msgs := []message{{role: "you", content: "hello"}, {role: "eitri", content: "**plain** answer"}}
-	m := Model{
+	tx := Transcript{
 		theme:           th,
+		configTheme:     config.DefaultTheme,
+		workspacePath:   "/tmp/acme",
 		messages:        msgs,
+		reasoningEffort: "medium",
 		width:           80,
 		height:          12,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
-		deps:            Dependencies{WorkspacePath: "/tmp/acme", Config: config.Config{Theme: config.DefaultTheme}},
-		reasoningEffort: "medium",
 	}
+	// A Model whose owned tx carries exactly that state.
+	m := NewModelCfg(Dependencies{WorkspacePath: "/tmp/acme", Config: config.Config{Theme: config.DefaultTheme, ReasoningEffort: "medium"}})
+	m.tx.messages = msgs
+	m.tx.width = 80
+	m.tx.height = 12
 
 	var viaModel strings.Builder
-	m.renderHistory(&viaModel, nil, nil)
+	m.tx.renderHistory(&viaModel, nil, nil)
 
 	var viaTranscript strings.Builder
-	newTranscript(m).renderHistory(&viaTranscript, nil, nil)
+	tx.renderHistory(&viaTranscript, nil, nil)
 
 	if viaModel.String() != viaTranscript.String() {
-		t.Errorf("Transcript render diverged from Model render:\nmodel:      %q\ntranscript: %q",
+		t.Errorf("Model render diverged from an equal standalone Transcript:\nmodel:      %q\ntranscript: %q",
 			viaModel.String(), viaTranscript.String())
 	}
 }
@@ -135,7 +142,7 @@ func transcriptScrollModel(t *testing.T) Transcript {
 	t.Helper()
 	m := newTallHistoryModel(t)
 	m = resizeTo(t, m, 120, 12)
-	tx := newTranscript(m)
+	tx := m.tx
 	// Hydrate the persisted (shared) viewport with the current content so
 	// navigation has a real scroll range.
 	var hist strings.Builder
