@@ -32,7 +32,7 @@ func lineContaining(s, want string) string {
 // markdown, and only the agent pane's left border marks the answer side.
 func TestModel_stylingNoRoleLabels(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 	})
@@ -54,7 +54,7 @@ func TestModel_stylingNoRoleLabels(t *testing.T) {
 // "left-bordered agent panes").
 func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 	})
@@ -77,7 +77,7 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Tools: feed,
@@ -113,7 +113,7 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 // error is as readable as a normal answer.
 func TestModel_stylingErrorMarker(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{}, errors.New("provider exploded")
 		},
 	})
@@ -143,7 +143,9 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 func TestModel_stylingToolCategoryColors(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 	})
 	m = resize(t, m)
@@ -200,7 +202,7 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 // mark the hint, never color alone (issue #181 AC5).
 func TestModel_stylingThinkingDistinct(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
 		},
 	})
@@ -229,7 +231,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 // marker (issue #122 AC2: "thinking (🤔)") on the collapsed hint line.
 func TestModel_stylingThinkingMarker(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok", Reasoning: "hidden reasoning"}, nil
 		},
 	})
@@ -253,7 +255,7 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Telemetry: te,
@@ -365,7 +367,7 @@ func cellBGFill(s string) []bool {
 // scope: only the card's own columns are asserted.
 func TestModel_userBubbleFillsFullWidth(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 	})
@@ -427,7 +429,7 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	// the v2 migration audit (issue #149 AC3, manual TUI smoke test), not a
 	// Render()-level assertion.
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 	})

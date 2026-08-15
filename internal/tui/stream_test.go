@@ -11,7 +11,7 @@ import (
 // streamingTurn is a stand-in Turn seam that never completes on its own; the
 // test finalizes it explicitly with a turnDoneMsg, mirroring how the engine
 // turn and the answer-delta stream run concurrently.
-func streamingTurn(ctx context.Context, prompt string) (TurnResult, error) {
+func streamingTurn(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 	return TurnResult{Answer: "IGNORED"}, nil
 }
 
@@ -118,7 +118,7 @@ func TestModel_streamFinalize(t *testing.T) {
 // Streamer keeps the historical non-streaming behaviour: a completed turn
 // appends the full answer once (issue #83 backward-compat).
 func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		return TurnResult{Answer: "plain answer"}, nil
 	})
 	m = resize(t, m)

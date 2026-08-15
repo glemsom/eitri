@@ -26,7 +26,7 @@ import (
 // of the 80x24 frame, no status strip (no telemetry), no slash completion.
 func caretModel(t *testing.T) Model {
 	t.Helper()
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})
 	return resize(t, m)
@@ -152,7 +152,9 @@ func TestComposer_CaretTracksInternalScroll(t *testing.T) {
 // composer is not on screen there (issue #168 scope; full hiding is #169).
 func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(),
 	})

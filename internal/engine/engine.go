@@ -62,6 +62,13 @@ func (e *Engine) emit(evt Event) {
 type RunRequest struct {
 	Model  string
 	Prompt string
+
+	// SkillInject, when non-nil, is a slash-activated skill payload (the rendered
+	// <skill_content>/<skill_resources> body, issue #260). RunAgent prepends it to
+	// the provider request head as a system message so the model acts on the args
+	// with the skill instructions in context. Nil keeps the historical
+	// [system, user] two-message head (byte-identical, prompt-cache invariant).
+	SkillInject *string
 	// SessionKey opts the run into deepseek's session-scoped prompt cache:
 	// every request carries prompt_cache_key:<SessionKey> and the request head
 	// stays byte-identical across turns. Empty disables it.
@@ -306,6 +313,15 @@ func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provide
 // reflect the final, tool-free turn.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
 	messages := append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt})
+	// A slash-activated skill payload rides ahead of the user turn as a system
+	// message (issue #260): without it the args turn reaches the provider with the
+	// skill body missing from context. systemPromptHead is a fresh slice each call,
+	// so appending the inject never mutates the shared head.
+	if req.SkillInject != nil {
+		messages = append(systemPromptHead(),
+			provider.Message{Role: provider.RoleSystem, Content: *req.SkillInject},
+			provider.Message{Role: provider.RoleUser, Content: req.Prompt})
+	}
 	var final Result
 
 	// Optionally opt this agent loop into provider-side Tool Schema Enforcement

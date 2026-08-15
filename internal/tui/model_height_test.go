@@ -93,7 +93,7 @@ func TestModel_historyClipHoldsNewestFollowSeam(t *testing.T) {
 func newTallHistoryModel(t *testing.T) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "answer " + prompt}, nil
 		},
 		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),

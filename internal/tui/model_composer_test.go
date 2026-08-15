@@ -14,7 +14,7 @@ import (
 // (turn command + busy flag) is the existing behaviour and must be preserved.
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -41,7 +41,7 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 // draft.
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -70,7 +70,7 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 // case never sees it and the key currently falls through as a no-op.
 func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -105,7 +105,7 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 // seam, not be flattened or dropped.
 func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -141,7 +141,7 @@ func newlineShiftEnter(t *testing.T, m Model) Model {
 // of the fixed-height composer of the pre-pivot TUI, and an over-long draft
 // caps at the bound rather than growing without limit.
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})
 	m = resize(t, m)
@@ -172,7 +172,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 // across several terminal rows, and the composer tracks them so the draft is
 // visible without clipping (issue #121 AC5).
 func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string) (TurnResult, error) {
+	m := NewModel(func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})
 	m = resize(t, m) // 80 cols -> composer width 78
@@ -192,7 +192,7 @@ func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 // instead.
 func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
@@ -236,7 +236,7 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 	// grown composer.
 	skillName := strings.Repeat("x", 100)
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),

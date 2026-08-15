@@ -76,7 +76,20 @@ func motionEnabled() bool {
 // the shared engine seam. It is what the model depends on; both the real engine
 // (internal/engine) and tests implement it, so conversation behavior is testable
 // without a terminal or a live provider.
-type Turn func(ctx context.Context, prompt string) (TurnResult, error)
+//
+// inject carries a slash-activated skill payload (issue #260): when non-empty,
+// the args turn reaches the engine with the skill body in context so the model
+// acts on the args with the skill instructions loaded.
+type Turn func(ctx context.Context, prompt string, inject SkillInject) (TurnResult, error)
+
+// SkillInject carries the slash-activated skill payload into the model's context
+// for a follow-up args turn (issue #260). Payload is the rendered
+// <skill_content>/<skill_resources> body; an empty Payload means no injection
+// (bare `/skillname` or an ordinary user turn).
+type SkillInject struct {
+	// Payload is the skill activation body to prepend to the provider request.
+	Payload string
+}
 
 // TurnResult is the outcome of one conversation turn: the final assistant
 // answer plus any reasoning produced along the way. Reasoning is kept on a
@@ -659,7 +672,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if name, args, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name, args)
 			}
-			cmd := m.startTurn(prompt)
+			cmd := m.startTurn(prompt, SkillInject{})
 			return m, cmd
 		case "tab":
 			// Fresh `/` with tab walks the slash completion list: the built-in
@@ -804,7 +817,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// turn AFTER the injected skill note so message order renders
 			// note-then-args (issue #239). Bare `/skillname` has empty args and
 			// dispatches no turn.
-			cmd := m.startTurn(msgi.args)
+			cmd := m.startTurn(msgi.args, SkillInject{Payload: msgi.payload})
 			return m, cmd
 		}
 		return m, nil
@@ -929,11 +942,11 @@ func (s *settingsForm) save(m *Model) {
 }
 
 // turnCmd reports a turn's completion back to the model.
-func (m Model) turnCmd(prompt string) tea.Cmd {
+func (m Model) turnCmd(prompt string, inject SkillInject) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		res, err := m.turn(ctx, prompt)
+		res, err := m.turn(ctx, prompt, inject)
 		if err != nil {
 			return turnDoneMsg{prompt: prompt, err: err}
 		}
@@ -947,7 +960,7 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 // turns a prompt into a "you" message + busy state and returns the dispatch
 // command, shared by the composer submit path and the skillDoneMsg args branch
 // (issue #239) so a follow-up args turn behaves exactly like a normal user turn.
-func (m *Model) startTurn(prompt string) tea.Cmd {
+func (m *Model) startTurn(prompt string, inject SkillInject) tea.Cmd {
 	m.tx.messages = append(m.tx.messages, message{role: "you", content: prompt})
 	m.tx.busy = true
 	m.curStream = -1
@@ -962,9 +975,9 @@ func (m *Model) startTurn(prompt string) tea.Cmd {
 	// (issue #211). The non-streaming fallback keeps the single turn
 	// command — tests drive it synchronously.
 	if m.stream != nil {
-		return tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
+		return tea.Batch(m.turnCmd(prompt, inject), streamWait(m.stream), spinnerTick())
 	}
-	return m.turnCmd(prompt)
+	return m.turnCmd(prompt, inject)
 }
 
 // appendStreamDelta grows the in-progress assistant message by one streamed

@@ -89,7 +89,7 @@ func applyResize(t *testing.T, m Model, w, h int) Model {
 func buildMultiTurnModel(t *testing.T) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "answer " + prompt}, nil
 		},
 	})

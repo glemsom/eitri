@@ -96,7 +96,9 @@ func newestBusyLine(m Model) string {
 // sub-second tools stay silent (issue #211 / benchmark §4.1).
 func TestToolElapsed_timerRenders(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: NewToolFeed(),
 	})
 	m = resize(t, m)
@@ -112,7 +114,9 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 	}
 	// Sub-second tool: no timer noise.
 	m2 := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: NewToolFeed(),
 	})
 	m2 = resize(t, m2)
@@ -134,7 +138,9 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 // width never change, so caret geometry is untouched.
 func TestComposerRail_modeColor(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "done"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
+			return TurnResult{Answer: "done"}, nil
+		},
 		Tools: NewToolFeed(),
 	})
 	m = resize(t, m)
@@ -184,7 +190,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 // and never competes with real content (issue #212).
 func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 	})
@@ -211,7 +217,7 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 // without submitting, and the rail dims to the normal-mode shade.
 func TestVimNormalMode(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ SkillInject) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 	})
