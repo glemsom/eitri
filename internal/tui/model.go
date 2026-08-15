@@ -756,6 +756,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if strings.HasPrefix(val, "/") {
 			m.slashPrefix = val
 			m.slashIdx = 0
+		} else {
+			// The line no longer starts with `/` (e.g. emptied by backspace): clear
+			// the remembered prefix and selection so the completion list and its
+			// reserved rows are dismissed on this/next render (issue #241).
+			m.slashPrefix = ""
+			m.slashIdx = 0
 		}
 		// The draft changed: re-grow the composer within the band (issue #121
 		// AC5), so the textarea's height tracks the new line count / wraps.

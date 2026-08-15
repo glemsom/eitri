@@ -119,3 +119,33 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 		t.Fatalf("completion selection marker missing, got: %q", view(m))
 	}
 }
+
+// TestModel_slashCompletionDismissedOnEmptyLine verifies emptying the composer
+// line dismisses the slash-completion list on the next render (issue #241): the
+// list appears when a bare `/` is typed, then disappears once the line is
+// deleted back to empty. The completion list and its reserved rows must key off
+// the current composer value, not a stale `/...` prefix.
+func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}},
+	})
+	m = resize(t, m)
+
+	// Typing a bare `/` surfaces the completion list.
+	m = typeText(t, m, "/")
+	if !strings.Contains(view(m), "/settings") {
+		t.Fatalf("bare `/` should show the completion list, got: %q", view(m))
+	}
+
+	// Deleting back to an empty composer line must dismiss the list on the
+	// next render: no stale candidate rows survive the emptied input.
+	m = keypress(t, m, "backspace")
+	if got := m.composer.Value(); got != "" {
+		t.Fatalf("composer after backspace = %q, want empty", got)
+	}
+	content := view(m)
+	if strings.Contains(content, "/settings") || strings.Contains(content, "/review") {
+		t.Errorf("completion list should be dismissed on empty line, got: %q", content)
+	}
+}
