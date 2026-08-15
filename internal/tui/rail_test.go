@@ -356,3 +356,98 @@ func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 		t.Errorf("nil rail must render no rail, got: %q", content)
 	}
 }
+
+// TestModelBandWidthMatchesTranscriptWidth pins the byte-identical seam for
+// issue #231: the bottom band now sizes itself from its own bandWidth() source,
+// but until issue #232 lands (which will drop the rail subtraction so the band
+// spans the full terminal width under the rail) bandWidth() must reproduce the
+// same rail-shrunk number the transcript pane uses. On a resized window the two
+// must be equal so no rendered pixel moves.
+func TestModelBandWidthMatchesTranscriptWidth(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
+	m := NewModelCfg(Dependencies{
+		Turn:      fakeSess("hi"),
+		Telemetry: te,
+		Rail:      r,
+	})
+
+	for _, tc := range []struct {
+		name string
+		w    int
+	}{
+		{"wide", 120},
+		{"narrow", 80},
+		// Extreme-minimum rail-visible windows: the separator must inherit
+		// transcriptWidth's hard floor (20, issue #227 AC3), not collapse to a
+		// sliver — bandWidth stays byte-identical across the degenerate range too
+		// (issue #231 AC3).
+		{"degenerate", 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nm, _ := m.Update(tea.WindowSizeMsg{Width: tc.w, Height: 30})
+			m = asModel(t, nm)
+			if !m.railVisible() {
+				t.Fatalf("rail must stay visible at %dx30", tc.w)
+			}
+			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
+				t.Errorf("bandWidth = %d, transcriptWidth = %d; seam must be byte-identical before #232 (band must stay rail-shrunk)", bw, tw)
+			}
+			if m.bandWidth() < 2 {
+				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.bandWidth())
+			}
+		})
+	}
+}
+
+// TestModelBandWidthRailHiddenTiny pins the byte-identical seam on a rail-hidden
+// tiny window too (issue #231 AC3 coverage gap): with no right rail, bandWidth
+// and transcriptWidth follow the same formula and must still agree, even on a
+// sliver where renderBand's own clamp keeps the separator readable.
+func TestModelBandWidthRailHiddenTiny(t *testing.T) {
+	m := NewModel(fakeSess("hi")) // no rail wired -> railVisible() == false
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 3, Height: 8})
+	m = asModel(t, nm)
+	if m.railVisible() {
+		t.Fatal("model without a wired rail must not show the rail")
+	}
+	if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
+		t.Errorf("rail-hidden tiny window: bandWidth = %d, transcriptWidth = %d; seam must be byte-identical (issue #231 AC3)", bw, tw)
+	}
+}
+
+// TestModelBandWidthIndependentOfComposer pins the decoupling of issue #231: the
+// band width must be derived from its own source and never read the composer's
+// width. Flipping the composer width (via SetWidth) must not move bandWidth(),
+// and transcriptWidth() must likewise not read composer width once the terminal
+// width is known.
+func TestModelBandWidthIndependentOfComposer(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
+	m := NewModelCfg(Dependencies{
+		Turn:      fakeSess("hi"),
+		Telemetry: te,
+		Rail:      r,
+	})
+
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = asModel(t, nm)
+
+	// Changing the composer's width drives the composer's own wrap, but must not
+	// influence the band: bandWidth() has its own terminal-width source.
+	before := m.bandWidth()
+	m.composer.SetWidth(200)
+	after := m.bandWidth()
+	if before != after {
+		t.Errorf("bandWidth changed %d -> %d after composer width changed; band must be independent of composer width (issue #231)", before, after)
+	}
+
+	// transcriptWidth() must be derived solely from the terminal width and the
+	// rail, never the composer width, once a resize has landed.
+	twA := m.transcriptWidth()
+	m.composer.SetWidth(5)
+	twB := m.transcriptWidth()
+	if twA != twB {
+		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width (issue #231)", twA, twB)
+	}
+}

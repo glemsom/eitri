@@ -1717,8 +1717,9 @@ func (m Model) renderBand(b *strings.Builder) {
 	}
 	// The whole band is framed by an accent separator row so it reads as one
 	// coherent fixed region under the transcript (issue #122 AC3). The
-	// separator spans the transcript column (the rail joins to the right).
-	tw := m.transcriptWidth()
+	// separator spans the band's column via bandWidth() (the rail joins to the
+	// right); bandWidth is the seam issue #232 will widen to full terminal width.
+	tw := m.bandWidth()
 	if tw < 2 {
 		tw = 2
 	}
