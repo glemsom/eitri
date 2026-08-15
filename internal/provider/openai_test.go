@@ -102,7 +102,7 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 // TestOpenAIEmitsGenerationBudget verifies the request head carries
 // max_completion_tokens when the caller opts into a Generation Budget, and that
 // ordinary turns with no budget omit the field entirely (bytes stay clean for
-// the shared request head, docs/spec.md §4 / issue #60).
+// the shared request head, issue #60).
 func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -207,8 +207,8 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 
 // TestOpenAIOmitsToolSchemaEnforcementByDefault verifies the default wire shape
 // for an ordinary agent/tool turn: no strict marker on any tool function, so the
-// request head stays byte-identical to the pre-enforcement surface (docs/spec.md
-// §4 / issue #62).
+// request head stays byte-identical to the pre-enforcement surface
+// (issue #62).
 func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -239,7 +239,7 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 // TestOpenAIEmitsJSONObjectMode verifies that a JSON-Object-Mode finalization
 // turn (issue #59) carries response_format:{type:json_object} on the wire, and
 // that an ordinary turn with the flag off omits the field entirely (bytes stay
-// clean for the shared request head, docs/spec.md §4).
+// clean for the shared request head).
 func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -293,7 +293,7 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 }
 
 // TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn wire
-// (issue #61, docs/spec.md §13): a temperature policy emits `temperature` and
+// (issue #61): a temperature policy emits `temperature` and
 // never `top_p`; a nucleus (top-p) policy emits `top_p` and never `temperature`;
 // an ordinary turn with no policy emits neither field, so the shared request head
 // stays untouched. The two sampling modes are mutually exclusive on the wire.
@@ -393,7 +393,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 // TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
-// byte-identical prefix (docs/spec.md §4, research/opencode-endpoints.md §4).
+// byte-identical prefix (research/opencode-endpoints.md §4).
 func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -423,8 +423,7 @@ func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 }
 
 // TestOpenAIStreamsPromptCacheUsage verifies the streamed usage carries the
-// deepseek prompt-cache hit/miss token telemetry parsed at the provider seam
-// (docs/spec.md §4, §11).
+// deepseek prompt-cache hit/miss token telemetry parsed at the provider seam.
 func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/usage-cache.sse")
 	if err != nil {
@@ -545,7 +544,7 @@ func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
 }
 
 // TestOpenAIMalformedEventReturnsCleanError verifies an invalid SSE payload is
-// surfaced as ErrMalformed, never a crash (docs/spec.md §11).
+// surfaced as ErrMalformed, never a crash.
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -565,7 +564,7 @@ func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 }
 
 // TestAssistantMessageAlwaysCarriesReasoningContent encodes the hard DeepSeek
-// 400-avoidance wire guarantee (docs/spec.md §6): an assistant message must
+// 400-avoidance wire guarantee: an assistant message must
 // marshal `reasoning_content` even when empty, so a tool-turn against a
 // reasoning provider never trips the empty-field 400. The field is never
 // dropped by omitempty.
@@ -593,7 +592,7 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 // client advertises the generation_budget, json_object_mode, sampling_policy, and
 // tool_schema_enforcement controls through the generation-control capability
 // surface, so the engine can pre-flight a special/tool turn's requirements
-// (docs/spec.md §13 / issues #59–#62) before any wire call.
+// (issues #59–#62) before any wire call.
 func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
@@ -613,7 +612,7 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 
 // TestOpenAIEmitsThinkingAndReasoningEffort verifies the request head carries
 // DeepSeek's reasoning controls — `thinking` default-enabled and a normalized
-// `reasoning_effort` — when the caller opts into them (docs/spec.md §6). The
+// `reasoning_effort` — when the caller opts into them. The
 // effort is normalized (xhigh→high; low/medium/high/max pass through) so the
 // body emits only the tiers the primary provider accepts.
 func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
@@ -649,7 +648,7 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 }
 
 // TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a
-// non-thinking run (docs/spec.md §6 / issue #54): when the caller disables
+// non-thinking run (issue #54): when the caller disables
 // thinking, the request body must omit both the DeepSeek `thinking` toggle and
 // `reasoning_effort` — exactly like the compaction summarizer's non-thinking
 // summary call. This is the acceptance guarantee that lets a user turn
@@ -689,7 +688,7 @@ func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 }
 
 // TestNormalizeReasoningEffort tables the reasoning-effort tier mapping
-// (docs/spec.md §6): low, medium, high and max are first-class tiers that pass
+// low, medium, high and max are first-class tiers that pass
 // through unchanged; xhigh maps to high per the official API reference.
 func TestNormalizeReasoningEffort(t *testing.T) {
 	cases := map[string]string{

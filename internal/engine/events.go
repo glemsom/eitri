@@ -21,7 +21,7 @@ type Event interface {
 }
 
 // StreamKind identifies which stream a StreamEvent carries: chain-of-thought
-// reasoning (docs/spec.md §6) or assistant answer text. The two are kept apart
+// reasoning or assistant answer text. The two are kept apart
 // — reasoning is never merged into the answer — so the TUI can render the
 // thinking stream as its own collapsible block.
 type StreamKind int
@@ -70,7 +70,7 @@ type ToolCallEvent struct {
 
 // ToolResultEvent fires when a tool call's result is available, carrying the
 // deterministic compression metadata the TUI needs to render terse tool
-// output (docs/spec.md §5): whether the delivered result is the compressed
+// output: whether the delivered result is the compressed
 // form, how many lines it spans, and how many lines were hidden behind the
 // explicit "+N more" tail marker. The metadata is derived from the delivered
 // result string, so no raw stream or internal history needs re-parsing
@@ -99,7 +99,7 @@ type ToolResultEvent struct {
 	Dropped int
 }
 
-// UsageEvent carries per-turn token telemetry (docs/spec.md §4): input/output
+// UsageEvent carries per-turn token telemetry: input/output
 // tokens and the deepseek prompt-cache hit/miss split that powers the cache
 // hit-ratio gauge.
 type UsageEvent struct {
@@ -107,15 +107,15 @@ type UsageEvent struct {
 	Usage provider.Usage
 }
 
-// CompactedEvent fires when the session is compacted (docs/spec.md §7 /
-// ADR-0003): the eviction-and-summary happened between two turns, and the TUI
+// CompactedEvent fires when the session is compacted (ADR-0003):
+// the eviction-and-summary happened between two turns, and the TUI
 // surfaces a read-only "[compacted]" marker without blocking the run.
 type CompactedEvent struct {
 	Turn int
 }
 
 // markerRE matches the explicit "+N more" tail marker Eitri's tool-output
-// compressor emits when it truncates a heavy listing (docs/spec.md §5): never
+// compressor emits when it truncates a heavy listing: never
 // silent, always an explicit count of hidden lines.
 var markerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 

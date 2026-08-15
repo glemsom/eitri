@@ -189,7 +189,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 
 // TestThinkingEnabledPersists verifies the thinking_enabled mode round-trips
 // through save/load: an off value survives the round-trip so a session that
-// disables reasoning is restored as non-thinking on reload (eitri.md §2.7).
+// disables reasoning is restored as non-thinking on reload.
 func TestThinkingEnabledPersists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

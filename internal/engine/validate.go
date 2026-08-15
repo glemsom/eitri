@@ -9,7 +9,7 @@ import (
 
 // errInvalidJSON marks tool-call arguments that are not parseable JSON. The
 // dispatch loop routes these to a wrapped {"INVALID_JSON": "<raw>"} tool
-// result (docs/spec.md §2) so the model self-corrects — never a crash, never a
+// result so the model self-corrects — never a crash, never a
 // silent skip.
 var errInvalidJSON = errors.New("tool arguments are not valid JSON")
 

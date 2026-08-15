@@ -2,8 +2,7 @@
 // review panel (issue #90). It computes an LCS-based unified-style diff of two
 // file contents and groups the changes into hunks with surrounding context so
 // the terminal can render a focused file's inline diff without any external
-// renderer (pure Go, no Node, honoring the single-binary/no-deps constraint,
-// docs/spec.md §12).
+// renderer (pure Go, no Node, honoring the single-binary/no-deps constraint).
 package diff
 
 import "strings"

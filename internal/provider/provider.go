@@ -21,7 +21,7 @@ var ErrMalformed = errors.New("malformed Chat Completions SSE event")
 // ErrContextOverflow is returned by a provider when the request would overflow
 // the context window (a 400/context-overflow below the proactive threshold). It
 // is the emergency trigger for the session compaction engine (ADR-0003 decision
-// 2, docs/spec.md §7): the engine evicts the oldest body, rebuilds the summary
+// 2): the engine evicts the oldest body, rebuilds the summary
 // head, and retries rather than surfacing the raw overflow to the caller.
 var ErrContextOverflow = errors.New("context window overflow")
 
@@ -64,14 +64,14 @@ type Message struct {
 	ToolCalls  []ToolCall
 	// ReasoningContent is deepseek-family chain-of-thought. It must always be
 	// echoed on assistant messages — even empty — so tool-call turns do not trip
-	// the provider's 400 (docs/spec.md §6). MarshalJSON emits it on assistant
+	// the provider's 400. MarshalJSON emits it on assistant
 	// messages unconditionally and omits it on user/tool messages.
 	ReasoningContent string
 }
 
 // MarshalJSON serializes a Message with role-aware reasoning handling: the
 // `reasoning_content` field is emitted unconditionally on assistant messages
-// (even when empty — DeepSeek's hard 400-avoidance, docs/spec.md §6) and
+// (even when empty — DeepSeek's hard 400-avoidance) and
 // omitted on every other role. This guarantees a resubmitted tool-call history
 // always carries the field, without polluting user/tool turns with an empty
 // string.
@@ -94,9 +94,9 @@ func (m Message) MarshalJSON() ([]byte, error) {
 // messageWire is the deterministic field-ordered serialization shape for a
 // Message. Struct field order fixes the wire key order (role, content,
 // tool_call_id, tool_calls, reasoning_content) so bodies stay byte-stable for
-// the prompt cache (docs/spec.md §4). ReasoningContent is a pointer: a nil
+// the prompt cache. ReasoningContent is a pointer: a nil
 // (non-assistant) omits the field, while a non-nil assistant value always
-// emits it, even when empty — the DeepSeek 400-avoidance (docs/spec.md §6).
+// emits it, even when empty — the DeepSeek 400-avoidance.
 type messageWire struct {
 	Role             Role       `json:"role"`
 	Content          string     `json:"content,omitempty"`
@@ -171,7 +171,7 @@ type Request struct {
 	Tools      []Tool
 	ToolChoice any
 	// SetCacheKey opts the request into deepseek's session-scoped prompt cache
-	// (docs/spec.md §4). When true and SessionKey is non-empty, the wire body
+	// When true and SessionKey is non-empty, the wire body
 	// carries prompt_cache_key:<SessionKey> — treated as advisory /
 	// content-addressed, kept as a namespace/telemetry key.
 	SetCacheKey bool
@@ -181,7 +181,7 @@ type Request struct {
 
 	// ThinkingEnabled opts the request into DeepSeek thinking mode
 	// ({"type":"enabled"}). Kept default-on for agent work; lowering effort,
-	// not thinking, is how an operator trades speed (docs/spec.md §6).
+	// not thinking, is how an operator trades speed.
 	ThinkingEnabled bool
 	// ReasoningEffort is the requested chain-of-thought effort level, normalized
 	// via NormalizeReasoningEffort before hitting the wire (low/medium/high/max
@@ -193,17 +193,17 @@ type Request struct {
 	// the provider default: no budget requested, and ordinary agent/tool turns
 	// that never set it are unaffected. It is the wire-backed Generation Budget
 	// control; local output must still be capped independently as the safety
-	// floor (docs/spec.md §13, ADR-0003 decision 4).
+	// floor (ADR-0003 decision 4).
 	MaxOutputTokens int
 
 	// JSONObjectMode opts a special finalization turn into schema-constrained
 	// JSON Object Mode: on a supporting provider the request carries
 	// response_format:{type:json_object} so the final answer is guaranteed to be
-	// a valid JSON object (issue #59, docs/spec.md §13). Kept default-off so
+	// a valid JSON object (issue #59). Kept default-off so
 	// ordinary agent/tool turns never carry it and stay byte-identical.
 	JSONObjectMode bool
 	// ToolSchemaEnforcement opts a tool-capable turn into provider-side Tool
-	// Schema Enforcement (issue #62, docs/spec.md §13): on a supporting provider
+	// Schema Enforcement (issue #62): on a supporting provider
 	// each tool manifest carries strict:true so the provider rejects
 	// schema-violating tool arguments at generation time, in addition to Eitri's
 	// mandatory local validation floor. Kept default-off so ordinary agent/tool
@@ -212,18 +212,17 @@ type Request struct {
 	ToolSchemaEnforcement bool
 
 	// Sampling, when set, opts a special (non-tool) turn into a requested
-	// Sampling Policy (issue #61, docs/spec.md §13): temperature- or
+	// Sampling Policy (issue #61): temperature- or
 	// nucleus-based sampling for a constrained generation, emitted on the wire as
 	// temperature or top_p respectively. A policy expresses exactly one of the two
 	// modes, so a provider request can never carry both sampling fields together.
 	// Kept default-nil so ordinary agent/tool turns stay on provider defaults and
 	// the byte-identical request head is preserved for the prompt cache
-	// (docs/spec.md §4).
 	Sampling *SamplingPolicy
 }
 
 // SamplingPolicyMode identifies which wire sampling knob a special turn
-// requests (docs/spec.md §13 / issue #61).
+// requests (issue #61).
 type SamplingPolicyMode string
 
 // The two supported Sampling Policy modes.
@@ -250,7 +249,7 @@ type SamplingPolicy struct {
 }
 
 // NormalizeReasoningEffort forwards reasoning-effort tiers to the wire
-// (docs/spec.md §6): low, medium, high and max are each first-class and pass
+// low, medium, high and max are each first-class and pass
 // through unchanged. The official create-chat-completion reference lists only
 // [low, high, max] and maps medium and xhigh to high; Eitri exposes medium as
 // a first-class option even though the endpoint collapses its result, so
@@ -269,7 +268,7 @@ type Chunk struct {
 	Content string
 	// ReasoningContent is chain-of-thought text (delta.reasoning_content).
 	// Present on deepseek-family streams; surface it separately, never merged
-	// into Content (docs/spec.md §6).
+	// into Content.
 	ReasoningContent string
 	// Done is true after the terminal data: [DONE]; the turn is complete.
 	Done bool
@@ -287,7 +286,7 @@ type Chunk struct {
 
 // Usage is per-turn token telemetry, parsed at the provider seam.
 // PromptCacheHitTokens/MissTokens are deepseek prompt-cache read tokens, the
-// data behind the cache hit-ratio gauge and cost accounting (docs/spec.md §4).
+// data behind the cache hit-ratio gauge and cost accounting.
 type Usage struct {
 	PromptTokens          int `json:"prompt_tokens"`
 	CompletionTokens      int `json:"completion_tokens"`
@@ -377,7 +376,7 @@ type Provider interface {
 
 // ModelLister is an optional capability a Provider may expose: discovering the
 // available model IDs from the configured provider so the Settings surface can
-// offer a picker without hand-editing config (eitri.md §2.2, T12). It is a
+// offer a picker without hand-editing config (T12). It is a
 // separate interface so minimal/test providers (Scripted) need not implement
 // it; callers type-assert and treat absence as "no discovery" rather than error.
 type ModelLister interface {

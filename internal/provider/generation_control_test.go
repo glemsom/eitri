@@ -8,7 +8,7 @@ import (
 
 // capableProvider is a deterministic Provider that declares a fixed set of
 // supported generation controls via the GenerationControlProvider capability, so
-// the negotiation helper is testable at the provider seam (docs/spec.md §13).
+// the negotiation helper is testable at the provider seam.
 type capableProvider struct {
 	Scripted
 	supported []GenerationControl

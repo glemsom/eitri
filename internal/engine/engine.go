@@ -16,7 +16,7 @@ import (
 )
 
 // ErrMaxTurns is returned when a tool-call loop exceeds the configured cap.
-// It bounds runaway agent loops (docs/spec.md §2.1, eitri.md §2.1).
+// It bounds runaway agent loops.
 var ErrMaxTurns = errors.New("maximum turn limit reached")
 
 // TranscriptWriter records the run's on-disk trail (the T1b session sink).
@@ -63,12 +63,12 @@ type RunRequest struct {
 	Prompt string
 	// SessionKey opts the run into deepseek's session-scoped prompt cache:
 	// every request carries prompt_cache_key:<SessionKey> and the request head
-	// stays byte-identical across turns (docs/spec.md §4). Empty disables it.
+	// stays byte-identical across turns. Empty disables it.
 	SessionKey string
 
 	// ThinkingEnabled opts the run into deepseek thinking mode (default on).
 	// ReasoningEffort requests the chain-of-thought effort level, normalized on
-	// the wire (docs/spec.md §6).
+	// the wire.
 	ThinkingEnabled bool
 	ReasoningEffort string
 }
@@ -149,8 +149,7 @@ func (e *Engine) drain(s provider.Stream, prompt string, turn int) (Result, erro
 	return res, nil
 }
 
-// RunJSONObjectMode runs a JSON Object Mode finalization turn (issue #59,
-// docs/spec.md §13): an internal, non-tool special turn that requires
+// RunJSONObjectMode runs a JSON Object Mode finalization turn (issue #59): an internal, non-tool special turn that requires
 // provider-side JSON Object Mode so the final answer is a valid JSON object
 // without mixing structured-output rules into an ordinary agent/tool loop. It
 // pre-flights the json_object_mode control as required — an unsupported
@@ -180,8 +179,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 	return e.drain(s, req.Prompt, 0)
 }
 
-// RunSamplingPolicy runs a Sampling Policy special turn (issue #61,
-// docs/spec.md §13): an internal, non-tool turn that requests temperature- or
+// RunSamplingPolicy runs a Sampling Policy special turn (issue #61): an internal, non-tool turn that requests temperature- or
 // nucleus-based sampling for a constrained generation. It pre-flights the
 // sampling_policy control as required — an unsupported provider fails
 // negotiation fast, before any wire call, via
@@ -227,12 +225,12 @@ func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (strin
 	return f(ctx, name, argsJSON)
 }
 
-// AgentOptions configures the tool-call dispatch loop (docs/spec.md §2).
+// AgentOptions configures the tool-call dispatch loop.
 // Tools and ToolChoice are the request-head tool definitions sent to the
 // provider (kept stable per session for prompt caching); Executor runs calls;
 // MaxTurns caps the loop (0 = uncapped). CanContinue, when set, lets an
 // interactive caller grant another budget once the cap is hit instead of the
-// loop failing (eitri.md §2.1).
+// loop failing.
 type AgentOptions struct {
 	Tools      []provider.Tool
 	ToolChoice any
@@ -243,7 +241,7 @@ type AgentOptions struct {
 	// generation time. Local tool-argument validation remains the mandatory
 	// safety floor before execution regardless. A provider that cannot honor it
 	// degrades deterministically (strict is simply omitted) — never a failure,
-	// since local validation already guards execution (docs/spec.md §13).
+	// since local validation already guards execution.
 	ToolSchemaEnforcement bool
 	Executor              ToolExecutor
 	MaxTurns              int
@@ -271,8 +269,8 @@ type AgentOptions struct {
 }
 
 // NegotiateGenerationControls pre-flights a special turn's generation-control
-// requirements against this engine's provider capability surface (docs/spec.md
-// §13 / issue #58). It forwards to the provider seam; the returned controls are
+// requirements against this engine's provider capability surface
+// (issue #58). It forwards to the provider seam; the returned controls are
 // the ones the provider will honor — required controls the provider cannot honor
 // fail here, before any wire call, while unsupported optional controls are
 // dropped. It is the seam generation-control-aware special turns (issues #59–#62)

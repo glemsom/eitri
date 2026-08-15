@@ -26,10 +26,10 @@ const (
 
 // settingVals are the option lists for cycle-style setters.
 var (
-	// providerFams are the documented provider families (eitri.md §2.2, T11).
+	// providerFams are the documented provider families (T11).
 	providerFams = []string{"opencode-go", "github-copilot", "custom-openai"}
 	// effortTiers are the meaningful reasoning-effort tiers in cycle order
-	// low→medium→high→max (docs/spec.md §6). Both low and medium are exposed
+	// low→medium→high→max. Both low and medium are exposed
 	// as first-class options.
 	effortTiers = []string{"low", "medium", "high", "max"}
 )

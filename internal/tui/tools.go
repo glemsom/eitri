@@ -37,8 +37,8 @@ type ToolStart struct {
 }
 
 // ToolResult is the trailing half of a tool entry: the tool's delivered result
-// plus the deterministic compression metadata the TUI renders (docs/spec.md
-// §5, issue #84) and the file line-delta / before-after content computed by the
+// plus the deterministic compression metadata the TUI renders (issue #84)
+// and the file line-delta / before-after content computed by the
 // TUI-side delta observer from the paired tool start/result events (issue
 // #174) — the source of the `⊕ edit path [+N,-M]` tag and the review panel's
 // inline diff (issue #90).

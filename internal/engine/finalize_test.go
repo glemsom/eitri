@@ -10,8 +10,8 @@ import (
 
 // jsonScripted wraps a Scripted handler so it also declares, via the
 // generation-control capability surface, that it honors JSON Object Mode — the
-// wire-emitting control a supporting provider advertises (docs/spec.md §13 /
-// issue #59). The engine opts a JSON-Object-Mode finalization turn into that
+// wire-emitting control a supporting provider advertises. The engine opts
+// a JSON-Object-Mode finalization turn into that
 // control, so the finalization request must carry the JSON object request flag.
 type jsonScripted struct {
 	provider.Scripted
@@ -37,7 +37,7 @@ func (j *jsonHandler) stream(_ context.Context, req provider.Request) (provider.
 }
 
 // TestRunJSONObjectModeFinalizesOnSupportingProvider verifies the JSON
-// Object Mode finalization special turn (docs/spec.md §13 / issue #59): on a
+// Object Mode finalization special turn: on a
 // provider that honors the control, the engine issues a non-tool turn flagged
 // for JSON Object Mode — so the wire carries response_format:{type:json_object}
 // — and returns the finalized JSON object as the final answer. The session key
@@ -75,7 +75,7 @@ func TestRunJSONObjectModeFinalizesOnSupportingProvider(t *testing.T) {
 }
 
 // TestRunJSONObjectModeFailsFastWhenUnsupported verifies the generation-control
-// contract (docs/spec.md §13 / issue #59): a provider without the JSON Object
+// contract: a provider without the JSON Object
 // Mode capability honors no controls, so a required json_object_mode
 // finalization fails negotiation fast — before any wire call — and ordinary
 // agent runs remain on the untouched non-tool path.

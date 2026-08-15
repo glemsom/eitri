@@ -2,7 +2,7 @@
 // session in. It is built on the Charm stack (Bubble Tea v2 + Lip Gloss v2 +
 // Bubbles v2) with Glamour v2 over goldmark for Markdown→ANSI, and renders
 // through the alternate screen (T1 pivot, issue #119) so every frame is a
-// clean full-surface repaint into the alt buffer (docs/spec.md §9).
+// clean full-surface repaint into the alt buffer.
 //
 // The TUI sits on the same run engine as batch mode: it reads and writes the
 // same session engine and transcript, so a conversation round-trips through

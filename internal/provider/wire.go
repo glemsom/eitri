@@ -7,7 +7,7 @@ import (
 
 // wireChunk is the OpenAI Chat-Completions `chat.completion.chunk` SSE payload.
 // Only the fields Eitri consumes are modeled; everything else is ignored so an
-// unknown wire piece still parses (docs/spec.md §11/§12).
+// unknown wire piece still parses.
 type wireChunk struct {
 	Choices []struct {
 		Index *int `json:"index"`

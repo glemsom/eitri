@@ -39,7 +39,7 @@ type Catalog struct {
 
 // Names returns the discovered skill names in stable (scope, then sorted)
 // order. Zero skills yields an empty slice — the caller then omits the skill
-// tool entirely (docs/spec.md §3, ticket #14).
+// tool entirely (ticket #14).
 func (c *Catalog) Names() []string {
 	out := make([]string, len(c.order))
 	copy(out, c.order)

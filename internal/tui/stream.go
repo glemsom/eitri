@@ -18,7 +18,7 @@ type Streamer struct {
 }
 
 // StreamKind identifies which stream a StreamUpdate carries: chain-of-thought
-// reasoning (docs/spec.md §6) or assistant answer text. The two are kept apart
+// reasoning or assistant answer text. The two are kept apart
 // — reasoning is never merged into the answer — so the TUI can render the
 // thinking stream as its own collapsible block (issue #85).
 type StreamKind int

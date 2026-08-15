@@ -23,7 +23,7 @@ func (s *schemaHandler) stream(_ context.Context, req provider.Request) (provide
 
 // capableScriptedSchema is a Scripted provider that additionally declares
 // tool_schema_enforcement support through the generation-control capability
-// surface (docs/spec.md §13 / issue #62).
+// surface (issue #62).
 type capableScriptedSchema struct {
 	*provider.Scripted
 }
@@ -59,8 +59,8 @@ func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 }
 
 // TestRunAgentDegradesWhenToolSchemaUnsupported verifies the deterministic
-// degradation spelled out by the generation-control contract (docs/spec.md §13 /
-// issue #62): a provider without the tool_schema_enforcement capability honors
+// degradation spelled out by the generation-control contract (issue #62): a provider
+// without the tool_schema_enforcement capability honors
 // no controls, so an opted-in optional requirement is dropped — strict is
 // omitted on the wire — while the loop still runs with local validation as the
 // safety floor.
@@ -93,7 +93,7 @@ func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
 
 // TestRunAgentDefaultOmitsToolSchemaEnforcement verifies that an ordinary agent
 // loop without the opt-in never flags the provider request, keeping the default
-// wire surface byte-identical (docs/spec.md §4 / issue #62).
+// wire surface byte-identical (issue #62).
 func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 	h := &schemaHandler{}
 	e := New(&capableScriptedSchema{Scripted: provider.NewScripted(h.stream)}, &mockTranscript{})

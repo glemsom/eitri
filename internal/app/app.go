@@ -28,7 +28,7 @@ import (
 // Version reports the Eitri build version tag, set at build time.
 var Version = "0.1.0-dev"
 
-// Environment variables honored at boot (eitri.md §2.7).
+// Environment variables honored at boot.
 const (
 	// DataDirEnv overrides the default ~/.eitri data directory.
 	DataDirEnv = "EITRI_DIR"
@@ -119,12 +119,12 @@ type Options struct {
 	ConfigPath string
 
 	// Debug enables debug mode (-d), attaching the HTTP trace sink to the run
-	// session for deep-dive provider debugging (eitri.md §2.5).
+	// session for deep-dive provider debugging.
 	Debug bool
 
 	// Prompt, when non-empty, runs batch mode with the given prompt and prints
 	// the final answer to Stdout (eitri -b). Reasoning is suppressed from
-	// stdout unless Verbose is set (docs/spec.md §6).
+	// stdout unless Verbose is set.
 	Prompt string
 
 	// Verbose (-v) enables reasoning output to stdout in batch mode.
@@ -207,7 +207,7 @@ func Run(opts Options) error {
 	// Agent Skill discovery: user-global ~/.agents/skills + project
 	// .agents/skills, project shadowing user on exact-name collision. The
 	// catalog is threaded through the registry so the dedicated skill tool is
-	// registered only when skills exist (docs/spec.md §3; ticket #33).
+	// registered only when skills exist (ticket #33).
 	skills := discoverSkills(workspace)
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
@@ -224,7 +224,7 @@ func Run(opts Options) error {
 	defer func() { _ = os.RemoveAll(tempHost) }()
 
 	// Build the provider the saved config selects (opencode-go, github-copilot,
-	// or custom-openai) and honor it across both run kinds (T11 / eitri.md §2.2).
+	// or custom-openai) and honor it across both run kinds (T11).
 	// Tests inject a deterministic provider via Options.Provider; production
 	// builds it from the loaded config + env credentials.
 	p := opts.Provider
@@ -239,8 +239,8 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
 
 	// Build the interactive TUI run when no batch prompt is given. It sits on
-	// the same engine, session transcript, and tool registry as batch (docs
-	// spec.md §9). First the non-interactive guard (T7, issue #125) checks the
+	// the same engine, session transcript, and tool registry as batch.
+	// First the non-interactive guard (T7, issue #125) checks the
 	// host terminal: piped stdout, a dumb/unset TERM, or a sub-threshold window
 	// refuses the full-screen TUI with a message pointing at batch mode, so no
 	// TUI reflow is ever written into a pipe or a dumb terminal. The batch
@@ -302,8 +302,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 // runAgent drives one agent turn (user prompt → assistant answer) over the
 // shared run engine, session transcript, and tool registry that both the TUI
 // and batch use. It is the single turn seam for both run kinds, so a TUI run
-// round-trips through the engine exactly like batch (docs/spec.md §9, eitri.md
-// §2.6).
+// round-trips through the engine exactly like batch.
 func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	// Thinking off means non-thinking runs: the provider request carries no

@@ -9,7 +9,7 @@ import (
 
 // TestOpenAIDiscoversModels verifies the OpenAI-compatible client can list the
 // available models from the provider's /models endpoint (model discovery,
-// eitri.md §2.2, T12). The base URL is derived from the Chat-Completions
+// T12). The base URL is derived from the Chat-Completions
 // endpoint by stripping the /chat/completions suffix.
 func TestOpenAIDiscoversModels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

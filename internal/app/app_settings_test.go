@@ -75,7 +75,7 @@ func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 // TestRunBatchHonorsMaxTurnsFromConfig verifies the persisted max_turns cap is
 // honored by the engine in batch: with a low cap and no continuation hook (the
 // batch default), the run auto-denies with ErrMaxTurns instead of looping
-// forever (eitri.md §2.1, T12).
+// forever (T12).
 func TestRunBatchHonorsMaxTurnsFromConfig(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

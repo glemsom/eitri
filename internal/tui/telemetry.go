@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// deepseek-v4-flash pricing, per 1M tokens (docs/spec.md §4 / ADR-0003). These
+// deepseek-v4-flash pricing, per 1M tokens (ADR-0003). These
 // are the canonical rates that turn the engine seam's cached/cold token
 // telemetry into the running cost readout on the status strip.
 const (
@@ -25,7 +25,7 @@ const (
 	TelemetryTurn TelemetryKind = iota
 	// TelemetryUsage accumulates cached/cold input and output tokens.
 	TelemetryUsage
-	// TelemetryCompacted marks that the session was compacted (docs/spec.md §7).
+	// TelemetryCompacted marks that the session was compacted.
 	TelemetryCompacted
 )
 

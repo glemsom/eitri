@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestCompressNeverInflates verifies the never-inflate gate (docs/spec.md §5):
+// TestCompressNeverInflates verifies the never-inflate gate:
 // when the compressed form is not strictly shorter than the raw input, the raw
 // input is returned unchanged. Short, already-terse outputs pass through.
 func TestCompressNeverInflates(t *testing.T) {
@@ -23,7 +23,7 @@ func TestCompressNeverInflates(t *testing.T) {
 }
 
 // TestCompressIsDeterministic verifies the same input always yields the same
-// output (protects the byte-stable cache prefix, docs/spec.md §5).
+// output (protects the byte-stable cache prefix).
 func TestCompressIsDeterministic(t *testing.T) {
 	raw := "file1.txt\nfile2.txt\nfile1.txt\nfile3.txt\n"
 	a, b := Compress(raw), Compress(raw)
@@ -90,7 +90,7 @@ func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 
 // TestCompressHonestEconomics verifies real, measurable token savings rather
 // than a self-reported counter: a noisy listing crosses the compressor in
-// fewer billing-shaped tokens than its raw form (docs/spec.md §5, "honest
+// fewer billing-shaped tokens than its raw form ("honest
 // economics"). Tokens are counted independently, by whitespace/punct splitting
 // the way a billing tokenizer would slice a CLI line listing.
 func TestCompressHonestEconomics(t *testing.T) {
@@ -136,7 +136,7 @@ func roughTokens(s string) int {
 }
 
 // hasMarker reports whether s ends with an explicit "+N more" truncation
-// marker (the never-silent-truncation signal, docs/spec.md §5).
+// marker (the never-silent-truncation signal).
 func hasMarker(s string) bool {
 	trimmed := strings.TrimSuffix(s, "\n")
 	if i := strings.LastIndex(trimmed, "\n"); i >= 0 {

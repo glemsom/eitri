@@ -1,7 +1,7 @@
 // Package config handles Eitri's persistent local configuration: the JSON
 // config file under the data directory (~/.eitri/config.json by default,
 // path overridden by EITRI_CONFIG). It is created with defaults when absent,
-// loaded on startup, and saved whenever settings change (eitri.md §2.7).
+// loaded on startup, and saved whenever settings change.
 package config
 
 import (
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 )
 
-// Defaults for session and provider behavior (docs/spec.md §11, eitri.md §2.1).
+// Defaults for session and provider behavior.
 const (
 	// DefaultMaxTurns is the cap on loop iterations per run.
 	DefaultMaxTurns = 250
@@ -27,15 +27,14 @@ const (
 	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
 	// default (spec §6); off yields requests with no thinking toggle/effort.
 	DefaultThinkingEnabled = true
-	// DefaultProvider and DefaultModel are the primary provider defaults
-	// (docs/spec.md §3).
+	// DefaultProvider and DefaultModel are the primary provider defaults.
 	DefaultProvider = "opencode-go"
 	DefaultModel    = "deepseek-v4-flash"
 )
 
 // CopilotConfig holds the GitHub Copilot device-flow credential state, persisted
 // so a later batch run can reuse the TUI-established session without re-auth
-// (T11 / eitri.md §2.2). Batch may transparently renew an expired access token
+// (T11). Batch may transparently renew an expired access token
 // via RefreshToken, but the interactive device-flow handshake is TUI-only.
 type CopilotConfig struct {
 	AccessToken  string `json:"access_token,omitempty"`
@@ -46,7 +45,7 @@ type CopilotConfig struct {
 }
 
 // OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key
-// (custom OpenAI provider, eitri.md §2.2 / T11). No device flow: key/setup only.
+// (custom OpenAI provider, T11). No device flow: key/setup only.
 type OpenAIConfig struct {
 	BaseURL string `json:"base_url,omitempty"`
 	Key     string `json:"key,omitempty"`

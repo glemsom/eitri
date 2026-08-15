@@ -191,7 +191,7 @@ func drainOne(s Stream) (string, error) {
 }
 
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
-// guarantee also holds on the Copilot provider (docs/spec.md §6 / issue #54):
+// guarantee also holds on the Copilot provider (issue #54):
 // when the caller disables thinking, `reasoning_effort` is dropped from the
 // request body even if a non-empty effort is retained. Copilot streams via the
 // same engine seam as the primary provider, so its non-thinking shape must

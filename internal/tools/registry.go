@@ -23,7 +23,7 @@ type Deps struct {
 	// Skills is the pre-discovered, filtered skill catalog for this run (T8).
 	// When non-nil and non-empty, the dedicated `skill` tool is registered and
 	// its `name` enum is the catalog's valid names. When empty, the skill tool
-	// is omitted entirely (docs/spec.md §3).
+	// is omitted entirely.
 	Skills *Catalog
 }
 
@@ -40,7 +40,7 @@ type Tool interface {
 }
 
 // Definition is a tool's provider-facing definition: name, description, and a
-// minimal JSON-Schema parameters object (strict-shaped, per docs/spec.md §2).
+// minimal JSON-Schema parameters object (strict-shaped).
 type Definition struct {
 	Name        string
 	Description string
@@ -148,7 +148,7 @@ func strArg(args map[string]any, key string) (string, error) {
 	return s, nil
 }
 
-// strictSchema builds a strict-shaped JSON-Schema object (docs/spec.md §2):
+// strictSchema builds a strict-shaped JSON-Schema object:
 // additionalProperties:false and every field required, emulating optionals with
 // unions when needed later. This is the canonical per-tool schema target T5
 // re-expresses per dialect.

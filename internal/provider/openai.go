@@ -28,7 +28,7 @@ func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 }
 
 // Models implements ModelLister: it GETs the provider's /models endpoint and
-// returns the list of available model IDs (eitri.md §2.2, T12). The models URL
+// returns the list of available model IDs (T12). The models URL
 // is derived from the Chat-Completions endpoint by stripping the
 // /chat/completions suffix (research/opencode-endpoints.md §3), the response
 // shape being the OpenAI-standard {"data":[{"id":...}]}.
@@ -130,7 +130,7 @@ type chatCompletionBody struct {
 	// MaxOutputTokens is the wire-backed Generation Budget (issue #60): a hard
 	// per-turn output cap emitted as max_completion_tokens for special turns.
 	// Zero (the ordinary-turn default) omits the field so the byte-identical
-	// request head is never perturbed (docs/spec.md §4).
+	// request head is never perturbed.
 	MaxOutputTokens int `json:"max_completion_tokens,omitempty"`
 	// ResponseFormat is the wire-backed JSON Object Mode (issue #59): non-nil
 	// on a JSON-Object-Mode finalization turn, emitted as
@@ -140,7 +140,7 @@ type chatCompletionBody struct {
 	// Temperature is the wire-backed temperature Sampling Policy (issue #61):
 	// non-nil on a special turn that requests temperature-based sampling. It is
 	// mutually exclusive with TopP — the sampling seam emits exactly one of the
-	// two, never both, per the sampling contract (docs/spec.md §13).
+	// two, never both, per the sampling contract.
 	Temperature *float64 `json:"temperature,omitempty"`
 	// TopP is the wire-backed nucleus (top-p) Sampling Policy (issue #61): non-nil
 	// on a special turn that requests nucleus-based sampling, emitted as top_p.
@@ -149,7 +149,7 @@ type chatCompletionBody struct {
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
-// thinking default-on for agent loops (docs/spec.md §6).
+// thinking default-on for agent loops.
 type thinkingEnabler struct {
 	Type string `json:"type"`
 }
@@ -166,7 +166,7 @@ func thinkingControl(req Request) *thinkingEnabler {
 // reasoningEffortControl returns the normalized reasoning_effort for a
 // thinking-enabled run, else empty so the field is omitted. Effort is only
 // meaningful when thinking is on: a non-thinking run must carry neither a
-// thinking toggle nor a reasoning_effort (docs/spec.md §6 / issue #54), even
+// thinking toggle nor a reasoning_effort (issue #54), even
 // if a caller retains a non-empty effort while disabled.
 func reasoningEffortControl(req Request) string {
 	if !req.ThinkingEnabled {
@@ -185,7 +185,7 @@ type jsonObjectMode struct {
 // honor the Generation Budget, JSON Object Mode, Sampling Policy, and Tool
 // Schema Enforcement controls (it wire-emits max_completion_tokens,
 // response_format, temperature/top_p, and strict tool manifests on the relevant
-// special turns, docs/spec.md §13 / issues #59–#62). Higher layers consult this
+// special turns, issues #59–#62). Higher layers consult this
 // via NegotiateGenerationControls.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement}, nil
@@ -258,7 +258,7 @@ func toolsForWire(req Request) []Tool {
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the
-// caller opted into deepseek's session cache (docs/spec.md §4), else empty so
+// caller opted into deepseek's session cache, else empty so
 // the field is omitted from the body. When unset the gateway may still cache by
 // request prefix, but Eitri explicitly opts in so the cache namespace is the
 // session id.

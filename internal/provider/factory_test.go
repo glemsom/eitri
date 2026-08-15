@@ -21,7 +21,7 @@ func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
 
 // TestFromConfigRoutesCustomOpenAI verifies a saved custom-openai provider builds
 // an OpenAI-compatible client against the user-supplied base URL and key,
-// routed through the same Chat-Completions dialect (eitri.md §2.2).
+// routed through the same Chat-Completions dialect.
 func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
 	cfg := config.Config{
 		Provider: "custom-openai",

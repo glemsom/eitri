@@ -1,5 +1,5 @@
 // Package compress implements deterministic, zero-LLM compression of
-// high-volume tool output (docs/spec.md §5; ticket T3). It is applied at the
+// high-volume tool output (ticket T3). It is applied at the
 // tool-result boundary so the compressed bytes land in the cache prefix. The
 // transform is a pure function: given the same raw string it always yields the
 // same output, re-applying never changes it (deterministic + idempotent), and
@@ -61,7 +61,7 @@ func Compress(raw string) string {
 	}
 	more := prevMore + dropped
 	if more > 0 {
-		// Explicit "+N more" tail marker — never silent truncation (docs/spec.md §5).
+		// Explicit "+N more" tail marker — never silent truncation.
 		b.WriteByte('+')
 		b.WriteString(itoa(more))
 		b.WriteString(" more\n")
