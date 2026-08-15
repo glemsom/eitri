@@ -176,7 +176,7 @@ func (t Transcript) renderPane(band string) string {
 		t.renderReview(&review)
 		reviewStr = review.String()
 		reviewLines = t.reviewRegionRows(reviewStr, lineCount(bandStr))
-		reviewStr = t.clipReviewRegion(reviewStr, reviewLines)
+		reviewStr = clipReviewRegion(reviewStr, reviewLines)
 	}
 
 	// The scroll region renders through the native bubbletea/viewport component
@@ -281,15 +281,6 @@ func (t *Transcript) toggleReview() {
 	}
 	rp := t.buildReview()
 	t.review = &rp
-}
-
-// clipReviewRegion keeps the first n rows of the rendered review region and
-// discards the tail, so an over-height diff clips at the review region
-// boundary (issue T06 AC1, #246) instead of flowing over the history/band. The
-// transcript owns the height-clip of its review region; see clipReviewRegion
-// (package-level).
-func (t Transcript) clipReviewRegion(content string, n int) string {
-	return clipReviewRegion(content, n)
 }
 
 // renderHistory renders the scroll region: the agent history that the user
