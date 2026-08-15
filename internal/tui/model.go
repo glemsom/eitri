@@ -1738,8 +1738,9 @@ func (m *Model) ensureLayout() {
 
 // recordLayout performs the one batched layout pass behind the persistent
 // cache (issue #242): it renders the history into a scratch builder, captures
-// the toolRows out-param, and derives the ANSI-stripped plain rows from the
-// same builder, storing both and clearing dirty. It is kept private and cheap
+// the toolRows and msgRows out-params, and derives the ANSI-stripped plain
+// rows from the same builder, storing both indexes and clearing dirty. It is
+// kept private and cheap
 // to re-run; ensureLayout is the only public entry, so callers see the cache
 // transparently. layoutBuilds incremented here is a test hook asserting the
 // hit-test builds once (issue #242 AC4).
