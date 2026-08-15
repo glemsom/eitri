@@ -73,7 +73,7 @@ func toolResult(t *testing.T, m Model, r ToolResult) Model {
 // apart). Works for completed entries (frozen span) and pending ones (live
 // span while busy).
 func backdateTool(m Model, idx int, d time.Duration) Model {
-	m.tools[idx].startedAt = time.Now().Add(-d)
+	m.log.SetStart(idx, time.Now().Add(-d))
 	return m
 }
 
