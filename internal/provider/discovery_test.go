@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -66,13 +67,7 @@ func TestFakeDiscoversModels(t *testing.T) {
 		t.Fatalf("Fake.Models() = empty, want the fixture model list")
 	}
 	want := "deepseek-v4-flash"
-	found := false
-	for _, m := range models {
-		if m == want {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(models, want)
 	if !found {
 		t.Fatalf("Fake.Models() = %v, want it to include %q", models, want)
 	}

@@ -16,7 +16,7 @@ import (
 // deterministic so a re-run recovers the full output.
 func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 	var raw strings.Builder
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		raw.WriteString("internal/pkg_")
 		raw.WriteString(string(rune('a' + i%26)))
 		raw.WriteString(".go   some noisy listing content\n")

@@ -82,10 +82,7 @@ func TestRunAgentMaintainsByteIdenticalCacheHead(t *testing.T) {
 	// so the shared prefix of the two requests must match 1:1.
 	head1 := headMessages(c.requests[0].Messages)
 	head2 := headMessages(c.requests[1].Messages)
-	shared := len(head1)
-	if len(head1) > len(head2) {
-		shared = len(head2)
-	}
+	shared := min(len(head1), len(head2))
 	if shared == 0 {
 		t.Fatal("no shared request head to compare")
 	}

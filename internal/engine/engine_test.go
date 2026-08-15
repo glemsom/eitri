@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -169,13 +170,7 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	}
 	// The resubmitted history must carry the first turn's real reasoning on its
 	// assistant message (the tool-call turn), so the provider never 400s.
-	found := false
-	for _, r := range assistantReasons {
-		if r == "turn-one reasoning" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(assistantReasons, "turn-one reasoning")
 	if !found {
 		t.Fatalf("assistant reasoning re-emitted = %v, want turn-one reasoning preserved on the tool turn", assistantReasons)
 	}

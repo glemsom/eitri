@@ -167,7 +167,7 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 	// part of a skill activation, even if the soft budget would drop it
 	// (ADR-0003 decision 5).
 	if cfg.Prune {
-		for i := 0; i < len(messages); i++ {
+		for i := range messages {
 			if isSkillMessage(messages[i]) {
 				if i < keepStart {
 					keepStart = i

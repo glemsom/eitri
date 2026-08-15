@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,9 +58,7 @@ func NewDeviceFlow(httpc *http.Client, overrides map[string]string) *DeviceFlow 
 		"code":  githubDeviceCodeURL,
 		"token": githubAccessTokenURL,
 	}
-	for k, v := range overrides {
-		ep[k] = v
-	}
+	maps.Copy(ep, overrides)
 	return &DeviceFlow{http: httpc, endpoints: ep}
 }
 

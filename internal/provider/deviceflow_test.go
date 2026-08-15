@@ -131,12 +131,10 @@ func TestDeviceFlowConcurrentSafe(t *testing.T) {
 	defer srv.Close()
 	d := NewDeviceFlow(srv.Client(), codeEndpoints(srv))
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			_, _ = d.Poll(context.Background(), "d")
-		}()
+		})
 	}
 	wg.Wait()
 }
