@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"charm.land/lipgloss/v2"
 )
 
 // toolEntry is one rendered tool call in the transcript (issue #84): the tool
@@ -214,11 +216,13 @@ func (l toolLog) Review() []reviewEntry {
 	return files
 }
 
-// EntryAtLine maps a content-line coordinate to the tool entry that owns it via
-// the rendered row ranges (issue #208 US6), and whether that entry is currently
-// collapsed — a click on a collapsed head toggles it open, on an open entry it
-// toggles closed. It is a pure lookup over rows already produced by Render.
-func (l toolLog) EntryAtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
+// AtLine maps a content-line coordinate to the tool entry that owns it via
+// the shared layout pass (issue #208 US6, #212): a click on a collapsed head
+// toggles it open, on an open entry it toggles closed. rows is the row-account
+// already produced by Render (the log never re-derives layout separately), so
+// the hit-test cannot drift from what the transcript renders. It is a pure
+// lookup over those rows.
+func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {
 			if r.idx < len(l.entries) {
@@ -253,7 +257,7 @@ func toolEntryArgs(te toolEntry) string {
 		}
 	}
 	if te.name == "edit" || te.name == "write" {
-		s += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+		s += "  " + deltaTag(te.added, te.removed)
 	}
 	return s
 }
@@ -317,4 +321,142 @@ func toolArgsHint(argsJSON string) string {
 		}
 	}
 	return ""
+}
+
+// renderToolEntry renders one tool-call entry as a compact, glanceable line —
+// `⊕ tool  args` — with the result collapsed by default to a summary, never a
+// raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
+// line-delta tag, and a compressed result carries an explicit "+N more" tail
+// marker. When expanded (showToolResult), the full inline result is rendered so
+// nothing is silently truncated — every collapse has an expand path. It is the
+// per-entry renderer the log's Render pass runs, so the transcript and the
+// row-account/hit-test share one layout (issue #208 US6, #212).
+func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
+	var b strings.Builder
+	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
+	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
+	// glanceable without expanding the collapsed summary. The entry line
+	// itself renders in the tool's category hue (shell/file/web/skill, issue
+	// #181 AC1), with the glyph + color pair keeping meaning from ever
+	// depending on color alone (issue #181 AC5).
+	outcome := ""
+	if te.complete {
+		if isToolFailure(te.result) {
+			outcome = " " + th.outcomeErrStyle.Render(g("✗", "X"))
+		} else {
+			outcome = " " + th.outcomeOKStyle.Render(g("✓", "ok"))
+		}
+	}
+	// The entry head splits into the category-colored ⊕ tool label and the
+	// dimmed command detail (args/range/delta): color marks the tool kind, the
+	// detail recedes so a busy session reads calmly (benchmark §4.1 tool-cards:
+	// label + dimmed path). Long details truncate to the pane width with an
+	// ellipsis so a huge URL or command never cuts abruptly at the edge; the
+	// full arguments stay in the clipboard copy and the expanded result.
+	label := toolEntryLabel(te)
+	args := toolEntryArgs(te)
+	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
+	if budget > 1 && lipgloss.Width(args) > budget {
+		args = truncateWidth(args, budget-1) + g("…", "...")
+	}
+	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
+	if args != "" {
+		head += th.statusStyle.Render(args)
+	}
+	b.WriteString(head + outcome)
+	// Elapsed-time readout on the entry head (benchmark §4.1): sub-second tools
+	// stay silent — only a tool worth waiting on earns a timer. Completed tools
+	// freeze the span; a running tool (non-zero now, e.g. while the busy
+	// spinner ticks) shows the live elapsed.
+	if !te.startedAt.IsZero() {
+		var d time.Duration
+		if te.complete && !te.doneAt.IsZero() {
+			d = te.doneAt.Sub(te.startedAt)
+		} else if !now.IsZero() {
+			d = now.Sub(te.startedAt)
+		}
+		if d >= time.Second {
+			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
+		}
+	}
+	b.WriteString("\n")
+
+	if !expanded {
+		// Collapsed summary: line count + explicit "+N more" tail marker when
+		// the result was compressed (docs/spec.md §5). Never a raw dump.
+		if te.lines > 0 || te.dropped > 0 {
+			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
+			if te.compressed && te.dropped > 0 {
+				summary += fmt.Sprintf(" (+%d more)", te.dropped)
+			}
+			b.WriteString(th.statusStyle.Render("  " + summary))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
+
+	// Expanded: the full result framed as a card — a left border in the
+	// entry's category hue with the content plain, so an expanded tool reads
+	// as one designed block instead of a raw text dump (benchmark §4.1: tool
+	// cards; the border color repeats the label's category color).
+	if te.result != "" {
+		frame := lipgloss.NewStyle().
+			Border(lipgloss.Border{Left: g("│", "|")}).
+			BorderLeft(true).
+			PaddingLeft(1).
+			BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
+		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
+// the review file list, the no-diff fallback, and the transcript's file-edit
+// head, so the count formatting lives beside the log it renders for (issue
+// #208/#212).
+func deltaTag(added, removed int) string {
+	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
+}
+
+// isToolFailure reports whether a delivered tool result is error-shaped: the
+// engine surfaces tool failures as plain-text result strings with these
+// prefixes (internal/engine/engine.go), so the TUI can tag them ✗ without
+// coupling to the engine package's error types.
+func isToolFailure(result string) bool {
+	return strings.HasPrefix(result, "error executing tool:") ||
+		strings.HasPrefix(result, "invalid tool arguments:")
+}
+
+// toolCategory groups tool entries by the work the tool does (issue #181 AC1)
+// so the transcript can colorize a long session by category: shell commands,
+// file reads/writes/edits, web fetches and browser opens, and skill
+// activations. Tools no category recognizes fall back to the generic faint
+// entry — color is a layer on top of the persistent ⊕ glyph (issue #181 AC5),
+// never the only signal.
+type toolCategory int
+
+const (
+	catOther toolCategory = iota
+	catShell
+	catFile
+	catWeb
+	catSkill
+)
+
+// toolCategoryOf maps a tool name to its transcript category (issue #181 AC1).
+// Unknown names (future tools) report catOther so they keep the generic faint
+// tool line instead of inventing a hue.
+func toolCategoryOf(name string) toolCategory {
+	switch name {
+	case "bash":
+		return catShell
+	case "read", "write", "edit":
+		return catFile
+	case "web_fetch", "open_in_browser":
+		return catWeb
+	case "skill":
+		return catSkill
+	}
+	return catOther
 }

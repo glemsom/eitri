@@ -1620,7 +1620,7 @@ func (m Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 	var hist strings.Builder
 	var rows []toolRowRange
 	m.renderHistory(&hist, &rows)
-	return m.log.EntryAtLine(line, rows)
+	return m.log.AtLine(line, rows)
 }
 
 // toggleToolEntry flips one tool entry's expansion state (mouse click

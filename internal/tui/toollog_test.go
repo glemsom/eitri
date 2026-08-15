@@ -229,3 +229,161 @@ func TestToolLog_HeadForms(t *testing.T) {
 		})
 	}
 }
+
+// TestToolLog_RenderRowAccountCollapsed asserts Render counts a collapsed entry's
+// content rows (head + collapsed summary) and that those ranges feed AtLine
+// (issue #212: render and hit-test share one layout).
+func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 5}})
+
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if len(rows) != 1 {
+		t.Fatalf("expected one row range, got %d", len(rows))
+	}
+	// Collapsed: line-summary head + the "5 lines" readout = rows 0..1.
+	if rows[0].start != 0 || rows[0].end != 1 {
+		t.Errorf("collapsed row range = %d..%d, want 0..1", rows[0].start, rows[0].end)
+	}
+	if idx, _, ok := l.AtLine(0, rows); !ok || idx != 0 {
+		t.Errorf("AtLine(0) = %d/%v, want entry 0", idx, ok)
+	}
+	if idx, _, ok := l.AtLine(1, rows); !ok || idx != 0 {
+		t.Errorf("AtLine(1) = %d/%v, want entry 0 (summary row)", idx, ok)
+	}
+}
+
+// TestToolLog_RenderRowAccountExpanded asserts Render counts an expanded entry's
+// rows (head + the full framed result lines) as its own row range, so a click on
+// any of them toggles the same entry (issue #212).
+func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 1}})
+	l.Toggle(0) // flip the entry open
+
+	_, rows := l.Render(defaultTheme, true, time.Time{}, 80, 0)
+	if len(rows) != 1 {
+		t.Fatalf("expected one row range, got %d", len(rows))
+	}
+	// Expanded result "ok" renders as a framed card: the head row plus the
+	// card's top padding, content row, and bottom padding = rows 0..3.
+	if rows[0].start != 0 || rows[0].end != 3 {
+		t.Errorf("expanded row range = %d..%d, want 0..3", rows[0].start, rows[0].end)
+	}
+}
+
+// TestToolLog_RenderRowAccountSkipsOtherAnchors asserts Render only accounts
+// entries for the requested anchor, so content-row ranges stay relative to each
+// message's own block and multiple turns share the same Render pass (issue #84,
+// #212).
+func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(2)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+	l.SetAnchor(7)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
+
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 2)
+	if len(rows) != 1 {
+		t.Fatalf("expected the anchor-2 entry only, got %d ranges", len(rows))
+	}
+	if rows[0].idx != 0 {
+		t.Errorf("row range idx = %d, want 0 (the anchor-2 entry)", rows[0].idx)
+	}
+}
+
+// TestToolLog_RenderOutcomeElapsedAndTruncation asserts the entry head carries
+// the ✓/✗ outcome marker, the elapsed readout for a completed timed tool, and
+// arg truncation at narrow widths — the presentation forms Render must preserve
+// byte-for-byte (issue #122, #212).
+func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"make build"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n", Lines: 1}})
+	start := time.Now().Add(-105 * time.Second)
+	l.SetStart(0, start)
+
+	// A completed entry freezes its elapsed span from SetStart to now. The few
+	// sub-second ms between Apply (which stamps doneAt) and SetStart only shave
+	// the fractional part, so the 105s window reads deterministically as 1m 44s.
+	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0)
+	if !strings.Contains(got, "⊕ bash") {
+		t.Errorf("head missing, got %q", got)
+	}
+	if !strings.Contains(got, "1m 44s") {
+		t.Errorf("elapsed readout missing, got %q", got)
+	}
+	// A success outcome renders the ✓ marker (default glyph mode).
+	if !strings.Contains(got, "✓") {
+		t.Errorf("outcome marker missing, got %q", got)
+	}
+
+	// A narrow-but-viable width truncates the args with an ellipsis rather than
+	// cutting abruptly: budget = width − label(6) − 8, so width 18 leaves a
+	// budget of 4, and the 10-wide "make build" args truncate.
+	narrow, _ := l.Render(defaultTheme, false, time.Time{}, 18, 0)
+	if strings.Contains(narrow, "make build") || !strings.Contains(narrow, "…") {
+		t.Errorf("args should truncate with an ellipsis at width 18, got %q", narrow)
+	}
+}
+
+// TestToolLog_AtLineMapping asserts AtLine resolves the owning entry, reports its
+// collapsed state, and no-ops outside every recorded range (issue #212).
+func TestToolLog_AtLineMapping(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\n", Lines: 2}}) // rows 0..1
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "c\n", Lines: 1}}) // rows 2..3
+
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if len(rows) != 2 {
+		t.Fatalf("expected two row ranges, got %d", len(rows))
+	}
+
+	// Collapsed entries report collapsed=true (a click expands them).
+	if idx, collapsed, ok := l.AtLine(1, rows); !ok || idx != 0 || !collapsed {
+		t.Errorf("AtLine(1) = %d/%v/%v, want entry 0 collapsed=ok", idx, collapsed, ok)
+	}
+	if idx, collapsed, ok := l.AtLine(2, rows); !ok || idx != 1 || !collapsed {
+		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 collapsed=ok", idx, collapsed, ok)
+	}
+
+	// An expanded entry reports collapsed=false (a click collapses it). Expand
+	// only that entry and re-render so the other entry's rows stay put: the
+	// "read" (idx 1) head row remains at absolute line 2.
+	l.Toggle(1)
+	_, rows2 := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if idx, collapsed, ok := l.AtLine(2, rows2); !ok || idx != 1 || collapsed {
+		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
+	}
+
+	// Bounds: lines above and below the recorded ranges are inert.
+	if _, _, ok := l.AtLine(99, rows); ok {
+		t.Errorf("AtLine(99) should be out of range")
+	}
+	// AtLine never panics on an empty row account.
+	if _, _, ok := l.AtLine(0, nil); ok {
+		t.Errorf("AtLine over nil rows should be out of range")
+	}
+}
+
+// TestToolLog_RenderFailureOutcome asserts a tool whose result is error-shaped
+// renders the ✗ outcome marker (issue #122 AC2, #212).
+func TestToolLog_RenderFailureOutcome(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "error executing tool: boom", Lines: 0}})
+
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if !strings.Contains(got, "✗") {
+		t.Errorf("failure entry must render ✗, got %q", got)
+	}
+}

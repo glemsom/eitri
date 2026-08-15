@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"charm.land/lipgloss/v2"
 )
 
 // render.go is the value-only rendering surface (issue #208, module 2): the
@@ -23,92 +21,6 @@ func busyLine(idx int) string {
 		return "… thinking"
 	}
 	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " working"
-}
-
-// renderToolEntry renders one tool-call entry as a compact, glanceable line —
-// `⊕ tool  args` — with the result collapsed by default to a summary, never a
-// raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
-// line-delta tag, and a compressed result carries an explicit "+N more" tail
-// marker. When expanded (showToolResult), the full inline result is rendered so
-// nothing is silently truncated — every collapse has an expand path.
-func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
-	var b strings.Builder
-	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
-	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
-	// glanceable without expanding the collapsed summary. The entry line
-	// itself renders in the tool's category hue (shell/file/web/skill, issue
-	// #181 AC1), with the glyph + color pair keeping meaning from ever
-	// depending on color alone (issue #181 AC5).
-	outcome := ""
-	if te.complete {
-		if isToolFailure(te.result) {
-			outcome = " " + th.outcomeErrStyle.Render(g("✗", "X"))
-		} else {
-			outcome = " " + th.outcomeOKStyle.Render(g("✓", "ok"))
-		}
-	}
-	// The entry head splits into the category-colored ⊕ tool label and the
-	// dimmed command detail (args/range/delta): color marks the tool kind, the
-	// detail recedes so a busy session reads calmly (benchmark §4.1 tool-cards:
-	// label + dimmed path). Long details truncate to the pane width with an
-	// ellipsis so a huge URL or command never cuts abruptly at the edge; the
-	// full arguments stay in the clipboard copy and the expanded result.
-	label := toolEntryLabel(te)
-	args := toolEntryArgs(te)
-	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
-	if budget > 1 && lipgloss.Width(args) > budget {
-		args = truncateWidth(args, budget-1) + g("…", "...")
-	}
-	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
-	if args != "" {
-		head += th.statusStyle.Render(args)
-	}
-	b.WriteString(head + outcome)
-	// Elapsed-time readout on the entry head (benchmark §4.1): sub-second tools
-	// stay silent — only a tool worth waiting on earns a timer. Completed tools
-	// freeze the span; a running tool (non-zero now, e.g. while the busy
-	// spinner ticks) shows the live elapsed.
-	if !te.startedAt.IsZero() {
-		var d time.Duration
-		if te.complete && !te.doneAt.IsZero() {
-			d = te.doneAt.Sub(te.startedAt)
-		} else if !now.IsZero() {
-			d = now.Sub(te.startedAt)
-		}
-		if d >= time.Second {
-			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
-		}
-	}
-	b.WriteString("\n")
-
-	if !expanded {
-		// Collapsed summary: line count + explicit "+N more" tail marker when
-		// the result was compressed (docs/spec.md §5). Never a raw dump.
-		if te.lines > 0 || te.dropped > 0 {
-			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
-			if te.compressed && te.dropped > 0 {
-				summary += fmt.Sprintf(" (+%d more)", te.dropped)
-			}
-			b.WriteString(th.statusStyle.Render("  " + summary))
-			b.WriteString("\n")
-		}
-		return b.String()
-	}
-
-	// Expanded: the full result framed as a card — a left border in the
-	// entry's category hue with the content plain, so an expanded tool reads
-	// as one designed block instead of a raw text dump (benchmark §4.1: tool
-	// cards; the border color repeats the label's category color).
-	if te.result != "" {
-		frame := lipgloss.NewStyle().
-			Border(lipgloss.Border{Left: g("│", "|")}).
-			BorderLeft(true).
-			PaddingLeft(1).
-			BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
-		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
-		b.WriteString("\n")
-	}
-	return b.String()
 }
 
 // formatElapsed renders a duration in the tool-timer vocabulary (Codex-style):
