@@ -30,22 +30,22 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
 	view(m) // hydrate the persisted viewport; the value-copy cache discards
 
-	if m.layoutBuilds != 0 {
-		t.Fatalf("layout cache should start unbuilt, got %d builds", m.layoutBuilds)
+	if m.layout.builds != 0 {
+		t.Fatalf("layout cache should start unbuilt, got %d builds", m.layout.builds)
 	}
 
 	// The first hit-test performs the single layout build and records the index.
 	m.toolEntryAtLine(0) // result irrelevant; the build is what we're asserting
-	if m.layoutBuilds != 1 {
-		t.Fatalf("first hit-test must build the layout exactly once, got %d builds", m.layoutBuilds)
+	if m.layout.builds != 1 {
+		t.Fatalf("first hit-test must build the layout exactly once, got %d builds", m.layout.builds)
 	}
 
 	// Repeated toolEntryAtLine calls reuse the recorded index, never re-run layout.
 	for i := 0; i < 20; i++ {
 		m.toolEntryAtLine(0)
 	}
-	if m.layoutBuilds != 1 {
-		t.Fatalf("repeated toolEntryAtLine must not re-run layout, got %d builds", m.layoutBuilds)
+	if m.layout.builds != 1 {
+		t.Fatalf("repeated toolEntryAtLine must not re-run layout, got %d builds", m.layout.builds)
 	}
 
 	// The mouse-to-content path also reads the recorded plain-row space, so a
@@ -53,8 +53,8 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		m.mouseToContent(2, 3)
 	}
-	if m.layoutBuilds != 1 {
-		t.Fatalf("repeated mouseToContent must not re-run layout, got %d builds", m.layoutBuilds)
+	if m.layout.builds != 1 {
+		t.Fatalf("repeated mouseToContent must not re-run layout, got %d builds", m.layout.builds)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
 	m.messageAtLine(0) // build the layout once
 
-	base := m.layoutBuilds
+	base := m.layout.builds
 	// The prompt row and a later answer row must map to message 0 (the single
 	// committed turn); the workspace header (row 0) must not map to any message.
 	first := m.layout.msgs[0]
@@ -125,7 +125,7 @@ func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 		t.Errorf("row 0 (workspace header) must not map to a message, got ok=true")
 	}
 	// Consuming the index must not re-run the layout pass.
-	if m.layoutBuilds != base {
-		t.Fatalf("messageAtLine re-ran layout: builds %d -> %d", base, m.layoutBuilds)
+	if m.layout.builds != base {
+		t.Fatalf("messageAtLine re-ran layout: builds %d -> %d", base, m.layout.builds)
 	}
 }

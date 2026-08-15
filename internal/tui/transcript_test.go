@@ -151,3 +151,121 @@ func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
 		t.Errorf("wheel up must scroll up, offset %d -> %d", wheelStart, up)
 	}
 }
+
+// transcriptWithTool builds a standalone Transcript carrying one completed
+// tool entry (issue #245). The entry anchors to message 0 and renders as a
+// collapsed block whose rows the tool-surface routes map back to it.
+func transcriptWithTool(t *testing.T) Transcript {
+	t.Helper()
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	var log toolLog
+	log.SetAnchor(0)
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go\n", Lines: 2}})
+	return Transcript{
+		theme:      th,
+		configTheme: config.DefaultTheme,
+		messages:    []message{{role: "you", content: "run it"}},
+		log:         log,
+		width:       80,
+		height:      12,
+	}
+}
+
+// TestTranscript_toolEntryAtLineReadsPersistentIndex asserts the click-to-expand
+// hit-test now lives on the Transcript (issue #245 AC1/AC3): toolEntryAtLine
+// maps a content row back to the owning entry through the Transcript's
+// persistent row->entry index — the collapsed head and its summary row both
+// resolve to entry 0, and the first call builds the layout exactly once while
+// repeats reuse the recorded index (no re-render).
+func TestTranscript_toolEntryAtLineReadsPersistentIndex(t *testing.T) {
+	tx := transcriptWithTool(t)
+	tx.ensureLayout() // build the persistent row->entry index once
+	if tx.layout == nil || len(tx.layout.rows) == 0 {
+		t.Fatalf("hit-test must record a tool-entry row index")
+	}
+	head := tx.layout.rows[0].start
+
+	idx, collapsed, ok := tx.toolEntryAtLine(head)
+	if !ok || idx != 0 || !collapsed {
+		t.Errorf("toolEntryAtLine(%d) = %d/%v/%v, want entry 0 collapsed=ok", head, idx, collapsed, ok)
+	}
+
+	for i := 0; i < 20; i++ {
+		if idx, _, ok := tx.toolEntryAtLine(head); !ok || idx != 0 {
+			t.Errorf("toolEntryAtLine(%d) = %d/%v, want entry 0 (reused index)", head, idx, ok)
+		}
+	}
+	if tx.layout.builds != 1 {
+		t.Errorf("hit-test must build the layout exactly once, got builds=%d", layoutBuildsOf(tx))
+	}
+
+	if _, _, ok := tx.toolEntryAtLine(99); ok {
+		t.Errorf("toolEntryAtLine(99) must be out of range")
+	}
+}
+
+// TestTranscript_toggleToolEntryFlipsExpansion asserts the per-entry expansion
+// toggle now lives on the Transcript (issue #245 AC1): toggling entry 0 expands
+// it open and a second toggle collapses it, exactly like the tool-log Toggle the
+// click path maps to.
+func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
+	tx := transcriptWithTool(t)
+
+	tx.toggleToolEntry(0)
+	if !tx.log.Entry(0).expanded {
+		t.Errorf("toggleToolEntry(0) must expand entry 0")
+	}
+	tx.toggleToolEntry(0)
+	if tx.log.Entry(0).expanded {
+		t.Errorf("second toggleToolEntry(0) must collapse entry 0")
+	}
+}
+
+// TestTranscript_applyFoldsToolUpdate asserts tool updates now route through the
+// Transcript (issue #245 AC1/AC2): apply folds a Start/Result pair into the
+// transcript's own log — the same entries renderPane reads — so the live
+// transcript never drifts from what the tools accomplished.
+func TestTranscript_applyFoldsToolUpdate(t *testing.T) {
+	tx := transcriptWithTool(t)
+	before := tx.log.Len()
+
+	tx.apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	tx.apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
+
+	if tx.log.Len() != before+1 {
+		t.Fatalf("apply must fold a new entry, got len before=%d after=%d", before, tx.log.Len())
+	}
+	e := tx.log.Entry(tx.log.Len() - 1)
+	if e.name != "read" || e.result != "contents" || !e.complete {
+		t.Errorf("apply result entry = %+v, want read/contents/complete", e)
+	}
+}
+
+// TestTranscript_toggleShowToolResultFlipsGlobalExpansion asserts the alt+y
+// global all-entries toggle now lives on the Transcript (issue #245 AC2): a
+// toggling Transcript flips its showToolResult flag and reports the new value
+// back, the same state the transcript render reads for global expansion.
+func TestTranscript_toggleShowToolResultFlipsGlobalExpansion(t *testing.T) {
+	tx := transcriptWithTool(t)
+	if tx.showToolResult {
+		t.Fatalf("transcript should start globally collapsed")
+	}
+	if v := tx.toggleShowToolResult(); !v || !tx.showToolResult {
+		t.Errorf("toggleShowToolResult must expand all, got value=%v field=%v", v, tx.showToolResult)
+	}
+	if v := tx.toggleShowToolResult(); v || tx.showToolResult {
+		t.Errorf("second toggleShowToolResult must collapse all, got value=%v field=%v", v, tx.showToolResult)
+	}
+}
+
+// layoutBuildsOf reports how many layout builds a Transcript's shared cache has
+// performed (issue #242 AC4 test hook, read through the pointer so a repeated
+// hit-test can assert the persistent index is reused).
+func layoutBuildsOf(tx Transcript) int {
+	if tx.layout == nil {
+		return 0
+	}
+	return tx.layout.builds
+}

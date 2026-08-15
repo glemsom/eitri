@@ -304,16 +304,15 @@ type Model struct {
 	// ANSI-stripped plain-row space that the mouse hit-test reads back (issue
 	// #208 US6, #124 T6) instead of re-deriving layout on every pointer /
 	// selection event. It is advisory for performance — correctness is
-	// guaranteed because toolEntryAtLine returns m.log.AtLine(line, rows) and
-	// historyPlainLines returns plain, both computed from the same renderHistory
-	// pass renderPane uses. Marks follow transcript-affecting changes (message
-	// append/update, tool-log Apply, showToolResult toggle, resize) so the
-	// cached index cannot drift from what View renders.
-	layout transcriptLayout
-	// layoutBuilds counts recordLayout() runs. It is a read-only test hook
-	// (issue #242 AC4): a regression test asserts a drag's repeated hit-tests
-	// build the layout exactly once. Production never inspects it.
-	layoutBuilds int
+	// guaranteed because the cache is built by the very renderHistory pass the
+	// viewport and mouse coordinates use. It is a *pointer shared with the
+	// Transcript (issue #245), so the cache a Transcript builds for a hit-test
+	// persists back into this Model (and across View's value copies) — the
+	// transcript owns building it, Model keeps the shared location for now
+	// (issue #248 removes the duplicate). Marks follow transcript-affecting
+	// changes (message append/update, tool-log Apply, showToolResult toggle,
+	// resize) so the cached index cannot drift from what View renders.
+	layout *transcriptLayout
 
 	// review is the open changed-file review panel (issue #90), built from the
 	// accumulated file-mutating tool entries. Non-nil means the panel is open
@@ -435,10 +434,14 @@ func NewModelCfg(d Dependencies) Model {
 		rail:            d.Rail,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
+		layout:          &transcriptLayout{dirty: true},
 		reasoningEffort: d.Config.ReasoningEffort,
 		clipboard:       newClipboard(d),
 	}
-	m.layout.dirty = true // the cache starts stale until the first hit-test builds it
+	// The layout starts stale, but the pointer share means the Transcript's
+	// first hit-test builds it lazily; the explicit dirty below keeps the
+	// semantic explicit (issue #242).
+	m.layout.dirty = true
 	// An unknown hand-edited theme warns once on startup via the status strip,
 	// naming the fallback, instead of failing silently: the renderer still
 	// falls back to dark per issue #129 (issue #131 AC1). Valid themes never
@@ -576,8 +579,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.toolFeed == nil {
 			return m, nil
 		}
-		m.log.Apply(msgi.update)
-		m.layout.dirty = true // an entry changed the tool log's rendered rows
+		tx := newTranscript(m)
+		tx.apply(msgi.update) // tool updates route through the Transcript (issue #245)
+		m.log = tx.log // persist the Transcript's log back into Model
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -767,8 +771,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// #84): collapsed by default so the transcript stays clean, expanded on
 		// demand so nothing is ever silently truncated.
 		if msgi.Mod.Contains(tea.ModAlt) && msgi.Text == "y" {
-			m.showToolResult = !m.showToolResult
-			m.layout.dirty = true // showing/hiding all tool results re-wraps the log
+			tx := newTranscript(m)
+			m.showToolResult = tx.toggleShowToolResult() // alt+y routes through the Transcript (issue #245)
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -1462,6 +1466,10 @@ type transcriptLayout struct {
 	msgs  []msgRowRange  // row->message index in content-line coordinates
 	plain []string       // ANSI-stripped history rows (the drag-select space)
 	dirty bool
+	// builds counts the batched layout passes run. It is a read-only test hook
+	// (issue #242 AC4): a regression test asserts a drag's repeated hit-tests
+	// build the layout exactly once. Production never inspects it.
+	builds int
 }
 
 // renderHistory renders the scroll region: the agent history that the user
@@ -1480,62 +1488,32 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRo
 	newTranscript(m).renderHistory(b, toolRows, msgRows)
 }
 
-// ensureLayout lazily builds the persistent transcript layout cache (issue
-// #242) when it is dirty, exactly once per transcript change. It runs ONE
-// renderHistory pass into a scratch builder, capturing the row->tool-entry
-// index AND building the ANSI-stripped plain-row space (the drag-select copy
-// coordinates) from the same builder, then clears dirty so repeated hit-tests
-// (mouse motion, toolEntryAtLine) reuse the recorded index until the next
-// transcript-affecting change. Because pointer events arrive through Update on
-// a *Model, the cache recorded here persists across a drag's motion events.
+// ensureLayout forwards the lazy persistent-layout build to the Transcript,
+// which now owns the cache (issue #245). Because the layout is a pointer shared
+// between the two, a Transcript built from this Model writes the recorded index
+// back here, so the repeated hit-tests (mouse motion, toolEntryAtLine) reuse it
+// and the drag's caching survives (issue #242 AC4). See Transcript.ensureLayout.
 func (m *Model) ensureLayout() {
-	if !m.layout.dirty {
-		return
-	}
-	m.recordLayout()
+	tx := newTranscript(*m)
+	tx.ensureLayout()
 }
 
-// recordLayout performs the one batched layout pass behind the persistent
-// cache (issue #242): it renders the history into a scratch builder, captures
-// the toolRows and msgRows out-params, and derives the ANSI-stripped plain
-// rows from the same builder, storing both indexes and clearing dirty. It is
-// kept private and cheap
-// to re-run; ensureLayout is the only public entry, so callers see the cache
-// transparently. layoutBuilds incremented here is a test hook asserting the
-// hit-test builds once (issue #242 AC4).
-func (m *Model) recordLayout() {
-	var hist strings.Builder
-	m.layout.rows = m.layout.rows[:0]
-	m.layout.msgs = m.layout.msgs[:0]
-	m.renderHistory(&hist, &m.layout.rows, &m.layout.msgs)
-	lines := strings.Split(hist.String(), "\n")
-	m.layout.plain = m.layout.plain[:0]
-	for _, l := range lines {
-		m.layout.plain = append(m.layout.plain, ansiStrip(l))
-	}
-	m.layout.dirty = false
-	m.layoutBuilds++
-}
-
-// toolEntryAtLine returns the tool entry whose rendered rows include the given
-// content line, and whether that entry is currently collapsed (a click on a
-// collapsed head toggles it open; on an open entry it toggles closed). The
-// lookup reads the persistent layout cache (issue #242): it lazily builds the
-// row->tool-entry index once per transcript change (via recordLayout, the same
-// shared renderHistory pass the viewport and mouse coordinates use), so it
-// never drifts from what the user sees and a drag reuses the recorded index
-// instead of re-deriving layout each event.
+// toolEntryAtLine forwards the click-to-expand hit-test to the Transcript,
+// which now owns the persistent row->entry index and the lookup (issue #245
+// AC1/AC3). See Transcript.toolEntryAtLine.
 func (m *Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
-	m.ensureLayout()
-	return m.log.AtLine(line, m.layout.rows)
+	tx := newTranscript(*m)
+	return tx.toolEntryAtLine(line)
 }
 
-// toggleToolEntry flips one tool entry's expansion state (mouse click
-// click-to-expand). It delegates to the tool log's bounds-checked Toggle, and
-// never touches other entries or the global alt+y flag.
+// toggleToolEntry forwards the per-entry expansion toggle to the Transcript,
+// which now owns the tool log's expansion (issue #245 AC1), then persists the
+// resulting log (a value copy the Transcript mutated) back into this Model so
+// the two never drift until issue #248 removes Model's duplicate.
 func (m *Model) toggleToolEntry(idx int) {
-	m.log.Toggle(idx)
-	m.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+	tx := newTranscript(*m)
+	tx.toggleToolEntry(idx)
+	m.log = tx.log
 }
 
 // messageAtLine returns the message whose rendered rows include the given
