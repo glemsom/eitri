@@ -132,7 +132,7 @@ func dragModel(t *testing.T, answer string) Model {
 func historyContentRows(m Model) (rows []string, top int) {
 	vp := m.histViewport
 	var hist strings.Builder
-	m.renderHistory(&hist, nil)
+	m.renderHistory(&hist, nil, nil)
 	for _, l := range strings.Split(hist.String(), "\n") {
 		rows = append(rows, ansiStrip(l))
 	}

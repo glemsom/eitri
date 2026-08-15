@@ -299,6 +299,22 @@ type Model struct {
 	// AC2/AC4).
 	showToolResult bool
 
+	// layout is the persistent transcript layout cache (issue #242): one
+	// batched render pass records the row->tool-entry index and the
+	// ANSI-stripped plain-row space that the mouse hit-test reads back (issue
+	// #208 US6, #124 T6) instead of re-deriving layout on every pointer /
+	// selection event. It is advisory for performance — correctness is
+	// guaranteed because toolEntryAtLine returns m.log.AtLine(line, rows) and
+	// historyPlainLines returns plain, both computed from the same renderHistory
+	// pass renderPane uses. Marks follow transcript-affecting changes (message
+	// append/update, tool-log Apply, showToolResult toggle, resize) so the
+	// cached index cannot drift from what View renders.
+	layout transcriptLayout
+	// layoutBuilds counts recordLayout() runs. It is a read-only test hook
+	// (issue #242 AC4): a regression test asserts a drag's repeated hit-tests
+	// build the layout exactly once. Production never inspects it.
+	layoutBuilds int
+
 	// review is the open changed-file review panel (issue #90), built from the
 	// accumulated file-mutating tool entries. Non-nil means the panel is open
 	// (ctrl+d toggles); nil means the transcript is the active surface.
@@ -421,6 +437,7 @@ func NewModelCfg(d Dependencies) Model {
 		reasoningEffort: d.Config.ReasoningEffort,
 		clipboard:       newClipboard(d),
 	}
+	m.layout.dirty = true // the cache starts stale until the first hit-test builds it
 	// An unknown hand-edited theme warns once on startup via the status strip,
 	// naming the fallback, instead of failing silently: the renderer still
 	// falls back to dark per issue #129 (issue #131 AC1). Valid themes never
@@ -559,6 +576,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.log.Apply(msgi.update)
+		m.layout.dirty = true // an entry changed the tool log's rendered rows
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -572,12 +590,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.appendStreamDelta(msgi.kind, msgi.delta)
+		m.layout.dirty = true // the in-progress message grew
 		return m, streamWait(m.stream)
 
 	case tea.WindowSizeMsg:
 		m.width = msgi.Width
 		m.height = msgi.Height
 		m.syncWidths()
+		m.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -700,6 +720,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
 			m.curStream = -1
+			m.layout.dirty = true // a new turn appended to the transcript
 			m.syncComposerRail()
 			// Anchor new tool calls to this turn's prompt so entries interleave
 			// after it (issue #84).
@@ -736,6 +757,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			m.layout.dirty = true // a thinking block expanded/collapsed changes rows
 			return m, nil
 		}
 		// alt+y toggles expanding tool-call entries to their full result (issue
@@ -743,6 +765,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// demand so nothing is ever silently truncated.
 		if msgi.Mod.Contains(tea.ModAlt) && msgi.Text == "y" {
 			m.showToolResult = !m.showToolResult
+			m.layout.dirty = true // showing/hiding all tool results re-wraps the log
 			return m, nil
 		}
 		// Let the textarea handle editing (cursor, backspace, etc.).
@@ -783,6 +806,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnDoneMsg:
 		m.busy = false
 		m.spinner = 0
+		m.layout.dirty = true // the turn's answer/error and busy end change the transcript
 		m.syncComposerRail()
 		wasStreaming := m.curStream >= 0 && m.curStream < len(m.messages)
 		if msgi.err != nil {
@@ -846,6 +870,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
+		m.layout.dirty = true // a skill result appended to the transcript
 		return m, nil
 	}
 
@@ -1094,6 +1119,7 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 // result as an assistant note.
 func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
+	m.layout.dirty = true
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: failurePrefix() + "no skill activation available"})
 		return m, nil
@@ -1384,7 +1410,7 @@ func (m Model) renderPane() string {
 	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow; no
 	// width-bucket cache or manual clip/anchor compensation layer is needed.
 	var hist strings.Builder
-	m.renderHistory(&hist, nil)
+	m.renderHistory(&hist, nil, nil)
 	if m.review != nil {
 		// The review region is its own height-clipped overlay (issue T06).
 		reviewStr = clipReviewRegion(reviewStr, reviewLines)
@@ -1552,6 +1578,29 @@ type toolRowRange struct {
 	start, end, idx int
 }
 
+
+// msgRowRange maps a rendered history row span to the message that owns it, so
+// the transcript exposes a row->message index (issue #242 AC1) alongside the
+// row->tool-entry index. start/end are content-line indexes in the viewport's
+// split space (the same space mouseToContent maps into); idx indexes m.messages.
+type msgRowRange struct {
+	start, end, idx int
+}
+// transcriptLayout is the persistent layout cache for the history region
+// (issue #242): one batched renderHistory pass captures the row->tool-entry
+// mapping (rows), the row->message mapping (msgs), both in content-line
+// coordinates, and the ANSI-stripped history rows (plain, the drag-select copy
+// space) so the mouse hit-test reads the recorded index instead of re-deriving
+// layout on every pointer event. dirty is true when a transcript-affecting
+// change makes the cached index stale; the lazy hit-test rebuilds exactly once
+// per invalidate.
+type transcriptLayout struct {
+	rows  []toolRowRange // row->tool-entry index in content-line coordinates
+	msgs  []msgRowRange  // row->message index in content-line coordinates
+	plain []string       // ANSI-stripped history rows (the drag-select space)
+	dirty bool
+}
+
 // renderHistory renders the scroll region: the agent history that the user
 // reads and scrolls. It surfaces the workspace header, every committed message
 // (thinking blocks + markdown body), the interleaved tool entries, and the
@@ -1564,9 +1613,15 @@ type toolRowRange struct {
 // under it without re-deriving the layout. Every block ends on a newline, so
 // the newline count before a write equals the content row index where it
 // starts.
-func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
+// msgRows, when non-nil, receives the row span of every message written, in the
+// same content-line coordinates, so the transcript exposes a row->message index
+// (issue #242 AC1) alongside the tool-entry index.
+func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
+	}
+	if msgRows != nil {
+		*msgRows = (*msgRows)[:0]
 	}
 	nl := 0
 	emit := func(s string) {
@@ -1588,6 +1643,7 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 		emit(idleWelcome(m.theme))
 	}
 	for i, msg := range m.messages {
+		msgStart := nl // content row where this message's block begins
 		// Reasoning renders as a distinct, collapsible per-turn block — never
 		// merged into the answer. Collapsed it is a one-line hint carrying the
 		// token estimate + effort; `tab` expands just that turn's block (issue
@@ -1651,6 +1707,9 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 				*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
 			}
 		}
+		if msgRows != nil {
+			*msgRows = append(*msgRows, msgRowRange{start: msgStart, end: nl - 1, idx: i})
+		}
 	}
 	// The busy indicator normally lives in the always-visible status strip
 	// (renderBand), so the working state never scrolls away with the history
@@ -1662,17 +1721,54 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 	}
 }
 
+// ensureLayout lazily builds the persistent transcript layout cache (issue
+// #242) when it is dirty, exactly once per transcript change. It runs ONE
+// renderHistory pass into a scratch builder, capturing the row->tool-entry
+// index AND building the ANSI-stripped plain-row space (the drag-select copy
+// coordinates) from the same builder, then clears dirty so repeated hit-tests
+// (mouse motion, toolEntryAtLine) reuse the recorded index until the next
+// transcript-affecting change. Because pointer events arrive through Update on
+// a *Model, the cache recorded here persists across a drag's motion events.
+func (m *Model) ensureLayout() {
+	if !m.layout.dirty {
+		return
+	}
+	m.recordLayout()
+}
+
+// recordLayout performs the one batched layout pass behind the persistent
+// cache (issue #242): it renders the history into a scratch builder, captures
+// the toolRows and msgRows out-params, and derives the ANSI-stripped plain
+// rows from the same builder, storing both indexes and clearing dirty. It is
+// kept private and cheap
+// to re-run; ensureLayout is the only public entry, so callers see the cache
+// transparently. layoutBuilds incremented here is a test hook asserting the
+// hit-test builds once (issue #242 AC4).
+func (m *Model) recordLayout() {
+	var hist strings.Builder
+	m.layout.rows = m.layout.rows[:0]
+	m.layout.msgs = m.layout.msgs[:0]
+	m.renderHistory(&hist, &m.layout.rows, &m.layout.msgs)
+	lines := strings.Split(hist.String(), "\n")
+	m.layout.plain = m.layout.plain[:0]
+	for _, l := range lines {
+		m.layout.plain = append(m.layout.plain, ansiStrip(l))
+	}
+	m.layout.dirty = false
+	m.layoutBuilds++
+}
+
 // toolEntryAtLine returns the tool entry whose rendered rows include the given
 // content line, and whether that entry is currently collapsed (a click on a
 // collapsed head toggles it open; on an open entry it toggles closed). The
-// lookup re-renders the history with row accounting — the same split space the
-// viewport and mouse coordinates use — so it never drifts from what the user
-// sees.
-func (m Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
-	var hist strings.Builder
-	var rows []toolRowRange
-	m.renderHistory(&hist, &rows)
-	return m.log.AtLine(line, rows)
+// lookup reads the persistent layout cache (issue #242): it lazily builds the
+// row->tool-entry index once per transcript change (via recordLayout, the same
+// shared renderHistory pass the viewport and mouse coordinates use), so it
+// never drifts from what the user sees and a drag reuses the recorded index
+// instead of re-deriving layout each event.
+func (m *Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
+	m.ensureLayout()
+	return m.log.AtLine(line, m.layout.rows)
 }
 
 // toggleToolEntry flips one tool entry's expansion state (mouse click
@@ -1680,6 +1776,22 @@ func (m Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 // never touches other entries or the global alt+y flag.
 func (m *Model) toggleToolEntry(idx int) {
 	m.log.Toggle(idx)
+	m.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+}
+
+// messageAtLine returns the message whose rendered rows include the given
+// content line, via the persistent row->message index (issue #242 AC1). It reads
+// the same lazy cache as toolEntryAtLine, so it never re-derives layout and
+// cannot drift from what the transcript renders. ok is false when the line maps
+// to no committed message (the workspace header, idle welcome, or busy footer).
+func (m *Model) messageAtLine(line int) (idx int, ok bool) {
+	m.ensureLayout()
+	for _, r := range m.layout.msgs {
+		if line >= r.start && line <= r.end {
+			return r.idx, true
+		}
+	}
+	return 0, false
 }
 
 // vimKey routes a keypress while the composer is in vim normal mode: motion

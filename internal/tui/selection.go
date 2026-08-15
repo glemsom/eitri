@@ -108,7 +108,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 // the rendered content. ok is false when the pointer is outside the history
 // viewport region — over the review overlay above it or the fixed bottom band
 // below it — or the viewport has not been sized yet.
-func (m Model) mouseToContent(x, y int) (line, col int, ok bool) {
+func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	vp := m.histViewport
 	if vp == nil || vp.Height() <= 0 || m.height <= 0 {
 		return 0, 0, false
@@ -159,14 +159,12 @@ func (m Model) mouseToContent(x, y int) (line, col int, ok bool) {
 // rendered row (ANSI stripped) — the coordinate space drag selection maps
 // into. The split matches the persisted viewport's own line split exactly, so
 // content line indexes agree between selection and the rendered transcript.
-func (m Model) historyPlainLines() []string {
-	var hist strings.Builder
-	m.renderHistory(&hist, nil)
-	lines := strings.Split(hist.String(), "\n")
-	for i := range lines {
-		lines[i] = ansiStrip(lines[i])
-	}
-	return lines
+// It is lazy + cached (issue #242): it reads the persistent layout cache,
+// rebuilding it once per transcript change via recordLayout so a drag's motion
+// events reuse the recorded plain-row space instead of re-rendering each one.
+func (m *Model) historyPlainLines() []string {
+	m.ensureLayout()
+	return m.layout.plain
 }
 
 // copySelection copies the plain text covered by a finished drag selection to
