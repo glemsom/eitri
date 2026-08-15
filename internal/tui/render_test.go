@@ -27,6 +27,29 @@ func TestRender_formatElapsed(t *testing.T) {
 	}
 }
 
+// TestRender_busyLine table-tests the in-progress working indicator: the animated
+// braille spinner frame cycled by index when motion is enabled, and the static
+// "… thinking" line under reduced motion (issue #211). The index wraps by
+// modulo over the frame set so the spinner loops.
+func TestRender_busyLine(t *testing.T) {
+	// Animated path: no EITRI_NO_MOTION, UTF-8 locale (the default in tests).
+	idxCases := []int{0, 1, len(busySpinnerFrames) - 1, len(busySpinnerFrames), len(busySpinnerFrames) + 1}
+	for _, idx := range idxCases {
+		i := idx % len(busySpinnerFrames)
+		want := string(busySpinnerFrames[i]) + " working"
+		if got := busyLine(idx); got != want {
+			t.Errorf("busyLine(%d) = %q, want %q", idx, got, want)
+		}
+	}
+
+	t.Run("reduced-motion", func(t *testing.T) {
+		t.Setenv("EITRI_NO_MOTION", "1")
+		if got := busyLine(0); got != "… thinking" {
+			t.Errorf("reduced-motion busyLine = %q, want %q", got, "… thinking")
+		}
+	})
+}
+
 // TestRender_plural table-tests the plural suffix: "" for one, "s" otherwise.
 func TestRender_plural(t *testing.T) {
 	cases := []struct {
