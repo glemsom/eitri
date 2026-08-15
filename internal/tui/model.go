@@ -2,10 +2,8 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strings"
 	"sync"
@@ -72,16 +70,6 @@ func motionEnabled() bool {
 		return false
 	}
 	return localeSupportsUTF8()
-}
-
-// busyLine renders the in-progress working indicator: the animated braille
-// spinner with a "working" label when motion is enabled, the static "… thinking"
-// line otherwise. The label stays plain so a monochrome terminal still reads it.
-func busyLine(idx int) string {
-	if !motionEnabled() || len(busySpinnerFrames) == 0 {
-		return "… thinking"
-	}
-	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " working"
 }
 
 // Turn runs one agent conversation turn (user prompt -> assistant answer) over
@@ -336,13 +324,11 @@ type Model struct {
 	// toolFeed is the live tool-call stream (issue #84); nil disables tool
 	// entries.
 	toolFeed *ToolFeed
-	// tools is the ordered list of tool entries rendered in the transcript,
-	// in stream order. Entries stay after their turn completes so the user can
-	// expand a result on demand.
-	tools []toolEntry
-	// curToolAnchor is the index into messages of the current turn's "you"
-	// message, assigned on submit so new tool calls interleave after it.
-	curToolAnchor int
+	// log is the deep tool-call log rendered in the transcript (issue #208):
+	// it owns the ordered entries, their start/result pairing, expansion,
+	// layout, plain-text transcription, and review projection. Entries stay
+	// after their turn completes so the user can expand a result on demand.
+	log toolLog
 	// showToolResult expands all tool entries to their full result (default
 	// false: collapsed); it toggles on alt+y so the user can read a full
 	// output on demand while keeping the transcript clean by default (issue #84
@@ -763,7 +749,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.syncComposerRail()
 			// Anchor new tool calls to this turn's prompt so entries interleave
 			// after it (issue #84).
-			m.curToolAnchor = len(m.messages) - 1
+			m.log.SetAnchor(len(m.messages) - 1)
 			// With a live answer stream, the composer turn and the stream waiter run
 			// concurrently so the reply grows in place as deltas arrive (issue #83);
 			// the spinner tick rides the same batch so the busy indicator animates
@@ -1061,39 +1047,10 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 }
 
 // applyToolUpdate folds one tool-call observation into the transcript's tool
-// entries (issue #84): a Start opens a new entry anchored to the current turn's
-// prompt; the matching Result fills it in with the delivered result and the
-// compression/line-delta metadata. Tool calls complete sequentially within a
-// turn, so the Result pairs with the most recent incomplete entry for its tool.
+// log (issue #84). It is the Model's thin delegation onto the deep toolLog
+// value type, which owns the start/result pairing end to end (issue #208).
 func (m *Model) applyToolUpdate(u ToolUpdate) {
-	if u.Start != nil {
-		m.tools = append(m.tools, toolEntry{
-			name:      u.Start.Name,
-			args:      u.Start.Args,
-			anchor:    m.curToolAnchor,
-			startedAt: time.Now(),
-		})
-		return
-	}
-	if u.Result != nil {
-		// Pair with the most recent not-yet-complete entry for this tool.
-		for i := len(m.tools) - 1; i >= 0; i-- {
-			if m.tools[i].name == u.Result.Name && !m.tools[i].complete {
-				m.tools[i].result = u.Result.Result
-				m.tools[i].lines = u.Result.Lines
-				m.tools[i].dropped = u.Result.Dropped
-				m.tools[i].compressed = u.Result.Compressed
-				m.tools[i].added = u.Result.Added
-				m.tools[i].removed = u.Result.Removed
-				m.tools[i].before = u.Result.Before
-				m.tools[i].after = u.Result.After
-				m.tools[i].path = u.Result.Path
-				m.tools[i].doneAt = time.Now()
-				m.tools[i].complete = true
-				return
-			}
-		}
-	}
+	m.log.Apply(u)
 }
 
 // skillSnapshot captures the detected skills at construction so the slash
@@ -1104,41 +1061,6 @@ func skillSnapshot(d Dependencies) []SkillItem {
 		return d.Skills.Items
 	}
 	return nil
-}
-
-// toolEntryLabel renders the category-colored `⊕ tool` label part of the
-// entry head (issue #181 AC1).
-func toolEntryLabel(te toolEntry) string {
-	return g("⊕ ", "+ ") + te.name
-}
-
-// toolEntryArgs renders the dimmed detail part of the entry head: the display
-// args hint, the invoked line range for range-limited reads (issue #204 AC1:
-// `⊕ read  path:start-end`), and the line-delta tag for file-edit tools (issue
-// #84 AC3: `[+N, −M]`). Split from the label so the transcript can color the
-// tool name and dim the command detail (benchmark §4.1: label + dimmed path on
-// tool cards).
-func toolEntryArgs(te toolEntry) string {
-	s := ""
-	if arg := toolArgsHint(te.args); arg != "" {
-		s += "  " + arg
-		if te.name == "read" {
-			if r := readRangeHint(te.args); r != "" {
-				s += ":" + r
-			}
-		}
-	}
-	if te.name == "edit" || te.name == "write" {
-		s += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
-	}
-	return s
-}
-
-// toolEntryHead renders the compact one-line `⊕ tool  args` head shared by the
-// transcript entry (issue #84) and the clipboard copy (issue #123): the tool
-// name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
-func toolEntryHead(te toolEntry) string {
-	return toolEntryLabel(te) + toolEntryArgs(te)
 }
 
 // copyTranscript copies the plain-text transcript to the system clipboard
@@ -1173,16 +1095,10 @@ func (m Model) transcriptText() string {
 		} else {
 			b.WriteString("eitri: " + msg.content + "\n")
 		}
-		for _, te := range m.tools {
-			if te.anchor != i {
-				continue
-			}
-			b.WriteString(toolEntryHead(te))
-			b.WriteString("\n")
-			if te.complete && te.result != "" {
-				b.WriteString("  " + strings.ReplaceAll(strings.TrimRight(te.result, "\n"), "\n", "\n  ") + "\n")
-			}
-		}
+		// The turn's tool entries transcribe through the tool log's plain-text
+		// surface (issue #208), so the clipboard and transcript never disagree
+		// on an entry.
+		b.WriteString(m.log.PlainText(i))
 		b.WriteString("\n")
 	}
 	return strings.TrimSpace(b.String())
@@ -1623,51 +1539,6 @@ func (m Model) reviewRegionRows(content string, bandLines int) int {
 	return rrows
 }
 
-// clipReviewRegion keeps the first n rows of the rendered review region and
-// discards the tail, so an over-height diff clips at the review region boundary
-// (issue T06 AC1) instead of flowing over the history/band. A trailing newline
-// is preserved so the region stays cleanly separated from the scroll region.
-func clipReviewRegion(content string, n int) string {
-	if n < 0 {
-		n = 0
-	}
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if n < len(lines) {
-		lines = lines[:n]
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// bottomSlice returns the bottom-anchored slice of the history content for a
-// viewport of the given height — the fallback used when the model has no
-// persisted viewport component (should not occur via NewModelCfg). It keeps the
-// newest lines, dropping the head when the history overflows the viewport.
-func bottomSlice(content string, vh int) string {
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) <= vh {
-		return content
-	}
-	if vh < 0 {
-		vh = 0
-	}
-	return strings.Join(lines[len(lines)-vh:], "\n")
-}
-
-// lineCount reports how many rendered terminal rows a region string occupies,
-// i.e. the number of newline-separated lines (a trailing newline does not add
-// an extra row). It is used to compute how much of the terminal height the
-// fixed bottom band consumes so the history viewport can clamp to the rest.
-func lineCount(s string) int {
-	if s == "" {
-		return 0
-	}
-	n := strings.Count(s, "\n")
-	if strings.HasSuffix(s, "\n") {
-		n--
-	}
-	return n + 1
-}
-
 // toolRowRange maps a rendered history row span to the tool entry that owns
 // it, so a mouse click on a collapsed tool head can toggle that entry's
 // expansion (click-to-expand, benchmark §4.4). start/end are content-line
@@ -1753,23 +1624,22 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 		// Interleave the turn's tool-call entries right after its prompting "you"
 		// message (issue #84): compact one-liners, collapsed by default, expanded
 		// on demand to the full result (per-entry via mouse click, globally via
-		// alt+y).
-		for ti, te := range m.tools {
-			if te.anchor == i {
-				// While a turn runs the live elapsed ticks (the busy spinner drives
-				// the re-render); idle frames pass a zero time so completed tools
-				// freeze their span.
-				now := time.Time{}
-				if m.busy {
-					now = time.Now()
-				}
-				start := nl
-				s := renderToolEntry(m.theme, te, m.showToolResult || te.expanded, now, w)
-				rows := strings.Count(s, "\n")
-				emit(s)
-				if toolRows != nil && rows > 0 {
-					*toolRows = append(*toolRows, toolRowRange{start: start, end: start + rows - 1, idx: ti})
-				}
+		// alt+y). Rendering and the content-row accounting share one layout pass
+		// owned by the tool log (issue #208), so the hit-test never drifts from
+		// what is rendered.
+		// While a turn runs the live elapsed ticks (the busy spinner drives the
+		// re-render); idle frames pass a zero time so completed tools freeze
+		// their span.
+		now := time.Time{}
+		if m.busy {
+			now = time.Now()
+		}
+		blockStart := nl
+		toolBlock, blockRows := m.log.Render(m.theme, m.showToolResult, now, w, i)
+		emit(toolBlock)
+		if toolRows != nil {
+			for _, r := range blockRows {
+				*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
 			}
 		}
 	}
@@ -1793,24 +1663,14 @@ func (m Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 	var hist strings.Builder
 	var rows []toolRowRange
 	m.renderHistory(&hist, &rows)
-	for _, r := range rows {
-		if line >= r.start && line <= r.end {
-			if r.idx < len(m.tools) {
-				return r.idx, !m.tools[r.idx].expanded, true
-			}
-			return 0, false, false
-		}
-	}
-	return 0, false, false
+	return m.log.EntryAtLine(line, rows)
 }
 
 // toggleToolEntry flips one tool entry's expansion state (mouse click
-// click-to-expand). It never touches other entries or the global alt+y flag.
+// click-to-expand). It delegates to the tool log's bounds-checked Toggle, and
+// never touches other entries or the global alt+y flag.
 func (m *Model) toggleToolEntry(idx int) {
-	if idx < 0 || idx >= len(m.tools) {
-		return
-	}
-	m.tools[idx].expanded = !m.tools[idx].expanded
+	m.log.Toggle(idx)
 }
 
 // vimKey routes a keypress while the composer is in vim normal mode: motion
@@ -1874,30 +1734,6 @@ func (m *Model) syncComposerRail() {
 	m.composer.SetStyles(st)
 }
 
-// idleWelcome renders the empty-transcript welcome block (issue #212): the
-// brand mark in the accent hue plus faint capability + keybinding hints, so
-// the first launch reads as a designed surface. One accent, no decoration —
-// the restrained brand treatment, not a logo wall.
-func idleWelcome(th Theme) string {
-	return th.headerStyle.Render("Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
-		th.statusStyle.Render("  ask me to fix a bug, refactor code, explain a system, or run the tests") + "\n" +
-		th.statusStyle.Render("  ctrl+s settings · ctrl+b rail · / for commands") + "\n"
-}
-
-// bandHints returns the right-aligned keybinding hint strip for the status
-// row (benchmark §4.4: one consistent hint system from the central keymap).
-// Hints are the real, wired bindings — never advertised keys that no-op.
-func bandHints(m Model) string {
-	if m.vimNormal {
-		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
-	}
-	hints := []string{"ctrl+s settings", "ctrl+b rail", "ctrl+d review", "ctrl+o copy"}
-	if m.review != nil {
-		hints = []string{"enter diff", "o browser", "ctrl+d close"}
-	}
-	return strings.Join(hints, g(" · ", " . "))
-}
-
 // renderBand renders the fixed bottom band: the live status strip (when wired)
 // plus the slash-command completion list and the composer, in that order. This
 // is the region T02+ pins at the bottom so it never scrolls away on resize.
@@ -1916,7 +1752,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		stripW := w
 		hints := ""
 		if w >= 100 {
-			hints = m.theme.statusStyle.Render(bandHints(m))
+			hints = m.theme.statusStyle.Render(bandHints(m.vimNormal, m.review != nil))
 			stripW = collapseWidth - 1 // compact telemetry makes room for hints
 		}
 		strip := m.theme.bandStatusStyle.Render(m.telemetry.render(stripW))
@@ -2001,38 +1837,6 @@ func (m Model) composerPreRows() int {
 	return n + len(slashCandidates(m.slashPrefix, m.skills))
 }
 
-// promptView renders the interactive max-turns continuation prompt.
-func promptView(th Theme) string {
-	// The max-turns continuation decision, framed like the other overlays: an
-	// accent title, the question, and the honest y/n/esc bindings from
-	// updatePrompt.
-	return th.headerStyle.Render("run paused at the max-turns cap") + "\n\n" +
-		"  Continue the run with more turns?\n" +
-		"  " + th.statusStyle.Render("y") + " continue" + g(" · ", " . ") + th.statusStyle.Render("n") + " stop" + g(" · ", " . ") + th.statusStyle.Render("esc") + " cancel\n"
-}
-
-// thinkingHeader renders a turn's collapsible reasoning block header. Collapsed
-// it is a one-line hint carrying a token estimate and the reasoning-effort tier
-// (issue #85 AC2: "🤔 1.4k tok · medium"); the block renders distinctly from the
-// answer so reasoning is recognizable but secondary, and settles back to this
-// hint when the turn's answer lands. reasoning is the accumulated thinking text;
-// effort is the run's reasoning-effort tier (empty drops the suffix).
-func thinkingHeader(th Theme, reasoning, effort string) string {
-	hint := fmt.Sprintf("%s %s tok", g("🤔", "?"), formatTokens(tokenEstimate(reasoning)))
-	if effort != "" {
-		hint += g(" · ", " . ") + effort
-	}
-	return th.thinkingStyle.Render(hint) + "\n"
-}
-
-// tokenEstimate estimates a reasoning stream's token count from its assembled
-// text length, using the conventional ~4 chars/token yardstick. It backs the
-// collapsed thinking hint's token readout so the user can gauge the turn's
-// reasoning cost at a glance (issue #85 AC2).
-func tokenEstimate(s string) int {
-	return len([]rune(s)) / 4
-}
-
 // renderSlashCompletion appends the slash-command completion list to the view
 // above the composer (issue #87 AC1): the built-in `/settings` command plus any
 // matching detected skills. It marks the candidate currently in the composer
@@ -2069,188 +1873,6 @@ func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur strin
 		}
 		b.WriteString("\n")
 	}
-}
-
-// renderToolEntry renders one tool-call entry as a compact, glanceable line —
-// `⊕ tool  args` — with the result collapsed by default to a summary, never a
-// raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
-// line-delta tag, and a compressed result carries an explicit "+N more" tail
-// marker. When expanded (showToolResult), the full inline result is rendered so
-// nothing is silently truncated — every collapse has an expand path.
-func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
-	var b strings.Builder
-	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
-	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
-	// glanceable without expanding the collapsed summary. The entry line
-	// itself renders in the tool's category hue (shell/file/web/skill, issue
-	// #181 AC1), with the glyph + color pair keeping meaning from ever
-	// depending on color alone (issue #181 AC5).
-	outcome := ""
-	if te.complete {
-		if isToolFailure(te.result) {
-			outcome = " " + th.outcomeErrStyle.Render(g("✗", "X"))
-		} else {
-			outcome = " " + th.outcomeOKStyle.Render(g("✓", "ok"))
-		}
-	}
-	// The entry head splits into the category-colored ⊕ tool label and the
-	// dimmed command detail (args/range/delta): color marks the tool kind, the
-	// detail recedes so a busy session reads calmly (benchmark §4.1 tool-cards:
-	// label + dimmed path). Long details truncate to the pane width with an
-	// ellipsis so a huge URL or command never cuts abruptly at the edge; the
-	// full arguments stay in the clipboard copy and the expanded result.
-	label := toolEntryLabel(te)
-	args := toolEntryArgs(te)
-	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
-	if budget > 1 && lipgloss.Width(args) > budget {
-		args = truncateWidth(args, budget-1) + g("…", "...")
-	}
-	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
-	if args != "" {
-		head += th.statusStyle.Render(args)
-	}
-	b.WriteString(head + outcome)
-	// Elapsed-time readout on the entry head (benchmark §4.1): sub-second tools
-	// stay silent — only a tool worth waiting on earns a timer. Completed tools
-	// freeze the span; a running tool (non-zero now, e.g. while the busy
-	// spinner ticks) shows the live elapsed.
-	if !te.startedAt.IsZero() {
-		var d time.Duration
-		if te.complete && !te.doneAt.IsZero() {
-			d = te.doneAt.Sub(te.startedAt)
-		} else if !now.IsZero() {
-			d = now.Sub(te.startedAt)
-		}
-		if d >= time.Second {
-			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
-		}
-	}
-	b.WriteString("\n")
-
-	if !expanded {
-		// Collapsed summary: line count + explicit "+N more" tail marker when
-		// the result was compressed (docs/spec.md §5). Never a raw dump.
-		if te.lines > 0 || te.dropped > 0 {
-			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
-			if te.compressed && te.dropped > 0 {
-				summary += fmt.Sprintf(" (+%d more)", te.dropped)
-			}
-			b.WriteString(th.statusStyle.Render("  " + summary))
-			b.WriteString("\n")
-		}
-		return b.String()
-	}
-
-	// Expanded: the full result framed as a card — a left border in the
-	// entry's category hue with the content plain, so an expanded tool reads
-	// as one designed block instead of a raw text dump (benchmark §4.1: tool
-	// cards; the border color repeats the label's category color).
-	if te.result != "" {
-		frame := lipgloss.NewStyle().
-			Border(lipgloss.Border{Left: g("│", "|")}).
-			BorderLeft(true).
-			PaddingLeft(1).
-			BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
-		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// formatElapsed renders a duration in the tool-timer vocabulary (Codex-style):
-// seconds under a minute, minutes+seconds under an hour, hours+minutes beyond.
-func formatElapsed(d time.Duration) string {
-	s := int(d.Seconds())
-	if s < 60 {
-		return fmt.Sprintf("%ds", s)
-	}
-	m := s / 60
-	if m < 60 {
-		return fmt.Sprintf("%dm %02ds", m, s%60)
-	}
-	return fmt.Sprintf("%dh %02dm", m/60, m%60)
-}
-
-// plural returns the English plural suffix for a count: "" for one, "s"
-// otherwise ("1 line", "3 lines").
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-// truncateWidth keeps the longest rune prefix of s whose display width is at
-// most w (the caller appends the ellipsis). It is the width-aware truncation
-// shared by the tool-entry args and any other fixed-width single-line detail.
-func truncateWidth(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	var sb strings.Builder
-	cw := 0
-	for _, r := range s {
-		if cw+1 > w {
-			break
-		}
-		sb.WriteRune(r)
-		cw++
-	}
-	return sb.String()
-}
-
-// readRangeHint extracts the explicit 1-based line range a `read` call was
-// invoked with from its raw JSON args (issue #204). Both start_line and
-// end_line must be present as positive integers; omitted or null limits
-// (whole-file reads), fractional values, and malformed shapes return "" so the
-// entry head falls back to the path-only rendering — never a crash.
-func readRangeHint(argsJSON string) string {
-	var args map[string]any
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return ""
-	}
-	start, ok := lineArg(args, "start_line")
-	if !ok {
-		return ""
-	}
-	end, ok := lineArg(args, "end_line")
-	if !ok {
-		return ""
-	}
-	return fmt.Sprintf("%d-%d", start, end)
-}
-
-// lineArg reads a 1-based integer tool argument from raw JSON args. It reports
-// ok=false when the arg is absent, null, non-numeric, fractional, or
-// non-positive, so range parsing can never emit a bogus tag from an unexpected
-// argument shape.
-func lineArg(args map[string]any, key string) (int, bool) {
-	v, ok := args[key].(float64)
-	if !ok || v != math.Trunc(v) || v < 1 {
-		return 0, false
-	}
-	return int(v), true
-}
-
-// toolArgsHint extracts a short display hint from a tool call's raw JSON args:
-// the `path` for file tools, the `command` for bash, else the raw string
-// trimmed to a single line. It keeps the one-line entry glanceable and never
-// throws away the model's full arguments (those stay in the engine transcript).
-func toolArgsHint(argsJSON string) string {
-	var args map[string]any
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		s := strings.TrimSpace(argsJSON)
-		if s == "{}" {
-			return ""
-		}
-		return s
-	}
-	for _, key := range []string{"path", "command", "url"} {
-		if s, ok := args[key].(string); ok && s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 // telemetryWait returns a command that blocks until the next live telemetry

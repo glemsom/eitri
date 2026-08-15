@@ -116,14 +116,14 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
 
-	if len(m.tools) != 1 {
-		t.Fatalf("expected one tool entry after start+result, got %d", len(m.tools))
+	if m.log.Len() != 1 {
+		t.Fatalf("expected one tool entry after start+result, got %d", m.log.Len())
 	}
-	if !m.tools[0].complete {
+	if !m.log.Entry(0).complete {
 		t.Errorf("tool entry should be complete after its result arrives")
 	}
-	if m.tools[0].name != "read" || m.tools[0].result != "contents" {
-		t.Errorf("tool entry = %+v, want read/contents", m.tools[0])
+	if e := m.log.Entry(0); e.name != "read" || e.result != "contents" {
+		t.Errorf("tool entry = %+v, want read/contents", e)
 	}
 }
 

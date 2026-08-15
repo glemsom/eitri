@@ -48,44 +48,12 @@ type reviewPanel struct {
 }
 
 // buildReview assembles the review panel from the conversation's accumulated
-// file-mutating tool entries (issue #90). It dedupes by file path, keeping the
-// most recent state for each, and derives each file's status + inline diff from
-// the before/after content the engine captured. It never touches the repo or
-// the live loop.
+// file-mutating tool entries (issue #90). It delegates to the tool log's Review
+// projection, which keeps the most recent state per path and derives each
+// file's status from the before/after content the engine captured. It never
+// touches the repo or the live loop.
 func (m Model) buildReview() reviewPanel {
-	var files []reviewEntry
-	byPath := map[string]int{}
-	for _, te := range m.tools {
-		if te.name != "edit" && te.name != "write" {
-			continue
-		}
-		if te.path == "" {
-			continue
-		}
-		status := "modified"
-		switch {
-		case te.before == "" && te.after != "":
-			status = "added"
-		case te.before != "" && te.after == "":
-			status = "deleted"
-		}
-		idx, ok := byPath[te.path]
-		if !ok {
-			byPath[te.path] = len(files)
-			files = append(files, reviewEntry{
-				path: te.path, before: te.before, after: te.after,
-				status: status, added: te.added, removed: te.removed,
-			})
-			continue
-		}
-		// Most recent state for an already-listed file wins.
-		files[idx].before = te.before
-		files[idx].after = te.after
-		files[idx].status = status
-		files[idx].added = te.added
-		files[idx].removed = te.removed
-	}
-	return reviewPanel{files: files}
+	return reviewPanel{files: m.log.Review()}
 }
 
 // updateReview routes a keypress while the review panel is open. It keeps the

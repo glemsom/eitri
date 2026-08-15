@@ -104,7 +104,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 	m = submitAndWait(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (2.1s)", Lines: 1})
-	m.tools[0].startedAt = m.tools[0].doneAt.Add(-2 * time.Second)
+	m.log.SetStart(0, m.log.Entry(0).doneAt.Add(-2*time.Second))
 
 	content := view(m)
 	if !strings.Contains(content, "2s") {
