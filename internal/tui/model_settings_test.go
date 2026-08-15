@@ -15,7 +15,9 @@ import (
 // surface, which renders the provider/model and knob rows (T12).
 func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash", "grok-2"},
 		Config: cfgFixture(),
 	})
@@ -37,7 +39,9 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(),
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -63,7 +67,9 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash", "grok-2"},
 		Config: cfgFixture(),
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -88,7 +94,9 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(), // reasoning_effort "high"
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -116,7 +124,9 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(),
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -146,7 +156,9 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(),
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -176,7 +188,9 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(), // thinking on by default
 		Save:   func(c config.Config) error { saved = c; return nil },
@@ -214,7 +228,9 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 // starts discovery, which delives the model list back through the model loop.
 func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Config: cfgFixture(), // no Models seeded
 		DiscoverModels: func(ctx context.Context) ([]string, error) {
 			return []string{"deepseek-v4-flash", "grok-2"}, nil
@@ -247,7 +263,9 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 // AC2), while the configured model still stays usable.
 func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Config: cfgFixture(), // no Models seeded
 		DiscoverModels: func(ctx context.Context) ([]string, error) {
 			return nil, errors.New("connection refused")
@@ -280,7 +298,9 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
-		Turn:   func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Models: []string{"deepseek-v4-flash"},
 		Config: cfgFixture(), // theme "dark"
 		Save:   func(c config.Config) error { saved = c; return nil },

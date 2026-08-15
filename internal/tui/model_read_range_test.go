@@ -14,7 +14,9 @@ import (
 func TestModel_readRangeShownInEntryHead(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 	})
 	m = resize(t, m)
@@ -40,7 +42,9 @@ func TestModel_readRangeShownInEntryHead(t *testing.T) {
 func TestModel_readWholeFileHasNoRange(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 	})
 	m = resize(t, m)
@@ -76,7 +80,9 @@ func TestModel_readWholeFileHasNoRange(t *testing.T) {
 func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 	})
 	m = resize(t, m)
@@ -109,7 +115,9 @@ func TestModel_clipboardCopyIncludesReadRange(t *testing.T) {
 	var copied string
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:      func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools:     feed,
 		Clipboard: func(s string) error { copied = s; return nil },
 	})

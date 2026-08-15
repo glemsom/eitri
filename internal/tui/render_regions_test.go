@@ -20,7 +20,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "I think first."}, nil
 		},
 		WorkspacePath: "/tmp/acme-project",
@@ -90,7 +90,7 @@ func resizeTo(t *testing.T, m Model, width, height int) Model {
 // followed by the fixed band, which stays the final (bottom-pinned) region.
 func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		WorkspacePath: "/tmp/acme-project",
@@ -156,7 +156,9 @@ func TestReviewRegion_ClipsTallDiff(t *testing.T) {
 		after[i] = fmt.Sprintf("line-%02d", i)
 	}
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 	})
 	// Small window: band ~2 rows leaves only a handful of history/viewport rows.

@@ -14,7 +14,7 @@ import (
 func TestModel_slashSettingsOpensSurface(t *testing.T) {
 	var prompted string
 	m := NewModelCfg(Dependencies{
-		Turn: func(_ context.Context, prompt string) (TurnResult, error) {
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			prompted = prompt
 			return TurnResult{Answer: "ok"}, nil
 		},
@@ -46,7 +46,9 @@ func TestModel_slashSettingsOpensSurface(t *testing.T) {
 // (issue #87 AC4) so slash handling never swallows user input.
 func TestModel_slashCompletionListsCommands(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Skills: &SkillsSurface{Items: []SkillItem{
 			{Name: "review"},
 			{Name: "plan"},
@@ -69,7 +71,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	// `/<skillname>` and `/settings` are the only inputs intercepted.
 	var prompted string
 	m = NewModelCfg(Dependencies{
-		Turn: func(_ context.Context, prompt string) (TurnResult, error) {
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			prompted = prompt
 			return TurnResult{Answer: "ok"}, nil
 		},
@@ -94,7 +96,9 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 // candidate-by-candidate.
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}},
 	})
 	m = resize(t, m)
@@ -127,7 +131,9 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 // the current composer value, not a stale `/...` prefix.
 func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn:   func(_ context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}},
 	})
 	m = resize(t, m)

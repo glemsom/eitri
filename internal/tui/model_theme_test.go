@@ -62,7 +62,7 @@ func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.Theme = "dracula"
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		Config: cfg,
@@ -83,7 +83,7 @@ func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
 // restart.
 func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		Config: cfgFixture(), // theme "dark"
@@ -124,7 +124,7 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 // the same one-shot discipline the startup warning relies on).
 func TestModel_statusNoteIsOneShot(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Clipboard: func(string) error { return nil },

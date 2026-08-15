@@ -252,7 +252,7 @@ func Run(opts Options) error {
 		return runTUI(e, cfg, reg, key, p, cfgPath, skills, workspace, tempHost)
 	}
 
-	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil)
+	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 // shared run engine, session transcript, and tool registry that both the TUI
 // and batch use. It is the single turn seam for both run kinds, so a TUI run
 // round-trips through the engine exactly like batch.
-func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, canContinue func() bool) (engine.Result, error) {
+func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	// Thinking off means non-thinking runs: the provider request carries no
 	// thinking toggle and no reasoning_effort, like the compaction summarizer
@@ -315,6 +315,7 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 	return e.RunAgent(context.Background(), engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
+		SkillInject:     skillInject,
 		SessionKey:      sessionKey,
 		ThinkingEnabled: cfg.ThinkingEnabled, // deepseek thinking default-on (spec §6)
 		ReasoningEffort: effort,

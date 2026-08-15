@@ -16,7 +16,9 @@ func newReviewModel(t *testing.T, opened *[]string) Model {
 	t.Helper()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:  func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools: feed,
 		OpenInBrowser: func(ctx context.Context, target string) error {
 			if opened != nil {
@@ -153,7 +155,9 @@ func TestReview_noFilesIsGraceful(t *testing.T) {
 func TestReview_openInBrowserErrorIsOneShot(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
-		Turn:          func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 		Tools:         feed,
 		OpenInBrowser: func(ctx context.Context, target string) error { return fmt.Errorf("boom") },
 	})

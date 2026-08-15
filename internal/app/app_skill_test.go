@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/tui"
@@ -358,7 +360,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	// stub). The recording asserts the args reach the turn seam verbatim.
 	var turnPrompts []string
 	m := tui.NewModelCfg(tui.Dependencies{
-		Turn: func(_ context.Context, prompt string) (tui.TurnResult, error) {
+		Turn: func(_ context.Context, prompt string, _ string) (tui.TurnResult, error) {
 			turnPrompts = append(turnPrompts, prompt)
 			return tui.TurnResult{Answer: "ok"}, nil
 		},
@@ -489,4 +491,97 @@ func appTestView(m tui.Model) string { return m.View().Content }
 // aren't derailed by style runs between words (mirrors tui's ansiStrip).
 func appTestANSIStrip(s string) string {
 	return regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(s, "")
+}
+
+// captureSkillRequests records every provider.Request the engine issues for the
+// slash-args turn, so a test can assert the injected skill body is present in the
+// request Messages (issue #260).
+type captureSkillRequests struct {
+	reqs []provider.Request
+}
+
+// TestTUISlashArgsPutsSkillInProviderContext closes the root cause of issue
+// #260 at the app/engine seam: after `/skillname <args>`, the provider request
+// for the args turn must carry the skill's <skill_content> payload (plus any
+// <skill_resources>) ahead of the user args. It drives a real tui.Model through
+// the real runEngineTurn adapter (not a recording Turn stub) wired to a scripted
+// provider, so it asserts the exact provider Messages the model would send — the
+// criterion the Turn-stub tests cannot see.
+func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	skillDir := filepath.Join(ws, ".agents", "skills", "improve-codebase-architecture")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("slash-provider-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatal("skillSurface = nil, want non-nil")
+	}
+
+	// The model's args turn flows into the provider via the real runEngineTurn
+	// seam. Capture every provider request so we can assert the skill body sits in
+	// the message list.
+	cap := &captureSkillRequests{}
+	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		cap.reqs = append(cap.reqs, req)
+		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
+	}), mockTranscript{})
+
+	cfg := config.Default()
+	turn := runEngineTurn(e, cfg, reg, "sess-"+t.Name(), nil)
+	m := tui.NewModelCfg(tui.Dependencies{
+		Turn:   turn,
+		Skills: surface,
+	})
+	m = appTestResize(t, m)
+	m = appTestTypeText(t, m, "/improve-codebase-architecture Let us improve this")
+	m = appTestSubmitAndWait(t, m)
+
+	if len(cap.reqs) == 0 {
+		t.Fatal("provider received no requests for the args turn")
+	}
+	// The args turn is the only engine turn the activation queues.
+	msgs := cap.reqs[0].Messages
+	if len(msgs) != 3 {
+		t.Fatalf("provider Messages = %d, want 3 (system + skill inject + user args); got %v", len(msgs), msgs)
+	}
+	if msgs[1].Role != provider.RoleSystem {
+		t.Errorf("Messages[1].Role = %q, want %q (skill injected as a system prefix)", msgs[1].Role, provider.RoleSystem)
+	}
+	if !strings.Contains(msgs[1].Content, "<skill_content name=\"improve-codebase-architecture\">") {
+		t.Errorf("Messages[1] lacks the skill_content payload:\n%s", msgs[1].Content)
+	}
+	if !strings.Contains(msgs[1].Content, "Do the architecture thing") {
+		t.Errorf("Messages[1] lacks the skill body:\n%s", msgs[1].Content)
+	}
+	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "Let us improve this" {
+		t.Errorf("Messages[2] = %+v, want the user args turn", msgs[2])
+	}
+
+	// The catalog reflects the skill as active after slash activation.
+	if !skills.IsActive("improve-codebase-architecture") {
+		t.Fatal("skill not marked active after slash activation")
+	}
 }

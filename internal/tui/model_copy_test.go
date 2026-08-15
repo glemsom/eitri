@@ -19,7 +19,7 @@ import (
 func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "I reason first."}, nil
 		},
 		Clipboard: func(s string) error { copied = s; return nil },
@@ -54,7 +54,7 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 	var copied string
 	var prompted []string
 	m := NewModelCfg(Dependencies{
-		Turn: func(_ context.Context, prompt string) (TurnResult, error) {
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			prompted = append(prompted, prompt)
 			return TurnResult{Answer: "ok"}, nil
 		},
@@ -84,7 +84,7 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 // visible status note instead of failing silently (issue #123 AC3).
 func TestModel_copyFailureReportsNote(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Clipboard: func(string) error { return errors.New("no display") },
@@ -108,7 +108,7 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	var out bytes.Buffer
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
 		Clipboard: func(string) error { return errors.New("no display") },
@@ -147,7 +147,7 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 // model stays out of the busy state (issue #123 AC4).
 func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Clipboard: func(string) error { return nil },
@@ -177,7 +177,9 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 // the copy command is discoverable from the command surface).
 func TestModel_copySlashShowsInCompletion(t *testing.T) {
 	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/")
