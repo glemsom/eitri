@@ -357,13 +357,13 @@ func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 	}
 }
 
-// TestModelBandWidthMatchesTranscriptWidth pins the byte-identical seam for
-// issue #231: the bottom band now sizes itself from its own bandWidth() source,
-// but until issue #232 lands (which will drop the rail subtraction so the band
-// spans the full terminal width under the rail) bandWidth() must reproduce the
-// same rail-shrunk number the transcript pane uses. On a resized window the two
-// must be equal so no rendered pixel moves.
-func TestModelBandWidthMatchesTranscriptWidth(t *testing.T) {
+// TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk pins the issue
+// #232 seam: the bottom band now sizes itself from its own bandWidth() source
+// and spans the full terminal width (minus the 2-col gutter) even when the
+// right rail is visible, while transcriptWidth() stays rail-shrunk so the
+// history keeps wrapping to leave the rail room. The two widths must diverge on
+// a rail-visible window (band wide, transcript narrow).
+func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -390,8 +390,11 @@ func TestModelBandWidthMatchesTranscriptWidth(t *testing.T) {
 			if !m.railVisible() {
 				t.Fatalf("rail must stay visible at %dx30", tc.w)
 			}
-			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
-				t.Errorf("bandWidth = %d, transcriptWidth = %d; seam must be byte-identical before #232 (band must stay rail-shrunk)", bw, tw)
+			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw <= tw {
+				t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk (issue #232)", bw, tw)
+			}
+			if bw := m.bandWidth(); bw != tc.w-2 {
+				t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d (issue #232 AC1)", bw, tc.w-2)
 			}
 			if m.bandWidth() < 2 {
 				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.bandWidth())

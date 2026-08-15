@@ -202,35 +202,23 @@ func (m Model) railVisible() bool {
 
 // bandWidth returns the column width the bottom band renders at: the terminal
 // width (or a sane non-composer default before the first resize lands) minus the
-// 2-col gutter, and minus the rail + separator when the rail is visible, so the
-// band sits in the freed rail-shrunk space under the transcript (issue #122 AC3).
-// On an extreme-minimum rail-visible terminal it applies the same hard floor as
-// transcriptWidth so the separator never collapses below the rail-shrunk read
-// width; renderBand clamps a rail-hidden sliver up to 2 separately.
+// 2-col gutter. The band is the edge-to-edge bottom region (issue #232): it
+// spans the full terminal width all the way under the right rail, so its
+// separator row, status strip, and composer run to the width's edge — no
+// railWidth x bandHeight dead corner. It is independent of transcriptWidth() in
+// the call graph (it never calls transcriptWidth and never reads the composer's
+// width).
 //
 // bandWidth is the SEAM for issue #232: it is the single width source for the
-// bottom band, independent of transcriptWidth() in the call graph (it never
-// calls transcriptWidth and never reads the composer's width). Until #232 lands
-// it reproduces the same rail-shrunk number transcriptWidth returns — the two
-// share the same formula today — so no rendered pixel moves; #232 will drop the
-// rail subtraction below to span the full terminal width under the rail.
+// bottom band, independent of transcriptWidth(). transcriptWidth() stays
+// rail-shrunk so the history keeps wrapping to leave the rail room; bandWidth
+// does not — it spans full width under the rail.
 func (m Model) bandWidth() int {
 	base := m.width
 	if base == 0 {
 		base = presizeTerminalWidth // no resize yet; use a sane full-width start
 	}
-	w := base - 2
-	if m.railVisible() {
-		w -= railWidth + 1
-		// Same hard floor transcriptWidth applies (issue #227 AC3): on an
-		// extreme-minimum terminal the band's separator must not collapse below
-		// the rail-shrunk read width, so bandWidth stays byte-identical to the
-		// pre-prefactor value on tiny windows (issue #231 AC3).
-		if w < 20 {
-			w = 20
-		}
-	}
-	return w
+	return base - 2
 }
 
 // transcriptWidth returns the column width the left transcript pane should use
@@ -261,12 +249,11 @@ func (m Model) transcriptWidth() int {
 }
 
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
-// composer box align with the (possibly rail-shrunk) bottom band. The composer
-// tracks the band (not transcriptWidth) because the band is what frames the
-// composer, and both derive the same rail-shrunk width today (issue #231 seam);
-// issue #232 will widen the band across the full terminal width and the
-// composer follows. It is called on every window resize and whenever the rail
-// toggles visibility.
+// composer box align with the edge-to-edge bottom band (issue #232). The
+// composer tracks the band (not transcriptWidth) because the band is what frames
+// the composer; bandWidth spans the full terminal width under the rail, so the
+// composer input line is full-width too. It is called on every window resize and
+// whenever the rail toggles visibility.
 func (m *Model) syncWidths() {
 	m.composer.SetWidth(m.bandWidth())
 	// A width change re-wraps the draft, so the composer's grown height must
