@@ -257,7 +257,7 @@ func toolEntryArgs(te toolEntry) string {
 		}
 	}
 	if te.name == "edit" || te.name == "write" {
-		s += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+		s += "  " + deltaTag(te.added, te.removed)
 	}
 	return s
 }
