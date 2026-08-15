@@ -164,7 +164,7 @@ func transcriptWithTool(t *testing.T) Transcript {
 	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go\n", Lines: 2}})
 	return Transcript{
-		theme:      th,
+		theme:       th,
 		configTheme: config.DefaultTheme,
 		messages:    []message{{role: "you", content: "run it"}},
 		log:         log,

@@ -260,6 +260,29 @@ func (t Transcript) reviewRegionRows(content string, bandLines int) int {
 	return rrows
 }
 
+// buildReview assembles the review panel from the transcript's accumulated
+// file-mutating tool-log entries (issue #90, #246). It delegates to the tool
+// log's Review projection, which keeps the most recent state per path and
+// derives each file's status from the before/after content the engine
+// captured. It never touches the repo or the live loop. Since issue #246 the
+// transcript owns the build; ctrl+d routes through toggleReview.
+func (t Transcript) buildReview() reviewPanel {
+	return reviewPanel{files: t.log.Review()}
+}
+
+// toggleReview flips the changed-file review overlay open or closed (issue
+// #90, #246 AC2): ctrl+d on the Model forwards here. When closed it builds the
+// panel from the transcript's tool log; when open it dismisses it back to the
+// transcript surface.
+func (t *Transcript) toggleReview() {
+	if t.review != nil {
+		t.review = nil
+		return
+	}
+	rp := t.buildReview()
+	t.review = &rp
+}
+
 // renderHistory renders the scroll region: the agent history that the user
 // reads and scrolls. It surfaces the workspace header, every committed message
 // (thinking blocks + markdown body), the interleaved tool entries, and the
@@ -549,7 +572,6 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	t.log.Toggle(idx)
 	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
 }
-
 
 // apply folds one tool-call observation into the transcript's log (issue #245
 // AC1/AC2): tool updates now route through the Transcript so they land in the

@@ -663,14 +663,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+d":
 			// The review panel (issue #90): ctrl+d toggles the changed-file
-			// review over the transcript, or closes it when already open.
-			if m.review != nil {
-				m.review = nil
-				m.syncComposerRail()
-				return m, nil
-			}
-			rp := m.buildReview()
-			m.review = &rp
+			// review over the transcript, or closes it when already open. The
+			// toggle routes through the Transcript, which now owns the build
+			// (issue #246); Model persists the resulting state back into its
+			// own copy until #248 removes the duplicate.
+			tx := newTranscript(m)
+			tx.toggleReview()
+			m.review = tx.review
 			m.syncComposerRail()
 			return m, nil
 		case "ctrl+o":
