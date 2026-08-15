@@ -1410,7 +1410,7 @@ func (m Model) renderPane() string {
 	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow; no
 	// width-bucket cache or manual clip/anchor compensation layer is needed.
 	var hist strings.Builder
-	m.renderHistory(&hist, nil)
+	m.renderHistory(&hist, nil, nil)
 	if m.review != nil {
 		// The review region is its own height-clipped overlay (issue T06).
 		reviewStr = clipReviewRegion(reviewStr, reviewLines)
@@ -1578,15 +1578,25 @@ type toolRowRange struct {
 	start, end, idx int
 }
 
+
+// msgRowRange maps a rendered history row span to the message that owns it, so
+// the transcript exposes a row->message index (issue #242 AC1) alongside the
+// row->tool-entry index. start/end are content-line indexes in the viewport's
+// split space (the same space mouseToContent maps into); idx indexes m.messages.
+type msgRowRange struct {
+	start, end, idx int
+}
 // transcriptLayout is the persistent layout cache for the history region
 // (issue #242): one batched renderHistory pass captures the row->tool-entry
-// mapping (rows, in content-line coordinates) and the ANSI-stripped history
-// rows (plain, the drag-select copy space) so the mouse hit-test reads the
-// recorded index instead of re-deriving layout on every pointer event. dirty is
-// true when a transcript-affecting change makes the cached index stale; the
-// lazy hit-test rebuilds exactly once per invalidate.
+// mapping (rows), the row->message mapping (msgs), both in content-line
+// coordinates, and the ANSI-stripped history rows (plain, the drag-select copy
+// space) so the mouse hit-test reads the recorded index instead of re-deriving
+// layout on every pointer event. dirty is true when a transcript-affecting
+// change makes the cached index stale; the lazy hit-test rebuilds exactly once
+// per invalidate.
 type transcriptLayout struct {
 	rows  []toolRowRange // row->tool-entry index in content-line coordinates
+	msgs  []msgRowRange  // row->message index in content-line coordinates
 	plain []string       // ANSI-stripped history rows (the drag-select space)
 	dirty bool
 }
@@ -1603,9 +1613,15 @@ type transcriptLayout struct {
 // under it without re-deriving the layout. Every block ends on a newline, so
 // the newline count before a write equals the content row index where it
 // starts.
-func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
+// msgRows, when non-nil, receives the row span of every message written, in the
+// same content-line coordinates, so the transcript exposes a row->message index
+// (issue #242 AC1) alongside the tool-entry index.
+func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
+	}
+	if msgRows != nil {
+		*msgRows = (*msgRows)[:0]
 	}
 	nl := 0
 	emit := func(s string) {
@@ -1627,6 +1643,7 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 		emit(idleWelcome(m.theme))
 	}
 	for i, msg := range m.messages {
+		msgStart := nl // content row where this message's block begins
 		// Reasoning renders as a distinct, collapsible per-turn block — never
 		// merged into the answer. Collapsed it is a one-line hint carrying the
 		// token estimate + effort; `tab` expands just that turn's block (issue
@@ -1690,6 +1707,9 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 				*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
 			}
 		}
+		if msgRows != nil {
+			*msgRows = append(*msgRows, msgRowRange{start: msgStart, end: nl - 1, idx: i})
+		}
 	}
 	// The busy indicator normally lives in the always-visible status strip
 	// (renderBand), so the working state never scrolls away with the history
@@ -1726,7 +1746,8 @@ func (m *Model) ensureLayout() {
 func (m *Model) recordLayout() {
 	var hist strings.Builder
 	m.layout.rows = m.layout.rows[:0]
-	m.renderHistory(&hist, &m.layout.rows)
+	m.layout.msgs = m.layout.msgs[:0]
+	m.renderHistory(&hist, &m.layout.rows, &m.layout.msgs)
 	lines := strings.Split(hist.String(), "\n")
 	m.layout.plain = m.layout.plain[:0]
 	for _, l := range lines {
@@ -1755,6 +1776,21 @@ func (m *Model) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 func (m *Model) toggleToolEntry(idx int) {
 	m.log.Toggle(idx)
 	m.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+}
+
+// messageAtLine returns the message whose rendered rows include the given
+// content line, via the persistent row->message index (issue #242 AC1). It reads
+// the same lazy cache as toolEntryAtLine, so it never re-derives layout and
+// cannot drift from what the transcript renders. ok is false when the line maps
+// to no committed message (the workspace header, idle welcome, or busy footer).
+func (m *Model) messageAtLine(line int) (idx int, ok bool) {
+	m.ensureLayout()
+	for _, r := range m.layout.msgs {
+		if line >= r.start && line <= r.end {
+			return r.idx, true
+		}
+	}
+	return 0, false
 }
 
 // vimKey routes a keypress while the composer is in vim normal mode: motion

@@ -79,7 +79,7 @@ func TestModel_historyClipHoldsNewestFollowSeam(t *testing.T) {
 	// The full unclamped history far exceeds the viewport height (band ~7 rows
 	// leaves ~3 for history), so the newest turn cannot all be visible.
 	var hist strings.Builder
-	m.renderHistory(&hist, nil)
+	m.renderHistory(&hist, nil, nil)
 	histLines := len(strings.Split(strings.TrimRight(hist.String(), "\n"), "\n"))
 	viewLines := len(strings.Split(strings.TrimRight(view(m), "\n"), "\n"))
 	if viewLines >= histLines {

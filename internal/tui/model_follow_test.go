@@ -45,7 +45,7 @@ func busyStreamingModel(t *testing.T) Model {
 // and the viewport height — for asserting the newest output is visible.
 func followRendered(m Model) (got string, histContent string, vh int) {
 	var hist strings.Builder
-	m.renderHistory(&hist, nil)
+	m.renderHistory(&hist, nil, nil)
 	histContent = hist.String()
 	reserved := m.bandHeight()
 	vh = m.height - reserved
