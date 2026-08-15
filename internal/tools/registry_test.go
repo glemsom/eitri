@@ -154,6 +154,24 @@ func TestReadLineRange(t *testing.T) {
 	}
 }
 
+// TestReadResolvesRelativeWorkspacePath verifies read accepts a path relative
+// to the workspace (bash's cwd), not only host-absolute paths. The model
+// commonly emits "AGENTS.md" after a `ls`; it must resolve against the
+// workspace root rather than be rejected as outside every writable root.
+func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
+	r, ws := newTestRegistry(t, nil)
+	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"), []byte("hello\nworld\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	got, err := r.Run(context.Background(), "read", argMap("path", "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read relative path error = %v, want nil", err)
+	}
+	if !strings.Contains(got, "hello") || !strings.Contains(got, "world") {
+		t.Fatalf("read output = %q, want file contents", got)
+	}
+}
+
 // TestReadUsesSessionTempNamespace verifies a sandbox /tmp path is translated
 // and read host-side from the session temp root.
 func TestReadUsesSessionTempNamespace(t *testing.T) {

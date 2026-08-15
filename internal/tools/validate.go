@@ -31,6 +31,12 @@ func NewValidator(workspace string, extra []string, tr *PathTranslator) *Validat
 // session temp host root, which is itself a writable root.
 func (v *Validator) Resolve(p string) (string, error) {
 	host, _ := v.tr.SandboxToHost(p)
+	// A path the model gives relative to bash's cwd (the workspace) resolves
+	// against the workspace root before root-checking; without this, a plain
+	// "AGENTS.md" is rejected as outside every writable root.
+	if !filepath.IsAbs(host) {
+		host = filepath.Join(v.workspace, host)
+	}
 	if _, ok := v.inside(host); ok {
 		return host, nil
 	}
