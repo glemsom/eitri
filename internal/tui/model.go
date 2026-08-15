@@ -1195,13 +1195,51 @@ func (m Model) viewString() string {
 	// and the state rail sit side by side — one pane for time (transcript), one
 	// for state (rail). The rail is the always-on stats surface (issue #227): it
 	// renders whenever it is wired, and the composer width already shrank so the
-	// transcript re-wraps to leave it room.
+	// transcript re-wraps to leave it room. The band spans the full terminal
+	// width under the rail (issue #232), which floats above it.
 	left := m.renderPane()
 	if m.railVisible() {
 		right := styledRail(m.rail.render(m.telemetry, m.theme), m.railClampHeight())
-		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+		return m.surfaceWithRail(left, right)
 	}
 	return left
+}
+
+// surfaceWithRail merges the rendered right rail into a full-width pane so the
+// bottom band stays edge-to-edge (issue #232 AC1/AC4): the band is a
+// bottom-anchored region spanning the whole terminal width, so the rail cannot
+// sit to its right the way it sits beside the transcript. Instead the rail
+// floats ABOVE the band — its rows land in the top railClampHeight() rows of the
+// pane, in the railWidth column strip at the right, exactly the room the
+// rail-shrunk transcriptWidth leaves on each history row. The band rows (below
+// the rail's extent) are untouched, so the separator/status/composer run the
+// full width; the rail never overlaps them. pane is the renderPane output; rail
+// is styledRail output already clamped to railClampHeight rows.
+//
+// Before the first resize lands the height is unknown, so there is no pinned
+// band for the rail to float above; the rail falls back to joining the pane's
+// right, preserved from the pre-#232 layout for lean embeds that never size.
+func (m Model) surfaceWithRail(pane, rail string) string {
+	vh := m.railClampHeight()
+	if vh <= 0 {
+		// No height yet (or the band fills the whole terminal): pre-resize, fall
+		// back to the rail beside the pane — there is no pinned band to float
+		// above. When the band fills the whole terminal the rail renders nothing
+		// and the pane (full-width band) is already complete.
+		if m.height <= 0 {
+			return lipgloss.JoinHorizontal(lipgloss.Top, pane, rail)
+		}
+		return pane
+	}
+	rows := strings.Split(pane, "\n")
+	railRows := strings.Split(rail, "\n")
+	for i := 0; i < vh && i < len(railRows); i++ {
+		if i >= len(rows) {
+			break
+		}
+		rows[i] = rows[i] + railRows[i]
+	}
+	return strings.Join(rows, "\n")
 }
 
 // railClampHeight returns the maximum number of rows the right context rail may
@@ -1292,8 +1330,10 @@ func (m Model) bandHeight() int {
 }
 
 // renderPane renders the transcript + composer surface into the left pane. It
-// is the single-pane view; the rail adds itself to the right when visible. It
-// is used by the alternate-screen renderer, so every frame is a clean repaint.
+// is the single-pane view; when the rail is visible it is overlaid onto the
+// pane's top-right by viewString's surfaceWithRail (issue #232) rather than
+// joined to the pane's right, so the full-width bottom band stays edge-to-edge.
+// It is used by the alternate-screen renderer, so every frame is a clean repaint.
 //
 // Render is split into explicit, ordered regions (issue T01): the review
 // overlay region (when open) on top, the scroll region (history), then the
@@ -1540,7 +1580,12 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 				emit(msg.reasoning + "\n")
 			}
 		}
-		w := m.composer.Width()
+		// Wrap the history content at the rail-shrunk transcript width, decoupled
+		// from the composer/band width (issue #232 AC4): the band now spans the
+		// full terminal width under the rail, but the history pane must keep
+		// wrapping to leave room for the rail — otherwise long lines wrap at the
+		// full band width and hard-truncate at the rail column.
+		w := m.transcriptWidth()
 		if msg.role == "you" {
 			// User prompts render as a carded bubble: the theme's near-background
 			// tint with breathing padding fills the pane width, so the user side
@@ -1704,6 +1749,11 @@ func (m Model) renderBand(b *strings.Builder) {
 			statusRow = m.theme.bandStatusStyle.Render(busyLine(m.spinner)) + "  "
 		}
 		statusRow += m.theme.statusStyle.Render(bandHints(m.vimNormal, m.review != nil))
+		// The status strip is edge-to-edge with the rest of the band (issue
+		// #232 AC1): pad it to the full band width so it runs under the rail's
+		// right column instead of stopping short. The separator and composer
+		// already span bandWidth via their own sizing.
+		statusRow = lipgloss.NewStyle().Width(m.bandWidth()).Render(statusRow)
 		inner.WriteString(statusRow)
 		inner.WriteString("\n")
 	}
@@ -1717,8 +1767,8 @@ func (m Model) renderBand(b *strings.Builder) {
 	}
 	// The whole band is framed by an accent separator row so it reads as one
 	// coherent fixed region under the transcript (issue #122 AC3). The
-	// separator spans the band's column via bandWidth() (the rail joins to the
-	// right); bandWidth is the seam issue #232 will widen to full terminal width.
+	// separator spans the full band width via bandWidth() — the edge-to-edge
+	// seam issue #232 widened to the full terminal width under the rail.
 	tw := m.bandWidth()
 	if tw < 2 {
 		tw = 2
