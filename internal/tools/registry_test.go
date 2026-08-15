@@ -200,7 +200,9 @@ func TestWriteCreatesFile(t *testing.T) {
 func TestEditReplacesText(t *testing.T) {
 	r, ws := newTestRegistry(t, nil)
 	path := filepath.Join(ws, "f.txt")
-	os.WriteFile(path, []byte("alpha beta gamma"), 0o600)
+	if err := os.WriteFile(path, []byte("alpha beta gamma"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	_, err := r.Run(context.Background(), "edit", argMap("path", path, "old_string", "beta", "new_string", "BETA"))
 	if err != nil {
 		t.Fatalf("edit error = %v, want nil", err)

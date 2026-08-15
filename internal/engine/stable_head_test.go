@@ -105,10 +105,10 @@ func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	}), &mockTranscript{})
 
 	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
-		Tools:     []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+		Tools:      []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
 		ToolChoice: "auto",
-		Executor:  &mockToolRecorder{},
-		MaxTurns:  5,
+		Executor:   &mockToolRecorder{},
+		MaxTurns:   5,
 	}); err != nil {
 		t.Fatalf("RunAgent() error = %v, want nil", err)
 	}

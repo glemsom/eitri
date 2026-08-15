@@ -37,7 +37,7 @@ func copilotServer(t *testing.T, body []byte) (*httptest.Server, func() string) 
 			t.Errorf("method = %s, want POST", r.Method)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
 	return srv, mu.get
@@ -207,7 +207,7 @@ func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 		}
 		sawEffort = parsed["reasoning_effort"] != nil
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Write(sseFixture(t))
+		_, _ = w.Write(sseFixture(t))
 	}))
 	defer srv.Close()
 

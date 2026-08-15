@@ -20,7 +20,7 @@ func TestOpenAIDiscoversModels(t *testing.T) {
 			t.Errorf("path = %s, want /v1/models", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash"},{"id":"deepseek-v4"},{"id":"grok-2"}]}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash"},{"id":"deepseek-v4"},{"id":"grok-2"}]}`))
 	}))
 	defer srv.Close()
 
@@ -41,7 +41,7 @@ func TestOpenAIDiscoverModelsCarriesAuth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"object":"list","data":[{"id":"m1"}]}`))
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"m1"}]}`))
 	}))
 	defer srv.Close()
 

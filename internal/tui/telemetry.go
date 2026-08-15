@@ -2,9 +2,9 @@ package tui
 
 import (
 	"fmt"
-	"time"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // deepseek-v4-flash pricing, per 1M tokens (docs/spec.md §4 / ADR-0003). These

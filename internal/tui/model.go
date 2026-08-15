@@ -283,7 +283,7 @@ type Model struct {
 	// busy is true from the moment a turn is submitted until its final answer
 	// lands (or the turn errors). While busy the composer is inert (ticket #57)
 	// and the spinner advances.
-	busy    bool
+	busy bool
 	// spinner is the current busy-spinner frame index, advanced by
 	// spinnerTickMsg while busy (issue #211). It is 0 when no turn runs.
 	spinner int
@@ -1738,10 +1738,10 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 			// a bordered pane; a failing turn (⚠) gets the error-colored border
 			// so errors are as readable as answers (issue #122 AC2).
 			md, _ := RenderMarkdown(msg.content, w-2, m.deps.Config.Theme)
-		pane := m.theme.agentPaneStyle
-		if strings.HasPrefix(msg.content, failurePrefix()) {
-			pane = m.theme.errorPaneStyle
-		}
+			pane := m.theme.agentPaneStyle
+			if strings.HasPrefix(msg.content, failurePrefix()) {
+				pane = m.theme.errorPaneStyle
+			}
 			// The pane border char follows the glyph charter at render time: the
 			// default theme's styles are built at package init, before any ASCII
 			// override is known, so the char is re-applied per frame.
@@ -1928,9 +1928,9 @@ func (m Model) renderBand(b *strings.Builder) {
 		}
 		if hints != "" {
 			pad := w - lipgloss.Width(strip) - lipgloss.Width(hints)
-			if pad <= 2 {
-				hints = "" // no room: keep the strip alone rather than clipping hints
-			} else {
+			// Only right-align the hints when there's room; a narrow transcript keeps the
+			// strip alone rather than clipping the hints at the edge.
+			if pad > 2 {
 				strip += strings.Repeat(" ", pad) + hints
 			}
 		}

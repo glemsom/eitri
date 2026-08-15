@@ -2,8 +2,8 @@ package tui
 
 import (
 	"strings"
-	"time"
 	"testing"
+	"time"
 )
 
 // TestTelemetryAggregatesUsage asserts the live telemetry accumulates per-turn

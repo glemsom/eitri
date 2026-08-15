@@ -284,11 +284,11 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 // and every color is a hex value lipgloss adapts to any color profile — so the
 // surface degrades safely on a non-truecolor terminal (issue #122 AC4/AC5).
 func TestModel_stylingPaletteCentralized(t *testing.T) {
-	if got := agentPaneStyle.GetBorderLeftForeground(); got != accentColor {
-		t.Errorf("agent pane border foreground = %v, want accent %v", got, accentColor)
+	if got := defaultTheme.agentPaneStyle.GetBorderLeftForeground(); got != defaultTheme.accent {
+		t.Errorf("agent pane border foreground = %v, want accent %v", got, defaultTheme.accent)
 	}
-	if got := errorPaneStyle.GetBorderLeftForeground(); got != errorColor {
-		t.Errorf("error pane border foreground = %v, want error color %v", got, errorColor)
+	if got := defaultTheme.errorPaneStyle.GetBorderLeftForeground(); got != defaultTheme.error {
+		t.Errorf("error pane border foreground = %v, want error color %v", got, defaultTheme.error)
 	}
 	// Every palette entry is a hex color: lipgloss v2 maps a "#RRGGBB" string
 	// to a concrete color.RGBA value (ANSI colors stay ansi.BasicColor /
@@ -296,9 +296,9 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	// adapts to any color profile (256-color floor in a terminal), never
 	// truecolor-only (issue #122 AC4/AC5).
 	for name, c := range map[string]color.Color{
-		"accent": accentColor,
-		"error":  errorColor,
-		"ok":     okColor,
+		"accent": defaultTheme.accent,
+		"error":  defaultTheme.error,
+		"ok":     defaultTheme.ok,
 	} {
 		if _, ok := c.(color.RGBA); !ok {
 			t.Errorf("%s color = %T, want a hex-derived color.RGBA", name, c)

@@ -132,9 +132,9 @@ func TestSnapshot_frames(t *testing.T) {
 
 	// ---- default dark theme session ----
 	cfg := config.Config{
-		Theme:          "dark",
-		Provider:       "deepseek",
-		Model:          "deepseek-v4-flash",
+		Theme:           "dark",
+		Provider:        "deepseek",
+		Model:           "deepseek-v4-flash",
 		ReasoningEffort: "high",
 	}
 	deps, _, _, _ := snapshotDeps(cfg)

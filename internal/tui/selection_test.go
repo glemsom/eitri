@@ -244,7 +244,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 
 	m = mustUpdate(t, m, dragMsg("press", startCol, startRow))
 	m = mustUpdate(t, m, dragMsg("motion", endCol, endRow))
-	m = mustUpdate(t, m, dragMsg("release", endCol, endRow))
+	mustUpdate(t, m, dragMsg("release", endCol, endRow))
 
 	if copied != want {
 		t.Errorf("multi-line drag copy = %q, want %q", copied, want)
@@ -291,7 +291,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 
 	m = mustUpdate(t, m, dragMsg("press", c0, first))
 	m = mustUpdate(t, m, dragMsg("motion", c1-1, second))
-	m = mustUpdate(t, m, dragMsg("release", c1-1, second))
+	mustUpdate(t, m, dragMsg("release", c1-1, second))
 
 	if copied != want {
 		t.Errorf("wrapped drag copy = %q, want %q", copied, want)
@@ -328,7 +328,7 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	// Press at the end, drag back to the start.
 	m = mustUpdate(t, m, dragMsg("press", col+len(want)-1, 0))
 	m = mustUpdate(t, m, dragMsg("motion", col, 0))
-	m = mustUpdate(t, m, dragMsg("release", col, 0))
+	mustUpdate(t, m, dragMsg("release", col, 0))
 
 	if copied != want {
 		t.Errorf("backwards drag copy = %q, want %q", copied, want)
@@ -385,7 +385,7 @@ func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
 	view(m)
 
 	m = mustUpdate(t, m, dragMsg("press", 2, 0))
-	m = mustUpdate(t, m, dragMsg("release", 2, 0))
+	mustUpdate(t, m, dragMsg("release", 2, 0))
 
 	if copied != "" {
 		t.Errorf("plain click must not copy, got %q", copied)

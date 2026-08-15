@@ -95,11 +95,7 @@ func checkValue(prop, v any) error {
 		if v == nil {
 			return nil
 		}
-		for _, member := range p {
-			if s, ok := member.(string); ok && s == "null" {
-				// handled above
-			}
-		}
+		// Reject only if v is non-null but every declared type mismatches.
 		// Reject only if v is non-null but every declared type mismatches.
 		matched := false
 		for _, member := range p {

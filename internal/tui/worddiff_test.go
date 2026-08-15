@@ -19,9 +19,6 @@ func TestWordDiff_marksChangedTokens(t *testing.T) {
 	}
 	for _, tok := range newToks {
 		newJoin += tok.text
-		if tok.changed && tok.text == "uint16" {
-			// expected changed
-		}
 	}
 	if oldJoin != "func start(port int) error {" || newJoin != "func start(port uint16) error {" {
 		t.Fatalf("wordDiff joined output = %q / %q, want the original lines", oldJoin, newJoin)

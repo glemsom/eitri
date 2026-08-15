@@ -66,7 +66,7 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 		sawAuth = string(body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -115,7 +115,7 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -141,7 +141,7 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer zero.Close()
 
@@ -186,7 +186,7 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -218,7 +218,7 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -249,7 +249,7 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -275,7 +275,7 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer plain.Close()
 
@@ -314,7 +314,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer tempSrv.Close()
 
@@ -344,7 +344,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer topPSrv.Close()
 
@@ -373,7 +373,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer plain.Close()
 
@@ -403,7 +403,7 @@ func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -433,7 +433,7 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -459,7 +459,7 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Write([]byte("data: this is not json\n\n"))
+		_, _ = w.Write([]byte("data: this is not json\n\n"))
 	}))
 	defer srv.Close()
 
@@ -543,7 +543,7 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
@@ -581,7 +581,7 @@ func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		w.Write(fixture)
+		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
