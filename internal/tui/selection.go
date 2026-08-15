@@ -228,26 +228,7 @@ func (m *Model) copySelection(d dragSelect) {
 // it to the visible window (issue #124 AC1). Lines and cells outside the range
 // keep their exact original bytes, so surrounding styling never breaks.
 func (m Model) highlightSelection(content string) string {
-	d := m.dragSel
-	if d == nil {
-		return content
-	}
-	startLine, startCol, endLine, endCol := d.selRange()
-	lines := strings.Split(content, "\n")
-	if startLine >= len(lines) {
-		return content
-	}
-	for i := startLine; i <= endLine && i < len(lines); i++ {
-		from, to := startCol, endCol
-		if i > startLine {
-			from = 0
-		}
-		if i < endLine {
-			to = lipgloss.Width(lines[i]) - 1
-		}
-		lines[i] = highlightRange(lines[i], from, to)
-	}
-	return strings.Join(lines, "\n")
+	return newTranscript(m).highlightSelection(content)
 }
 
 // highlightRange wraps the plain cells [from,to] (inclusive, 0-based) of an

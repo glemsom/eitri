@@ -197,7 +197,7 @@ const railWidth = 30
 // extreme-minimum terminal the rail yields width so the transcript stays
 // readable (issue #227 AC3).
 func (m Model) railVisible() bool {
-	return m.rail != nil
+	return newTranscript(m).railVisible()
 }
 
 // bandWidth returns the column width the bottom band renders at: the terminal
@@ -229,23 +229,7 @@ func (m Model) bandWidth() int {
 // dedicated rail-shrunk history/selection width and never reads the composer's
 // width (decoupled in issue #231).
 func (m Model) transcriptWidth() int {
-	base := m.width
-	if base == 0 {
-		// Back-compat fallback before the first resize: a sane default terminal
-		// width, never the composer's width (issue #231 decoupling).
-		base = presizeTerminalWidth
-	}
-	w := base - 2
-	if m.railVisible() {
-		w -= railWidth + 1
-		// Hard floor (issue #227 AC3): on an extreme-minimum terminal too narrow
-		// for the rail to sit beside a full transcript, the rail yields so the
-		// transcript pane stays readable rather than being squeezed away.
-		if w < 20 {
-			w = 20
-		}
-	}
-	return w
+	return newTranscript(m).transcriptWidth()
 }
 
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
