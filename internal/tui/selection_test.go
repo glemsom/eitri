@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // This file covers the T6 drag-select copy seam (issue #124): a click-drag
@@ -231,15 +232,19 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	if startRow < 0 || endRow < 0 || endRow < startRow {
 		t.Fatalf("need prompt and answer rows, got %q", rows)
 	}
-	// Drag from mid startRow to mid endRow; the expected text is derived from
-	// the visible surface alone.
+	// Drag from mid startRow to mid endRow in display-column space; the
+	// expected text is derived from the visible surface alone (issue #261:
+	// width-aware, rune-safe, so it is read via the display cells and sliced by
+	// runes).
 	startCol := 3
 	endCol := 5
 	var want string
 	if startRow == endRow {
-		want = rows[startRow][startCol : endCol+1]
+		want = runeRangeFromDisplay(rows[startRow], startCol, endCol)
 	} else {
-		want = rows[startRow][startCol:] + "\n" + strings.Join(rows[startRow+1:endRow], "\n") + "\n" + rows[endRow][:endCol+1]
+		want = runeRangeFromDisplay(rows[startRow], startCol, -1) + "\n" +
+			strings.Join(rows[startRow+1:endRow], "\n") + "\n" +
+			runeRangeFromDisplay(rows[endRow], 0, endCol)
 	}
 
 	m = mustUpdate(t, m, dragMsg("press", startCol, startRow))
@@ -248,6 +253,196 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 
 	if copied != want {
 		t.Errorf("multi-line drag copy = %q, want %q", copied, want)
+	}
+}
+
+// --- Slice B: width-aware, rune-safe selection (issue #261) -----------------
+
+// TestColToRuneIndex_WidthAware asserts colToRuneIndex maps a display-width
+// column (the mouse cell space) to a rune index into the plain line, so wide
+// characters (CJK = 2 display cells, 1 rune) never misalign the selection. A
+// column that lands on a wide rune's second display cell maps to that same
+// rune; a column past the end of the line clamps to the last rune. Hand-worked
+// widths: in "ab你defg" 你 occupies display columns 2-3 and is 1 rune (issue
+// #261 width/run mismatch repro).
+func TestColToRuneIndex_WidthAware(t *testing.T) {
+	cases := []struct {
+		line string
+		col  int
+		want int
+	}{
+		{"", 0, 0},
+		{"abc", 0, 0},
+		{"abc", 2, 2},
+		{"abc", 5, 2}, // past end clamps to last rune
+		{"ab你defg", 0, 0},
+		{"ab你defg", 1, 1},
+		{"ab你defg", 2, 2}, // 你 first cell
+		{"ab你defg", 3, 2}, // 你 second cell still maps to 你
+		{"ab你defg", 4, 3}, // 'd'
+		{"ab你defg", 7, 6}, // 'g' (last rune)
+		{"ab你defg", 9, 6}, // past end clamps to last rune
+	}
+	for _, c := range cases {
+		if got := colToRuneIndex(c.line, c.col); got != c.want {
+			t.Errorf("colToRuneIndex(%q, %d) = %d, want %d", c.line, c.col, got, c.want)
+		}
+	}
+}
+
+// displayCol returns the display-width column of the byte index b within row.
+// Rows may carry multibyte prefix glyphs (e.g. the │ separator), whose display
+// width differs from their byte offset, so drag tests must convert byte
+// offsets to display columns before treating them as mouse X (issue #261).
+func displayCol(row string, b int) int {
+	return lipgloss.Width(row[:b])
+}
+
+// runeRangeFromDisplay returns the plain runes of row covering the inclusive
+// display-cell range [fromDisp, toDisp]; a negative toDisp means through the
+// end of the row. Drag tests derive the expected copy from the visible display
+// surface this way (issue #261: width-aware, rune-safe).
+func runeRangeFromDisplay(row string, fromDisp, toDisp int) string {
+	rs := []rune(row)
+	if len(rs) == 0 {
+		return ""
+	}
+	s := colToRuneIndex(row, fromDisp)
+	if s > len(rs)-1 {
+		return ""
+	}
+	e := len(rs) - 1
+	if toDisp >= 0 {
+		e = colToRuneIndex(row, toDisp)
+		if e > len(rs)-1 {
+			e = len(rs) - 1
+		}
+	}
+	if s > e {
+		return ""
+	}
+	return string(rs[s : e+1])
+}
+
+// reverseVideoSpans returns the plain text of every contiguous reverse-video
+// (SGR 7) run in s, in order — a way for tests to assert a drag highlights
+// exactly the intended runes and no others (issue #261: no under-coverage, no
+// leak into neighbouring rows).
+func reverseVideoSpans(s string) []string {
+	rs := []rune(s)
+	var spans []string
+	var b strings.Builder
+	in := false
+	i := 0
+	for i < len(rs) {
+		if rs[i] == '\x1b' {
+			n := consumeEscape(rs, i)
+			seq := string(rs[i : i+n])
+			if seq == "\x1b[7m" {
+				in = true
+				b.Reset()
+			} else if seq == "\x1b[27m" {
+				spans = append(spans, b.String())
+				in = false
+			}
+			i += n
+			continue
+		}
+		if in {
+			b.WriteRune(rs[i])
+		}
+		i++
+	}
+	return spans
+}
+
+// TestDragSelect_wideCharCopyMatchesHighlight is the issue #261 regression: a
+// drag over a transcript row containing a wide CJK character must copy exactly
+// the marked runes and highlight exactly the cells they cover. The answer row
+// renders as "│   ab你defg": 4 ASCII display cells of prefix, then the answer
+// where 你 occupies two display cells but is one rune. Dragging display columns
+// 4..9 covers runes [4,8] = "ab你de" (a, b, 你, d, e).
+func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
+	var copied string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ab你defg"}, nil
+		},
+		WorkspacePath: "/tmp/acme",
+		Clipboard:     func(s string) error { copied = s; return nil },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	answerRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "ab你defg") {
+			answerRow = i
+			break
+		}
+	}
+	if answerRow < 0 {
+		t.Fatalf("answer row not found, got %q", rows)
+	}
+
+	// Reverse-video must wrap exactly "ab你de" (runes [4,8]) while the drag is
+	// in progress.
+	m = mustUpdate(t, m, dragMsg("press", 4, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 9, answerRow))
+	if spans := reverseVideoSpans(view(m)); strings.Join(spans, "") != "ab你de" {
+		t.Errorf("during-drag highlight spans = %q, want %q", spans, "ab你de")
+	}
+
+	m = mustUpdate(t, m, dragMsg("release", 9, answerRow))
+	if copied != "ab你de" {
+		t.Errorf("wide-char drag copy = %q, want %q", copied, "ab你de")
+	}
+}
+
+// TestDragSelect_boundaryInsideWideCharNoPanic asserts selecting a range whose
+// end display column lands inside a multibyte CJK rune neither panics nor
+// corrupts the copy: dragging display column 5..7 (b through 你's two cells)
+// copies runes [5,6] = "b你" intact.
+func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
+	var copied string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ab你defg"}, nil
+		},
+		WorkspacePath: "/tmp/acme",
+		Clipboard:     func(s string) error { copied = s; return nil },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	answerRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "ab你defg") {
+			answerRow = i
+			break
+		}
+	}
+	if answerRow < 0 {
+		t.Fatalf("answer row not found, got %q", rows)
+	}
+
+	m = mustUpdate(t, m, dragMsg("press", 5, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 7, answerRow))
+	m = mustUpdate(t, m, dragMsg("release", 7, answerRow))
+	if copied != "b你" {
+		t.Errorf("boundary-inside-wide-char copy = %q, want %q", copied, "b你")
 	}
 }
 
@@ -287,11 +482,17 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	}
 	c0 := strings.Index(rows[first], "word")
 	c1 := strings.Index(rows[second], "word") + len("word")
-	want := rows[first][c0:] + "\n" + rows[second][:c1]
+	// The mouse reports display-width columns; convert the byte offsets and
+	// derive the expected copy from the visible display cells (issue #261:
+	// width-aware, rune-safe).
+	firstDisp := displayCol(rows[first], c0)
+	secondEndDisp := displayCol(rows[second], c1)
+	want := runeRangeFromDisplay(rows[first], firstDisp, -1) + "\n" +
+		runeRangeFromDisplay(rows[second], 0, secondEndDisp-1)
 
-	m = mustUpdate(t, m, dragMsg("press", c0, first))
-	m = mustUpdate(t, m, dragMsg("motion", c1-1, second))
-	mustUpdate(t, m, dragMsg("release", c1-1, second))
+	m = mustUpdate(t, m, dragMsg("press", firstDisp, first))
+	m = mustUpdate(t, m, dragMsg("motion", secondEndDisp-1, second))
+	mustUpdate(t, m, dragMsg("release", secondEndDisp-1, second))
 
 	if copied != want {
 		t.Errorf("wrapped drag copy = %q, want %q", copied, want)
@@ -458,12 +659,16 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 		t.Fatalf("no visible answer row to select (top=%d, rows=%q)", top, rows)
 	}
 	col := strings.Index(rows[target], "answer")
-	want := rows[target][col : col+len("answer")]
+	// The mouse X is a display-width column; the byte offset differs for rows
+	// with multibyte prefix glyphs (issue #261). "answer" is pure ASCII, so
+	// its display width equals its rune count.
+	disp := displayCol(rows[target], col)
+	want := "answer"
 	screenRow := target - top
 
-	m = mustUpdate(t, m, dragMsg("press", col, screenRow))
-	m = mustUpdate(t, m, dragMsg("motion", col+len("answer")-1, screenRow))
-	m = mustUpdate(t, m, dragMsg("release", col+len("answer")-1, screenRow))
+	m = mustUpdate(t, m, dragMsg("press", disp, screenRow))
+	m = mustUpdate(t, m, dragMsg("motion", disp+len("answer")-1, screenRow))
+	m = mustUpdate(t, m, dragMsg("release", disp+len("answer")-1, screenRow))
 
 	if copied != want {
 		t.Errorf("scrolled drag copy = %q, want %q (screen row %d, content row %d)", copied, want, screenRow, target)
