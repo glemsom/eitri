@@ -596,13 +596,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case toolUpdateMsg:
 		// A tool-call observation arrived through the waiting command: fold it
-		// into the transcript's tool entries and immediately re-issue the waiter
-		// so further tool calls stream in (issue #84). Updates arriving when no
-		// feed is wired are dropped so they never spawn spurious entries.
+		// into the tool log and immediately re-issue the waiter so further tool
+		// calls stream in (issue #84). Updates arriving when no feed is wired
+		// are dropped so they never spawn spurious entries.
 		if m.toolFeed == nil {
 			return m, nil
 		}
-		m.applyToolUpdate(msgi.update)
+		m.log.Apply(msgi.update)
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -1044,13 +1044,6 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 		m.messages = append(m.messages, message{role: "eitri", content: delta, streaming: true})
 	}
 	m.curStream = len(m.messages) - 1
-}
-
-// applyToolUpdate folds one tool-call observation into the transcript's tool
-// log (issue #84). It is the Model's thin delegation onto the deep toolLog
-// value type, which owns the start/result pairing end to end (issue #208).
-func (m *Model) applyToolUpdate(u ToolUpdate) {
-	m.log.Apply(u)
 }
 
 // skillSnapshot captures the detected skills at construction so the slash
