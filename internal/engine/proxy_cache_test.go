@@ -42,7 +42,11 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	if h.turns >= len(h.fixtures) {
-		return // no more recorded turns: nothing to stream, loop stays deterministic
+		// An unexpected extra turn is a test failure, not a silent empty stream:
+		// surfacing a non-2xx here fails the RunAgent call loudly instead of
+		// masking the missing recorded fixture.
+		http.Error(w, "unexpected turn: fixture exhausted", http.StatusTeapot)
+		return
 	}
 	_, _ = w.Write([]byte(h.fixtures[h.turns]))
 	h.turns++
@@ -132,7 +136,7 @@ func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 	if shared == 0 {
 		t.Fatal("no shared request head to compare")
 	}
-	for i := 0; i < shared; i++ {
+	for i := range shared {
 		b1, _ := json.Marshal(head1[i])
 		b2, _ := json.Marshal(head2[i])
 		if !bytes.Equal(b1, b2) {
