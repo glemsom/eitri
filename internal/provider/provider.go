@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 )
 
 // ErrMalformed is returned when an SSE event's data is not valid JSON on a wire
@@ -33,15 +34,49 @@ var ErrNoDiscovery = errors.New("provider does not support model discovery")
 
 // IsContextOverflow reports whether err is a context-overflow signal that
 // should trigger emergency compaction: the ErrContextOverflow sentinel, or a
-// non-2xx provider response whose HTTP status is a 400-level client error
-// (the DeepSeek context-limit surface).
+// provider response whose error body names a context-limit condition
+// (the DeepSeek/OpenCode context-overflow surface).
+//
+// A bare HTTP 400 is deliberately NOT enough: providers reject a request for
+// many client-side reasons (bad model, schema violation, a missing "json"
+// hint), and triggering emergency compaction for those burns a wasted local
+// pass and masks the real cause. Only a body that names a context/token-limit
+// overflow, or an explicit ErrContextOverflow sentinel, fires the emergency
+// path.
 func IsContextOverflow(err error) bool {
 	if errors.Is(err, ErrContextOverflow) {
 		return true
 	}
 	var he *HTTPError
 	if errors.As(err, &he) {
-		return he.Code == 400
+		if he.Code/100 == 4 {
+			return contextOverflowBody(he.Body)
+		}
+	}
+	return false
+}
+
+// contextOverflowBody reports whether a provider error body names a
+// context-length / token-limit overflow condition. It matches the wording the
+// DeepSeek-family and OpenCode gateways use when the request exceeds the
+// context window.
+func contextOverflowBody(body string) bool {
+	b := strings.ToLower(body)
+	signals := []string{
+		"context length",
+		"context window",
+		"context is too long",
+		"maximum context",
+		"token limit",
+		"tokens limit",
+		"too many tokens",
+		"exceeds the context",
+		"exceeds the maximum",
+	}
+	for _, s := range signals {
+		if strings.Contains(b, s) {
+			return true
+		}
 	}
 	return false
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -126,8 +127,9 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
-		return nil, &HTTPError{Code: resp.StatusCode, Body: "copilot returned non-2xx"}
+		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
 	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
 }

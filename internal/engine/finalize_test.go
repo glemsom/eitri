@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -98,5 +99,54 @@ func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
 	}
 	if len(h.requests) != 0 {
 		t.Fatalf("provider requests = %d, want 0 — the turn must fail before any wire call", len(h.requests))
+	}
+}
+
+// TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt pins the provider
+// contract that tripped the REAL opencode-go/DeepSeek endpoint (issue #59 + the
+// reproduced HTTP 400): response_format:{type:json_object} hard-requires the
+// prompt to contain the word "json", else the gateway rejects the request with
+// 400 "Prompt must contain the word 'json' in some form". The engine must append
+// a JSON hint so the finalization turn always satisfies that contract.
+func TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt(t *testing.T) {
+	h := &jsonHandler{}
+	e := New(&jsonScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
+
+	res, err := e.RunJSONObjectMode(context.Background(), RunRequest{
+		Model:      "deepseek-v4-flash",
+		Prompt:     "Finalize the gathered findings into structured output.",
+		SessionKey: "sess-finalize",
+	})
+	if err != nil {
+		t.Fatalf("RunJSONObjectMode() error = %v, want nil", err)
+	}
+	_ = res
+	if len(h.requests) != 1 {
+		t.Fatalf("provider requests = %d, want 1", len(h.requests))
+	}
+	userMsg := h.requests[0].Messages[1]
+	if !strings.Contains(strings.ToLower(userMsg.Content), "json") {
+		t.Fatalf("json-object-mode user prompt = %q, must contain the word 'json' (provider contract)", userMsg.Content)
+	}
+}
+
+// TestJSONObjectPromptPreservesPromptThatRequestsJSON verifies jsonObjectPrompt
+// leaves a prompt already mentioning JSON byte-identical, so an explicit caller
+// request is never mutated.
+func TestJSONObjectPromptPreservesPromptThatRequestsJSON(t *testing.T) {
+	in := `Return JSON like {"ok":true}`
+	if got := jsonObjectPrompt(in); got != in {
+		t.Fatalf("jsonObjectPrompt(%q) = %q, want unchanged", in, got)
+	}
+}
+
+// TestJSONObjectPromptAppendsSuffix verifies jsonObjectPrompt appends the fixed
+// JSON hint to a prompt that does not already mention JSON (case-insensitive).
+func TestJSONObjectPromptAppendsSuffix(t *testing.T) {
+	for _, in := range []string{"Finalize the answer", "Do not use JSON here", ""} {
+		got := jsonObjectPrompt(in)
+		if !strings.Contains(strings.ToLower(got), "json") {
+			t.Fatalf("jsonObjectPrompt(%q) = %q, want it to advertise json", in, got)
+		}
 	}
 }

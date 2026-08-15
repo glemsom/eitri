@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
@@ -149,6 +150,25 @@ func (e *Engine) drain(s provider.Stream, prompt string, turn int) (Result, erro
 	return res, nil
 }
 
+// jsonObjectSuffix is appended to a JSON Object Mode prompt when the caller's
+// text does not already ask for JSON. The provider's json_object response_format
+// contract requires the prompt to contain the word "json" in some form (the
+// DeepSeek/OpenCode gateway hard-rejects a prompt that omits it with HTTP 400,
+// "Prompt must contain the word 'json' in some form"). Appending a fixed
+// sentence guarantees the contract is met without mutating caller-owned input.
+const jsonObjectSuffix = "\n\nPlease output a JSON object."
+
+// jsonObjectPrompt returns prompt, appending jsonObjectSuffix only when the
+// prompt does not already ask for JSON (case-insensitive). A prompt that already
+// mentions JSON is left byte-identical, so a caller that explicitly requests a
+// JSON shape gets exactly what it wrote.
+func jsonObjectPrompt(prompt string) string {
+	if strings.Contains(strings.ToLower(prompt), "json") {
+		return prompt
+	}
+	return prompt + jsonObjectSuffix
+}
+
 // RunJSONObjectMode runs a JSON Object Mode finalization turn (issue #59): an internal, non-tool special turn that requires
 // provider-side JSON Object Mode so the final answer is a valid JSON object
 // without mixing structured-output rules into an ordinary agent/tool loop. It
@@ -165,7 +185,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model:           req.Model,
-		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
+		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: jsonObjectPrompt(req.Prompt)}),
 		SetCacheKey:     req.SessionKey != "",
 		SessionKey:      req.SessionKey,
 		ThinkingEnabled: req.ThinkingEnabled,

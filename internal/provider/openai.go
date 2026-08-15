@@ -110,8 +110,9 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // cap error payloads to a sane size
 		resp.Body.Close()
-		return nil, &HTTPError{Code: resp.StatusCode, Body: "provider returned non-2xx"}
+		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
 	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
 }
@@ -279,8 +280,15 @@ type HTTPError struct {
 	Body string
 }
 
+// Error describes the failed provider response. When the provider returned a
+// non-2xx body it is included, so the underlying rejection reason (e.g. the
+// DeepSeek/OpenCode "must contain the word json" or a context-limit message)
+// is not swallowed into an opaque status code.
 func (e *HTTPError) Error() string {
-	return fmt.Sprintf("provider returned HTTP %d", e.Code)
+	if e.Body == "" {
+		return fmt.Sprintf("provider returned HTTP %d", e.Code)
+	}
+	return fmt.Sprintf("provider returned HTTP %d: %s", e.Code, e.Body)
 }
 
 // openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE]
