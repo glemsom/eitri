@@ -48,11 +48,12 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 // otherwise fold and break the section alignment).
 const railContentWidth = railWidth - 2
 
-// presizeTerminalWidth is the non-composer fallback terminal width used by
-// bandWidth and transcriptWidth before the first window resize lands (m.width ==
-// 0). TranscriptWidth previously fell back to the composer's width here; that
-// coupling is removed in issue #231 so both widths derive solely from the
-// terminal width and the rail.
+// presizeTerminalWidth is the non-composer fallback terminal width used by the
+// Transcript's bandWidth and transcriptWidth before the first window resize
+// lands (t.width == 0). TranscriptWidth previously fell back to the composer's
+// width here; that coupling is removed in issue #231 so both widths derive
+// solely from the terminal width and the rail. Since issue #247 both widths live
+// on the Transcript.
 const presizeTerminalWidth = 80
 
 // line appends one indented rail entry, truncating an over-long row with a
@@ -214,11 +215,7 @@ func (m Model) railVisible() bool {
 // rail-shrunk so the history keeps wrapping to leave the rail room; bandWidth
 // does not — it spans full width under the rail.
 func (m Model) bandWidth() int {
-	base := m.width
-	if base == 0 {
-		base = presizeTerminalWidth // no resize yet; use a sane full-width start
-	}
-	return base - 2
+	return newTranscript(m).bandWidth()
 }
 
 // transcriptWidth returns the column width the left transcript pane should use
@@ -239,7 +236,12 @@ func (m Model) transcriptWidth() int {
 // composer input line is full-width too. It is called on every window resize and
 // whenever the rail toggles visibility.
 func (m *Model) syncWidths() {
-	m.composer.SetWidth(m.bandWidth())
+	// The composer is a Model-owned concern (issue #248 keeps it there), so
+	// syncWidths itself stays on Model; only its width source moved to the
+	// Transcript, which now owns bandWidth (issue #247). The composer tracks the
+	// band (not transcriptWidth) because the band is what frames the composer;
+	// bandWidth spans the full terminal width under the rail.
+	m.composer.SetWidth(newTranscript(*m).bandWidth())
 	// A width change re-wraps the draft, so the composer's grown height must
 	// track the new soft-wrap layout (issue #121 AC5).
 	m.syncComposerHeight()
