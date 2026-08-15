@@ -270,7 +270,7 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 	if !strings.HasPrefix(ansiStrip(borderRow), "─") {
 		t.Errorf("band must open with a top-border separator row, got first line: %q", borderRow)
 	}
-	if !strings.Contains(bs, "cache:80%") {
+	if !strings.Contains(bs, "ctrl+s settings") {
 		t.Errorf("band missing live status strip, got: %q", bs)
 	}
 	if !strings.Contains(bs, m.composer.View()) {
