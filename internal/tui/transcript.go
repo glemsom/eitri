@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -27,6 +28,11 @@ import (
 // with Model — and across Model's value copies in View — so scroll-state
 // changes made during a render survive the next re-render cycle. Every other
 // field is plain value state the constructor copies out of Model.
+//
+// Since issue #244 the Transcript also owns the transcript's navigation: the
+// pointer-receiver navigateHistory / navigateMouse drive the shared viewport
+// and return the resulting follow flag so a forwarding Model can persist the
+// decision into its own histFollow copy.
 //
 // Scope note: Transcript owns the scroll region (the history the user reads)
 // and the review overlay that sits above it in the same pane. It does NOT own
@@ -330,7 +336,8 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 // The clip is served through the persisted bubbletea/viewport scroll component
 // (T1 alt-screen pivot, issue #119), which natively owns the scroll position +
 // clip, re-anchoring to the newest output while follow is engaged (issue #108
-// AC1/AC2). T2 (issue #120) adds user navigation on the viewport.
+// AC1/AC2). User navigation on the viewport (T2, issue #120) is exposed through
+// navigateHistory / navigateMouse on this same value (issue #244).
 func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 	if t.height <= 0 {
 		return content
@@ -355,6 +362,78 @@ func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 		vp.GotoBottom()
 	}
 	return vp.View()
+}
+
+// navigateHistory applies a T2 (issue #120) keyboard scroll command to the
+// persisted history viewport owned by the Transcript: PgUp/Home move toward the
+// older output and break the follow position; PgDn/End move toward the newest
+// and re-engage follow when they reach the bottom. It never touches the
+// composer, so editing focus is preserved (AC4). The viewport holds its scroll
+// state across renders even while the history re-renders each frame.
+//
+// The method is a pointer receiver because the viewport (histViewport) is a
+// pointer shared with Model, and it returns the resulting follow flag so the
+// Model that forwarded the key can persist the Transcript's decision back into
+// its own histFollow copy (issue #244).
+func (t *Transcript) navigateHistory(key string) bool {
+	vp := t.histViewport
+	if vp == nil {
+		return t.histFollow
+	}
+	switch key {
+	case "pgup":
+		if vp.AtTop() {
+			return t.histFollow // already at the oldest output; nothing to do
+		}
+		vp.PageUp()
+		t.histFollow = false // scrolling up breaks follow
+	case "home":
+		if vp.AtTop() {
+			return t.histFollow
+		}
+		vp.GotoTop()
+		t.histFollow = false
+	case "pgdown":
+		vp.PageDown()
+		if vp.AtBottom() {
+			t.histFollow = true // paging to the newest re-engages follow
+		}
+	case "end":
+		vp.GotoBottom()
+		t.histFollow = true
+	}
+	return t.histFollow
+}
+
+// navigateMouse applies a T2 (issue #120 AC1) mouse-wheel scroll to the
+// persisted history viewport owned by the Transcript: wheel up scrolls toward
+// older output and breaks follow; wheel down scrolls toward the newest and
+// re-engages follow once it reaches the bottom. It never touches the composer,
+// preserving input focus. Bubble Tea delivers mouse events only when the
+// program enables them (internal/app/tui.go).
+//
+// Like navigateHistory it is a pointer receiver on the shared viewport and
+// returns the resulting follow flag for the forwarding Model to persist (issue
+// #244).
+func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
+	vp := t.histViewport
+	if vp == nil {
+		return t.histFollow
+	}
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		if vp.AtTop() {
+			return t.histFollow
+		}
+		vp.ScrollUp(3)
+		t.histFollow = false
+	case tea.MouseWheelDown:
+		vp.ScrollDown(3)
+		if vp.AtBottom() {
+			t.histFollow = true
+		}
+	}
+	return t.histFollow
 }
 
 // highlightSelection wraps the cells covered by an in-progress drag in reverse

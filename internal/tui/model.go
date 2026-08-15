@@ -332,22 +332,23 @@ type Model struct {
 	// history renders unclamped.
 	height int
 
-	// histFollow is true while the history viewport re-anchors to the newest
-	// output (the follow position, T1 alt-screen pivot issue #119). It is the
-	// default; T2 navigation (issue #120) breaks it when the user scrolls up
-	// (PgUp/Home/wheel up) so reading stays put instead of being yanked to the
-	// newest, and a new submit re-engages it so the fresh turn is followed.
+	// histFollow mirrors the Transcript's follow position (issue #244): the
+	// Transcript now owns follow + navigation (render/navigate live there), and
+	// Model keeps this copy so the tests and submit path (which re-engages
+	// follow on a new turn) can persist the decision back and forth. A later
+	// contract step (#248) removes Model's duplicate once Transcript stands
+	// alone. It is true while the history viewport re-anchors to the newest
+	// output; T2 navigation (issue #120) breaks it on scroll-up and a submit
+	// re-engages it.
 	histFollow bool
 
-	// histViewport is the persisted history scroll component (T1 alt-screen
-	// pivot, issue #119): a bubbletea/viewport that owns the scroll region's
-	// position + follow behaviour. The TUI renders into the alternate screen, so
-	// every frame is a clean repaint and the viewport natively owns the history
-	// clip + scroll — no primary-buffer compensation layer is needed. It owns
-	// user navigation (issue #120): PgUp/PgDn/Home/End and mouse-wheel scroll
-	// move it, scrolling up breaks follow (histFollow) so reading stays put, and
-	// a new submit re-engages follow. It is a pointer so scroll-state changes
-	// made by View (which runs on a value copy) survive across render cycles.
+	// histViewport is Model's pointer to the persisted history scroll component
+	// (T1 alt-screen pivot, issue #119) constructed through newHistoryViewport.
+	// The Transcript now owns navigation over it (issue #244); Model keeps this
+	// shared pointer so the two read the same scroll state and so the tests can
+	// assert on it, until issue #248 removes Model's duplicate. It is a pointer
+	// so scroll-state changes made by View (which runs on a value copy) survive
+	// across render cycles.
 	histViewport *viewport.Model
 
 	// clipboard writes the plain-text transcript to the system clipboard (issue
@@ -476,11 +477,11 @@ func newClipboard(d Dependencies) func(text string) error {
 // survive across render cycles. It starts unsized (0x0) until the first
 // WindowSizeMsg lands.
 //
-// Mouse-wheel handling is driven by the T2 seam (issue #120), not the
-// component's own Update: navigateMouse calls ScrollUp/ScrollDown directly so
-// the follow position (histFollow) can break on scroll-up and re-engage on
-// reaching the bottom. The wheel delta of 3 matches the component's own default
-// MouseWheelDelta.
+// Mouse-wheel and keyed navigation live on the Transcript (issue #244), not the
+// component's own Update: Transcript.navigateMouse / navigateHistory call
+// ScrollUp/ScrollDown directly so the follow position (histFollow) can break on
+// scroll-up and re-engage on reaching the bottom. The wheel delta of 3 matches
+// the component's own default MouseWheelDelta.
 func newHistoryViewport() *viewport.Model {
 	v := viewport.New()
 	v.MouseWheelEnabled = false
@@ -637,12 +638,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Home jumps to the oldest output. Scrolling up breaks the follow
 			// position so the transcript stays put instead of being yanked to
 			// the newest; navigation never steals composer focus (the composer
-			// keeps arrow-key editing).
+			// keeps arrow-key editing). Model forwards to the Transcript, which
+			// owns the viewport + follow decision (issue #244).
 			m.navigateHistory(msgi.String())
 			return m, nil
 		case "pgdown", "end":
 			// PgDn pages down and End jumps to the newest output. Reaching the
-			// bottom re-engages the follow position (issue #120 AC2/AC3).
+			// bottom re-engages the follow position (issue #120 AC2/AC3); Model
+			// forwards to the Transcript (issue #244).
 			m.navigateHistory(msgi.String())
 			return m, nil
 		case "ctrl+b":
@@ -1399,65 +1402,24 @@ func (m Model) renderHistoryViewport(content string, reserved int) string {
 	return newTranscript(m).renderHistoryViewport(content, reserved)
 }
 
-// navigateHistory applies a T2 (issue #120) keyboard scroll command to the
-// persisted history viewport: PgUp/Home move toward the older output and break
-// the follow position; PgDn/End move toward the newest and re-engage follow
-// when they reach the bottom. It never touches the composer, so editing focus
-// is preserved (AC4). The viewport holds its scroll state across renders even
-// while the history re-renders each frame.
+// navigateHistory forwards a T2 (issue #120) keyboard scroll command to the
+// Transcript, which now owns the persisted history viewport and its follow
+// position (issue #244). The Transcript's pointer-receiver implementation
+// mutates the shared viewport and returns the resulting follow flag, which is
+// persisted back into this Model's own histFollow copy so the two stay in sync
+// until a later contract step (#248) removes Model's duplicates.
 func (m *Model) navigateHistory(key string) {
-	vp := m.histViewport
-	if vp == nil {
-		return
-	}
-	switch key {
-	case "pgup":
-		if vp.AtTop() {
-			return // already at the oldest output; nothing to do
-		}
-		vp.PageUp()
-		m.histFollow = false // scrolling up breaks follow
-	case "home":
-		if vp.AtTop() {
-			return
-		}
-		vp.GotoTop()
-		m.histFollow = false
-	case "pgdown":
-		vp.PageDown()
-		if vp.AtBottom() {
-			m.histFollow = true // paging to the newest re-engages follow
-		}
-	case "end":
-		vp.GotoBottom()
-		m.histFollow = true
-	}
+	tx := newTranscript(*m) // Transcript value + shared viewport pointer
+	m.histFollow = tx.navigateHistory(key)
 }
 
-// navigateMouse applies a T2 (issue #120 AC1) mouse-wheel scroll to the
-// persisted history viewport: wheel up scrolls toward older output and breaks
-// follow; wheel down scrolls toward the newest and re-engages follow once it
-// reaches the bottom. It never touches the composer, preserving input focus.
-// Bubble Tea delivers mouse events only when the program enables them
-// (internal/app/tui.go).
+// navigateMouse forwards a T2 (issue #120 AC1) mouse-wheel scroll to the
+// Transcript, which owns the persisted history viewport and its follow
+// position (issue #244). See navigateHistory for the ownership + sync
+// arrangement.
 func (m *Model) navigateMouse(msg tea.MouseWheelMsg) {
-	vp := m.histViewport
-	if vp == nil {
-		return
-	}
-	switch msg.Button {
-	case tea.MouseWheelUp:
-		if vp.AtTop() {
-			return
-		}
-		vp.ScrollUp(3)
-		m.histFollow = false
-	case tea.MouseWheelDown:
-		vp.ScrollDown(3)
-		if vp.AtBottom() {
-			m.histFollow = true
-		}
-	}
+	tx := newTranscript(*m)
+	m.histFollow = tx.navigateMouse(msg)
 }
 
 // reviewRegionRows returns how many rows the review overlay region may occupy
