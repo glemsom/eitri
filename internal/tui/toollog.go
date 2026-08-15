@@ -1,9 +1,50 @@
 package tui
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 )
+
+// toolEntry is one rendered tool call in the transcript (issue #84): the tool
+// name + args, plus the delivered result and its deterministic compression and
+// file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
+// summary that collapses the result by default and expands on demand to the
+// full inline output (never silently truncated). anchor is the index into
+// messages of the "you" message whose turn this tool call belongs to, so View
+// can interleave the entry chronologically after its triggering prompt. It is
+// owned by toolLog (issue #208 deepened the log into the deep value type that
+// holds its entries and their operations end to end).
+type toolEntry struct {
+	name       string
+	args       string
+	result     string
+	lines      int
+	dropped    int
+	compressed bool
+	added      int
+	removed    int
+	anchor     int // index of the triggering "you" message in messages
+	complete   bool
+	// startedAt/doneAt bound the tool's execution window for the elapsed-time
+	// readout (benchmark §4.1: tool cards carry elapsed time). startedAt is set
+	// when the tool begins, doneAt when its result lands; a running tool's live
+	// elapsed re-renders while the busy spinner ticks.
+	startedAt time.Time
+	doneAt    time.Time
+	// expanded is the per-entry expansion state toggled by a mouse click on the
+	// entry's rows (click-to-expand, benchmark §4.4); alt+y remains the global
+	// all-entries toggle.
+	expanded bool
+	// before/after/path carry the file content and host path a file-mutating
+	// edit/write captured (issue #90): they back the review panel's inline diff
+	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
+	before string
+	after  string
+	path   string
+}
 
 // toolLog is the deep value type that owns the transcript's tool-call entries
 // end to end (issue #84, deepened in issue #208). It holds the ordered list of
@@ -187,4 +228,93 @@ func (l toolLog) EntryAtLine(line int, rows []toolRowRange) (idx int, collapsed 
 		}
 	}
 	return 0, false, false
+}
+
+// toolEntryLabel renders the category-colored `⊕ tool` label part of the
+// entry head (issue #181 AC1).
+func toolEntryLabel(te toolEntry) string {
+	return g("⊕ ", "+ ") + te.name
+}
+
+// toolEntryArgs renders the dimmed detail part of the entry head: the display
+// args hint, the invoked line range for range-limited reads (issue #204 AC1:
+// `⊕ read  path:start-end`), and the line-delta tag for file-edit tools (issue
+// #84 AC3: `[+N, −M]`). Split from the label so the transcript can color the
+// tool name and dim the command detail (benchmark §4.1: label + dimmed path on
+// tool cards).
+func toolEntryArgs(te toolEntry) string {
+	s := ""
+	if arg := toolArgsHint(te.args); arg != "" {
+		s += "  " + arg
+		if te.name == "read" {
+			if r := readRangeHint(te.args); r != "" {
+				s += ":" + r
+			}
+		}
+	}
+	if te.name == "edit" || te.name == "write" {
+		s += fmt.Sprintf("  [+%d, −%d]", te.added, te.removed)
+	}
+	return s
+}
+
+// toolEntryHead renders the compact one-line `⊕ tool  args` head shared by the
+// transcript entry (issue #84) and the clipboard copy (issue #123): the tool
+// name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
+func toolEntryHead(te toolEntry) string {
+	return toolEntryLabel(te) + toolEntryArgs(te)
+}
+
+// readRangeHint extracts the explicit 1-based line range a `read` call was
+// invoked with from its raw JSON args (issue #204). Both start_line and
+// end_line must be present as positive integers; omitted or null limits
+// (whole-file reads), fractional values, and malformed shapes return "" so the
+// entry head falls back to the path-only rendering — never a crash.
+func readRangeHint(argsJSON string) string {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return ""
+	}
+	start, ok := lineArg(args, "start_line")
+	if !ok {
+		return ""
+	}
+	end, ok := lineArg(args, "end_line")
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", start, end)
+}
+
+// lineArg reads a 1-based integer tool argument from raw JSON args. It reports
+// ok=false when the arg is absent, null, non-numeric, fractional, or
+// non-positive, so range parsing can never emit a bogus tag from an unexpected
+// argument shape.
+func lineArg(args map[string]any, key string) (int, bool) {
+	v, ok := args[key].(float64)
+	if !ok || v != math.Trunc(v) || v < 1 {
+		return 0, false
+	}
+	return int(v), true
+}
+
+// toolArgsHint extracts a short display hint from a tool call's raw JSON args:
+// the `path` for file tools, the `command` for bash, else the raw string
+// trimmed to a single line. It keeps the one-line entry glanceable and never
+// throws away the model's full arguments (those stay in the engine transcript).
+func toolArgsHint(argsJSON string) string {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		s := strings.TrimSpace(argsJSON)
+		if s == "{}" {
+			return ""
+		}
+		return s
+	}
+	for _, key := range []string{"path", "command", "url"} {
+		if s, ok := args[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }

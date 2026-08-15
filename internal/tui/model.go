@@ -99,42 +99,6 @@ type message struct {
 	thinkingExpanded bool
 }
 
-// toolEntry is one rendered tool call in the transcript (issue #84): the tool
-// name + args, plus the delivered result and its deterministic compression and
-// file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
-// summary that collapses the result by default and expands on demand to the
-// full inline output (never silently truncated). anchor is the index into
-// messages of the "you" message whose turn this tool call belongs to, so View
-// can interleave the entry chronologically after its triggering prompt.
-type toolEntry struct {
-	name       string
-	args       string
-	result     string
-	lines      int
-	dropped    int
-	compressed bool
-	added      int
-	removed    int
-	anchor     int // index of the triggering "you" message in messages
-	complete   bool
-	// startedAt/doneAt bound the tool's execution window for the elapsed-time
-	// readout (benchmark §4.1: tool cards carry elapsed time). startedAt is set
-	// when the tool begins, doneAt when its result lands; a running tool's live
-	// elapsed re-renders while the busy spinner ticks.
-	startedAt time.Time
-	doneAt    time.Time
-	// expanded is the per-entry expansion state toggled by a mouse click on the
-	// entry's rows (click-to-expand, benchmark §4.4); alt+y remains the global
-	// all-entries toggle.
-	expanded bool
-	// before/after/path carry the file content and host path a file-mutating
-	// edit/write captured (issue #90): they back the review panel's inline diff
-	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
-	before string
-	after  string
-	path   string
-}
-
 type turnDoneMsg struct {
 	prompt    string
 	answer    string
@@ -1536,7 +1500,7 @@ func (m Model) reviewRegionRows(content string, bandLines int) int {
 // it, so a mouse click on a collapsed tool head can toggle that entry's
 // expansion (click-to-expand, benchmark §4.4). start/end are content-line
 // indexes in the viewport's split space (the same space mouseToContent maps
-// into); idx indexes m.tools.
+// into); idx indexes the tool log's ordered entries (m.log).
 type toolRowRange struct {
 	start, end, idx int
 }
