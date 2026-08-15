@@ -125,7 +125,7 @@ func tokenEstimate(s string) int {
 func idleWelcome(th Theme) string {
 	return th.headerStyle.Render("Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
 		th.statusStyle.Render("  ask me to fix a bug, refactor code, explain a system, or run the tests") + "\n" +
-		th.statusStyle.Render("  ctrl+s settings · ctrl+b rail · / for commands") + "\n"
+		th.statusStyle.Render("  ctrl+s settings · / for commands") + "\n"
 }
 
 // promptView renders the interactive max-turns continuation prompt.
@@ -161,7 +161,7 @@ func bandHints(vimNormal, reviewOpen bool) string {
 	if vimNormal {
 		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
 	}
-	hints := []string{"ctrl+s settings", "ctrl+b rail", "ctrl+d review", "ctrl+o copy"}
+	hints := []string{"ctrl+s settings", "ctrl+d review", "ctrl+o copy"}
 	if reviewOpen {
 		hints = []string{"enter diff", "o browser", "ctrl+d close"}
 	}
