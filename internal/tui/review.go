@@ -47,15 +47,6 @@ type reviewPanel struct {
 	openErr  string
 }
 
-// buildReview assembles the review panel from the conversation's accumulated
-// file-mutating tool entries (issue #90). It delegates to the tool log's Review
-// projection, which keeps the most recent state per path and derives each
-// file's status from the before/after content the engine captured. It never
-// touches the repo or the live loop.
-func (m Model) buildReview() reviewPanel {
-	return reviewPanel{files: m.log.Review()}
-}
-
 // updateReview routes a keypress while the review panel is open. It keeps the
 // panel read-only: navigation and the open_in_browser escape hatch never modify
 // the repo or the live run (issue #90 AC4).

@@ -176,7 +176,7 @@ func (t Transcript) renderPane(band string) string {
 		t.renderReview(&review)
 		reviewStr = review.String()
 		reviewLines = t.reviewRegionRows(reviewStr, lineCount(bandStr))
-		reviewStr = clipReviewRegion(reviewStr, reviewLines)
+		reviewStr = t.clipReviewRegion(reviewStr, reviewLines)
 	}
 
 	// The scroll region renders through the native bubbletea/viewport component
@@ -258,6 +258,38 @@ func (t Transcript) reviewRegionRows(content string, bandLines int) int {
 		return capRows
 	}
 	return rrows
+}
+
+// buildReview assembles the review panel from the transcript's accumulated
+// file-mutating tool-log entries (issue #90, #246). It delegates to the tool
+// log's Review projection, which keeps the most recent state per path and
+// derives each file's status from the before/after content the engine
+// captured. It never touches the repo or the live loop. Since issue #246 the
+// transcript owns the build; ctrl+d routes through toggleReview.
+func (t Transcript) buildReview() reviewPanel {
+	return reviewPanel{files: t.log.Review()}
+}
+
+// toggleReview flips the changed-file review overlay open or closed (issue
+// #90, #246 AC2): ctrl+d on the Model forwards here. When closed it builds the
+// panel from the transcript's tool log; when open it dismisses it back to the
+// transcript surface.
+func (t *Transcript) toggleReview() {
+	if t.review != nil {
+		t.review = nil
+		return
+	}
+	rp := t.buildReview()
+	t.review = &rp
+}
+
+// clipReviewRegion keeps the first n rows of the rendered review region and
+// discards the tail, so an over-height diff clips at the review region
+// boundary (issue T06 AC1, #246) instead of flowing over the history/band. The
+// transcript owns the height-clip of its review region; see clipReviewRegion
+// (package-level).
+func (t Transcript) clipReviewRegion(content string, n int) string {
+	return clipReviewRegion(content, n)
 }
 
 // renderHistory renders the scroll region: the agent history that the user
@@ -549,7 +581,6 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	t.log.Toggle(idx)
 	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
 }
-
 
 // apply folds one tool-call observation into the transcript's log (issue #245
 // AC1/AC2): tool updates now route through the Transcript so they land in the
