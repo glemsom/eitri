@@ -21,14 +21,18 @@ things with a real call before trusting the whole stack:
 
 The recorded-fixture approach (a committed 2-turn OpenCode-shaped session,
 asserted deterministically, no live probe) is the way this is pinned down once the
-real capture exists. A synthetic DeepSeek-shaped trace seeds the fixture today;
-the real proxy capture is swapped in when available. The bootstrap model remains
-hardcoded to `deepseek-v4-flash`.
+real capture exists. Synthetic DeepSeek-shaped traces seed the fixtures
+today (`testdata/proxy-turn1.sse`, `testdata/proxy-turn2.sse`); the real proxy
+capture is swapped in when available. The bootstrap model remains hardcoded to
+`deepseek-v4-flash`.
 
 The proxy-verification tests are `internal/engine/proxy_cache_test.go` (head
-byte-stability through a proxy-shaped session) and
-`internal/provider/openai_test.go` (absent-key usage parse safety), driven by the
-D3 recorded fixture under `internal/provider/testdata/`.
+byte-stability through a proxy-shaped session — the request body bytes are the
+real marshaled wire body captured by the recorded fixture server,
+`TestRunAgentKeepsByteIdenticalHeadThroughProxy`) and
+`internal/provider/openai_test.go` (absent-key usage parse safety,
+`TestOpenAIUsageWithoutCacheKeys`), driven by the D3 recorded fixtures under
+`internal/provider/testdata/`.
 
 ## The seven invariants
 
@@ -129,4 +133,5 @@ single source of truth and this page is a thin pointer to it.
 - Engine test suite: `internal/engine/cache_test.go`, `stable_head_test.go`,
   `prompt_test.go`, `proxy_cache_test.go`.
 - Provider test suite: `internal/provider/openai_test.go`.
-- Proxy fixture: `internal/provider/testdata/`.
+- Proxy fixture: `internal/provider/testdata/` (`proxy-turn1.sse`,
+  `proxy-turn2.sse`, `usage-*.sse`).

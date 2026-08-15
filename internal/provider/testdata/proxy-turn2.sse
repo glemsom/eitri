@@ -1,0 +1,9 @@
+data: {"id":"chatcmpl-d3t2","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t2","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"reasoning_content":"file x is readable, summarize"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t2","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"The file contains the data."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t2","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":122,"completion_tokens":8,"prompt_cache_hit_tokens":112,"prompt_cache_miss_tokens":10}}
+
+data: [DONE]

@@ -1,0 +1,11 @@
+data: {"id":"chatcmpl-d3t1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"reasoning_content":"need to inspect the file first"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_d3_read","type":"function","function":{"name":"read","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"x\",\"start_line\":1,\"end_line\":2}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-d3t1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":120,"completion_tokens":18,"prompt_cache_hit_tokens":110,"prompt_cache_miss_tokens":10}}
+
+data: [DONE]
