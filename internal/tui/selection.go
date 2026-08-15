@@ -40,7 +40,8 @@ func (d *dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
 }
 
 // updateMouse applies one mouse event to the model: wheel events scroll the
-// history viewport (T2, issue #120); a left-button click inside the history
+// history viewport (T2, issue #120; forwarded to the Transcript, issue #244);
+// a left-button click inside the history
 // region starts a drag selection, motion extends it (clamped to the rendered
 // content), and release copies the selected plain-text range to the clipboard
 // through the same seam as Ctrl+O and /copy (T6, issue #124). Events outside

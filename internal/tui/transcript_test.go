@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -77,5 +79,75 @@ func TestTranscript_matchesModelRender(t *testing.T) {
 	if viaModel.String() != viaTranscript.String() {
 		t.Errorf("Transcript render diverged from Model render:\nmodel:      %q\ntranscript: %q",
 			viaModel.String(), viaTranscript.String())
+	}
+}
+
+// transcriptScrollModel builds a Transcript whose viewport is hydrated with
+// overflowing content so keyboard/mouse navigation (issue #244) can move it:
+// the same arrangement the Model-path scroll tests use, but expressed purely at
+// the Transcript seam so the navigation migration proves it lives on Transcript.
+func transcriptScrollModel(t *testing.T) Transcript {
+	t.Helper()
+	m := newTallHistoryModel(t)
+	m = resizeTo(t, m, 120, 12)
+	tx := newTranscript(m)
+	// Hydrate the persisted (shared) viewport with the current content so
+	// navigation has a real scroll range.
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	tx.renderHistoryViewport(hist.String(), m.bandHeight())
+	vp := tx.histViewport
+	if vp == nil || vp.TotalLineCount() <= vp.Height() {
+		t.Fatalf("test must overflow: viewport lines (%d) should exceed height (%d)", vp.TotalLineCount(), vp.Height())
+	}
+	return tx
+}
+
+// TestTranscript_navigateScrollsSharedViewport asserts the navigation seam now
+// lives on the Transcript value (issue #244): PgUp/Home/PgDn/End drive the
+// shared persisted viewport through the Transcript, moving the reading offset
+// and mutating the transcript's follow flag.
+func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
+	tx := transcriptScrollModel(t)
+	vp := tx.histViewport
+	start := vp.YOffset()
+	if start <= 0 {
+		t.Fatalf("overflowed follow should start at the bottom, got offset %d", start)
+	}
+
+	// PgUp moves up; the returned flag reports follow broke.
+	if follow := tx.navigateHistory("pgup"); follow {
+		t.Errorf("PgUp must break follow, got follow=true")
+	}
+	if up := vp.YOffset(); up >= start {
+		t.Errorf("PgUp must move the viewport up: offset %d -> %d", start, up)
+	}
+
+	// Home jumps to the top.
+	tx.navigateHistory("home")
+	if top := vp.YOffset(); top != 0 {
+		t.Errorf("Home should jump to the transcript top, got offset %d", top)
+	}
+
+	// PgDn moves down; End reaches the bottom and re-engages follow.
+	tx.navigateHistory("pgdown")
+	if down := vp.YOffset(); down <= 0 {
+		t.Errorf("PgDn must move the viewport down from the top, got offset %d", down)
+	}
+	tx.navigateHistory("end")
+	if !vp.AtBottom() {
+		t.Errorf("End should jump to the transcript bottom, got offset %d", vp.YOffset())
+	}
+	if follow := tx.navigateHistory("end"); !follow {
+		t.Errorf("End reaching the bottom should re-engage follow, got follow=false")
+	}
+
+	// Wheel up scrolls toward older output and breaks follow.
+	wheelStart := vp.YOffset()
+	if follow := tx.navigateMouse(tea.MouseWheelMsg{Button: tea.MouseWheelUp}); follow {
+		t.Errorf("wheel up must break follow, got follow=true")
+	}
+	if up := vp.YOffset(); up >= wheelStart {
+		t.Errorf("wheel up must scroll up, offset %d -> %d", wheelStart, up)
 	}
 }
