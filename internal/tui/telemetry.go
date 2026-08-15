@@ -38,6 +38,10 @@ type TelemetryUpdate struct {
 	Hit    int
 	Miss   int
 	Output int
+	// Ctx is the live per-turn context-window size (provider.Usage.PromptTokens)
+	// for the active turn. It REPLACES the tracked live value on each usage
+	// event, never accumulates, so it shrinks after a compaction (issue #267).
+	Ctx int
 }
 
 // Telemetry is the live session telemetry surface (issue #86), now consumed by
@@ -57,6 +61,10 @@ type Telemetry struct {
 	cacheMiss int
 	output    int
 	compacted bool
+	// liveCtx is the live context-window size for the active turn, replaced from
+	// each usage event's provider.Usage.PromptTokens rather than accumulated
+	// (issue #267). 0 until the first usage event lands.
+	liveCtx int
 
 	// startedAt is when the session began (NewTelemetry), backing the live
 	// session-elapsed readout in the right rail STATS (benchmark §4.1
@@ -99,6 +107,9 @@ func (t *Telemetry) apply(u TelemetryUpdate) {
 		t.cacheHit += u.Hit
 		t.cacheMiss += u.Miss
 		t.output += u.Output
+		// Live ctx is replaced, not added: it reflects the current turn's
+		// context-window size and shrinks after a compaction (issue #267).
+		t.liveCtx = u.Ctx
 	case TelemetryCompacted:
 		t.compacted = true
 	}
@@ -111,6 +122,12 @@ func (t *Telemetry) cost() float64 {
 		float64(t.cacheHit)/1e6*costPerInputHit +
 		float64(t.output)/1e6*costPerOutput
 }
+
+// ctx returns the live per-turn context-window size in tokens (0 before the
+// first usage event). Unlike the cumulative counters it is REPLACED, not
+// accumulated, so it collapses back down after a compaction shrinks the real
+// context (issue #267).
+func (t *Telemetry) ctx() int { return t.liveCtx }
 
 // hitPercent returns the prompt-cache hit ratio as a percentage, 0 when no
 // input tokens have been billed yet.

@@ -135,7 +135,10 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			}
 		case engine.UsageEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
-				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens})
+				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens,
+				// Live per-turn context-window size: the provider's PromptTokens,
+				// recomputed each request, so it shrinks after a compaction (issue #267).
+				Ctx: ev.Usage.PromptTokens})
 		case engine.TurnEvent:
 			if ev.Start {
 				pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})

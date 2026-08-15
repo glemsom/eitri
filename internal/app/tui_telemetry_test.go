@@ -23,7 +23,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 		return provider.StreamFunc(
 			provider.Chunk{Content: "hello"},
 			provider.Chunk{Done: true, FinishReason: "stop", Usage: &provider.Usage{
-				PromptCacheHitTokens: 90_000, PromptCacheMissTokens: 10_000, CompletionTokens: 5_000,
+				PromptTokens: 100_000, PromptCacheHitTokens: 90_000, PromptCacheMissTokens: 10_000, CompletionTokens: 5_000,
 			}},
 		), nil
 	}), mockTranscript{})
@@ -46,8 +46,8 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	if !ok {
 		t.Fatal("telemetry channel closed")
 	}
-	if u.Kind != tui.TelemetryUsage || u.Hit != 90_000 || u.Miss != 10_000 || u.Output != 5_000 {
-		t.Fatalf("usage update = %+v, want hit=90000 miss=10000 out=5000", u)
+	if u.Kind != tui.TelemetryUsage || u.Hit != 90_000 || u.Miss != 10_000 || u.Output != 5_000 || u.Ctx != 100_000 {
+		t.Fatalf("usage update = %+v, want hit=90000 miss=10000 out=5000 ctx=100000", u)
 	}
 }
 

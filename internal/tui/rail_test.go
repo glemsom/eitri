@@ -454,3 +454,71 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width (issue #231)", twA, twB)
 	}
 }
+
+// TestRailRenderCtxLine asserts the STATS `ctx` line renders after the `tokens`
+// line with the latest per-turn live context-window size, human-readable via
+// formatTokens, in the normal (stats-hue) styling below the warning threshold
+// (issue #267).
+func TestRailRenderCtxLine(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 137_000})
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	view := r.render(te, defaultTheme)
+
+	// 137k live ctx -> "137.0k" (formatTokens), rendered after the tokens line.
+	if !strings.Contains(view, "ctx 137.0k") {
+		t.Errorf("rail STATS missing ctx line, got: %q", view)
+	}
+	// The ctx line follows the tokens line in the STATS body.
+	if !strings.Contains(view, "tokens") || strings.Index(view, "ctx 137.0k") < strings.Index(view, "tokens") {
+		t.Errorf("ctx line must render after the tokens line, got: %q", view)
+	}
+	// Normal styling: the ctx line carries the stats hue, not the warning hue.
+	if line := lineContaining(view, "ctx 137.0k"); !strings.Contains(line, "\x1b[38;2;224;175;104m") {
+		t.Errorf("ctx line below threshold = %q, want the stats hue (not warning)", line)
+	}
+}
+
+// TestRailRenderCtxWarnAboveThreshold asserts the STATS `ctx` line renders in
+// warning styling once the live context reaches the 150k threshold, while the
+// readout still shows the human-readable size (issue #267).
+func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	view := r.render(te, defaultTheme)
+
+	if !strings.Contains(view, "ctx 160.0k") {
+		t.Errorf("rail STATS missing ctx value at threshold, got: %q", view)
+	}
+	if ctx := lineContaining(view, "ctx 160.0k"); !strings.Contains(ctx, "\x1b[38;2;247;118;142m") {
+		t.Errorf("ctx line at threshold = %q, want warning hue (default error #F7768E)", ctx)
+	}
+}
+
+// TestRailRenderCtxPostCompactionRollback asserts the ctx readout and its
+// warning clear on the next turn once a compaction shrinks the real context:
+// after an over-threshold turn, the following turn's smaller live ctx renders
+// normally again, proving the readout is live-per-turn, not cumulative
+// (issue #267).
+func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 48_000})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	view := r.render(te, defaultTheme)
+
+	// The readout reflects the smaller post-compaction size, human-readable.
+	if !strings.Contains(view, "ctx 48.0k") {
+		t.Errorf("rail STATS ctx did not roll back to 48.0k after compaction, got: %q", view)
+	}
+	// The warning styling is gone with the old, over-threshold size.
+	if line := lineContaining(view, "ctx 48.0k"); strings.Contains(line, "\x1b[38;2;247;118;142m") {
+		t.Errorf("ctx line after compaction %q must not carry the warning hue", line)
+	}
+}
