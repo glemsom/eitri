@@ -570,8 +570,13 @@ func (t Transcript) highlightSelection(content string) string {
 		if i > startLine {
 			from = 0
 		}
+		// Intermediate rows extend to their last rune. highlightRange counts
+		// RUNES (skipping escape sequences), and selection columns are
+		// rune-indexed (issue #261), so the bound must be the plain line's rune
+		// count minus 1 — not the display width, which would over- or
+		// under-shoot for wide/multibyte characters.
 		if i < endLine {
-			to = lipgloss.Width(lines[i]) - 1
+			to = len([]rune(ansiStrip(lines[i]))) - 1
 		}
 		lines[i] = highlightRange(lines[i], from, to)
 	}
