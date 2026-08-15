@@ -191,13 +191,14 @@ func drainOne(s Stream) (string, error) {
 }
 
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
-// guarantee also holds on the Copilot provider (issue #54):
+// guarantee also holds on the Copilot provider (issues #54, #263):
 // when the caller disables thinking, `reasoning_effort` is dropped from the
-// request body even if a non-empty effort is retained. Copilot streams via the
-// same engine seam as the primary provider, so its non-thinking shape must
-// match the primary's, minus the Copilot-absent DeepSeek thinking toggle.
+// request body even if a non-empty effort is retained. Unlike the primary
+// provider (which omits the toggle entirely), the Copilot backend follows its
+// reasoning-on server default unless told otherwise, so the request carries an
+// explicit `thinking:{type:disabled}` suppression instead.
 func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
-	var sawEffort bool
+	var sawEffort, thinkingDisabled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		body, _ := io.ReadAll(r.Body)
@@ -206,6 +207,9 @@ func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 			t.Errorf("request body not JSON: %v", err)
 		}
 		sawEffort = parsed["reasoning_effort"] != nil
+		if th, ok := parsed["thinking"].(map[string]any); ok {
+			thinkingDisabled = th["type"] == "disabled"
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write(sseFixture(t))
 	}))
@@ -221,5 +225,47 @@ func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 	}
 	if sawEffort {
 		t.Error("request carried reasoning_effort, want omitted when thinking off")
+	}
+	if !thinkingDisabled {
+		t.Error("request did not carry thinking suppression {type:disabled}, want present when thinking off (issue #263)")
+	}
+}
+
+// TestCopilotSendsThinkingEnabledWhenThinkingOn verifies the thinking-enabled
+// wire shape also holds on the Copilot provider (issue #263): when the caller
+// keeps thinking on, the request carries an explicit `thinking:{type:enabled}`
+// toggle plus the normalized reasoning_effort.
+func TestCopilotSendsThinkingEnabledWhenThinkingOn(t *testing.T) {
+	var thinkingType string
+	var sawEffort bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Errorf("request body not JSON: %v", err)
+		}
+		if th, ok := parsed["thinking"].(map[string]any); ok {
+			thinkingType, _ = th["type"].(string)
+		}
+		sawEffort = parsed["reasoning_effort"] != nil
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(sseFixture(t))
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	if _, err := cp.Stream(context.Background(), Request{
+		Model:           "gpt-4o",
+		ThinkingEnabled: true,
+		ReasoningEffort: "high",
+	}); err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	if thinkingType != "enabled" {
+		t.Errorf("thinking type = %q, want enabled", thinkingType)
+	}
+	if !sawEffort {
+		t.Error("request omitted reasoning_effort, want present when thinking on")
 	}
 }
