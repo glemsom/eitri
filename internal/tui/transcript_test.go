@@ -51,6 +51,51 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 	}
 }
 
+// TestTranscript_ownsRailSurface proves the right-context rail surface — its
+// visibility, band/transcript width accounting, clamp height, and render — now
+// lives on the Transcript value (issue #247): a Transcript constructed directly
+// with a wired rail exposes railVisible / bandWidth / transcriptWidth /
+// railClampHeight and surfaces the rail into a pane through its own render
+// seam, without reaching through Model.
+func TestTranscript_ownsRailSurface(t *testing.T) {
+	th := themeFor(config.DefaultTheme)
+	tx := Transcript{
+		theme:       th,
+		configTheme: config.DefaultTheme,
+		rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true,
+			"eitri-1", "/tmp/eitri-1"),
+	}
+
+	// railVisible derives from the wired rail, not a Model bool.
+	if !tx.railVisible() {
+		t.Fatalf("Transcript with a wired rail must report it visible")
+	}
+
+	// bandWidth spans the full terminal width (pre-resize default) minus gutter.
+	if bw := tx.bandWidth(); bw != presizeTerminalWidth-2 {
+		t.Errorf("bandWidth = %d, want %d", bw, presizeTerminalWidth-2)
+	}
+
+	// transcriptWidth stays rail-shrunk and below bandWidth.
+	if bw, tw := tx.bandWidth(), tx.transcriptWidth(); tw >= bw {
+		t.Errorf("transcriptWidth %d must be rail-shrunk below bandWidth %d", tw, bw)
+	}
+
+	// Once the terminal height resolves, the clamp budgets the rail rows above
+	// the band (height minus the passed-in band height).
+	tx.width, tx.height = 120, 40
+	if c := tx.railClampHeight(4); c != 36 {
+		t.Errorf("railClampHeight(band 4) = %d, want height-band=36", c)
+	}
+
+	// The rail render surfaces into the full-width pane through the Transcript.
+	pane := tx.renderPane("band\n")
+	out := tx.viewWithRail(pane, 4)
+	if !strings.Contains(out, "STATS") || !strings.Contains(out, "│") {
+		t.Errorf("Transcript rail surface must render STATS + rail border, got: %q", out)
+	}
+}
+
 // TestTranscript_matchesModelRender asserts the Transcript value renders the
 // scroll region byte-for-byte identically to the Model render it replaces
 // (issue #243 AC3): Model delegates to newTranscript, so the two must agree on

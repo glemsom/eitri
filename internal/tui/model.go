@@ -322,16 +322,23 @@ type Model struct {
 	// (ctrl+d toggles); nil means the transcript is the active surface.
 	review *reviewPanel
 
-	// rail is the right context pane (issue #88); nil disables it.
+	// rail is the right context pane (issue #88); nil disables it. Since issue
+	// #247 the rail is owned by the Transcript; Model keeps this duplicate so the
+	// rail/band-edge tests that read m.rail and wire it via newTranscript still
+	// pass (a later contract step #248 removes Model's copy).
 	rail *Rail
-	// width is the terminal width of the last WindowSizeMsg, used to decide the
-	// rail's auto-hide and to size the transcript column (issue #88 AC3). It is
-	// 0 until the first resize lands.
+	// width is the terminal width of the last WindowSizeMsg, used to size the
+	// transcript/band columns (issue #88 AC3). It is 0 until the first resize
+	// lands. Since issue #247 it is copied into the Transcript via newTranscript;
+	// Model keeps this duplicate for the composer cursor and the #248 contract
+	// step.
 	width int
 	// height is the terminal height of the last WindowSizeMsg: the history
 	// viewport clamps to it so the fixed bottom band never trails off-screen on a
 	// window shrink. It is 0 until the first resize lands, in which case the
-	// history renders unclamped.
+	// history renders unclamped. Since issue #247 it is copied into the
+	// Transcript via newTranscript; Model keeps this duplicate for the #248
+	// contract step.
 	height int
 
 	// histFollow mirrors the Transcript's follow position (issue #244): the
@@ -1267,16 +1274,12 @@ func (m Model) viewString() string {
 
 	// The right context rail (issue #88, Layout A): the rendered transcript pane
 	// and the state rail sit side by side — one pane for time (transcript), one
-	// for state (rail). The rail is the always-on stats surface (issue #227): it
-	// renders whenever it is wired, and the composer width already shrank so the
-	// transcript re-wraps to leave it room. The band spans the full terminal
+	// for state (rail). Since issue #247 the rail surface — its visibility, band/
+	// transcript width accounting, clamp height, and render — resolves entirely
+	// on the Transcript (viewWithRail); the band stays a Model-owned concern, so
+	// Model passes its rendered row count down. The band spans the full terminal
 	// width under the rail (issue #232), which floats above it.
-	left := m.renderPane()
-	if m.railVisible() {
-		right := styledRail(m.rail.render(m.telemetry, m.theme), m.railClampHeight())
-		return m.surfaceWithRail(left, right)
-	}
-	return left
+	return newTranscript(m).viewWithRail(m.renderPane(), m.bandHeight())
 }
 
 // surfaceWithRail merges the rendered right rail into a full-width pane so the
@@ -1294,26 +1297,7 @@ func (m Model) viewString() string {
 // band for the rail to float above; the rail falls back to joining the pane's
 // right, preserved from the pre-#232 layout for lean embeds that never size.
 func (m Model) surfaceWithRail(pane, rail string) string {
-	vh := m.railClampHeight()
-	if vh <= 0 {
-		// No height yet (or the band fills the whole terminal): pre-resize, fall
-		// back to the rail beside the pane — there is no pinned band to float
-		// above. When the band fills the whole terminal the rail renders nothing
-		// and the pane (full-width band) is already complete.
-		if m.height <= 0 {
-			return lipgloss.JoinHorizontal(lipgloss.Top, pane, rail)
-		}
-		return pane
-	}
-	rows := strings.Split(pane, "\n")
-	railRows := strings.Split(rail, "\n")
-	for i := 0; i < vh && i < len(railRows); i++ {
-		if i >= len(rows) {
-			break
-		}
-		rows[i] = rows[i] + railRows[i]
-	}
-	return strings.Join(rows, "\n")
+	return newTranscript(m).surfaceWithRail(pane, rail, m.bandHeight())
 }
 
 // railClampHeight returns the maximum number of rows the right context rail may
@@ -1324,16 +1308,7 @@ func (m Model) surfaceWithRail(pane, rail string) string {
 // the actual row budget (0 when the band fills the whole terminal, in which
 // case the rail renders nothing).
 func (m Model) railClampHeight() int {
-	if m.height <= 0 {
-		return -1
-	}
-	// The rail shares the history viewport's vertical budget: terminal height
-	// minus whatever the fixed bottom band occupies.
-	vh := m.height - m.bandHeight()
-	if vh < 0 {
-		return 0
-	}
-	return vh
+	return newTranscript(m).railClampHeight(m.bandHeight())
 }
 
 // maxComposerRows is how tall the composer may grow inside the fixed bottom

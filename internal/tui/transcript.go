@@ -34,12 +34,15 @@ import (
 // and return the resulting follow flag so a forwarding Model can persist the
 // decision into its own histFollow copy.
 //
-// Scope note: Transcript owns the scroll region (the history the user reads)
-// and the review overlay that sits above it in the same pane. It does NOT own
-// the bottom band (status strip + composer, renderBand); that composer concern
-// stays on Model, and the band string is passed into renderPane so Transcript
-// can compose the full left pane. render.go/glyphs.go/markdown.go value
-// helpers stay where they are.
+// Scope note: Transcript owns the scroll region (the history the user reads),
+// the review overlay that sits above it in the same pane, and the right
+// context rail (issue #247) — its visibility, band/transcript width accounting,
+// clamp height, and render all resolve here. It does NOT own the bottom band
+// (status strip + composer, renderBand); that composer concern stays on Model,
+// the band string is passed into renderPane so Transcript can compose the full
+// left pane, and the band's row count is passed in for railClampHeight and the
+// surface merge. render.go/glyphs.go/markdown.go value helpers stay where they
+// are.
 type Transcript struct {
 	// theme is the styling surface the transcript draws from (issue #178).
 	theme Theme
@@ -95,9 +98,12 @@ type Transcript struct {
 	// histViewport is the persisted history scroll component (issue #119),
 	// shared with Model so scroll state survives render cycles.
 	histViewport *viewport.Model
-	// railOn records whether the right context rail is wired (issue #88), so
+	// rail is the right context pane (issue #88); nil disables it. Since issue
+	// #247 the rail is owned by the Transcript: its visibility (railVisible),
+	// band/transcript width accounting (bandWidth/transcriptWidth), clamp height
+	// (railClampHeight), and render (viewWithRail) all resolve on this surface, so
 	// the transcript width yields room for it (issue #227).
-	railOn bool
+	rail *Rail
 }
 
 // newTranscript builds a Transcript value from a Model, extracting the
@@ -124,13 +130,18 @@ func newTranscript(m Model) Transcript {
 		height:          m.height,
 		histFollow:      m.histFollow,
 		histViewport:    m.histViewport,
-		railOn:          m.rail != nil,
+		rail:            m.rail,
 	}
 	return t
 }
 
-// railVisible reports whether the right context rail should render now.
-func (t Transcript) railVisible() bool { return t.railOn }
+// railVisible reports whether the right context rail should render now. The
+// rail is the sole, permanent stats surface (issue #227): it is always on
+// whenever it is wired — no auto-hide on small windows and no ctrl+b toggle.
+// The transcript keeps a hard floor via transcriptWidth, so on an
+// extreme-minimum terminal the rail yields width so the transcript stays
+// readable (issue #227 AC3).
+func (t Transcript) railVisible() bool { return t.rail != nil }
 
 // transcriptWidth returns the column width the transcript pane should use for
 // wrapping: the terminal width (or a sane default before a resize) minus the
@@ -143,13 +154,108 @@ func (t Transcript) transcriptWidth() int {
 		base = presizeTerminalWidth
 	}
 	w := base - 2
-	if t.railOn {
+	if t.railVisible() {
 		w -= railWidth + 1
 		if w < 20 {
 			w = 20
 		}
 	}
 	return w
+}
+
+// bandWidth returns the column width the bottom band renders at: the terminal
+// width (or a sane non-composer default before the first resize lands) minus the
+// 2-col gutter. The band is the edge-to-edge bottom region (issue #232): it
+// spans the full terminal width all the way under the right rail, so its
+// separator row, status strip, and composer run to the width's edge — no
+// railWidth x bandHeight dead corner. It is independent of transcriptWidth() in
+// the call graph (it never calls transcriptWidth and never reads the composer's
+// width). bandWidth is the SEAM for issue #232: it is the single width source
+// for the bottom band, independent of transcriptWidth(). Since issue #247 it is
+// owned by the Transcript (the band asks the Transcript for its width).
+func (t Transcript) bandWidth() int {
+	base := t.width
+	if base == 0 {
+		base = presizeTerminalWidth // no resize yet; use a sane full-width start
+	}
+	return base - 2
+}
+
+// railClampHeight returns the maximum number of rows the right context rail may
+// occupy so it matches the history region's visible height (issue T05 AC1):
+// both panes clamp to the rows left over by the fixed bottom band, so the two
+// form one coherent row. It is -1 before the first resize lands, leaving the
+// rail unclamped — mirroring renderHistoryViewport; a non-negative result is
+// the actual row budget (0 when the band fills the whole terminal, in which
+// case the rail renders nothing). Since issue #247 it lives on the Transcript;
+// bandHeight (the fixed bottom band's row count) is passed in by the caller
+// because the band itself stays a Model-owned concern (issue #248 keeps it
+// there).
+func (t Transcript) railClampHeight(bandHeight int) int {
+	if t.height <= 0 {
+		return -1
+	}
+	// The rail shares the history viewport's vertical budget: terminal height
+	// minus whatever the fixed bottom band occupies.
+	vh := t.height - bandHeight
+	if vh < 0 {
+		return 0
+	}
+	return vh
+}
+
+// surfaceWithRail merges the rendered right rail into a full-width pane so the
+// bottom band stays edge-to-edge (issue #232 AC1/AC4): the band is a
+// bottom-anchored region spanning the whole terminal width, so the rail cannot
+// sit to its right the way it sits beside the transcript. Instead the rail
+// floats ABOVE the band — its rows land in the top railClampHeight() rows of the
+// pane, in the railWidth column strip at the right, exactly the room the
+// rail-shrunk transcriptWidth leaves on each history row. The band rows (below
+// the rail's extent) are untouched, so the separator/status/composer run the
+// full width; the rail never overlaps them. pane is the renderPane output; rail
+// is styledRail output already clamped to railClampHeight rows. bandHeight is the
+// fixed bottom band's row count, which the caller (the Model that owns the band)
+// passes in.
+//
+// Before the first resize lands the height is unknown, so there is no pinned
+// band for the rail to float above; the rail falls back to joining the pane's
+// right, preserved from the pre-#232 layout for lean embeds that never size.
+func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
+	vh := t.railClampHeight(bandHeight)
+	if vh <= 0 {
+		// No height yet (or the band fills the whole terminal): pre-resize, fall
+		// back to the rail beside the pane — there is no pinned band to float
+		// above. When the band fills the whole terminal the rail renders nothing
+		// and the pane (full-width band) is already complete.
+		if t.height <= 0 {
+			return lipgloss.JoinHorizontal(lipgloss.Top, pane, rail)
+		}
+		return pane
+	}
+	rows := strings.Split(pane, "\n")
+	railRows := strings.Split(rail, "\n")
+	for i := 0; i < vh && i < len(railRows); i++ {
+		if i >= len(rows) {
+			break
+		}
+		rows[i] = rows[i] + railRows[i]
+	}
+	return strings.Join(rows, "\n")
+}
+
+// viewWithRail composes the final surface content for a rail-visible pane: it
+// renders the wired rail through styledRail at the rail's clamp height and
+// floats it above the full-width band via surfaceWithRail. When no rail is
+// wired it returns the pane untouched. It is the single rail-render seam (issue
+// #247): the rail's visibility, clamp, and render all resolve here on the
+// Transcript. bandHeight is the bottom band's row count passed in by the Model
+// that owns the band.
+func (t Transcript) viewWithRail(pane string, bandHeight int) string {
+	if !t.railVisible() {
+		return pane
+	}
+	right := styledRail(t.rail.render(t.telemetry, t.theme), t.railClampHeight(bandHeight))
+	return t.surfaceWithRail(pane, right, bandHeight)
 }
 
 // renderPane renders the transcript + composer surface into the left pane. It
