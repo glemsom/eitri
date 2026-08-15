@@ -113,9 +113,12 @@ type telemetryUpdateMsg struct {
 	update TelemetryUpdate
 }
 
-// skillDoneMsg reports a slash-command skill activation's result.
+// skillDoneMsg reports a slash-command skill activation's result. args, when
+// non-empty, carries the trailing `/skillname <args>` remainder that must run
+// as a follow-up user turn after the injected skill note (issue #239).
 type skillDoneMsg struct {
 	payload string
+	args    string
 }
 
 // discoverDoneMsg reports the outcome of an on-demand provider model discovery
@@ -581,7 +584,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		tx := newTranscript(m)
 		tx.apply(msgi.update) // tool updates route through the Transcript (issue #245)
-		m.log = tx.log // persist the Transcript's log back into Model
+		m.log = tx.log        // persist the Transcript's log back into Model
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
@@ -721,26 +724,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.copyTranscript()
 				return m, nil
 			}
-			if name, _, ok := slashCommand(prompt, m.skills); ok {
-				return m.activateSkill(name)
+			if name, args, ok := slashCommand(prompt, m.skills); ok {
+				return m.activateSkill(name, args)
 			}
-			m.messages = append(m.messages, message{role: "you", content: prompt})
-			m.busy = true
-			m.curStream = -1
-			m.layout.dirty = true // a new turn appended to the transcript
-			m.syncComposerRail()
-			// Anchor new tool calls to this turn's prompt so entries interleave
-			// after it (issue #84).
-			m.log.SetAnchor(len(m.messages) - 1)
-			// With a live answer stream, the composer turn and the stream waiter run
-			// concurrently so the reply grows in place as deltas arrive (issue #83);
-			// the spinner tick rides the same batch so the busy indicator animates
-			// (issue #211). The non-streaming fallback keeps the single turn
-			// command — tests drive it synchronously.
-			if m.stream != nil {
-				return m, tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
-			}
-			return m, m.turnCmd(prompt)
+			cmd := m.startTurn(prompt)
+			return m, cmd
 		case "tab":
 			// Fresh `/` with tab walks the slash completion list: the built-in
 			// `/settings` command plus matching detected skills (issue #87 AC1).
@@ -878,6 +866,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
 		m.layout.dirty = true // a skill result appended to the transcript
+		if msgi.args != "" {
+			// A `/skillname <args>` activation queues the args as a normal user
+			// turn AFTER the injected skill note so message order renders
+			// note-then-args (issue #239). Bare `/skillname` has empty args and
+			// dispatches no turn.
+			cmd := m.startTurn(msgi.args)
+			return m, cmd
+		}
 		return m, nil
 	}
 
@@ -1011,6 +1007,32 @@ func (m Model) turnCmd(prompt string) tea.Cmd {
 	})
 }
 
+// startTurn appends a user message and dispatches it as a turn through the
+// engine, mirroring the composer submit path (busy/anchor/rail set up; stream-
+// batched when a live answer stream is attached). It is the single place that
+// turns a prompt into a "you" message + busy state and returns the dispatch
+// command, shared by the composer submit path and the skillDoneMsg args branch
+// (issue #239) so a follow-up args turn behaves exactly like a normal user turn.
+func (m *Model) startTurn(prompt string) tea.Cmd {
+	m.messages = append(m.messages, message{role: "you", content: prompt})
+	m.busy = true
+	m.curStream = -1
+	m.layout.dirty = true // a new turn appended to the transcript
+	m.syncComposerRail()
+	// Anchor new tool calls to this turn's prompt so entries interleave
+	// after it (issue #84).
+	m.log.SetAnchor(len(m.messages) - 1)
+	// With a live answer stream, the composer turn and the stream waiter run
+	// concurrently so the reply grows in place as deltas arrive (issue #83);
+	// the spinner tick rides the same batch so the busy indicator animates
+	// (issue #211). The non-streaming fallback keeps the single turn
+	// command — tests drive it synchronously.
+	if m.stream != nil {
+		return tea.Batch(m.turnCmd(prompt), streamWait(m.stream), spinnerTick())
+	}
+	return m.turnCmd(prompt)
+}
+
 // appendStreamDelta grows the in-progress assistant message by one streamed
 // delta (issue #83 / #85). It returns no additional command. On the first delta
 // of a turn it appends a new assistant message and records its index as the
@@ -1124,14 +1146,14 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 // activateSkill runs one slash-command activation through the SkillsSurface
 // activation seam (the T8 skill tool) on a detached command and renders the
 // result as an assistant note.
-func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
+func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
 	m.layout.dirty = true
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: failurePrefix() + "no skill activation available"})
 		return m, nil
 	}
-	return m, skillCmd(m.deps.Skills.Activate, name)
+	return m, skillCmd(m.deps.Skills.Activate, name, args)
 }
 
 // discoverCmd runs one on-demand provider model discovery off the main loop and
@@ -1147,7 +1169,9 @@ func discoverCmd(discover func(ctx context.Context) ([]string, error)) tea.Cmd {
 }
 
 // skillCmd runs a skill activation off the main loop and reports its payload.
-func skillCmd(activate func(ctx context.Context, name string) (string, error), name string) tea.Cmd {
+// args, when non-empty, rides along on skillDoneMsg so the handler can queue
+// the follow-up user turn after injecting the skill note (issue #239).
+func skillCmd(activate func(ctx context.Context, name string) (string, error), name, args string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -1155,7 +1179,7 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 		if err != nil {
 			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
 		}
-		return skillDoneMsg{payload: payload}
+		return skillDoneMsg{payload: payload, args: args}
 	})
 }
 
