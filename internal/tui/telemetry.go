@@ -123,11 +123,11 @@ func (t *Telemetry) cost() float64 {
 		float64(t.output)/1e6*costPerOutput
 }
 
-// ctx returns the live per-turn context-window size in tokens (0 before the
-// first usage event). Unlike the cumulative counters it is REPLACED, not
-// accumulated, so it collapses back down after a compaction shrinks the real
-// context (issue #267).
-func (t *Telemetry) ctx() int { return t.liveCtx }
+// liveContextSize returns the live per-turn context-window size in tokens (0
+// before the first usage event). Unlike the cumulative counters it is REPLACED,
+// not accumulated, so it collapses back down after a compaction shrinks the
+// real context (issue #267).
+func (t *Telemetry) liveContextSize() int { return t.liveCtx }
 
 // hitPercent returns the prompt-cache hit ratio as a percentage, 0 when no
 // input tokens have been billed yet.

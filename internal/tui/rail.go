@@ -115,7 +115,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 		turns = te.turns
 		compacted = te.compacted
 		elapsed = time.Since(te.startedAt)
-		liveCtx = te.ctx()
+		liveCtx = te.liveContextSize()
 	}
 	totalIn := hits + misses
 	pct := 0.0
@@ -138,18 +138,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	// replaced each usage event and so shrinking after a compaction — unlike the
 	// cumulative tokens/cost lines above. It reads via the same formatTokens
 	// unit as the tokens line. No live ctx yet (te nil / first turn) renders "0".
-	{
-		var lb strings.Builder
-		r.line(&lb, "ctx", formatTokens(liveCtx))
-		ctxLine := strings.TrimRight(lb.String(), "\n")
-		// Above the degradation threshold the ctx line flips to warning styling
-		// (the theme's error hue). Single binary flag: no severity ladder, no
-		// latch — persistent while live >= threshold (issue #267).
-		if liveCtx >= liveContextWarnThreshold {
-			ctxLine = lipgloss.NewStyle().Foreground(th.error).Render(ctxLine)
-		}
-		body.WriteString(ctxLine + "\n")
-	}
+	body.WriteString(renderStatsCtxLine(r, th, liveCtx) + "\n")
 	if compacted {
 		r.line(&body, "state", "compacted")
 	}
@@ -204,6 +193,22 @@ func formatTokens(n int) string {
 	default:
 		return fmt.Sprintf("%d", n)
 	}
+}
+
+// renderStatsCtxLine builds the single STATS ctx line for the live per-turn
+// context-window size (issue #267). It reuses r.line for the same key padding
+// and lets the enclosing railBody supply the section's uniform stats hue. When
+// the live size reaches the degradation threshold the line flips to warning
+// styling (the theme's error hue): a single binary flag, no severity ladder, no
+// latch — persistent while live >= threshold.
+func renderStatsCtxLine(r *Rail, th Theme, liveCtx int) string {
+	var b strings.Builder
+	r.line(&b, "ctx", formatTokens(liveCtx))
+	line := strings.TrimRight(b.String(), "\n")
+	if liveCtx >= liveContextWarnThreshold {
+		line = lipgloss.NewStyle().Foreground(th.error).Render(line)
+	}
+	return line
 }
 
 // liveContextWarnThreshold is the live context-window size (prompt tokens) at

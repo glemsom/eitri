@@ -97,7 +97,7 @@ func TestTelemetryLiveContextReplaces(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000, Ctx: 50_000})
 
 	// Live ctx is replaced: the second turn's smaller value wins, never the sum.
-	if c := te.ctx(); c != 50_000 {
+	if c := te.liveContextSize(); c != 50_000 {
 		t.Fatalf("live context = %d, want 50000 (replaced, not accumulated)", c)
 	}
 	// The cumulative hit/miss/output counters still accumulate across turns.
