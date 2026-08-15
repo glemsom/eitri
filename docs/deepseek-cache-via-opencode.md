@@ -108,6 +108,14 @@ support — never unconditionally — so capability negotiation cannot change th
 - Proves it: `TestOpenAIEmitsThinkingAndReasoningEffort`,
   `TestOpenAIOmitsThinkingWhenDisabled`, `TestOpenAIDeclaresGenerationControlCapabilities`
   in `internal/provider/openai_test.go`.
+- The Copilot provider carries the toggle in its explicit form on every turn:
+  `thinking:{type:enabled}` when on, and an explicit `thinking:{type:disabled}`
+  suppression (with no `reasoning_effort`) when off, overriding the backend's
+  reasoning-on server default. This suppression is copilot-path-only and does
+  not change the openai path's omit-when-disabled byte shape (issue #263).
+- Proves it: `TestCopilotDropsEffortWhenThinkingDisabled`,
+  `TestCopilotSendsThinkingEnabledWhenThinkingOn` in
+  `internal/provider/copilot_test.go`.
 
 ### 7. Cache-stable compaction
 

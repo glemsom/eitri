@@ -51,6 +51,20 @@ func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refres
 	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist}
 }
 
+// copilotThinkingControl returns the DeepSeek thinking-mode toggle in its
+// explicit form for the Copilot wire: enabled when the caller keeps thinking
+// on, and disabled when thinking is off. Unlike the primary/openai path (where
+// an off thinking omits the field entirely), the Copilot backend follows its
+// server default (on) unless an explicit suppression is sent, so the toggle is
+// always carried here (issue #263).
+func copilotThinkingControl(req Request) *thinkingEnabler {
+	t := "enabled"
+	if !req.ThinkingEnabled {
+		t = "disabled"
+	}
+	return &thinkingEnabler{Type: t}
+}
+
 // SupportedGenerationControls declares that Copilot can honor the Generation
 // Budget control, since it streams through the same Chat-Completions wire as the
 // primary provider and emits max_completion_tokens on special turns
@@ -104,6 +118,7 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 		ToolChoice:      req.ToolChoice,
 		Stream:          true,
 		StreamOptions:   &streamOptions{IncludeUsage: true},
+		Thinking:        copilotThinkingControl(req),
 		ReasoningEffort: reasoningEffortControl(req),
 		MaxOutputTokens: maxOutputTokens(req),
 	})
