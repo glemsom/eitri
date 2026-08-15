@@ -109,11 +109,13 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	turns := 0
 	compacted := false
 	elapsed := time.Duration(0)
+	liveCtx := 0
 	if te != nil {
 		hits, misses, out = te.cacheHit, te.cacheMiss, te.output
 		turns = te.turns
 		compacted = te.compacted
 		elapsed = time.Since(te.startedAt)
+		liveCtx = te.liveContextSize()
 	}
 	totalIn := hits + misses
 	pct := 0.0
@@ -132,6 +134,11 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
 	r.line(&body, "elapsed", formatElapsed(elapsed))
 	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)))
+	// The ctx line reflects the LIVE per-turn context-window size (issue #267),
+	// replaced each usage event and so shrinking after a compaction — unlike the
+	// cumulative tokens/cost lines above. It reads via the same formatTokens
+	// unit as the tokens line. No live ctx yet (te nil / first turn) renders "0".
+	body.WriteString(renderStatsCtxLine(r, th, liveCtx) + "\n")
 	if compacted {
 		r.line(&body, "state", "compacted")
 	}
@@ -187,6 +194,30 @@ func formatTokens(n int) string {
 		return fmt.Sprintf("%d", n)
 	}
 }
+
+// renderStatsCtxLine builds the single STATS ctx line for the live per-turn
+// context-window size (issue #267). It reuses r.line for the same key padding
+// and lets the enclosing railBody supply the section's uniform stats hue. When
+// the live size reaches the degradation threshold the line flips to warning
+// styling (the theme's error hue): a single binary flag, no severity ladder, no
+// latch — persistent while live >= threshold.
+func renderStatsCtxLine(r *Rail, th Theme, liveCtx int) string {
+	var b strings.Builder
+	r.line(&b, "ctx", formatTokens(liveCtx))
+	line := strings.TrimRight(b.String(), "\n")
+	if liveCtx >= liveContextWarnThreshold {
+		line = lipgloss.NewStyle().Foreground(th.error).Render(line)
+	}
+	return line
+}
+
+// liveContextWarnThreshold is the live context-window size (prompt tokens) at
+// which the STATS ctx line flips to warning styling (issue #267). It is a
+// single binary flag once real context reaches ~150k tokens, the point where
+// public LLM-context-degradation research (e.g. Anthropic/ZeroWidth/Duper
+// long-context studies) reports measurably degraded retrieval-and-reasoning
+// quality ~150k+ tokens into a window.
+const liveContextWarnThreshold = 150000
 
 // railWidth is the fixed right-pane width in columns.
 const railWidth = 30
