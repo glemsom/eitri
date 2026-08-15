@@ -362,25 +362,27 @@ func reverseVideoSpans(s string) []string {
 // renders as "│   ab你defg": 4 ASCII display cells of prefix, then the answer
 // where 你 occupies two display cells but is one rune. Dragging display columns
 // 4..9 covers runes [4,8] = "ab你de" (a, b, 你, d, e).
-func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
-	var copied string
-	m := NewModelCfg(Dependencies{
+// newWideAnswerModel builds a model whose transcript answer row is the wide/CJK
+// string "ab你defg" (issue #261), wires the clipboard to record into *copied, and
+// returns the model plus the answer row's cell coordinates ready for a drag.
+func newWideAnswerModel(t *testing.T, copied *string) (m Model, rows []string, top, answerRow int) {
+	m = NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ab你defg"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
-		Clipboard:     func(s string) error { copied = s; return nil },
+		Clipboard:     func(s string) error { *copied = s; return nil },
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 	view(m)
 
-	rows, top := historyContentRows(m)
+	rows, top = historyContentRows(m)
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	answerRow := -1
+	answerRow = -1
 	for i, r := range rows {
 		if strings.Contains(r, "ab你defg") {
 			answerRow = i
@@ -390,6 +392,12 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 	if answerRow < 0 {
 		t.Fatalf("answer row not found, got %q", rows)
 	}
+	return m, rows, top, answerRow
+}
+
+func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
+	var copied string
+	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
 	// Reverse-video must wrap exactly "ab你de" (runes [4,8]) while the drag is
 	// in progress.
@@ -411,32 +419,7 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 // copies runes [5,6] = "b你" intact.
 func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 	var copied string
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ab你defg"}, nil
-		},
-		WorkspacePath: "/tmp/acme",
-		Clipboard:     func(s string) error { copied = s; return nil },
-	})
-	m = resize(t, m)
-	m = typeText(t, m, "hi")
-	m = submitAndWait(t, m)
-	view(m)
-
-	rows, top := historyContentRows(m)
-	if top != 0 {
-		t.Fatalf("test assumes offset 0, got %d", top)
-	}
-	answerRow := -1
-	for i, r := range rows {
-		if strings.Contains(r, "ab你defg") {
-			answerRow = i
-			break
-		}
-	}
-	if answerRow < 0 {
-		t.Fatalf("answer row not found, got %q", rows)
-	}
+	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
 	m = mustUpdate(t, m, dragMsg("press", 5, answerRow))
 	m = mustUpdate(t, m, dragMsg("motion", 7, answerRow))
