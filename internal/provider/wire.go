@@ -114,6 +114,12 @@ func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 		chunk.ToolCalls = accTouls(acc)
 	}
 	chunk.Usage = wc.Usage
+	if chunk.Usage != nil {
+		// Apply the absent-key safe-parse fallback so an OpenCode proxy that
+		// omits prompt_cache_* still produces honest hit/miss telemetry (issue
+		// #218): never a fake hit, never a mispriced bill.
+		chunk.Usage.finalize()
+	}
 	return chunk, nil
 }
 

@@ -454,6 +454,96 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	}
 }
 
+// TestOpenAIUsageWithoutCacheKeys verifies the absent-key safe-parse hardening
+// (issue #218): a usage blob that carries only prompt_tokens — an OpenCode
+// proxy omitting the DeepSeek-native prompt_cache_* shape — reports an honest
+// Hit=0 with every input token treated as a cold Miss. No fake hit is ever
+// fabricated, so the TUI gauge reads cache:0% and the cost line bills full
+// miss-rate pricing instead of collapsing to an indeterminate ratio.
+func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/usage-nocache.sse")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{Model: "deepseek-v4-flash", Messages: []Message{{Role: RoleUser, Content: "hi"}}})
+	if err != nil {
+		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+	}
+	_, usage, err := consume(s)
+	if err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+	if usage == nil {
+		t.Fatal("usage not parsed")
+	}
+	if usage.PromptCacheHitTokens != 0 {
+		t.Errorf("hit = %d, want 0 (no fake hit when cache keys absent)", usage.PromptCacheHitTokens)
+	}
+	if usage.PromptCacheMissTokens != usage.PromptTokens {
+		t.Errorf("miss = %d, want %d (all input billed cold)", usage.PromptCacheMissTokens, usage.PromptTokens)
+	}
+}
+
+// TestOpenAIUsagePartialCacheKeys covers a proxy that emits only one of the
+// two DeepSeek-native prompt_cache_* keys (issue #218, acceptance (b)). No
+// fake hit is ever fabricated:
+//   - hit-only: the reported hits are kept, and the remaining prompt tokens are
+//     inferred as cold misses so Hit+Miss still equals PromptTokens (honest
+//     denominator for the gauge).
+//   - miss-only: Hit stays 0 (a hit is never invented), and the reported miss
+//     count is honored as-is.
+func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
+	cases := []struct {
+		name     string
+		fixture  string
+		wantHit  int
+		wantMiss int
+	}{
+		{name: "hit-only", fixture: "testdata/usage-cache-hitonly.sse", wantHit: 80, wantMiss: 20},
+		{name: "miss-only", fixture: "testdata/usage-cache-missonly.sse", wantHit: 0, wantMiss: 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture, err := os.ReadFile(tc.fixture)
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache")
+				_, _ = w.Write(fixture)
+			}))
+			cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
+			s, err := cl.Stream(context.Background(), Request{Model: "deepseek-v4-flash", Messages: []Message{{Role: RoleUser, Content: "hi"}}})
+			srv.Close()
+			if err != nil {
+				t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+			}
+			_, usage, err := consume(s)
+			if err != nil {
+				t.Fatalf("consume error = %v, want nil", err)
+			}
+			if usage == nil {
+				t.Fatal("usage not parsed")
+			}
+			if usage.PromptCacheHitTokens != tc.wantHit {
+				t.Errorf("hit = %d, want %d", usage.PromptCacheHitTokens, tc.wantHit)
+			}
+			if usage.PromptCacheMissTokens != tc.wantMiss {
+				t.Errorf("miss = %d, want %d", usage.PromptCacheMissTokens, tc.wantMiss)
+			}
+		})
+	}
+}
+
 // TestOpenAIMalformedEventReturnsCleanError verifies an invalid SSE payload is
 // surfaced as ErrMalformed, never a crash (docs/spec.md §11).
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {

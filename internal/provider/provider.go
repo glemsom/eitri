@@ -293,6 +293,72 @@ type Usage struct {
 	CompletionTokens      int `json:"completion_tokens"`
 	PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens,omitempty"`
 	PromptCacheMissTokens int `json:"prompt_cache_miss_tokens,omitempty"`
+
+	// cacheHitAssigned/cacheMissAssigned record whether each prompt_cache_*
+	// key was actually present in the parsed JSON. They distinguish an absent
+	// key (an OpenCode proxy omitting the DeepSeek-native usage shape) from a
+	// present-but-zero key (a fully-cached turn), which must pass through
+	// unchanged. Only unmarshal touches them; callers read the public ints.
+	cacheHitAssigned  bool
+	cacheMissAssigned bool
+}
+
+// UnmarshalJSON decodes a Usage blob while tracking which prompt_cache_* keys
+// were present, so finalize (issue #218) can tell an absent cache shape from an
+// explicit hit=miss=0 one. A custom unmarshal is required because a plain
+// struct cannot distinguish an omitted json key from a present zero value.
+func (u *Usage) UnmarshalJSON(data []byte) error {
+	type usageWire struct {
+		PromptTokens          int `json:"prompt_tokens"`
+		CompletionTokens      int `json:"completion_tokens"`
+		PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
+		PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var w usageWire
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	u.PromptTokens = w.PromptTokens
+	u.CompletionTokens = w.CompletionTokens
+	u.PromptCacheHitTokens = w.PromptCacheHitTokens
+	u.PromptCacheMissTokens = w.PromptCacheMissTokens
+	_, u.cacheHitAssigned = raw["prompt_cache_hit_tokens"]
+	_, u.cacheMissAssigned = raw["prompt_cache_miss_tokens"]
+	return nil
+}
+
+// finalize applies the absent-key safe-parse fallback (issue #218) so an
+// OpenCode proxy that omits the DeepSeek-native prompt_cache_* shape still
+// produces honest telemetry:
+//   - neither prompt_cache_* key present: every input token is a cold miss
+//     (Hit=0, Miss=PromptTokens). The TUI gauge reads cache:0% and cost bills
+//     at full miss-rate — never a fabricated hit, never a mispriced bill.
+//   - hit present, miss absent: the difference PromptTokens-Hit is the cold
+//     remainder billed at miss rate, keeping an honest Hit+Miss==PromptTokens
+//     denominator.
+//   - miss present, hit absent: Hit stays 0 (no fake hit fabricated); the
+//     reported Miss is kept as-is.
+//   - both present (the DeepSeek-native shape): unchanged.
+func (u *Usage) finalize() {
+	if u == nil {
+		return
+	}
+	if u.cacheHitAssigned || u.cacheMissAssigned {
+		if u.PromptCacheHitTokens > 0 && u.PromptCacheHitTokens < u.PromptTokens && !u.cacheMissAssigned {
+			// hit-only shape: the rest of the prompt was cold-billed. Guarded to
+			// the plausible range so a degenerate hit>prompt still clamps to 0
+			// miss rather than going negative.
+			u.PromptCacheMissTokens = u.PromptTokens - u.PromptCacheHitTokens
+		}
+		return
+	}
+	// absent cache shape: honest all-miss.
+	u.PromptCacheHitTokens = 0
+	u.PromptCacheMissTokens = u.PromptTokens
 }
 
 // Stream is the provider seam: a single turn's streamed chunks. A Stream must
