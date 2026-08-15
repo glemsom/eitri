@@ -263,19 +263,40 @@ func (m *Model) syncWidths() {
 
 // styledRail frames the rail's rendered sections into a fixed-width right
 // column with a left border, so it reads as a distinct state pane alongside the
-// transcript (Layout A, issue #88). It height-clamps the content to maxHeight
-// rows when non-negative so the rail honours the same visible height as the
-// history viewport (issue T05): the two panes form one coherent row instead of
-// the rail overflowing while the history clips. The clamp keeps the rail's top
-// sections (STATS / CONTEXT / start of MODEL) and drops the tail; a negative
-// maxHeight (no resize landed) leaves the rail unclamped.
+// transcript (Layout A, issue #88). When maxHeight is non-negative it fits the
+// content to exactly that many rows so the rail honours the same visible height
+// as the history viewport (issue T05) and extends to one row above the band at
+// every terminal height (issue #232 AC2): it TRIMS long content (top-aligned,
+// keeping STATS / CONTEXT / start of MODEL and dropping the tail) and PADDS short
+// content with blank rows so the rail's left border runs down to the band
+// instead of stopping mid-window. A negative maxHeight (no resize landed) leaves
+// the rail unclamped and unpadded.
 func styledRail(content string, maxHeight int) string {
 	if maxHeight >= 0 {
 		trimmed := strings.TrimRight(content, "\n")
 		lines := strings.Split(trimmed, "\n")
-		if maxHeight < len(lines) {
-			content = strings.Join(lines[:maxHeight], "\n")
+		// Target line count so the rail's left border runs down to exactly
+		// maxHeight rows (lipgloss adds one borderless blank row above and below
+		// the content, so maxHeight-1 content lines put the last bordered row at
+		// surface row maxHeight-1 — one row above the band top). Trim long
+		// content (top-aligned, dropping the tail) and pad short content with
+		// blank rows so the rail fills down to the band at every terminal height,
+		// never overlapping it (issue #232 AC2). A negative maxHeight (no resize
+		// landed) leaves the rail unclamped and unpadded.
+		target := maxHeight - 1
+		if target < 1 {
+			target = 1
 		}
+		if len(lines) > target {
+			lines = lines[:target]
+		} else if len(lines) < target {
+			// Pad with single-space blank rows (not empty strings) so they survive
+			// the trailing-\n TrimRight before Render and still read as blank lines.
+			for len(lines) < target {
+				lines = append(lines, " ")
+			}
+		}
+		content = strings.Join(lines, "\n")
 	}
 	return lipgloss.NewStyle().
 		Width(railWidth).

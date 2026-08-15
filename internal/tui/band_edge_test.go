@@ -82,6 +82,37 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	}
 }
 
+// TestModelHistoryWrapsAtTranscriptWidthWithRail pins issue #232 AC4: the
+// history pane must keep wrapping to leave room for the rail (unchanged wrap
+// width) even though the bottom band now spans full width. renderHistory must
+// set its wrap/pane width from transcriptWidth() (rail-shrunk), not from the
+// composer/band width. A prompt whose tail lands beyond transcriptWidth but
+// within the full band must wrap early enough that its tail stays visible in
+// the transcript pane (column < transcriptWidth) instead of being hard-truncated
+// behind the rail.
+func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
+	m := railBandModel(t, 120, 40)
+	fill := strings.Repeat("a", 40)
+	long := fill + " " + fill + " XYZEND" // tail beyond transcriptWidth content, within full band
+	m = typeText(t, m, long)
+	m = submitAndWait(t, m)
+
+	p := plain(view(m))
+	if !strings.Contains(p, "XYZEND") {
+		t.Errorf(
+			"history wrapped at the full band width, truncating the prompt tail %q behind the rail (transcriptWidth=%d bandWidth=%d); must wrap at transcriptWidth",
+			"XYZEND", m.transcriptWidth(), m.bandWidth(),
+		)
+	}
+	// The tail must sit on the transcript side of the rail border, never hidden
+	// at or past column transcriptWidth.
+	for _, ln := range strings.Split(p, "\n") {
+		if i := strings.Index(ln, "XYZEND"); i >= 0 && i >= m.transcriptWidth() {
+			t.Errorf("history tail column %d not below transcriptWidth=%d (rail-shrunk wrap width)", i, m.transcriptWidth())
+		}
+	}
+}
+
 // TestModelRailEndsOneRowAboveBand pins issue #232 AC4: the rail is height-bound
 // by railClampHeight() = height - bandHeight(), so even when the rail content is
 // taller than the room above the band, it clamps to end exactly one row above
@@ -118,6 +149,45 @@ func TestModelRailEndsOneRowAboveBand(t *testing.T) {
 	}
 }
 
+// TestModelRailEndsOneRowAboveBandTall pins issue #232 AC2 at a TALL rail-visible
+// terminal: the right rail must extend to exactly one row above the band top at
+// every terminal height, never overlapping it. On a tall window the ~14-row
+// STATS/CONTEXT/MODEL block is shorter than the room above the band, so styledRail
+// must PAD short content up to the clamp height (railClampHeight()) — not just
+// trim long content as it did pre-#232 — or the rail stops many rows above the
+// band and leaves a dead gap.
+func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
+	// Tall height: the ~14-row rail block leaves ~36 rows between the top and the
+	// band; without padding the rail would stop ~22 rows short of the band.
+	m := railBandModel(t, 120, 40)
+	if !m.railVisible() {
+		t.Fatal("rail must stay visible at 120x40")
+	}
+
+	plain := plain(view(m))
+	sep, _ := bandRowsFrom(plain)
+	if sep < 0 {
+		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+	}
+
+	// The rail's last rendered left-border row must be exactly one above the band.
+	lastRail := -1
+	for i, ln := range strings.Split(plain, "\n") {
+		if strings.Contains(ln, "│") {
+			lastRail = i
+		}
+	}
+	if lastRail < 0 {
+		t.Fatalf("no rail border row in frame:\n%s", plain)
+	}
+	if want := sep - 1; lastRail != want {
+		t.Errorf("rail's last border row = %d, want exactly one row above the band top at row %d (rail must fill down to the band at every height)", lastRail, want)
+	}
+	if lastRail >= sep {
+		t.Error("rail overlaps the band")
+	}
+}
+
 // TestModelComposerCaretStaysCorrectWithRail pins issue #232 AC6: widening the
 // band to the full terminal width leaves the composer at column 0 (band
 // bottom-pinned), so the hardware caret geometry is unchanged with the rail
@@ -138,7 +208,7 @@ func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
 	m = typeText(t, m, "hi")
 	after := caret(t, m)
 	if after.X != 4 || after.Y != bottom {
-		t.Errorf("caret after typing %q with rail = (%d,%d), want (4,%d)", "hi", c.X, c.Y, bottom)
+		t.Errorf("caret after typing %q with rail = (%d,%d), want (4,%d)", "hi", after.X, after.Y, bottom)
 	}
 }
 

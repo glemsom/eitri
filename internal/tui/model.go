@@ -1580,7 +1580,12 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 				emit(msg.reasoning + "\n")
 			}
 		}
-		w := m.composer.Width()
+		// Wrap the history content at the rail-shrunk transcript width, decoupled
+		// from the composer/band width (issue #232 AC4): the band now spans the
+		// full terminal width under the rail, but the history pane must keep
+		// wrapping to leave room for the rail — otherwise long lines wrap at the
+		// full band width and hard-truncate at the rail column.
+		w := m.transcriptWidth()
 		if msg.role == "you" {
 			// User prompts render as a carded bubble: the theme's near-background
 			// tint with breathing padding fills the pane width, so the user side
