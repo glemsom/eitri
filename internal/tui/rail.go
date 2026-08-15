@@ -204,8 +204,9 @@ func (m Model) railVisible() bool {
 // width (or a sane non-composer default before the first resize lands) minus the
 // 2-col gutter, and minus the rail + separator when the rail is visible, so the
 // band sits in the freed rail-shrunk space under the transcript (issue #122 AC3).
-// A small floor keeps the accent separator so it still reads as a line on tiny
-// windows.
+// On an extreme-minimum rail-visible terminal it applies the same hard floor as
+// transcriptWidth so the separator never collapses below the rail-shrunk read
+// width; renderBand clamps a rail-hidden sliver up to 2 separately.
 //
 // bandWidth is the SEAM for issue #232: it is the single full-width source for
 // the edge-to-edge bottom band, deliberately INDEPENDENT of transcriptWidth()
@@ -221,11 +222,13 @@ func (m Model) bandWidth() int {
 	w := base - 2
 	if m.railVisible() {
 		w -= railWidth + 1
-	}
-	// Small floor so the band's accent separator stays a readable line (issue
-	// #232 keeps this seam; it widens the band, never below this floor).
-	if w < 2 {
-		w = 2
+		// Same hard floor transcriptWidth applies (issue #227 AC3): on an
+		// extreme-minimum terminal the band's separator must not collapse below
+		// the rail-shrunk read width, so bandWidth stays byte-identical to the
+		// pre-prefactor value on tiny windows (issue #231 AC3).
+		if w < 20 {
+			w = 20
+		}
 	}
 	return w
 }

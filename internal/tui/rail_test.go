@@ -372,16 +372,31 @@ func TestModelBandWidthMatchesTranscriptWidth(t *testing.T) {
 		Rail:      r,
 	})
 
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
-	m = asModel(t, nm)
-	if !m.railVisible() {
-		t.Fatal("rail must stay visible at 120x30")
-	}
-	if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
-		t.Errorf("bandWidth = %d, transcriptWidth = %d; seam must be byte-identical before #232 (band must stay rail-shrunk)", bw, tw)
-	}
-	if m.bandWidth() < 2 {
-		t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.bandWidth())
+	for _, tc := range []struct {
+		name string
+		w    int
+	}{
+		{"wide", 120},
+		{"narrow", 80},
+		// Extreme-minimum rail-visible windows: the separator must inherit
+		// transcriptWidth's hard floor (20, issue #227 AC3), not collapse to a
+		// sliver — bandWidth stays byte-identical across the degenerate range too
+		// (issue #231 AC3).
+		{"degenerate", 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nm, _ := m.Update(tea.WindowSizeMsg{Width: tc.w, Height: 30})
+			m = asModel(t, nm)
+			if !m.railVisible() {
+				t.Fatalf("rail must stay visible at %dx30", tc.w)
+			}
+			if bw, tw := m.bandWidth(), m.transcriptWidth(); bw != tw {
+				t.Errorf("bandWidth = %d, transcriptWidth = %d; seam must be byte-identical before #232 (band must stay rail-shrunk)", bw, tw)
+			}
+			if m.bandWidth() < 2 {
+				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.bandWidth())
+			}
+		})
 	}
 }
 
