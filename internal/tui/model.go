@@ -694,7 +694,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.copyTranscript()
 				return m, nil
 			}
-			if name, ok := slashCommand(prompt, m.skills); ok {
+			if name, _, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name)
 			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
@@ -1052,23 +1052,35 @@ func (m Model) transcriptText() string {
 }
 
 // slashCommand reports whether prompt is a `/skillname` activation command for a
-// detected skill. It returns the exact skill name and true when the whole line
-// names a detected skill (leading/trailing whitespace already trimmed).
-func slashCommand(prompt string, skills []SkillItem) (string, bool) {
+// detected skill (issue #238). It returns the bare skill name, any trailing args,
+// and ok. A `/skillname` line returns the name with no args; a
+// `/skillname <args>` line splits the args on the first whitespace after the
+// name (trimmed), so the parser recognises name + args while bare `/skillname`
+// still returns a no-args name. Non-command `/...` lines (real paths, unknown
+// skills) fall through with ok=false and are sent as a normal prompt.
+func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool) {
 	if len(skills) == 0 || !strings.HasPrefix(prompt, "/") {
-		return "", false
+		return "", "", false
 	}
-	name := strings.TrimPrefix(prompt, "/")
-	name = strings.TrimSpace(name)
-	if name == "" || strings.ContainsAny(name, " \t") {
-		return "", false
+	// Split on the first whitespace after the leading slash: the head is the
+	// candidate skill name, and any remainder (trimmed) is the trailing args. A
+	// skill-only line (bare `/name`, or `/name ` / `/name\t` whose trailing
+	// whitespace trims away) yields no args.
+	rest := strings.TrimSpace(strings.TrimPrefix(prompt, "/"))
+	name, args = rest, ""
+	if i := strings.IndexAny(rest, " \t"); i >= 0 {
+		name = rest[:i]
+		args = rest[i+1:]
+	}
+	if name == "" {
+		return "", "", false
 	}
 	for _, it := range skills {
 		if it.Name == name {
-			return name, true
+			return name, strings.TrimSpace(args), true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // activateSkill runs one slash-command activation through the SkillsSurface
