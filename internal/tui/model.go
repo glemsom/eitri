@@ -113,9 +113,12 @@ type telemetryUpdateMsg struct {
 	update TelemetryUpdate
 }
 
-// skillDoneMsg reports a slash-command skill activation's result.
+// skillDoneMsg reports a slash-command skill activation's result. args, when
+// non-empty, carries the trailing `/skillname <args>` remainder that must run
+// as a follow-up user turn after the injected skill note (issue #239).
 type skillDoneMsg struct {
 	payload string
+	args    string
 }
 
 // discoverDoneMsg reports the outcome of an on-demand provider model discovery
@@ -721,8 +724,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.copyTranscript()
 				return m, nil
 			}
-			if name, _, ok := slashCommand(prompt, m.skills); ok {
-				return m.activateSkill(name)
+			if name, args, ok := slashCommand(prompt, m.skills); ok {
+				return m.activateSkill(name, args)
 			}
 			m.messages = append(m.messages, message{role: "you", content: prompt})
 			m.busy = true
@@ -878,6 +881,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case skillDoneMsg:
 		m.messages = append(m.messages, message{role: "eitri", content: msgi.payload})
 		m.layout.dirty = true // a skill result appended to the transcript
+		if msgi.args != "" {
+			// A `/skillname <args>` activation queues the args as a normal user
+			// turn AFTER the injected skill note so message order renders
+			// note-then-args (issue #239). Bare `/skillname` has empty args and
+			// dispatches no turn.
+			m.messages = append(m.messages, message{role: "you", content: msgi.args})
+			m.layout.dirty = true
+			if m.stream != nil {
+				return m, tea.Batch(m.turnCmd(msgi.args), streamWait(m.stream), spinnerTick())
+			}
+			return m, m.turnCmd(msgi.args)
+		}
 		return m, nil
 	}
 
@@ -1124,14 +1139,14 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 // activateSkill runs one slash-command activation through the SkillsSurface
 // activation seam (the T8 skill tool) on a detached command and renders the
 // result as an assistant note.
-func (m Model) activateSkill(name string) (tea.Model, tea.Cmd) {
+func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 	m.messages = append(m.messages, message{role: "you", content: "/" + name})
 	m.layout.dirty = true
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.messages = append(m.messages, message{role: "eitri", content: failurePrefix() + "no skill activation available"})
 		return m, nil
 	}
-	return m, skillCmd(m.deps.Skills.Activate, name)
+	return m, skillCmd(m.deps.Skills.Activate, name, args)
 }
 
 // discoverCmd runs one on-demand provider model discovery off the main loop and
@@ -1147,7 +1162,9 @@ func discoverCmd(discover func(ctx context.Context) ([]string, error)) tea.Cmd {
 }
 
 // skillCmd runs a skill activation off the main loop and reports its payload.
-func skillCmd(activate func(ctx context.Context, name string) (string, error), name string) tea.Cmd {
+// args, when non-empty, rides along on skillDoneMsg so the handler can queue
+// the follow-up user turn after injecting the skill note (issue #239).
+func skillCmd(activate func(ctx context.Context, name string) (string, error), name, args string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -1155,7 +1172,7 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 		if err != nil {
 			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
 		}
-		return skillDoneMsg{payload: payload}
+		return skillDoneMsg{payload: payload, args: args}
 	})
 }
 
