@@ -283,6 +283,120 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 // carry the single agent accent, the error pane uses the semantic error color,
 // and every color is a hex value lipgloss adapts to any color profile — so the
 // surface degrades safely on a non-truecolor terminal (issue #122 AC4/AC5).
+// cellBGFill resolves an ANSI line into per-cell booleans: whether the bubble
+// background is active at each display column. It walks SGR sequences tracking
+// background state (resets clear it; a 48;2/48;5/40-47/100-107 sets it), which
+// is exactly how a terminal renders the card. Foreground-only and unknown
+// params leave the background untouched, mirroring real cell semantics.
+func cellBGFill(s string) []bool {
+	out := []bool{}
+	bg := false
+	runes := []rune(s)
+	i := 0
+	sgrParams := func(p string) []int {
+		var out []int
+		for _, f := range strings.Split(p, ";") {
+			v := 0
+			for _, c := range f {
+				v = v*10 + int(c-'0')
+			}
+			out = append(out, v)
+		}
+		return out
+	}
+	for i < len(runes) {
+		r := runes[i]
+		if r == '\x1b' {
+			i++
+			if i < len(runes) && runes[i] == '[' {
+				i++
+				param := ""
+				for i < len(runes) && !(runes[i] >= 'a' && runes[i] <= 'z') {
+					param += string(runes[i])
+					i++
+				}
+				if i < len(runes) && runes[i] == 'm' {
+					i++
+					nums := sgrParams(param)
+					n := len(nums)
+					j := 0
+					for j < n {
+						switch v := nums[j]; {
+						case v == 0 || v == 49:
+							bg = false
+							j++
+						case v >= 40 && v <= 47 || v >= 100 && v <= 107:
+							bg = true
+							j++
+						case v == 48 && j+1 < n:
+							bg = true
+							if nums[j+1] == 2 && j+4 < n {
+								j += 5
+							} else {
+								j += 2
+							}
+						case v == 38 && j+1 < n:
+							if nums[j+1] == 2 && j+4 < n {
+								j += 5
+							} else {
+								j += 2
+							}
+						default:
+							j++
+						}
+					}
+				}
+			}
+			continue
+		}
+		out = append(out, bg)
+		i++
+	}
+	return out
+}
+
+// TestModel_userBubbleFillsFullWidth is the regression test for the user-prompt
+// carded bubble (benchmark §4.1): glamour's per-token SGR resets clear lipgloss's
+// Background, so the fill only ever lands in the 2-col gutters and the prompt
+// text falls through to the default terminal background — a ragged, un-filled
+// box, most visible over a code block. A prompt containing a code block must
+// render every cell of the card with the bubble background. The transcript's
+// right scroll/follow gutter (transcript width minus composer width) is out of
+// scope: only the card's own columns are asserted.
+func TestModel_userBubbleFillsFullWidth(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer"}, nil
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "before\n```go\nx:=\"y\"\n```\nafter")
+	m = submitAndWait(t, m)
+
+	bw := m.composer.Width() // the card's own width, in columns
+	for row, ln := range strings.Split(view(m), "\n") {
+		cells := cellBGFill(ln)
+		if len(cells) < bw {
+			continue // not a card row
+		}
+		anyBg := false
+		for _, c := range cells {
+			if c {
+				anyBg = true
+				break
+			}
+		}
+		if !anyBg {
+			continue // welcome/band rows outside the prompt card
+		}
+		for col := 0; col < bw; col++ {
+			if !cells[col] {
+				t.Fatalf("user bubble row %d col %d lacks background (background not filling box); row=%q", row, col, ln)
+			}
+		}
+	}
+}
+
 func TestModel_stylingPaletteCentralized(t *testing.T) {
 	if got := defaultTheme.agentPaneStyle.GetBorderLeftForeground(); got != defaultTheme.accent {
 		t.Errorf("agent pane border foreground = %v, want accent %v", got, defaultTheme.accent)

@@ -142,6 +142,78 @@ func remapMarkdownColors(s string, th Theme) string {
 	})
 }
 
+// bubbleBgSGR returns the SGR command that asserts the theme's bubble tint as
+// the active background (48;2;R;G;B). It is the token that keeps glamour's
+// per-token SGR output seated on the carded fill: glamour emits a fresh
+// foreground color plus a full/empty SGR reset for essentially every styled
+// run, and that reset also clears any running background. Without a re-assertion
+// after each reset, the bubble background only ever shows in the 2-col gutters
+// lipgloss paints and the prompt text falls through to the terminal's default
+// background — a ragged un-filled card (benchmark §4.1).
+func bubbleBgSGR(th Theme) string {
+	r, g, b, _ := th.bubble.RGBA() // 16-bit channels per image/color
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
+}
+
+// isSGRReset reports whether an SGR params list is a rendition reset — the
+// empty list (\x1b[m), explicit 0, or an explicit default-foreground/background
+// (39/49) — any of which would clear the carded bubble background if left alone.
+// A 39 (default fg) keeps the background, but glamour never emits it in a way
+// that matters here; treating it as a reset is harmless and keeps the fill safe.
+func isSGRReset(params []string) bool {
+	if len(params) == 0 {
+		return true
+	}
+	if len(params) == 1 {
+		switch params[0] {
+		case "", "0", "39", "49":
+			return true
+		}
+	}
+	return false
+}
+
+// reattachBubbleBackground rewrites a glamour-rendered markdown block so the
+// theme's bubble fill survives its SGR resets: every glamour reset is followed
+// by a re-assertion of the bubble background, so text and inline styled runs all
+// sit on the carded fill instead of default terminal background. It runs only on
+// the user-prompt card (the agent pane has no Background and must stay as-is).
+func reattachBubbleBackground(s string, th Theme) string {
+	bg := bubbleBgSGR(th)
+	return sgrParamRe.ReplaceAllStringFunc(s, func(seq string) string {
+		params := strings.SplitN(seq[2:len(seq)-1], ";", -1)
+		if !isSGRReset(params) {
+			return seq
+		}
+		return seq + bg
+	})
+}
+
+// renderUserPromptCard renders a user prompt as the carded bubble. glamour's
+// per-token SGR resets would clear the card's Background, so reattachBubbleBackground
+// re-asserts the bubble tint after every reset. glamour also pre-pads rows and
+// lipgloss's Width() alignment then emits a couple of unstyled trailing cells at
+// the right edge, so every glamour row is padded to the content width (w-4) with
+// the bubble background and Width() is not used — lipgloss's 2-col padding closes
+// the box with no extra width-fill left to trip on (benchmark §4.1).
+func renderUserPromptCard(th Theme, md string, w int) string {
+	out := reattachBubbleBackground(md, th)
+	bg := bubbleBgSGR(th)
+	cw := w - 4 // bubble content width: Width(w) minus 2-left + 2-right padding
+	if cw > 0 {
+		var lines []string
+		for _, ln := range strings.Split(out, "\n") {
+			pad := cw - lipgloss.Width(ln)
+			if pad > 0 {
+				ln += bg + strings.Repeat(" ", pad)
+			}
+			lines = append(lines, ln)
+		}
+		out = strings.Join(lines, "\n")
+	}
+	return th.userBubbleStyle.Render(strings.TrimRight(out, "\n"))
+}
+
 // autoTheme resolves the "auto" theme once and caches it: background
 // detection queries the terminal, and RenderMarkdown runs per frame during a
 // stream, so the query must not repeat every render (termenv v1 cached the

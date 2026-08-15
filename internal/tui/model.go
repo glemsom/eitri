@@ -1548,7 +1548,7 @@ func (m Model) renderHistory(b *strings.Builder, toolRows *[]toolRowRange) {
 			// markdown wraps inside the padding at pane width minus the 2-col
 			// gutter; the fill always spans the pane, never hugging ragged lines.
 			md, _ := RenderMarkdown(msg.content, w-4, m.deps.Config.Theme)
-			bubble := m.theme.userBubbleStyle.Width(w).Render(strings.TrimRight(md, "\n"))
+			bubble := renderUserPromptCard(m.theme, md, w)
 			emit(bubble + "\n")
 		} else {
 			// Left-bordered agent pane (issue #122 AC1): the answer renders in
