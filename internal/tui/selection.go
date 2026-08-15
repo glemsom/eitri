@@ -106,10 +106,13 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 
 // mouseToContent maps a screen cell to history-content coordinates: line is
 // the full content line under the pointer (viewport offset + row within the
-// scroll region) and col the cell within that line's plain text, clamped to
-// the rendered content. ok is false when the pointer is outside the history
-// viewport region — over the review overlay above it or the fixed bottom band
-// below it — or the viewport has not been sized yet.
+// scroll region) and col the CELL within that line's plain text, clamped to
+// the rendered content. The mouse X is in screen display-width space; the
+// returned col is converted to a RUNE INDEX into the line so every downstream
+// consumer (highlight and copy) shares one coordinate space even when the row
+// contains wide/multibyte characters (issue #261). ok is false when the pointer
+// is outside the history viewport region — over the review overlay above it or
+// the fixed bottom band below it — or the viewport has not been sized yet.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	vp := m.tx.histViewport
 	if vp == nil || vp.Height() <= 0 || m.tx.height <= 0 {
@@ -154,15 +157,50 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	if col > width-1 {
 		col = width - 1
 	}
+	// Convert the clamped display-width column to a rune index so the stored
+	// selection column is rune-safe and width-aware end to end (issue #261).
+	col = colToRuneIndex(m.tx.plainLines()[line], col)
 	return line, col, true
+}
+
+// colToRuneIndex converts a display-width column (the client cell space a mouse
+// event reports, and the space lipgloss counts) into a rune index into the
+// plain line. Wide characters such as CJK, emoji, or unicode arrows occupy more
+// display cells than runes (e.g. 你 = 2 display cells but 1 rune), so this walk
+// sums each rune's display width and stops at the rune whose cell range
+// contains the requested column, clamping past-the-end columns to the last
+// rune. Selection coordinates are rune-indexed throughout the drag-select
+// pipeline (see mouseToContent/copySelection/highlightSelection), so this
+// conversion keeps highlight and copy aligned (issue #261).
+func colToRuneIndex(line string, displayCol int) int {
+	rs := []rune(line)
+	if len(rs) == 0 {
+		return 0
+	}
+	cur := 0
+	for i, r := range rs {
+		w := lipgloss.Width(string(r))
+		if displayCol < cur+w {
+			return i
+		}
+		cur += w
+	}
+	// Past the end of the line's content: clamp to the last rune so a drag to
+	// a short line's trailing padded cells selects up to its final rune.
+	return len(rs) - 1
 }
 
 // copySelection copies the plain text covered by a finished drag selection to
 // the clipboard through the same seam as Ctrl+O and /copy (issue #124 AC2):
-// a single-line range copies the cell substring; a multi-line range joins the
-// per-row slices with newlines, reproducing exactly the wrapped rows the user
-// saw on screen. The outcome is surfaced as the same band status note
-// ("copied" / "copy failed: …") the other copy paths use.
+// a single-line range copies the rune substring; a multi-line range joins the
+// per-row rune slices with newlines, reproducing exactly the wrapped rows the
+// user saw on screen. Selection columns are RUNE INDEXES (issue #261), so
+// slices are taken from []rune — never from the raw bytes — keeping the copy
+// byte-for-byte correct for wide/multibyte characters and never splitting a
+// multibyte rune. Boundaries that exceed a row's rune length are rejected
+// gracefully ("copy failed: selection out of range"). The outcome is surfaced
+// as the same band status note ("copied" / "copy failed: …") the other copy
+// paths use.
 func (m *Model) copySelection(d dragSelect) {
 	startLine, startCol, endLine, endCol := d.selRange()
 	lines := m.tx.plainLines()
@@ -176,16 +214,17 @@ func (m *Model) copySelection(d dragSelect) {
 	}
 	var b strings.Builder
 	if startLine == endLine {
-		s := lines[startLine]
-		if startCol < 0 || startCol >= len(s) || endCol < 0 || endCol >= len(s) {
+		rs := []rune(lines[startLine])
+		if startCol < 0 || startCol >= len(rs) || endCol < 0 || endCol >= len(rs) || startCol > endCol {
 			m.savedMsg = "copy failed: selection out of range"
 			return
 		}
-		b.WriteString(s[startCol : endCol+1])
+		b.WriteString(string(rs[startCol : endCol+1]))
 	} else {
-		// First row: from startCol to the end of the row.
-		if startCol >= 0 && startCol < len(lines[startLine]) {
-			b.WriteString(lines[startLine][startCol:])
+		// First row: from startCol to the end of the row (rune slice, never bytes).
+		first := []rune(lines[startLine])
+		if startCol >= 0 && startCol < len(first) {
+			b.WriteString(string(first[startCol:]))
 		}
 		for i := startLine + 1; i < endLine && i < len(lines); i++ {
 			b.WriteString("\n")
@@ -193,8 +232,9 @@ func (m *Model) copySelection(d dragSelect) {
 		}
 		if endLine < len(lines) {
 			b.WriteString("\n")
-			if endCol >= 0 && endCol < len(lines[endLine]) {
-				b.WriteString(lines[endLine][:endCol+1])
+			last := []rune(lines[endLine])
+			if endCol >= 0 && endCol < len(last) {
+				b.WriteString(string(last[:endCol+1]))
 			}
 		}
 	}
