@@ -1282,35 +1282,6 @@ func (m Model) viewString() string {
 	return newTranscript(m).viewWithRail(m.renderPane(), m.bandHeight())
 }
 
-// surfaceWithRail merges the rendered right rail into a full-width pane so the
-// bottom band stays edge-to-edge (issue #232 AC1/AC4): the band is a
-// bottom-anchored region spanning the whole terminal width, so the rail cannot
-// sit to its right the way it sits beside the transcript. Instead the rail
-// floats ABOVE the band — its rows land in the top railClampHeight() rows of the
-// pane, in the railWidth column strip at the right, exactly the room the
-// rail-shrunk transcriptWidth leaves on each history row. The band rows (below
-// the rail's extent) are untouched, so the separator/status/composer run the
-// full width; the rail never overlaps them. pane is the renderPane output; rail
-// is styledRail output already clamped to railClampHeight rows.
-//
-// Before the first resize lands the height is unknown, so there is no pinned
-// band for the rail to float above; the rail falls back to joining the pane's
-// right, preserved from the pre-#232 layout for lean embeds that never size.
-func (m Model) surfaceWithRail(pane, rail string) string {
-	return newTranscript(m).surfaceWithRail(pane, rail, m.bandHeight())
-}
-
-// railClampHeight returns the maximum number of rows the right context rail may
-// occupy so it matches the history region's visible height (issue T05 AC1):
-// both panes clamp to the rows left over by the fixed bottom band, so the two
-// form one coherent row. It is -1 before the first resize lands, leaving the
-// rail unclamped — mirroring renderHistoryViewport; a non-negative result is
-// the actual row budget (0 when the band fills the whole terminal, in which
-// case the rail renders nothing).
-func (m Model) railClampHeight() int {
-	return newTranscript(m).railClampHeight(m.bandHeight())
-}
-
 // maxComposerRows is how tall the composer may grow inside the fixed bottom
 // band before it scrolls internally (issue #121 AC5): a long draft never
 // spills into the transcript — the textarea's own viewport scrolls past this
