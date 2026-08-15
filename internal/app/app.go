@@ -239,8 +239,8 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
 
 	// Build the interactive TUI run when no batch prompt is given. It sits on
-	// the same engine, session transcript, and tool registry as batch (docs
-	// spec.md §9). First the non-interactive guard (T7, issue #125) checks the
+	// the same engine, session transcript, and tool registry as batch.
+	// First the non-interactive guard (T7, issue #125) checks the
 	// host terminal: piped stdout, a dumb/unset TERM, or a sub-threshold window
 	// refuses the full-screen TUI with a message pointing at batch mode, so no
 	// TUI reflow is ever written into a pipe or a dumb terminal. The batch

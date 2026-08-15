@@ -52,8 +52,8 @@ func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refres
 
 // SupportedGenerationControls declares that Copilot can honor the Generation
 // Budget control, since it streams through the same Chat-Completions wire as the
-// primary provider and emits max_completion_tokens on special turns (docs/spec
-// §13 / issue #60). The other three generation controls are not supported here.
+// primary provider and emits max_completion_tokens on special turns
+// (issue #60). The other three generation controls are not supported here.
 func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget}, nil
 }
