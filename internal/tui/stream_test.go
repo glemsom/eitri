@@ -218,3 +218,115 @@ func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
 		t.Errorf("streaming content carries an alt-screen sequence (issue #83 AC4)")
 	}
 }
+
+// TestModel_expandAllKeepsThinkingExpandedOnAnswer asserts the Ctrl+E
+// expanded-view mode (issue #273) overrides thinking auto-collapse: with the
+// mode ON a turn's reasoning block stays expanded after the final answer lands
+// (issue #274, AC1) and renders expanded while streaming (AC5).
+func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+
+	// Turn the Ctrl+E expanded-view mode ON before the turn starts.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	// Reasoning streams live and, with the mode ON, renders expanded.
+	m = applyReasoningDelta(t, m, "hidden reasoning")
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Fatalf("mode ON: streaming reasoning should render expanded, got: %q", view(m))
+	}
+
+	// The final answer lands; with the mode ON the block must stay expanded
+	// (the today auto-collapse reset does not fire).
+	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
+	m = asModel(t, nm)
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("mode ON: thinking block should stay expanded after the answer lands, got: %q", view(m))
+	}
+}
+
+// TestModel_expandAllNewTurnRendersExpanded asserts a turn STARTED while the
+// Ctrl+E mode is ON renders its reasoning expanded immediately — no per-turn
+// thinkingExpanded opt-in is needed because the mode overrides the default
+// auto-collapse (issue #274, AC2).
+func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+
+	// Complete one turn with the mode ON, then start a fresh one.
+	m = typeText(t, m, "first")
+	m, _ = submitBusy(t, m)
+	m = applyReasoningDelta(t, m, "first reasoning")
+	m = asModel(t, mustUpdate(t, m, turnDoneMsg{prompt: "first", answer: "first answer", reasoning: "first reasoning"}))
+
+	m = typeText(t, m, "second")
+	m, _ = submitBusy(t, m)
+	m = applyReasoningDelta(t, m, "second reasoning")
+	if !strings.Contains(view(m), "second reasoning") {
+		t.Errorf("mode ON: a newly started turn's thinking should render expanded, got: %q", view(m))
+	}
+}
+
+// TestModel_expandAllOffCollapsesThinking asserts toggling the Ctrl+E mode OFF
+// collapses reasoning blocks back to the one-line hint (issue #274, AC4): a
+// block held expanded only by the mode renders collapsed once the mode is off.
+func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	m = applyReasoningDelta(t, m, "hidden reasoning")
+	m = asModel(t, mustUpdate(t, m, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Fatalf("mode ON: block should be expanded before toggling off, got: %q", view(m))
+	}
+
+	// Flip the mode OFF: the block collapses back to the hint.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("toggling mode OFF should collapse thinking back to a hint, got: %q", view(m))
+	}
+}
+
+// TestModel_expandAllTabToggleIndependent asserts the per-turn tab thinking
+// toggle stays independent of the Ctrl+E mode: in mode ON tab still collapses
+// the focused block (mirroring the tool card per-entry override), and in mode
+// OFF it behaves exactly as today (issue #274, AC6).
+func TestModel_expandAllTabToggleIndependent(t *testing.T) {
+	// Mode ON: tab collapses then re-expands a single block.
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	m = applyReasoningDelta(t, m, "hidden reasoning")
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Fatalf("mode ON: block should render expanded before tab, got: %q", view(m))
+	}
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("tab should collapse one thinking block even in mode ON, got: %q", view(m))
+	}
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !strings.Contains(view(m), "hidden reasoning") {
+		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
+	}
+
+	// Mode OFF: tab obeys the classic per-turn toggle and the answer aut-collapses.
+	m2 := newStreamingModel()
+	m2 = resize(t, m2)
+	m2 = typeText(t, m2, "hi")
+	m2, _ = submitBusy(t, m2)
+	m2 = applyReasoningDelta(t, m2, "hidden reasoning")
+	if strings.Contains(view(m2), "hidden reasoning") {
+		t.Fatalf("mode OFF: streaming reasoning should stay collapsed, got: %q", view(m2))
+	}
+	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !strings.Contains(view(m2), "hidden reasoning") {
+		t.Errorf("mode OFF: tab should expand the thinking block, got: %q", view(m2))
+	}
+}

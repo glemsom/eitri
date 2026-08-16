@@ -96,6 +96,56 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 	}
 }
 
+// TestTranscript_expandAllOverridesThinkingExpansion asserts the Ctrl+E
+// expanded-view mode (issue #273) drives the reasoning block's effective
+// expansion at the render seam (issue #274): with the mode ON the reasoning body
+// renders even when the per-turn thinkingExpanded flag is false (the default
+// auto-collapse), a per-turn collapse override (tab while mode ON) still
+// collapses it, and with the mode OFF only the per-turn flag decides.
+func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	render := func(expandAll bool, thinkingExpanded bool, thinkingCollapsed bool) string {
+		var hist strings.Builder
+		tx := Transcript{
+			theme:           th,
+			configTheme:     config.DefaultTheme,
+			reasoningEffort: "medium",
+			expandAll:       expandAll,
+			messages: []message{{
+				role:              "eitri",
+				content:           "final answer",
+				reasoning:         "the reasoning body",
+				thinkingRequested: true,
+				thinkingExpanded:  thinkingExpanded,
+				thinkingCollapsed: thinkingCollapsed,
+			}},
+			histFollow:   true,
+			histViewport: newHistoryViewport(),
+		}
+		tx.renderHistory(&hist, nil, nil)
+		return hist.String()
+	}
+
+	// Mode OFF, per-turn collapsed: matches today (hint only, no body).
+	if off := render(false, false, false); strings.Contains(off, "the reasoning body") {
+		t.Errorf("mode OFF collapsed: must not render the body, got: %q", off)
+	}
+	// Mode ON overrides the default auto-collapse: body renders expanded.
+	if on := render(true, false, false); !strings.Contains(on, "the reasoning body") {
+		t.Errorf("mode ON must render the body even when per-turn flag is false, got: %q", on)
+	}
+	// Mode ON with a per-turn collapse override (tab): that block collapses.
+	if over := render(true, false, true); strings.Contains(over, "the reasoning body") {
+		t.Errorf("mode ON with a collapse override must render collapsed, got: %q", over)
+	}
+	// Mode OFF still honors tab-expanded per-turn flag (independent of mode).
+	if exp := render(false, true, false); !strings.Contains(exp, "the reasoning body") {
+		t.Errorf("mode OFF per-turn expanded must render the body, got: %q", exp)
+	}
+}
+
 // TestTranscript_ownsRailSurface proves the right-context rail surface — its
 // visibility, band/transcript width accounting, clamp height, and render — now
 // lives on the Transcript value (issue #247): a Transcript constructed directly
