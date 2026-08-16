@@ -384,3 +384,51 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 		t.Errorf("failure entry must render ✗, got %q", got)
 	}
 }
+
+// TestToolLog_RenderBytesTruncatedHint asserts a byte-capped delivery renders
+// a "(+N bytes truncated)" hint on the collapsed summary line when bytes were
+// dropped, and merges with the existing "(+N more)" hint when both line and
+// byte truncation happened (issue #286: never silent for the user either).
+func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\nc\n+3 more\n",
+		Lines: 4, Dropped: 3, Compressed: true, BytesDropped: 2048}})
+
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
+		t.Errorf("collapsed summary missing merged truncated hint, got %q", got)
+	}
+
+	// Byte truncation alone (no line marker): only the bytes hint renders.
+	l2 := toolLog{}
+	l2.SetAnchor(0)
+	l2.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
+	l2.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
+		Lines: 1, BytesDropped: 4444}})
+	got2, _ := l2.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if !strings.Contains(got2, "1 line (+4444 bytes truncated)") {
+		t.Errorf("collapsed summary missing bytes-only hint, got %q", got2)
+	}
+	if strings.Contains(got2, "(+0 more)") {
+		t.Errorf("bytes-only hint must not render a stale line-marker hint, got %q", got2)
+	}
+}
+
+// TestToolLog_ExpandedRendersFullRawResult asserts the expanded view renders
+// the entry's full pre-cap Result even when the delivered form was byte-capped
+// (issue #286 AC4: nothing silently truncated on the expand path).
+func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "RAW FULL RESULT",
+		Lines: 1, BytesDropped: 9000, Delivered: "truncated head +N bytes truncated"}})
+	l.Toggle(0)
+
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if !strings.Contains(got, "RAW FULL RESULT") {
+		t.Errorf("expanded view must render the full raw result, got %q", got)
+	}
+}
