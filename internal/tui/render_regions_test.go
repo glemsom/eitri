@@ -9,6 +9,49 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// TestModel_expandedViewEditCardRendersInlineDiff asserts the Ctrl+E
+// expanded-view mode renders an edit/write card as the before→after inline
+// diff inside the card frame, and that toggling the mode off restores the
+// collapsed [+N,−M] summary (issue #275 AC through the transcript seam).
+func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
+	feed := NewToolFeed()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: feed,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "edit it")
+	m = submitAndWait(t, m)
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"internal/auth.go"}`}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
+		Name: "edit", Result: "Edit applied\n", Added: 1, Removed: 1,
+		Before: "package auth\n\nfunc Old() {}\n", After: "package auth\n\nfunc New() {}\n", Path: "internal/auth.go",
+	}})
+
+	// Collapsed: the head keeps the [+N,−M] delta tag and the old/new bodies
+	// never render.
+	collapsed := view(m)
+	if !strings.Contains(collapsed, "[+1, −1]") {
+		t.Errorf("collapsed card must keep the delta tag, got: %q", collapsed)
+	}
+	if strings.Contains(collapsed, "func Old") || strings.Contains(collapsed, "func New") {
+		t.Errorf("collapsed card must not leak before/after content, got: %q", collapsed)
+	}
+
+	// Expanded view (Ctrl+E): the card renders the inline diff instead of the
+	// raw result dump, framed by the card's left border.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	strip := ansiStrip(view(m))
+	if !strings.Contains(strip, "-func Old() {}") || !strings.Contains(strip, "+func New() {}") {
+		t.Errorf("expanded-view edit card must render the inline diff, got:\n%s", strip)
+	}
+	if !strings.Contains(strip, "@@ -1,3 +1,3 @@") {
+		t.Errorf("expanded-view edit card must render git-style hunk headers, got:\n%s", strip)
+	}
+}
+
 // TestRenderRegions_HistoryVsBandSeparation asserts the regioned render seam
 // (issue T01): the history is produced by the scroll region (renderHistory) and
 // the status strip + composer by the fixed band

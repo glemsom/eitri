@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/glemsom/eitri/internal/diff"
 )
 
 // toolEntry is one rendered tool call in the transcript (issue #84): the tool
@@ -235,28 +237,19 @@ func (l toolLog) Review() []reviewEntry {
 		if te.path == "" {
 			continue
 		}
-		status := "modified"
-		switch {
-		case te.before == "" && te.after != "":
-			status = "added"
-		case te.before != "" && te.after == "":
-			status = "deleted"
-		}
+		entry := reviewEntryFromTool(te)
 		idx, ok := byPath[te.path]
 		if !ok {
 			byPath[te.path] = len(files)
-			files = append(files, reviewEntry{
-				path: te.path, before: te.before, after: te.after,
-				status: status, added: te.added, removed: te.removed,
-			})
+			files = append(files, entry)
 			continue
 		}
 		// Most recent state for an already-listed file wins.
-		files[idx].before = te.before
-		files[idx].after = te.after
-		files[idx].status = status
-		files[idx].added = te.added
-		files[idx].removed = te.removed
+		files[idx].before = entry.before
+		files[idx].after = entry.after
+		files[idx].status = entry.status
+		files[idx].added = entry.added
+		files[idx].removed = entry.removed
 	}
 	return files
 }
@@ -447,17 +440,55 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	// Expanded: the full result framed as a card — a left border in the
 	// entry's category hue with the content plain, so an expanded tool reads
 	// as one designed block instead of a raw text dump (benchmark §4.1: tool
-	// cards; the border color repeats the label's category color).
+	// cards; the border color repeats the label's category color). A
+	// file-mutating edit/write whose before/after snapshot the engine captured
+	// (issue #90) renders its inline diff instead of the result dump (issue
+	// #275): the same pure-Go diff engine + word emphasis the review panel
+	// uses, inside the card's frame. An edit/write with no captured content
+	// falls back to the [+N, −M] count summary (never the raw dump), matching
+	// the review projection's no-diff handling.
+	if te.name == "edit" || te.name == "write" {
+		frame := cardFrame(th, te)
+		entry := reviewEntryFromTool(te)
+		if te.before == "" && te.after == "" {
+			b.WriteString(frame.Render(strings.TrimRight(renderCountSummary(entry, th), "\n")))
+		} else {
+			b.WriteString(frame.Render(strings.TrimRight(renderToolCardDiff(entry, th), "\n")))
+		}
+		b.WriteString("\n")
+		return b.String()
+	}
 	if te.result != "" {
-		frame := lipgloss.NewStyle().
-			Border(lipgloss.Border{Left: g("│", "|")}).
-			BorderLeft(true).
-			PaddingLeft(1).
-			BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
+		frame := cardFrame(th, te)
 		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// cardFrame is the expanded tool card's frame: a left border in the entry's
+// category hue, shared by the result-dump and inline-diff content paths so
+// both render with the same designed block look.
+func cardFrame(th Theme, te toolEntry) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.Border{Left: g("│", "|")}).
+		BorderLeft(true).
+		PaddingLeft(1).
+		BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
+}
+
+// renderToolCardDiff renders a file-mutating entry's before→after content as
+// an inline diff — the git-style @@ hunk headers plus +/-/context lines with
+// word-level emphasis on modified pairs, exactly the review panel's renderDiff
+// — so the expanded tool card shows the change instead of the raw result dump
+// (issue #275). A path with no diffable content (the engine couldn't snapshot
+// it) falls back to the count summary, matching the review projection.
+func renderToolCardDiff(f reviewEntry, th Theme) string {
+	if h := diff.Diff(f.before, f.after); len(h) > 0 {
+		f.hunks = h
+		return renderDiff(f, th)
+	}
+	return renderCountSummary(f, th)
 }
 
 // deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
