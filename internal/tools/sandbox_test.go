@@ -46,6 +46,9 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		"--share-net", // ADR-0001 decision 1: host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
+		// Issue #271: the sanitized, user-owned ssh_config.d shadows the system
+		// files (host-root, nobody-owned in-cage) so ssh -G / git-over-ssh work.
+		"--ro-bind", "/tmp/eitri-abc/etc-ssh-config.d", "/etc/ssh/ssh_config.d",
 		"--proc", "/proc",
 		"--dev", "/dev",
 		"--tmpfs", "/dev/shm",
@@ -93,6 +96,38 @@ func TestSandboxRunPropagatesError(t *testing.T) {
 	}
 }
 
+// TestSandboxRegistersSshConfigMount guards the regression from issue #271:
+// a user-owned sanitized ssh_config.d must be included in the bwrap argv so
+// ssh -G is not caged to the host-root (nobody-owned in-cage) /etc/ssh tree.
+func TestSandboxRegistersSshConfigMount(t *testing.T) {
+	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
+	tempHost := t.TempDir()
+	sb := NewSandbox("/ws", tempHost, rr)
+	if _, err := sb.Run(context.Background(), "true"); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	argv := rr.calls[0]
+	sshSrc := tempHost + string(filepath.Separator) + sshConfigDirName
+	if !hasArgvPair(argv, "--ro-bind", sshSrc, "/etc/ssh/ssh_config.d") {
+		t.Fatalf("argv does not bind sanitized ssh config over /etc/ssh/ssh_config.d: %v", argv)
+	}
+	// Root stays read-only; the override is a ro-bind too.
+	if !hasArgvPair(argv, "--ro-bind", "/", "/") {
+		t.Fatalf("root is not re-mounted read-only: %v", argv)
+	}
+}
+
+// hasArgvPair reports whether argv contains a bwrap option directly followed by
+// src and dst, in that order.
+func hasArgvPair(argv []string, opt, src, dst string) bool {
+	for i, a := range argv {
+		if a == opt && i+2 < len(argv) && argv[i+1] == src && argv[i+2] == dst {
+			return true
+		}
+	}
+	return false
+}
+
 // TestSandboxRealBwrapIntegration runs an actual bash command inside the real
 // bubblewrap cage, verifying the workspace is writable and /tmp is remapped to
 // the session temp. Skipped when sudo-less CI lacks bwrap; our dev host has it.
@@ -136,6 +171,41 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	// Private writable /dev/shm.
 	if _, err := sb.Run(context.Background(), "touch /dev/shm/shm-probe && test -f /dev/shm/shm-probe || exit 1"); err != nil {
 		t.Fatalf("sandbox /dev/shm not writable: %v", err)
+	}
+	// Issue #271: the sanitized, user-owned ssh_config.d is bound over the system
+	// one, so ssh -G (which checks ownership of the include files) must succeed
+	// inside the cage. On hosts without ssh the whole integration is moot.
+	sshBin, _ := exec.LookPath("ssh")
+	if sshBin != "" {
+		if _, err := sb.Run(context.Background(), "ssh -G github.com >/dev/null"); err != nil {
+			t.Fatalf("ssh -G inside sandbox failed (issue #271): %v", err)
+		}
+	} else {
+		t.Log("ssh not present; skipping issue #271 ssh -G regression check")
+	}
+
+	// Issue #271 acceptance also requires git-over-ssh to work inside the cage,
+	// which exercises the same OpenSSH ownership check on the include files. Pre-
+	// fix, `git ls-remote` failed with "Bad owner or permissions on
+	// /etc/ssh/ssh_config.d/..." (exit 128). We intentionally do NOT assert a
+	// strict exit 0 here: the live remote depends on a reachable network and the
+	// user's ssh credentials, both of which may be absent in CI. The specific
+	// regression this guards is the *absence of the ownership error*; any other
+	// failure (no network, no creds) is environmental and must not fail the test.
+	gitBin, _ := exec.LookPath("git")
+	if gitBin != "" && sshBin != "" {
+		o, err := sb.Run(context.Background(), "git ls-remote git@github.com:glemsom/eitri.git >/dev/null")
+		switch {
+		case err == nil:
+			// Network + creds were available; ownership fix verified end-to-end.
+		case strings.Contains(o.Stderr, "Bad owner or permissions"):
+			t.Fatalf("git ls-remote hit the issue #271 ownership error inside the cage: %v\n%s", err, o.Stderr)
+		default:
+			// Unrelated env failure (no network/creds); not a #271 regression.
+			t.Logf("git ls-remote not verifiable (no network/creds): %v", err)
+		}
+	} else {
+		t.Log("git or ssh not present; skipping issue #271 git ls-remote regression check")
 	}
 }
 
