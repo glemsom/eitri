@@ -115,6 +115,13 @@ type message struct {
 	// (issue #85): it defaults false (auto-collapsed) so reasoning never clogs
 	// the final reply, and collapses back when the turn's answer lands.
 	thinkingExpanded bool
+	// thinkingCollapsed is a per-turn collapse override that keeps this turn's
+	// reasoning block collapsed even while the global Ctrl+E expanded-view mode
+	// is ON (issue #274). It mirrors the tool log's collapsedOverride: with the
+	// mode ON the tab thinking toggle flips this to collapse/re-expand a single
+	// block independent of the mode, and the effective expansion computed at
+	// render time resolves it.
+	thinkingCollapsed bool
 }
 
 type turnDoneMsg struct {
@@ -714,17 +721,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The messages and layout belong to the owned Transcript (issue #248).
 			if m.curStream >= 0 && m.curStream < len(m.tx.messages) {
 				// During a stream, target the in-progress assistant message.
-				m.tx.messages[m.curStream].thinkingExpanded = !m.tx.messages[m.curStream].thinkingExpanded
+				m.tx.toggleThinking(m.curStream)
 			} else {
-				// Otherwise expand/collapse the most recent assistant (eitri) message.
+				// Otherwise toggle the most recent assistant (eitri) message.
 				for i := len(m.tx.messages) - 1; i >= 0; i-- {
 					if m.tx.messages[i].role != "you" {
-						m.tx.messages[i].thinkingExpanded = !m.tx.messages[i].thinkingExpanded
+						m.tx.toggleThinking(i)
 						break
 					}
 				}
 			}
-			m.tx.layout.dirty = true // a thinking block expanded/collapsed changes rows
 			return m, nil
 		}
 		// The Ctrl+E expanded-view toggle (issue #273) is handled as a dedicated
@@ -790,7 +796,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Auto-collapse the thinking block once the turn's final answer lands
 			// (issue #85 AC3): if the user expanded it mid-reasoning to watch, it
 			// settles back to the one-line hint so the styled answer takes focus.
-			m.tx.messages[m.curStream].thinkingExpanded = false
+			// The Ctrl+E expanded-view mode (issue #273) overrides this (issue
+			// #274): while the mode is ON the reasoning block stays expanded;
+			// the reset only fires when the mode is OFF.
+			if !m.tx.expandAll {
+				m.tx.messages[m.curStream].thinkingExpanded = false
+			}
 			m.curStream = -1
 		} else {
 			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning, thinkingRequested: m.deps.Config.ThinkingEnabled})

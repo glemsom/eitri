@@ -406,7 +406,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		// state at request time, never re-sniffed from config here.
 		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
 			emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
-			if msg.thinkingExpanded {
+			if t.thinkingExpandedFor(msg) {
 				emit(msg.reasoning + "\n")
 			}
 		}
@@ -710,6 +710,44 @@ func (t *Transcript) toggleExpandAll() bool {
 	t.expandAll = !t.expandAll
 	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
 	return t.expandAll
+}
+
+// thinkingExpandedFor returns whether msg's reasoning block renders expanded
+// given the persistent Ctrl+E expanded-view mode (issue #273): a per-turn
+// thinkingCollapsed override (tab while the mode is ON) forces this single
+// block collapsed, and otherwise the block reflects the global mode (issue
+// #274). It mirrors the tool log's expandedFor so the reasoning block and the
+// tool cards obey the same effective-expansion computation — a turn started
+// with the mode ON renders expanded even though its per-turn
+// thinkingExpanded flag defaults false, because the mode overrides it at
+// render time.
+func (t Transcript) thinkingExpandedFor(msg message) bool {
+	if msg.thinkingCollapsed {
+		return false
+	}
+	return t.expandAll || msg.thinkingExpanded
+}
+
+// toggleThinking flips one turn's reasoning-block expansion (tab in the
+// composer, issue #85 AC2), kept independent of the Ctrl+E expanded-view mode
+// (issue #274). When the global mode is OFF it toggles the classic per-turn
+// thinkingExpanded flag; when the mode is ON it collapses/re-expands just this
+// block through the per-turn thinkingCollapsed override so a single block can
+// still be collapsed while everything else stays expanded (mirroring the tool
+// log's toggleCollapse). It never touches other messages and marks the shared
+// layout dirty so the block's new row span is re-recorded before the next
+// hit-test.
+func (t *Transcript) toggleThinking(i int) {
+	if i < 0 || i >= len(t.messages) {
+		return
+	}
+	msg := &t.messages[i]
+	if t.expandAll {
+		msg.thinkingCollapsed = !msg.thinkingCollapsed
+	} else {
+		msg.thinkingExpanded = !msg.thinkingExpanded
+	}
+	t.layoutPtr().dirty = true // a thinking block expanded/collapsed changes rows
 }
 
 // plainLines returns the history scroll content as plain text per rendered row
