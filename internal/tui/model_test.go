@@ -80,11 +80,15 @@ func TestModel_errorTurn(t *testing.T) {
 // reasoning body is hidden until `tab` expands the block, and reasoning never
 // leaks into the answer (ticket #17 / #85).
 func TestModel_thinkingCollapsible(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-		return TurnResult{
-			Answer:    "plain answer",
-			Reasoning: "I reason about it first.",
-		}, nil
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{
+				Answer:    "plain answer",
+				Reasoning: "I reason about it first.",
+			}, nil
+		},
+		// The turn genuinely requested thinking, so its reasoning renders.
+		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -127,7 +131,7 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: strings.Repeat("reasoning words. ", 400)}, nil
 		},
-		Config: config.Config{ReasoningEffort: "medium"},
+		Config: config.Config{ThinkingEnabled: true, ReasoningEffort: "medium"},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")

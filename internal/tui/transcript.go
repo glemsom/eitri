@@ -395,7 +395,12 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	for i, msg := range t.messages {
 		msgStart := nl // content row where this message's block begins
 		// Reasoning renders as a distinct, collapsible per-turn block (issue #85).
-		if msg.role != "you" && msg.reasoning != "" {
+		// A reasoning block renders only when the turn requested thinking AND the
+		// backend actually streamed reasoning (issue #264): a misbehaving
+		// backend sneaking chain-of-thought through a thinking-off turn must be
+		// hidden at the display layer. thinkingRequested is folded into message
+		// state at request time, never re-sniffed from config here.
+		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
 			emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
 			if msg.thinkingExpanded {
 				emit(msg.reasoning + "\n")

@@ -51,6 +51,51 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 	}
 }
 
+// TestTranscript_thinkingGateScopesReasoningBlock asserts a reasoning block
+// renders only for a turn that requested thinking (issue #264): a message whose
+// thinkingRequested flag is false shows no reasoning block even when the
+// backend streamed chain-of-thought content, while a true flag renders the
+// collapsible hint as before.
+func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	render := func(thinkingRequested bool) string {
+		var hist strings.Builder
+		tx := Transcript{
+			theme:           th,
+			configTheme:     config.DefaultTheme,
+			reasoningEffort: "medium",
+			messages: []message{{
+				role:              "eitri",
+				content:           "final answer",
+				reasoning:         "sneaked chain-of-thought",
+				thinkingRequested: thinkingRequested,
+				thinkingExpanded:  true,
+			}},
+			histFollow:   true,
+			histViewport: newHistoryViewport(),
+		}
+		tx.renderHistory(&hist, nil, nil)
+		return hist.String()
+	}
+
+	// Thinking OFF but the backend still emitted reasoning: the block must be
+	// hidden regardless of what the backend returned.
+	if off := render(false); strings.Contains(off, "🤔") || strings.Contains(off, "sneaked chain-of-thought") {
+		t.Errorf("thinking-off turn rendered a reasoning block, got: %q", off)
+	}
+	// Thinking ON restores the reasoning block exactly as today (the hint and
+	// its per-turn reasoning gate fire).
+	on := render(true)
+	if !strings.Contains(on, "tok") {
+		t.Errorf("thinking-on turn must render the reasoning hint, got: %q", on)
+	}
+	if !strings.Contains(on, "sneaked chain-of-thought") {
+		t.Errorf("expanded thinking-on turn must carry its reasoning, got: %q", on)
+	}
+}
+
 // TestTranscript_ownsRailSurface proves the right-context rail surface — its
 // visibility, band/transcript width accounting, clamp height, and render — now
 // lives on the Transcript value (issue #247): a Transcript constructed directly

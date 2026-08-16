@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // TestModel_ctrlOCopiesTranscript drives a one-turn conversation, presses
@@ -23,6 +25,8 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 			return TurnResult{Answer: "plain answer", Reasoning: "I reason first."}, nil
 		},
 		Clipboard: func(s string) error { copied = s; return nil },
+		// The turn requested thinking, so its reasoning block is copied.
+		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hello")
@@ -44,6 +48,34 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 	}
 	if !strings.Contains(view(m), "copied") {
 		t.Errorf("expected a copy success note in view, got: %q", view(m))
+	}
+}
+
+// TestModel_ctrlOHidesReasoningWhenThinkingOff drives a thinking-off turn whose
+// backend still returns reasoning, presses Ctrl+O, and asserts the reasoning
+// block is NOT copied (issue #264): the display-layer gate hides chain-of-thought
+// for a turn that didn't request thinking, regardless of what the backend sent.
+func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
+	var copied string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: "sneaked chain-of-thought"}, nil
+		},
+		Clipboard: func(s string) error { copied = s; return nil },
+		// Thinking is OFF; the turn never requested chain-of-thought.
+		Config: config.Config{ThinkingEnabled: false},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hello")
+	m = submitAndWait(t, m)
+
+	m = keypressCtrlO(t, m)
+
+	if !strings.Contains(copied, "eitri: plain answer") {
+		t.Errorf("copied text missing the assistant answer, got: %q", copied)
+	}
+	if strings.Contains(copied, "sneaked chain-of-thought") {
+		t.Errorf("thinking-off turn must not copy reasoning, got: %q", copied)
 	}
 }
 
