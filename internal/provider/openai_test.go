@@ -589,17 +589,17 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 }
 
 // TestOpenAIDeclaresGenerationControlCapabilities verifies the Chat-Completions
-// client advertises the generation_budget, json_object_mode, sampling_policy, and
-// tool_schema_enforcement controls through the generation-control capability
-// surface, so the engine can pre-flight a special/tool turn's requirements
-// (issues #59–#62) before any wire call.
+// client advertises the generation_budget, json_object_mode, sampling_policy,
+// tool_schema_enforcement, and thinking_suppression controls through the
+// generation-control capability surface, so the engine can pre-flight a
+// special/tool turn's requirements (issues #59–#62, #265) before any wire call.
 func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
 	if err != nil {
 		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
 	}
-	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement}
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement, GenerationControlThinkingSuppression}
 	if len(supp) != len(want) {
 		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
 	}
@@ -645,6 +645,20 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
 	}
+}
+
+// TestOpenAICapabilityMatchesWireBehavior ties the advertised thinking-
+// suppression control to the wire shape that honors it (issue #265 AC-4):
+// negotiation honors a required thinking_suppression request, AND a
+// thinking-off stream omits the thinking toggle entirely — the omission IS the
+// suppression on this path (issue #54). TestOpenAIOmitsThinkingWhenDisabled
+// pins the wire shape alone; this test asserts advertisement and wire agree.
+func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
+	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
+	assertSuppressionHonored(t, cl)
+	streamAssertSuppression(t, func(url string) Provider {
+		return NewOpenAICompatible("k", url)
+	}, "opencode-go")
 }
 
 // TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a

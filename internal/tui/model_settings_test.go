@@ -323,6 +323,72 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	}
 }
 
+// TestSettingsView_ThinkingSuppressionWarning verifies the settings panel warns
+// when thinking is off AND the run's provider cannot actually suppress
+// reasoning on the wire (issue #265 AC-3): the warning renders only when the
+// seam is wired, reports false, and thinking is off. A nil seam (unknown
+// provider) assumes support and renders nothing; a supporting provider or a
+// thinking-on run never warns.
+func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.ThinkingEnabled = false
+	unsupported := func() bool { return false }
+	supported := func() bool { return true }
+
+	cases := []struct {
+		name                string
+		cfg                 config.Config
+		thinkingSuppression func() bool
+		wantWarning         bool
+	}{
+		{"off+unsupported: warn", cfg, unsupported, true},
+		{"off+supported: no warn", cfg, supported, false},
+		{"off+nil seam: assume supported", cfg, nil, false},
+		{"on+unsupported: no warn", cfgFixture(), unsupported, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSettingsForm(tc.cfg, []string{})
+			f.thinkingSuppression = tc.thinkingSuppression
+			view := settingsView(f)
+			if tc.wantWarning && !strings.Contains(view, "reasoning cannot be disabled on this provider") {
+				t.Fatalf("settings view %q missing the thinking-suppression warning", view)
+			}
+			if !tc.wantWarning && strings.Contains(view, "reasoning cannot be disabled on this provider") {
+				t.Fatalf("settings view %q rendered a warning, want none", view)
+			}
+		})
+	}
+}
+
+// TestModel_SettingsWiringSurfacesThinkingSuppression verifies the Model wires
+// the run's provider thinking-suppression seam into the settings form when the
+// panel opens (issue #265 AC-3), so the warning reflects the real capability.
+func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.ThinkingEnabled = false
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models:              []string{"deepseek-v4-flash"},
+		Config:              cfg,
+		ThinkingSuppression: func() bool { return false },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+
+	if m.settings == nil || m.settings.thinkingSuppression == nil {
+		t.Fatal("settings form not seeded with the thinking-suppression seam")
+	}
+	if m.settings.thinkingSuppression() {
+		t.Fatal("seeded thinkingSuppression() = true, want false (unsupported provider)")
+	}
+	if !strings.Contains(view(m), "reasoning cannot be disabled on this provider") {
+		t.Fatalf("settings view %q missing the thinking-suppression warning", view(m))
+	}
+}
+
 // TestModel_ContinuationPromptAnswersYes verifies the interactive max-turns
 // path: an engine that hits the cap signals a prompt, the Model renders it, and
 // a "y" answer grants continuation. The engine-side hook

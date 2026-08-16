@@ -68,9 +68,11 @@ func copilotThinkingControl(req Request) *thinkingEnabler {
 // SupportedGenerationControls declares that Copilot can honor the Generation
 // Budget control, since it streams through the same Chat-Completions wire as the
 // primary provider and emits max_completion_tokens on special turns
-// (issue #60). The other three generation controls are not supported here.
+// (issue #60), plus Thinking Suppression, carried as an explicit
+// thinking:{type:disabled} toggle when thinking is off (issue #263). The other
+// three generation controls are not supported here.
 func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget}, nil
+	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}, nil
 }
 
 // bearer resolves the bearer token for a run. Batch logic: a valid stored

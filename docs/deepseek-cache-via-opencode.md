@@ -116,6 +116,19 @@ support — never unconditionally — so capability negotiation cannot change th
 - Proves it: `TestCopilotDropsEffortWhenThinkingDisabled`,
   `TestCopilotSendsThinkingEnabledWhenThinkingOn` in
   `internal/provider/copilot_test.go`.
+- Thinking suppression is itself a declared generation control
+  (`thinking_suppression`, issue #265): opencode-go and custom-openai suppress
+  by omitting the thinking toggle when off, copilot by an explicit
+  `thinking:{type:disabled}`. Both advertise the control, and a provider that
+  does not (a future third family) surfaces a settings-panel warning that
+  reasoning cannot be disabled instead of silently no-op'ing.
+- Proves it: `TestOpenAICapabilityMatchesWireBehavior` in
+  `internal/provider/openai_test.go`, `TestCopilotCapabilityMatchesWireBehavior`
+  in `internal/provider/copilot_test.go`,
+  `TestFromConfigThinkingSuppressionMatchesWireBehavior` in
+  `internal/provider/factory_test.go`;
+  `TestSettingsView_ThinkingSuppressionWarning` in
+  `internal/tui/model_settings_test.go`.
 
 ### 7. Cache-stable compaction
 

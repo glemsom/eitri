@@ -72,6 +72,12 @@ type settingsForm struct {
 	discoverState discoverState
 	// discoverErr is the surfaced failure when discoverState == discoverError.
 	discoverErr string
+	// thinkingSuppression reports whether the run's provider can actually
+	// suppress reasoning on the wire when thinking is off (issue #265). Nil
+	// assumes support (the pre-seam default), so a provider without a declared
+	// capability never spurs the warning. The seam is provider-owned and the
+	// TUI stays decoupled from internal/provider.
+	thinkingSuppression func() bool
 }
 
 // newSettingsForm seeds the form with the loaded config and the discovered
@@ -254,6 +260,17 @@ func settingsView(f settingsForm) string {
 			name = "   " + name
 		}
 		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
+	}
+
+	// Thinking-suppression warning (issue #265 AC-3): when thinking is off and
+	// the run's provider cannot actually silence reasoning on the wire, the
+	// panel says so instead of silently letting the toggle no-op. The
+	// capability seam defaults to supported when unset (nil), so view-only
+	// panels and providers without the declaration never warn. Deterministic
+	// for render-testing.
+	if !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
+		b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " reasoning cannot be disabled on this provider"))
+		b.WriteString("\n")
 	}
 
 	// Palette swatch: the selected theme's hues as full-block chips, so the

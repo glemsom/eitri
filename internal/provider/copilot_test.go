@@ -190,6 +190,42 @@ func drainOne(s Stream) (string, error) {
 	}
 }
 
+// TestCopilotDeclaresGenerationControlCapabilities verifies the Copilot
+// provider advertises the generation_budget and thinking_suppression controls
+// through the generation-control capability surface, so higher layers can
+// pre-flight a special turn's requirements (issues #60, #265) before any wire
+// call.
+func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
+	supp, err := cp.SupportedGenerationControls(context.Background())
+	if err != nil {
+		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
+	}
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}
+	if len(supp) != len(want) {
+		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+	}
+	for i := range want {
+		if supp[i] != want[i] {
+			t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+		}
+	}
+}
+
+// TestCopilotCapabilityMatchesWireBehavior ties the advertised thinking-
+// suppression control to the wire shape that honors it (issue #265 AC-4):
+// negotiation honors a required thinking_suppression request, AND a
+// thinking-off stream carries the explicit thinking:{type:disabled} suppression
+// (issue #263). TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
+// alone; this test asserts advertisement and wire agree.
+func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
+	assertSuppressionHonored(t, cp)
+	streamAssertSuppression(t, func(url string) Provider {
+		return NewCopilot(config.CopilotConfig{AccessToken: "x"}, url, nil, nil, nil)
+	}, "github-copilot")
+}
+
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
 // guarantee also holds on the Copilot provider (issues #54, #263):
 // when the caller disables thinking, `reasoning_effort` is dropped from the
