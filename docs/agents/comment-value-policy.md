@@ -6,15 +6,16 @@ Standard for what comments are allowed in Eitri's Go source. Per-package cleanup
 
 ### References alone are never sufficient
 
-A comment whose only content is a reference to an ADR, a spec section, or a GitHub issue number is removed. The reference is not information — the code itself already carries what it implements, and the reader can find the ADR, spec, or issue if they need the history. Examples of comments that get dropped:
+A comment whose only content is a reference to an ADR, a spec section, a GitHub issue number, or a file path is removed.
 
 ```go
 // See ADR-0003.
 // Per spec section 4.2.
 // Ref issue #142.
+// See internal/engine/compact.go.
 ```
 
-These add noise for LLM readers and humans alike, and they rot: issues get closed, sections get renumbered, the comment drifts from the code.
+A reference is not information: the code already carries what it implements, and the ADR, spec, or issue can be found if the history is ever needed.
 
 ### A comment stays only when it adds information the code does not already tell
 
@@ -29,10 +30,6 @@ Where the reasoning is captured in an ADR, spec, or issue, either state the subs
 ### Doc comments on exported symbols stay, minus stale refs
 
 Doc comments on exported symbols (`// Foo does ...`) stay. Strip any stale ADR/spec/issue references from them; the substance stays.
-
-### No file paths or issue numbers in comments
-
-Comments never contain file paths or issue numbers.
 
 ## Applying this to cleanup batches
 
