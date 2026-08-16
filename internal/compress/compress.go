@@ -43,7 +43,6 @@ var markerRE = regexp.MustCompile(`^\+[0-9]+ more$`)
 // untouched and no output is silently altered.
 func Compress(raw string) string {
 	text := ansiRE.ReplaceAllString(raw, "")
-
 	lines := splitLines(text)
 	lines = screenProgressFrames(lines)
 
@@ -86,6 +85,17 @@ func Compress(raw string) string {
 	return b.String()
 }
 
+// CompressResult reports whether Compress actually produced the compressed
+// (truncated) form. Callers that need to know whether a string carries the
+// line-compressor's "+N more" marker must consult this flag rather than
+// pattern-matching the tail: a raw result that merely ends in a line that
+// LOOKS like the marker is content, and only the compressor's never-inflate
+// gate is the truth about whether the form was compressed (issue #286 review).
+func CompressResult(raw string) (string, bool) {
+	out := Compress(raw)
+	return out, out != raw
+}
+
 // itoa formats a small non-negative integer without pulling fmt into the hot
 // compress path.
 func itoa(i int) string {
@@ -120,8 +130,11 @@ var lineMarkerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 // tool-result boundary (issue #286): over-budget drafts are head-truncated to
 // the budget and an explicit marker line announcing how many bytes were
 // dropped is appended — never silent. It composes with the line-compressor's
-// "+N more" tail: a draft already line-truncated byte-truncates into a single
-// merged tail line carrying both drop counts ("+N more, +B bytes truncated").
+// "+N more" tail: when lineTruncated reports the draft really is the
+// compressor's output, an already line-truncated draft byte-truncates into a
+// single merged tail line carrying both drop counts ("+N more, +B bytes
+// truncated"); otherwise a look-alike "+N more" tail is treated as plain
+// content and never peeled (issue #286 review).
 // Deterministic and idempotent: same input + budget always yields the same
 // output, and re-capping a capped result leaves it alone (or re-derives the
 // same marker). Truncation backs up to a UTF-8 rune boundary so the kept head
@@ -131,27 +144,35 @@ var lineMarkerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 //
 // budget must be large enough to hold the smallest marker; callers use the
 // shared DefaultByteCap.
-func CapBytes(draft string, budget int) (delivered string, dropped int) {
+func CapBytes(draft string, budget int, lineTruncated bool) (delivered string, dropped int) {
 	if len(draft) <= budget {
 		return draft, 0
 	}
 
-	// Detect and strip an existing line-compressor "+N more" tail marker. When
-	// present, the merged marker line replaces it (its bytes count against the
-	// budget, not as dropped content) so the model sees both drop counts.
+	// Detect and strip an existing line-compressor "+N more" tail marker — but
+	// ONLY when the caller KNOWS the draft is the line-compressor's output
+	// (lineTruncated, set by the engine when bash compressed at the tool
+	// boundary). A raw tool result whose last line merely LOOKS like "+N more"
+	// (a listing echo, a web page tail) is content, not a marker: peeling and
+	// replacing it would silently drop real bytes, so it must never be merged.
+	// When present, the merged marker line replaces it (its bytes count against
+	// the budget, not as dropped content) so the model sees both drop counts.
 	merger := ""
-	if m := lineMarkerRe.FindString(draft); m != "" {
-		draft = draft[:len(draft)-len(m)]
-		merger = strings.TrimSuffix(m, "\n") + ", "
+	if lineTruncated {
+		if m := lineMarkerRe.FindString(draft); m != "" {
+			draft = draft[:len(draft)-len(m)]
+			merger = strings.TrimSuffix(m, "\n") + ", "
+		}
 	}
 
-	// Reserve room for the merged marker line inside the budget and keep the
+	// Reserve room for the marker tail inside the budget and keep the
 	// head before the cut, so the kept head is always a prefix of the draft. The
 	// marker's drop-count digits are unknown until after the cut (dropped =
 	// len(stripped) - keep), but dropped <= len(stripped), so reserving for
 	// digits(len(stripped)) guarantees the delivered form never exceeds the
 	// budget regardless of how many digits the real count needs.
-	markerReserve := 17 + len(itoa(len(draft))) + 1 // "+" + digits + " bytes truncated\n"
+	plainMarker := "+" + itoa(len(draft)) + " bytes truncated\n"
+	markerReserve := len(merger) + len(plainMarker)
 	keep := budget - len(merger) - markerReserve
 	if keep < 0 {
 		// Capped to a budget too small to fit even the marker: keep no head, all

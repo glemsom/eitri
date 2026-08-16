@@ -23,7 +23,7 @@ func TestCapBytesUnderBudgetUnchanged(t *testing.T) {
 		strings.Repeat("x", DefaultByteCap),
 	}
 	for _, draft := range cases {
-		got, dropped := CapBytes(draft, DefaultByteCap)
+		got, dropped := CapBytes(draft, DefaultByteCap, true)
 		if got != draft || dropped != 0 {
 			t.Errorf("CapBytes(%d bytes, budget=%d) = (%d bytes, dropped=%d), want unchanged (0 dropped)",
 				len(draft), DefaultByteCap, len(got), dropped)
@@ -36,7 +36,7 @@ func TestCapBytesUnderBudgetUnchanged(t *testing.T) {
 // "+N bytes truncated" marker whose count matches exactly what was dropped.
 func TestCapBytesOverBudgetKeepsHeadWithMarker(t *testing.T) {
 	draft := strings.Repeat("listing line\n", 30000) // ~390 KiB
-	delivered, dropped := CapBytes(draft, DefaultByteCap)
+	delivered, dropped := CapBytes(draft, DefaultByteCap, true)
 
 	if len(delivered) <= len(draft) && len(delivered) > DefaultByteCap {
 		t.Fatalf("delivered (%d bytes) exceeds the %d-byte budget", len(delivered), DefaultByteCap)
@@ -73,7 +73,7 @@ func TestCapBytesComposesWithLineMarker(t *testing.T) {
 	b.WriteString("+300 more\n")
 	draft := b.String()
 
-	delivered, dropped := CapBytes(draft, 2000)
+	delivered, dropped := CapBytes(draft, 2000, true)
 	// The merged marker must be the single tail line: both counts visible.
 	if !regexp.MustCompile(`\+300 more, \+[0-9]+ bytes truncated\n$`).MatchString(delivered) {
 		t.Fatalf("delivered missing merged marker line, tail: %q", delivered[len(delivered)-60:])
@@ -99,8 +99,8 @@ func TestCapBytesComposesWithLineMarker(t *testing.T) {
 // the same output (protects the byte-stable cache prefix).
 func TestCapBytesDeterministic(t *testing.T) {
 	draft := strings.Repeat("entry."+itoa(42)+" payload\n", 20000)
-	a, da := CapBytes(draft, DefaultByteCap)
-	b, db := CapBytes(draft, DefaultByteCap)
+	a, da := CapBytes(draft, DefaultByteCap, true)
+	b, db := CapBytes(draft, DefaultByteCap, true)
 	if a != b || da != db {
 		t.Fatalf("CapBytes not deterministic: (%d bytes, %d dropped) != (%d bytes, %d dropped)",
 			len(a), da, len(b), db)
@@ -112,9 +112,9 @@ func TestCapBytesDeterministic(t *testing.T) {
 // result is under budget, so the re-cap passes it through byte-identical).
 func TestCapBytesIdempotent(t *testing.T) {
 	draft := strings.Repeat("entry."+itoa(7)+" payload\n", 20000)
-	capped, _ := CapBytes(draft, DefaultByteCap)
+	capped, _ := CapBytes(draft, DefaultByteCap, true)
 
-	same, redropped := CapBytes(capped, DefaultByteCap)
+	same, redropped := CapBytes(capped, DefaultByteCap, true)
 	if same != capped {
 		t.Fatalf("re-cap changed the capped result: first=%d bytes, second=%d bytes",
 			len(capped), len(same))
@@ -132,7 +132,7 @@ func TestCapBytesIdempotent(t *testing.T) {
 // byte cut.
 func TestCapBytesUtf8Boundary(t *testing.T) {
 	draft := strings.Repeat("héllo wörld\n", 20000) // é/ö are 2-byte runes
-	delivered, dropped := CapBytes(draft, DefaultByteCap)
+	delivered, dropped := CapBytes(draft, DefaultByteCap, true)
 
 	if !utf8.ValidString(delivered) {
 		t.Fatalf("delivered is not valid UTF-8 (cut split a rune)")
@@ -153,7 +153,7 @@ func TestCapBytesUtf8Boundary(t *testing.T) {
 // still truncates and reports the exact dropped count.
 func TestCapBytesSlightlyOverBudgetStillTruncates(t *testing.T) {
 	draft := strings.Repeat("x", 1000) // body; no marker to peel
-	delivered, dropped := CapBytes(draft, 999)
+	delivered, dropped := CapBytes(draft, 999, true)
 
 	if !bytesMarkerRe.MatchString(delivered) {
 		t.Fatalf("slightly-over-budget draft must still carry the explicit marker")
@@ -172,4 +172,57 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// TestCapBytesMergedMarkerDeliveredNeverExceedsBudget drives the adversarial
+// Fix-1 shape: a draft exactly budget+1 bytes whose tail is the line-compressor's
+// "+N more" marker (so the merger is non-empty and the merged marker line is
+// LONGER than the plain form). The delivered form must be <= budget in EVERY
+// case — the merger's own bytes are reserved ahead of the cut, never stolen
+// from the keep head (issue #286 review).
+func TestCapBytesMergedMarkerDeliveredNeverExceedsBudget(t *testing.T) {
+	budget := 500
+	// Head that with the long "+N more" marker lands exactly at budget+1.
+	head := strings.Repeat("x", budget+1-len("+29999 more\n"))
+	draft := head + "+29999 more\n"
+	if len(draft) != budget+1 {
+		t.Fatalf("fixture = %d bytes, want budget+1 = %d", len(draft), budget+1)
+	}
+	delivered, dropped := CapBytes(draft, budget, true)
+	if len(delivered) > budget {
+		t.Fatalf("delivered = %d bytes, exceeds %d-byte budget (merged marker stole from the keep head)",
+			len(delivered), budget)
+	}
+	// Never-silent: still truncated with the merged marker carrying both counts.
+	if !regexp.MustCompile(`\+29999 more, \+[0-9]+ bytes truncated\n$`).MatchString(delivered) {
+		t.Fatalf("delivered missing merged marker line, tail: %q", delivered[len(delivered)-50:])
+	}
+	if dropped <= 0 {
+		t.Fatalf("dropped = %d, want > 0", dropped)
+	}
+}
+
+// TestCapBytesWithoutLineTruncatedNeverMergesLookLikeMarker verifies the
+// lineTruncated gate (issue #286 review): a raw draft whose last line merely
+// LOOKS like "+N more" is content, not a marker. With lineTruncated=false the
+// cap must NOT peel/merge it — the delivered form keeps the content line intact
+// ahead of the plain "+N bytes truncated" tail, so no raw bytes are silently
+// dropped as a fake "marker".
+func TestCapBytesWithoutLineTruncatedNeverMergesLookLikeMarker(t *testing.T) {
+	// The look-like-marker line sits at the HEAD so it survives the byte cut,
+	// exactly the shape that would be silently re-written as a merged marker
+	// if CapBytes peeled on looks alone.
+	draft := "+300 more\n" + strings.Repeat("content line\n", 30000)
+	delivered, _ := CapBytes(draft, DefaultByteCap, false)
+	if strings.Contains(delivered, "+300 more, ") {
+		t.Fatalf("raw look-like-marker content merged into a marker: %q", delivered[len(delivered)-60:])
+	}
+	if !strings.HasSuffix(delivered, " bytes truncated\n") {
+		t.Fatalf("delivered missing the plain byte-cap tail: %q", delivered[len(delivered)-60:])
+	}
+	// The "+300 more" content line survives in the delivered head (the cut
+	// happens at the budget, never by marker-peeling).
+	if !strings.Contains(delivered, "+300 more\n") {
+		t.Fatalf("raw look-like-marker content line was silently stripped: %q", delivered[len(delivered)-60:])
+	}
 }
