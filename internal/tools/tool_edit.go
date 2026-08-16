@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// editTool replaces the first unique occurrence of old_string with new_string
-// in an existing file. It is host-side and validates the target against the
+// editTool replaces a uniquely-occurring old_string with new_string in an
+// existing file. It is host-side and validates the target against the
 // writable roots like write.
 type editTool struct {
 	val *Validator
@@ -19,7 +19,7 @@ func (e *editTool) Name() string {
 }
 
 func (e *editTool) Description() string {
-	return "Edit an existing file by replacing the first unique occurrence of old_string with new_string. Errors if old_string is absent or appears more than once. Target must be inside a writable root."
+	return "Edit an existing file by replacing old_string with new_string. old_string must match the file content EXACTLY (whitespace, indentation, and escaping included) and must occur EXACTLY once; matching zero times or more than once is a hard error, with no silent partial application. When the target text appears multiple times, widen old_string to include unique surrounding context (e.g. the enclosing function signature or a neighbouring line) so the match becomes unique. Base old_string on a FRESH read of the file, not remembered content, so drift between believed and on-disk content cannot cause a spurious not-found error. The file must already exist and the target must be inside a writable root (workspace, session temp, or extra writable path)."
 }
 
 func (e *editTool) Schema() map[string]any {
