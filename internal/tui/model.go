@@ -330,6 +330,14 @@ func NewModel(t Turn) Model {
 // already signals editability — it is attached only while the composer is the
 // active editing surface and hidden otherwise (issue #169) — so blinking adds
 // noise without carrying information.
+//
+// Color is not forced (issue #272): the textarea default paints a fixed white
+// caret (lipgloss.Color("7")), and since the composer's caret is the terminal's
+// hardware caret (issue #168) that non-nil color propagates into the reported
+// tea.Cursor and the renderer emits a SetCursorColor sequence every frame,
+// overwriting the user's configured cursor color. A nil color means the
+// renderer emits no SetCursorColor, so the terminal draws the caret in its own
+// configured color, matching pre-Eitri state.
 const (
 	composerCaretShape = tea.CursorBlock
 	composerCaretBlink = false
@@ -362,6 +370,10 @@ func NewModelCfg(d Dependencies) Model {
 	st := comp.Styles()
 	st.Cursor.Shape = composerCaretShape
 	st.Cursor.Blink = composerCaretBlink
+	// No caret color is forced (issue #272): leave Color nil so the renderer
+	// emits no SetCursorColor and the hardware caret uses the terminal's
+	// configured cursor color instead of the textarea default white.
+	st.Cursor.Color = nil
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(th.accent)
 	comp.SetStyles(st)
 

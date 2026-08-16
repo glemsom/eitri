@@ -70,6 +70,10 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 // requested deliberately rather than inherited from the textarea default or the
 // terminal's own settings. A terminal that ignores the shape request falls back
 // to its own default block caret — still visible, never hidden.
+//
+// The policy does not force a caret color (issue #272): the caret renders in the
+// terminal's configured cursor color, so Eitri never overwrites it with a fixed
+// white. Color stays nil so the renderer emits no SetCursorColor sequence.
 func TestComposer_CaretStylePolicy(t *testing.T) {
 	m := caretModel(t)
 	c := caret(t, m)
@@ -78,6 +82,9 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 	}
 	if c.Blink {
 		t.Error("caret must be steady (no blink)")
+	}
+	if c.Color != nil {
+		t.Errorf("caret color = %v, want nil (inherit terminal's configured cursor color); a non-nil color would emit a SetCursorColor sequence each frame", c.Color)
 	}
 }
 
