@@ -8,10 +8,10 @@ import (
 // This file defines the generation-control capability negotiation seam (issue
 // #58): how a special turn declares which provider-side
 // generation controls it wants, and how higher layers learn which of those a
-// provider can actually honor — before any wire call. The four controls are the
+// provider can actually honor — before any wire call. The five controls are the
 // constrained-output levers Eitri may request on internal (non-tool) turns:
-// schema-constrained JSON, an output-token budget, a sampling policy, and
-// provider-side tool-schema enforcement. Each is wire-emitted by the specific
+// schema-constrained JSON, an output-token budget, a sampling policy,
+// provider-side tool-schema enforcement, and thinking suppression. Each is wire-emitted by the specific
 // special-turn tickets (#59–#62); this seam is the negotiation contract they
 // share.
 
@@ -19,7 +19,7 @@ import (
 // turn may request on the wire.
 type GenerationControl string
 
-// The four generation controls a provider can declare support for and a
+// The five generation controls a provider can declare support for and a
 // special turn can request.
 const (
 	// GenerationControlJSONObjectMode requests schema-constrained JSON Object
@@ -34,6 +34,13 @@ const (
 	// GenerationControlToolSchemaEnforcement requests provider-side tool-schema
 	// enforcement in the tool manifest (issue #62).
 	GenerationControlToolSchemaEnforcement GenerationControl = "tool_schema_enforcement"
+	// GenerationControlThinkingSuppression requests that a thinking-off run
+	// actually suppress chain-of-thought on the wire: omission of the thinking
+	// toggle on the openai-compatible path (issue #54) and an explicit
+	// thinking:{type:disabled} on the copilot path (issue #263). A provider that
+	// does not declare it cannot silence reasoning server-side, so higher layers
+	// surface a warning instead of silently no-op'ing (issue #265).
+	GenerationControlThinkingSuppression GenerationControl = "thinking_suppression"
 )
 
 // ControlRequirement pairs a generation control with how it must be honored.

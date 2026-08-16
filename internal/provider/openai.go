@@ -183,13 +183,14 @@ type jsonObjectMode struct {
 }
 
 // SupportedGenerationControls declares that this Chat-Completions client can
-// honor the Generation Budget, JSON Object Mode, Sampling Policy, and Tool
-// Schema Enforcement controls (it wire-emits max_completion_tokens,
-// response_format, temperature/top_p, and strict tool manifests on the relevant
-// special turns, issues #59–#62). Higher layers consult this
+// honor the Generation Budget, JSON Object Mode, Sampling Policy, Tool Schema
+// Enforcement, and Thinking Suppression controls (it wire-emits
+// max_completion_tokens, response_format, temperature/top_p, strict tool
+// manifests, and the thinking-off omission on the relevant special turns,
+// issues #59–#62, #54/#265). Higher layers consult this
 // via NegotiateGenerationControls.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement}, nil
+	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement, GenerationControlThinkingSuppression}, nil
 }
 
 // maxOutputTokens returns the Generation Budget for req as an int usable as a

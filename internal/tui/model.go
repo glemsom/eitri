@@ -222,6 +222,12 @@ type Dependencies struct {
 	// / MODEL, fed from the telemetry surface. Nil hides the rail (the plain
 	// chat default).
 	Rail *Rail
+	// ThinkingSuppression, when non-nil, reports whether the run's provider can
+	// actually suppress reasoning on the wire when thinking is off (issue #265
+	// AC-3). Nil assumes support (keeps view-only panels and providers without
+	// the declared capability warning-free). The Settings panel shows a warning
+	// when thinking is off and this seam reports false.
+	ThinkingSuppression func() bool
 	// Clipboard writes text to the system clipboard (issue #123): Ctrl+O and
 	// /copy copy the full transcript through it. Nil falls back to the
 	// atotto/clipboard package default.
@@ -874,6 +880,9 @@ func (m *Model) openSettings() *settingsForm {
 	sf := newSettingsForm(cfg, m.deps.Models)
 	sf.theme = m.tx.theme
 	sf.telemetry = m.telemetry
+	// The run's provider thinking-suppression capability (issue #265): nil
+	// assumes support, matching the settingsForm default.
+	sf.thinkingSuppression = m.deps.ThinkingSuppression
 	m.settings = &sf
 	return &sf
 }

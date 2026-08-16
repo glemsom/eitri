@@ -91,6 +91,13 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Stream:        stream,
 		Tools:         tools,
 		Rail:          rail,
+		// The run's provider thinking-suppression capability (issue #265 AC-3):
+		// the Settings panel warns when thinking is off but the provider cannot
+		// actually silence reasoning on the wire. The seam is derived here from
+		// the concrete provider via the generation-control negotiation seam, so
+		// the TUI stays decoupled from internal/provider. Nil p → supported
+		// (view-only runs never warn).
+		ThinkingSuppression: thinkingSuppression(p),
 		// `/skillname` slash activation sits on the same catalog the batch
 		// engine uses (T8): activation runs the `skill` tool through the
 		// registry, so a slash activation behaves identically to a model-
@@ -232,6 +239,34 @@ func discoveredModels(p provider.Provider) func(ctx context.Context) ([]string, 
 			return nil, provider.ErrNoDiscovery
 		}
 		return lister.Models(ctx)
+	}
+}
+
+// thinkingSuppression reports whether the run's provider can actually suppress
+// reasoning on the wire when thinking is off (issue #265). It consults the
+// provider's declared generation controls through NegotiateGenerationControls
+// and returns whether thinking_suppression is in the honored set. A nil
+// provider (or one without the capability surface) assumes support so a
+// view-only run never spurs the settings warning; negotiation failure also
+// degrades to supported (the toggle stays unfettered rather than falsely
+// warning).
+func thinkingSuppression(p provider.Provider) func() bool {
+	return func() bool {
+		if p == nil {
+			return true
+		}
+		honored, err := provider.NegotiateGenerationControls(context.Background(), p, []provider.ControlRequirement{
+			{Control: provider.GenerationControlThinkingSuppression, Required: false},
+		})
+		if err != nil {
+			return true // negotiation failure: assume supported, never false-warn
+		}
+		for _, c := range honored {
+			if c == provider.GenerationControlThinkingSuppression {
+				return true
+			}
+		}
+		return false
 	}
 }
 

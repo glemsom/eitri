@@ -190,6 +190,76 @@ func drainOne(s Stream) (string, error) {
 	}
 }
 
+// TestCopilotDeclaresGenerationControlCapabilities verifies the Copilot
+// provider advertises the generation_budget and thinking_suppression controls
+// through the generation-control capability surface, so higher layers can
+// pre-flight a special turn's requirements (issues #60, #265) before any wire
+// call.
+func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
+	supp, err := cp.SupportedGenerationControls(context.Background())
+	if err != nil {
+		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
+	}
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}
+	if len(supp) != len(want) {
+		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+	}
+	for i := range want {
+		if supp[i] != want[i] {
+			t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+		}
+	}
+}
+
+// TestCopilotCapabilityMatchesWireBehavior ties the advertised thinking-
+// suppression control to the wire shape that honors it (issue #265 AC-4):
+// negotiation honors a required thinking_suppression request, AND a
+// thinking-off stream carries the explicit thinking:{type:disabled} suppression
+// (issue #263). TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
+// alone; this test asserts advertisement and wire agree.
+func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
+	honored, err := NegotiateGenerationControls(context.Background(), cp, []ControlRequirement{
+		{Control: GenerationControlThinkingSuppression, Required: true},
+	})
+	if err != nil {
+		t.Fatalf("NegotiateGenerationControls() error = %v, want nil (honored)", err)
+	}
+	if !sameControls(honored, []string{string(GenerationControlThinkingSuppression)}) {
+		t.Fatalf("NegotiateGenerationControls() = %v, want [%s]", honored, GenerationControlThinkingSuppression)
+	}
+
+	// The wire form of the suppression: thinking off carries an explicit
+	// disabled toggle (issue #263).
+	var thinkingDisabled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Errorf("request body not JSON: %v", err)
+		}
+		if th, ok := parsed["thinking"].(map[string]any); ok {
+			thinkingDisabled = th["type"] == "disabled"
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(sseFixture(t))
+	}))
+	defer srv.Close()
+
+	cp2 := NewCopilot(config.CopilotConfig{AccessToken: "x"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	if _, err := cp2.Stream(context.Background(), Request{
+		Model:           "gpt-4o",
+		ThinkingEnabled: false,
+	}); err != nil {
+		t.Fatalf("Copilot.Stream() error = %v, want nil", err)
+	}
+	if !thinkingDisabled {
+		t.Error("request did not carry thinking suppression {type:disabled}, want present when thinking off (issue #263)")
+	}
+}
+
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
 // guarantee also holds on the Copilot provider (issues #54, #263):
 // when the caller disables thinking, `reasoning_effort` is dropped from the
