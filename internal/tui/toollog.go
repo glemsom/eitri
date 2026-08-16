@@ -153,14 +153,19 @@ func (l *toolLog) ToggleCollapse(i int) {
 // Ctrl+E expanded-view mode (issue #273): a per-entry expanded state wins, a
 // per-entry collapse-override beats the global mode ON, and otherwise the entry
 // reflects the global flag. It is the single effective-expansion computation
-// both Render and the AtLine hit-test share.
+// both Render and the Transcript's toolEntryAtLine hit-test consult, so the
+// rendered rows and the click-to-collapse state never disagree.
 func (l *toolLog) expandedFor(i int, expandAll bool) bool {
 	if i < 0 || i >= len(l.entries) {
 		return false
 	}
 	e := l.entries[i]
 	if e.collapsedOverride {
-		return e.expanded // normally false: an explicit collapse must win
+		// A per-entry collapse-override forces this single entry collapsed even
+		// while the global mode is ON. The per-entry expanded flag is always
+		// cleared when the override is set by ToggleCollapse, so collapsing the
+		// override wins deterministically with no dependence on that invariant.
+		return false
 	}
 	return e.expanded || expandAll
 }
@@ -257,11 +262,14 @@ func (l toolLog) Review() []reviewEntry {
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via
-// the shared layout pass (issue #208 US6, #212): a click on a collapsed head
-// toggles it open, on an open entry it toggles closed. rows is the row-account
-// already produced by Render (the log never re-derives layout separately), so
-// the hit-test cannot drift from what the transcript renders. It is a pure
-// lookup over those rows.
+// the shared layout pass (issue #208 US6, #212). rows is the row-account already
+// produced by Render (the log never re-derives layout separately), so the
+// hit-test cannot drift from what the transcript renders. It is a pure lookup
+// over those rows. The returned collapsed reflects the RAW per-entry expanded
+// flag only; callers that need the effective rendered state under the Ctrl+E
+// expanded-view mode (issue #273) should combine the index with expandedFor
+// (as Transcript.toolEntryAtLine does), since the per-entry state is
+// orthogonal to the global mode.
 func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {

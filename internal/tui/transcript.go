@@ -640,17 +640,26 @@ func (t *Transcript) recordLayout() {
 }
 
 // toolEntryAtLine returns the tool entry whose rendered rows include the given
-// content line, and whether that entry is currently collapsed (a click on a
-// collapsed head toggles it open; on an open entry it toggles closed). It
-// reads the persistent layout cache (issue #242) owned by the Transcript (issue
-// #245): it lazily builds the row->tool-entry index once per transcript change
-// (via recordLayout, the shared renderHistory pass the viewport and mouse
-// coordinates use), so it never drifts from what the user sees and a drag
-// reuses the recorded index instead of re-deriving layout each event (AC3).
-// It is a pointer receiver because it mutates the shared layout cache.
+// content line, and whether that entry currently renders collapsed under the
+// Ctrl+E expanded-view mode (issue #273) — a click on a collapsed head toggles
+// it open; on an open entry it toggles closed. It reads the persistent layout
+// cache (issue #242) owned by the Transcript (issue #245): it lazily builds the
+// row->tool-entry index once per transcript change (via recordLayout, the
+// shared renderHistory pass the viewport and mouse coordinates use), so it
+// never drifts from what the user sees and a drag reuses the recorded index
+// instead of re-deriving layout each event (AC3). The effective collapse is
+// derived from the same expandedFor computation Render uses, so the hit-test
+// and the rendered rows always agree. It is a pointer receiver because it
+// mutates the shared layout cache.
 func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 	t.ensureLayout()
-	return t.log.AtLine(line, t.layout.rows)
+	toolIdx, _, ok := t.log.AtLine(line, t.layout.rows)
+	if !ok {
+		return 0, false, false
+	}
+	// The entry's effective rendered state (per-entry open/override beats the
+	// global expandAll mode) is the collapse truth, not the raw per-entry flag.
+	return toolIdx, !t.log.expandedFor(toolIdx, t.expandAll), true
 }
 
 // toggleToolEntry flips one tool entry's expansion state (mouse click
@@ -664,18 +673,20 @@ func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool
 // log (issue #248).
 func (t *Transcript) toggleToolEntry(idx int) {
 	if t.expandAll {
-		t.log.ToggleCollapse(idx)
+		// Global mode ON: click collapses/re-expands just this entry through the
+		// per-entry override so it stays orthogonal to the mode.
+		t.toggleCollapse(idx)
 	} else {
 		t.log.Toggle(idx)
+		t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
 	}
-	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
 }
 
 // toggleCollapse flips one entry's per-entry collapse-override (issue #273): it
 // keeps a single entry collapsed even while the global expanded-view mode is ON,
-// and flips back to let the mode show it. Used by the expandAll-mode click path
-// and directly by tests; it is a thin wrapper over the tool log's owned
-// bounds-checked operation.
+// and flips back to let the mode show it. It is the single delegation path for
+// the expandAll-mode click and for tests, and it is a thin wrapper over the tool
+// log's owned bounds-checked operation plus the shared layout dirty mark.
 func (t *Transcript) toggleCollapse(idx int) {
 	t.log.ToggleCollapse(idx)
 	t.layoutPtr().dirty = true

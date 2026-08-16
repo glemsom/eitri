@@ -290,4 +290,3 @@ func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
 		t.Errorf("newly delivered entry must render its full result with the mode ON, got: %q", content)
 	}
 }
-

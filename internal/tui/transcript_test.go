@@ -419,6 +419,37 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 	}
 }
 
+// TestTranscript_toolEntryAtLineEffectiveCollapse asserts the click-to-collapse
+// hit-test reports the EFFECTIVE rendered state under the Ctrl+E expanded-view
+// mode (issue #273), not the raw per-entry flag: with the mode ON an entry the
+// user collapses via the per-entry override reports collapsed=true (a click
+// would re-expand it), and when the override is released the mode re-shows it
+// as expanded. toolEntryAtLine reads the same expandedFor computation as Render,
+// so the hit-test and the rendered rows never disagree.
+func TestTranscript_toolEntryAtLineEffectiveCollapse(t *testing.T) {
+	tx := transcriptWithTool(t)
+	tx.ensureLayout()
+	head := tx.layout.rows[0].start
+
+	// Global mode ON: everything expands by default.
+	tx.expandAll = true
+	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
+		t.Errorf("expanded mode: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
+	}
+
+	// Per-entry collapse beats the mode for just this entry.
+	tx.toggleCollapse(0)
+	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || !collapsed {
+		t.Errorf("override collapse: entry 0 must report collapsed, got %d/%v/%v", idx, collapsed, ok)
+	}
+
+	// Releasing the override re-expands it through the global mode.
+	tx.toggleCollapse(0)
+	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
+		t.Errorf("override released: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
+	}
+}
+
 // TestTranscript_expandAllOffDoesNotWipePerEntry asserts turning the global
 // expanded-view mode OFF does not wipe per-entry expansion (issue #273 AC): an
 // entry the user opened individually stays open, and toggling back on shows
