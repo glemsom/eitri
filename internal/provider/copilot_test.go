@@ -54,8 +54,8 @@ func (m *tokenMu) get() string       { return m.tok }
 // TestCopilotStreamsWithValidStoredToken is the baseline Copilot batch turn: a
 // valid stored access token is used directly as the bearer on the shared
 // Chat-Completions wire, and the reasoning/answer stream matches the primary
-// provider's, since Copilot re-expresses through the same engine seam — the
-// criterion: provider-agnostic dialect routing.
+// provider's, since Copilot re-expresses through the same engine seam —
+// provider-agnostic dialect routing.
 func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
 	srv, lastToken := copilotServer(t, sseFixture(t))
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(),
@@ -213,10 +213,9 @@ func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
 }
 
 // TestCopilotCapabilityMatchesWireBehavior ties the advertised thinking-
-// suppression control to the wire shape that honors it:
-// negotiation honors a required thinking_suppression request, AND a
-// thinking-off stream carries the explicit thinking:{type:disabled} suppression
-// (carried as an explicit thinking:{type:disabled} toggle).
+// suppression control to the wire shape that honors it: negotiation honors a
+// required thinking_suppression request, and a thinking-off stream carries
+// the explicit thinking:{type:disabled} suppression.
 // TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
 // alone; this test asserts advertisement and wire agree.
 func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {

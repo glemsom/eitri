@@ -10,8 +10,7 @@ import (
 
 // Fake is a deterministic fake Chat-Completions provider that reads a committed
 // fixture file and streams it back as text/event-stream chunks — no network,
-// fully reproducible. It is the fixture-spawning side of the engine test seam
-// ("Primary test seam: the run engine, via a fake LLM").
+// fully reproducible. It is the fixture-spawning side of the engine test seam.
 type Fake struct {
 	path string
 }

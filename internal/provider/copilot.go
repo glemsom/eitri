@@ -20,8 +20,9 @@ import (
 // re-authenticate in the TUI, which persists a fresh token to config.
 var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
-// returning a fresh token set. It is the batch-sanctioned automatic renewal
-// path; full device-flow OAuth is TUI-only.
+// RefreshFunc renews a Copilot credential from a refresh token,
+// non-interactively, returning a fresh token set. It is the batch-sanctioned
+// automatic renewal path; full device-flow OAuth is TUI-only.
 type RefreshFunc func(ctx context.Context, refreshToken string) (config.CopilotConfig, error)
 
 // CopilotProvider is the GitHub Copilot provider (device-flow OAuth via the

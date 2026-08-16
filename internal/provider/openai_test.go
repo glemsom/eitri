@@ -291,7 +291,8 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	}
 }
 
-// a temperature policy emits `temperature` and
+// TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn
+// wire: a temperature policy emits `temperature` and
 // never `top_p`; a nucleus (top-p) policy emits `top_p` and never `temperature`;
 // an ordinary turn with no policy emits neither field, so the shared request head
 // stays untouched. The two sampling modes are mutually exclusive on the wire.
@@ -451,7 +452,8 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	}
 }
 
-// a usage blob that carries only prompt_tokens — an OpenCode
+// TestOpenAIUsageWithoutCacheKeys verifies the absent-key safe-parse
+// hardening: a usage blob that carries only prompt_tokens — an OpenCode
 // proxy omitting the DeepSeek-native prompt_cache_* shape — reports an honest
 // Hit=0 with every input token treated as a cold Miss. No fake hit is ever
 // fabricated, so the TUI gauge reads cache:0% and the cost line bills full
@@ -645,8 +647,8 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 }
 
 // TestOpenAICapabilityMatchesWireBehavior ties the advertised thinking-
-// suppression control to the wire shape that honors it:
-// negotiation honors a required thinking_suppression request, AND a
+// suppression control to the wire shape that honors it: negotiation honors a
+// required thinking_suppression request, and a
 // thinking-off stream omits the thinking toggle entirely — the omission IS the
 // suppression on this path. TestOpenAIOmitsThinkingWhenDisabled
 // pins the wire shape alone; this test asserts advertisement and wire agree.

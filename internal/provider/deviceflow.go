@@ -42,8 +42,8 @@ type DeviceCode struct {
 	Interval        int    `json:"interval"`
 }
 
-// DeviceFlow is the GitHub device-flow OAuth client behind the TUI-only Copilot
-// approval screen. Batch never runs this — it consumes stored/refreshed
+// DeviceFlow is the GitHub device-flow OAuth client behind the TUI-only
+// Copilot approval screen. Batch never runs this — it consumes stored/refreshed
 // credentials instead; the interactive handshake is the TUI's job.
 type DeviceFlow struct {
 	http      *http.Client

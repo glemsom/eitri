@@ -13,15 +13,15 @@ import (
 
 // OpenAICompatible is a Chat-Completions HTTP client targeting any OpenAI-
 // compatible endpoint (OpenCode Go, the primary provider). It serializes the
-// request with model + messages
-// and streams the SSE response through the provider seam.
+// request with model + messages and streams the SSE response through the
+// provider seam.
 type OpenAICompatible struct {
 	apiKey string
 	url    string
 	http   *http.Client
 }
 
-// OpenAICompatible returns a client for the given Bearer key and base URL
+// NewOpenAICompatible returns a client for the given Bearer key and base URL
 // (the full /v1/chat/completions endpoint or a prefix to which it appends).
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	return &OpenAICompatible{apiKey: apiKey, url: url}

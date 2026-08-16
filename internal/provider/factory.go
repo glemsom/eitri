@@ -7,8 +7,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Provider family identifiers, matching the documented families surfaced in the
-// Settings surface. The saved config.Provider value
+// Provider family identifiers, matching the documented families surfaced in
+// the Settings surface. The saved config.Provider value
 // selects which transport/credential a run uses, honored across TUI and batch.
 const (
 	ProviderOpenCodeGo   = "opencode-go"

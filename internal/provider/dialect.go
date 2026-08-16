@@ -9,7 +9,7 @@ package provider
 
 // Dialect names the Chat-Completions-style tool dialects Eitri re-expresses a
 // canonical schema into. Anthropic (`/v1/messages`) is the reference
-// alternative to Chat Completions; primary routing in T11 adds Responses.
+// alternative to Chat Completions.
 type Dialect string
 
 const (

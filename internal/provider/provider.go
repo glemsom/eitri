@@ -29,7 +29,6 @@ var ErrContextOverflow = errors.New("context window overflow")
 // configured provider has no ModelLister capability (or none is set). The
 // Settings panel surfaces it as the discovery error state so model discovery
 // never fails the TUI boot silently.
-// model discovery never fails the TUI boot silently.
 var ErrNoDiscovery = errors.New("provider does not support model discovery")
 
 // IsContextOverflow reports whether err is a context-overflow signal that
@@ -142,7 +141,7 @@ type messageWire struct {
 
 // ToolFunction is one tool's reusable definition: a name, description, and a
 // JSON-Schema parameters object. It is the canonical form re-expressed per
-// wire dialect later; for this ticket Chat-Completions only.
+// wire dialect.
 type ToolFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
