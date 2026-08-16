@@ -316,7 +316,7 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
 	}
 
-	// Mode OFF: tab obeys the classic per-turn toggle and the answer aut-collapses.
+	// Mode OFF: tab obeys the classic per-turn toggle and the answer auto-collapses.
 	m2 := newStreamingModel()
 	m2 = resize(t, m2)
 	m2 = typeText(t, m2, "hi")
@@ -328,5 +328,13 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
 	if !strings.Contains(view(m2), "hidden reasoning") {
 		t.Errorf("mode OFF: tab should expand the thinking block, got: %q", view(m2))
+	}
+	// With the mode OFF the answer landing still auto-collapses the human-
+	// (tab-)expanded block back to a hint, exactly as before the Ctrl+E mode
+	// existed (issue #274, AC3): the answer-land reset must fire whenever the
+	// global mode is collapsed, not only when a block was streamed collapsed.
+	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
+	if strings.Contains(view(m2), "hidden reasoning") {
+		t.Errorf("mode OFF: answer-land should auto-collapse thinking back to a hint, got: %q", view(m2))
 	}
 }
