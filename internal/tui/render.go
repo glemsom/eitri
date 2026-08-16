@@ -146,8 +146,7 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 // The modal review panel's hints (ctrl+d review / enter diff / o browser) went
 // with the panel (issue #276); Ctrl+D itself is deliberately unbound and so
 // never advertised.
-// Insert mode advertises the wired composer bindings only — ctrl+s settings,
-// ctrl+o copy, ctrl+e expand (issue #273), and shift+enter newline (#121).
+
 func bandHints(vimNormal bool) string {
 	if vimNormal {
 		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
