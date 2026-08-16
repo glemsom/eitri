@@ -102,6 +102,25 @@ func (r *reviewPanel) focused() reviewEntry {
 	return r.files[r.cursor]
 }
 
+// reviewEntryFrom derives a review entry from a completed file-mutating tool
+// entry's captured before/after/path content (issue #90): the card diff
+// renderer (issue #275) builds on the same projection the review panel lists,
+// so the expanded tool card and the review panel derive status from content in
+// one place.
+func reviewEntryFrom(te toolEntry) reviewEntry {
+	status := "modified"
+	switch {
+	case te.before == "" && te.after != "":
+		status = "added"
+	case te.before != "" && te.after == "":
+		status = "deleted"
+	}
+	return reviewEntry{
+		path: te.path, before: te.before, after: te.after,
+		status: status, added: te.added, removed: te.removed,
+	}
+}
+
 // computeHunks fills a focused file's inline diff from its before/after content
 // using the pure-Go diff engine (issue #90 AC2), so nothing ships to an
 // external renderer.
