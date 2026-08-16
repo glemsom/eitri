@@ -34,7 +34,7 @@ func TestBashDescriptionGuidance(t *testing.T) {
 	if !strings.Contains(desc, "+N more") { // marker is case-sensitive in the spec
 		t.Fatalf("bash description missing %q: %s", "+N more", desc)
 	}
-	if strings.Contains(folded, "never silent") == false && strings.Contains(folded, "not silent") == false {
+	if !strings.Contains(folded, "never silent") && !strings.Contains(folded, "not silent") {
 		t.Fatalf("bash description must state truncation is never silent: %s", desc)
 	}
 }
