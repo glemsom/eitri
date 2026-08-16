@@ -118,18 +118,8 @@ func TestAgentToolResultsByteCappedInHistory(t *testing.T) {
 		t.Errorf("ToolResultEvent.Result is not the full raw result (len=%d, want %d)",
 			len(gotResult.Result), len(raw))
 	}
-	if gotResult.Delivered == raw {
-		t.Error("ToolResultEvent.Delivered must be the capped form, not the raw result")
-	}
-	if len(gotResult.Delivered) > compress.DefaultByteCap {
-		t.Errorf("ToolResultEvent.Delivered = %d bytes, exceeds %d-byte cap",
-			len(gotResult.Delivered), compress.DefaultByteCap)
-	}
 	if gotResult.BytesDropped <= 0 {
 		t.Errorf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
-	}
-	if !strings.Contains(gotResult.Delivered, " bytes truncated") {
-		t.Errorf("Delivered missing explicit byte marker: %q", gotResult.Delivered[len(gotResult.Delivered)-40:])
 	}
 }
 
@@ -159,7 +149,7 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 		if toolResults == 0 {
 			return provider.StreamFunc(
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_read", Name: "read", Arguments: `{"path":"big.txt"}`},
+					{ID: "call_bash", Name: "bash", Arguments: `{"command":"ls -R ."}`},
 				}, Done: true},
 			), nil
 		}
@@ -191,10 +181,18 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 		}
 	})
 
-	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "read"},
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "list"},
 		AgentOptions{
-			Tools:    byteCapToolDefs(),
-			Executor: hugeExecutor(map[string]string{"read": draft}),
+			Tools: byteCapToolDefs(),
+			Executor: ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
+				if name == "bash" {
+					// The compressor's form: line-truncated with the explicit
+					// "+N more" tail, reported compressed=true so the byte-cap
+					// merges the two markers (issue #286 review).
+					return ToolExecResult{Text: draft, Compressed: true}, nil
+				}
+				return ToolExecResult{Text: "result:" + name}, nil
+			}),
 			MaxTurns: 5,
 		})
 	if err != nil {
@@ -225,9 +223,82 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 	if gotResult.BytesDropped <= 0 {
 		t.Errorf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
 	}
-	if !mergedMarkerRe.MatchString(gotResult.Delivered) {
-		t.Errorf("Delivered missing merged marker line, tail: %q",
-			gotResult.Delivered[len(gotResult.Delivered)-60:])
+	if gotResult.Dropped != 29900 {
+		t.Errorf("ToolResultEvent.Dropped = %d, want 29900", gotResult.Dropped)
+	}
+}
+
+// TestAgentByteCapPreservesLookLikeMarkerContent drives a read turn whose raw
+// tool result legitimately ends in a line that LOOKS like the line-compressor's
+// "+N more" marker (e.g. a file whose literal last line matches, or a web page
+// ending in "+12 more") — content the byte-cap must never silently strip as a
+// "marker". Only the byte-cap's plain "+N bytes truncated" tail may be
+// appended; the look-like-marker content line must survive in the delivered
+// form, byte-dropped only at the head budget.
+func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
+	// Over-budget so the byte-cap actually runs; the raw content ends with a
+	// literal "+300 more" line that LOOKS like the compressor marker but is
+	// plain content (a read result is never compressor output).
+	raw := "+300 more\n" + strings.Repeat("content line\n", 10000) + "+300 more\n"
+	var gotResult *ToolResultEvent
+	var delivered string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		var toolResults int
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				toolResults++
+				delivered = m.Content
+			}
+		}
+		if toolResults == 0 {
+			return provider.StreamFunc(
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_read", Name: "read", Arguments: `{"path":"notes.txt"}`},
+				}, Done: true},
+			), nil
+		}
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				if strings.Contains(m.Content, " bytes truncated\n") && strings.Contains(m.Content, "+300 more, ") {
+					t.Errorf("merged marker fabricated from raw look-like-marker content: %q", m.Content)
+				}
+			}
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "done"},
+			provider.Chunk{FinishReason: "stop", Done: true,
+				Usage: &provider.Usage{PromptTokens: 1, CompletionTokens: 1}},
+		), nil
+	})
+	e := New(scripted, &mockTranscript{})
+	e.SetListener(func(evt Event) {
+		if tr, ok := evt.(ToolResultEvent); ok {
+			gotResult = &tr
+		}
+	})
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "read"},
+		AgentOptions{
+			Tools:    byteCapToolDefs(),
+			Executor: hugeExecutor(map[string]string{"read": raw}),
+			MaxTurns: 5,
+		})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if gotResult == nil {
+		t.Fatal("no ToolResultEvent emitted")
+	}
+	// The committed tool message keeps the literal "+300 more" content line
+	// (byte-dropped only at the head budget, never peeled as a marker) and
+	// carries only the plain byte-cap tail.
+	if !strings.Contains(delivered, "+300 more\n") {
+		t.Errorf("look-like-marker content line was silently stripped from the delivered form: %q", delivered[len(delivered)-60:])
+	}
+	if strings.Contains(delivered, "+300 more, ") {
+		t.Errorf("delivered merged look-like-marker content into a marker: %q", delivered[len(delivered)-60:])
+	}
+	if !strings.HasSuffix(delivered, " bytes truncated\n") {
+		t.Errorf("delivered missing the plain byte-cap tail: %q", delivered[len(delivered)-60:])
 	}
 }
 
@@ -289,9 +360,7 @@ func TestAgentByteCapWebFetchKeepsExpandPath(t *testing.T) {
 		t.Errorf("ToolResultEvent.Result is not the full raw page (len=%d, want %d)",
 			len(gotResult.Result), len(raw))
 	}
-	if len(gotResult.Delivered) > compress.DefaultByteCap {
-		t.Errorf("Delivered = %d bytes, exceeds %d-byte cap", len(gotResult.Delivered), compress.DefaultByteCap)
-	}
+
 	if gotResult.BytesDropped <= 0 {
 		t.Errorf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
 	}
@@ -301,10 +370,10 @@ func TestAgentByteCapWebFetchKeepsExpandPath(t *testing.T) {
 // the named tools, so the byte-cap tests exercise the engine boundary without
 // filesystem/network side effects.
 func hugeExecutor(results map[string]string) ToolExecutor {
-	return ExecutorFunc(func(_ context.Context, name, _ string) (string, error) {
+	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if r, ok := results[name]; ok {
-			return r, nil
+			return ToolExecResult{Text: r}, nil
 		}
-		return "result:" + name, nil
+		return ToolExecResult{Text: "result:" + name}, nil
 	})
 }

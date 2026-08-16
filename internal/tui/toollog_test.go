@@ -416,6 +416,24 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	}
 }
 
+// TestToolLog_RenderBothHintsWithoutCompressedFlag asserts the collapsed summary
+// shows BOTH hints whenever both truncations happened, even when the separate
+// Compressed flag is false (issue #286 review): the "+N more" hint derives from
+// Dropped alone, so a byte-cap that also dropped lines never loses the line
+// count just because the result is byte-only-capped in the seam's model.
+func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
+		Lines: 4, Dropped: 3, Compressed: false, BytesDropped: 2048}})
+
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
+		t.Errorf("collapsed summary must show both hints regardless of Compressed, got %q", got)
+	}
+}
+
 // TestToolLog_ExpandedRendersFullRawResult asserts the expanded view renders
 // the entry's full pre-cap Result even when the delivered form was byte-capped
 // (issue #286 AC4: nothing silently truncated on the expand path).
@@ -424,7 +442,7 @@ func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "RAW FULL RESULT",
-		Lines: 1, BytesDropped: 9000, Delivered: "truncated head +N bytes truncated"}})
+		Lines: 1, BytesDropped: 9000}})
 	l.Toggle(0)
 
 	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)

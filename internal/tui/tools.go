@@ -49,10 +49,6 @@ type ToolResult struct {
 	// expand-to-full-result path (nothing is silently truncated, issue #84 AC4)
 	// even when the delivered form was byte-capped (issue #286).
 	Result string
-	// Delivered is the byte-capped form actually sent to the provider (issue
-	// #286); equal to Result when the result fit the budget. It is cosmetic
-	// metadata for the collapsed summary — the expanded view renders Result.
-	Delivered string
 	// BytesDropped is the number of bytes the byte-cap dropped (0 when the
 	// result fit the budget). The collapsed summary shows a "(+N bytes
 	// truncated)" hint when non-zero, so the cap is never silent for the

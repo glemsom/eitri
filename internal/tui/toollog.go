@@ -17,10 +17,9 @@ import (
 // file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
 // summary that collapses the result by default and expands on demand to the
 // full inline output (never silently truncated). The byte-cap split (issue
-// #286): result holds the FULL pre-cap string and delivered the byte-capped
-// form actually sent to the provider, with bytesDropped the bytes the cap
-// dropped — the collapsed summary hints at bytesDropped while the expanded
-// view always renders result. anchor is the index into
+// #286): result holds the FULL pre-cap string, with bytesDropped the bytes
+// the cap dropped — the collapsed summary hints at bytesDropped while the
+// expanded view always renders result. anchor is the index into
 // messages of the "you" message whose turn this tool call belongs to, so View
 // can interleave the entry chronologically after its triggering prompt. It is
 // owned by toolLog (issue #208 deepened the log into the deep value type that
@@ -29,7 +28,6 @@ type toolEntry struct {
 	name         string
 	args         string
 	result       string
-	delivered    string
 	bytesDropped int
 	lines        int
 	dropped      int
@@ -116,7 +114,6 @@ func (l *toolLog) Apply(u ToolUpdate) {
 		for i := len(l.entries) - 1; i >= 0; i-- {
 			if l.entries[i].name == u.Result.Name && !l.entries[i].complete {
 				l.entries[i].result = u.Result.Result
-				l.entries[i].delivered = u.Result.Delivered
 				l.entries[i].bytesDropped = u.Result.BytesDropped
 				l.entries[i].lines = u.Result.Lines
 				l.entries[i].dropped = u.Result.Dropped
@@ -441,7 +438,7 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		if te.lines > 0 || te.dropped > 0 || te.bytesDropped > 0 {
 			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
 			hints := []string{}
-			if te.compressed && te.dropped > 0 {
+			if te.dropped > 0 {
 				hints = append(hints, fmt.Sprintf("+%d more", te.dropped))
 			}
 			if te.bytesDropped > 0 {
