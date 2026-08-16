@@ -241,11 +241,11 @@ func TestSnapshot_frames(t *testing.T) {
 	cm = keypress(t, cm, "x") // any key drains the request and flips to prompting
 	writeFrame(t, out, "12_continue", cm)
 
-	// ---- expanded tool result card (alt+y) ----
+	// ---- expanded tool result card (Ctrl+E expanded view) ----
 	ex := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)
-	ex = upd(t, ex, tea.KeyPressMsg{Code: 'y', Mod: tea.ModAlt, Text: "y"}) // alt+y: expand all tool results
+	ex = upd(t, ex, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) // Ctrl+E: expanded view mode on
 	writeFrame(t, out, "13_expanded", ex)
 
 	_ = context.Background // keep the import honest

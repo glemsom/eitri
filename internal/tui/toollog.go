@@ -37,9 +37,14 @@ type toolEntry struct {
 	startedAt time.Time
 	doneAt    time.Time
 	// expanded is the per-entry expansion state toggled by a mouse click on the
-	// entry's rows (click-to-expand, benchmark §4.4); alt+y remains the global
-	// all-entries toggle.
+	// entry's rows (click-to-expand, benchmark §4.4), independent of the global
+	// Ctrl+E expanded-view mode (issue #273). collapsedOverride is a per-entry
+	// collapse that beats the global mode ON; the two are mutually exclusive
+	// (only one is ever set by the Transcript's mode-aware toggle).
 	expanded bool
+	// collapsedOverride, when true, keeps this single entry collapsed even while
+	// the Ctrl+E expanded-view mode is ON (issue #273 per-entry orthogonality).
+	collapsedOverride bool
 	// before/after/path carry the file content and host path a file-mutating
 	// edit/write captured (issue #90): they back the review panel's inline diff
 	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
@@ -119,23 +124,63 @@ func (l *toolLog) Apply(u ToolUpdate) {
 	}
 }
 
-// Toggle flips one entry's expansion state with bounds checking (issue #208
-// US7). It never touches other entries or the global alt+y flag.
+// Toggle flips one entry's per-entry expansion state with bounds checking
+// (issue #208 US7). It never touches other entries or the global Ctrl+E flag,
+// and clears any collapse-override so the two mutually-exclusive per-entry
+// states stay coherent.
 func (l *toolLog) Toggle(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
 	}
 	l.entries[i].expanded = !l.entries[i].expanded
+	l.entries[i].collapsedOverride = false
+}
+
+// ToggleCollapse flips one entry's per-entry collapse-override (issue #273),
+// the mechanism that keeps a single entry collapsed while the global Ctrl+E
+// expanded-view mode is ON. It is bounds-checked, never touches other entries,
+// and clears any per-entry expanded so the two mutually-exclusive states stay
+// coherent. The Transcript routes the expandAll-mode click here.
+func (l *toolLog) ToggleCollapse(i int) {
+	if i < 0 || i >= len(l.entries) {
+		return
+	}
+	l.entries[i].collapsedOverride = !l.entries[i].collapsedOverride
+	l.entries[i].expanded = false
+}
+
+// expandedFor returns whether entry i renders expanded given the current global
+// Ctrl+E expanded-view mode (issue #273): a per-entry expanded state wins, a
+// per-entry collapse-override beats the global mode ON, and otherwise the entry
+// reflects the global flag. It is the single effective-expansion computation
+// both Render and the Transcript's toolEntryAtLine hit-test consult, so the
+// rendered rows and the click-to-collapse state never disagree.
+func (l *toolLog) expandedFor(i int, expandAll bool) bool {
+	if i < 0 || i >= len(l.entries) {
+		return false
+	}
+	e := l.entries[i]
+	if e.collapsedOverride {
+		// A per-entry collapse-override forces this single entry collapsed even
+		// while the global mode is ON. The per-entry expanded flag is always
+		// cleared when the override is set by ToggleCollapse, so collapsing the
+		// override wins deterministically with no dependence on that invariant.
+		return false
+	}
+	return e.expanded || expandAll
 }
 
 // Render renders every entry anchored to the given message into the shared
 // head/text surface and records each rendered entry's content-row range. The
 // row ranges are relative to the block start (0-based) so the transcript can
 // offset them by its running content-row count; they share one layout pass with
-// the mouse hit-test so the two can never drift (issue #208 US6). showAll
-// forces every entry open (the global alt+y flag, owned by the Model); a call
-// passes `now` for the live elapsed readout while a turn runs (zero when idle).
-func (l toolLog) Render(th Theme, showAll bool, now time.Time, width, anchor int) (string, []toolRowRange) {
+// the mouse hit-test so the two can never drift (issue #208 US6). expandAll
+// reflects the persistent Ctrl+E expanded-view mode (issue #273): with the
+// mode on every entry renders its full result unless a per-entry collapse
+// override beats it, so past and newly delivered entries alike respect the
+// mode at render time. A call passes `now` for the live elapsed readout while
+// a turn runs (zero when idle).
+func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor int) (string, []toolRowRange) {
 	var b strings.Builder
 	var rows []toolRowRange
 	nl := 0
@@ -148,7 +193,7 @@ func (l toolLog) Render(th Theme, showAll bool, now time.Time, width, anchor int
 			continue
 		}
 		start := nl
-		s := renderToolEntry(th, te, showAll || te.expanded, now, width)
+		s := renderToolEntry(th, te, l.expandedFor(ti, expandAll), now, width)
 		rowsInEntry := strings.Count(s, "\n")
 		emit(s)
 		if rowsInEntry > 0 {
@@ -217,11 +262,14 @@ func (l toolLog) Review() []reviewEntry {
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via
-// the shared layout pass (issue #208 US6, #212): a click on a collapsed head
-// toggles it open, on an open entry it toggles closed. rows is the row-account
-// already produced by Render (the log never re-derives layout separately), so
-// the hit-test cannot drift from what the transcript renders. It is a pure
-// lookup over those rows.
+// the shared layout pass (issue #208 US6, #212). rows is the row-account already
+// produced by Render (the log never re-derives layout separately), so the
+// hit-test cannot drift from what the transcript renders. It is a pure lookup
+// over those rows. The returned collapsed reflects the RAW per-entry expanded
+// flag only; callers that need the effective rendered state under the Ctrl+E
+// expanded-view mode (issue #273) should combine the index with expandedFor
+// (as Transcript.toolEntryAtLine does), since the per-entry state is
+// orthogonal to the global mode.
 func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {
@@ -327,7 +375,8 @@ func toolArgsHint(argsJSON string) string {
 // `⊕ tool  args` — with the result collapsed by default to a summary, never a
 // raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
 // line-delta tag, and a compressed result carries an explicit "+N more" tail
-// marker. When expanded (showToolResult), the full inline result is rendered so
+// marker. When expanded (the Ctrl+E expanded-view mode or a per-entry open),
+// the full inline result is rendered so
 // nothing is silently truncated — every collapse has an expand path. It is the
 // per-entry renderer the log's Render pass runs, so the transcript and the
 // row-account/hit-test share one layout (issue #208 US6, #212).

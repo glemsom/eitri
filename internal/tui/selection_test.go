@@ -700,7 +700,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 // TestClickToExpand_togglesToolEntry asserts a plain mouse click (press +
 // release on one cell, no drag) on a collapsed tool entry toggles just that
 // entry open, and a second click collapses it — while clicks on non-tool rows
-// stay inert and the global alt+y flag is never touched (benchmark §4.4
+// stay inert and the global expandAll flag is never touched (benchmark §4.4
 // mouse ergonomics: click-to-expand tool results).
 func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -741,8 +741,8 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	if !strings.Contains(view(m), "full output line one") {
 		t.Errorf("click must expand the entry, got: %q", view(m))
 	}
-	if m.tx.showToolResult {
-		t.Error("click must not set the global showToolResult flag")
+	if m.tx.expandAll {
+		t.Error("click must not set the global expandAll flag")
 	}
 
 	// Second click collapses it again.
