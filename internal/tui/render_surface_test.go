@@ -143,7 +143,7 @@ func TestRender_bandHints(t *testing.T) {
 		{
 			name:      "normal",
 			vimNormal: false,
-			want:      "ctrl+s settings . ctrl+o copy",
+			want:      "ctrl+s settings . ctrl+o copy . ctrl+e expand . shift+enter newline",
 		},
 		{
 			name:      "vim-normal",
