@@ -179,7 +179,7 @@ func min(a, b int) int {
 // "+N more" marker (so the merger is non-empty and the merged marker line is
 // LONGER than the plain form). The delivered form must be <= budget in EVERY
 // case — the merger's own bytes are reserved ahead of the cut, never stolen
-// from the keep head (issue #286 review).
+// from the keep head.
 func TestCapBytesMergedMarkerDeliveredNeverExceedsBudget(t *testing.T) {
 	budget := 500
 	// Head that with the long "+N more" marker lands exactly at budget+1.
@@ -203,7 +203,7 @@ func TestCapBytesMergedMarkerDeliveredNeverExceedsBudget(t *testing.T) {
 }
 
 // TestCapBytesWithoutLineTruncatedNeverMergesLookLikeMarker verifies the
-// lineTruncated gate (issue #286 review): a raw draft whose last line merely
+// lineTruncated gate: a raw draft whose last line merely
 // LOOKS like "+N more" is content, not a marker. With lineTruncated=false the
 // cap must NOT peel/merge it — the delivered form keeps the content line intact
 // ahead of the plain "+N bytes truncated" tail, so no raw bytes are silently
