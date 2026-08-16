@@ -3,8 +3,11 @@ package tools
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 // Output is the result of a sandboxed command: separated stdout/stderr so
@@ -45,6 +48,12 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 // private tmpfs on /dev/shm, so the sandbox sees its own process table and
 // device tree instead of the host's. It never falls back to unsandboxed
 // execution.
+// sshConfigSubdir names the sub-directory of the session temp that holds a
+// sanitized, user-owned copy of /etc/ssh/ssh_config.d (issue #271). It is
+// bound read-only over the system config so OpenSSH's strict ownership check
+// on included files passes from inside the user-namespace cage.
+const sshConfigSubdir = "etc-ssh-config.d"
+
 type Sandbox struct {
 	workspace string
 	tempHost  string
@@ -66,11 +75,19 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
 	}
+	if err := s.prepareSshConfig(); err != nil {
+		return nil, err
+	}
 	args := []string{
 		"--die-with-parent",
 		"--share-net", // ADR-0001 decision 1: host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
+		// Issue #271: host-root /etc/ssh/* presents as nobody (uid 65534) inside
+		// the unprivileged user-namespace cage, so OpenSSH's ownership check on
+		// the include files fails. Shadow the system config with a sanitized,
+		// user-owned copy mounted read-only AFTER the root bind.
+		"--ro-bind", filepath.Join(s.tempHost, sshConfigSubdir), "/etc/ssh/ssh_config.d",
 		"--proc", "/proc", // fresh procfs scoped to the pid namespace
 		"--dev", "/dev", // devtmpfs replaces the ro-bind host /dev
 		"--tmpfs", "/dev/shm", // devtmpfs has no /dev/shm; private writable shm
@@ -80,4 +97,80 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		"/bin/bash", "-c", cmd,
 	}
 	return s.run.Run(ctx, "bwrap", args)
+}
+
+// prepareSshConfig materializes a user-owned copy of /etc/ssh/ssh_config.d into
+// the session temp (idempotently), dereferencing symlinks so referenced include
+// files (e.g. /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf) become
+// real files owned by the caller instead of host-root targets that read as
+// nobody inside the user namespace. This keeps `ssh -G` and git-over-ssh
+// working while never running the sandbox setuid (issue #271).
+func (s *Sandbox) prepareSshConfig() error {
+	src := "/etc/ssh/ssh_config.d"
+	dst := filepath.Join(s.tempHost, sshConfigSubdir)
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil // no system drop-ins to mirror; leave the empty dir bound
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue // ssh_config.d holds only .conf files; skip nested dirs
+		}
+		sp := filepath.Join(src, e.Name())
+		dp := filepath.Join(dst, e.Name())
+		info, err := os.Lstat(sp)
+		if err != nil {
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			// Dereference: copy the symlink target's content as a real file so the
+			// in-cage include is owned by the caller, not the root target.
+			target, err := os.Readlink(sp)
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(sp), target)
+			}
+			info, err = os.Stat(target)
+			if err != nil {
+				continue
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+			if err := copyFile(target, dp); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if err := copyFile(sp, dp); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFile copies src to dst, creating dst as a plain caller-owned file.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
