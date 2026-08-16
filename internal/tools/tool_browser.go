@@ -8,7 +8,7 @@ import (
 )
 
 // openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap
-// cage (ADR-0001 decision 4). It opens a single URL or a file:// target in the
+// cage. It opens a single URL or a file:// target in the
 // host browser. A file:// target living in the session temp (sandbox /tmp) is
 // translated to the host /tmp/eitri-<GUID> path through the shared
 // PathTranslator before launch, so the host browser sees the real file.
@@ -52,7 +52,7 @@ func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (ToolR
 // translate maps the model-facing target to the host launch form: a plain URL
 // passes through; a file URL or filesystem path resolves through the shared
 // PathTranslator so a session-temp (/tmp) file opens at its host
-// /tmp/eitri-<GUID> location (ADR-0001 decision 4, ADR-0002).
+// /tmp/eitri-<GUID> location.
 func (o *openInBrowserTool) translate(target string) (string, error) {
 	if u, err := url.Parse(target); err == nil && u.Scheme != "" && u.Scheme != "file" {
 		// A non-file URL (http/https/…) is opened verbatim.

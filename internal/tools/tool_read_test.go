@@ -5,9 +5,8 @@ import (
 	"testing"
 )
 
-// TestReadDescriptionGuidance locks in the provider-facing read description
-// (issue #192 reword, regression-guarded by issue #193): the same string every
-// wire dialect sends to the model. It must state that omitted/null limits read
+// TestReadDescriptionGuidance locks in the provider-facing read description:
+// the same string every wire dialect sends to the model. It must state that
 // the ENTIRE file (whole-file default, no error), recommend explicit 1-based
 // line ranges for large files, mention line-numbered output and the explicit
 // "+N more" truncation marker, and never regress to the cost-blind

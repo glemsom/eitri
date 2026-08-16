@@ -7,7 +7,7 @@ import (
 )
 
 // Validator checks a model-supplied path against the writable roots on the
-// translated (host) form, per ADR-0002 decision 4. It is the shared seam used
+// translated (host) form. It is the shared seam used
 // by write and edit (and later open_in_browser): every target resolves to a
 // host path and is rejected with a hard error unless it lands inside the
 // workspace, a configured extra writable path, or the session temp.

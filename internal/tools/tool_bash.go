@@ -46,8 +46,8 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	}
 	// Compress at the tool-result boundary so the compressed bytes land in the
 	// cache prefix. Never-inflate gate preserves terse output. CompressResult
-	// reports whether the output really IS the compressed form (issue #286
-	// review): only then may the engine's byte-cap treat a trailing "+N more"
+	// reports whether the output really IS the compressed form: only then may
+	// the engine's byte-cap treat a trailing "+N more"
 	// line as the compressor's marker.
 	text, compressed := compress.CompressResult(o.Combined())
 	return ToolResult{Text: text, Compressed: compressed}, nil

@@ -22,7 +22,7 @@ func TestValidatorAllowsWorkspace(t *testing.T) {
 }
 
 // TestValidatorAllowsExtraWritablePaths verifies targets under configured
-// extra_writable_paths are accepted (ADR-0002 decision 4).
+// extra_writable_paths are accepted.
 func TestValidatorAllowsExtraWritablePaths(t *testing.T) {
 	v := NewValidator("/home/u/proj", []string{"/srv/data", "/home/u/scratch"}, NewPathTranslator(GUID("g2")))
 	for _, p := range []string{
@@ -50,7 +50,7 @@ func TestValidatorAllowsSessionTemp(t *testing.T) {
 }
 
 // TestValidatorRejectsOutsideRoots verifies targets outside every writable
-// root are hard errors (ADR-0002 decision 4).
+// root are hard errors.
 func TestValidatorRejectsOutsideRoots(t *testing.T) {
 	v := NewValidator("/home/u/proj", []string{"/srv/data"}, NewPathTranslator(GUID("g3")))
 	for _, p := range []string{

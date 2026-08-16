@@ -30,8 +30,8 @@ type Deps struct {
 // Tool is one agent-callable function. Name must match the registry key; Run
 // receives a JSON-decoded argument map and returns a deterministic, reversible
 // string result suitable for future compression/compaction. Compressed reports
-// whether the result is the line-compressor's truncated form (issue #286
-// review): bash compresses at the tool boundary and sets it true when the
+// whether the result is the line-compressor's truncated form: bash
+// compresses at the tool boundary and sets it true when the
 // never-inflate gate actually shortened the output; every other tool returns
 // raw bytes and sets it false, so the engine's byte-cap never mistakes raw
 // content that LOOKS like a "+N more" tail for the compressor's marker.
@@ -75,11 +75,11 @@ func (r *Registry) Definitions() []Definition {
 }
 
 // Browser exposes the registry's host-side browser launch seam (the launcher
-// backing the open_in_browser tool, ADR-0001).
+// backing the open_in_browser tool).
 func (r *Registry) Browser() BrowserLauncher { return r.browser }
 
 // Registry is the shared tool registry: it wires the single PathTranslator and
-// Validator (ADR-0002) once, plus the network and browser seams, then exposes
+// Validator once, plus the network and browser seams, then exposes
 // the fixed tool surface. Later tickets add web_fetch, open_in_browser, and
 // skill.
 type Registry struct {
@@ -133,8 +133,8 @@ func (r *Registry) Names() []string {
 // launch points like open_in_browser and for tests).
 func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
 
-// Workspace returns the workspace root (host-absolute, cleaned) the run operates
-// in (issue #82 AC1): the writable root bash/read/write/edit validate against.
+// Workspace returns the workspace root (host-absolute, cleaned): the writable
+// root bash/read/write/edit validate against.
 // It is exposed for host-side telemetry (e.g. the TUI file line-delta seam).
 func (r *Registry) Workspace() string { return r.workspace }
 
