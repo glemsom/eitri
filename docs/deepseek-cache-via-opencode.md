@@ -122,10 +122,11 @@ support — never unconditionally — so capability negotiation cannot change th
   `thinking:{type:disabled}`. Both advertise the control, and a provider that
   does not (a future third family) surfaces a settings-panel warning that
   reasoning cannot be disabled instead of silently no-op'ing.
-- Proves it: `TestOpenAICapabilityMatchesWireBehavior`,
-  `TestCopilotCapabilityMatchesWireBehavior`,
+- Proves it: `TestOpenAICapabilityMatchesWireBehavior` in
+  `internal/provider/openai_test.go`, `TestCopilotCapabilityMatchesWireBehavior`
+  in `internal/provider/copilot_test.go`,
   `TestFromConfigThinkingSuppressionMatchesWireBehavior` in
-  `internal/provider/openai_test.go`, `copilot_test.go`, `factory_test.go`;
+  `internal/provider/factory_test.go`;
   `TestSettingsView_ThinkingSuppressionWarning` in
   `internal/tui/model_settings_test.go`.
 

@@ -86,79 +86,58 @@ func TestFromConfigRoutesCopilot(t *testing.T) {
 
 // TestFromConfigThinkingSuppressionMatchesWireBehavior asserts each provider
 // family's advertised thinking-suppression capability matches its actual wire
-// shape (issue #265 AC-4): negotiations against the built provider honor a
-// required thinking_suppression request, and a stream through the same provider
-// emits the family's suppression form — omission of the thinking toggle on the
-// openai-compatible path (issue #54), an explicit thinking:{type:disabled} on
-// the copilot path (issue #263). Deterministic httptest servers, no network.
+// shape (issue #265 AC-4): negotiations against the factory-built provider
+// honor a required thinking_suppression request, and a stream against the same
+// factory routing emits the family's suppression form — omission of the
+// thinking toggle on the openai-compatible path (issue #54) and an explicit
+// thinking:{type:disabled} on the copilot path (issue #263). The opencode-go
+// and custom-openai families route their endpoint through the factory seams
+// (ProviderEnv.OpenCodeURL / CustomOpenAI.BaseURL) so the streamed instance is
+// the one FromConfig built. Copilot's endpoint is a factory constant, so its
+// wire check streams a sibling bound to the test server; the negotiation still
+// runs against the factory-built instance. Deterministic httptest servers, no
+// network.
 func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 	cases := []struct {
-		name       string
-		cfg        config.Config
-		env        ProviderEnv
-		wireChecks func(t *testing.T, p Provider)
+		name        string
+		cfg         config.Config
+		env         ProviderEnv
+		wireThrough func(t *testing.T, url string) Provider // nil: stream a sibling
 	}{
 		{
 			name: "opencode-go",
 			cfg:  config.Config{Provider: ProviderOpenCodeGo},
 			env:  ProviderEnv{OpenCodeKey: "k"},
-			wireChecks: func(t *testing.T, p Provider) {
-				assertSuppressionHonored(t, p)
-				var sawThinking bool
-				srv := thinkingWireServer(t, func(parsed map[string]any) {
-					sawThinking = parsed["thinking"] != nil
-				})
-				defer srv.Close()
-				oc := NewOpenAICompatible("k", srv.URL+"/v1/chat/completions")
-				if _, err := oc.Stream(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
-					t.Fatalf("Stream() error = %v, want nil", err)
+			wireThrough: func(t *testing.T, url string) Provider {
+				t.Helper()
+				p, err := FromConfig(config.Config{Provider: ProviderOpenCodeGo}, ProviderEnv{OpenCodeKey: "k", OpenCodeURL: url})
+				if err != nil {
+					t.Fatalf("FromConfig() error = %v, want nil", err)
 				}
-				if sawThinking {
-					t.Error("thinking-off stream carried the thinking toggle, want omitted (issue #54)")
-				}
+				return p
 			},
 		},
 		{
 			name: "custom-openai",
 			cfg: config.Config{Provider: ProviderCustomOpenAI,
 				CustomOpenAI: config.OpenAIConfig{BaseURL: "http://example.invalid/v1/chat/completions", Key: "k"}},
-			wireChecks: func(t *testing.T, p Provider) {
-				assertSuppressionHonored(t, p)
-				var sawThinking bool
-				srv := thinkingWireServer(t, func(parsed map[string]any) {
-					sawThinking = parsed["thinking"] != nil
-				})
-				defer srv.Close()
-				oc := NewOpenAICompatible("k", srv.URL+"/v1/chat/completions")
-				if _, err := oc.Stream(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
-					t.Fatalf("Stream() error = %v, want nil", err)
+			wireThrough: func(t *testing.T, url string) Provider {
+				t.Helper()
+				p, err := FromConfig(config.Config{Provider: ProviderCustomOpenAI,
+					CustomOpenAI: config.OpenAIConfig{BaseURL: url, Key: "k"}}, ProviderEnv{})
+				if err != nil {
+					t.Fatalf("FromConfig() error = %v, want nil", err)
 				}
-				if sawThinking {
-					t.Error("thinking-off stream carried the thinking toggle, want omitted (issue #54)")
-				}
+				return p
 			},
 		},
 		{
 			name: "github-copilot",
 			cfg:  config.Config{Provider: ProviderCopilot, Copilot: config.CopilotConfig{AccessToken: "x"}},
 			env:  ProviderEnv{},
-			wireChecks: func(t *testing.T, p Provider) {
-				assertSuppressionHonored(t, p)
-				var disabled bool
-				srv := thinkingWireServer(t, func(parsed map[string]any) {
-					if th, ok := parsed["thinking"].(map[string]any); ok {
-						disabled = th["type"] == "disabled"
-					}
-				})
-				defer srv.Close()
-				cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
-				if _, err := cp.Stream(context.Background(), Request{Model: "m"}); err != nil {
-					t.Fatalf("Stream() error = %v, want nil", err)
-				}
-				if !disabled {
-					t.Error("thinking-off stream lacked explicit {type:disabled} suppression (issue #263)")
-				}
-			},
+			// FromConfig pins Copilot's endpoint to DefaultCopilotURL with no env
+			// seam, so the wire check uses a sibling bound to the test server.
+			wireThrough: nil,
 		},
 	}
 
@@ -168,8 +147,50 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FromConfig() error = %v, want nil", err)
 			}
-			tc.wireChecks(t, p)
+			assertSuppressionHonored(t, p)
+
+			// Negotiation ran on the factory-built p; the wire check streams a
+			// provider with the same factory routing bound to a live server.
+			streamAssertSuppression(t, func(url string) Provider {
+				if tc.wireThrough != nil {
+					return tc.wireThrough(t, url)
+				}
+				return NewCopilot(config.CopilotConfig{AccessToken: "x"}, url, nil, nil, nil)
+			}, tc.name)
 		})
+	}
+}
+
+// streamAssertSuppression streams one thinking-off Request through a provider
+// built against the returned server URL and asserts the wire carries the
+// family's suppression form: omission of the thinking toggle on the
+// openai-compatible path (issue #54), an explicit thinking:{type:disabled} on
+// the copilot path (issue #263).
+func streamAssertSuppression(t *testing.T, build func(url string) Provider, family string) {
+	t.Helper()
+	var sawThinking bool
+	var disabled bool
+	srv := thinkingWireServer(t, func(parsed map[string]any) {
+		sawThinking = parsed["thinking"] != nil
+		if th, ok := parsed["thinking"].(map[string]any); ok {
+			disabled = th["type"] == "disabled"
+		}
+	})
+	defer srv.Close()
+
+	p := build(srv.URL)
+	if _, err := p.Stream(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	switch family {
+	case "opencode-go", "custom-openai":
+		if sawThinking {
+			t.Error("thinking-off stream carried the thinking toggle, want omitted (issue #54)")
+		}
+	case "github-copilot":
+		if !disabled {
+			t.Error("thinking-off stream lacked explicit {type:disabled} suppression (issue #263)")
+		}
 	}
 }
 

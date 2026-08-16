@@ -655,42 +655,10 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 // pins the wire shape alone; this test asserts advertisement and wire agree.
 func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
-	honored, err := NegotiateGenerationControls(context.Background(), cl, []ControlRequirement{
-		{Control: GenerationControlThinkingSuppression, Required: true},
-	})
-	if err != nil {
-		t.Fatalf("NegotiateGenerationControls() error = %v, want nil (honored)", err)
-	}
-	if !sameControls(honored, []string{string(GenerationControlThinkingSuppression)}) {
-		t.Fatalf("NegotiateGenerationControls() = %v, want [%s]", honored, GenerationControlThinkingSuppression)
-	}
-
-	// The wire form of the suppression: thinking off omits the toggle.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-		body, _ := io.ReadAll(r.Body)
-		var parsed map[string]any
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			t.Errorf("request body not JSON: %v", err)
-		}
-		if parsed["thinking"] != nil {
-			t.Errorf("request body %s has thinking control, want omitted when off (issue #54)", body)
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		fixture, _ := os.ReadFile("testdata/usage-final.sse")
-		_, _ = w.Write(fixture)
-	}))
-	defer srv.Close()
-
-	cl2 := NewOpenAICompatible("k", srv.URL+"/v1/chat/completions")
-	if _, err := cl2.Stream(context.Background(), Request{
-		Model:           "deepseek-v4-flash",
-		Messages:        []Message{{Role: RoleUser, Content: "hi"}},
-		ThinkingEnabled: false,
-	}); err != nil {
-		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
-	}
+	assertSuppressionHonored(t, cl)
+	streamAssertSuppression(t, func(url string) Provider {
+		return NewOpenAICompatible("k", url)
+	}, "opencode-go")
 }
 
 // TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a

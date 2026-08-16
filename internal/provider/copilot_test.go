@@ -220,44 +220,10 @@ func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
 // alone; this test asserts advertisement and wire agree.
 func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
-	honored, err := NegotiateGenerationControls(context.Background(), cp, []ControlRequirement{
-		{Control: GenerationControlThinkingSuppression, Required: true},
-	})
-	if err != nil {
-		t.Fatalf("NegotiateGenerationControls() error = %v, want nil (honored)", err)
-	}
-	if !sameControls(honored, []string{string(GenerationControlThinkingSuppression)}) {
-		t.Fatalf("NegotiateGenerationControls() = %v, want [%s]", honored, GenerationControlThinkingSuppression)
-	}
-
-	// The wire form of the suppression: thinking off carries an explicit
-	// disabled toggle (issue #263).
-	var thinkingDisabled bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
-		body, _ := io.ReadAll(r.Body)
-		var parsed map[string]any
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			t.Errorf("request body not JSON: %v", err)
-		}
-		if th, ok := parsed["thinking"].(map[string]any); ok {
-			thinkingDisabled = th["type"] == "disabled"
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write(sseFixture(t))
-	}))
-	defer srv.Close()
-
-	cp2 := NewCopilot(config.CopilotConfig{AccessToken: "x"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
-	if _, err := cp2.Stream(context.Background(), Request{
-		Model:           "gpt-4o",
-		ThinkingEnabled: false,
-	}); err != nil {
-		t.Fatalf("Copilot.Stream() error = %v, want nil", err)
-	}
-	if !thinkingDisabled {
-		t.Error("request did not carry thinking suppression {type:disabled}, want present when thinking off (issue #263)")
-	}
+	assertSuppressionHonored(t, cp)
+	streamAssertSuppression(t, func(url string) Provider {
+		return NewCopilot(config.CopilotConfig{AccessToken: "x"}, url, nil, nil, nil)
+	}, "github-copilot")
 }
 
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire

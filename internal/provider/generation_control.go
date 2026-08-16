@@ -11,9 +11,9 @@ import (
 // provider can actually honor — before any wire call. The five controls are the
 // constrained-output levers Eitri may request on internal (non-tool) turns:
 // schema-constrained JSON, an output-token budget, a sampling policy,
-// provider-side tool-schema enforcement, and thinking suppression. Each is wire-emitted by the specific
-// special-turn tickets (#59–#62); this seam is the negotiation contract they
-// share.
+// provider-side tool-schema enforcement, and thinking suppression. Each is
+// wire-emitted by the specific special-turn tickets (#59–#62); this seam is
+// the negotiation contract they share.
 
 // GenerationControl identifies one provider-side generation control a special
 // turn may request on the wire.
