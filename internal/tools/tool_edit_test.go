@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestEditDescriptionGuidance locks in the provider-facing edit description
-// (issue #285): the same string every wire dialect sends to the model. It
+// TestEditDescriptionGuidance locks in the provider-facing edit description:
+// the same string every wire dialect sends to the model. It
 // must state the exact-match and exactly-once uniqueness contract, that a
 // zero/multi match is a hard error with no silent partial application,
 // recommend widening old_string with surrounding context when the target

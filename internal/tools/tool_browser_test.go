@@ -39,8 +39,7 @@ func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 
 // TestOpenInBrowserTranslatesSessionTempToHost verifies that when the model asks
 // to open a file in the session temp (sandbox /tmp), open_in_browser translates
-// the sandbox path to the host /tmp/eitri-<GUID> form before launching
-// (ADR-0001 decision 4 / ADR-0002).
+// the sandbox path to the host /tmp/eitri-<GUID> form before launching.
 func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

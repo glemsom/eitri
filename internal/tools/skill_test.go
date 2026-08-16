@@ -62,7 +62,7 @@ func TestSkillDiscoverScopes(t *testing.T) {
 	}
 
 	// Install scopes stay queryable per-name; the Items accessor that fed the
-	// TUI's rail skills panel is gone with the panel (issue #188).
+	// TUI's rail skills panel is gone with the panel.
 	if catalog.Scope("user-skill") != "user" || catalog.Scope("proj-skill") != "project" {
 		t.Fatalf("install scopes unexpected: user-skill=%q proj-skill=%q", catalog.Scope("user-skill"), catalog.Scope("proj-skill"))
 	}

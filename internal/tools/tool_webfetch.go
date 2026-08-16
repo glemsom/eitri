@@ -7,10 +7,10 @@ import (
 )
 
 // webFetchTool is the web_fetch tool: it fetches a URL over HTTP and returns
-// the page rendered as Markdown. It is its own execution path (ADR-0001
-// decision 2) — never a bash invocation and not network-restricted. The result
+// the page rendered as Markdown. It is its own execution path — never a bash
+// invocation and not network-restricted. The result
 // rides the normal tool-result channel so untrusted web content never reaches
-// operator-level text (#10/#14).
+// operator-level text.
 type webFetchTool struct {
 	f Fetcher
 }

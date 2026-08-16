@@ -1,13 +1,13 @@
 // Package tools holds the agent's tool surface: the shared tool registry,
 // the four core tools (bash, read, write, edit), the bwrap sandbox runner,
 // and the single path-namespace translation seam every path-taking tool
-// routes through (ADR-0002).
+// routes through.
 package tools
 
 import "strings"
 
 // GUID identifies one run's session temp namespace. It is the internal host
-// detail that must never surface to the model (ADR-0002 decision 5).
+// detail that must never surface to the model.
 type GUID string
 
 // hostTempPrefix returns the host-form temp root for g, e.g. /tmp/eitri-<GUID>.
@@ -17,7 +17,7 @@ func hostTempPrefix(g GUID) string {
 
 // PathTranslator is the single, shared seam that maps the two halves of the
 // path namespace: sandbox /tmp <=> host /tmp/eitri-<GUID>. Workspace host
-// paths are canonical and need no translation (ADR-0002). All path-taking
+// paths are canonical and need no translation. All path-taking
 // tools (bash, write, edit, and later open_in_browser) and their validation
 // share one translator so every component resolves the same /tmp namespace.
 type PathTranslator struct {

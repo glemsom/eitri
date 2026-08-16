@@ -13,7 +13,7 @@ import (
 // html tokenizer. It renders the representative blocks web content needs
 // (headings, paragraphs, emphasis, links, code, lists) and drops chrome
 // (script/style/head/nav) so the model gets the readable substance. Used by
-// web_fetch (ADR-0001 decision 2).
+// web_fetch's own execution path, never a bash invocation.
 func htmlToMarkdown(body io.Reader) (string, error) {
 	z := html.NewTokenizer(body)
 	st := &mdState{}

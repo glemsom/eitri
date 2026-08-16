@@ -12,7 +12,7 @@ import (
 // Fetcher is the web_fetch network seam. Fetch returns a reader over the
 // fetched resource body (already an HTTP 2xx). It is injectable so web_fetch
 // is testable without a live network; the production impl is an http.Client
-// GET. web_fetch is its own execution path (ADR-0001 decision 2), never a bash
+// GET. web_fetch is its own execution path, never a bash
 // invocation.
 type Fetcher interface {
 	Fetch(ctx context.Context, url string) (io.ReadCloser, error)
@@ -52,7 +52,7 @@ func (httpFetcher) Fetch(ctx context.Context, url string) (io.ReadCloser, error)
 // BrowserLauncher is the open_in_browser host-side seam. Open launches the
 // given target (a URL or a host filesystem path) in the host browser. It is
 // injectable so open_in_browser is testable without launching a real browser;
-// the production impl is xdg-open (ADR-0001 decision 4).
+// the production impl is xdg-open.
 type BrowserLauncher interface {
 	Open(ctx context.Context, target string) error
 }

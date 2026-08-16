@@ -40,7 +40,7 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 	return &Output{Stdout: stdout.String(), Stderr: stderr.String()}, err
 }
 
-// Sandbox runs shell commands inside the bubblewrap cage (ADR-0001). It is a
+// Sandbox runs shell commands inside the bubblewrap cage. It is a
 // defense-in-depth boundary: root mounted read-only, the workspace mounted
 // read-write at its host path, the session temp mounted as sandbox /tmp, a
 // separate PID namespace, and host network (--share-net). A fresh procfs is
@@ -50,7 +50,7 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 // execution.
 // sshConfigDirName is the name of the sub-directory of the session temp that is
 // bound read-only over the in-cage mount destination /etc/ssh/ssh_config.d
-// (issue #271). It maps 1:1 onto the system config path so the sanitized,
+// It maps 1:1 onto the system config path so the sanitized,
 // user-owned copy shadows the host-root originals, keeping OpenSSH's strict
 // ownership check on the include files from failing inside the user-namespace
 // cage.
@@ -72,7 +72,7 @@ func NewSandbox(workspace, tempHost string, run Runner) *Sandbox {
 // output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	// The session temp host root must exist: bwrap refuses to bind a missing
-	// source (ADR-0001/0002). Create it idempotently so the sandbox /tmp
+	// source. Create it idempotently so the sandbox /tmp
 	// depends on a real, writable host dir.
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
@@ -82,10 +82,10 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	}
 	args := []string{
 		"--die-with-parent",
-		"--share-net", // ADR-0001 decision 1: host network
+		"--share-net", // host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
-		// Issue #271: host-root /etc/ssh/* presents as nobody (uid 65534) inside
+		// Host-root /etc/ssh/* presents as nobody (uid 65534) inside
 		// the unprivileged user-namespace cage, so OpenSSH's ownership check on
 		// the include files fails. Shadow the system config with a sanitized,
 		// user-owned copy mounted read-only AFTER the root bind.
@@ -106,7 +106,7 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 // files (e.g. /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf) become
 // real files owned by the caller instead of host-root targets that read as
 // nobody inside the user namespace. This keeps `ssh -G` and git-over-ssh
-// working while never running the sandbox setuid (issue #271).
+// working while never running the sandbox setuid.
 func (s *Sandbox) prepareSshConfig() error {
 	src := "/etc/ssh/ssh_config.d"
 	dst := filepath.Join(s.tempHost, sshConfigDirName)

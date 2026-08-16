@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestBashDescriptionGuidance locks in the provider-facing bash description
-// (issue #284): it must advertise, in the model's own terms, that output is
+// TestBashDescriptionGuidance locks in the provider-facing bash description:
+// it must advertise, in the model's own terms, that output is
 // combined stdout+stderr passed through a deterministic compressor (ANSI
 // stripped, repeated consecutive lines collapsed, progress/redraw frames
 // collapsed), that listings longer than a bounded line budget are truncated

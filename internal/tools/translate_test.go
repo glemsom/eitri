@@ -6,7 +6,7 @@ import (
 
 // TestPathTranslatorIsBidirectional verifies the prefix-map translates both
 // directions: sandbox /tmp -> host /tmp/eitri-<GUID> and the reverse, while
-// leaving workspace host paths untouched (ADR-0002 decision 1 & 3).
+// leaving workspace host paths untouched.
 func TestPathTranslatorIsBidirectional(t *testing.T) {
 	g := GUID("abc123")
 	tr := NewPathTranslator(g)
@@ -44,7 +44,7 @@ func TestPathTranslatorIsBidirectional(t *testing.T) {
 	}
 }
 
-// TestPathTranslatorIsIdempotent guards ADR-0002 decision 3: repeated
+// TestPathTranslatorIsIdempotent verifies repeated
 // translation never compounds or double-applies the GUID segment.
 func TestPathTranslatorIsIdempotent(t *testing.T) {
 	g := GUID("xyz99")
@@ -65,7 +65,7 @@ func TestPathTranslatorIsIdempotent(t *testing.T) {
 }
 
 // TestPathTranslatorTempIdentityDefinesGuestRoot verifies the model-facing
-// temp identity is always sandbox /tmp (ADR-0002 decision 5).
+// temp identity is always sandbox /tmp.
 func TestPathTranslatorTempIdentityDefinesGuestRoot(t *testing.T) {
 	tr := NewPathTranslator(GUID("aaa"))
 	host, rewritten := tr.SandboxToHost("/tmp")
