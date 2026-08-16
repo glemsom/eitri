@@ -45,9 +45,19 @@ type ToolStart struct {
 type ToolResult struct {
 	// Name is the tool that ran (matches its ToolStart).
 	Name string
-	// Result is the full delivered result string, uncompressed; it backs the
-	// expand-to-full-result path (nothing is silently truncated).
+	// Result is the FULL pre-cap tool result string; it backs the
+	// expand-to-full-result path (nothing is silently truncated, issue #84 AC4)
+	// even when the delivered form was byte-capped (issue #286).
 	Result string
+	// Delivered is the byte-capped form actually sent to the provider (issue
+	// #286); equal to Result when the result fit the budget. It is cosmetic
+	// metadata for the collapsed summary — the expanded view renders Result.
+	Delivered string
+	// BytesDropped is the number of bytes the byte-cap dropped (0 when the
+	// result fit the budget). The collapsed summary shows a "(+N bytes
+	// truncated)" hint when non-zero, so the cap is never silent for the
+	// user either.
+	BytesDropped int
 	// Lines is the count of lines in the delivered result, including any
 	// explicit "+N more" marker line when present.
 	Lines int

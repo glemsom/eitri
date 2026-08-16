@@ -151,7 +151,8 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			// TUI-side observer's diff, not from the engine seam (issue #174).
 			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
-				Name: ev.Name, Result: ev.Result, Lines: ev.Lines, Dropped: ev.Dropped,
+				Name: ev.Name, Result: ev.Result, Delivered: ev.Delivered, BytesDropped: ev.BytesDropped,
+				Lines: ev.Lines, Dropped: ev.Dropped,
 				Compressed: ev.Compressed, Added: added, Removed: removed,
 				Before: before, After: after, Path: path,
 			}})
