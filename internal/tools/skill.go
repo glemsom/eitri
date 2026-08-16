@@ -334,20 +334,20 @@ func (s *skillTool) Schema() map[string]any {
 	}, []string{"name"})
 }
 
-func (s *skillTool) Run(ctx context.Context, args map[string]any) (string, error) {
+func (s *skillTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
 	name, err := strArg(args, "name")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	if s.c.IsActive(name) {
-		return fmt.Sprintf("skill %q is already active in this context; no re-injection performed.", name), nil
+		return ToolResult{Text: fmt.Sprintf("skill %q is already active in this context; no re-injection performed.", name)}, nil
 	}
 	sk := s.c.Skill(name)
 	if sk == nil {
-		return "", fmt.Errorf("unknown skill %q", name)
+		return ToolResult{}, fmt.Errorf("unknown skill %q", name)
 	}
 	s.c.MarkActive(name)
-	return renderSkillPayload(name, sk), nil
+	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
 // renderSkillPayload builds the structured agentskills-io payload: the body

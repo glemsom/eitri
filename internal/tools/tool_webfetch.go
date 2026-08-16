@@ -32,23 +32,23 @@ func (w *webFetchTool) Schema() map[string]any {
 	}, []string{"url"})
 }
 
-func (w *webFetchTool) Run(ctx context.Context, args map[string]any) (string, error) {
+func (w *webFetchTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
 	url, err := strArg(args, "url")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return "", fmt.Errorf("web_fetch: %q is not an http(s) URL", url)
+		return ToolResult{}, fmt.Errorf("web_fetch: %q is not an http(s) URL", url)
 	}
 	body, err := w.f.Fetch(ctx, url)
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	defer body.Close()
 	md, err := htmlToMarkdown(body)
 	if err != nil {
-		return "", fmt.Errorf("web_fetch %s: %w", url, err)
+		return ToolResult{}, fmt.Errorf("web_fetch %s: %w", url, err)
 	}
 	// Prepend the origin so the model can attribute the fetched content.
-	return "Source: " + url + "\n\n" + md, nil
+	return ToolResult{Text: "Source: " + url + "\n\n" + md}, nil
 }

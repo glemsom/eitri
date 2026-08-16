@@ -52,7 +52,8 @@ func newWebFetchRegistry(t *testing.T, f Fetcher) (*Registry, string) {
 func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
 	f := &stubFetcher{body: `<html><body><h1>Title</h1><p>Hello <strong>bold</strong> world.</p><ul><li>one</li><li>two</li></ul></body></html>`}
 	r, _ := newWebFetchRegistry(t, f)
-	out, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/doc"))
+	res, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/doc"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("web_fetch error = %v, want nil", err)
 	}
@@ -75,7 +76,8 @@ func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
 func TestWebFetchIsOwnPathNotBash(t *testing.T) {
 	f := &stubFetcher{body: `<html><body><p>plain</p></body></html>`}
 	r, _ := newWebFetchRegistry(t, f)
-	out, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/x"))
+	res, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/x"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("web_fetch error = %v, want nil", err)
 	}

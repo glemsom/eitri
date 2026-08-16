@@ -110,12 +110,16 @@ type registryExecutor struct {
 	r *tools.Registry
 }
 
-func (re *registryExecutor) Execute(ctx context.Context, name, argsJSON string) (string, error) {
+func (re *registryExecutor) Execute(ctx context.Context, name, argsJSON string) (ToolExecResult, error) {
 	var args map[string]any
 	if err := jsonUnmarshal(argsJSON, &args); err != nil {
-		return "", err
+		return ToolExecResult{}, err
 	}
-	return re.r.Run(ctx, name, args)
+	res, err := re.r.Run(ctx, name, args)
+	if err != nil {
+		return ToolExecResult{}, err
+	}
+	return ToolExecResult{Text: res.Text, Compressed: res.Compressed}, nil
 }
 
 func jsonUnmarshal(data string, v any) error {

@@ -280,12 +280,16 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	_, err = e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{
 			Tools: providerTools(reg.Definitions()),
-			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (string, error) {
+			Executor: engine.ExecutorFunc(func(ctx context.Context, name, argsJSON string) (engine.ToolExecResult, error) {
 				var args map[string]any
 				if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-					return "", err
+					return engine.ToolExecResult{}, err
 				}
-				return reg.Run(ctx, name, args)
+				res, err := reg.Run(ctx, name, args)
+				if err != nil {
+					return engine.ToolExecResult{}, err
+				}
+				return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, nil
 			}),
 			MaxTurns: 5,
 		})

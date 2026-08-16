@@ -115,11 +115,11 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 // — the shape the real bash tool emits — so the compression-metadata event
 // can be asserted against a known-good marker.
 func compressExec() ToolExecutor {
-	return ExecutorFunc(func(_ context.Context, name, _ string) (string, error) {
+	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if name == "bash" {
-			return "README.md\ninternal/pkg_a.go\ninternal/pkg_b.go\n+3 more\n", nil
+			return ToolExecResult{Text: "README.md\ninternal/pkg_a.go\ninternal/pkg_b.go\n+3 more\n", Compressed: true}, nil
 		}
-		return "result:" + name, nil
+		return ToolExecResult{Text: "result:" + name}, nil
 	})
 }
 

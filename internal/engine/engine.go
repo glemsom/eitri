@@ -13,6 +13,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -239,16 +240,27 @@ func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy p
 
 // ToolExecutor executes an agent tool call. The tools registry implements it;
 // the engine depends on this seam so dispatch is testable without filesystem
-// side effects a specific tool might have.
+// side effects a specific tool might have. The returned ToolExecResult carries
+// the result text plus whether it is the line-compressor's compressed form
+// (issue #286 review): the engine relies on this truth — never on matching a
+// look-alike "+N more" tail — to decide whether the byte-cap may merge that
+// tail as the compressor's marker.
+type ToolExecResult struct {
+	// Text is the tool's result string.
+	Text string
+	// Compressed is true when Text is the line-compressor's compressed form.
+	Compressed bool
+}
+
 type ToolExecutor interface {
-	Execute(ctx context.Context, name string, argsJSON string) (string, error)
+	Execute(ctx context.Context, name string, argsJSON string) (ToolExecResult, error)
 }
 
 // ExecutorFunc adapts a plain function to the ToolExecutor interface.
-type ExecutorFunc func(ctx context.Context, name string, argsJSON string) (string, error)
+type ExecutorFunc func(ctx context.Context, name string, argsJSON string) (ToolExecResult, error)
 
 // Execute implements ToolExecutor.
-func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (string, error) {
+func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (ToolExecResult, error) {
 	return f(ctx, name, argsJSON)
 }
 
@@ -445,11 +457,22 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		for _, tc := range done.ToolCalls {
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
-			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result))
+			// Shared byte-cap at the tool-result boundary (issue #286): every tool
+			// result is measured against the single budget before its bytes enter
+			// message history, so one oversized web_fetch or whole-file read cannot
+			// exhaust the context window. The delivered (byte-capped) form goes to
+			// the provider; the event additionally carries the FULL pre-cap result
+			// so the TUI expand path stays lossless (issue #84 AC4). CapBytes
+			// merges a "+N more" tail into the byte marker ONLY when the executor
+			// reports the result is the line-compressor's compressed form — raw
+			// content that merely looks like the marker is never stripped (issue
+			// #286 review).
+			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Compressed)
+			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result.Text, dropped))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,
-				Content:    result,
+				Content:    delivered,
 			})
 		}
 	}
@@ -474,21 +497,21 @@ func toolSchema(tools []provider.Tool, name string) map[string]any {
 // {"INVALID_JSON": "<raw>"} tool result (built via the JSON library so
 // escaping stays correct); a schema-violating call is rejected with a
 // descriptive error. It never panics and never silently skips a call.
-func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) string {
+func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) ToolExecResult {
 	var parsed map[string]any
 	if err := validateToolCallArgs(toolSchema(opts.Tools, tc.Name), tc.Arguments, &parsed); err != nil {
 		if errors.Is(err, errInvalidJSON) {
 			b, jerr := json.Marshal(map[string]string{"INVALID_JSON": tc.Arguments})
 			if jerr != nil {
-				return `{"INVALID_JSON":"unserializable"}`
+				return ToolExecResult{Text: `{"INVALID_JSON":"unserializable"}`}
 			}
-			return string(b)
+			return ToolExecResult{Text: string(b)}
 		}
-		return "invalid tool arguments: " + err.Error()
+		return ToolExecResult{Text: "invalid tool arguments: " + err.Error()}
 	}
 	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
 	if err != nil {
-		return "error executing tool: " + err.Error()
+		return ToolExecResult{Text: "error executing tool: " + err.Error()}
 	}
 	return result
 }

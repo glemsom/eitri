@@ -16,22 +16,26 @@ import (
 // name + args, plus the delivered result and its deterministic compression and
 // file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
 // summary that collapses the result by default and expands on demand to the
-// full inline output (never silently truncated). anchor is the index into
+// full inline output (never silently truncated). The byte-cap split (issue
+// #286): result holds the FULL pre-cap string, with bytesDropped the bytes
+// the cap dropped — the collapsed summary hints at bytesDropped while the
+// expanded view always renders result. anchor is the index into
 // messages of the "you" message whose turn this tool call belongs to, so View
 // can interleave the entry chronologically after its triggering prompt. It is
 // owned by toolLog (issue #208 deepened the log into the deep value type that
 // holds its entries and their operations end to end).
 type toolEntry struct {
-	name       string
-	args       string
-	result     string
-	lines      int
-	dropped    int
-	compressed bool
-	added      int
-	removed    int
-	anchor     int // index of the triggering "you" message in messages
-	complete   bool
+	name         string
+	args         string
+	result       string
+	bytesDropped int
+	lines        int
+	dropped      int
+	compressed   bool
+	added        int
+	removed      int
+	anchor       int // index of the triggering "you" message in messages
+	complete     bool
 	// startedAt/doneAt bound the tool's execution window for the elapsed-time
 	// readout (benchmark §4.1: tool cards carry elapsed time). startedAt is set
 	// when the tool begins, doneAt when its result lands; a running tool's live
@@ -110,6 +114,7 @@ func (l *toolLog) Apply(u ToolUpdate) {
 		for i := len(l.entries) - 1; i >= 0; i-- {
 			if l.entries[i].name == u.Result.Name && !l.entries[i].complete {
 				l.entries[i].result = u.Result.Result
+				l.entries[i].bytesDropped = u.Result.BytesDropped
 				l.entries[i].lines = u.Result.Lines
 				l.entries[i].dropped = u.Result.Dropped
 				l.entries[i].compressed = u.Result.Compressed
@@ -366,12 +371,14 @@ func toolArgsHint(argsJSON string) string {
 // renderToolEntry renders one tool-call entry as a compact, glanceable line —
 // `⊕ tool  args` — with the result collapsed by default to a summary, never a
 // raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
-// line-delta tag, and a compressed result carries an explicit "+N more" tail
-// marker. When expanded (the Ctrl+E expanded-view mode or a per-entry open),
-// the full inline result is rendered so
-// nothing is silently truncated — every collapse has an expand path. It is the
-// per-entry renderer the log's Render pass runs, so the transcript and the
-// row-account/hit-test share one layout (issue #208 US6, #212).
+// line-delta tag, a compressed result carries an explicit "+N more" tail
+// marker, and a byte-capped delivery carries a "(+N bytes truncated)" hint
+// (issue #286). When expanded (the Ctrl+E expanded-view mode or a per-entry
+// open), the FULL inline result is rendered (the entry's pre-cap result, never
+// the capped delivered form) so nothing is silently truncated — every collapse
+// has an expand path. It is the per-entry renderer the log's Render pass runs,
+// so the transcript and the row-account/hit-test share one layout (issue #208
+// US6, #212).
 func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
@@ -424,11 +431,21 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 
 	if !expanded {
 		// Collapsed summary: line count + explicit "+N more" tail marker when
-		// the result was compressed. Never a raw dump.
-		if te.lines > 0 || te.dropped > 0 {
+		// the result was compressed, and a "(+N bytes truncated)" hint when the
+		// delivered form was byte-capped (issue #286) — never a raw dump, never
+		// a silent cap. Both hints merge when line and byte truncation both
+		// happened, mirroring the merged marker line the model sees.
+		if te.lines > 0 || te.dropped > 0 || te.bytesDropped > 0 {
 			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
-			if te.compressed && te.dropped > 0 {
-				summary += fmt.Sprintf(" (+%d more)", te.dropped)
+			hints := []string{}
+			if te.dropped > 0 {
+				hints = append(hints, fmt.Sprintf("+%d more", te.dropped))
+			}
+			if te.bytesDropped > 0 {
+				hints = append(hints, fmt.Sprintf("+%d bytes truncated", te.bytesDropped))
+			}
+			if len(hints) > 0 {
+				summary += " (" + strings.Join(hints, ", ") + ")"
 			}
 			b.WriteString(th.statusStyle.Render("  " + summary))
 			b.WriteString("\n")

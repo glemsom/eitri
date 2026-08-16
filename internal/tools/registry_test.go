@@ -91,7 +91,9 @@ func TestRegistryExposesTools(t *testing.T) {
 func TestBashRunsInSandbox(t *testing.T) {
 	rr := &recordingRunner{out: &Output{Stdout: "$HOME\n"}}
 	r, _ := newTestRegistry(t, rr)
-	got, err := r.Run(context.Background(), "bash", argMap("command", "echo $HOME"))
+	res, err := r.Run(context.Background(), "bash", argMap("command", "echo $HOME"))
+	got := res.Text
+	_ = got
 	if err != nil {
 		t.Fatalf("bash error = %v, want nil", err)
 	}
@@ -113,7 +115,8 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	}
 	rr := &recordingRunner{out: &Output{Stdout: raw.String()}}
 	r, _ := newTestRegistry(t, rr)
-	got, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	res, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	got := res.Text
 	if err != nil {
 		t.Fatalf("bash error = %v, want nil", err)
 	}
@@ -124,7 +127,8 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 		t.Fatalf("compressed output not shorter: raw=%d bytes, got=%d bytes", len(raw.String()), len(got))
 	}
 	// Deterministic: re-running the same command returns the same compressed form.
-	again, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	againRes, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	again := againRes.Text
 	if err != nil {
 		t.Fatalf("bash second run error = %v, want nil", err)
 	}
@@ -142,7 +146,8 @@ func TestReadLineRange(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write setup: %v", err)
 	}
-	got, err := r.Run(context.Background(), "read", argMap("path", path, "start_line", "2", "end_line", "4"))
+	res, err := r.Run(context.Background(), "read", argMap("path", path, "start_line", "2", "end_line", "4"))
+	got := res.Text
 	if err != nil {
 		t.Fatalf("read error = %v, want nil", err)
 	}
@@ -163,7 +168,8 @@ func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"), []byte("hello\nworld\n"), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	got, err := r.Run(context.Background(), "read", argMap("path", "AGENTS.md"))
+	res, err := r.Run(context.Background(), "read", argMap("path", "AGENTS.md"))
+	got := res.Text
 	if err != nil {
 		t.Fatalf("read relative path error = %v, want nil", err)
 	}
@@ -189,7 +195,8 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 	if err := os.WriteFile("/tmp/eitri-g/data.txt", []byte("tmp-content"), 0o600); err != nil {
 		t.Fatalf("write temp host: %v", err)
 	}
-	got, err := r.Run(context.Background(), "read", argMap("path", "/tmp/data.txt"))
+	res, err := r.Run(context.Background(), "read", argMap("path", "/tmp/data.txt"))
+	got := res.Text
 	if err != nil {
 		t.Fatalf("read /tmp error = %v, want nil", err)
 	}
@@ -201,7 +208,8 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 // TestWriteCreatesFile verifies write targets validate and create the file.
 func TestWriteCreatesFile(t *testing.T) {
 	r, ws := newTestRegistry(t, nil)
-	out, err := r.Run(context.Background(), "write", argMap("path", filepath.Join(ws, "new.txt"), "content", "hello"))
+	res, err := r.Run(context.Background(), "write", argMap("path", filepath.Join(ws, "new.txt"), "content", "hello"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("write error = %v, want nil", err)
 	}

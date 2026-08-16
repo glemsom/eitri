@@ -56,13 +56,13 @@ type callRecord struct {
 	args map[string]any
 }
 
-func (m *mockToolRecorder) Execute(_ context.Context, name, argsJSON string) (string, error) {
+func (m *mockToolRecorder) Execute(_ context.Context, name, argsJSON string) (ToolExecResult, error) {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", err
+		return ToolExecResult{}, err
 	}
 	m.calls = append(m.calls, callRecord{name: name, args: args})
-	return "result:" + name, nil
+	return ToolExecResult{Text: "result:" + name}, nil
 }
 
 // toolCallMessage returns the list of role:"tool" message contents present on

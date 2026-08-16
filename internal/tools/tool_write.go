@@ -33,21 +33,21 @@ func (w *writeTool) Schema() map[string]any {
 	}, []string{"path", "content"})
 }
 
-func (w *writeTool) Run(ctx context.Context, args map[string]any) (string, error) {
+func (w *writeTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
 	path, err := strArg(args, "path")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	content, err := strArg(args, "content")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	host, err := w.val.Resolve(path)
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	if err := os.WriteFile(host, []byte(content), 0o644); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
+		return ToolResult{}, fmt.Errorf("write %s: %w", path, err)
 	}
-	return fmt.Sprintf("Wrote %d bytes to %s", len(content), path), nil
+	return ToolResult{Text: fmt.Sprintf("Wrote %d bytes to %s", len(content), path)}, nil
 }

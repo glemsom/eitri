@@ -38,26 +38,26 @@ func (r *readTool) Schema() map[string]any {
 	}, []string{"path", "start_line", "end_line"})
 }
 
-func (r *readTool) Run(ctx context.Context, args map[string]any) (string, error) {
+func (r *readTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
 	path, err := strArg(args, "path")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	start, err := argInt(args, "start_line", 1)
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	end, err := argInt(args, "end_line", 0) // 0 = to EOF
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	host, err := r.val.Resolve(path)
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	data, err := os.ReadFile(host)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
+		return ToolResult{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	text := string(data)
 	lines := splitLines(text)
@@ -68,16 +68,16 @@ func (r *readTool) Run(ctx context.Context, args map[string]any) (string, error)
 		end = len(lines)
 	}
 	if start > len(lines) {
-		return "", fmt.Errorf("start_line %d beyond file length %d", start, len(lines))
+		return ToolResult{}, fmt.Errorf("start_line %d beyond file length %d", start, len(lines))
 	}
 	if start > end {
-		return "", fmt.Errorf("start_line %d after end_line %d", start, end)
+		return ToolResult{}, fmt.Errorf("start_line %d after end_line %d", start, end)
 	}
 	var b []byte
 	for i := start; i <= end; i++ {
 		b = append(b, fmt.Appendf(nil, "%6d\t%s\n", i, lines[i-1])...)
 	}
-	return string(b), nil
+	return ToolResult{Text: string(b)}, nil
 }
 
 func argInt(args map[string]any, key string, def int) (int, error) {
