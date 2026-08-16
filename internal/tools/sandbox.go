@@ -48,11 +48,13 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 // private tmpfs on /dev/shm, so the sandbox sees its own process table and
 // device tree instead of the host's. It never falls back to unsandboxed
 // execution.
-// sshConfigSubdir names the sub-directory of the session temp that holds a
-// sanitized, user-owned copy of /etc/ssh/ssh_config.d (issue #271). It is
-// bound read-only over the system config so OpenSSH's strict ownership check
-// on included files passes from inside the user-namespace cage.
-const sshConfigSubdir = "etc-ssh-config.d"
+// sshConfigDirName is the name of the sub-directory of the session temp that is
+// bound read-only over the in-cage mount destination /etc/ssh/ssh_config.d
+// (issue #271). It maps 1:1 onto the system config path so the sanitized,
+// user-owned copy shadows the host-root originals, keeping OpenSSH's strict
+// ownership check on the include files from failing inside the user-namespace
+// cage.
+const sshConfigDirName = "etc-ssh-config.d"
 
 type Sandbox struct {
 	workspace string
@@ -87,7 +89,7 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		// the unprivileged user-namespace cage, so OpenSSH's ownership check on
 		// the include files fails. Shadow the system config with a sanitized,
 		// user-owned copy mounted read-only AFTER the root bind.
-		"--ro-bind", filepath.Join(s.tempHost, sshConfigSubdir), "/etc/ssh/ssh_config.d",
+		"--ro-bind", filepath.Join(s.tempHost, sshConfigDirName), "/etc/ssh/ssh_config.d",
 		"--proc", "/proc", // fresh procfs scoped to the pid namespace
 		"--dev", "/dev", // devtmpfs replaces the ro-bind host /dev
 		"--tmpfs", "/dev/shm", // devtmpfs has no /dev/shm; private writable shm
@@ -107,7 +109,7 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 // working while never running the sandbox setuid (issue #271).
 func (s *Sandbox) prepareSshConfig() error {
 	src := "/etc/ssh/ssh_config.d"
-	dst := filepath.Join(s.tempHost, sshConfigSubdir)
+	dst := filepath.Join(s.tempHost, sshConfigDirName)
 	if err := os.MkdirAll(dst, 0o700); err != nil {
 		return err
 	}
@@ -124,37 +126,50 @@ func (s *Sandbox) prepareSshConfig() error {
 		}
 		sp := filepath.Join(src, e.Name())
 		dp := filepath.Join(dst, e.Name())
-		info, err := os.Lstat(sp)
+		target, ok, err := resolveRegularFile(sp)
 		if err != nil {
-			continue
+			return err // real I/O error, not a mere absent entry
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			// Dereference: copy the symlink target's content as a real file so the
-			// in-cage include is owned by the caller, not the root target.
-			target, err := os.Readlink(sp)
-			if !filepath.IsAbs(target) {
-				target = filepath.Join(filepath.Dir(sp), target)
-			}
-			info, err = os.Stat(target)
-			if err != nil {
-				continue
-			}
-			if !info.Mode().IsRegular() {
-				continue
-			}
-			if err := copyFile(target, dp); err != nil {
-				return err
-			}
-			continue
+		if !ok {
+			continue // not a regular file (missing target, non-regular); skip
 		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		if err := copyFile(sp, dp); err != nil {
+		if err := copyFile(target, dp); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// resolveRegularFile resolves src to the path of the regular file to copy,
+// dereferencing symlinks so a symlink target rooted in /usr/lib/systemd is
+// copied as a real, caller-owned file rather than a pointer to a host-root,
+// nobody-in-cage target. ok is false when src does not map to a regular file,
+// in which case the caller should skip the entry. A genuine I/O error is
+// returned as err: a vanished entry (os.ErrNotExist) counts as skip, not
+// error, while any other failure (permission, etc.) propagates so the caller
+// surfaces it instead of silently failing open.
+func resolveRegularFile(src string) (path string, ok bool, err error) {
+	info, err := os.Lstat(src)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil // vanished between readdir and lstat; skip
+		}
+		return "", false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(src)
+		if err != nil {
+			return "", false, err
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(src), target)
+		}
+		return resolveRegularFile(target) // deref chained symlinks
+	}
+	if !info.Mode().IsRegular() {
+		return "", false, nil // non-regular (dir, socket, ...); skip
+	}
+	return src, true, nil
 }
 
 // copyFile copies src to dst, creating dst as a plain caller-owned file.

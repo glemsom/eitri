@@ -107,7 +107,7 @@ func TestSandboxRegistersSshConfigMount(t *testing.T) {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
 	argv := rr.calls[0]
-	sshSrc := tempHost + string(filepath.Separator) + sshConfigSubdir
+	sshSrc := tempHost + string(filepath.Separator) + sshConfigDirName
 	if !hasArgvPair(argv, "--ro-bind", sshSrc, "/etc/ssh/ssh_config.d") {
 		t.Fatalf("argv does not bind sanitized ssh config over /etc/ssh/ssh_config.d: %v", argv)
 	}
@@ -182,6 +182,30 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 		}
 	} else {
 		t.Log("ssh not present; skipping issue #271 ssh -G regression check")
+	}
+
+	// Issue #271 acceptance also requires git-over-ssh to work inside the cage,
+	// which exercises the same OpenSSH ownership check on the include files. Pre-
+	// fix, `git ls-remote` failed with "Bad owner or permissions on
+	// /etc/ssh/ssh_config.d/..." (exit 128). We intentionally do NOT assert a
+	// strict exit 0 here: the live remote depends on a reachable network and the
+	// user's ssh credentials, both of which may be absent in CI. The specific
+	// regression this guards is the *absence of the ownership error*; any other
+	// failure (no network, no creds) is environmental and must not fail the test.
+	gitBin, _ := exec.LookPath("git")
+	if gitBin != "" && sshBin != "" {
+		o, err := sb.Run(context.Background(), "git ls-remote git@github.com:glemsom/eitri.git >/dev/null")
+		switch {
+		case err == nil:
+			// Network + creds were available; ownership fix verified end-to-end.
+		case strings.Contains(o.Stderr, "Bad owner or permissions"):
+			t.Fatalf("git ls-remote hit the issue #271 ownership error inside the cage: %v\n%s", err, o.Stderr)
+		default:
+			// Unrelated env failure (no network/creds); not a #271 regression.
+			t.Logf("git ls-remote not verifiable (no network/creds): %v", err)
+		}
+	} else {
+		t.Log("git or ssh not present; skipping issue #271 git ls-remote regression check")
 	}
 }
 
