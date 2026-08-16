@@ -172,8 +172,8 @@ func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{
 			Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "edit"}}},
-			Executor: engine.ExecutorFunc(func(_ context.Context, _, _ string) (string, error) {
-				return "Edit applied to /w/f.go", nil
+			Executor: engine.ExecutorFunc(func(_ context.Context, _, _ string) (engine.ToolExecResult, error) {
+				return engine.ToolExecResult{Text: "Edit applied to /w/f.go"}, nil
 			}),
 			MaxTurns: 5,
 		}); err != nil {
