@@ -65,21 +65,6 @@ func truncateWidth(s string, w int) string {
 	return sb.String()
 }
 
-// clipReviewRegion keeps the first n rows of the rendered review region and
-// discards the tail, so an over-height diff clips at the review region boundary
-// (issue T06 AC1) instead of flowing over the history/band. A trailing newline
-// is preserved so the region stays cleanly separated from the scroll region.
-func clipReviewRegion(content string, n int) string {
-	if n < 0 {
-		n = 0
-	}
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if n < len(lines) {
-		lines = lines[:n]
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
 // bottomSlice returns the bottom-anchored slice of the history content for a
 // viewport of the given height — the fallback used when the model has no
 // persisted viewport component (should not occur via NewModelCfg). It keeps the
@@ -152,18 +137,18 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 	return th.thinkingStyle.Render(hint) + "\n"
 }
 
-// bandHints returns the right-aligned keybinding hint strip for the status
-// row (benchmark §4.4: one consistent hint system from the central keymap).
-// Hints are the real, wired bindings — never advertised keys that no-op. It is
-// a pure value-in → string-out function on the surface state that drives the
-// hint set (vim mode, review panel open), never the Model itself.
-func bandHints(vimNormal, reviewOpen bool) string {
+// bandHints returns the keybinding hint strip for the status row (benchmark
+// §4.4: one consistent hint system from the central keymap). Hints are the
+// real, wired bindings — never advertised keys that no-op. It sits on the
+// value-only render surface (issue #208) with a single bool input rather than
+// taking the Model, so the hint sets stay table-testable without a live model
+// (issue #210); model.go's renderBand is the only taken*Model-free site.
+// The modal review panel's hints (ctrl+d review / enter diff / o browser) went
+// with the panel (issue #276); Ctrl+D itself is deliberately unbound and so
+// never advertised.
+func bandHints(vimNormal bool) string {
 	if vimNormal {
 		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
 	}
-	hints := []string{"ctrl+s settings", "ctrl+d review", "ctrl+o copy"}
-	if reviewOpen {
-		hints = []string{"enter diff", "o browser", "ctrl+d close"}
-	}
-	return strings.Join(hints, g(" · ", " . "))
+	return strings.Join([]string{"ctrl+s settings", "ctrl+o copy"}, g(" · ", " . "))
 }

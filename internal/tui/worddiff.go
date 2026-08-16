@@ -7,13 +7,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Word-level diff highlighting for the review panel (benchmark §4.2: diff
+// Word-level diff highlighting for the inline card diff (benchmark §4.2: diff
 // lines carry word-level emphasis — the diffAddedWord/diffDeletedWord pattern).
 // A modified line renders as a whole-line fill plus bold on the words that
 // actually changed, so a long edited line reads its delta at a glance instead
 // of requiring a character-by-character comparison.
 //
-// The pairing contract: the review renderer pairs an adjacent "-" line with
+// The pairing contract: the diff renderer pairs an adjacent "-" line with
 // the "+" line that follows it in the same hunk (the diff engine emits a
 // delete followed by an insert for a modified line) and runs wordDiff on the
 // pair.

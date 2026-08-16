@@ -125,26 +125,10 @@ func TestRender_lineCount(t *testing.T) {
 	}
 }
 
-// TestRender_clipReviewRegion table-tests keeping the first n rows and
-// discarding the tail, preserving a trailing newline (issue T06 AC1).
-func TestRender_clipReviewRegion(t *testing.T) {
-	cases := []struct {
-		name    string
-		content string
-		n       int
-		want    string
-	}{
-		{"empty", "", 3, "\n"},
-		{"keep-all", "a\nb", 3, "a\nb\n"},
-		{"clip-tail", "a\nb\nc", 2, "a\nb\n"},
-		{"negative-clamp", "a\nb", -1, "\n"},
-	}
-	for _, c := range cases {
-		if got := clipReviewRegion(c.content, c.n); got != c.want {
-			t.Errorf("%s: clipReviewRegion(%q,%d) = %q, want %q", c.name, c.content, c.n, got, c.want)
-		}
-	}
-}
+// TestRender_clipReviewRegion is obsolete with the modal review panel (issue
+// #276): the height-clipped review region it clipped is gone, so the helper
+// and its table test are deleted rather than re-homed — tall card diffs now
+// clip against the native history viewport's own height clamp.
 
 // TestRender_bottomSlice table-tests the bottom-anchored slice: newest lines
 // kept, head dropped when the history overflows the viewport.

@@ -198,25 +198,27 @@ func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 	}
 }
 
-// TestComposer_CaretHiddenOnReviewPanel asserts no hardware caret is attached
-// while the review panel is open — the panel routes keys (up/down/enter), so
-// the composer is not editable there (issue #169 AC1). Closing the panel
-// restores the caret on the next frame (issue #169 AC3).
-func TestComposer_CaretHiddenOnReviewPanel(t *testing.T) {
-	var feed = NewToolFeed()
-	m := newReviewModel(t, nil)
+// TestComposer_CaretStaysAttachedOnCtrlD asserts de-allocating ctrl+d (issue
+// #276) keeps the composer editable surface intact: the hardware caret stays
+// attached through the keypress and the focus never leaves the composer. The
+// panel that used to steal keys on ctrl+d is gone, so nothing can detach the
+// caret (issue #169's panel-specific behavior is obsolete with the panel).
+func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: NewToolFeed(),
+	})
 	m = resize(t, m)
-	m = reviewFeedEdit(t, &m, feed, "/w/main.go", "edit", "old\n", "new\n", 0, 1)
-	m = reopenReview(t, m)
-	if m.tx.review == nil {
-		t.Fatal("review panel must be open after ctrl+d")
-	}
-	if c := m.View().Cursor; c != nil {
-		t.Errorf("review panel open must not attach a caret, got %+v", c)
-	}
-	m = reopenReview(t, m)
+	m = typeText(t, m, "hi")
+
 	if c := m.View().Cursor; c == nil {
-		t.Error("closing the review panel must restore the hardware caret")
+		t.Fatal("composer must start with the hardware caret attached")
+	}
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	if c := m.View().Cursor; c == nil {
+		t.Error("ctrl+d (unbound) must not detach the composer's hardware caret")
 	}
 }
 

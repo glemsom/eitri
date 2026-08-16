@@ -74,8 +74,8 @@ func (o *DeltaObserver) Start(id, name, argsJSON string) {
 // Result computes the added/removed line counts and the before/after full
 // content + host path a file-mutating tool call performed, by diffing the
 // snapshot taken at Start against the current on-disk file (issue #174). It
-// backs the tool feed's `⊕ edit path [+N,-M]` tag and the review panel's
-// inline diff + open_in_browser hatch. Non-file tools, unmatched ids, and read
+// backs the tool feed's `⊕ edit path [+N,-M]` tag and the card path's
+// inline diff. Non-file tools, unmatched ids, and read
 // errors degrade to zeros (best-effort telemetry, never a failure).
 func (o *DeltaObserver) Result(id, name string) (added, removed int, before, after, path string) {
 	if name != "edit" && name != "write" {

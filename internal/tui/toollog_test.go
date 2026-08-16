@@ -78,7 +78,7 @@ func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 
 // TestToolLog_ReviewProjectsChangedFiles asserts Review consolidates the
 // file-mutating (edit/write) entries by path, keeping the most recent state per
-// path and classifying added/modified/deleted (issue #90, #208 US5).
+// path (issue #90, #208 US5).
 func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -93,8 +93,8 @@ func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	if len(rev) != 1 {
 		t.Fatalf("expected one reviewed file, got %d", len(rev))
 	}
-	if rev[0].path != "a.go" || rev[0].status != "modified" {
-		t.Errorf("review entry = %+v, want a.go/modified", rev[0])
+	if rev[0].path != "a.go" {
+		t.Errorf("review entry = %+v, want a.go", rev[0])
 	}
 	// The most recent (write) state wins.
 	if !strings.Contains(rev[0].after, "func x()") {
@@ -159,11 +159,10 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	}
 }
 
-// TestToolLog_ReviewClassifiesAddDeleteModify asserts Review classifies each
-// file-mutating entry by its before/after content span into added/deleted/
-// modified, keeping the same behaviour as the historical review builder (issue
-// #90, #208 US5).
-func TestToolLog_ReviewClassifiesAddDeleteModify(t *testing.T) {
+// TestToolLog_ReviewKeepsMostRecentState asserts Review consolidates repeated
+// writes to one path by keeping the most recent before/after content span,
+// replacing the older entry's content wholesale (issue #90, #208 US5).
+func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 	applyFile := func(l *toolLog, name, path, before, after string) {
 		l.SetAnchor(0)
 		l.Apply(ToolUpdate{Start: &ToolStart{Name: name, Args: `{"path":"` + path + `"}`}})
@@ -175,12 +174,10 @@ func TestToolLog_ReviewClassifiesAddDeleteModify(t *testing.T) {
 		name   string
 		before string
 		after  string
-		want   string
 	}{
-		{name: "added", before: "", after: "package a\n", want: "added"},
-		{name: "deleted", before: "package a\n", after: "", want: "deleted"},
-		{name: "modified", before: "a", after: "b", want: "modified"},
+		{name: "added-then-rewritten", before: "package a\n", after: "package a\n\nfunc x() {}\n"},
 	}
+
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var l toolLog
@@ -189,8 +186,8 @@ func TestToolLog_ReviewClassifiesAddDeleteModify(t *testing.T) {
 			if len(rev) != 1 {
 				t.Fatalf("expected one reviewed file, got %d", len(rev))
 			}
-			if rev[0].status != c.want {
-				t.Errorf("status = %q, want %q", rev[0].status, c.want)
+			if rev[0].before != c.before || rev[0].after != c.after {
+				t.Errorf("most recent state = (%q, %q), want (%q, %q)", rev[0].before, rev[0].after, c.before, c.after)
 			}
 		})
 	}

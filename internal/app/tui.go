@@ -64,11 +64,11 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
 	// demand to the full result.
 	tools := tui.NewToolFeed()
-	// File line-delta + review-panel content (issue #174): a TUI-side observer
+	// File line-delta + card-diff content (issue #174): a TUI-side observer
 	// fed by the engine's tool-call event stream snapshots each edit/write
 	// target on tool-call start and diffs it on tool result, so the `⊕ edit
-	// path [+N,-M]` tag and the review panel's inline diff compute entirely on
-	// the TUI side of the seam. The injected path-resolution seam wires the
+	// path [+N,-M]` tag and the expanded card's inline diff compute entirely
+	// on the TUI side of the seam. The injected path-resolution seam wires the
 	// registry's shared path translator + workspace root.
 	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	// Subscribe the live status strip, the streaming answer pane, and the tool
@@ -98,10 +98,6 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// shows no skills panel (issue #188); the surface only feeds slash
 		// completion and activation.
 		Skills: skillSurface(reg, skills),
-		// The review panel's open_in_browser escape hatch (issue #90) reuses the
-		// registry's host-side browser launch seam that backs the open_in_browser
-		// tool, so a changed file's path opens in the host browser/editor.
-		OpenInBrowser: reg.Browser().Open,
 	})
 	m.SetTurn(runEngineTurn(e, cfg, reg, sessionKey, m.ContinueHook()))
 	return runProgram(m)
