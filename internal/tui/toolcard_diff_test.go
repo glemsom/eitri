@@ -106,16 +106,22 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 }
 
 // TestToolCard_expandedNoDiffFallsBackToSummary asserts an expanded card whose
-// path has no diffable content falls back to the count summary (existing review
-// behavior), never a raw dump (issue #275 AC).
+// before/after are both empty falls back to the [+N, −M] count-summary card
+// body (existing review behavior), never the raw result dump (issue #275 AC).
+// The dump check keys on the stripped result text, not the full te.result
+// string: the card frame's trailing border space would mask a rendered dump.
 func TestToolCard_expandedNoDiffFallsBackToSummary(t *testing.T) {
 	te := toolCardDiffEntry("edit", "internal/auth.go", "", "", 0, 0)
 
 	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80)
-	if !strings.Contains(expanded, "[+0, −0]") {
-		t.Errorf("no-diff fallback must keep the count summary, got:\n%s", expanded)
+	strip := ansiStrip(expanded)
+	if !strings.Contains(strip, "[+0, −0]") {
+		t.Errorf("no-diff fallback must keep the count summary, got:\n%s", strip)
 	}
-	if strings.Contains(expanded, te.result) {
-		t.Errorf("no-diff fallback must not dump the raw result, got:\n%s", expanded)
+	if strings.Contains(strip, "1 file changed") {
+		t.Errorf("no-diff fallback must not dump the raw result, got:\n%s", strip)
+	}
+	if di := strings.Index(strip, "[+0, −0]"); di < 0 || !strings.Contains(strip[:di], "internal/auth.go") {
+		t.Errorf("count summary must name the file, got:\n%s", strip)
 	}
 }

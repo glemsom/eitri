@@ -237,28 +237,19 @@ func (l toolLog) Review() []reviewEntry {
 		if te.path == "" {
 			continue
 		}
-		status := "modified"
-		switch {
-		case te.before == "" && te.after != "":
-			status = "added"
-		case te.before != "" && te.after == "":
-			status = "deleted"
-		}
+		entry := reviewEntryFromTool(te)
 		idx, ok := byPath[te.path]
 		if !ok {
 			byPath[te.path] = len(files)
-			files = append(files, reviewEntry{
-				path: te.path, before: te.before, after: te.after,
-				status: status, added: te.added, removed: te.removed,
-			})
+			files = append(files, entry)
 			continue
 		}
 		// Most recent state for an already-listed file wins.
-		files[idx].before = te.before
-		files[idx].after = te.after
-		files[idx].status = status
-		files[idx].added = te.added
-		files[idx].removed = te.removed
+		files[idx].before = entry.before
+		files[idx].after = entry.after
+		files[idx].status = entry.status
+		files[idx].added = entry.added
+		files[idx].removed = entry.removed
 	}
 	return files
 }
@@ -453,10 +444,17 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	// file-mutating edit/write whose before/after snapshot the engine captured
 	// (issue #90) renders its inline diff instead of the result dump (issue
 	// #275): the same pure-Go diff engine + word emphasis the review panel
-	// uses, inside the card's frame.
-	if (te.name == "edit" || te.name == "write") && (te.before != "" || te.after != "") {
+	// uses, inside the card's frame. An edit/write with no captured content
+	// falls back to the [+N, −M] count summary (never the raw dump), matching
+	// the review projection's no-diff handling.
+	if te.name == "edit" || te.name == "write" {
 		frame := cardFrame(th, te)
-		b.WriteString(frame.Render(strings.TrimRight(renderToolCardDiff(reviewEntryFrom(te), th), "\n")))
+		entry := reviewEntryFromTool(te)
+		if te.before == "" && te.after == "" {
+			b.WriteString(frame.Render(strings.TrimRight(renderCountSummary(entry, th), "\n")))
+		} else {
+			b.WriteString(frame.Render(strings.TrimRight(renderToolCardDiff(entry, th), "\n")))
+		}
 		b.WriteString("\n")
 		return b.String()
 	}
@@ -486,13 +484,11 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 // (issue #275). A path with no diffable content (the engine couldn't snapshot
 // it) falls back to the count summary, matching the review projection.
 func renderToolCardDiff(f reviewEntry, th Theme) string {
-	if f.before != "" || f.after != "" {
-		if h := diff.Diff(f.before, f.after); len(h) > 0 {
-			f.hunks = h
-			return renderDiff(f, th)
-		}
+	if h := diff.Diff(f.before, f.after); len(h) > 0 {
+		f.hunks = h
+		return renderDiff(f, th)
 	}
-	return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
+	return renderCountSummary(f, th)
 }
 
 // deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by

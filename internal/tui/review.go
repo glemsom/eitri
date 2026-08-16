@@ -102,12 +102,13 @@ func (r *reviewPanel) focused() reviewEntry {
 	return r.files[r.cursor]
 }
 
-// reviewEntryFrom derives a review entry from a completed file-mutating tool
-// entry's captured before/after/path content (issue #90): the card diff
-// renderer (issue #275) builds on the same projection the review panel lists,
-// so the expanded tool card and the review panel derive status from content in
-// one place.
-func reviewEntryFrom(te toolEntry) reviewEntry {
+// reviewEntryFromTool derives a review entry from a completed file-mutating
+// tool entry's captured before/after/path content (issue #90): the status
+// (modified/added/deleted) is derived here from content, not line counts, and
+// toolLog.Review() reuses this helper for its per-entry projection so status
+// derivation lives in one place. The expanded tool card's diff renderer (issue
+// #275) builds on the same projection the review panel lists.
+func reviewEntryFromTool(te toolEntry) reviewEntry {
 	status := "modified"
 	switch {
 	case te.before == "" && te.after != "":
@@ -147,7 +148,7 @@ func (m *Model) openFocused() {
 // engine couldn't snapshot) falls back to the count summary.
 func renderDiff(f reviewEntry, th Theme) string {
 	if len(f.hunks) == 0 {
-		return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
+		return renderCountSummary(f, th)
 	}
 	var sb strings.Builder
 	for _, h := range f.hunks {
@@ -178,4 +179,12 @@ func renderDiff(f reviewEntry, th Theme) string {
 		}
 	}
 	return sb.String()
+}
+
+// renderCountSummary renders a changed file's [+N, −M] count-summary line — the
+// fallback body for a path with no diffable content. It is shared by the review
+// panel's renderDiff and the expanded tool card's renderToolCardDiff (issue
+// #275) so the no-diff fallback framing lives in one place.
+func renderCountSummary(f reviewEntry, th Theme) string {
+	return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
 }
