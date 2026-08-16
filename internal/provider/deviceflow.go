@@ -43,7 +43,7 @@ type DeviceCode struct {
 }
 
 // DeviceFlow is the GitHub device-flow OAuth client behind the TUI-only Copilot
-// approval screen (T11). Batch never runs this — it consumes stored/refreshed
+// approval screen. Batch never runs this — it consumes stored/refreshed
 // credentials instead; the interactive handshake is the TUI's job.
 type DeviceFlow struct {
 	http      *http.Client

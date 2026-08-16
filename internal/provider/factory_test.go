@@ -86,11 +86,11 @@ func TestFromConfigRoutesCopilot(t *testing.T) {
 
 // TestFromConfigThinkingSuppressionMatchesWireBehavior asserts each provider
 // family's advertised thinking-suppression capability matches its actual wire
-// shape (issue #265 AC-4): negotiations against the factory-built provider
+// shape: negotiations against the factory-built provider
 // honor a required thinking_suppression request, and a stream against the same
 // factory routing emits the family's suppression form — omission of the
-// thinking toggle on the openai-compatible path (issue #54) and an explicit
-// thinking:{type:disabled} on the copilot path (issue #263). The opencode-go
+// thinking toggle on the openai-compatible path and an explicit
+// thinking:{type:disabled} on the copilot path. The opencode-go
 // and custom-openai families route their endpoint through the factory seams
 // (ProviderEnv.OpenCodeURL / CustomOpenAI.BaseURL) so the streamed instance is
 // the one FromConfig built. Copilot's endpoint is a factory constant, so its
@@ -164,8 +164,8 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 // streamAssertSuppression streams one thinking-off Request through a provider
 // built against the returned server URL and asserts the wire carries the
 // family's suppression form: omission of the thinking toggle on the
-// openai-compatible path (issue #54), an explicit thinking:{type:disabled} on
-// the copilot path (issue #263).
+// openai-compatible path, an explicit thinking:{type:disabled} on
+// the copilot path.
 func streamAssertSuppression(t *testing.T, build func(url string) Provider, family string) {
 	t.Helper()
 	var sawThinking bool
@@ -185,11 +185,11 @@ func streamAssertSuppression(t *testing.T, build func(url string) Provider, fami
 	switch family {
 	case "opencode-go", "custom-openai":
 		if sawThinking {
-			t.Error("thinking-off stream carried the thinking toggle, want omitted (issue #54)")
+			t.Error("thinking-off stream carried the thinking toggle, want omitted")
 		}
 	case "github-copilot":
 		if !disabled {
-			t.Error("thinking-off stream lacked explicit {type:disabled} suppression (issue #263)")
+			t.Error("thinking-off stream lacked explicit {type:disabled} suppression")
 		}
 	}
 }

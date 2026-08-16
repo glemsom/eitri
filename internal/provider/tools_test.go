@@ -70,8 +70,7 @@ func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 // TestToolCallMarshalsNestedFunction verifies the resubmitted assistant
 // tool_calls carries the Chat Completions nested function shape. OpenCode Go
 // rejects a flat {type,id,name,arguments} entry ("missing field `function`")
-// with a 400/401, so the wire must nest name+arguments under function
-// (docs/research/tool-exposure.md §2).
+// with a 400/401, so the wire must nest name+arguments under function.
 func TestToolCallMarshalsNestedFunction(t *testing.T) {
 	// wireShape mirrors the Chat Completions assistant tool_calls element.
 	type wireShape struct {

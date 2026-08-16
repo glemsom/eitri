@@ -17,12 +17,11 @@ import (
 // ErrReauthRequired is returned by a Copilot batch run when no usable
 // credential is available — a valid access token nor a refresh path. Batch
 // never runs the interactive device flow; the message directs the user to
-// re-authenticate in the TUI, which persists a fresh token to config (T11).
+// re-authenticate in the TUI, which persists a fresh token to config.
 var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
-// RefreshFunc renews a Copilot credential from a refresh token, non-interactively
-// returning a fresh token set. It is the batch-sanctioned automatic renewal path
-// (T11): full device-flow OAuth is TUI-only.
+// returning a fresh token set. It is the batch-sanctioned automatic renewal
+// path; full device-flow OAuth is TUI-only.
 type RefreshFunc func(ctx context.Context, refreshToken string) (config.CopilotConfig, error)
 
 // CopilotProvider is the GitHub Copilot provider (device-flow OAuth via the
@@ -56,7 +55,7 @@ func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refres
 // on, and disabled when thinking is off. Unlike the primary/openai path (where
 // an off thinking omits the field entirely), the Copilot backend follows its
 // server default (on) unless an explicit suppression is sent, so the toggle is
-// always carried here (issue #263).
+// always carried here.
 func copilotThinkingControl(req Request) *thinkingEnabler {
 	t := "enabled"
 	if !req.ThinkingEnabled {
@@ -67,10 +66,10 @@ func copilotThinkingControl(req Request) *thinkingEnabler {
 
 // SupportedGenerationControls declares that Copilot can honor the Generation
 // Budget control, since it streams through the same Chat-Completions wire as the
-// primary provider and emits max_completion_tokens on special turns
-// (issue #60), plus Thinking Suppression, carried as an explicit
-// thinking:{type:disabled} toggle when thinking is off (issue #263). The other
-// three generation controls are not supported here.
+// primary provider and emits max_completion_tokens on special turns, plus
+// Thinking Suppression, carried as an explicit thinking:{type:disabled} toggle
+// when thinking is off. The other three generation controls are not supported
+// here.
 func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}, nil
 }
@@ -154,7 +153,7 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 // Models implements the optional ModelLister capability so the TUI Settings
 // surface can surface the Copilot model lineup. The models URL is derived from
 // the Chat-Completions url by stripping the /chat/completions suffix, mirroring
-// the primary provider's derivation (research/opencode-endpoints.md §3).
+// the primary provider's derivation.
 func (cp *CopilotProvider) Models(ctx context.Context) ([]string, error) {
 	tok, err := cp.bearer(ctx)
 	if err != nil {

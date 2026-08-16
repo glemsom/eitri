@@ -1,8 +1,7 @@
 // Package provider defines the provider seam — the single, highest test seam
 // in the project — plus a deterministic fake Chat-Completions SSE provider
 // driven by committed fixtures, and an OpenAI-compatible Chat-Completions
-// client that talks to OpenCode Go (the primary provider, docs/research/
-// opencode-endpoints.md §5).
+// client that talks to OpenCode Go (the primary provider).
 //
 // Every run-engine turn goes through a Stream; TUI and batch both consume it.
 package provider
@@ -21,14 +20,15 @@ var ErrMalformed = errors.New("malformed Chat Completions SSE event")
 
 // ErrContextOverflow is returned by a provider when the request would overflow
 // the context window (a 400/context-overflow below the proactive threshold). It
-// is the emergency trigger for the session compaction engine (ADR-0003 decision
-// 2): the engine evicts the oldest body, rebuilds the summary
-// head, and retries rather than surfacing the raw overflow to the caller.
+// is the emergency trigger for the session compaction engine: the engine
+// evicts the oldest body, rebuilds the summary head, and retries rather than
+// surfacing the raw overflow to the caller.
 var ErrContextOverflow = errors.New("context window overflow")
 
 // ErrNoDiscovery is returned by the provider model-discovery seam when the
 // configured provider has no ModelLister capability (or none is set). The
-// Settings panel surfaces it as the discovery error state (issue #89 AC2) so
+// Settings panel surfaces it as the discovery error state so model discovery
+// never fails the TUI boot silently.
 // model discovery never fails the TUI boot silently.
 var ErrNoDiscovery = errors.New("provider does not support model discovery")
 
@@ -142,13 +142,13 @@ type messageWire struct {
 
 // ToolFunction is one tool's reusable definition: a name, description, and a
 // JSON-Schema parameters object. It is the canonical form re-expressed per
-// wire dialect later (T5); for this ticket Chat-Completions only.
+// wire dialect later; for this ticket Chat-Completions only.
 type ToolFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Parameters  map[string]any `json:"parameters,omitempty"`
 	// Strict opts this tool into provider-side Tool Schema Enforcement
-	// (issue #62): serialized as strict:true beside the parameters so a
+	// (serialized as strict:true beside the parameters so a
 	// supporting provider rejects schema-violating tool arguments at generation
 	// time. Default (false) omits the flag so ordinary manifests stay
 	// byte-identical. Canonical tool authoring leaves it false and lets the
@@ -170,7 +170,7 @@ type Tool struct {
 // `function` object beside id/type. The OpenCode Go gateway rejects a resubmitted
 // assistant tool_calls entry that lacks the nested function object
 // ("missing field `function`") with a 400/401, so the wire must carry
-// {"id","type","function":{"name","arguments"}} (docs/research/tool-exposure.md §2).
+// {"id","type","function":{"name","arguments"}}.
 type ToolCall struct {
 	ID        string
 	Type      string
@@ -224,21 +224,20 @@ type Request struct {
 	ReasoningEffort string
 
 	// MaxOutputTokens is a hard per-turn output cap for a special (non-tool)
-	// turn, emitted on the wire as max_completion_tokens (issue #60). Zero is
+	// turn, emitted on the wire as max_completion_tokens. Zero is
 	// the provider default: no budget requested, and ordinary agent/tool turns
 	// that never set it are unaffected. It is the wire-backed Generation Budget
-	// control; local output must still be capped independently as the safety
-	// floor (ADR-0003 decision 4).
+	// control; local output must still be capped independently as the safety floor.
 	MaxOutputTokens int
 
 	// JSONObjectMode opts a special finalization turn into schema-constrained
 	// JSON Object Mode: on a supporting provider the request carries
 	// response_format:{type:json_object} so the final answer is guaranteed to be
-	// a valid JSON object (issue #59). Kept default-off so
+	// a valid JSON object. Kept default-off so
 	// ordinary agent/tool turns never carry it and stay byte-identical.
 	JSONObjectMode bool
 	// ToolSchemaEnforcement opts a tool-capable turn into provider-side Tool
-	// Schema Enforcement (issue #62): on a supporting provider
+	// Schema Enforcement: on a supporting provider
 	// each tool manifest carries strict:true so the provider rejects
 	// schema-violating tool arguments at generation time, in addition to Eitri's
 	// mandatory local validation floor. Kept default-off so ordinary agent/tool
@@ -247,7 +246,7 @@ type Request struct {
 	ToolSchemaEnforcement bool
 
 	// Sampling, when set, opts a special (non-tool) turn into a requested
-	// Sampling Policy (issue #61): temperature- or
+	// Sampling Policy: temperature- or
 	// nucleus-based sampling for a constrained generation, emitted on the wire as
 	// temperature or top_p respectively. A policy expresses exactly one of the two
 	// modes, so a provider request can never carry both sampling fields together.
@@ -257,7 +256,7 @@ type Request struct {
 }
 
 // SamplingPolicyMode identifies which wire sampling knob a special turn
-// requests (issue #61).
+// requests.
 type SamplingPolicyMode string
 
 // The two supported Sampling Policy modes.
@@ -272,7 +271,7 @@ const (
 
 // SamplingPolicy is a special turn's requested sampling: exactly one mode plus
 // its value. A policy always selects one mode, so the wire emission derived from
-// it carries temperature or top_p — never both (issue #61).
+// it carries temperature or top_p — never both.
 //
 // Value must be in the provider's valid range: [0,2] for temperature and (0,1]
 // for top_p per the OpenAI Chat-Completions contract. Validation of Value is the
@@ -338,7 +337,7 @@ type Usage struct {
 }
 
 // UnmarshalJSON decodes a Usage blob while tracking which prompt_cache_* keys
-// were present, so finalize (issue #218) can tell an absent cache shape from an
+// were present, so finalize can tell an absent cache shape from an
 // explicit hit=miss=0 one. A custom unmarshal is required because a plain
 // struct cannot distinguish an omitted json key from a present zero value.
 func (u *Usage) UnmarshalJSON(data []byte) error {
@@ -365,7 +364,7 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// finalize applies the absent-key safe-parse fallback (issue #218) so an
+// finalize applies the absent-key safe-parse fallback so an
 // OpenCode proxy that omits the DeepSeek-native prompt_cache_* shape still
 // produces honest telemetry:
 //   - neither prompt_cache_* key present: every input token is a cold miss
@@ -411,7 +410,7 @@ type Provider interface {
 
 // ModelLister is an optional capability a Provider may expose: discovering the
 // available model IDs from the configured provider so the Settings surface can
-// offer a picker without hand-editing config (T12). It is a
+// offer a picker without hand-editing config. It is a
 // separate interface so minimal/test providers (Scripted) need not implement
 // it; callers type-assert and treat absence as "no discovery" rather than error.
 type ModelLister interface {

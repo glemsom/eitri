@@ -12,7 +12,7 @@ import (
 // constrained-output levers Eitri may request on internal (non-tool) turns:
 // schema-constrained JSON, an output-token budget, a sampling policy,
 // provider-side tool-schema enforcement, and thinking suppression. Each is
-// wire-emitted by the specific special-turn tickets (#59–#62); this seam is
+// wire-emitted by the specific special-turn tickets; this seam is
 // the negotiation contract they share.
 
 // GenerationControl identifies one provider-side generation control a special
@@ -23,23 +23,23 @@ type GenerationControl string
 // special turn can request.
 const (
 	// GenerationControlJSONObjectMode requests schema-constrained JSON Object
-	// Mode for the final answer (issue #59).
+	// Mode for the final answer.
 	GenerationControlJSONObjectMode GenerationControl = "json_object_mode"
 	// GenerationControlGenerationBudget requests a hard per-turn output token
-	// cap for an internal generation (issue #60).
+	// cap for an internal generation.
 	GenerationControlGenerationBudget GenerationControl = "generation_budget"
 	// GenerationControlSamplingPolicy requests temperature- or nucleus-based
-	// sampling (issue #61).
+	// sampling.
 	GenerationControlSamplingPolicy GenerationControl = "sampling_policy"
 	// GenerationControlToolSchemaEnforcement requests provider-side tool-schema
-	// enforcement in the tool manifest (issue #62).
+	// enforcement in the tool manifest.
 	GenerationControlToolSchemaEnforcement GenerationControl = "tool_schema_enforcement"
 	// GenerationControlThinkingSuppression requests that a thinking-off run
 	// actually suppress chain-of-thought on the wire: omission of the thinking
-	// toggle on the openai-compatible path (issue #54) and an explicit
-	// thinking:{type:disabled} on the copilot path (issue #263). A provider that
-	// does not declare it cannot silence reasoning server-side, so higher layers
-	// surface a warning instead of silently no-op'ing (issue #265).
+	// toggle on the openai-compatible path and an explicit
+	// thinking:{type:disabled} on the copilot path. A provider that does not
+	// declare it cannot silence reasoning server-side, so higher layers
+	// surface a warning instead of silently no-op'ing.
 	GenerationControlThinkingSuppression GenerationControl = "thinking_suppression"
 )
 

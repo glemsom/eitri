@@ -8,7 +8,7 @@ import (
 )
 
 // Provider family identifiers, matching the documented families surfaced in the
-// Settings surface (T11). The saved config.Provider value
+// Settings surface. The saved config.Provider value
 // selects which transport/credential a run uses, honored across TUI and batch.
 const (
 	ProviderOpenCodeGo   = "opencode-go"
@@ -16,7 +16,7 @@ const (
 	ProviderCustomOpenAI = "custom-openai"
 )
 
-// Default endpoints for the non-default provider families (T11).
+// Default endpoints for the non-default provider families.
 const (
 	// DefaultCopilotURL is the GitHub Copilot Chat-Completions endpoint.
 	DefaultCopilotURL = "https://api.githubcopilot.com/chat/completions"
@@ -53,7 +53,7 @@ type ProviderEnv struct {
 
 // FromConfig builds the Provider the saved config selects — opencode-go,
 // github-copilot, or custom-openai — routing through the shared
-// Chat-Completions dialect seam (T11: one canonical per-dialect serializer, no
+// Chat-Completions dialect seam (one canonical per-dialect serializer, no
 // per-provider copies). An unknown provider or a custom-openai selection without
 // a configured endpoint is an explicit error.
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {

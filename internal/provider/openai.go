@@ -12,8 +12,8 @@ import (
 )
 
 // OpenAICompatible is a Chat-Completions HTTP client targeting any OpenAI-
-// compatible endpoint (OpenCode Go primary provider, docs/research/
-// opencode-endpoints.md §5). It serializes the request with model + messages
+// compatible endpoint (OpenCode Go, the primary provider). It serializes the
+// request with model + messages
 // and streams the SSE response through the provider seam.
 type OpenAICompatible struct {
 	apiKey string
@@ -28,9 +28,9 @@ func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 }
 
 // Models implements ModelLister: it GETs the provider's /models endpoint and
-// returns the list of available model IDs (T12). The models URL
+// returns the list of available model IDs. The models URL
 // is derived from the Chat-Completions endpoint by stripping the
-// /chat/completions suffix (research/opencode-endpoints.md §3), the response
+// /chat/completions suffix; the response
 // shape being the OpenAI-standard {"data":[{"id":...}]}.
 func (o *OpenAICompatible) Models(ctx context.Context) ([]string, error) {
 	base := strings.TrimSuffix(o.url, "/chat/completions")
@@ -80,7 +80,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		ToolChoice: req.ToolChoice,
 		Stream:     true,
 		StreamOptions: &streamOptions{
-			IncludeUsage: true, // opencode force-sets include_usage (research §4)
+			IncludeUsage: true, // opencode force-sets include_usage
 		},
 		PromptCacheKey:  promptCacheKey(req),
 		Thinking:        thinkingControl(req),
@@ -128,22 +128,22 @@ type chatCompletionBody struct {
 	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
 	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
 	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	// MaxOutputTokens is the wire-backed Generation Budget (issue #60): a hard
+	// MaxOutputTokens is the wire-backed Generation Budget: a hard
 	// per-turn output cap emitted as max_completion_tokens for special turns.
 	// Zero (the ordinary-turn default) omits the field so the byte-identical
 	// request head is never perturbed.
 	MaxOutputTokens int `json:"max_completion_tokens,omitempty"`
-	// ResponseFormat is the wire-backed JSON Object Mode (issue #59): non-nil
+	// ResponseFormat is the wire-backed JSON Object Mode: non-nil
 	// on a JSON-Object-Mode finalization turn, emitted as
 	// response_format:{type:json_object}; nil on ordinary turns so the field is
 	// omitted and the request head stays byte-stable.
 	ResponseFormat *jsonObjectMode `json:"response_format,omitempty"`
-	// Temperature is the wire-backed temperature Sampling Policy (issue #61):
+	// Temperature is the wire-backed temperature Sampling Policy:
 	// non-nil on a special turn that requests temperature-based sampling. It is
 	// mutually exclusive with TopP — the sampling seam emits exactly one of the
 	// two, never both, per the sampling contract.
 	Temperature *float64 `json:"temperature,omitempty"`
-	// TopP is the wire-backed nucleus (top-p) Sampling Policy (issue #61): non-nil
+	// TopP is the wire-backed nucleus (top-p) Sampling Policy: non-nil
 	// on a special turn that requests nucleus-based sampling, emitted as top_p.
 	// Mutually exclusive with Temperature.
 	TopP *float64 `json:"top_p,omitempty"`
@@ -167,7 +167,7 @@ func thinkingControl(req Request) *thinkingEnabler {
 // reasoningEffortControl returns the normalized reasoning_effort for a
 // thinking-enabled run, else empty so the field is omitted. Effort is only
 // meaningful when thinking is on: a non-thinking run must carry neither a
-// thinking toggle nor a reasoning_effort (issue #54), even
+// thinking toggle nor a reasoning_effort, even
 // if a caller retains a non-empty effort while disabled.
 func reasoningEffortControl(req Request) string {
 	if !req.ThinkingEnabled {
@@ -177,7 +177,7 @@ func reasoningEffortControl(req Request) string {
 }
 
 // jsonObjectMode is OpenAI's constrained-output response_format; its enabled
-// form asks the provider to return a valid JSON object (issue #59).
+// form asks the provider to return a valid JSON object.
 type jsonObjectMode struct {
 	Type string `json:"type"`
 }
@@ -186,8 +186,8 @@ type jsonObjectMode struct {
 // honor the Generation Budget, JSON Object Mode, Sampling Policy, Tool Schema
 // Enforcement, and Thinking Suppression controls (it wire-emits
 // max_completion_tokens, response_format, temperature/top_p, strict tool
-// manifests, and the thinking-off omission on the relevant special turns,
-// issues #59–#62, #54/#265). Higher layers consult this
+// manifests, and the thinking-off omission on the relevant special turns).
+// Higher layers consult this
 // via NegotiateGenerationControls.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement, GenerationControlThinkingSuppression}, nil
@@ -206,7 +206,7 @@ func maxOutputTokens(req Request) int {
 
 // jsonObjectModeControl returns the JSON Object Mode response_format for req
 // when the caller opted into it, else nil so the field is omitted. Only a JSON
-// Object Mode finalization special turn sets it (issue #59).
+// Object Mode finalization special turn sets it.
 func jsonObjectModeControl(req Request) *jsonObjectMode {
 	if !req.JSONObjectMode {
 		return nil
@@ -215,7 +215,7 @@ func jsonObjectModeControl(req Request) *jsonObjectMode {
 }
 
 // samplingTemperatureControl returns the pointer to emit as the wire
-// `temperature` when req requests temperature-based sampling (issue #61), else
+// `temperature` when req requests temperature-based sampling, else
 // nil so the field is omitted. A request never requests both sampling modes
 // (SamplingPolicy holds exactly one mode), so temperature and top_p are
 // mutually exclusive on the wire.
@@ -228,7 +228,7 @@ func samplingTemperatureControl(req Request) *float64 {
 }
 
 // samplingTopPControl returns the pointer to emit as the wire `top_p` when req
-// requests nucleus (top-p) sampling (issue #61), else nil so the field is
+// requests nucleus (top-p) sampling, else nil so the field is
 // omitted. Mutually exclusive with samplingTemperatureControl.
 func samplingTopPControl(req Request) *float64 {
 	if req.Sampling == nil || req.Sampling.Mode != SamplingNucleus {
@@ -241,7 +241,7 @@ func samplingTopPControl(req Request) *float64 {
 // toolsForWire returns the tool manifest to serialize for req. On an ordinary
 // turn with ToolSchemaEnforcement off it returns req.Tools unchanged, so the
 // request head stays byte-identical. When the generation-control seam opts the
-// turn into provider-side Tool Schema Enforcement (issue #62), it returns a
+// turn into provider-side Tool Schema Enforcement, it returns a
 // shallow-copied manifest with strict:true set on every function wrapper so a
 // supporting provider enforces the schema at generation time — the wire feature
 // unsupported providers simply omit. The underlying Parameters maps are shared
