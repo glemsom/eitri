@@ -52,8 +52,8 @@ func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
 
 // TestCopilotAndCustomOpenAITokensPersist verifies provider credentials for
 // the non-default provider families round-trip through save/load: the Copilot
-// device-flow tokens and the custom OpenAI endpoint+key are stored in config
-// (T11). Copilot credentials must persist so a later batch run reuses the
+// device-flow tokens and the custom OpenAI endpoint+key are stored in config.
+// Copilot credentials must persist so a later batch run reuses the
 // TUI-established session; custom OpenAI needs no device flow, key/setup only.
 func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 	dir := t.TempDir()
@@ -93,7 +93,7 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 }
 
 // TestReasoningEffortDefaultAndPersist verifies the acceptance criteria for
-// the reasoning-effort default change (issue #76): a config written before the
+// the reasoning-effort default change: a config written before the
 // change that stored "high" still loads "high", while an absent
 // reasoning_effort field loads the new "low" default.
 func TestReasoningEffortDefaultAndPersist(t *testing.T) {
@@ -129,8 +129,8 @@ func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
 	}
 }
 
-// TestThemeAbsentDefaultsToDark verifies the theme acceptance criteria (issue
-// #129): a config file written before the theme feature (no `theme` key) loads
+// TestThemeAbsentDefaultsToDark verifies the theme acceptance criteria: a config
+// file written before the theme feature (no `theme` key) loads
 // with the "dark" default rather than the empty zero value.
 func TestThemeAbsentDefaultsToDark(t *testing.T) {
 	dir := t.TempDir()
@@ -148,7 +148,7 @@ func TestThemeAbsentDefaultsToDark(t *testing.T) {
 }
 
 // TestThemePersists verifies a chosen theme round-trips through save/load so a
-// user's render-theme pick survives a reload (issue #129).
+// user's render-theme pick survives a reload.
 func TestThemePersists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

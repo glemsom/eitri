@@ -112,7 +112,7 @@ func TestCompressHonestEconomics(t *testing.T) {
 // TestCompressResultReportsTruth verifies CompressResult's bool is the
 // never-inflate gate's verdict — true only when the output really is the
 // compressed form — so callers never pattern-match a look-alike "+N more"
-// tail as if it were the compressor's marker (issue #286 review).
+// tail as if it were the compressor's marker.
 func TestCompressResultReportsTruth(t *testing.T) {
 	// A heavy listing: genuinely compressed, bool true.
 	raw := buildLongListing(1000)

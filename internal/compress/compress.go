@@ -1,5 +1,5 @@
 // Package compress implements deterministic, zero-LLM compression of
-// high-volume tool output (ticket T3). It is applied at the
+// high-volume tool output. It is applied at the
 // tool-result boundary so the compressed bytes land in the cache prefix. The
 // transform is a pure function: given the same raw string it always yields the
 // same output, re-applying never changes it (deterministic + idempotent), and
@@ -19,8 +19,8 @@ import (
 const maxLines = 200
 
 // DefaultByteCap is the shared byte budget every tool result is measured
-// against at the tool-result boundary before it enters message history (issue
-// #286): the bytes the provider sees and that land in the session-cache head
+// against at the tool-result boundary before it enters message history: the
+// bytes the provider sees and that land in the session-cache head
 // are bounded, so one oversized web_fetch or whole-file read cannot exhaust
 // the context window. 64 KiB fits comfortably inside deepseek's economics — a
 // prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to
@@ -90,7 +90,7 @@ func Compress(raw string) string {
 // line-compressor's "+N more" marker must consult this flag rather than
 // pattern-matching the tail: a raw result that merely ends in a line that
 // LOOKS like the marker is content, and only the compressor's never-inflate
-// gate is the truth about whether the form was compressed (issue #286 review).
+// gate is the truth about whether the form was compressed.
 func CompressResult(raw string) (string, bool) {
 	out := Compress(raw)
 	return out, out != raw
@@ -122,19 +122,19 @@ func atoi(s string) int {
 
 // lineMarkerRe matches the line-compressor's "+N more" tail marker, anchored
 // at the very end with an optional trailing newline, so the byte-cap can
-// recognize an already-line-truncated draft (compress.go's internal markerRE
-// is anchored ^..$ on the marker alone; this one operates on a full draft).
+// recognize an already-line-truncated draft (markerRE is anchored ^..$ on the
+// marker alone; this one operates on a full draft).
 var lineMarkerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
 
 // CapBytes deterministically caps a tool-result draft to a byte budget at the
-// tool-result boundary (issue #286): over-budget drafts are head-truncated to
+// tool-result boundary: over-budget drafts are head-truncated to
 // the budget and an explicit marker line announcing how many bytes were
 // dropped is appended — never silent. It composes with the line-compressor's
 // "+N more" tail: when lineTruncated reports the draft really is the
 // compressor's output, an already line-truncated draft byte-truncates into a
 // single merged tail line carrying both drop counts ("+N more, +B bytes
 // truncated"); otherwise a look-alike "+N more" tail is treated as plain
-// content and never peeled (issue #286 review).
+// content and never peeled.
 // Deterministic and idempotent: same input + budget always yields the same
 // output, and re-capping a capped result leaves it alone (or re-derives the
 // same marker). Truncation backs up to a UTF-8 rune boundary so the kept head

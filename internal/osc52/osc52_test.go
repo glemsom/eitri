@@ -62,8 +62,7 @@ type fdBuf struct {
 func (*fdBuf) Fd() uintptr { return 12345 }
 
 // A terminal-backed writer that is not a TTY returns a clean error and emits
-// nothing: OSC 52 escape bytes must never leak into a pipe or file (issue
-// #200 AC3).
+// nothing: OSC 52 escape bytes must never leak into a pipe or file.
 func TestWriteErrorsWhenNotTerminal(t *testing.T) {
 	var w fdBuf
 	err := New(&w).Write("hello")
@@ -89,8 +88,8 @@ func (w *shortWriter) Write(p []byte) (int, error) {
 }
 
 // A writer that accepts fewer bytes than the sequence returns io.ErrShortWrite
-// instead of reporting success for a truncated OSC 52 sequence (issue #200
-// AC1: the full sequence must reach the terminal).
+// instead of reporting success for a truncated OSC 52 sequence: the full
+// sequence must reach the terminal.
 func TestWriteSurfacesShortWrite(t *testing.T) {
 	w := &shortWriter{max: 3}
 	err := New(w).Write("hello")

@@ -1,5 +1,5 @@
-// Package osc52 implements the OSC 52 terminal clipboard protocol (issue
-// #200): it turns plain text into the escape sequence
+// Package osc52 implements the OSC 52 terminal clipboard protocol: it turns
+// plain text into the escape sequence
 // `ESC ] 52 ; c ; <base64> BEL` and writes it to an output writer. Terminals
 // like Ghostty, kitty, iTerm2, WezTerm, and foot honour the sequence natively
 // and put the payload on the system clipboard, so no external clipboard tool
@@ -16,7 +16,7 @@ import (
 
 // ErrNotTerminal reports that the writer is not attached to a terminal, so no
 // escape sequence was emitted: writing OSC 52 into a pipe or file would leak
-// escape garbage into non-terminal output (issue #200 AC3).
+// escape garbage into non-terminal output.
 var ErrNotTerminal = errors.New("osc52: not a terminal")
 
 // fdWriter is the capability an output must expose for the terminal check to

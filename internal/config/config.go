@@ -17,15 +17,15 @@ const (
 	// DefaultMaxTurns is the cap on loop iterations per run.
 	DefaultMaxTurns = 250
 	// DefaultCompactionFraction is the context-utilization trigger for
-	// auto-compaction (ADR-0003).
+	// auto-compaction.
 	DefaultCompactionFraction = 0.8
-	// DefaultReasoningEffort is the per-session reasoning setting (spec §20).
+	// DefaultReasoningEffort is the per-session reasoning setting.
 	DefaultReasoningEffort = "low"
-	// DefaultTheme is the Markdown render theme when unset or unknown (issue
-	// #129); "ascii" is deliberately excluded from the supported set.
+	// DefaultTheme is the Markdown render theme when unset or unknown; "ascii" is
+	// deliberately excluded from the supported set.
 	DefaultTheme = "dark"
 	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
-	// default (spec §6); off yields requests with no thinking toggle/effort.
+	// default; off yields requests with no thinking toggle/effort.
 	DefaultThinkingEnabled = true
 	// DefaultProvider and DefaultModel are the primary provider defaults.
 	DefaultProvider = "opencode-go"
@@ -33,8 +33,8 @@ const (
 )
 
 // CopilotConfig holds the GitHub Copilot device-flow credential state, persisted
-// so a later batch run can reuse the TUI-established session without re-auth
-// (T11). Batch may transparently renew an expired access token
+// so a later batch run can reuse the TUI-established session without re-auth.
+// Batch may transparently renew an expired access token
 // via RefreshToken, but the interactive device-flow handshake is TUI-only.
 type CopilotConfig struct {
 	AccessToken  string `json:"access_token,omitempty"`
@@ -45,7 +45,7 @@ type CopilotConfig struct {
 }
 
 // OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key
-// (custom OpenAI provider, T11). No device flow: key/setup only.
+// (custom OpenAI provider). No device flow: key/setup only.
 type OpenAIConfig struct {
 	BaseURL string `json:"base_url,omitempty"`
 	Key     string `json:"key,omitempty"`
@@ -54,7 +54,7 @@ type OpenAIConfig struct {
 // Config is the persisted Eitri configuration. The primary provider's key
 // (OpenCode Go) is delivered via the OPENCODE_API_KEY environment variable; the
 // Copilot device-flow tokens and the custom-OpenAI endpoint/key are stored here
-// because they are user-configured and reused across runs (T11).
+// because they are user-configured and reused across runs.
 type Config struct {
 	Provider           string        `json:"provider"`
 	Model              string        `json:"model"`
@@ -99,13 +99,13 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	// A file that never saved a theme field keeps the shipped default (issue
-	// #129): an absent or empty theme means "dark", never an error.
+	// A file that never saved a theme field keeps the shipped default: an absent
+	// or empty theme means "dark", never an error.
 	if cfg.Theme == "" {
 		cfg.Theme = DefaultTheme
 	}
 	// A file that never saved a reasoning_effort field keeps the shipped
-	// default rather than the empty zero value (issue #76).
+	// default rather than the empty zero value.
 	if cfg.ReasoningEffort == "" {
 		cfg.ReasoningEffort = DefaultReasoningEffort
 	}
