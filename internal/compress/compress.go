@@ -10,12 +10,23 @@ package compress
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // maxLines caps the number of kept lines before the tail is truncated with an
 // explicit "+N more" marker. Kept small enough that long `ls`/`find`/`grep`/
 // `rg` reads stay cheap; never silent.
 const maxLines = 200
+
+// DefaultByteCap is the shared byte budget every tool result is measured
+// against at the tool-result boundary before it enters message history (issue
+// #286): the bytes the provider sees and that land in the session-cache head
+// are bounded, so one oversized web_fetch or whole-file read cannot exhaust
+// the context window. 64 KiB fits comfortably inside deepseek's economics — a
+// prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to
+// the ~1M-token context — while staying far under the session-cache head that
+// must remain byte-stable. It is a single constant, not per-tool limits.
+const DefaultByteCap = 64 << 10
 
 // ansiRE matches ANSI/CSI escape sequences that noisy CLI tools emit for
 // color and progress (e.g. `\x1b[31m`, `\x1b[2K`). Stripped deterministically
@@ -97,6 +108,78 @@ func atoi(s string) int {
 		n = n*10 + int(s[i]-'0')
 	}
 	return n
+}
+
+// lineMarkerRe matches the line-compressor's "+N more" tail marker, anchored
+// at the very end with an optional trailing newline, so the byte-cap can
+// recognize an already-line-truncated draft (compress.go's internal markerRE
+// is anchored ^..$ on the marker alone; this one operates on a full draft).
+var lineMarkerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
+
+// CapBytes deterministically caps a tool-result draft to a byte budget at the
+// tool-result boundary (issue #286): over-budget drafts are head-truncated to
+// the budget and an explicit marker line announcing how many bytes were
+// dropped is appended — never silent. It composes with the line-compressor's
+// "+N more" tail: a draft already line-truncated byte-truncates into a single
+// merged tail line carrying both drop counts ("+N more, +B bytes truncated").
+// Deterministic and idempotent: same input + budget always yields the same
+// output, and re-capping a capped result leaves it alone (or re-derives the
+// same marker). Truncation backs up to a UTF-8 rune boundary so the kept head
+// is always valid UTF-8. The marker's own bytes never count as dropped — B is
+// exactly len(draft) - len(kept head), and an under-budget draft passes
+// through byte-identical with zero dropped.
+//
+// budget must be large enough to hold the smallest marker; callers use the
+// shared DefaultByteCap.
+func CapBytes(draft string, budget int) (delivered string, dropped int) {
+	if len(draft) <= budget {
+		return draft, 0
+	}
+
+	// Detect and strip an existing line-compressor "+N more" tail marker. When
+	// present, the merged marker line replaces it (its bytes count against the
+	// budget, not as dropped content) so the model sees both drop counts.
+	merger := ""
+	if m := lineMarkerRe.FindString(draft); m != "" {
+		draft = draft[:len(draft)-len(m)]
+		merger = strings.TrimSuffix(m, "\n") + ", "
+	}
+
+	// Reserve room for the merged marker line inside the budget and keep the
+	// head before the cut, so the kept head is always a prefix of the draft. The
+	// marker's drop-count digits are unknown until after the cut (dropped =
+	// len(stripped) - keep), but dropped <= len(stripped), so reserving for
+	// digits(len(stripped)) guarantees the delivered form never exceeds the
+	// budget regardless of how many digits the real count needs.
+	markerReserve := 17 + len(itoa(len(draft))) + 1 // "+" + digits + " bytes truncated\n"
+	keep := budget - len(merger) - markerReserve
+	if keep < 0 {
+		// Capped to a budget too small to fit even the marker: keep no head, all
+		// bytes are dropped (never silent — the marker still reports them).
+		keep = 0
+	}
+	if keep > len(draft) {
+		keep = len(draft)
+	}
+
+	// Back up to the last UTF-8 rune boundary before the cut so the kept head
+	// is always valid UTF-8 (the marker is appended after it, never inside a
+	// split rune).
+	for keep > 0 && !utf8.RuneStart(draft[keep]) {
+		keep--
+	}
+
+	head := draft[:keep]
+	dropped = len(draft) - keep
+
+	var b strings.Builder
+	b.Grow(budget)
+	b.WriteString(head)
+	b.WriteString(merger)
+	b.WriteByte('+')
+	b.WriteString(itoa(dropped))
+	b.WriteString(" bytes truncated\n")
+	return b.String(), dropped
 }
 
 // dedupeConsecutive collapses runs of identical consecutive lines into one,
