@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // streamingTurn is a stand-in Turn seam that never completes on its own; the
@@ -49,6 +51,9 @@ func newStreamingModel() Model {
 	return NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
 		Stream: NewStreamer(),
+		// Streaming tests drive reasoning deltas; request thinking so those
+		// turns legitimately render chain-of-thought (issue #264).
+		Config: config.Config{ThinkingEnabled: true},
 	})
 }
 

@@ -101,6 +101,16 @@ type message struct {
 	content   string
 	reasoning string // assistant chain-of-thought, rendered as a collapsible block
 	streaming bool   // true while this assistant reply is still growing from the answer stream
+	// thinkingRequested records whether the turn that produced this message
+	// actually asked for chain-of-thought (the provider's ThinkingEnabled at
+	// request construction). It is folded into message state at the moment the
+	// turn is requested and NEVER re-sniffed from config at render time, so an
+	// error/retry turn stays faithful to how it was actually requested (issue
+	// #264). The transcript and clipboard renderers show a reasoning block only
+	// when thinking was requested AND reasoning content is non-empty — a
+	// defense-in-depth backstop against a backend that sneaks reasoning through
+	// a thinking-off turn.
+	thinkingRequested bool
 	// thinkingExpanded is true while this turn's reasoning block is expanded
 	// (issue #85): it defaults false (auto-collapsed) so reasoning never clogs
 	// the final reply, and collapses back when the turn's answer lands.
@@ -749,7 +759,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// A streaming turn aborting with an error drops the partial reply and
 			// renders the error in its place; the incremental buffer is advisory.
 			m.curStream = -1
-			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error()})
+			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error(), thinkingRequested: m.deps.Config.ThinkingEnabled})
 			return m, nil
 		}
 		if wasStreaming {
@@ -767,7 +777,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.messages[m.curStream].thinkingExpanded = false
 			m.curStream = -1
 		} else {
-			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning})
+			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning, thinkingRequested: m.deps.Config.ThinkingEnabled})
 			return m, nil
 		}
 		return m, nil
@@ -995,9 +1005,9 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 		return
 	}
 	if kind == ReasoningStream {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", reasoning: delta, streaming: true})
+		m.tx.messages = append(m.tx.messages, message{role: "eitri", reasoning: delta, streaming: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
 	} else {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: delta, streaming: true})
+		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: delta, streaming: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
 	}
 	m.curStream = len(m.tx.messages) - 1
 }
@@ -1036,7 +1046,11 @@ func (m *Model) copyTranscript() {
 func (m Model) transcriptText() string {
 	var b strings.Builder
 	for i, msg := range m.tx.messages {
-		if msg.role != "you" && msg.reasoning != "" {
+		// The clipboard honors the same thinking-requested gate as the transcript
+		// (issue #264): a reasoning block is transcribed only for a turn that
+		// requested thinking. A backend sneaking reasoning through a thinking-off
+		// turn never reaches the clipboard.
+		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
 			b.WriteString("🤔 " + msg.reasoning + "\n")
 		}
 		if msg.role == "you" {

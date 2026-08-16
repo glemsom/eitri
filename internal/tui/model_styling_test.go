@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"image/color"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // The T4 styling pass (issue #122) gives the TUI its modern look: visually
@@ -205,6 +207,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
 		},
+		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -234,6 +237,7 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok", Reasoning: "hidden reasoning"}, nil
 		},
+		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
