@@ -10,9 +10,7 @@ import (
 // reviewEntry is a file-mutating tool entry's before/after projection (issue
 // #90's changed-file record): the host path, the before/after full content the
 // engine captured across the edit/write call (pure telemetry, never affecting
-// the run), the [+N,-M] line delta, and the derived status. Status derives
-// from content, not line counts alone, so a rewritten file reads as
-// "modified" and an empty-before file as "added".
+// the run), and the [+N,-M] line delta.
 //
 // The modal review panel that used to list these entries is gone (issue
 // #276); this record now solely backs the Ctrl+E expanded card's inline diff
@@ -22,29 +20,19 @@ type reviewEntry struct {
 	path    string
 	before  string
 	after   string
-	status  string // "modified" | "added" | "deleted"
 	added   int
 	removed int
 	hunks   []diff.Hunk
 }
 
 // reviewEntryFromTool derives a review entry from a completed file-mutating
-// tool entry's captured before/after/path content (issue #90): the status
-// (modified/added/deleted) is derived here from content, not line counts, and
-// toolLog.Review() reuses this helper for its per-entry projection so status
-// derivation lives in one place. The expanded tool card's diff renderer
-// (issue #275) builds on the same projection the review panel used to list.
+// tool entry's captured before/after/path content (issue #90). It is shared by
+// toolLog.Review() for its per-entry projection and by the expanded tool card's
+// diff renderer (issue #275), so the projection lives in one place.
 func reviewEntryFromTool(te toolEntry) reviewEntry {
-	status := "modified"
-	switch {
-	case te.before == "" && te.after != "":
-		status = "added"
-	case te.before != "" && te.after == "":
-		status = "deleted"
-	}
 	return reviewEntry{
 		path: te.path, before: te.before, after: te.after,
-		status: status, added: te.added, removed: te.removed,
+		added: te.added, removed: te.removed,
 	}
 }
 

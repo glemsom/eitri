@@ -350,8 +350,8 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered
-// history content limited to the rows the non-reserved regions (the fixed
-// bottom band) do not occupy.
+// history content limited to the rows the fixed bottom band (the only
+// non-reserved region) does not occupy.
 // Until the first resize lands (t.height == 0) the history renders unclamped.
 //
 // The clip is served through the persisted bubbletea/viewport scroll component

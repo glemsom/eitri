@@ -225,8 +225,8 @@ func (l toolLog) PlainText(anchor int) string {
 
 // Review projects the changed-file review from the log's file-mutating
 // (edit/write) entries (issue #90, #208 US5): it consolidates by path, keeping
-// the most recent state per path and classifying added/deleted/modified. This
-// is the seed of the retrospective "review as a projection" hollowing.
+// the most recent state per path. This is the seed of the retrospective
+// "review as a projection" hollowing.
 func (l toolLog) Review() []reviewEntry {
 	var files []reviewEntry
 	byPath := map[string]int{}
@@ -247,7 +247,6 @@ func (l toolLog) Review() []reviewEntry {
 		// Most recent state for an already-listed file wins.
 		files[idx].before = entry.before
 		files[idx].after = entry.after
-		files[idx].status = entry.status
 		files[idx].added = entry.added
 		files[idx].removed = entry.removed
 	}
