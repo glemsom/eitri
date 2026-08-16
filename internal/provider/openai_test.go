@@ -15,7 +15,7 @@ import (
 
 // strictToolList returns the canonical strict-shaped Chat-Completions tool
 // manifest the tool-schema-enforcement wire tests assert on: two strict-shaped
-// function tools (issue #62).
+// function tools.
 func strictToolList() []Tool {
 	return []Tool{
 		{Type: "function", Function: ToolFunction{
@@ -102,7 +102,7 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 // TestOpenAIEmitsGenerationBudget verifies the request head carries
 // max_completion_tokens when the caller opts into a Generation Budget, and that
 // ordinary turns with no budget omit the field entirely (bytes stay clean for
-// the shared request head, issue #60).
+// the shared request head).
 func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -159,7 +159,7 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 }
 
 // TestOpenAIEmitsToolSchemaEnforcement verifies that a request opted into
-// provider-side Tool Schema Enforcement (issue #62) re-emits the tool manifest
+// provider-side Tool Schema Enforcement re-emits the tool manifest
 // with strict:true on each tool function so a supporting provider enforces the
 // JSON-Schema at generation time; strict lives beside the parameters in the
 // function wrapper, exactly as the OpenAI structured-output wire expects.
@@ -180,7 +180,7 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 				t.Fatalf("tool %d missing function wrapper", i)
 			}
 			if strict, _ := fn["strict"].(bool); !strict {
-				t.Errorf("tool %d function.strict = %v, want true (issue #62)", i, fn["strict"])
+				t.Errorf("tool %d function.strict = %v, want true", i, fn["strict"])
 			}
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -207,8 +207,7 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 
 // TestOpenAIOmitsToolSchemaEnforcementByDefault verifies the default wire shape
 // for an ordinary agent/tool turn: no strict marker on any tool function, so the
-// request head stays byte-identical to the pre-enforcement surface
-// (issue #62).
+// request head stays byte-identical to the pre-enforcement surface.
 func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -237,7 +236,7 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 }
 
 // TestOpenAIEmitsJSONObjectMode verifies that a JSON-Object-Mode finalization
-// turn (issue #59) carries response_format:{type:json_object} on the wire, and
+// turn carries response_format:{type:json_object} on the wire, and
 // that an ordinary turn with the flag off omits the field entirely (bytes stay
 // clean for the shared request head).
 func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
@@ -292,8 +291,8 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn wire
-// (issue #61): a temperature policy emits `temperature` and
+// TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn
+// wire: a temperature policy emits `temperature` and
 // never `top_p`; a nucleus (top-p) policy emits `top_p` and never `temperature`;
 // an ordinary turn with no policy emits neither field, so the shared request head
 // stays untouched. The two sampling modes are mutually exclusive on the wire.
@@ -393,7 +392,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 // TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
 // deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
-// byte-identical prefix (research/opencode-endpoints.md §4).
+// byte-identical prefix.
 func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -453,8 +452,8 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	}
 }
 
-// TestOpenAIUsageWithoutCacheKeys verifies the absent-key safe-parse hardening
-// (issue #218): a usage blob that carries only prompt_tokens — an OpenCode
+// TestOpenAIUsageWithoutCacheKeys verifies the absent-key safe-parse
+// hardening: a usage blob that carries only prompt_tokens — an OpenCode
 // proxy omitting the DeepSeek-native prompt_cache_* shape — reports an honest
 // Hit=0 with every input token treated as a cold Miss. No fake hit is ever
 // fabricated, so the TUI gauge reads cache:0% and the cost line bills full
@@ -492,7 +491,7 @@ func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
 }
 
 // TestOpenAIUsagePartialCacheKeys covers a proxy that emits only one of the
-// two DeepSeek-native prompt_cache_* keys (issue #218, acceptance (b)). No
+// two DeepSeek-native prompt_cache_* keys. No
 // fake hit is ever fabricated:
 //   - hit-only: the reported hits are kept, and the remaining prompt tokens are
 //     inferred as cold misses so Hit+Miss still equals PromptTokens (honest
@@ -592,7 +591,7 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 // client advertises the generation_budget, json_object_mode, sampling_policy,
 // tool_schema_enforcement, and thinking_suppression controls through the
 // generation-control capability surface, so the engine can pre-flight a
-// special/tool turn's requirements (issues #59–#62, #265) before any wire call.
+// special/tool turn's requirements before any wire call.
 func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
@@ -648,10 +647,10 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 }
 
 // TestOpenAICapabilityMatchesWireBehavior ties the advertised thinking-
-// suppression control to the wire shape that honors it (issue #265 AC-4):
-// negotiation honors a required thinking_suppression request, AND a
+// suppression control to the wire shape that honors it: negotiation honors a
+// required thinking_suppression request, and a
 // thinking-off stream omits the thinking toggle entirely — the omission IS the
-// suppression on this path (issue #54). TestOpenAIOmitsThinkingWhenDisabled
+// suppression on this path. TestOpenAIOmitsThinkingWhenDisabled
 // pins the wire shape alone; this test asserts advertisement and wire agree.
 func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
@@ -662,7 +661,7 @@ func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 }
 
 // TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a
-// non-thinking run (issue #54): when the caller disables
+// non-thinking run: when the caller disables
 // thinking, the request body must omit both the DeepSeek `thinking` toggle and
 // `reasoning_effort` — exactly like the compaction summarizer's non-thinking
 // summary call. This is the acceptance guarantee that lets a user turn

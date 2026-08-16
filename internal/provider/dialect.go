@@ -2,14 +2,14 @@ package provider
 
 // Dialect re-expression: one canonical JSON-Schema per tool is authored once
 // (in the tool registry) and serialized here into each wire dialect's tool
-// wrapper (ticket #10). Never author per-dialect copies — the
+// wrapper. Never author per-dialect copies — the
 // same schema map feeds every wrapper, so the strict-shape guarantee holds on
-// every transport. T11 routes real requests through this same layer; today the
+// every transport. Real request routing goes through this same layer; today the
 // tests assert the emitted wrappers.
 
 // Dialect names the Chat-Completions-style tool dialects Eitri re-expresses a
 // canonical schema into. Anthropic (`/v1/messages`) is the reference
-// alternative to Chat Completions; primary routing in T11 adds Responses.
+// alternative to Chat Completions.
 type Dialect string
 
 const (

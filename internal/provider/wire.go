@@ -36,7 +36,7 @@ type wireToolCallDelta struct {
 
 // toolAccumulator reassembles streamed tool_call fragments into complete
 // ToolCalls, keyed by delta index and concatenating each fragment's argument
-// text (research/tool-exposure.md §3).
+// text.
 type toolAccumulator struct {
 	calls map[int]*ToolCall
 	order []int
@@ -116,8 +116,8 @@ func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 	chunk.Usage = wc.Usage
 	if chunk.Usage != nil {
 		// Apply the absent-key safe-parse fallback so an OpenCode proxy that
-		// omits prompt_cache_* still produces honest hit/miss telemetry (issue
-		// #218): never a fake hit, never a mispriced bill.
+		// omits prompt_cache_* still produces honest hit/miss telemetry: never a fake
+		// hit, never a mispriced bill.
 		chunk.Usage.finalize()
 	}
 	return chunk, nil

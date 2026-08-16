@@ -10,8 +10,7 @@ import (
 
 // Fake is a deterministic fake Chat-Completions provider that reads a committed
 // fixture file and streams it back as text/event-stream chunks — no network,
-// fully reproducible. It is the fixture-spawning side of the engine test seam
-// ("Primary test seam: the run engine, via a fake LLM").
+// fully reproducible. It is the fixture-spawning side of the engine test seam.
 type Fake struct {
 	path string
 }
@@ -32,7 +31,7 @@ func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 }
 
 // fakeModels is the deterministic model list the Fake surface, standing in for
-// provider model discovery at the engine/app test seam (T12). It mirrors the
+// provider model discovery at the engine/app test seam. It mirrors the
 // primary provider's default lineup so a discovery fixture surfaces real ids.
 var fakeModels = []string{"deepseek-v4-flash", "deepseek-v4", "grok-2", "kimi"}
 

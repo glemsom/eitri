@@ -54,8 +54,8 @@ func (m *tokenMu) get() string       { return m.tok }
 // TestCopilotStreamsWithValidStoredToken is the baseline Copilot batch turn: a
 // valid stored access token is used directly as the bearer on the shared
 // Chat-Completions wire, and the reasoning/answer stream matches the primary
-// provider's, since Copilot re-expresses through the same engine seam (T11
-// criterion: provider-agnostic dialect routing).
+// provider's, since Copilot re-expresses through the same engine seam —
+// provider-agnostic dialect routing.
 func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
 	srv, lastToken := copilotServer(t, sseFixture(t))
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(),
@@ -193,7 +193,7 @@ func drainOne(s Stream) (string, error) {
 // TestCopilotDeclaresGenerationControlCapabilities verifies the Copilot
 // provider advertises the generation_budget and thinking_suppression controls
 // through the generation-control capability surface, so higher layers can
-// pre-flight a special turn's requirements (issues #60, #265) before any wire
+// pre-flight a special turn's requirements before any wire
 // call.
 func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
@@ -213,10 +213,10 @@ func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
 }
 
 // TestCopilotCapabilityMatchesWireBehavior ties the advertised thinking-
-// suppression control to the wire shape that honors it (issue #265 AC-4):
-// negotiation honors a required thinking_suppression request, AND a
-// thinking-off stream carries the explicit thinking:{type:disabled} suppression
-// (issue #263). TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
+// suppression control to the wire shape that honors it: negotiation honors a
+// required thinking_suppression request, and a thinking-off stream carries
+// the explicit thinking:{type:disabled} suppression.
+// TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
 // alone; this test asserts advertisement and wire agree.
 func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
@@ -227,7 +227,7 @@ func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
 }
 
 // TestCopilotDropsEffortWhenThinkingDisabled verifies the non-thinking wire
-// guarantee also holds on the Copilot provider (issues #54, #263):
+// guarantee also holds on the Copilot provider:
 // when the caller disables thinking, `reasoning_effort` is dropped from the
 // request body even if a non-empty effort is retained. Unlike the primary
 // provider (which omits the toggle entirely), the Copilot backend follows its
@@ -263,12 +263,12 @@ func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 		t.Error("request carried reasoning_effort, want omitted when thinking off")
 	}
 	if !thinkingDisabled {
-		t.Error("request did not carry thinking suppression {type:disabled}, want present when thinking off (issue #263)")
+		t.Error("request did not carry thinking suppression {type:disabled}, want present when thinking off")
 	}
 }
 
 // TestCopilotSendsThinkingEnabledWhenThinkingOn verifies the thinking-enabled
-// wire shape also holds on the Copilot provider (issue #263): when the caller
+// wire shape also holds on the Copilot provider: when the caller
 // keeps thinking on, the request carries an explicit `thinking:{type:enabled}`
 // toggle plus the normalized reasoning_effort.
 func TestCopilotSendsThinkingEnabledWhenThinkingOn(t *testing.T) {
