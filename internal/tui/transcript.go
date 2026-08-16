@@ -65,10 +65,14 @@ type Transcript struct {
 	// start/result pairing (apply), per-entry and all-entry expansion (toggle, the
 	// click-to-expand hit-test), and the persistent row->entry layout index surface.
 	log toolLog
-	// showToolResult expands all tool entries to their full result (issue #84).
-	// It lives on the Transcript (issue #245): alt+y toggles it through
-	// toggleShowToolResult so the render reads Transcript state directly.
-	showToolResult bool
+	// expandAll is the persistent Ctrl+E "expanded view" mode (issue #273): one
+	// global flag that switches every tool entry — past and future turns —
+	// between the collapsed (default, noise-reduced) delta summary and the fully
+	// expanded framed result card. It is sticky until toggled off. It evolves the
+	// legacy alt+y showToolResult toggle (issue #84/#245) into the single
+	// Ctrl+E-bound mode; Ctrl+E routes through toggleExpandAll so the render
+	// reads Transcript state directly.
+	expandAll bool
 	// layout is the persistent transcript layout cache (issue #242), shared with
 	// Model through a pointer (like histViewport): one batched renderHistory pass
 	// records the row->tool-entry index, the row->message index, and the
@@ -430,7 +434,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			now = time.Now()
 		}
 		blockStart := nl
-		toolBlock, blockRows := t.log.Render(t.theme, t.showToolResult, now, w, i)
+		toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i)
 		emit(toolBlock)
 		if toolRows != nil {
 			for _, r := range blockRows {
@@ -650,14 +654,31 @@ func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool
 }
 
 // toggleToolEntry flips one tool entry's expansion state (mouse click
-// click-to-expand, issue #245 AC1). It delegates to the tool log's
-// bounds-checked Toggle, never touches other entries or the global alt+y flag,
-// and marks the shared layout dirty so an expanded/collapsed entry's new row
-// span is re-recorded before the next hit-test. The Transcript owns the log
-// (issue #248).
+// click-to-expand, issue #245 AC1), kept independent of the Ctrl+E
+// expanded-view mode (issue #273). When the global mode is OFF it delegates to
+// the tool log's bounds-checked Toggle (open/close that entry); when the global
+// mode is ON it collapses/re-expands just that entry via toggleCollapse so a
+// per-entry collapse still works even while everything else stays expanded. It
+// never touches other entries and marks the shared layout dirty so the entry's
+// new row span is re-recorded before the next hit-test. The Transcript owns the
+// log (issue #248).
 func (t *Transcript) toggleToolEntry(idx int) {
-	t.log.Toggle(idx)
+	if t.expandAll {
+		t.log.ToggleCollapse(idx)
+	} else {
+		t.log.Toggle(idx)
+	}
 	t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
+}
+
+// toggleCollapse flips one entry's per-entry collapse-override (issue #273): it
+// keeps a single entry collapsed even while the global expanded-view mode is ON,
+// and flips back to let the mode show it. Used by the expandAll-mode click path
+// and directly by tests; it is a thin wrapper over the tool log's owned
+// bounds-checked operation.
+func (t *Transcript) toggleCollapse(idx int) {
+	t.log.ToggleCollapse(idx)
+	t.layoutPtr().dirty = true
 }
 
 // apply folds one tool-call observation into the transcript's log (issue #245
@@ -670,13 +691,14 @@ func (t *Transcript) apply(u ToolUpdate) {
 	t.layoutPtr().dirty = true // an entry changed the tool log's rendered rows
 }
 
-// toggleShowToolResult flips the global all-entries expansion state (issue #245
-// AC2): alt+y on the Model routes here (issue #248), and it marks the shared
-// layout dirty because showing or hiding all tool results re-wraps the log.
-func (t *Transcript) toggleShowToolResult() bool {
-	t.showToolResult = !t.showToolResult
+// toggleExpandAll flips the persistent Ctrl+E expanded-view mode (issue #273):
+// Ctrl+E on the Model routes here (issue #248), and it marks the shared layout
+// dirty because showing or hiding all tool results re-wraps the log. It is the
+// single global mode; per-entry click-to-expand (#245) stays orthogonal.
+func (t *Transcript) toggleExpandAll() bool {
+	t.expandAll = !t.expandAll
 	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
-	return t.showToolResult
+	return t.expandAll
 }
 
 // plainLines returns the history scroll content as plain text per rendered row

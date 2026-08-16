@@ -640,6 +640,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// transcript or the agent loop.
 			m.copyTranscript()
 			return m, nil
+		case "ctrl+e":
+			// Toggle the persistent Ctrl+E expanded-view mode over the whole
+			// transcript (issue #273): one global flag that switches every tool
+			// entry between its collapsed delta summary and the fully expanded
+			// framed result. Sticky until toggled off; per-entry click-to-expand
+			// (#245) stays orthogonal and independent of the mode. The flag lives
+			// on the owned Transcript, which mutates in place.
+			m.tx.toggleExpandAll()
+			return m, nil
 		case "ctrl+j", "shift+enter":
 			// Shift+Enter newline (issue #121 AC2): terminals deliver Shift+Enter
 			// two ways. Legacy terminals send the line-feed byte, which Bubble Tea
@@ -718,14 +727,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.layout.dirty = true // a thinking block expanded/collapsed changes rows
 			return m, nil
 		}
-		// alt+y toggles expanding tool-call entries to their full result (issue
-		// #84): collapsed by default so the transcript stays clean, expanded on
-		// demand so nothing is ever silently truncated. The Transcript owns the
-		// flag (issue #245/#248).
-		if msgi.Mod.Contains(tea.ModAlt) && msgi.Text == "y" {
-			m.tx.toggleShowToolResult()
-			return m, nil
-		}
+		// The Ctrl+E expanded-view toggle (issue #273) is handled as a dedicated
+		// case above; the legacy alt+y global tool-expand path has been superseded
+		// and removed so there is exactly one way to toggle the mode.
 		// Let the textarea handle editing (cursor, backspace, etc.).
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm

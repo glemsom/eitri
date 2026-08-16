@@ -91,13 +91,13 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 		t.Errorf("expected the compression tail marker in the collapsed summary, got: %q", content)
 	}
 	// Raw body lines must not be dumped into the scroll when collapsed.
-	if strings.Contains(content, "c.go\n+3 more\n") && !m.tx.showToolResult {
+	if strings.Contains(content, "c.go\n+3 more\n") && !m.tx.expandAll {
 		// c.go may legitimately appear if expanded; here it's collapsed.
 		t.Errorf("collapsed entry must not dump the raw result body, got: %q", content)
 	}
 
 	// Expand on demand reveals the full result inline.
-	expanded, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyExtended, Text: "y", Mod: tea.ModAlt})
+	expanded, _ := m.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	m = asModel(t, expanded)
 	ex := view(m)
 	// The native viewport pads each row to the pane width, so the trailing
@@ -177,7 +177,7 @@ func TestModel_stylingExpandedResultFramed(t *testing.T) {
 	m = submitAndWait(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (2.1s)\n  PASS  TestLogin", Lines: 2})
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModAlt, Text: "y"})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 
 	line := lineContaining(view(m), "PASS  TestLogin")
 	if line == "" {
@@ -221,3 +221,73 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 		t.Errorf("copy must keep the full args, got: %q", m.transcriptText())
 	}
 }
+
+// TestModel_ctrlETogglesExpandedViewMode asserts Ctrl+E toggles the persistent
+// expanded-view mode on the Model's owned Transcript (issue #273 AC1): the key
+// flips the single expandAll flag on→off→on, each press sticky until the next.
+func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
+	feed := NewToolFeed()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: feed,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"ls"}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2})
+
+	// Default off.
+	if m.tx.expandAll {
+		t.Fatal("expanded view must start off")
+	}
+	// on
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if !m.tx.expandAll {
+		t.Error("Ctrl+E must turn the expanded view on")
+	}
+	// off
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if m.tx.expandAll {
+		t.Error("second Ctrl+E must turn the expanded view off")
+	}
+	// on again
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if !m.tx.expandAll {
+		t.Error("third Ctrl+E must turn the expanded view on again")
+	}
+}
+
+// TestModel_expandedViewModeAppliesToNewlyDeliveredEntries asserts the Ctrl+E
+// expanded-view mode applies to entries delivered AFTER the mode is enabled
+// (issue #273 AC: mode applies to newly delivered entries): a tool result that
+// lands while the mode is ON renders its full result, past
+// entries too, because render reads the live flag over the whole log.
+func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
+	feed := NewToolFeed()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Tools: feed,
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+
+	// Turn the mode on, then deliver a fresh entry.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	m = toolStart(t, m, "bash", `{"command":"ls"}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2})
+
+	content := view(m)
+	if !m.tx.expandAll {
+		t.Fatal("expanded view should be on")
+	}
+	if !strings.Contains(content, "a.go") {
+		t.Errorf("newly delivered entry must render its full result with the mode ON, got: %q", content)
+	}
+}
+

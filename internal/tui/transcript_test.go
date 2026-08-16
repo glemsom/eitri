@@ -340,20 +340,109 @@ func TestTranscript_applyFoldsToolUpdate(t *testing.T) {
 	}
 }
 
-// TestTranscript_toggleShowToolResultFlipsGlobalExpansion asserts the alt+y
-// global all-entries toggle now lives on the Transcript (issue #245 AC2): a
-// toggling Transcript flips its showToolResult flag and reports the new value
-// back, the same state the transcript render reads for global expansion.
-func TestTranscript_toggleShowToolResultFlipsGlobalExpansion(t *testing.T) {
+// TestTranscript_toggleExpandAllFlipsGlobalMode asserts the Ctrl+E
+// global all-entries expanded view mode now lives on the Transcript (issue
+// #273 AC1/U1): a toggling Transcript flips its persistent expandAll flag and
+// reports the new value back, the same state the transcript render reads for
+// global expansion. It covers the on→off→on sequence (AC: toggling).
+func TestTranscript_toggleExpandAllFlipsGlobalMode(t *testing.T) {
 	tx := transcriptWithTool(t)
-	if tx.showToolResult {
-		t.Fatalf("transcript should start globally collapsed")
+	if tx.expandAll {
+		t.Fatalf("transcript should start collapsed (expanded view off)")
 	}
-	if v := tx.toggleShowToolResult(); !v || !tx.showToolResult {
-		t.Errorf("toggleShowToolResult must expand all, got value=%v field=%v", v, tx.showToolResult)
+	// on
+	if v := tx.toggleExpandAll(); !v || !tx.expandAll {
+		t.Errorf("toggleExpandAll must expand all, got value=%v field=%v", v, tx.expandAll)
 	}
-	if v := tx.toggleShowToolResult(); v || tx.showToolResult {
-		t.Errorf("second toggleShowToolResult must collapse all, got value=%v field=%v", v, tx.showToolResult)
+	// off
+	if v := tx.toggleExpandAll(); v || tx.expandAll {
+		t.Errorf("second toggleExpandAll must collapse all, got value=%v field=%v", v, tx.expandAll)
+	}
+	// on again
+	if v := tx.toggleExpandAll(); !v || !tx.expandAll {
+		t.Errorf("third toggleExpandAll must expand all again, got value=%v field=%v", v, tx.expandAll)
+	}
+}
+
+// TestTranscript_toggleExpandAllEmptyLogIsNoOp asserts toggling the Ctrl+E
+// expanded-view mode on a transcript with no tool entries must not panic or
+// break (issue #273 AC: no-op with no tool entries): the flag flips but the
+// empty log renders nothing and stays coherent.
+func TestTranscript_toggleExpandAllEmptyLogIsNoOp(t *testing.T) {
+	tx := transcriptWithTool(t)
+	// Drain the seeded entry so the log is empty, then ensure the empty-log
+	// toggle path is safe.
+	tx.log.entries = tx.log.entries[:0]
+	if tx.toggleExpandAll() != true {
+		t.Fatalf("toggleExpandAll on empty log must turn the mode on")
+	}
+	// Rendering an empty log with the mode on must not panic or fabricate an
+	// entry.
+	var b strings.Builder
+	tx.renderHistory(&b, nil, nil)
+	if strings.Contains(b.String(), "⊕ bash") {
+		t.Errorf("empty log must render no tool entries, got: %q", b.String())
+	}
+	if tx.expandAll != true {
+		t.Errorf("expandAll must stay flipped after rendering an empty log")
+	}
+}
+
+// TestTranscript_expandAllPerEntryCollapseOverride asserts the Ctrl+E
+// expanded-view mode keeps per-entry click-to-expand orthogonal (issue #273
+// AC); a per-entry collapse still works even when the global mode is ON — it
+// overrides the expanded view for just that entry while others stay expanded.
+func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
+	tx := transcriptWithTool(t)
+	tx.expandAll = true
+
+	var on strings.Builder
+	tx.renderHistory(&on, nil, nil)
+	if !strings.Contains(on.String(), "a.go") {
+		t.Fatalf("with expandAll on, entry must render its full result, got: %q", on.String())
+	}
+
+	// A click in expanded mode collapses just this entry.
+	tx.toggleCollapse(0)
+	var off strings.Builder
+	tx.renderHistory(&off, nil, nil)
+	if strings.Contains(off.String(), "a.go") {
+		t.Errorf("per-entry collapse must hide the result even in expanded-view mode, got: %q", off.String())
+	}
+
+	// Clicking again re-expands just this entry through the global mode.
+	tx.toggleCollapse(0)
+	var again strings.Builder
+	tx.renderHistory(&again, nil, nil)
+	if !strings.Contains(again.String(), "a.go") {
+		t.Errorf("second per-entry toggle must re-expand in expanded-view mode, got: %q", again.String())
+	}
+}
+
+// TestTranscript_expandAllOffDoesNotWipePerEntry asserts turning the global
+// expanded-view mode OFF does not wipe per-entry expansion (issue #273 AC): an
+// entry the user opened individually stays open, and toggling back on shows
+// everything again.
+func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {
+	tx := transcriptWithTool(t)
+	// Open entry 0 per-entry while the global mode is off.
+	tx.toggleToolEntry(0)
+	var one strings.Builder
+	tx.renderHistory(&one, nil, nil)
+	if !strings.Contains(one.String(), "a.go") {
+		t.Fatalf("per-entry open must show the result in default mode, got: %q", one.String())
+	}
+
+	// Toggle the global mode on then off; the per-entry open survives.
+	tx.toggleExpandAll()
+	tx.toggleExpandAll()
+	if !tx.log.Entry(0).expanded {
+		t.Fatalf("toggling expandAll must not wipe per-entry expansion state")
+	}
+	var back strings.Builder
+	tx.renderHistory(&back, nil, nil)
+	if !strings.Contains(back.String(), "a.go") {
+		t.Errorf("per-entry open must persist after an expandAll on/off cycle, got: %q", back.String())
 	}
 }
 
