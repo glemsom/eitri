@@ -13,6 +13,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -445,11 +446,18 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		for _, tc := range done.ToolCalls {
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
-			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result))
+			// Shared byte-cap at the tool-result boundary (issue #286): every tool
+			// result is measured against the single budget before its bytes enter
+			// message history, so one oversized web_fetch or whole-file read cannot
+			// exhaust the context window. The delivered (byte-capped) form goes to
+			// the provider; the event additionally carries the FULL pre-cap result
+			// so the TUI expand path stays lossless (issue #84 AC4).
+			delivered, dropped := compress.CapBytes(result, compress.DefaultByteCap)
+			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result, delivered, dropped))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,
-				Content:    result,
+				Content:    delivered,
 			})
 		}
 	}
