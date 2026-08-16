@@ -24,7 +24,8 @@ func (b *recordingBrowser) Open(_ context.Context, target string) error {
 func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 	r, _ := newWebFetchRegistry(t, &stubFetcher{body: "<html><body></body></html>"})
 	br := r.browser.(*recordingBrowser)
-	out, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
+	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("open_in_browser error = %v, want nil", err)
 	}
@@ -60,7 +61,8 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 		Browser:   &recordingBrowser{},
 	})
 	br := r.browser.(*recordingBrowser)
-	out, err := r.Run(context.Background(), "open_in_browser", argMap("path", "file:///tmp/report.html"))
+	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "file:///tmp/report.html"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("open_in_browser error = %v, want nil", err)
 	}

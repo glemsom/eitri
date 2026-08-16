@@ -33,18 +33,24 @@ func (b *bashTool) Schema() map[string]any {
 	}, []string{"command"})
 }
 
-func (b *bashTool) Run(ctx context.Context, args map[string]any) (string, error) {
+func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
 	cmd, err := strArg(args, "command")
 	if err != nil {
-		return "", err
+		return ToolResult{}, err
 	}
 	o, err := b.sb.Run(ctx, cmd)
 	if err != nil {
-		return o.Combined(), err
+		// Failing commands carry their (uncompressed) combined output so the
+		// model can read the error; never compressed, never a marker.
+		return ToolResult{Text: o.Combined()}, err
 	}
 	// Compress at the tool-result boundary so the compressed bytes land in the
-	// cache prefix. Never-inflate gate preserves terse output.
-	return compress.Compress(o.Combined()), nil
+	// cache prefix. Never-inflate gate preserves terse output. CompressResult
+	// reports whether the output really IS the compressed form (issue #286
+	// review): only then may the engine's byte-cap treat a trailing "+N more"
+	// line as the compressor's marker.
+	text, compressed := compress.CompressResult(o.Combined())
+	return ToolResult{Text: text, Compressed: compressed}, nil
 }
 
 // Combined returns stdout then stderr joined, prioritizing stdout for token

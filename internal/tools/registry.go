@@ -29,14 +29,28 @@ type Deps struct {
 
 // Tool is one agent-callable function. Name must match the registry key; Run
 // receives a JSON-decoded argument map and returns a deterministic, reversible
-// string result suitable for future compression/compaction. Schema returns the
-// tool's strict-shaped JSON-Schema argument object (additionalProperties:false,
-// required fields) so a caller can build the per-dialect tool definition.
+// string result suitable for future compression/compaction. Compressed reports
+// whether the result is the line-compressor's truncated form (issue #286
+// review): bash compresses at the tool boundary and sets it true when the
+// never-inflate gate actually shortened the output; every other tool returns
+// raw bytes and sets it false, so the engine's byte-cap never mistakes raw
+// content that LOOKS like a "+N more" tail for the compressor's marker.
+// Schema returns the tool's strict-shaped JSON-Schema argument object
+// (additionalProperties:false, required fields) so a caller can build the
+// per-dialect tool definition.
+type ToolResult struct {
+	// Text is the tool's result string.
+	Text string
+	// Compressed is true when Text is the line-compressor's compressed form
+	// (carries an explicit "+N more" tail marker).
+	Compressed bool
+}
+
 type Tool interface {
 	Name() string
 	Description() string
 	Schema() map[string]any
-	Run(ctx context.Context, args map[string]any) (string, error)
+	Run(ctx context.Context, args map[string]any) (ToolResult, error)
 }
 
 // Definition is a tool's provider-facing definition: name, description, and a
@@ -125,11 +139,12 @@ func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
 func (r *Registry) Workspace() string { return r.workspace }
 
 // Run executes the named tool with the given decoded args, returning its
-// string result. Unknown tools are a hard error.
-func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (string, error) {
+// result string plus whether the result is the line-compressor's compressed
+// form. Unknown tools are a hard error.
+func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
 	tool, ok := r.tools[name]
 	if !ok {
-		return "", fmt.Errorf("unknown tool %q", name)
+		return ToolResult{}, fmt.Errorf("unknown tool %q", name)
 	}
 	return tool.Run(ctx, args)
 }

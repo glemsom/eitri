@@ -139,7 +139,8 @@ func TestSkillStripsFrontmatterOnActivation(t *testing.T) {
 	if !contains(rd.Names(), "skill") {
 		t.Fatalf("skill tool not registered when skills exist: names = %v", rd.Names())
 	}
-	out, err := rd.Run(context.Background(), "skill", argMap("name", "res"))
+	res, err := rd.Run(context.Background(), "skill", argMap("name", "res"))
+	out := res.Text
 	if err != nil {
 		t.Fatalf("skill Run error = %v, want nil", err)
 	}
@@ -180,14 +181,16 @@ func TestSkillDedupesReactivation(t *testing.T) {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
 	rd := NewRegistry(testDeps(t, "", catalog))
-	first, err := rd.Run(context.Background(), "skill", argMap("name", "s1"))
+	firstRes, err := rd.Run(context.Background(), "skill", argMap("name", "s1"))
+	first := firstRes.Text
 	if err != nil {
 		t.Fatalf("first Run error = %v, want nil", err)
 	}
 	if !strings.Contains(first, "long body A") {
 		t.Fatalf("first activation missing body: %s", first)
 	}
-	second, err := rd.Run(context.Background(), "skill", argMap("name", "s1"))
+	secondRes, err := rd.Run(context.Background(), "skill", argMap("name", "s1"))
+	second := secondRes.Text
 	if err != nil {
 		t.Fatalf("second Run error = %v, want nil", err)
 	}

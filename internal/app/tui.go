@@ -151,7 +151,7 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			// TUI-side observer's diff, not from the engine seam (issue #174).
 			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
-				Name: ev.Name, Result: ev.Result, Delivered: ev.Delivered, BytesDropped: ev.BytesDropped,
+				Name: ev.Name, Result: ev.Result, BytesDropped: ev.BytesDropped,
 				Lines: ev.Lines, Dropped: ev.Dropped,
 				Compressed: ev.Compressed, Added: added, Removed: removed,
 				Before: before, After: after, Path: path,
@@ -208,7 +208,11 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	return &tui.SkillsSurface{
 		Items: items,
 		Activate: func(ctx context.Context, name string) (string, error) {
-			return reg.Run(ctx, "skill", map[string]any{"name": name})
+			res, err := reg.Run(ctx, "skill", map[string]any{"name": name})
+			if err != nil {
+				return "", err
+			}
+			return res.Text, nil
 		},
 	}
 }
