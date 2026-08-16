@@ -111,27 +111,21 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 // returned col is converted to a RUNE INDEX into the line so every downstream
 // consumer (highlight and copy) shares one coordinate space even when the row
 // contains wide/multibyte characters (issue #261). ok is false when the pointer
-// is outside the history viewport region — over the review overlay above it or
-// the fixed bottom band below it — or the viewport has not been sized yet.
+// is outside the history viewport region — over the fixed bottom band below
+// it — or the viewport has not been sized yet.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	vp := m.tx.histViewport
 	if vp == nil || vp.Height() <= 0 || m.tx.height <= 0 {
 		return 0, 0, false
 	}
-	// The scroll region occupies the rows between the review overlay (when
-	// open, issue #90) and the fixed bottom band; mirror renderPane's region
-	// math so screen rows map to the viewport's visible lines exactly.
+	// The scroll region occupies the rows above the fixed bottom band; mirror
+	// renderPane's region math so screen rows map to the viewport's visible
+	// lines exactly.
 	bandLines := m.bandHeight()
-	reviewLines := 0
-	if m.tx.review != nil {
-		var review strings.Builder
-		m.tx.renderReview(&review)
-		reviewLines = m.tx.reviewRegionRows(review.String(), bandLines)
-	}
-	if y < reviewLines || y >= m.tx.height-bandLines {
+	if y < 0 || y >= m.tx.height-bandLines {
 		return 0, 0, false
 	}
-	row := y - reviewLines
+	row := y
 	if row < 0 || row >= vp.Height() {
 		return 0, 0, false
 	}

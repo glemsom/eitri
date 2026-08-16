@@ -1,7 +1,7 @@
 // Package diff is a minimal, dependency-free line diff engine for the TUI's
-// review panel (issue #90). It computes an LCS-based unified-style diff of two
-// file contents and groups the changes into hunks with surrounding context so
-// the terminal can render a focused file's inline diff without any external
+// inline card diff (issues #90/#275). It computes an LCS-based unified-style
+// diff of two file contents and groups the changes into hunks with surrounding
+// context so the terminal can render a file's inline diff without any external
 // renderer (pure Go, no Node, honoring the single-binary/no-deps constraint).
 package diff
 
@@ -98,8 +98,7 @@ type op struct {
 
 // buildOps returns the LCS-derived sequence of equal/delete/insert ops that
 // transforms oldLines into newLines. It uses the classic O(n*m) DP table over
-// the equality matrix; fine for the file contents a terminal review panel will
-// show.
+// the equality matrix; fine for the file contents a terminal diff will show.
 func buildOps(oldLines, newLines []string) []op {
 	n, m := len(oldLines), len(newLines)
 	lcs := make([][]int, n+1)

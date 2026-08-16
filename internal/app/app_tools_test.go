@@ -301,8 +301,8 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 		t.Errorf("edit delta = +%d-%d, want +2-0", gotAdded, gotRemoved)
 	}
 	// The observer must also report the real before/after file content and host
-	// path so the TUI review panel can render an inline diff and hand the file
-	// to the browser (issue #90 / #174).
+	// path so the TUI can render the expanded card's inline diff (issue #90 /
+	// #174 / #275).
 	if gotBefore != "a\nb\n" || gotAfter != "a\nb\nc\nd\n" {
 		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", gotBefore, gotAfter)
 	}

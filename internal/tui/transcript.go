@@ -14,29 +14,28 @@ import (
 // layout/scroll/follow/render concerns that used to live in the TUI Model
 // god-object (issue #243), and since the contract step (#248) the ONLY home of
 // the transcript state. It owns the height/width, the messages, the tool log,
-// the review overlay, the right context rail, the follow position, the
-// drag-select, and the render of the agent-history scroll region.
+// the right context rail, the follow position, the drag-select, and the
+// render of the agent-history scroll region.
 //
 // Model holds a live Transcript value as its owned tx field (issue #248): the
 // Transcript is a genuinely owned, mutating surface rather than a per-frame
 // value rebuilt from duplicated Model fields. NewModelCfg constructs it once;
-// Model mutates it in place (appends messages, applies tool updates, toggles
-// the review, drives navigation) and the render paths read it directly.
+// Model mutates it in place (appends messages, applies tool updates, drives
+// navigation) and the render paths read it directly.
 //
 // The one pointer field is the persisted viewport (histViewport): it is shared
 // with the value copies Bubble Tea makes during View (which runs on a value
 // Model holding the same tx), so scroll-state changes made during a render
 // survive the next re-render cycle. The layout cache (layout) and drag-select
-// (dragSel) and review (review) are likewise heap-allocated pointers so their
-// state survives those value copies.
+// (dragSel) is likewise a heap-allocated pointer so its state survives those
+// value copies.
 //
 // Since issue #244 the Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
 // and mutate the follow flag in place.
 //
 // Scope note: Transcript owns the scroll region (the history the user reads),
-// the review overlay that sits above it in the same pane, and the right
-// context rail (issue #247) — its visibility, band/transcript width accounting,
+// the right context rail (issue #247) — its visibility, band/transcript width accounting,
 // clamp height, and render all resolve here. It does NOT own the bottom band
 // (status strip + composer, renderBand); that composer concern stays on Model,
 // the band string is passed into renderPane so Transcript can compose the full
@@ -86,9 +85,6 @@ type Transcript struct {
 	// telemetry is the live status-strip surface (issue #86); nil disables the
 	// busy footer fallback row.
 	telemetry *Telemetry
-	// review is the open changed-file review overlay (issue #90); nil means
-	// only the transcript scroll region renders.
-	review *reviewPanel
 	// dragSel tracks an in-progress click-drag selection (issue #124), whose
 	// range the scroll region highlights.
 	dragSel *dragSelect
@@ -241,31 +237,19 @@ func (t Transcript) viewWithRail(pane string, bandHeight int) string {
 // band is the already-rendered bottom band (status strip + composer), which the
 // Transcript does not own.
 //
-// Render is split into explicit, ordered regions (issue T01): the review
-// overlay region (when open) on top, the scroll region (history), then the
-// fixed bottom band. Each region renders independently; renderPane concatenates
-// them in order. The scroll region is Height-aware: its content clamps to the
-// terminal height, so the band stays pinned and only the history scrolls.
+// Render is split into explicit, ordered regions (issue T01): the scroll
+// region (history), then the fixed bottom band. Each region renders
+// independently; renderPane concatenates them in order. The scroll region is
+// Height-aware: its content clamps to the terminal height, so the band stays
+// pinned and only the history scrolls.
 func (t Transcript) renderPane(band string) string {
 	bandStr := band
-
-	// Overlay region: the review panel takes over the top of the pane (Layout B,
-	// issue #90). It is its own height-clipped region (issue T06).
-	reviewStr := ""
-	reviewLines := 0
-	if t.review != nil {
-		var review strings.Builder
-		t.renderReview(&review)
-		reviewStr = review.String()
-		reviewLines = t.reviewRegionRows(reviewStr, lineCount(bandStr))
-		reviewStr = clipReviewRegion(reviewStr, reviewLines)
-	}
 
 	// The scroll region renders through the native bubbletea/viewport component
 	// (T1 alt-screen pivot, issue #119), which owns the history clip + follow.
 	var hist strings.Builder
 	t.renderHistory(&hist, nil, nil)
-	histRegion := t.renderHistoryViewport(hist.String(), lineCount(bandStr)+reviewLines)
+	histRegion := t.renderHistoryViewport(hist.String(), lineCount(bandStr))
 	// The scroll region must end on its own row before the band joins: the
 	// persisted viewport renders its rows newline-joined with no trailing
 	// newline (and pads to the scroll height), so without this terminator the
@@ -273,96 +257,7 @@ func (t Transcript) renderPane(band string) string {
 	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
 		histRegion += "\n"
 	}
-	return reviewStr + histRegion + bandStr
-}
-
-// renderReview renders the review panel over the transcript (issue #90): a
-// dense summary of touched files with add/delete counts and status, plus the
-// focused file's inline diff when expanded, and an open_in_browser hint.
-func (t Transcript) renderReview(b *strings.Builder) {
-	r := t.review
-	if r == nil {
-		return
-	}
-	b.WriteString(t.theme.statusStyle.Render("ctrl+d  ") + t.theme.headerStyle.Render(fmt.Sprintf("Review changed files (%d)", len(r.files))))
-	b.WriteString("\n")
-	if len(r.files) == 0 {
-		b.WriteString(t.theme.statusStyle.Render("  no changes yet"))
-		b.WriteString("\n")
-		return
-	}
-	for i, f := range r.files {
-		marker := " "
-		if i == r.cursor {
-			marker = t.theme.headerStyle.Render(g("▶", ">")) // accent cursor marker
-		}
-		status := t.theme.statusStyle.Render(f.status)
-		switch f.status {
-		case "added":
-			status = t.theme.outcomeOKStyle.Render(f.status)
-		case "deleted":
-			status = t.theme.outcomeErrStyle.Render(f.status)
-		}
-		b.WriteString(marker + " " + f.path + "  " + t.theme.statusStyle.Render(deltaTag(f.added, f.removed)) + "  " + status)
-		b.WriteString("\n")
-	}
-	if r.expanded && r.cursor < len(r.files) {
-		b.WriteString(renderDiff(r.files[r.cursor], t.theme))
-	}
-	if r.openErr != "" {
-		b.WriteString(t.theme.statusStyle.Render("open_in_browser: " + r.openErr))
-		b.WriteString("\n")
-		// The open_in_browser error is a one-shot band note: it renders once the
-		// frame after the failure, then clears so subsequent frames don't redraw it
-		// (issue #90). r is the shared *reviewPanel, so clearing here persists.
-		r.openErr = ""
-	}
-	b.WriteString(t.theme.statusStyle.Render("  enter: toggle diff " + g("·", ".") + " o: open_in_browser " + g("·", ".") + " ctrl+d: close"))
-	b.WriteString("\n")
-}
-
-// reviewRegionRows returns how many rows the review overlay region may occupy
-// when open (issue T06 AC1): at most reviewRegionMax rows, never more than the
-// terminal leaves after the fixed bottom band.
-func (t Transcript) reviewRegionRows(content string, bandLines int) int {
-	rrows := lineCount(content)
-	capRows := reviewRegionMax
-	if t.height > 0 {
-		avail := t.height - bandLines
-		if avail < capRows {
-			capRows = avail
-		}
-		if capRows < 0 {
-			capRows = 0
-		}
-	}
-	if rrows > capRows {
-		return capRows
-	}
-	return rrows
-}
-
-// buildReview assembles the review panel from the transcript's accumulated
-// file-mutating tool-log entries (issue #90, #246). It delegates to the tool
-// log's Review projection, which keeps the most recent state per path and
-// derives each file's status from the before/after content the engine
-// captured. It never touches the repo or the live loop. Since issue #246 the
-// transcript owns the build; ctrl+d routes through toggleReview.
-func (t Transcript) buildReview() reviewPanel {
-	return reviewPanel{files: t.log.Review()}
-}
-
-// toggleReview flips the changed-file review overlay open or closed (issue
-// #90, #246 AC2): ctrl+d on the Model routes here (issue #248). When closed it
-// builds the panel from the transcript's tool log; when open it dismisses it
-// back to the transcript surface.
-func (t *Transcript) toggleReview() {
-	if t.review != nil {
-		t.review = nil
-		return
-	}
-	rp := t.buildReview()
-	t.review = &rp
+	return histRegion + bandStr
 }
 
 // renderHistory renders the scroll region: the agent history that the user
@@ -456,7 +351,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered
 // history content limited to the rows the non-reserved regions (the fixed
-// bottom band, plus the review overlay when open — issue T06) do not occupy.
+// bottom band) do not occupy.
 // Until the first resize lands (t.height == 0) the history renders unclamped.
 //
 // The clip is served through the persisted bubbletea/viewport scroll component

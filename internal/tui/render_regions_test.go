@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -187,51 +186,11 @@ func normalizeRows(s string) []string {
 	return out
 }
 
-// TestReviewRegion_ClipsTallDiff asserts the review overlay gets its own
-// height-clipped region (issue T06 AC1): a tall expanded diff clips instead of
-// overflowing the terminal, so the fixed bottom band (composer) stays the final
-// bottom-pinned region and the pane never exceeds the terminal height.
-func TestReviewRegion_ClipsTallDiff(t *testing.T) {
-	feed := NewToolFeed()
-	// Build a long after-body so the expanded diff dwarfs the short window.
-	after := make([]string, 60)
-	for i := range after {
-		after[i] = fmt.Sprintf("line-%02d", i)
-	}
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Tools: feed,
-	})
-	// Small window: band ~2 rows leaves only a handful of history/viewport rows.
-	m = resizeTo(t, m, 80, 10)
-	nm := feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"/w/big.go"}`}})
-	m = asModel(t, nm)
-	nm = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
-		Name: "edit", Result: "edited\n", Added: 60, Removed: 0,
-		Before: "old\n", After: strings.Join(after, "\n") + "\n", Path: "/w/big.go",
-	}})
-	m = asModel(t, nm)
-
-	// Open the review panel and expand the focused file's inline diff.
-	m = reopenReview(t, m)
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
-
-	got := m.renderPane()
-	paneLines := len(strings.Split(strings.TrimRight(got, "\n"), "\n"))
-	if paneLines > 10 {
-		t.Errorf("pane (%d lines) exceeds the %d-row terminal: review region must clip, not overflow\n%s", paneLines, 10, got)
-	}
-	// The band stays the final (bottom-pinned) region, so the composer survives.
-	var band strings.Builder
-	m.renderBand(&band)
-	bandStr := band.String()
-	if !strings.HasSuffix(got, bandStr) {
-		t.Errorf("band (composer) not bottom-pinned; review flowed over it:\n%s", got)
-	}
-	// A tail line deep in the diff must be clipped out of the pane.
-	if strings.Contains(got, "line-59") {
-		t.Errorf("tall diff tail not clipped out of the review region:\n%s", got)
-	}
-}
+// TestReviewRegion_ClipsTallDiff is obsolete with the modal review panel
+// (issue #276): the overlay and its height-clipped region are gone, so there
+// is no review region left to clip. The expanded card path pins the diff
+// inside the scroll region instead — tall card diffs clip against the native
+// history viewport, whose height clamp is covered by
+// TestRenderRegions_HistoryVsBandSeparation plus toolcard_diff_test.go. This
+// test is deleted rather than re-homed because its seam (the review region)
+// no longer exists.

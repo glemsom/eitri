@@ -132,10 +132,9 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 
 // TestComposerRail_modeColor asserts the composer's prompt rail encodes edit
 // state as color: the full accent while idle, a dimmed accent while a turn
-// runs (composer inert) and while the review panel owns the keys, and back to
-// the full accent when the turn completes or the panel closes (benchmark
-// §4.3 state-as-color: mode-colored composer border). The rail's glyph and
-// width never change, so caret geometry is untouched.
+// runs (composer inert), and back to the full accent when the turn completes
+// (benchmark §4.3 state-as-color: mode-colored composer border). The rail's
+// glyph and width never change, so caret geometry is untouched.
 func TestComposerRail_modeColor(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -166,22 +165,6 @@ func TestComposerRail_modeColor(t *testing.T) {
 		t.Errorf("rail must restore the accent after the turn, got %v", rail)
 	}
 
-	// Review panel open dims the rail; closing restores it. Give the panel a
-	// file via an edit tool result so ctrl+d builds it.
-	m = typeText(t, m, "again")
-	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = asModel(t, nm)
-	m = upd(t, m, toolUpdateMsg{update: ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}}})
-	m = upd(t, m, toolUpdateMsg{update: ToolUpdate{Result: &ToolResult{Name: "edit", Path: "a.go", Result: "ok", Lines: 1, Before: "x", After: "y"}}})
-	m = upd(t, m, turnDoneMsg{prompt: "again", answer: "done"})
-	m = keypress(t, m, "ctrl+d")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
-		t.Errorf("review-open rail must dim from the accent")
-	}
-	m = keypress(t, m, "esc")
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
-		t.Errorf("rail must restore the accent after the review closes, got %v", rail)
-	}
 }
 
 // TestIdleWelcome_showsOnEmptyHidesAfterTurn asserts the empty transcript

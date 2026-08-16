@@ -40,7 +40,7 @@ type ToolStart struct {
 // plus the deterministic compression metadata the TUI renders (issue #84)
 // and the file line-delta / before-after content computed by the
 // TUI-side delta observer from the paired tool start/result events (issue
-// #174) — the source of the `⊕ edit path [+N,-M]` tag and the review panel's
+// #174) — the source of the `⊕ edit path [+N,-M]` tag and the card diff's
 // inline diff (issue #90).
 type ToolResult struct {
 	// Name is the tool that ran (matches its ToolStart).
@@ -62,13 +62,13 @@ type ToolResult struct {
 	// Computed by the TUI-side delta observer (issue #174).
 	Removed int
 	// Before is the target file's full content before a file-mutating tool ran,
-	// captured by the TUI-side delta observer (issue #174). It backs the review
+	// captured by the TUI-side delta observer (issue #174). It backs the card
 	// panel's inline diff of a changed file (issue #90).
 	Before string
 	// After is the target file's full content after a file-mutating tool ran.
 	After string
-	// Path is the host filesystem path of the target file, backing the review
-	// panel's open_in_browser escape hatch (issue #90).
+	// Path is the host filesystem path of the target file, backing the card
+	// diff's path attribution (issue #90/#275).
 	Path string
 }
 

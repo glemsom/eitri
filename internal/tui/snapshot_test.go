@@ -89,9 +89,9 @@ func writeFrame(t *testing.T, out, name string, m Model) {
 	t.Logf("wrote %s", name)
 }
 
-// loginBefore/loginAfter back the snapshot's edit tool result and the review
-// panel's inline diff: the mock-clock freeze the agent applies to the flaky
-// login test.
+// loginBefore/loginAfter back the snapshot's edit tool result and the
+// expanded card's inline diff: the mock-clock freeze the agent applies to the
+// flaky login test.
 const (
 	loginBefore = `package auth
 
@@ -194,13 +194,10 @@ func TestSnapshot_frames(t *testing.T) {
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
 	writeFrame(t, out, "04_chat", m)
 
-	// ---- review panel over the transcript ----
-	m = keypress(t, m, "ctrl+d")
-	writeFrame(t, out, "05_review", m)
-	// Expand the focused file's inline diff.
-	m = keypress(t, m, "enter")
-	writeFrame(t, out, "06_review_diff", m)
-	m = keypress(t, m, "esc")
+	// ---- Ctrl+E expanded view: the edit card's inline diff in-flow ----
+	m = keypress(t, m, "ctrl+e")
+	writeFrame(t, out, "05_expanded_diff", m)
+	m = keypress(t, m, "ctrl+e")
 
 	// ---- settings surface ----
 	m = keypress(t, m, "ctrl+s")

@@ -127,48 +127,35 @@ func TestRender_thinkingHeader(t *testing.T) {
 }
 
 // TestRender_bandHints table-tests the status-strip keybinding hint sets by the
-// value inputs it takes — vim-normal and review-open — proving bandHints is a
-// value-only (vimNormal, reviewOpen bool) → string function that never reads a
-// live *Model (issue #210). Covers normal, vim, and review-open hint sets.
+// value input it takes — vim-normal — proving bandHints is a value-only
+// (vimNormal bool) → string function that never reads a live *Model (issue
+// #210). The review-open hint set (enter diff / o browser / ctrl+d close) went
+// with the modal review panel (issue #276), and the released Ctrl+D key is
+// deliberately never advertised.
 func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	cases := []struct {
-		name       string
-		vimNormal  bool
-		reviewOpen bool
-		want       string
+		name      string
+		vimNormal bool
+		want      string
 	}{
 		{
-			name:       "normal",
-			vimNormal:  false,
-			reviewOpen: false,
-			want:       "ctrl+s settings . ctrl+d review . ctrl+o copy",
+			name:      "normal",
+			vimNormal: false,
+			want:      "ctrl+s settings . ctrl+o copy",
 		},
 		{
-			name:       "vim-normal",
-			vimNormal:  true,
-			reviewOpen: false,
-			want:       "h j k l move . w b word . 0 $ line . i insert . esc exit",
-		},
-		{
-			name:       "review-open",
-			vimNormal:  false,
-			reviewOpen: true,
-			want:       "enter diff . o browser . ctrl+d close",
-		},
-		{
-			name:       "vim-and-review",
-			vimNormal:  true,
-			reviewOpen: true,
-			want:       "h j k l move . w b word . 0 $ line . i insert . esc exit",
+			name:      "vim-normal",
+			vimNormal: true,
+			want:      "h j k l move . w b word . 0 $ line . i insert . esc exit",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := bandHints(c.vimNormal, c.reviewOpen)
+			got := bandHints(c.vimNormal)
 			if got != c.want {
-				t.Errorf("bandHints(%v, %v) = %q, want %q", c.vimNormal, c.reviewOpen, got, c.want)
+				t.Errorf("bandHints(%v) = %q, want %q", c.vimNormal, got, c.want)
 			}
 		})
 	}

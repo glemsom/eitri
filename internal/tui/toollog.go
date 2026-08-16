@@ -48,8 +48,8 @@ type toolEntry struct {
 	// the Ctrl+E expanded-view mode is ON (issue #273 per-entry orthogonality).
 	collapsedOverride bool
 	// before/after/path carry the file content and host path a file-mutating
-	// edit/write captured (issue #90): they back the review panel's inline diff
-	// and open_in_browser escape hatch. Empty for non-edit tools and batch runs.
+	// edit/write captured (issue #90): they back the expanded card's inline
+	// diff. Empty for non-edit tools and batch runs.
 	before string
 	after  string
 	path   string
@@ -59,7 +59,7 @@ type toolEntry struct {
 // end to end (issue #84, deepened in issue #208). It holds the ordered list of
 // entries plus every operation on them — the start/result pairing, per-entry
 // expansion, the render with content-row accounting, plain-text transcription,
-// and the derived changed-file review projection. The Model keeps a single
+// and the derived changed-file projection. The Model keeps a single
 // `log toolLog` field and delegates; nothing outside the log mutates entries.
 type toolLog struct {
 	entries []toolEntry
@@ -443,10 +443,10 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	// cards; the border color repeats the label's category color). A
 	// file-mutating edit/write whose before/after snapshot the engine captured
 	// (issue #90) renders its inline diff instead of the result dump (issue
-	// #275): the same pure-Go diff engine + word emphasis the review panel
-	// uses, inside the card's frame. An edit/write with no captured content
+	// #275): the same pure-Go diff engine + word emphasis, inside the card's
+	// frame. An edit/write with no captured content
 	// falls back to the [+N, −M] count summary (never the raw dump), matching
-	// the review projection's no-diff handling.
+	// the projection's no-diff handling.
 	if te.name == "edit" || te.name == "write" {
 		frame := cardFrame(th, te)
 		entry := reviewEntryFromTool(te)
@@ -479,10 +479,10 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 
 // renderToolCardDiff renders a file-mutating entry's before→after content as
 // an inline diff — the git-style @@ hunk headers plus +/-/context lines with
-// word-level emphasis on modified pairs, exactly the review panel's renderDiff
-// — so the expanded tool card shows the change instead of the raw result dump
+// word-level emphasis on modified pairs — so the expanded tool card shows the
+// change instead of the raw result dump
 // (issue #275). A path with no diffable content (the engine couldn't snapshot
-// it) falls back to the count summary, matching the review projection.
+// it) falls back to the count summary, matching the projection.
 func renderToolCardDiff(f reviewEntry, th Theme) string {
 	if h := diff.Diff(f.before, f.after); len(h) > 0 {
 		f.hunks = h
@@ -492,7 +492,7 @@ func renderToolCardDiff(f reviewEntry, th Theme) string {
 }
 
 // deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
-// the review file list, the no-diff fallback, and the transcript's file-edit
+// the card diff body, the no-diff fallback, and the transcript's file-edit
 // head, so the count formatting lives beside the log it renders for (issue
 // #208/#212).
 func deltaTag(added, removed int) string {

@@ -217,12 +217,6 @@ type Dependencies struct {
 	// collapsed `⊕ tool  args` one-liner that expands to the full result.
 	// Nil disables tool entries (the pre-seam default).
 	Tools *ToolFeed
-	// OpenInBrowser is the review panel's open_in_browser escape hatch (issue
-	// #90): a host-side seam that launches a changed file's path in the host
-	// browser/editor so a diff too rich for the terminal is reviewable off-
-	// screen. Nil disables the escape hatch (the panel still shows the inline
-	// diff; issue #90 AC2 independently).
-	OpenInBrowser func(ctx context.Context, target string) error
 	// Rail, when non-nil, enables the toggleable right context rail (issue
 	// #88): a fixed-width pane alongside the transcript showing STATS / CONTEXT
 	// / MODEL, fed from the telemetry surface. Nil hides the rail (the plain
@@ -246,8 +240,8 @@ type Dependencies struct {
 // single textarea composer, the Settings surface (ctrl+s), the interactive
 // max-turns continuation prompt, and the detected-skills slash completion, plus
 // the composable seams it depends on (turn, deps, theme, telemetry, stream,
-// toolFeed, clipboard). EVERY transcript concern (history, tool log, review,
-// rail, width/height, follow, drag-select) lives on the owned value
+// toolFeed, clipboard). EVERY transcript concern (history, tool log, rail,
+// width/height, follow, drag-select) lives on the owned value
 // Transcript field tx (issue #248): the transcript is a genuinely owned,
 // mutating surface rather than a per-frame value rebuilt from duplicated Model
 // fields. It renders through the alternate screen (T1 pivot, issue #119), so
@@ -259,8 +253,8 @@ type Model struct {
 	deps     Dependencies
 
 	// tx is the owned transcript surface (issue #248): the single owner of the
-	// history, tool log, review overlay, right rail, width/height, follow
-	// position, drag-select, and their render/navigation. Model mutates it in
+	// history, tool log, right rail, width/height, follow position,
+	// drag-select, and their render/navigation. Model mutates it in
 	// place and never keeps a second transcript state copy. See transcript.go.
 	tx Transcript
 
@@ -385,9 +379,8 @@ func NewModelCfg(d Dependencies) Model {
 	comp.SetStyles(st)
 
 	// The owned transcript surface (issue #248): the single owner of the
-	// history, tool log, review overlay, rail, width/height, follow, and
-	// drag-select. Model mutates it in place; there is no duplicate transcript
-	// state elsewhere.
+	// history, tool log, rail, width/height, follow, and drag-select. Model
+	// mutates it in place; there is no duplicate transcript state elsewhere.
 	transcript := Transcript{
 		theme:           th,
 		configTheme:     d.Config.Theme,
@@ -588,11 +581,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.prompting {
 			return m.updatePrompt(msgi)
 		}
-		// Review panel open: route keys to it before the composer. It lives on
-		// the owned Transcript surface (issue #248).
-		if m.tx.review != nil {
-			return m.updateReview(msgi)
-		}
+		// Review overlay is gone (issue #276): ctrl+d is deliberately released,
+		// not re-mapped, so there is no dedicated key routing before the composer.
 		// Vim normal mode (benchmark §4.4 table stakes): while active, the
 		// composer accepts no text — h/j/k/l and w/b/0/$ move the caret through
 		// the textarea's own movement handlers, i/a/enter/esc return to insert
@@ -606,7 +596,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "esc":
 			// No overlay open: esc toggles vim normal mode in the composer.
-			// Overlays (settings/review/prompt) close on esc before this case.
+			// Overlays (settings/prompt) close on esc before this case.
 			m.vimNormal = true
 			m.syncComposerRail()
 			return m, nil
@@ -634,11 +624,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the composer's caret/selection editing untouched.
 			return m, nil
 		case "ctrl+d":
-			// The review panel (issue #90): ctrl+d toggles the changed-file
-			// review over the transcript, or closes it when already open. The build
-			// and the open/closed state live on the owned Transcript (issue #246),
-			// which mutates in place.
-			m.tx.toggleReview()
+			// Deliberately UNBOUND (issue #276): Ctrl+D was the modal review
+			// panel's toggle (issue #90, removed with the panel) and reads as
+			// "exit" in other tools, so the key is released rather than
+			// re-mapped. File-change inspection now lives in-flow on the
+			// Ctrl+E expanded cards (#275); nothing consumes this key.
 			m.syncComposerRail()
 			return m, nil
 		case "ctrl+o":
@@ -1334,7 +1324,7 @@ func (m Model) bandHeight() int {
 // It is used by the alternate-screen renderer, so every frame is a clean
 // repaint. The band (status strip + composer) is a Model-owned composer
 // concern; the transcript region's render delegates to the owned Transcript
-// (issue #248), which composes the review overlay + scroll region and passes
+// (issue #248), which composes the scroll region + band and passes
 // the band in below them (see Transcript.renderPane).
 func (m Model) renderPane() string {
 	var band strings.Builder
@@ -1415,8 +1405,8 @@ func (m Model) vimKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // syncComposerRail recolors the composer's prompt rail by editing state: the
-// accent rail signals an editable composer, while a running turn or an open
-// review panel makes the composer inert, so the rail dims to a muted accent
+// accent rail signals an editable composer, while a running turn makes the
+// composer inert, so the rail dims to a muted accent
 // (state-as-color — the mode-colored composer border pattern, benchmark
 // §4.3/§4.4). The rail's glyph and width never change, so the caret geometry
 // is untouched.
@@ -1427,7 +1417,7 @@ func (m *Model) syncComposerRail() {
 		// Vim normal mode: the rail sits between accent (insert) and the busy
 		// dim — a distinct, calmer shade signals "navigating, not typing".
 		c = dimmed(m.tx.theme.accent, 0.6)
-	case m.tx.busy || m.tx.review != nil:
+	case m.tx.busy:
 		c = dimmed(m.tx.theme.accent, 0.45)
 	}
 	st := m.composer.Styles()
@@ -1459,7 +1449,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		if m.tx.busy {
 			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
 		}
-		statusRow += m.tx.theme.statusStyle.Render(bandHints(m.vimNormal, m.tx.review != nil))
+		statusRow += m.tx.theme.statusStyle.Render(bandHints(m.vimNormal))
 		// The status strip is edge-to-edge with the rest of the band (issue
 		// #232 AC1): pad it to the full band width so it runs under the rail's
 		// right column instead of stopping short. The separator and composer
@@ -1497,10 +1487,10 @@ func (m Model) renderBand(b *strings.Builder) {
 // pre-composer rows (separator, status strip, slash completion). content is the
 // frame's rendered content, whose line count is the frame height.
 func (m Model) composerCursor(content string) *tea.Cursor {
-	if m.settings != nil || m.prompting || m.tx.review != nil || m.tx.busy {
+	if m.settings != nil || m.prompting || m.tx.busy {
 		// The composer is not the active editing surface, so no caret (issue #169):
 		// Settings and the continuation prompt are full-surface overlays (no
-		// composer on screen), the review panel routes keys away from the
+		// composer on screen), and a running turn makes the composer inert;
 		// composer, and while a turn is running the composer is inert (keys are
 		// ignored, ticket #57). The caret returns on the next frame once the
 		// composer is editable again.

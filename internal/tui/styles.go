@@ -53,7 +53,7 @@ type Theme struct {
 	toolSkillStyle  lipgloss.Style // the ⊕ tool-entry line, skill category
 	outcomeOKStyle  lipgloss.Style // the ✓ tool-outcome tag
 	outcomeErrStyle lipgloss.Style // the ✗ tool-outcome tag
-	// diffAddStyle / diffDelStyle render the review panel's inline diff lines:
+	// diffAddStyle / diffDelStyle render the expanded card's inline diff lines:
 	// the ok/error hue on a dimmed background fill of the same hue, so added/
 	// removed lines carry the conventional green/red vocabulary in the theme's
 	// own palette (benchmark §4.2: diff colors are theme-aware, bg-filled).
