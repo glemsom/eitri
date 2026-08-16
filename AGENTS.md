@@ -15,3 +15,7 @@ Five canonical triage roles use label strings equal to their names: `needs-triag
 ### Domain docs
 
 Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Comment-value policy
+
+Comments in Go source must add information the code does not already tell; references to ADRs, spec sections, or issues alone are never sufficient. See `docs/agents/comment-value-policy.md`.
