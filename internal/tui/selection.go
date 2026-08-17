@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -33,7 +34,21 @@ import (
 type railDrag struct {
 	startWidth int
 	startX     int
+	// moved reports whether the pointer dragged between the press and release;
+	// a border press+release with no motion is a clean click (arms the
+	// double-click window, issue #308).
+	moved bool
+	// wasReset marks a drag started by a double-click reset press, so its
+	// release does not re-arm the double-click window (the double-click is
+	// already consumed; a third click starts a fresh pair).
+	wasReset bool
 }
+
+// doubleClickWindow is how close (in time) two clean border clicks must land
+// to count as a double-click reset (issue #308). Standard double-click
+// intervals are tens to hundreds of milliseconds; 500ms is the usual desktop
+// cutoff.
+const doubleClickWindow = 500 * time.Millisecond
 
 // minRailWidth is the narrowest the drag may shrink the rail to: the rail needs
 // enough columns to stay a legible pane, so the drag stops at minRailWidth even
@@ -151,7 +166,10 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// A left-button press either starts a rail-width drag (issue #306) or a
 		// drag selection over the history: the rail-border hit-test runs first
 		// so a press on the border column starts the width drag, never a text
-		// selection.
+		// selection. A second clean border click inside the double-click window
+		// resets the rail to its default width instead (issue #308): the reset
+		// uses the same setRailWidth path as a drag, so the transcript re-wraps
+		// and scroll/follow survive exactly as they do after a drag.
 		if m.settings != nil || m.prompting {
 			return
 		}
@@ -159,6 +177,17 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			return
 		}
 		if d, ok := m.railDragFor(msg.X, msg.Y); ok {
+			if !m.borderClick.IsZero() && m.now().Sub(m.borderClick) <= doubleClickWindow {
+				// Second clean border click inside the window: snap the rail back
+				// to its default width through the same setRailWidth path a drag
+				// uses, so the transcript re-wraps and scroll/follow survive. The
+				// press still starts a drag anchored at the default width, so a
+				// hold-and-drag after the reset resizes from home (issue #308).
+				m.tx.setRailWidth(clampRailWidth(defaultRailWidth, m.tx.width))
+				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X, wasReset: true}
+				m.tx.dragSel = nil
+				return
+			}
 			m.railDrag = &d
 			m.tx.dragSel = nil
 			return
@@ -179,6 +208,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// delivered while a button is held, so railDrag nil here means the
 		// holding button is not a border press.
 		if m.railDrag != nil {
+			m.railDrag.moved = true
 			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth+(msg.X-m.railDrag.startX), m.tx.width))
 			return
 		}
@@ -197,6 +227,13 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// motion; it only clears the drag state, so it never triggers the
 		// drag-select copy or tool-entry click paths (issue #306).
 		if m.railDrag != nil {
+			// A clean border click (press+release, no motion, not a reset press)
+			// arms the double-click window: the next border press within
+			// doubleClickWindow of this release is its double-click (issue
+			// #308).
+			if !m.railDrag.moved && !m.railDrag.wasReset {
+				m.borderClick = m.now()
+			}
 			m.railDrag = nil
 			return
 		}

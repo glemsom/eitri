@@ -347,6 +347,16 @@ type Model struct {
 	// lives on the Model because it is pointer-button state; the Transcript
 	// only sees the resulting setRailWidth writes.
 	railDrag *railDrag
+
+	// borderClick is the timestamp of the most recent clean left click on the
+	// rail border (press+release with no motion). Paired with now, it
+	// recognizes the rail's double-click reset (issue #308): a second clean
+	// border click within doubleClickWindow resets the rail to the default
+	// width instead of starting a drag.
+	borderClick time.Time
+	// now is the clock the double-click window reads, injectable so tests pin
+	// the time between clicks. Defaults to time.Now.
+	now func() time.Time
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -444,6 +454,7 @@ func NewModelCfg(d Dependencies) Model {
 		curStream:    -1,
 		toolFeed:     d.Tools,
 		clipboard:    newClipboard(d),
+		now:          time.Now,
 	}
 	// The layout starts stale, but the pointer share means the Transcript's
 	// first hit-test builds it lazily; the explicit dirty below keeps the
