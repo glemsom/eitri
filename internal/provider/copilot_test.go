@@ -51,6 +51,24 @@ type tokenMu struct {
 func (m *tokenMu) add(bearer string) { m.mu++; m.tok = bearer }
 func (m *tokenMu) get() string       { return m.tok }
 
+func drainAll(s Stream) (content, reasoning string, last Chunk, err error) {
+	for {
+		c, err := s.Next()
+		if errors.Is(err, io.EOF) {
+			return content, reasoning, last, nil
+		}
+		if err != nil {
+			return content, reasoning, last, err
+		}
+		content += c.Content
+		reasoning += c.ReasoningContent
+		last = c
+		if c.Done {
+			return content, reasoning, last, nil
+		}
+	}
+}
+
 // TestCopilotStreamsWithValidStoredToken is the baseline Copilot batch turn: a
 // valid stored access token is used directly as the bearer on the shared
 // Chat-Completions wire, and the reasoning/answer stream matches the primary
@@ -169,6 +187,114 @@ func TestCopilotWorksAfterTUIReAuth(t *testing.T) {
 	}
 	if lastToken() != "Bearer fresh-from-tui" {
 		t.Fatalf("request Authorization = %q, want Bearer fresh-from-tui", lastToken())
+	}
+}
+
+func TestCopilotRetriesResponsesForResponsesOnlyModel(t *testing.T) {
+	chatReqs := 0
+	responsesReqs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chat/completions":
+			chatReqs++
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"model \"gpt-5.4-mini\" is not accessible via the /chat/completions endpoint","code":"unsupported_api_for_model"}}`))
+		case "/responses":
+			responsesReqs++
+			defer r.Body.Close()
+			body, _ := io.ReadAll(r.Body)
+			var parsed map[string]any
+			if err := json.Unmarshal(body, &parsed); err != nil {
+				t.Fatalf("responses body not JSON: %v", err)
+			}
+			if parsed["messages"] != nil {
+				t.Fatalf("responses body leaked chat-completions messages field: %s", body)
+			}
+			input, ok := parsed["input"].([]any)
+			if !ok || len(input) != 1 {
+				t.Fatalf("responses input = %#v, want one user item", parsed["input"])
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello \"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"world\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.4-mini\",\"created_at\":1,\"usage\":{\"input_tokens\":7,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0}},\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello world\"}]}]}}\n\n")
+		default:
+			t.Fatalf("path = %s, want /chat/completions or /responses", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	req := Request{Model: "gpt-5.4-mini", Messages: []Message{{Role: RoleUser, Content: "hello"}}}
+
+	s, err := cp.Stream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("first Stream() error = %v, want nil", err)
+	}
+	content, _, last, err := drainAll(s)
+	if err != nil {
+		t.Fatalf("first responses stream: %v", err)
+	}
+	if content != "Hello world" {
+		t.Fatalf("first content = %q, want Hello world", content)
+	}
+	if !last.Done || last.Usage == nil || last.Usage.PromptTokens != 7 || last.Usage.CompletionTokens != 2 {
+		t.Fatalf("first terminal chunk = %+v, want done chunk with usage 7/2", last)
+	}
+	if chatReqs != 1 || responsesReqs != 1 {
+		t.Fatalf("first path counts chat=%d responses=%d, want 1/1", chatReqs, responsesReqs)
+	}
+
+	s, err = cp.Stream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second Stream() error = %v, want nil", err)
+	}
+	if _, err := drainOne(s); err != nil {
+		t.Fatalf("second responses stream: %v", err)
+	}
+	if chatReqs != 1 || responsesReqs != 2 {
+		t.Fatalf("cached path counts chat=%d responses=%d, want 1/2", chatReqs, responsesReqs)
+	}
+}
+
+func TestCopilotResponsesStreamToolCalls(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/chat/completions":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"model \"gpt-5.4-mini\" is not accessible via the /chat/completions endpoint","code":"unsupported_api_for_model"}}`))
+		case "/responses":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read\"}}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"path\\\":\\\"x\\\"}\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"x\\\"}\"}}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_tool\",\"model\":\"gpt-5.4-mini\",\"created_at\":2,\"usage\":{\"input_tokens\":5,\"output_tokens\":1},\"output\":[{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"x\\\"}\"}]}}\n\n")
+		default:
+			t.Fatalf("path = %s, want /chat/completions or /responses", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	s, err := cp.Stream(context.Background(), Request{Model: "gpt-5.4-mini", Messages: []Message{{Role: RoleUser, Content: "use tool"}}})
+	if err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	_, _, last, err := drainAll(s)
+	if err != nil {
+		t.Fatalf("responses tool-call stream: %v", err)
+	}
+	if !last.Done {
+		t.Fatalf("terminal chunk Done = false, want true")
+	}
+	if last.FinishReason != "tool_calls" {
+		t.Fatalf("terminal FinishReason = %q, want tool_calls", last.FinishReason)
+	}
+	if len(last.ToolCalls) != 1 {
+		t.Fatalf("terminal ToolCalls = %v, want one call", last.ToolCalls)
+	}
+	if got := last.ToolCalls[0]; got.ID != "call_1" || got.Name != "read" || got.Arguments != `{"path":"x"}` {
+		t.Fatalf("terminal ToolCall = %+v, want call_1/read/{\"path\":\"x\"}", got)
 	}
 }
 

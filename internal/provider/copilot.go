@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -41,6 +42,9 @@ type CopilotProvider struct {
 	refresh RefreshFunc
 	// persist stores a renewed token set back to config for later runs.
 	persist func(config.CopilotConfig) error
+
+	mu              sync.RWMutex
+	responsesModels map[string]bool
 }
 
 // NewCopilot returns a Copilot provider talking to the Chat-Completions url
@@ -48,7 +52,7 @@ type CopilotProvider struct {
 // credential cfg. refresh provides the non-interactive renewal path (nil means
 // no refresh is available); persist saves renewed tokens to config (nil skips).
 func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refresh RefreshFunc, persist func(config.CopilotConfig) error) *CopilotProvider {
-	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist}
+	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist, responsesModels: map[string]bool{}}
 }
 
 // copilotThinkingControl returns the DeepSeek thinking-mode toggle in its
@@ -105,14 +109,25 @@ func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 }
 
 // Stream implements Provider, authenticating with the resolved bearer token and
-// streaming the shared Chat-Completions SSE wire (same parse/accumulator as the
-// primary provider: reasoning_content, tool_calls, streamed usage).
+// streaming Copilot's chat endpoint by default, with an automatic retry on the
+// Responses endpoint for models Copilot rejects as responses-only.
 func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, error) {
 	tok, err := cp.bearer(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if cp.usesResponses(req.Model) {
+		return cp.streamResponses(ctx, tok, req)
+	}
+	s, err := cp.streamChatCompletions(ctx, tok, req)
+	if retryResponses(err) {
+		cp.rememberResponsesModel(req.Model)
+		return cp.streamResponses(ctx, tok, req)
+	}
+	return s, err
+}
 
+func (cp *CopilotProvider) streamChatCompletions(ctx context.Context, tok string, req Request) (Stream, error) {
 	body, err := json.Marshal(chatCompletionBody{
 		Model:           req.Model,
 		Messages:        req.Messages,
@@ -127,14 +142,32 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 	if err != nil {
 		return nil, err
 	}
+	resp, err := cp.do(ctx, tok, cp.url, body)
+	if err != nil {
+		return nil, err
+	}
+	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
+}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cp.url, bytes.NewReader(body))
+func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req Request) (Stream, error) {
+	body, err := marshalResponsesBody(req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := cp.do(ctx, tok, cp.responsesURL(), body)
+	if err != nil {
+		return nil, err
+	}
+	return newResponsesStream(resp.Body), nil
+}
+
+func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte) (*http.Response, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
-
 	client := cp.http
 	if client == nil {
 		client = http.DefaultClient
@@ -148,7 +181,32 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 		resp.Body.Close()
 		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
-	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
+	return resp, nil
+}
+
+func (cp *CopilotProvider) responsesURL() string {
+	base := strings.TrimSuffix(cp.url, "/chat/completions")
+	return strings.TrimSuffix(base, "/") + "/responses"
+}
+
+func (cp *CopilotProvider) usesResponses(model string) bool {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+	return cp.responsesModels[model]
+}
+
+func (cp *CopilotProvider) rememberResponsesModel(model string) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	cp.responsesModels[model] = true
+}
+
+func retryResponses(err error) bool {
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Code != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(he.Body, "unsupported_api_for_model") && strings.Contains(he.Body, "/chat/completions")
 }
 
 // Models implements the optional ModelLister capability so the TUI Settings
