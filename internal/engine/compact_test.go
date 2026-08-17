@@ -24,7 +24,7 @@ func compactCfg() *CompactionConfig {
 }
 
 // TestEvictPruneRingFenceProtectsSkillContent verifies the optional prune
-// ring-fence (ADR-0003 decision 5): a message belonging to a skill activation
+// ring-fence: a message belonging to a skill activation
 // is kept, not evicted, even when the soft budget would drop it.
 func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	msgs := []provider.Message{
@@ -130,7 +130,7 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 // generation-control capability surface) that it honors the Generation Budget
 // control — the wire-emitting budget a supporting provider advertises. The
 // engine opts the compaction summary turn into that budget, so the summary
-// request must carry max_completion_tokens (issue #60).
+// request must carry max_completion_tokens.
 type budgetScripted struct {
 	provider.Scripted
 }
@@ -144,7 +144,7 @@ func (b *budgetScripted) SupportedGenerationControls(context.Context) ([]provide
 // special turn — an internal, non-tool generation — opts into a hard Generation
 // Budget on a supporting provider: the summary request carries
 // max_completion_tokens capped at SummaryMaxTokens, while ordinary agent/tool
-// turns in the same run carry no budget (issue #60).
+// turns in the same run carry no budget.
 func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	h := &compactHandler{}
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
@@ -187,7 +187,7 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 }
 
 // TestCompactionSkipsSummaryWhenBudgetUnsupported verifies the generation-control
-// contract (issue #60): a special turn that requires the
+// contract: a special turn that requires the
 // Generation Budget on a provider that cannot honor it fails negotiation, and the
 // summary is skipped via the fail-safe path rather than silently running without
 // the hard cap. Compaction still happens (eviction frees context) and the run
@@ -226,7 +226,7 @@ func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 }
 
 // TestRunAgentCompactsAtThreshold exercises the proactive 80%-threshold trigger
-// through the engine seam (ADR-0003 decision 1/3/4): after a turn reports
+// through the engine seam: after a turn reports
 // usage crossing the threshold, the engine evicts the oldest body, re-injects
 // an anchored summary at the head of the next request, and preserves the
 // verbatim tail (including reasoning_content).
@@ -265,8 +265,8 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	}
 
 	// The final request must carry the byte-stable base system prompt at [0]
-	// (spec §34 / issue #102), the anchored summary immediately after it (spec
-	// §135 / issue #103), and the verbatim tail (the last two tool legs,
+	// the anchored summary immediately after it,
+	// and the verbatim tail (the last two tool legs,
 	// reasoning included) below.
 	final := h.requests[3]
 	if len(final.Messages) < 4 {
@@ -297,8 +297,8 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Errorf("final request kept %d assistant legs, want the tail floor of >= 2 with reasoning", tailAssistants)
 	}
 
-	// The compacted head must remain a valid byte-stable cache prefix (spec
-	// §34/§135, issue #103 criterion 3): the base system prompt at [0] and the
+	// The compacted head must remain a valid byte-stable cache prefix:
+	// the base system prompt at [0] and the
 	// tool manifest are byte-identical to the pre-compaction requests, so the
 	// post-compaction request head (base + tools + verbatim tail) is a valid
 	// prompt-cache prefix. Only the freshly-anchored summary and the appended
@@ -348,7 +348,7 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 		), nil
 	case 2:
 		// The next request overflows the context window below the proactive
-		// threshold (ADR-0003 decision 2).
+		// threshold.
 		h.requests++
 		return nil, provider.ErrContextOverflow
 	case 3:
@@ -368,7 +368,7 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 }
 
 // TestRunAgentOverflowTrigger fires the emergency 400/context-overflow trigger
-// below the threshold (ADR-0003 decision 2): the engine compacts and retries
+// below the threshold: the engine compacts and retries
 // through the same unified path rather than failing the run with the overflow
 // error.
 func TestRunAgentOverflowTrigger(t *testing.T) {
