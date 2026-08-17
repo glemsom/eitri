@@ -103,7 +103,7 @@ func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
 }
 
 // TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt pins the provider
-// contract that tripped the REAL opencode-go/DeepSeek endpoint (issue #59 + the
+// contract that tripped the REAL opencode-go/DeepSeek endpoint:
 // reproduced HTTP 400): response_format:{type:json_object} hard-requires the
 // prompt to contain the word "json", else the gateway rejects the request with
 // 400 "Prompt must contain the word 'json' in some form". The engine must append

@@ -188,7 +188,7 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 				if name == "bash" {
 					// The compressor's form: line-truncated with the explicit
 					// "+N more" tail, reported compressed=true so the byte-cap
-					// merges the two markers (issue #286 review).
+					// merges the two markers.
 					return ToolExecResult{Text: draft, Compressed: true}, nil
 				}
 				return ToolExecResult{Text: "result:" + name}, nil

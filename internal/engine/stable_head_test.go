@@ -9,13 +9,13 @@ import (
 
 // headRecorder captures every provider request and, for the multi-turn loop,
 // the exact byte sequence of each request's head (system + tools + verbatim
-// prior turns) so a test can assert the cache-prefix invariant (spec §34).
+// prior turns) so a test can assert the cache-prefix invariant.
 type headRecorder struct {
 	reqs []provider.Request
 }
 
 // TestRunOpensWithSystemPrompt asserts the non-tool run path opens its message
-// list with the embedded system prompt at [0] (spec §34 / issue #102): the
+// list with the embedded system prompt at [0]: the
 // provider must see RoleSystem first, whose content is byte-identical to the
 // embedded source.
 func TestRunOpensWithSystemPrompt(t *testing.T) {
@@ -51,8 +51,8 @@ func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 }
 
 // TestRunJSONObjectModeOpensWithSystemPrompt asserts the JSON Object Mode
-// special turn (issue #59) opens with the embedded system prompt at [0], so
-// every run path shares the same byte-stable request head (spec §34).
+// special turn opens with the embedded system prompt at [0], so
+// every run path shares the same byte-stable request head.
 func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
 	cap := &headRecorder{}
 	p := &capableScripted{
@@ -74,7 +74,7 @@ func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
 }
 
 // TestRunSamplingPolicyOpensWithSystemPrompt asserts the Sampling Policy
-// special turn (issue #61) opens with the embedded system prompt at [0].
+// special turn opens with the embedded system prompt at [0].
 func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
 	cap := &headRecorder{}
 	p := &capableScripted{
@@ -96,7 +96,7 @@ func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
 }
 
 // TestRunAgentOpensWithSystemPrompt asserts the tool-capable agent loop opens
-// each request with the embedded system prompt at [0] (issue #102).
+// each request with the embedded system prompt at [0].
 func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	cap := &headRecorder{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -121,7 +121,7 @@ func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 // TestRunAgentKeepsStableHeadAcrossTurns drives a multi-turn tool-call loop
 // and asserts the request head (system + tools + verbatim prior turns) is
 // byte-identical across turns — the prompt-cache invariant the economics hinge
-// on (spec §34 / issue #102). The prior-turn payload appends after the stable
+// on. The prior-turn payload appends after the stable
 // head, so only the messages [2:] may change; the head itself must not.
 func TestRunAgentKeepsStableHeadAcrossTurns(t *testing.T) {
 	turn := 0

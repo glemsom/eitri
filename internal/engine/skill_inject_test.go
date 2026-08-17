@@ -7,7 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestRunAgentPrependsSkillInjectToMessages closes the regression in issue #260:
+// TestRunAgentPrependsSkillInjectToMessages verifies the regression fix:
 // a slash-activated skill's payload must reach the model's context for the
 // follow-up args turn. RunAgent rebuilds the provider request fresh each call
 // from [system, {user: prompt}], so without explicit threading the skill body

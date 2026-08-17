@@ -178,7 +178,7 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 
 // capableScripted is a Provider that both scripts turns and declares a fixed set
 // of supported generation controls, exercising the engine's negotiation seam
-// (issue #58).
+// the seam.
 type capableScripted struct {
 	*provider.Scripted
 	supported []provider.GenerationControl

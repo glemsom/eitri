@@ -9,7 +9,7 @@ import (
 
 // schemaHandler records every request it serves and returns a fixed final
 // answer, so a test can assert exactly what a tool-capable agent loop opted the
-// provider request into (issue #62).
+// provider request into.
 type schemaHandler struct {
 	requests []provider.Request
 }
@@ -23,7 +23,7 @@ func (s *schemaHandler) stream(_ context.Context, req provider.Request) (provide
 
 // capableScriptedSchema is a Scripted provider that additionally declares
 // tool_schema_enforcement support through the generation-control capability
-// surface (issue #62).
+// surface.
 type capableScriptedSchema struct {
 	*provider.Scripted
 }
@@ -35,7 +35,7 @@ func (c *capableScriptedSchema) SupportedGenerationControls(context.Context) ([]
 // TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider verifies that an
 // agent loop with ToolSchemaEnforcement opted in, on a provider that honors the
 // tool_schema_enforcement control, flags the provider request so the supporting
-// client wire-emits strict tool manifests (issue #62).
+// client wire-emits strict tool manifests.
 func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 	h := &schemaHandler{}
 	e := New(&capableScriptedSchema{Scripted: provider.NewScripted(h.stream)}, &mockTranscript{})
@@ -59,7 +59,7 @@ func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 }
 
 // TestRunAgentDegradesWhenToolSchemaUnsupported verifies the deterministic
-// degradation spelled out by the generation-control contract (issue #62): a provider
+// degradation spelled out by the generation-control contract: a provider
 // without the tool_schema_enforcement capability honors
 // no controls, so an opted-in optional requirement is dropped — strict is
 // omitted on the wire — while the loop still runs with local validation as the
@@ -93,7 +93,7 @@ func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
 
 // TestRunAgentDefaultOmitsToolSchemaEnforcement verifies that an ordinary agent
 // loop without the opt-in never flags the provider request, keeping the default
-// wire surface byte-identical (issue #62).
+// wire surface byte-identical.
 func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 	h := &schemaHandler{}
 	e := New(&capableScriptedSchema{Scripted: provider.NewScripted(h.stream)}, &mockTranscript{})
@@ -116,7 +116,7 @@ func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 }
 
 // TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive verifies the
-// second acceptance half of issue #62: even when provider-side Tool Schema
+// second acceptance half: even when provider-side Tool Schema
 // Enforcement is active on a supporting provider, Eitri's local tool-argument
 // validation remains the mandatory safety floor before execution — a
 // schema-violating tool call is still rejected and the executor is never

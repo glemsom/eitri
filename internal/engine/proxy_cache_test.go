@@ -54,7 +54,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // proxyFixture returns the recorded SSE fixture bytes for the named turn, or
 // fails the test if the fixture cannot be read. The D3 recorded session lives
-// under the provider package's testdata/ (issue #219), so tests here reach it
+// under the provider package's testdata/, so tests here reach it
 // via the package-relative path.
 func proxyFixture(t *testing.T, name string) string {
 	t.Helper()

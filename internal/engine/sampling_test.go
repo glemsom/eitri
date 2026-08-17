@@ -10,7 +10,7 @@ import (
 
 // samplingScripted wraps a Scripted handler so it also declares, via the
 // generation-control capability surface, that it honors the Sampling Policy
-// control (issue #61). The engine opts a sampling-policy
+// control. The engine opts a sampling-policy
 // special turn into that control, so the turn's request must carry the policy.
 type samplingScripted struct {
 	provider.Scripted
@@ -36,7 +36,7 @@ func (s *samplingHandler) stream(_ context.Context, req provider.Request) (provi
 }
 
 // TestRunSamplingPolicyTemperatureOnSupportingProvider verifies the
-// temperature-based Sampling Policy special turn (issue #61):
+// temperature-based Sampling Policy special turn:
 // on a provider that honors the control, the engine issues a non-tool turn
 // carrying a temperature sampling policy — so the wire emits temperature and
 // never top_p — and returns the generated answer. The session key and prompt
@@ -77,7 +77,7 @@ func TestRunSamplingPolicyTemperatureOnSupportingProvider(t *testing.T) {
 }
 
 // TestRunSamplingPolicyNucleusOnSupportingProvider verifies the nucleus
-// (top-p) sampling form of the special turn (issue #61) carries the nucleus
+// (top-p) sampling form of the special turn carries the nucleus
 // policy so the wire emits top_p and never temperature.
 func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
 	h := &samplingHandler{}
@@ -99,7 +99,7 @@ func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
 }
 
 // TestRunSamplingPolicyFailsFastWhenUnsupported verifies the generation-control
-// contract (issue #61): a provider without the Sampling
+// contract: a provider without the Sampling
 // Policy capability honors no controls, so a required sampling-policy special
 // turn fails negotiation fast — before any wire call.
 func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
@@ -126,7 +126,7 @@ func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
 
 // TestRunOrdinaryTurnOmitsSamplingPolicy verifies that an ordinary agent/tool
 // turn never carries a sampling policy, so the byte-identical request head is
-// preserved for the prompt cache (issue #61): the sampling
+// preserved for the prompt cache: the sampling
 // seam is special-turn only.
 func TestRunOrdinaryTurnOmitsSamplingPolicy(t *testing.T) {
 	h := &samplingHandler{}

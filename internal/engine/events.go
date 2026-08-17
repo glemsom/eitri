@@ -77,13 +77,13 @@ type ToolCallEvent struct {
 // downstream. It also carries the full result (Result) so a collapse
 // always has an expand path (the lossless-recovery invariant is satisfied
 // end-to-end). File line-delta and before/after content live on the TUI side
-// of the seam, computed by the delta observer (issue #174).
+// of the seam, computed by the delta observer.
 //
-// The byte-cap split (issue #286): the Message the provider actually receives
+// The byte-cap split: the Message the provider actually receives
 // carries the byte-capped form — the bytes that land in message
 // history and the session-cache head are bounded — while Result keeps the
-// FULL pre-cap string so the TUI expand path never silently truncates (issue
-// #84 AC4). BytesDropped reports how many bytes the cap dropped (0 when the
+// FULL pre-cap string so the TUI expand path never silently truncates.
+// BytesDropped reports how many bytes the cap dropped (0 when the
 // result fit).
 type ToolResultEvent struct {
 	Turn int
@@ -92,8 +92,8 @@ type ToolResultEvent struct {
 	// Name is the tool that ran.
 	Name string
 	// Result is the FULL pre-cap tool result string. It backs the TUI's
-	// expand-to-full-result path: nothing is silently truncated (issue #84
-	// AC4) even when the delivered form was byte-capped (issue #286).
+	// expand-to-full-result path: nothing is silently truncated
+	// even when the delivered form was byte-capped.
 	Result string
 	// BytesDropped is the number of bytes the byte-cap dropped (0 when the
 	// result fit the budget).
@@ -117,7 +117,7 @@ type UsageEvent struct {
 	Usage provider.Usage
 }
 
-// CompactedEvent fires when the session is compacted (ADR-0003):
+// CompactedEvent fires when the session is compacted:
 // the eviction-and-summary happened between two turns, and the TUI
 // surfaces a read-only "[compacted]" marker without blocking the run.
 type CompactedEvent struct {
@@ -128,7 +128,7 @@ type CompactedEvent struct {
 // truncates a heavy tool result — never silent, always an explicit count of
 // what was hidden. It recognizes both the line-compressor's "+N more" tail
 // (feeding the Dropped line-count metadata) and the byte-cap's "+N bytes
-// truncated" / "+N more, +B bytes truncated" tails (issue #286), anchored at
+// truncated" / "+N more, +B bytes truncated" tails, anchored at
 // the end with an optional trailing newline.
 var markerRe = regexp.MustCompile(`\+([0-9]+) more(?:, \+[0-9]+ bytes truncated)?\n?$`)
 
@@ -137,7 +137,7 @@ var markerRe = regexp.MustCompile(`\+([0-9]+) more(?:, \+[0-9]+ bytes truncated)
 // string (without re-parsing raw stream or internal history downstream): a
 // result carrying the explicit "+N more" tail marker is the compressed form,
 // and the marker's count is the number of lines hidden behind it. bytesDropped
-// is the byte-cap split (issue #286): the bytes the cap dropped (the capped
+// is the byte-cap split: the bytes the cap dropped (the capped
 // form lives only in the provider Message; the event carries Result full).
 // Result carries the full pre-cap string so a collapse always has an
 // expand path.

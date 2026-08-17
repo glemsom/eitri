@@ -1,6 +1,6 @@
 // Package engine drives a single agent run turn over the provider seam. It is
 // the shared engine behind both the TUI and batch mode; every code path that
-// talks to a model goes through here. This ticket (T1c) implements the
+// talks to a model goes through here. This ticket implements the
 // non-tool turn: send model + messages, stream deltas, produce the final
 // assistant answer, and record the run in the transcript.
 package engine
@@ -27,14 +27,14 @@ var ErrMaxTurns = errors.New("maximum turn limit reached")
 // sentinel from matching unrelated errors.
 var ErrStopped = fmt.Errorf("turn stopped: %w", context.Canceled)
 
-// TranscriptWriter records the run's on-disk trail (the T1b session sink).
+// TranscriptWriter records the run's on-disk trail.
 type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
 }
 
 // Engine is a run engine bound to a provider and a transcript sink. A caller
 // may subscribe to the engine's live event stream via SetListener; the engine
-// pushes one typed Event per streamed observation (issue #81). Unsubscribed
+// pushes one typed Event per streamed observation. Unsubscribed
 // (batch/headless) runs push nothing and are byte-identical to before.
 type Engine struct {
 	provider   provider.Provider
@@ -71,7 +71,7 @@ type RunRequest struct {
 	Prompt string
 
 	// SkillInject, when non-nil, is a slash-activated skill payload (the rendered
-	// <skill_content>/<skill_resources> body, issue #260). RunAgent prepends it to
+	// <skill_content>/<skill_resources> body). RunAgent prepends it to
 	// the provider request head as a system message so the model acts on the args
 	// with the skill instructions in context. Nil keeps the historical
 	// [system, user] two-message head (byte-identical, prompt-cache invariant).
@@ -96,7 +96,7 @@ type Result struct {
 }
 
 // systemPromptHead returns the byte-stable embedded Eitri system prompt as the
-// immutable request-head message (spec §34 / issue #102). Every run path —
+// immutable request-head message. Every run path —
 // agent, special-turn, and headless batch — opens its message list with this
 // same message at [0], so the request head (system + tools + verbatim prior
 // turns) stays byte-identical across a session: the prompt-cache invariant the
@@ -219,7 +219,7 @@ func jsonObjectPrompt(prompt string) string {
 	return prompt + jsonObjectSuffix
 }
 
-// RunJSONObjectMode runs a JSON Object Mode finalization turn (issue #59): an internal, non-tool special turn that requires
+// RunJSONObjectMode runs a JSON Object Mode finalization turn: an internal, non-tool special turn that requires
 // provider-side JSON Object Mode so the final answer is a valid JSON object
 // without mixing structured-output rules into an ordinary agent/tool loop. It
 // pre-flights the json_object_mode control as required — an unsupported
@@ -249,7 +249,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 	return e.drain(ctx, s, req.Prompt, 0)
 }
 
-// RunSamplingPolicy runs a Sampling Policy special turn (issue #61): an internal, non-tool turn that requests temperature- or
+// RunSamplingPolicy runs a Sampling Policy special turn: an internal, non-tool turn that requests temperature- or
 // nucleus-based sampling for a constrained generation. It pre-flights the
 // sampling_policy control as required — an unsupported provider fails
 // negotiation fast, before any wire call, via
@@ -283,8 +283,8 @@ func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy p
 // ToolExecutor executes an agent tool call. The tools registry implements it;
 // the engine depends on this seam so dispatch is testable without filesystem
 // side effects a specific tool might have. The returned ToolExecResult carries
-// the result text plus whether it is the line-compressor's compressed form
-// (issue #286 review): the engine relies on this truth — never on matching a
+// the result text plus whether it is the line-compressor's compressed form:
+// the engine relies on this truth — never on matching a
 // look-alike "+N more" tail — to decide whether the byte-cap may merge that
 // tail as the compressor's marker.
 type ToolExecResult struct {
@@ -316,7 +316,7 @@ type AgentOptions struct {
 	Tools      []provider.Tool
 	ToolChoice any
 	// SchemaEnforcement opts a tool-capable agent loop into provider-side Tool
-	// Schema Enforcement (issue #62): when the provider honors the
+	// Schema Enforcement: when the provider honors the
 	// tool_schema_enforcement control, every turn's tool manifest carries
 	// strict:true so the provider rejects schema-violating tool arguments at
 	// generation time. Local tool-argument validation remains the mandatory
@@ -335,7 +335,7 @@ type AgentOptions struct {
 	CanContinue func() bool
 
 	// Compaction, when non-nil, enables the unified session compaction engine
-	// (ADR-0003, T10). After each turn it compacts when prompt usage crosses the
+	// After each turn it compacts when prompt usage crosses the
 	// configured fraction of the context window, and emergently on a provider
 	// context-overflow: the oldest body is evicted, the verbatim tail (last
 	// TailTurns pairs, reasoning included) is kept, and an anchored summary is
@@ -350,12 +350,11 @@ type AgentOptions struct {
 }
 
 // NegotiateGenerationControls pre-flights a special turn's generation-control
-// requirements against this engine's provider capability surface
-// (issue #58). It forwards to the provider seam; the returned controls are
+// requirements against this engine's provider capability surface.
+// It forwards to the provider seam; the returned controls are
 // the ones the provider will honor — required controls the provider cannot honor
 // fail here, before any wire call, while unsupported optional controls are
-// dropped. It is the seam generation-control-aware special turns (issues #59–#62)
-// consult before streaming.
+// dropped. It is the seam generation-control-aware special turns consult before streaming.
 func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provider.ControlRequirement) ([]provider.GenerationControl, error) {
 	return provider.NegotiateGenerationControls(ctx, e.provider, reqs)
 }
@@ -371,7 +370,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	if ctx.Err() != nil {
 		return Result{}, ErrStopped
 	}
-	// Build the message head once from a conditional skill prefix (issue #260):
+	// Build the message head once from a conditional skill prefix:
 	// the system prompt sits at [0], the slash-activated skill payload (when
 	// present) follows as a second RoleSystem message, then the user args. The
 	// no-inject path stays byte-identical to the historical [system, user] head.
@@ -391,8 +390,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		stopReasoning string
 	)
 
-	// Optionally opt this agent loop into provider-side Tool Schema Enforcement
-	// (issue #62): pre-flight the control as an optional requirement so an
+	// Optionally opt this agent loop into provider-side Tool Schema Enforcement:
+	// pre-flight the control as an optional requirement so an
 	// unsupported provider degrades deterministically (strict is dropped) without
 	// blocking the loop — local validation remains the mandatory safety floor.
 	// This pre-flight is done once, before any wire call.
@@ -451,8 +450,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		if err != nil {
 			// Emergency overflow trigger: a context-overflow below the proactive
 			// threshold fires the same compaction engine (evict oldest + rebuild
-			// summary head) and retries rather than surfacing the raw overflow
-			// (ADR-0003 decision 2). A compaction that no longer reduces the
+			// summary head) and retries rather than surfacing the raw overflow.
+			// A compaction that no longer reduces the
 			// messages falls through and the overflow is returned.
 			if opts.Compaction != nil && provider.IsContextOverflow(err) {
 				if next, ok := e.maybeCompact(ctx, req, opts, messages, true, turn); ok {
@@ -511,7 +510,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		assistant := provider.Message{
 			Role: provider.RoleAssistant,
 			// DeepSeek requires assistant messages to carry reasoning_content
-			// (empty-ok) and real reasoning to persist on tool turns (spec §6).
+			// (empty-ok) and real reasoning to persist on tool turns.
 			Content:          content,
 			ReasoningContent: reasoning,
 		}
@@ -538,16 +537,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
-			// Shared byte-cap at the tool-result boundary (issue #286): every tool
+			// Shared byte-cap at the tool-result boundary: every tool
 			// result is measured against the single budget before its bytes enter
 			// message history, so one oversized web_fetch or whole-file read cannot
 			// exhaust the context window. The delivered (byte-capped) form goes to
 			// the provider; the event additionally carries the FULL pre-cap result
-			// so the TUI expand path stays lossless (issue #84 AC4). CapBytes
+			// so the TUI expand path stays lossless. CapBytes
 			// merges a "+N more" tail into the byte marker ONLY when the executor
 			// reports the result is the line-compressor's compressed form — raw
-			// content that merely looks like the marker is never stripped (issue
-			// #286 review).
+			// content that merely looks like the marker is never stripped.
 			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Compressed)
 			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result.Text, dropped))
 			messages = append(messages, provider.Message{

@@ -7,29 +7,28 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// Session compaction constants (ADR-0003). The engine compacts
+// Session compaction constants. The engine compacts
 // proactively at a configurable fraction of the context window and
 // emergently on a provider context-overflow, keeping a verbatim tail and
 // folding the evicted body into an anchored summary re-injected at the head.
 const (
 	// DefaultCompactionFraction is the default context-utilization trigger.
 	DefaultCompactionFraction = 0.8
-	// DefaultContextWindow is deepseek-v4-flash's ~1M-token context (ADR-0003).
+	// DefaultContextWindow is deepseek-v4-flash's ~1M-token context.
 	DefaultContextWindow = 1 << 20
 	// DefaultTailTurns is the hard floor of assistant+user pairs preserved
 	// verbatim (never evicted even if over the soft budget).
 	DefaultTailTurns = 2
 	// DefaultKeepRecentTokens is the soft token budget for the verbatim tail,
-	// reasoning_content included (ADR-0003 decision 3).
+	// reasoning_content included.
 	DefaultKeepRecentTokens = 8000
-	// DefaultSummaryMaxTokens caps the anchored LLM summary (ADR-0003 decision 4).
+	// DefaultSummaryMaxTokens caps the anchored LLM summary.
 	DefaultSummaryMaxTokens = 4096
 )
 
 // CompactionConfig configures the unified session compaction engine. Zero
-// values fall back to the ADR-0003 defaults. Prune, when true, ring-fences
-// ["skill"]-tagged content from eviction and never truncates silently
-// (ADR-0003 decision 5).
+// values fall back to the defaults. Prune, when true, ring-fences
+// ["skill"]-tagged content from eviction and never truncates silently.
 type CompactionConfig struct {
 	Fraction         float64
 	ContextWindow    int
@@ -39,7 +38,7 @@ type CompactionConfig struct {
 	Prune            bool
 }
 
-// defaults fills zero fields with the ADR-0003 defaults.
+// defaults fills zero fields with the defaults.
 func (c *CompactionConfig) defaults() {
 	if c.Fraction <= 0 {
 		c.Fraction = DefaultCompactionFraction
@@ -59,7 +58,7 @@ func (c *CompactionConfig) defaults() {
 }
 
 // shouldCompact reports whether the proactive threshold was crossed: the turn's
-// prompt usage has reached fraction × context window (ADR-0003 decision 1).
+// prompt usage has reached fraction × context window.
 func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 	if usage == nil || cfg.ContextWindow <= 0 {
 		return false
@@ -74,7 +73,7 @@ func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 // proactive threshold has been crossed (or force is set for the emergency
 // overflow path). It returns the (possibly compacted) message list and whether
 // a compaction actually happened. It never fails the run: a summary-generation
-// failure is a fail-safe skip (ADR-0003 decision 4) that still frees context by
+// failure is a fail-safe skip that still frees context by
 // dropping the oldest body.
 func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOptions, messages []provider.Message, force bool, turn int) ([]provider.Message, bool) {
 	cfg := opts.Compaction
@@ -87,7 +86,7 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		return messages, false
 	}
 
-	// Stable-head awareness (spec §34 / issue #102): the embedded base system
+	// Stable-head awareness: the embedded base system
 	// prompt is the immutable request head, anchored at [0] on every run path.
 	// Pull it out before eviction so the body-folding and summary-anchoring
 	// never consume or displace it; it is reattached first in the rebuilt head.
@@ -112,7 +111,7 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		if summary != "" {
 			// Re-anchor the compacted summary BELOW the immutable stable head:
 			// the base prompt stays at [0], the Objective/Next-Move summary
-			// follows it, then the verbatim tail (spec §135 / issue #103).
+			// follows it, then the verbatim tail.
 			summaryHead := append(append([]provider.Message(nil), stableHead...),
 				provider.Message{Role: provider.RoleSystem, Content: summary})
 			newPrefix = append(summaryHead, tail...)
@@ -122,15 +121,15 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 	if opts.OnCompacted != nil {
 		opts.OnCompacted()
 	}
-	// Surface the compaction marker on the observer seam (issue #81): the TUI
+	// Surface the compaction marker on the observer seam: the TUI
 	// renders a read-only [compacted] status entry, never blocking the run.
 	e.emit(CompactedEvent{Turn: turn})
 	return newPrefix, true
 }
 
 // evict splits messages into the evicted oldest body and the verbatim tail,
-// applying the hard TailTurns floor and the soft KeepRecentTokens budget
-// (ADR-0003 decision 3,4). The tail always preserves at least TailTurns
+// applying the hard TailTurns floor and the soft KeepRecentTokens budget.
+// The tail always preserves at least TailTurns
 // assistant+user pairs and extends backward while within the soft token budget.
 func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []provider.Message) {
 	if len(messages) == 0 {
@@ -164,8 +163,7 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 		keepStart = i
 	}
 	// Skill-content ring-fence: when Prune is on, never evict a message that is
-	// part of a skill activation, even if the soft budget would drop it
-	// (ADR-0003 decision 5).
+// part of a skill activation, even if the soft budget would drop it.
 	if cfg.Prune {
 		for i := range messages {
 			if isSkillMessage(messages[i]) {
@@ -180,9 +178,9 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 }
 
 // generateSummary produces the anchored `## Objective` / `## Next Move` summary
-// of the evicted body via a separate non-tool provider call (ADR-0003 decision
-// 4). It returns "" for a fail-safe skip: a provider error, or a body too large
-// to leave room for the summary round-trip. The summary is capped at
+// of the evicted body via a separate non-tool provider call. It returns
+// "" for a fail-safe skip: a provider error, or a body too large to
+// leave room for the summary round-trip. The summary is capped at
 // SummaryMaxTokens.
 func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *CompactionConfig, body []provider.Message) string {
 	bodyText := renderBody(body)
@@ -197,13 +195,13 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
 
 	// The summary generation is a special turn that opts into a hard Generation
-	// Budget (issue #60): it requests generation_budget as
+	// Budget: it requests generation_budget as
 	// required, so negotiation either honors it (a required control is always
 	// honored when it is supported) or fails fast before any wire call. The
 	// request carries a hard max_completion_tokens cap on a supporting provider;
 	// a provider that cannot honor the budget is skipped by the existing fail-safe
 	// path (the eviction still frees context, and the local SummaryMaxTokens cap
-	// remains the safety floor, ADR-0003 decision 4).
+	// remains the safety floor).
 	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
 		{Control: provider.GenerationControlGenerationBudget, Required: true},
 	}); err != nil {
@@ -219,8 +217,8 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		ThinkingEnabled: false, // a summary needs no chain-of-thought
 		SessionKey:      req.SessionKey,
 		SetCacheKey:     req.SessionKey != "",
-		// The hard wire-backed output cap mirrors SummaryMaxTokens (ADR-0003
-		// decision 4); the local capTokens floor remains the safety net.
+		// The hard wire-backed output cap mirrors SummaryMaxTokens;
+		// the local capTokens floor remains the safety net.
 		MaxOutputTokens: cfg.SummaryMaxTokens,
 	})
 	if err != nil {
@@ -249,9 +247,9 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 }
 
 // isSkillMessage reports whether a message belongs to a skill activation and so
-// is ring-fenced from eviction when Prune is enabled (ADR-0003
-// decision 5). An assistant message that carries a tool call naming the built-in
-// "skill" tool, or the matching tool result, is protected.
+// is ring-fenced from eviction when Prune is enabled. An assistant
+// message that carries a tool call naming the built-in "skill" tool,
+// or the matching tool result, is protected.
 func isSkillMessage(m provider.Message) bool {
 	if m.Role == provider.RoleAssistant {
 		for _, tc := range m.ToolCalls {
@@ -287,9 +285,9 @@ func renderBody(messages []provider.Message) string {
 
 // estimateTokens is a deterministic token approximation (chars/4) used for
 // compaction budgeting, covering the tail-budget content that matters for the
-// eviction decision: assistant answer text and reasoning_content (ADR-0003
-// decision 3). It is stable across runs so the engine is testable
-// deterministically at the seam.
+// eviction decision: assistant answer text and reasoning_content. It is
+// stable across runs so the engine is testable deterministically at the
+// seam.
 func estimateTokens(m provider.Message) int {
 	return estimateString(m.Content) + estimateString(m.ReasoningContent)
 }
