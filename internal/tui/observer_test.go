@@ -7,10 +7,9 @@ import (
 )
 
 // newObserverFixture writes a scratch file set and builds a DeltaObserver whose
-// injected path-resolution seam maps sandbox paths to the real fixture files
-// (issue #174): the observer owns the file reads, the fake resolver only
-// translates paths, so unit tests drive the observer with no engine and no
-// registry.
+// injected path-resolution seam maps sandbox paths to the real fixture files:
+// the observer owns the file reads, the fake resolver only translates paths,
+// so unit tests drive the observer with no engine and no registry.
 func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -20,10 +19,9 @@ func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 
 // TestDeltaObserver_computesEditLineDelta asserts a paired edit tool start +
 // result produces the same [+N,-M] line delta and before/after content the
-// engine's ToolDelta seam used to report (issue #174, removed in issue #175):
-// the observer snapshots the target file on start and diffs it on result. The
-// fixture gains two lines as one is swapped for three, so the observer reports
-// +2, -0.
+// engine's ToolDelta seam used to report: the observer snapshots the target
+// file on start and diffs it on result. The fixture gains two lines as one is
+// swapped for three, so the observer reports +2, -0.
 func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 	obs, dir := newObserverFixture(t)
 	path := filepath.Join(dir, "main.go")
@@ -50,9 +48,9 @@ func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 
 // TestDeltaObserver_writeCreatesFile asserts a write tool creating a brand-new
 // file reports the full new content as added with empty before (the review
-// panel's "added" status source, issue #174 / #90). The count follows the
-// engine seam's convention (trailing newline counts as one more line), so
-// "x\ny\nz\n" is 4 lines.
+// panel's "added" status source. The count follows the engine seam's
+// convention (trailing newline counts as one more line), so "x\ny\nz\n" is 4
+// lines.
 func TestDeltaObserver_writeCreatesFile(t *testing.T) {
 	obs, dir := newObserverFixture(t)
 	path := filepath.Join(dir, "new.go")
@@ -99,7 +97,7 @@ func TestDeltaObserver_unresolvablePath(t *testing.T) {
 
 // TestDeltaObserver_pairsToolCallsById asserts in-flight snapshots are keyed by
 // the provider-assigned tool_call id, so each result diffs its own start even
-// when multiple file-mutating calls are outstanding (issue #174).
+// when multiple file-mutating calls are outstanding.
 func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
 	obs, dir := newObserverFixture(t)
 	one := filepath.Join(dir, "one.txt")
@@ -132,7 +130,7 @@ func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
 
 // TestDeltaObserver_missingStartYieldsZero asserts a result with no matching
 // start (a non-file tool, or an update whose start was dropped) degrades to a
-// zero delta and empty content rather than erroring (issue #174).
+// zero delta and empty content rather than erroring.
 func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 	obs, _ := newObserverFixture(t)
 	added, removed, before, after, path := obs.Result("call_x", "edit")
@@ -143,8 +141,7 @@ func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 
 // TestDeltaObserver_nilResolverIsFailClosed asserts a nil path-resolution seam
 // degrades to unresolvable (zero delta, no content) instead of reading sandbox
-// paths as host paths — a forgotten wiring must never misreport edits (issue
-// #174).
+// paths as host paths — a forgotten wiring must never misreport edits.
 func TestDeltaObserver_nilResolverIsFailClosed(t *testing.T) {
 	obs := NewDeltaObserver(nil)
 	obs.Start("call_e", "edit", `{"path":"main.go"}`)

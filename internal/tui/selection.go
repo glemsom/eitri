@@ -8,15 +8,15 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// This file implements the T6 drag-select copy seam (issue #124): a click-drag
-// over the history viewport highlights a cell range, and releasing the drag
-// copies the selected plain-text range to the clipboard. Selection is
-// hand-rolled from raw mouse cell state over the wrapped-lines transcript,
-// built on bubbletea v2's per-type mouse messages (tea.MouseClickMsg /
-// MouseMotionMsg / MouseReleaseMsg). Since issue #306 the same mouse routing
-// also owns the right-rail drag-resize — a left press on the rail's border
-// column starts a width drag (see railDragFor), which is decided BEFORE the
-// drag-select hit-test so the two gestures never overlap.
+// This file implements the drag-select copy seam: a click-drag over the
+// history viewport highlights a cell range, and releasing the drag copies the
+// selected plain-text range to the clipboard. Selection is hand-rolled from
+// raw mouse cell state over the wrapped-lines transcript, built on bubbletea
+// v2's per-type mouse messages (tea.MouseClickMsg / MouseMotionMsg /
+// MouseReleaseMsg). The same mouse routing also owns the right-rail
+// drag-resize — a left press on the rail's border column starts a width drag
+// (see railDragFor), which is decided BEFORE the drag-select hit-test so the
+// two gestures never overlap.
 //
 // Coordinates are tracked in *content* space, not screen space: line indexes
 // the full rendered history content (the same line array the persisted
@@ -24,27 +24,26 @@ import (
 // keeps a selection stable while the user scrolls mid-drag, and lets the copy
 // read exactly the plain cells the user sees (no partial-code artifacts).
 
-// railDrag is one in-progress mouse drag resizing the right rail (issue #306):
-// startWidth is the rail width when the press landed and startX the press
-// column, so each motion computes newWidth = startWidth + (pointerX - startX)
-// and applies it live through setRailWidth. It is tracked on the Model (not the
-// Transcript) because it is pointer-button state, not transcript surface state:
-// the transcript only ever sees the resulting setRailWidth writes, exactly like
-// the drag-select state.
+// railDrag is one in-progress mouse drag resizing the right rail: startWidth
+// is the rail width when the press landed and startX the press column, so each
+// motion computes newWidth = startWidth + (pointerX - startX) and applies it
+// live through setRailWidth. It is tracked on the Model (not the Transcript)
+// because it is pointer-button state, not transcript surface state: the
+// transcript only ever sees the resulting setRailWidth writes, exactly like the
+// drag-select state.
 type railDrag struct {
 	startWidth int
 	startX     int
 }
 
 // doubleClickWindow is how close (in time) two clean border clicks must land
-// to count as a double-click reset (issue #308). Standard double-click
-// intervals are tens to hundreds of milliseconds; 500ms is the usual desktop
-// cutoff.
+// to count as a double-click reset. Standard double-click intervals are tens
+// to hundreds of milliseconds; 500ms is the usual desktop cutoff.
 const doubleClickWindow = 500 * time.Millisecond
 
-// minRailWidth is the narrowest the drag may shrink the rail to: the rail needs
-// enough columns to stay a legible pane, so the drag stops at minRailWidth even
-// when the pointer keeps pulling left (issue #306).
+// minRailWidth is the narrowest the drag may shrink the rail to: the rail
+// needs enough columns to stay a legible pane, so the drag stops at
+// minRailWidth even when the pointer keeps pulling left.
 const minRailWidth = 10
 
 // maxRailWidth returns the widest the drag may grow the rail to: half the
@@ -57,7 +56,7 @@ func maxRailWidth(terminalWidth int) int {
 // railBorderHitZone is how close (in columns) a left press must land to the
 // rail's left border to start a rail drag: 2 cells either side of the border
 // column. A press further into the rail (or left of it, on the transcript)
-// falls through to the existing drag-select / click paths (issue #306).
+// falls through to the existing drag-select / click paths.
 const railBorderHitZone = 2
 
 // railBorderColumn returns the screen column of the rail's left border: the
@@ -72,8 +71,7 @@ func (t Transcript) railBorderColumn() int {
 // drag state it starts with. A press starts a rail drag only when it lands
 // within railBorderHitZone columns of the rail's left border and on a row the
 // rail occupies (above the fixed bottom band, see inScrollRegion). Where it
-// starts is decided here so a border press can never begin a text selection
-// (issue #306).
+// starts is decided here so a border press can never begin a text selection.
 func (m Model) railDragFor(x, y int) (railDrag, bool) {
 	if !m.tx.railVisible() || m.tx.width <= 0 {
 		return railDrag{}, false
@@ -100,8 +98,7 @@ func (m *Model) disarmBorderClick() {
 // inScrollRegion reports whether a screen row y falls inside the history scroll
 // region: the rows above the fixed bottom band. Both the rail-drag hit test and
 // the drag-select coordinate mapping guard against events that land on the
-// band, so the boundary is decided once here and the two never drift (issue
-// #306).
+// band, so the boundary is decided once here and the two never drift.
 func (m Model) inScrollRegion(y int) bool {
 	return y >= 0 && y < m.tx.height-m.bandHeight()
 }
@@ -110,7 +107,7 @@ func (m Model) inScrollRegion(y int) bool {
 // minRailWidth floor and a max of (a) half the terminal width and (b) what the
 // transcript's 20-column readable floor allows — transcriptWidth floors at
 // width-railWidth-1 >= 20, i.e. railWidth <= width-21, so a drag on a small
-// terminal can never push the transcript below readable (issue #306).
+// terminal can never push the transcript below readable.
 const minTranscriptWidth = 20
 
 func clampRailWidth(w, terminalWidth int) int {
@@ -147,30 +144,29 @@ func (d *dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
 }
 
 // updateMouse applies one mouse event to the model: wheel events scroll the
-// history viewport (T2, issue #120; forwarded to the Transcript, issue #244);
-// a left-button click inside the history
-// region starts a drag selection, motion extends it (clamped to the rendered
-// content), and release copies the selected plain-text range to the clipboard
-// through the same seam as Ctrl+O and /copy (T6, issue #124). Events outside
-// the history region and wheel events never touch the composer, so editing
-// focus is preserved (issue #124 AC4). Mouse input is ignored while the
-// Settings surface or the continuation prompt owns the screen. In bubbletea v2
-// the mouse event is an interface: wheel/click/motion/release arrive as their
-// own concrete message types instead of a single MouseMsg with an Action.
+// history viewport; a left-button click inside the history region starts a
+// drag selection, motion extends it (clamped to the rendered content), and
+// release copies the selected plain-text range to the clipboard through the
+// same seam as Ctrl+O and /copy. Events outside the history region and wheel
+// events never touch the composer, so editing focus is preserved. Mouse input
+// is ignored while the Settings surface or the continuation prompt owns the
+// screen. In bubbletea v2 the mouse event is an interface: wheel/click/
+// motion/release arrive as their own concrete message types instead of a
+// single MouseMsg with an Action.
 func (m *Model) updateMouse(msg tea.MouseMsg) {
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
-		// Wheel scroll lives on the owned Transcript (issue #244/#248).
+		// Wheel scroll lives on the owned Transcript.
 		m.tx.navigateMouse(msg)
 		return
 	case tea.MouseClickMsg:
-		// A left-button press either starts a rail-width drag (issue #306) or a
-		// drag selection over the history: the rail-border hit-test runs first
-		// so a press on the border column starts the width drag, never a text
-		// selection. A second clean border click inside the double-click window
-		// resets the rail to its default width instead (issue #308): the reset
-		// uses the same setRailWidth path as a drag, so the transcript re-wraps
-		// and scroll/follow survive exactly as they do after a drag.
+		// A left-button press either starts a rail-width drag or a drag selection
+		// over the history: the rail-border hit-test runs first so a press on the
+		// border column starts the width drag, never a text selection. A second
+		// clean border click inside the double-click window resets the rail to its
+		// default width instead: the reset uses the same setRailWidth path as a
+		// drag, so the transcript re-wraps and scroll/follow survive exactly as
+		// they do after a drag.
 		if m.settings != nil || m.prompting {
 			return
 		}
@@ -182,7 +178,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			// second click of a double-click: snap the rail to the default width
 			// and consume the window, so a third press starts a fresh pair. The
 			// press still starts a drag anchored at the default width, so a
-			// hold-and-drag after the reset resizes from home (issue #308).
+			// hold-and-drag after the reset resizes from home.
 			if !m.borderClick.IsZero() && m.now().Sub(m.borderClick) <= doubleClickWindow {
 				m.tx.setRailWidth(clampRailWidth(defaultRailWidth, m.tx.width))
 				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X}
@@ -201,7 +197,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// A press outside the border's hit zone is an unrelated gesture
 		// (history drag-select); it disarms any armed border double-click
 		// window so an intervening transcript interaction can never pair with
-		// a later border click into an accidental reset (issue #308 AC2).
+		// a later border click into an accidental reset.
 		m.disarmBorderClick()
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
@@ -215,9 +211,9 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 	case tea.MouseMotionMsg:
 		// A live rail drag resizes the rail with the pointer; the width is
 		// applied immediately via setRailWidth so the transcript re-wraps and
-		// the rail re-renders every motion (issue #306). Motion is only
-		// delivered while a button is held, so railDrag nil here means the
-		// holding button is not a border press.
+		// the rail re-renders every motion. Motion is only delivered while a
+		// button is held, so railDrag nil here means the holding button is not
+		// a border press.
 		if m.railDrag != nil {
 			// Motion between press and release means this border gesture is a
 			// drag, not a click — disarm the window so the drag's press can
@@ -239,7 +235,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 	case tea.MouseReleaseMsg:
 		// Releasing a rail drag keeps the width already applied live during
 		// motion; it only clears the drag state, so it never triggers the
-		// drag-select copy or tool-entry click paths (issue #306).
+		// drag-select copy or tool-entry click paths.
 		if m.railDrag != nil {
 			// The first press already armed the window; release leaves the arm
 			// intact when the gesture was a clean click (no motion cleared it,
@@ -274,7 +270,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 // the rendered content. The mouse X is in screen display-width space; the
 // returned col is converted to a RUNE INDEX into the line so every downstream
 // consumer (highlight and copy) shares one coordinate space even when the row
-// contains wide/multibyte characters (issue #261). ok is false when the pointer
+// contains wide/multibyte characters. ok is false when the pointer
 // is outside the history viewport region — over the fixed bottom band below
 // it — or the viewport has not been sized yet.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
@@ -315,7 +311,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 		col = width - 1
 	}
 	// Convert the clamped display-width column to a rune index so the stored
-	// selection column is rune-safe and width-aware end to end (issue #261).
+	// selection column is rune-safe and width-aware end to end.
 	col = colToRuneIndex(m.tx.plainLines()[line], col)
 	return line, col, true
 }
@@ -328,7 +324,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 // contains the requested column, clamping past-the-end columns to the last
 // rune. Selection coordinates are rune-indexed throughout the drag-select
 // pipeline (see mouseToContent/copySelection/highlightSelection), so this
-// conversion keeps highlight and copy aligned (issue #261).
+// conversion keeps highlight and copy aligned.
 func colToRuneIndex(line string, displayCol int) int {
 	rs := []rune(line)
 	if len(rs) == 0 {
@@ -348,16 +344,15 @@ func colToRuneIndex(line string, displayCol int) int {
 }
 
 // copySelection copies the plain text covered by a finished drag selection to
-// the clipboard through the same seam as Ctrl+O and /copy (issue #124 AC2):
-// a single-line range copies the rune substring; a multi-line range joins the
-// per-row rune slices with newlines, reproducing exactly the wrapped rows the
-// user saw on screen. Selection columns are RUNE INDEXES (issue #261), so
-// slices are taken from []rune — never from the raw bytes — keeping the copy
-// byte-for-byte correct for wide/multibyte characters and never splitting a
-// multibyte rune. Boundaries that exceed a row's rune length are rejected
-// gracefully ("copy failed: selection out of range"). The outcome is surfaced
-// as the same band status note ("copied" / "copy failed: …") the other copy
-// paths use.
+// the clipboard through the same seam as Ctrl+O and /copy: a single-line
+// range copies the rune substring; a multi-line range joins the per-row rune
+// slices with newlines, reproducing exactly the wrapped rows the user saw on
+// screen. Selection columns are RUNE INDEXES, so slices are taken from
+// []rune — never from the raw bytes — keeping the copy byte-for-byte correct
+// for wide/multibyte characters and never splitting a multibyte rune.
+// Boundaries that exceed a row's rune length are rejected gracefully ("copy
+// failed: selection out of range"). The outcome is surfaced as the same band
+// status note ("copied" / "copy failed: …") the other copy paths use.
 func (m *Model) copySelection(d dragSelect) {
 	startLine, startCol, endLine, endCol := d.selRange()
 	lines := m.tx.plainLines()
@@ -412,7 +407,7 @@ func (m *Model) copySelection(d dragSelect) {
 
 // highlightSelection wraps the cells covered by an in-progress drag in reverse
 // video across the full rendered history content; the persisted viewport clips
-// it to the visible window (issue #124 AC1). Lines and cells outside the range
+// it to the visible window. Lines and cells outside the range
 // keep their exact original bytes, so surrounding styling never breaks.
 // highlightRange wraps the plain cells [from,to] (inclusive, 0-based) of an
 // ANSI-styled line in reverse-video escapes, preserving every original
@@ -449,9 +444,7 @@ func highlightRange(line string, from, to int) string {
 }
 
 // ansiStrip removes ANSI escape sequences from s, returning the plain text —
-// the cell grid a drag selection reads and copies (issue #124 AC3: selection
-// accounts for ANSI-rendered text, so the copied snippet is exactly the
-// displayed characters with no escape residue).
+// the cell grid a drag selection reads and copies.
 func ansiStrip(s string) string {
 	rs := []rune(s)
 	var b strings.Builder

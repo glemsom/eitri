@@ -12,18 +12,16 @@ import (
 	"github.com/glemsom/eitri/internal/diff"
 )
 
-// toolEntry is one rendered tool call in the transcript (issue #84): the tool
-// name + args, plus the delivered result and its deterministic compression and
-// file line-delta metadata. It renders as a compact one-line `⊕ tool  args`
+// toolEntry is one rendered tool call in the transcript: the tool name + args,
+// plus the delivered result and its deterministic compression and file
+// line-delta metadata. It renders as a compact one-line `⊕ tool  args`
 // summary that collapses the result by default and expands on demand to the
-// full inline output (never silently truncated). The byte-cap split (issue
-// #286): result holds the FULL pre-cap string, with bytesDropped the bytes
-// the cap dropped — the collapsed summary hints at bytesDropped while the
-// expanded view always renders result. anchor is the index into
-// messages of the "you" message whose turn this tool call belongs to, so View
-// can interleave the entry chronologically after its triggering prompt. It is
-// owned by toolLog (issue #208 deepened the log into the deep value type that
-// holds its entries and their operations end to end).
+// full inline output (never silently truncated). The byte-cap split: result
+// holds the FULL pre-cap string, with bytesDropped the bytes the cap dropped
+// — the collapsed summary hints at bytesDropped while the expanded view always
+// renders result. anchor is the index into messages of the "you" message whose
+// turn this tool call belongs to, so View can interleave the entry
+// chronologically after its triggering prompt. It is owned by toolLog.
 type toolEntry struct {
 	name         string
 	args         string
@@ -44,27 +42,27 @@ type toolEntry struct {
 	doneAt    time.Time
 	// expanded is the per-entry expansion state toggled by a mouse click on the
 	// entry's rows (click-to-expand, benchmark §4.4), independent of the global
-	// Ctrl+E expanded-view mode (issue #273). collapsedOverride is a per-entry
-	// collapse that beats the global mode ON; the two are mutually exclusive
-	// (only one is ever set by the Transcript's mode-aware toggle).
+	// Ctrl+E expanded-view mode. collapsedOverride is a per-entry collapse
+	// that beats the global mode ON; the two are mutually exclusive (only one
+	// is ever set by the Transcript's mode-aware toggle).
 	expanded bool
 	// collapsedOverride, when true, keeps this single entry collapsed even while
-	// the Ctrl+E expanded-view mode is ON (issue #273 per-entry orthogonality).
+	// the Ctrl+E expanded-view mode is ON.
 	collapsedOverride bool
 	// before/after/path carry the file content and host path a file-mutating
-	// edit/write captured (issue #90): they back the expanded card's inline
-	// diff. Empty for non-edit tools and batch runs.
+	// edit/write captured: they back the expanded card's inline diff. Empty for
+	// non-edit tools and batch runs.
 	before string
 	after  string
 	path   string
 }
 
 // toolLog is the deep value type that owns the transcript's tool-call entries
-// end to end (issue #84, deepened in issue #208). It holds the ordered list of
-// entries plus every operation on them — the start/result pairing, per-entry
-// expansion, the render with content-row accounting, plain-text transcription,
-// and the derived changed-file projection. The Model keeps a single
-// `log toolLog` field and delegates; nothing outside the log mutates entries.
+// end to end. It holds the ordered list of entries plus every operation on them
+// — the start/result pairing, per-entry expansion, the render with
+// content-row accounting, plain-text transcription, and the derived
+// changed-file projection. The Model keeps a single `log toolLog` field and
+// delegates; nothing outside the log mutates entries.
 type toolLog struct {
 	entries []toolEntry
 	// curAnchor is the message-anchor assigned to entries opened during the
@@ -94,11 +92,11 @@ func (l *toolLog) SetStart(i int, t time.Time) {
 	l.entries[i].startedAt = t
 }
 
-// Apply folds one tool-call observation into the log (issue #208 US3): a Start
-// appends a fresh incomplete entry anchored to the current turn; a Result pairs
-// back to the most recent not-yet-complete entry for that tool name and fills
-// in its result/compression/line-delta metadata and marks it complete. Nothing
-// outside the log may mutate entries.
+// Apply folds one tool-call observation into the log: a Start appends a fresh
+// incomplete entry anchored to the current turn; a Result pairs back to the
+// most recent not-yet-complete entry for that tool name and fills in its
+// result/compression/line-delta metadata and marks it complete. Nothing outside
+// the log may mutate entries.
 func (l *toolLog) Apply(u ToolUpdate) {
 	if u.Start != nil {
 		l.entries = append(l.entries, toolEntry{
@@ -131,10 +129,10 @@ func (l *toolLog) Apply(u ToolUpdate) {
 	}
 }
 
-// Toggle flips one entry's per-entry expansion state with bounds checking
-// (issue #208 US7). It never touches other entries or the global Ctrl+E flag,
-// and clears any collapse-override so the two mutually-exclusive per-entry
-// states stay coherent.
+// Toggle flips one entry's per-entry expansion state with bounds checking.
+// It never touches other entries or the global Ctrl+E flag, and clears any
+// collapse-override so the two mutually-exclusive per-entry states stay
+// coherent.
 func (l *toolLog) Toggle(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
@@ -143,11 +141,11 @@ func (l *toolLog) Toggle(i int) {
 	l.entries[i].collapsedOverride = false
 }
 
-// ToggleCollapse flips one entry's per-entry collapse-override (issue #273),
-// the mechanism that keeps a single entry collapsed while the global Ctrl+E
-// expanded-view mode is ON. It is bounds-checked, never touches other entries,
-// and clears any per-entry expanded so the two mutually-exclusive states stay
-// coherent. The Transcript routes the expandAll-mode click here.
+// ToggleCollapse flips one entry's per-entry collapse-override, the mechanism
+// that keeps a single entry collapsed while the global Ctrl+E expanded-view
+// mode is ON. It is bounds-checked, never touches other entries, and clears
+// any per-entry expanded so the two mutually-exclusive states stay coherent.
+// The Transcript routes the expandAll-mode click here.
 func (l *toolLog) ToggleCollapse(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
@@ -157,10 +155,10 @@ func (l *toolLog) ToggleCollapse(i int) {
 }
 
 // expandedFor returns whether entry i renders expanded given the current global
-// Ctrl+E expanded-view mode (issue #273): a per-entry expanded state wins, a
-// per-entry collapse-override beats the global mode ON, and otherwise the entry
-// reflects the global flag. It is the single effective-expansion computation
-// both Render and the Transcript's toolEntryAtLine hit-test consult, so the
+// Ctrl+E expanded-view mode: a per-entry expanded state wins, a per-entry
+// collapse-override beats the global mode ON, and otherwise the entry reflects
+// the global flag. It is the single effective-expansion computation both
+// Render and the Transcript's toolEntryAtLine hit-test consult, so the
 // rendered rows and the click-to-collapse state never disagree.
 func (l *toolLog) expandedFor(i int, expandAll bool) bool {
 	if i < 0 || i >= len(l.entries) {
@@ -181,12 +179,11 @@ func (l *toolLog) expandedFor(i int, expandAll bool) bool {
 // head/text surface and records each rendered entry's content-row range. The
 // row ranges are relative to the block start (0-based) so the transcript can
 // offset them by its running content-row count; they share one layout pass with
-// the mouse hit-test so the two can never drift (issue #208 US6). expandAll
-// reflects the persistent Ctrl+E expanded-view mode (issue #273): with the
-// mode on every entry renders its full result unless a per-entry collapse
-// override beats it, so past and newly delivered entries alike respect the
-// mode at render time. A call passes `now` for the live elapsed readout while
-// a turn runs (zero when idle).
+// the mouse hit-test so the two can never drift. expandAll reflects the
+// persistent Ctrl+E expanded-view mode: with the mode on every entry renders
+// its full result unless a per-entry collapse override beats it, so past and
+// newly delivered entries alike respect the mode at render time. A call passes
+// `now` for the live elapsed readout while a turn runs (zero when idle).
 func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor int) (string, []toolRowRange) {
 	var b strings.Builder
 	var rows []toolRowRange
@@ -211,8 +208,8 @@ func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor i
 }
 
 // PlainText renders every entry anchored to the given message as plain text for
-// the clipboard transcript (issue #123): the ⊕ tool head plus the indented full
-// result when complete. ANSI-free.
+// the clipboard transcript: the ⊕ tool head plus the indented full result when
+// complete. ANSI-free.
 func (l toolLog) PlainText(anchor int) string {
 	var b strings.Builder
 	for _, te := range l.entries {
@@ -229,9 +226,9 @@ func (l toolLog) PlainText(anchor int) string {
 }
 
 // Review projects the changed-file review from the log's file-mutating
-// (edit/write) entries (issue #90, #208 US5): it consolidates by path, keeping
-// the most recent state per path. This is the seed of the retrospective
-// "review as a projection" hollowing.
+// (edit/write) entries: it consolidates by path, keeping the most recent state
+// per path. This is the seed of the retrospective "review as a projection"
+// hollowing.
 func (l toolLog) Review() []reviewEntry {
 	var files []reviewEntry
 	byPath := map[string]int{}
@@ -259,14 +256,13 @@ func (l toolLog) Review() []reviewEntry {
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via
-// the shared layout pass (issue #208 US6, #212). rows is the row-account already
-// produced by Render (the log never re-derives layout separately), so the
-// hit-test cannot drift from what the transcript renders. It is a pure lookup
-// over those rows. The returned collapsed reflects the RAW per-entry expanded
-// flag only; callers that need the effective rendered state under the Ctrl+E
-// expanded-view mode (issue #273) should combine the index with expandedFor
-// (as Transcript.toolEntryAtLine does), since the per-entry state is
-// orthogonal to the global mode.
+// the shared layout pass. rows is the row-account already produced by Render
+// (the log never re-derives layout separately), so the hit-test cannot drift
+// from what the transcript renders. It is a pure lookup over those rows. The
+// returned collapsed reflects the RAW per-entry expanded flag only; callers
+// that need the effective rendered state under the Ctrl+E expanded-view mode
+// should combine the index with expandedFor (as Transcript.toolEntryAtLine
+// does), since the per-entry state is orthogonal to the global mode.
 func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {
@@ -280,17 +276,16 @@ func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool,
 }
 
 // toolEntryLabel renders the category-colored `⊕ tool` label part of the
-// entry head (issue #181 AC1).
+// entry head.
 func toolEntryLabel(te toolEntry) string {
 	return g("⊕ ", "+ ") + te.name
 }
 
 // toolEntryArgs renders the dimmed detail part of the entry head: the display
-// args hint, the invoked line range for range-limited reads (issue #204 AC1:
-// `⊕ read  path:start-end`), and the line-delta tag for file-edit tools (issue
-// #84 AC3: `[+N, −M]`). Split from the label so the transcript can color the
-// tool name and dim the command detail (benchmark §4.1: label + dimmed path on
-// tool cards).
+// args hint, the invoked line range for range-limited reads (`⊕ read
+// path:start-end`), and the line-delta tag for file-edit tools (`[+N, −M]`).
+// Split from the label so the transcript can color the tool name and dim the
+// command detail.
 func toolEntryArgs(te toolEntry) string {
 	s := ""
 	if arg := toolArgsHint(te.args); arg != "" {
@@ -308,17 +303,17 @@ func toolEntryArgs(te toolEntry) string {
 }
 
 // toolEntryHead renders the compact one-line `⊕ tool  args` head shared by the
-// transcript entry (issue #84) and the clipboard copy (issue #123): the tool
-// name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
+// transcript entry and the clipboard copy: the tool name and display args, plus
+// the [+N, −M] line-delta tag for file-edit tools.
 func toolEntryHead(te toolEntry) string {
 	return toolEntryLabel(te) + toolEntryArgs(te)
 }
 
 // readRangeHint extracts the explicit 1-based line range a `read` call was
-// invoked with from its raw JSON args (issue #204). Both start_line and
-// end_line must be present as positive integers; omitted or null limits
-// (whole-file reads), fractional values, and malformed shapes return "" so the
-// entry head falls back to the path-only rendering — never a crash.
+// invoked with from its raw JSON args. Both start_line and end_line must be
+// present as positive integers; omitted or null limits (whole-file reads),
+// fractional values, and malformed shapes return "" so the entry head falls
+// back to the path-only rendering — never a crash.
 func readRangeHint(argsJSON string) string {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
@@ -370,23 +365,21 @@ func toolArgsHint(argsJSON string) string {
 
 // renderToolEntry renders one tool-call entry as a compact, glanceable line —
 // `⊕ tool  args` — with the result collapsed by default to a summary, never a
-// raw dump into the scroll (issue #84). A file-mutating edit carries a [+N,-M]
-// line-delta tag, a compressed result carries an explicit "+N more" tail
-// marker, and a byte-capped delivery carries a "(+N bytes truncated)" hint
-// (issue #286). When expanded (the Ctrl+E expanded-view mode or a per-entry
-// open), the FULL inline result is rendered (the entry's pre-cap result, never
-// the capped delivered form) so nothing is silently truncated — every collapse
-// has an expand path. It is the per-entry renderer the log's Render pass runs,
-// so the transcript and the row-account/hit-test share one layout (issue #208
-// US6, #212).
+// raw dump into the scroll. A file-mutating edit carries a [+N,-M] line-delta
+// tag, a compressed result carries an explicit "+N more" tail marker, and a
+// byte-capped delivery carries a "(+N bytes truncated)" hint. When expanded
+// (the Ctrl+E expanded-view mode or a per-entry open), the FULL inline result
+// is rendered (the entry's pre-cap result, never the capped delivered form) so
+// nothing is silently truncated — every collapse has an expand path. It is the
+// per-entry renderer the log's Render pass runs, so the transcript and the
+// row-account/hit-test share one layout.
 func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
-	// ✓/✗ outcome marker (issue #122 AC2) so success and failure are
-	// glanceable without expanding the collapsed summary. The entry line
-	// itself renders in the tool's category hue (shell/file/web/skill, issue
-	// #181 AC1), with the glyph + color pair keeping meaning from ever
-	// depending on color alone (issue #181 AC5).
+	// ✓/✗ outcome marker so success and failure are glanceable without
+	// expanding the collapsed summary. The entry line itself renders in the
+	// tool's category hue (shell/file/web/skill), with the glyph + color pair
+	// keeping meaning from ever depending on color alone.
 	outcome := ""
 	if te.complete {
 		if isToolFailure(te.result) {
@@ -432,9 +425,9 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	if !expanded {
 		// Collapsed summary: line count + explicit "+N more" tail marker when
 		// the result was compressed, and a "(+N bytes truncated)" hint when the
-		// delivered form was byte-capped (issue #286) — never a raw dump, never
-		// a silent cap. Both hints merge when line and byte truncation both
-		// happened, mirroring the merged marker line the model sees.
+		// delivered form was byte-capped — never a raw dump, never a silent cap.
+		// Both hints merge when line and byte truncation both happened, mirroring
+		// the merged marker line the model sees.
 		if te.lines > 0 || te.dropped > 0 || te.bytesDropped > 0 {
 			summary := fmt.Sprintf("%d line%s", te.lines, plural(te.lines))
 			hints := []string{}
@@ -455,12 +448,11 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 
 	// Expanded: the full result framed as a card — a left border in the
 	// entry's category hue with the content plain, so an expanded tool reads
-	// as one designed block instead of a raw text dump (benchmark §4.1: tool
-	// cards; the border color repeats the label's category color). A
-	// file-mutating edit/write whose before/after snapshot the engine captured
-	// (issue #90) renders its inline diff instead of the result dump (issue
-	// #275): the same pure-Go diff engine + word emphasis, inside the card's
-	// frame. An edit/write with no captured content
+	// as one designed block instead of a raw text dump. A file-mutating
+	// edit/write whose before/after snapshot the engine captured renders its
+	// inline diff instead of the result dump: the same pure-Go diff engine +
+	// word emphasis, inside the card's frame. An edit/write with no captured
+	// content
 	// falls back to the [+N, −M] count summary (never the raw dump), matching
 	// the projection's no-diff handling.
 	if te.name == "edit" || te.name == "write" {
@@ -496,9 +488,9 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 // renderToolCardDiff renders a file-mutating entry's before→after content as
 // an inline diff — the git-style @@ hunk headers plus +/-/context lines with
 // word-level emphasis on modified pairs — so the expanded tool card shows the
-// change instead of the raw result dump
-// (issue #275). A path with no diffable content (the engine couldn't snapshot
-// it) falls back to the count summary, matching the projection.
+// change instead of the raw result dump. A path with no diffable content (the
+// engine couldn't snapshot it) falls back to the count summary, matching the
+// projection.
 func renderToolCardDiff(f reviewEntry, th Theme) string {
 	if h := diff.Diff(f.before, f.after); len(h) > 0 {
 		f.hunks = h
@@ -509,8 +501,7 @@ func renderToolCardDiff(f reviewEntry, th Theme) string {
 
 // deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by
 // the card diff body, the no-diff fallback, and the transcript's file-edit
-// head, so the count formatting lives beside the log it renders for (issue
-// #208/#212).
+// head, so the count formatting lives beside the log it renders for.
 func deltaTag(added, removed int) string {
 	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
 }
@@ -524,12 +515,11 @@ func isToolFailure(result string) bool {
 		strings.HasPrefix(result, "invalid tool arguments:")
 }
 
-// toolCategory groups tool entries by the work the tool does (issue #181 AC1)
-// so the transcript can colorize a long session by category: shell commands,
-// file reads/writes/edits, web fetches and browser opens, and skill
-// activations. Tools no category recognizes fall back to the generic faint
-// entry — color is a layer on top of the persistent ⊕ glyph (issue #181 AC5),
-// never the only signal.
+// toolCategory groups tool entries by the work the tool does so the transcript
+// can colorize a long session by category: shell commands, file
+// reads/writes/edits, web fetches and browser opens, and skill activations.
+// Tools no category recognizes fall back to the generic faint entry — color is
+// a layer on top of the persistent ⊕ glyph, never the only signal.
 type toolCategory int
 
 const (
@@ -540,9 +530,9 @@ const (
 	catSkill
 )
 
-// toolCategoryOf maps a tool name to its transcript category (issue #181 AC1).
-// Unknown names (future tools) report catOther so they keep the generic faint
-// tool line instead of inventing a hue.
+// toolCategoryOf maps a tool name to its transcript category. Unknown names
+// (future tools) report catOther so they keep the generic faint tool line
+// instead of inventing a hue.
 func toolCategoryOf(name string) toolCategory {
 	switch name {
 	case "bash":

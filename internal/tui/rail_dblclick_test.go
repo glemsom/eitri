@@ -7,11 +7,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// This file covers the rail double-click reset seam (issue #308): two clean
-// clicks on the rail border inside the double-click window snap the rail back
-// to its default width, so a dragged-too-far rail is one gesture away from
-// home. Single-click drag-resize, history drag-select, and stale clicks far
-// apart are untouched.
+// This file covers the rail double-click reset seam: two clean clicks on the
+// rail border inside the double-click window snap the rail back to its default
+// width, so a dragged-too-far rail is one gesture away from home. Single-click
+// drag-resize, history drag-select, and stale clicks far apart are untouched.
 
 // railDblModel builds a sized model with a telemetry strip and a wired rail,
 // plus one committed turn so the history viewport is hydrated — identical to
@@ -34,9 +33,9 @@ func setNow(m Model, d time.Duration) Model {
 
 // TestRailDbl_fastSecondPressResetsToDefault asserts the core seam: a press on
 // the rail border, release, then a second press within the double-click window
-// snaps the rail back to the default width (issue #308 AC1). The reset runs on
-// the second PRESS because that is when the gesture is recognized; motion and
-// release after it behave like a fresh no-op drag.
+// snaps the rail back to the default width. The reset runs on the second PRESS
+// because that is when the gesture is recognized; motion and release after it
+// behave like a fresh no-op drag.
 func TestRailDbl_fastSecondPressResetsToDefault(t *testing.T) {
 	m := railDblModel(t)
 	m = railDragPressMotion(t, m, 40) // drag the rail well past default
@@ -60,8 +59,8 @@ func TestRailDbl_fastSecondPressResetsToDefault(t *testing.T) {
 
 // TestRailDbl_singleDragClickDoesNotReset asserts a border drag (motion between
 // press and release) is not a clean click and must never count toward a
-// double-click reset (issue #308 AC2): the drag keeps its dragged width and no
-// reset state is armed.
+// double-click reset: the drag keeps its dragged width and no reset state is
+// armed.
 func TestRailDbl_singleDragClickDoesNotReset(t *testing.T) {
 	m := railDblModel(t)
 
@@ -88,7 +87,7 @@ func TestRailDbl_singleDragClickDoesNotReset(t *testing.T) {
 // TestRailDbl_staleFirstClickExpires asserts the double-click window: a clean
 // border click arms the reset, but the arm expires once the window elapses, so
 // a later press is a fresh single click that starts a drag instead of resetting
-// (issue #308 AC1 — reset must not fire on clicks that are not a double-click).
+// (reset must not fire on clicks that are not a double-click).
 func TestRailDbl_staleFirstClickExpires(t *testing.T) {
 	m := railDblModel(t)
 	m = railDragPressMotion(t, m, 40) // drag off default so a reset would be visible
@@ -125,7 +124,7 @@ func TestRailDbl_staleFirstClickExpires(t *testing.T) {
 // TestRailDbl_secondClickWithoutReleaseStartsDrag asserts the reset fires on
 // the second press, and the press after a reset still starts a normal rail
 // drag (the gesture continues as a drag if the user holds and moves) — the
-// reset must not leave the pointer dead (issue #308 AC2).
+// reset must not leave the pointer dead.
 func TestRailDbl_secondClickWithoutReleaseStartsDrag(t *testing.T) {
 	m := railDblModel(t)
 	m = railDragPressMotion(t, m, 30)
@@ -153,7 +152,7 @@ func TestRailDbl_secondClickWithoutReleaseStartsDrag(t *testing.T) {
 // TestRailDbl_thirdPressAfterResetStartsFreshPair asserts the double-click
 // reset consumes the window: a third border press right after a reset (even
 // one that ends in a clean click) must not re-reset, because the reset cleared
-// the armed window and the new press starts a fresh pair (issue #308 AC2).
+// the armed window and the new press starts a fresh pair.
 func TestRailDbl_thirdPressAfterResetStartsFreshPair(t *testing.T) {
 	m := railDblModel(t)
 	m = railDragPressMotion(t, m, 40) // drag off default so a reset is visible
@@ -187,7 +186,7 @@ func TestRailDbl_thirdPressAfterResetStartsFreshPair(t *testing.T) {
 // between the two border clicks disarms the double-click window: after a clean
 // border click, a press on the history content (drag-select) followed by a
 // border press must NOT reset — the intervening gesture proves the two border
-// clicks were not a double-click (issue #308 AC2).
+// clicks were not a double-click.
 func TestRailDbl_interveningOffBorderPressDisarms(t *testing.T) {
 	m := railDblModel(t)
 	m = railDragPressMotion(t, m, 40) // drag off default so a reset is visible
@@ -215,9 +214,9 @@ func TestRailDbl_interveningOffBorderPressDisarms(t *testing.T) {
 }
 
 // TestRailDbl_resetKeepsScrollAndFollow asserts the reset preserves the
-// transcript reading state (issue #308 AC4): after scrolling to a middle
-// offset with follow broken, the double-click reset re-wraps (layout dirty)
-// but keeps the offset and follow state, and End still reaches the bottom.
+// transcript reading state: after scrolling to a middle offset with follow
+// broken, the double-click reset re-wraps (layout dirty) but keeps the offset
+// and follow state, and End still reaches the bottom.
 func TestRailDbl_resetKeepsScrollAndFollow(t *testing.T) {
 	m := newTallHistoryModel(t)
 	m.tx.rail = NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")

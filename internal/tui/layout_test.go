@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// This file covers the persistent transcript layout cache (issue #242): one
-// batched render pass records a row->tool-entry and row->message space that the
-// mouse hit-test reads back instead of re-deriving layout on every pointer /
-// selection event. Tests assert the cache is built lazily once and reused, so a
-// drag no longer re-runs the full renderHistory pass per motion event.
+// This file covers the persistent transcript layout cache: one batched render
+// pass records a row->tool-entry and row->message space that the mouse hit-test
+// reads back instead of re-deriving layout on every pointer / selection event.
+// Tests assert the cache is built lazily once and reused, so a drag no longer
+// re-runs the full renderHistory pass per motion event.
 
 // TestLayoutCache_hitTestsReuseRecordedIndex asserts the hit-test reads the
 // recorded layout index instead of re-deriving layout each call: after the
 // cache is built once (on the first hit-test), repeated toolEntryAtLine and
-// mouseToContent calls must not re-run the layout pass (issue #242 AC3/AC4).
+// mouseToContent calls must not re-run the layout pass.
 func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -59,8 +59,8 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 }
 
 // TestLayoutCache_recordsRowMessageIndex asserts the batched render also records
-// the row->message index (issue #242 AC1) alongside the tool-entry index, so the
-// persistent layout records every owner the transcript renders.
+// the row->message index alongside the tool-entry index, so the persistent
+// layout records every owner the transcript renders.
 func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -96,9 +96,9 @@ func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 }
 
 // TestLayoutCache_messageAtLineConsumesRowIndex asserts the row->message index
-// (issue #242 AC1) is a live, consumable surface: messageAtLine maps a rendered
-// row back to its owning message via the recorded index, and reports ok=false
-// for a non-message row (the workspace header) without re-building layout.
+// is a live, consumable surface: messageAtLine maps a rendered row back to its
+// owning message via the recorded index, and reports ok=false for a non-message
+// row (the workspace header) without re-building layout.
 func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

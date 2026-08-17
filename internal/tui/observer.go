@@ -8,7 +8,7 @@ import (
 
 // DeltaObserver computes the file line-delta and before/after content a
 // file-mutating tool call (edit/write) performed, entirely on the TUI side of
-// the engine seam (issue #174). It is fed from the engine's tool-call event
+// the engine seam. It is fed from the engine's tool-call event
 // stream: snapshot the target file on tool-call start, diff it on tool result.
 // The observer owns the file reading, behind an injected path-resolution seam,
 // so unit tests drive it with a fake resolver and the app wires it to the
@@ -45,8 +45,8 @@ func NewDeltaObserver(resolve func(sandboxPath string) string) *DeltaObserver {
 	return &DeltaObserver{resolve: resolve, pending: map[string]fileSnapshot{}}
 }
 
-// Start snapshots the pre-edit state of an edit/write tool call's target file
-// (issue #174). It resolves the tool's `path` argument through the injected
+// Start snapshots the pre-edit state of an edit/write tool call's target file.
+// It resolves the tool's `path` argument through the injected
 // seam and reads the file before the tool runs; a non-file tool, an
 // unresolvable path, or a missing file leaves no pending snapshot (a zero delta
 // is reported at Result).
@@ -73,7 +73,7 @@ func (o *DeltaObserver) Start(id, name, argsJSON string) {
 
 // Result computes the added/removed line counts and the before/after full
 // content + host path a file-mutating tool call performed, by diffing the
-// snapshot taken at Start against the current on-disk file (issue #174). It
+// snapshot taken at Start against the current on-disk file. It
 // backs the tool feed's `⊕ edit path [+N,-M]` tag and the card path's
 // inline diff. Non-file tools, unmatched ids, and read
 // errors degrade to zeros (best-effort telemetry, never a failure).
