@@ -21,8 +21,9 @@ func hostTempPrefix(g GUID) string {
 // PathTranslator is the single, shared seam that maps the two halves of the
 // path namespace: sandbox /tmp <=> host /tmp/eitri-<GUID>. Workspace host
 // paths are canonical and need no translation. All path-taking
-// tools (bash, read, write, edit, and open_in_browser) and their validation
-// share one translator so every component resolves the same /tmp namespace.
+// tools (bash, read, write, edit, and open_in_browser) and the write-side
+// validation share one translator so every component resolves the same /tmp
+// namespace.
 type PathTranslator struct {
 	g GUID
 }

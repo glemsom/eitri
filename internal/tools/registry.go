@@ -80,8 +80,7 @@ func (r *Registry) Browser() BrowserLauncher { return r.browser }
 
 // Registry is the shared tool registry: it wires the single PathTranslator,
 // the write-side Validator once, plus the network and browser seams, then
-// exposes the fixed tool surface. Later tickets add web_fetch,
-// open_in_browser, and skill.
+// exposes the fixed tool surface.
 type Registry struct {
 	tr        *PathTranslator
 	val       *Validator
