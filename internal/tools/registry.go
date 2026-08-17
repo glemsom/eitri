@@ -78,10 +78,9 @@ func (r *Registry) Definitions() []Definition {
 // backing the open_in_browser tool).
 func (r *Registry) Browser() BrowserLauncher { return r.browser }
 
-// Registry is the shared tool registry: it wires the single PathTranslator and
-// Validator once, plus the network and browser seams, then exposes
-// the fixed tool surface. Later tickets add web_fetch, open_in_browser, and
-// skill.
+// Registry is the shared tool registry: it wires the single PathTranslator,
+// the write-side Validator once, plus the network and browser seams, then
+// exposes the fixed tool surface.
 type Registry struct {
 	tr        *PathTranslator
 	val       *Validator
@@ -108,7 +107,7 @@ func NewRegistry(d Deps) *Registry {
 	r.val = NewValidator(d.Workspace, d.ExtraWritable, r.tr)
 	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
-	r.tools["read"] = &readTool{val: r.val}
+	r.tools["read"] = &readTool{tr: r.tr, workspace: r.workspace}
 	r.tools["write"] = &writeTool{val: r.val}
 	r.tools["edit"] = &editTool{val: r.val}
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
@@ -134,7 +133,8 @@ func (r *Registry) Names() []string {
 func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
 
 // Workspace returns the workspace root (host-absolute, cleaned): the writable
-// root bash/read/write/edit validate against.
+// root write/edit validate against and the resolve base for read's
+// workspace-relative paths.
 // It is exposed for host-side telemetry (e.g. the TUI file line-delta seam).
 func (r *Registry) Workspace() string { return r.workspace }
 
