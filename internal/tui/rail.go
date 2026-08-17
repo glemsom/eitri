@@ -42,12 +42,6 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 	}
 }
 
-// railContentWidth is the usable column width of a rail row: the fixed rail
-// width minus the left border and padding, so a row never wraps onto a second
-// line (long session GUIDs / temp paths / provider.model names would
-// otherwise fold and break the section alignment).
-const railContentWidth = railWidth - 2
-
 // presizeTerminalWidth is the non-composer fallback terminal width used by the
 // Transcript's bandWidth and transcriptWidth before the first window resize
 // lands (t.width == 0). TranscriptWidth previously fell back to the composer's
@@ -57,17 +51,22 @@ const railContentWidth = railWidth - 2
 const presizeTerminalWidth = 80
 
 // line appends one indented rail entry, truncating an over-long row with a
-// trailing ellipsis so the rail stays single-line.
-func (r *Rail) line(b *strings.Builder, key, val string) {
+// trailing ellipsis so the rail stays single-line. The usable row width is the
+// rail's width minus 2 columns — the left border and the row's leading
+// padding — so a row never wraps onto a second line: long session GUIDs / temp
+// paths / provider.model names would otherwise fold and break the section
+// alignment.
+func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	s := "  " + key
 	if val != "" {
 		s += " " + val
 	}
-	if lipgloss.Width(s) > railContentWidth {
+	contentWidth := railWidth - 2
+	if lipgloss.Width(s) > contentWidth {
 		var sb strings.Builder
 		w := 0
 		for _, ru := range s {
-			if w+1 > railContentWidth-1 {
+			if w+1 > contentWidth-1 {
 				break
 			}
 			sb.WriteRune(ru)
@@ -86,13 +85,13 @@ func (r *Rail) line(b *strings.Builder, key, val string) {
 // #88 AC4); te may be nil when no strip is wired, the rail then renders zeroed
 // STATS. Rendering stays read-only against the agent loop: it only reads the
 // telemetry surface on the UI goroutine.
-func (r *Rail) render(te *Telemetry, th Theme) string {
+func (r *Rail) render(te *Telemetry, th Theme, railWidth int) string {
 	var b strings.Builder
-	b.WriteString(r.renderStats(te, th))
+	b.WriteString(r.renderStats(te, th, railWidth))
 	b.WriteString("\n")
-	b.WriteString(r.renderContext(th))
+	b.WriteString(r.renderContext(th, railWidth))
 	b.WriteString("\n")
-	b.WriteString(r.renderModel(th))
+	b.WriteString(r.renderModel(th, railWidth))
 	return b.String()
 }
 
@@ -101,7 +100,7 @@ func (r *Rail) render(te *Telemetry, th Theme) string {
 // session time, and token in/out (issue #189 removed the usage-history
 // sparkline rows; the elapsed readout rounds out the rail as the permanent
 // stats surface, issue #227).
-func (r *Rail) renderStats(te *Telemetry, th Theme) string {
+func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
 
@@ -129,18 +128,18 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 		maxTurns = te.maxTurns
 	}
 	var body strings.Builder
-	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct))
-	r.line(&body, "cost", formatCost(cost))
-	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns))
-	r.line(&body, "elapsed", formatElapsed(elapsed))
-	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)))
+	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct), railWidth)
+	r.line(&body, "cost", formatCost(cost), railWidth)
+	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), railWidth)
+	r.line(&body, "elapsed", formatElapsed(elapsed), railWidth)
+	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), railWidth)
 	// The ctx line reflects the LIVE per-turn context-window size (issue #267),
 	// replaced each usage event and so shrinking after a compaction — unlike the
 	// cumulative tokens/cost lines above. It reads via the same formatTokens
 	// unit as the tokens line. No live ctx yet (te nil / first turn) renders "0".
-	body.WriteString(renderStatsCtxLine(r, th, liveCtx) + "\n")
+	body.WriteString(renderStatsCtxLine(r, th, liveCtx, railWidth) + "\n")
 	if compacted {
-		r.line(&body, "state", "compacted")
+		r.line(&body, "state", "compacted", railWidth)
 	}
 	return b.String() + th.railBody(railStats, strings.TrimRight(body.String(), "\n"))
 }
@@ -151,34 +150,34 @@ func (r *Rail) renderStats(te *Telemetry, th Theme) string {
 func (r *Rail) SetBranch(branch string) { r.branch = branch }
 
 // renderContext renders the CONTEXT section: the active session surface.
-func (r *Rail) renderContext(th Theme) string {
+func (r *Rail) renderContext(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railContext, "CONTEXT") + "\n")
 	var body strings.Builder
-	r.line(&body, "session", r.sessionID)
-	r.line(&body, "temp", r.sessionTemp)
+	r.line(&body, "session", r.sessionID, railWidth)
+	r.line(&body, "temp", r.sessionTemp, railWidth)
 	if r.branch != "" {
-		r.line(&body, "branch", r.branch)
+		r.line(&body, "branch", r.branch, railWidth)
 	}
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
 
 // renderModel renders the MODEL section: the provider/model/effort surface.
-func (r *Rail) renderModel(th Theme) string {
+func (r *Rail) renderModel(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railModel, "MODEL") + "\n")
 	var body strings.Builder
-	r.line(&body, r.provider+"/"+r.model, "")
+	r.line(&body, r.provider+"/"+r.model, "", railWidth)
 	effort := r.effort
 	if effort == "" {
 		effort = "n/a"
 	}
-	r.line(&body, "effort", effort)
+	r.line(&body, "effort", effort, railWidth)
 	thinking := "off"
 	if r.thinking {
 		thinking = "on"
 	}
-	r.line(&body, "thinking", thinking)
+	r.line(&body, "thinking", thinking, railWidth)
 	return b.String() + th.railBody(railModel, strings.TrimRight(body.String(), "\n"))
 }
 
@@ -201,9 +200,9 @@ func formatTokens(n int) string {
 // the live size reaches the degradation threshold the line flips to warning
 // styling (the theme's error hue): a single binary flag, no severity ladder, no
 // latch — persistent while live >= threshold.
-func renderStatsCtxLine(r *Rail, th Theme, liveCtx int) string {
+func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 	var b strings.Builder
-	r.line(&b, "ctx", formatTokens(liveCtx))
+	r.line(&b, "ctx", formatTokens(liveCtx), railWidth)
 	line := strings.TrimRight(b.String(), "\n")
 	if liveCtx >= liveContextWarnThreshold {
 		line = lipgloss.NewStyle().Foreground(th.error).Render(line)
@@ -219,8 +218,11 @@ func renderStatsCtxLine(r *Rail, th Theme, liveCtx int) string {
 // quality ~150k+ tokens into a window.
 const liveContextWarnThreshold = 150000
 
-// railWidth is the fixed right-pane width in columns.
-const railWidth = 30
+// defaultRailWidth is the rail width applied while the Transcript's mutable
+// railWidth field is unset (0): consumers read the field through
+// railWidthOrDefault, so this constant is only the zero-state default, never a
+// width any consumer computes from.
+const defaultRailWidth = 30
 
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
 // composer box align with the edge-to-edge bottom band (issue #232). The
@@ -246,7 +248,7 @@ func (m *Model) syncWidths() {
 // content with blank rows so the rail's left border runs down to the band
 // instead of stopping mid-window. A negative maxHeight (no resize landed) leaves
 // the rail unclamped and unpadded.
-func styledRail(content string, maxHeight int) string {
+func styledRail(content string, maxHeight, railWidth int) string {
 	if maxHeight >= 0 {
 		trimmed := strings.TrimRight(content, "\n")
 		lines := strings.Split(trimmed, "\n")

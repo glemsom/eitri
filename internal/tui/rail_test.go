@@ -25,7 +25,7 @@ func TestRailRenderStats(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "STATS") {
 		t.Errorf("rail missing STATS section, got: %q", view)
@@ -54,7 +54,7 @@ func TestRailRenderStats(t *testing.T) {
 // provider/model/effort/thinking (issue #88).
 func TestRailRenderModel(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
@@ -76,7 +76,7 @@ func TestRailRenderModel(t *testing.T) {
 // their activation state never appear in the right pane.
 func TestRailRenderContext(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "CONTEXT") {
 		t.Errorf("rail missing CONTEXT section, got: %q", view)
@@ -101,7 +101,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	// Default-theme rail hues, as lipgloss truecolor sequences (issue #178:
 	// every palette entry is a hex value; the output layer downsamples for
@@ -147,7 +147,7 @@ func TestRailRenderStatsNoGraph(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 300, Output: 300})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	// No graph rows: no usage/cost sparkline labels, no block glyphs.
 	if line := lineContaining(view, "usage"); line != "" {
@@ -465,7 +465,7 @@ func TestRailRenderCtxLine(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	// 137k live ctx -> "137.0k" (formatTokens), rendered after the tokens line.
 	if !strings.Contains(view, "ctx 137.0k") {
@@ -489,7 +489,7 @@ func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "ctx 160.0k") {
 		t.Errorf("rail STATS missing ctx value at threshold, got: %q", view)
@@ -511,7 +511,7 @@ func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 48_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, defaultTheme)
+	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	// The readout reflects the smaller post-compaction size, human-readable.
 	if !strings.Contains(view, "ctx 48.0k") {

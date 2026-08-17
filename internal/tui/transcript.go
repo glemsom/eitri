@@ -99,6 +99,11 @@ type Transcript struct {
 	// shared across Model's value copies so scroll state survives render cycles.
 	histViewport *viewport.Model
 
+	// railWidth is the right rail's column width; 0 until a width is set, in
+	// which case consumers fall back to defaultRailWidth. Drag-resize (issue
+	// #305) mutates it to re-wrap the transcript and re-render the rail.
+	railWidth int
+
 	// rail is the right context pane (issue #88); nil disables it. Its
 	// visibility (railVisible), band/transcript width accounting
 	// (bandWidth/transcriptWidth), clamp height (railClampHeight), and render
@@ -127,7 +132,7 @@ func (t Transcript) transcriptWidth() int {
 	}
 	w := base - 2
 	if t.railVisible() {
-		w -= railWidth + 1
+		w -= t.railWidthOrDefault() + 1
 		if w < 20 {
 			w = 20
 		}
@@ -140,7 +145,8 @@ func (t Transcript) transcriptWidth() int {
 // 2-col gutter. The band is the edge-to-edge bottom region (issue #232): it
 // spans the full terminal width all the way under the right rail, so its
 // separator row, status strip, and composer run to the width's edge — no
-// railWidth x bandHeight dead corner. It is independent of transcriptWidth() in
+// railWidth x bandHeight dead corner (the rail yields the transcript its
+// columns). It is independent of transcriptWidth() in
 // the call graph (it never calls transcriptWidth and never reads the composer's
 // width). bandWidth is the SEAM for issue #232: it is the single width source
 // for the bottom band, independent of transcriptWidth(). Since issue #247 it is
@@ -181,8 +187,9 @@ func (t Transcript) railClampHeight(bandHeight int) int {
 // bottom-anchored region spanning the whole terminal width, so the rail cannot
 // sit to its right the way it sits beside the transcript. Instead the rail
 // floats ABOVE the band — its rows land in the top railClampHeight() rows of the
-// pane, in the railWidth column strip at the right, exactly the room the
-// rail-shrunk transcriptWidth leaves on each history row. The band rows (below
+// pane, in the railWidth column strip at the right — the Transcript's mutable
+// rail width — exactly the room the rail-shrunk transcriptWidth leaves on each
+// history row. The band rows (below
 // the rail's extent) are untouched, so the separator/status/composer run the
 // full width; the rail never overlaps them. pane is the renderPane output; rail
 // is styledRail output already clamped to railClampHeight rows. bandHeight is the
@@ -226,8 +233,29 @@ func (t Transcript) viewWithRail(pane string, bandHeight int) string {
 	if !t.railVisible() {
 		return pane
 	}
-	right := styledRail(t.rail.render(t.telemetry, t.theme), t.railClampHeight(bandHeight))
+	rw := t.railWidthOrDefault()
+	right := styledRail(t.rail.render(t.telemetry, t.theme, rw), t.railClampHeight(bandHeight), rw)
 	return t.surfaceWithRail(pane, right, bandHeight)
+}
+
+// railWidthOrDefault returns the rail width in effect: the mutable field when
+// set, else the default. The 0 fallback mirrors how width/height read 0 until
+// the first resize lands, so a hand-built Transcript renders like the
+// pre-#305 const-width rail without setting the field.
+func (t Transcript) railWidthOrDefault() int {
+	if t.railWidth == 0 {
+		return defaultRailWidth
+	}
+	return t.railWidth
+}
+
+// setRailWidth stores the rail width and marks the shared layout cache dirty, so
+// the next render pass re-wraps the history at the new transcript width and
+// re-records the row layout (issue #305 AC4). scroll/follow survive because the
+// persisted viewport keeps its position; it is only re-sized, never re-created.
+func (t *Transcript) setRailWidth(w int) {
+	t.railWidth = w
+	t.layoutPtr().dirty = true
 }
 
 // renderPane renders the transcript + composer surface into the left pane. It

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -188,6 +189,62 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 	out := tx.viewWithRail(pane, 4)
 	if !strings.Contains(out, "STATS") || !strings.Contains(out, "│") {
 		t.Errorf("Transcript rail surface must render STATS + rail border, got: %q", out)
+	}
+}
+
+// TestTranscript_dynamicRailWidth proves the rail width is mutable state on the
+// Transcript (issue #305): setting the width re-derives the rail-shrunk
+// transcript width, re-renders the rail at the new width, and marks the layout
+// cache dirty so the next render pass re-wraps the history, so a future
+// drag-resize lands as one state write plus the normal render pass. The default
+// field value (0 -> defaultRailWidth) keeps hand-built Transcripts rendering
+// at the historical 30 columns.
+func TestTranscript_dynamicRailWidth(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	tx := Transcript{
+		theme:       th,
+		configTheme: config.DefaultTheme,
+		rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true,
+			"eitri-1", "/tmp/eitri-1"),
+		width:  120,
+		height: 30,
+	}
+
+	// Unset field: consumers fall back to the default 30-column width.
+	if d := tx.railWidthOrDefault(); d != 30 {
+		t.Errorf("railWidthOrDefault = %d, want default 30", d)
+	}
+	defaultTW := tx.transcriptWidth()
+	if defaultTW != 120-2-31 {
+		t.Errorf("transcriptWidth = %d at default width, want %d", defaultTW, 120-2-31)
+	}
+
+	// A narrower rail yields the transcript more columns and re-renders the
+	// rail strip narrower (left border still present). The setter marks the
+	// shared layout cache dirty so the next render re-wraps at the new width.
+	tx.setRailWidth(22)
+	if tx.railWidthOrDefault() != 22 {
+		t.Errorf("railWidthOrDefault = %d after set, want 22", tx.railWidthOrDefault())
+	}
+	if tw := tx.transcriptWidth(); tw != 120-2-23 {
+		t.Errorf("transcriptWidth = %d at railWidth 22, want %d", tw, 120-2-23)
+	}
+	if !tx.layoutPtr().dirty {
+		t.Errorf("setRailWidth must mark the layout cache dirty (re-wrap trigger), got clean")
+	}
+	rails := strings.Split(tx.viewWithRail(tx.renderPane("band\n"), 4), "\n")
+	bordered := false
+	for _, ln := range rails {
+		if w := lipgloss.Width(ln); w > 120 {
+			t.Errorf("surface row width %d exceeds terminal 120 at railWidth 22: %q", w, ln)
+		}
+		if strings.Contains(ln, g("│", "|")) {
+			bordered = true
+		}
+	}
+	if !bordered {
+		t.Errorf("rail must still render its left border at width 22, got:\n%q", strings.Join(rails, "\n"))
 	}
 }
 

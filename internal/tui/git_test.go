@@ -52,12 +52,12 @@ func TestGitBranch(t *testing.T) {
 // SetBranch is called, and omits it otherwise (statusline telemetry).
 func TestRailBranchRenders(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", true, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme)
+	view := r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if contains := strings.Contains(view, "branch"); contains {
 		t.Errorf("no branch set: CONTEXT must omit the branch line, got: %q", view)
 	}
 	r.SetBranch("main")
-	view = r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme)
+	view = r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if !strings.Contains(view, "branch main") {
 		t.Errorf("CONTEXT missing branch line, got: %q", view)
 	}
