@@ -76,6 +76,77 @@ func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	b.WriteString(s + "\n")
 }
 
+// railKeyWidth returns the key column width for aligned rail rows at a given
+// rail width. Below minWidthRail the default (unpadded) layout is used; above
+// it the key column widens in steps so values right-align and the rail reads
+// as a stat ledger. The returned width is the total columns occupied by the
+// "  " indent plus the key text plus padding, so values start at a consistent
+// column when used with lineAligned.
+func railKeyWidth(railWidth int) int {
+	switch {
+	case railWidth >= 55:
+		return 16
+	case railWidth >= 45:
+		return 14
+	case railWidth >= minWidthRail:
+		return 12
+	default:
+		return 0 // 0 signals the caller to fall back to the unpadded line()
+	}
+}
+
+// minWidthRail is the rail width at which aligned key-value rendering kicks in.
+// Below this threshold the default unpadded layout is preserved: values are
+// space-separated after the key and truncated to the content width.
+const minWidthRail = 36
+
+// lineAligned appends one indented rail entry with the key padded to keyWidth
+// columns, aligning values at a consistent column for readability at wider
+// widths. When keyWidth is 0 it falls back to the unpadded line(). The usable
+// row width is railWidth minus 2 (border + indent). Values that would overflow
+// are truncated with a trailing ellipsis.
+func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWidth int) {
+	if keyWidth == 0 {
+		r.line(b, key, val, railWidth)
+		return
+	}
+	indent := "  "
+	keyCol := indent + key
+	// Pad key to keyColWidth columns; if key is already wider, don't pad.
+	target := keyColWidth(keyWidth)
+	if pw := lipgloss.Width(keyCol); pw < target {
+		keyCol += strings.Repeat(" ", target-pw)
+	}
+	s := keyCol
+	if val != "" {
+		s += " " + val
+	}
+	contentWidth := railWidth - 2
+	if lipgloss.Width(s) > contentWidth {
+		var sb strings.Builder
+		w := 0
+		for _, ru := range s {
+			if w+1 > contentWidth-1 {
+				break
+			}
+			sb.WriteRune(ru)
+			w++
+		}
+		s = sb.String() + g("…", "...")
+	}
+	b.WriteString(s + "\n")
+}
+
+// keyColWidth returns the actual column width for a padded key column. The
+// keyWidth parameter is a target; the function ensures a minimum so short keys
+// still have breathing room.
+func keyColWidth(keyWidth int) int {
+	if keyWidth < 8 {
+		return 8
+	}
+	return keyWidth
+}
+
 // render returns the rail's rendered STATS/CONTEXT/MODEL block, each
 // section tinted with its per-section hue from the theme palette — the header
 // bold, the body lines in the same hue — so the sections read apart at a
@@ -125,11 +196,12 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 		maxTurns = te.maxTurns
 	}
 	var body strings.Builder
-	r.line(&body, "cache", fmt.Sprintf("%.0f%%", pct), railWidth)
-	r.line(&body, "cost", formatCost(cost), railWidth)
-	r.line(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), railWidth)
-	r.line(&body, "elapsed", formatElapsed(elapsed), railWidth)
-	r.line(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), railWidth)
+	kw := railKeyWidth(railWidth)
+	r.lineAligned(&body, "cache", fmt.Sprintf("%.0f%%", pct), kw, railWidth)
+	r.lineAligned(&body, "cost", formatCost(cost), kw, railWidth)
+	r.lineAligned(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), kw, railWidth)
+	r.lineAligned(&body, "elapsed", formatElapsed(elapsed), kw, railWidth)
+	r.lineAligned(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), kw, railWidth)
 	// The ctx line reflects the LIVE per-turn context-window size, replaced each
 	// usage event and so shrinking after a compaction — unlike the cumulative
 	// tokens/cost lines above. It reads via the same formatTokens
@@ -151,10 +223,11 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railContext, "CONTEXT") + "\n")
 	var body strings.Builder
-	r.line(&body, "session", r.sessionID, railWidth)
-	r.line(&body, "temp", r.sessionTemp, railWidth)
+	kw := railKeyWidth(railWidth)
+	r.lineAligned(&body, "session", r.sessionID, kw, railWidth)
+	r.lineAligned(&body, "temp", r.sessionTemp, kw, railWidth)
 	if r.branch != "" {
-		r.line(&body, "branch", r.branch, railWidth)
+		r.lineAligned(&body, "branch", r.branch, kw, railWidth)
 	}
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
@@ -169,12 +242,13 @@ func (r *Rail) renderModel(th Theme, railWidth int) string {
 	if effort == "" {
 		effort = "n/a"
 	}
-	r.line(&body, "effort", effort, railWidth)
+	kw := railKeyWidth(railWidth)
+	r.lineAligned(&body, "effort", effort, kw, railWidth)
 	thinking := "off"
 	if r.thinking {
 		thinking = "on"
 	}
-	r.line(&body, "thinking", thinking, railWidth)
+	r.lineAligned(&body, "thinking", thinking, kw, railWidth)
 	return b.String() + th.railBody(railModel, strings.TrimRight(body.String(), "\n"))
 }
 
@@ -199,7 +273,8 @@ func formatTokens(n int) string {
 // persistent while live >= threshold.
 func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 	var b strings.Builder
-	r.line(&b, "ctx", formatTokens(liveCtx), railWidth)
+	kw := railKeyWidth(railWidth)
+	r.lineAligned(&b, "ctx", formatTokens(liveCtx), kw, railWidth)
 	line := strings.TrimRight(b.String(), "\n")
 	if liveCtx >= liveContextWarnThreshold {
 		line = lipgloss.NewStyle().Foreground(th.error).Render(line)
