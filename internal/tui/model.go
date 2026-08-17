@@ -348,11 +348,12 @@ type Model struct {
 	// only sees the resulting setRailWidth writes.
 	railDrag *railDrag
 
-	// borderClick is the timestamp of the most recent clean left click on the
-	// rail border (press+release with no motion). Paired with now, it
-	// recognizes the rail's double-click reset (issue #308): a second clean
-	// border click within doubleClickWindow resets the rail to the default
-	// width instead of starting a drag.
+	// borderClick is the timestamp of a border press that is the first click
+	// of a potential double-click pair. Paired with now, it recognizes the
+	// rail's double-click reset (issue #308): a second border press within
+	// doubleClickWindow of the first resets the rail to the default width. The
+	// arm is cleared by motion (drag), by an off-border press, and by the
+	// reset itself, so only two clean border presses can pair.
 	borderClick time.Time
 	// now is the clock the double-click window reads, injectable so tests pin
 	// the time between clicks. Defaults to time.Now.
