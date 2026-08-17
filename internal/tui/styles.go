@@ -64,7 +64,6 @@ type Theme struct {
 	// bottom band matches the colorized right rail.
 	bandStatusStyle lipgloss.Style
 
-	// railHeaderStyles / railBodyStyles render the right rail's sections
 	// railHeaderStyles / railBodyStyles render the right rail's sections:
 	// bold headers and body lines, each in its section's hue.
 	railHeaderStyles [3]lipgloss.Style
