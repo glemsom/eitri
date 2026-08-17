@@ -64,9 +64,9 @@ func (t Transcript) railBorderColumn() int {
 // railDragFor reports whether a left press at (x,y) starts a rail drag, and the
 // drag state it starts with. A press starts a rail drag only when it lands
 // within railBorderHitZone columns of the rail's left border and on a row the
-// rail occupies (above the fixed bottom band, mirroring mouseToContent's region
-// math). Where it starts is decided here so a border press can never begin a
-// text selection (issue #306).
+// rail occupies (above the fixed bottom band, see inScrollRegion). Where it
+// starts is decided here so a border press can never begin a text selection
+// (issue #306).
 func (m Model) railDragFor(x, y int) (railDrag, bool) {
 	if !m.tx.railVisible() || m.tx.width <= 0 {
 		return railDrag{}, false
@@ -75,11 +75,19 @@ func (m Model) railDragFor(x, y int) (railDrag, bool) {
 	if x < border-railBorderHitZone || x > border+railBorderHitZone {
 		return railDrag{}, false
 	}
-	bandLines := m.bandHeight()
-	if y < 0 || y >= m.tx.height-bandLines {
+	if !m.inScrollRegion(y) {
 		return railDrag{}, false
 	}
 	return railDrag{startWidth: m.tx.railWidthOrDefault(), startX: x}, true
+}
+
+// inScrollRegion reports whether a screen row y falls inside the history scroll
+// region: the rows above the fixed bottom band. Both the rail-drag hit test and
+// the drag-select coordinate mapping guard against events that land on the
+// band, so the boundary is decided once here and the two never drift (issue
+// #306).
+func (m Model) inScrollRegion(y int) bool {
+	return y >= 0 && y < m.tx.height-m.bandHeight()
 }
 
 // clampRailWidth clamps a requested rail width to the drag's legal range: the
@@ -228,8 +236,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	// The scroll region occupies the rows above the fixed bottom band; mirror
 	// renderPane's region math so screen rows map to the viewport's visible
 	// lines exactly.
-	bandLines := m.bandHeight()
-	if y < 0 || y >= m.tx.height-bandLines {
+	if !m.inScrollRegion(y) {
 		return 0, 0, false
 	}
 	row := y

@@ -606,6 +606,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.width = msgi.Width
 		m.tx.height = msgi.Height
+		// A resize moves the rail's border column, so an in-progress width drag
+		// would keep computing deltas against the stale press position; drop the
+		// drag state so the next border press re-anchors at the new border
+		// (issue #306).
+		m.railDrag = nil
 		m.syncWidths()
 		m.tx.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil

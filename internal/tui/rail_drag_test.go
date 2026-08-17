@@ -48,23 +48,22 @@ func railDragMsg(action string, x, y int) tea.Msg {
 		return tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}
 	case "motion":
 		return tea.MouseMotionMsg{Button: tea.MouseLeft, X: x, Y: y}
-	default:
+	case "release":
 		return tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y}
+	default:
+		panic("railDragMsg: unknown action " + action)
 	}
 }
 
-// borderRow returns a screen row the rail occupies: the rail spans the rows
-// above the fixed bottom band, so any row in [0, height-bandHeight) is on the
-// rail. Row 0 is returned (the workspace header row, which the rail overlays).
-func (m Model) borderRow() int { return 0 }
-
 // railDragPressMotion drags the rail border from its CURRENT position by dx
 // columns in one gesture: the border moves with the width, so the press x is
-// always the live border (issue #306). Returns the model after release.
+// always the live border (issue #306). y=0 is a real rail row: the rail spans
+// the rows above the fixed bottom band and overlays the workspace header row.
+// Returns the model after release.
 func railDragPressMotion(t *testing.T, m Model, dx int) Model {
 	t.Helper()
 	border := m.tx.railBorderColumn()
-	row := m.borderRow()
+	row := 0
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	m = mustUpdate(t, m, railDragMsg("motion", border+dx, row))
 	return mustUpdate(t, m, railDragMsg("release", border+dx, row))
@@ -79,7 +78,7 @@ func TestRailDrag_resizesLiveAndKeepsWidth(t *testing.T) {
 	m := railDragModel(t)
 	startW := m.tx.railWidthOrDefault()
 	border := m.tx.railBorderColumn()
-	row := m.borderRow()
+	row := 0 // any real rail row: above the fixed bottom band, overlaying the workspace header
 
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	if m.railDrag == nil {
@@ -162,7 +161,7 @@ func TestRailDrag_clampsToTranscriptFloor(t *testing.T) {
 	m = asModel(t, nm)
 	m.tx.railWidth = 0 // reset to the default so the border math uses it
 	border := m.tx.railBorderColumn()
-	row := m.borderRow()
+	row := 0 // any real rail row: above the fixed bottom band, overlaying the workspace header
 
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	m = mustUpdate(t, m, railDragMsg("motion", border+50, row))
@@ -184,7 +183,7 @@ func TestRailDrag_borderPressDoesNotStartDragSelect(t *testing.T) {
 	// Re-wire the clipboard to prove no copy happens on the border release.
 	m.clipboard = func(s string) error { copied = s; return nil }
 	border := m.tx.railBorderColumn()
-	row := m.borderRow()
+	row := 0 // any real rail row: above the fixed bottom band, overlaying the workspace header
 
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	m = mustUpdate(t, m, railDragMsg("motion", border+6, row))
@@ -243,7 +242,7 @@ func TestRailDrag_midHistoryDragStillSelects(t *testing.T) {
 // resizing the rail to both the min and max widths, every band row still spans
 // the full terminal width minus the 2-col gutter, and the rail border never
 // appears on a band row.
-func TestRailDrag_bandStaysEdgeToEdgeAssert(t *testing.T) {
+func TestRailDrag_bandStaysEdgeToEdge(t *testing.T) {
 	// Each subtest starts from a fresh model so the border math is clean: the
 	// rail starts at the default width and one gesture reaches the target (the
 	// clamp caps the over-shoot).
@@ -278,7 +277,7 @@ func TestRailDrag_bandStaysEdgeToEdgeAssert(t *testing.T) {
 func TestRailDrag_ignoredWhileSettingsOrPrompting(t *testing.T) {
 	m := railDragModel(t)
 	border := m.tx.railBorderColumn()
-	row := m.borderRow()
+	row := 0 // any real rail row: above the fixed bottom band, overlaying the workspace header
 	startW := m.tx.railWidthOrDefault()
 
 	// Settings surface open: the press must not start a rail drag.
@@ -291,5 +290,101 @@ func TestRailDrag_ignoredWhileSettingsOrPrompting(t *testing.T) {
 	}
 	if got := m.tx.railWidthOrDefault(); got != startW {
 		t.Errorf("rail width changed to %d while Settings open, want %d", got, startW)
+	}
+}
+
+// TestRailDrag_midDragResizeDropsStaleState asserts a window resize during an
+// active rail drag clears the drag state instead of silently keeping a stale
+// press anchor: the border column moves with the new terminal width, so the
+// next press must re-anchor there (issue #306).
+func TestRailDrag_midDragResizeDropsStaleState(t *testing.T) {
+	m := railDragModel(t)
+	border := m.tx.railBorderColumn()
+	row := 0
+
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	if m.railDrag == nil {
+		t.Fatal("border press must start a rail drag")
+	}
+	m = mustUpdate(t, m, railDragMsg("motion", border+8, row))
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
+		t.Fatalf("precondition: motion must resize the rail, got %d", got)
+	}
+
+	// Resize the terminal mid-drag: the width applied so far stays (it is
+	// session state, issue #306 AC1), but the drag must not keep running
+	// against the old border (now a different column at the new width).
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = asModel(t, nm)
+	if m.railDrag != nil {
+		t.Error("window resize mid-drag must clear the rail drag state")
+	}
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
+		t.Errorf("resize must keep the dragged width, got %d", got)
+	}
+}
+
+// TestRailDrag_ac3RewrapsLiveKeepsScrollPosition asserts the live re-wrap seam
+// (issue #306 AC3): dragging the rail border re-wraps the transcript while the
+// gesture is in flight (layout dirty + transcript width change), yet the
+// persisted viewport keeps its reading offset — follow stays broken after the
+// drag — and a scroll to the bottom re-engages follow afterwards, proving the
+// re-wrap never destroyed the persisted position.
+func TestRailDrag_ac3RewrapsLiveKeepsScrollPosition(t *testing.T) {
+	m := newTallHistoryModel(t)
+	// Wire the rail on the tall overflow model (newTallHistoryModel does not
+	// set one) and size it so the history genuinely overflows the viewport.
+	m.tx.rail = NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
+	m.tx.railWidth = defaultRailWidth
+	m = resizeTo(t, m, 120, 12)
+	_, histContent, vh := followRendered(m)
+	if lineCount(histContent) <= vh {
+		t.Fatalf("test must overflow: history (%d lines) should exceed viewport height (%d)", lineCount(histContent), vh)
+	}
+
+	// Scroll to a middle reading position with follow broken (issue #120 AC3).
+	m = mustUpdate(t, m, wheelMsg(true))
+	before := scrollOffset(m)
+	if before <= 0 || m.tx.histFollow {
+		t.Fatalf("precondition: need a broken-follow middle offset, got offset %d follow %v", before, m.tx.histFollow)
+	}
+
+	// Full drag gesture on the rail border (row 0 is a real rail row: the rail
+	// spans the rows above the fixed bottom band).
+	border := m.tx.railBorderColumn()
+	m = mustUpdate(t, m, railDragMsg("press", border, 0))
+	if m.railDrag == nil {
+		t.Fatal("border press must start a rail drag")
+	}
+	m = mustUpdate(t, m, railDragMsg("motion", border+40, 0))
+	m = mustUpdate(t, m, railDragMsg("release", border+40, 0))
+
+	// Re-wrap proof: the transcript width shrank and the layout is dirty at
+	// release (the re-wrap happens live during the drag, issue #306 AC3).
+	if got := m.tx.transcriptWidth(); got >= 120-2-defaultRailWidth {
+		t.Errorf("drag must narrow the transcript: width %d, want < %d", got, 120-2-defaultRailWidth)
+	}
+	if !m.tx.layout.dirty {
+		t.Error("drag must leave the layout dirty (transcript re-wrap)")
+	}
+
+	// The reading offset survives the re-wrap: the persisted viewport is only
+	// re-sized, never re-created, so the offset is unchanged and follow is
+	// still broken.
+	if after := scrollOffset(m); after != before {
+		t.Errorf("rail drag must keep the reading offset: got %d, want %d", after, before)
+	}
+	if m.tx.histFollow {
+		t.Error("rail drag must not re-engage follow")
+	}
+
+	// Re-engage follow by scrolling to the bottom (issue #120 AC1): the
+	// viewport still has its full scroll range after the re-wrap.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
+	if !m.tx.histViewport.AtBottom() {
+		t.Errorf("End after the drag must reach the bottom, got offset %d", scrollOffset(m))
+	}
+	if !m.tx.histFollow {
+		t.Error("reaching the bottom after the drag must re-engage follow")
 	}
 }
