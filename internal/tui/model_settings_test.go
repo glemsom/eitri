@@ -232,7 +232,10 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Config: cfgFixture(), // no Models seeded
-		DiscoverModels: func(ctx context.Context) ([]string, error) {
+		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
+			if cfg.Provider != cfgFixture().Provider {
+				t.Fatalf("DiscoverModels() provider = %q, want %q", cfg.Provider, cfgFixture().Provider)
+			}
 			return []string{"deepseek-v4-flash", "grok-2"}, nil
 		},
 	})
@@ -248,7 +251,7 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	}
 
 	// The discovery command's delivery folds the model list into the panel.
-	nm, _ := m.Update(discoverDoneMsg{models: []string{"deepseek-v4-flash", "grok-2"}})
+	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, models: []string{"deepseek-v4-flash", "grok-2"}})
 	m = asModel(t, nm)
 	if m.settings.discoverState != discoverIdle {
 		t.Fatalf("settings discoverState after delivery = %v, want discoverIdle", m.settings.discoverState)
@@ -267,14 +270,17 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Config: cfgFixture(), // no Models seeded
-		DiscoverModels: func(ctx context.Context) ([]string, error) {
+		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
+			if cfg.Provider != cfgFixture().Provider {
+				t.Fatalf("DiscoverModels() provider = %q, want %q", cfg.Provider, cfgFixture().Provider)
+			}
 			return nil, errors.New("connection refused")
 		},
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	// Fold in the discovery result (the async command's delivery).
-	nm, _ := m.Update(discoverDoneMsg{err: errors.New("connection refused")})
+	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, err: errors.New("connection refused")})
 	m = asModel(t, nm)
 
 	if m.settings.discoverState != discoverError {
@@ -295,6 +301,51 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 
 // TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
 // panel (light) persists to config through the Save seam (issue #130 AC4).
+func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.T) {
+	var providers []string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
+			providers = append(providers, cfg.Provider)
+			return []string{"gpt-4o"}, nil
+		},
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+
+	nm, cmd := m.Update(namedKey("down"))
+	m = asModel(t, nm)
+	if cmd == nil {
+		t.Fatal("provider change returned nil command, want discovery command")
+	}
+	if m.settings.discoverState != discoverLoading {
+		t.Fatalf("settings discoverState after provider change = %v, want discoverLoading", m.settings.discoverState)
+	}
+	if got := m.settings.cfg.Provider; got != "github-copilot" {
+		t.Fatalf("settings provider after change = %q, want github-copilot", got)
+	}
+	if len(providers) != 0 {
+		t.Fatalf("DiscoverModels() calls before command delivery = %v, want none", providers)
+	}
+	msg := cmd()
+	done, ok := msg.(discoverDoneMsg)
+	if !ok {
+		t.Fatalf("cmd() message = %T, want discoverDoneMsg", msg)
+	}
+	if len(providers) != 1 || providers[0] != "github-copilot" {
+		t.Fatalf("DiscoverModels() providers = %v, want [github-copilot]", providers)
+	}
+	nm, _ = m.Update(done)
+	m = asModel(t, nm)
+	if got := m.settings.Model(); got != "gpt-4o" {
+		t.Fatalf("settings Model after provider discovery = %q, want gpt-4o", got)
+	}
+}
+
 func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{

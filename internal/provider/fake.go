@@ -30,15 +30,20 @@ func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 	return &fakeStream{ev: newSSE(bytes.NewReader(data)), acc: newToolAccumulator()}, nil
 }
 
-// fakeModels is the deterministic model list the Fake surface, standing in for
-// provider model discovery at the engine/app test seam. It mirrors the
+// fakeModels is the deterministic model catalog the Fake surfaces, standing in
+// for provider model discovery at the engine/app test seam. It mirrors the
 // primary provider's default lineup so a discovery fixture surfaces real ids.
-var fakeModels = []string{"deepseek-v4-flash", "deepseek-v4", "grok-2", "kimi"}
+var fakeModels = []ModelInfo{
+	{ID: "deepseek-v4-flash", EndpointKind: EndpointChatCompletions},
+	{ID: "deepseek-v4", EndpointKind: EndpointChatCompletions},
+	{ID: "grok-2", EndpointKind: EndpointChatCompletions},
+	{ID: "kimi", EndpointKind: EndpointChatCompletions},
+}
 
 // Models implements the optional ModelLister capability, returning the fixture
-// model list so discovery is testable without a network.
-func (f *Fake) Models(_ context.Context) ([]string, error) {
-	return append([]string(nil), fakeModels...), nil
+// model catalog so discovery is testable without a network.
+func (f *Fake) Models(_ context.Context) ([]ModelInfo, error) {
+	return append([]ModelInfo(nil), fakeModels...), nil
 }
 
 // fakeStream adapts the parsed SSE events into the Stream seam, accumulating

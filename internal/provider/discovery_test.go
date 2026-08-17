@@ -30,8 +30,11 @@ func TestOpenAIDiscoversModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Models() error = %v, want nil", err)
 	}
-	if len(models) != 3 || models[0] != "deepseek-v4-flash" {
+	if len(models) != 3 || models[0].ID != "deepseek-v4-flash" {
 		t.Fatalf("Models() = %v, want [deepseek-v4-flash deepseek-v4 grok-2]", models)
+	}
+	if models[0].EndpointKind != EndpointChatCompletions {
+		t.Fatalf("Models()[0].EndpointKind = %q, want %q", models[0].EndpointKind, EndpointChatCompletions)
 	}
 }
 
@@ -67,9 +70,12 @@ func TestFakeDiscoversModels(t *testing.T) {
 		t.Fatalf("Fake.Models() = empty, want the fixture model list")
 	}
 	want := "deepseek-v4-flash"
-	found := slices.Contains(models, want)
+	found := slices.ContainsFunc(models, func(m ModelInfo) bool { return m.ID == want })
 	if !found {
 		t.Fatalf("Fake.Models() = %v, want it to include %q", models, want)
+	}
+	if models[0].EndpointKind != EndpointChatCompletions {
+		t.Fatalf("Fake.Models()[0].EndpointKind = %q, want %q", models[0].EndpointKind, EndpointChatCompletions)
 	}
 }
 

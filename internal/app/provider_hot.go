@@ -34,7 +34,7 @@ func (h *hotProvider) Stream(ctx context.Context, req provider.Request) (provide
 	return h.current().Stream(ctx, req)
 }
 
-func (h *hotProvider) Models(ctx context.Context) ([]string, error) {
+func (h *hotProvider) Models(ctx context.Context) ([]provider.ModelInfo, error) {
 	l, ok := h.current().(provider.ModelLister)
 	if !ok {
 		return nil, provider.ErrNoDiscovery

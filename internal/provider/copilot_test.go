@@ -190,6 +190,55 @@ func TestCopilotWorksAfterTUIReAuth(t *testing.T) {
 	}
 }
 
+func TestCopilotDiscoversResponsesOnlyModelEndpoint(t *testing.T) {
+	chatReqs := 0
+	responsesReqs := 0
+	modelsReqs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			modelsReqs++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5.4-mini","endpoints":["responses"]}]}`))
+		case "/chat/completions":
+			chatReqs++
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"model \"gpt-5.4-mini\" is not accessible via the /chat/completions endpoint","code":"unsupported_api_for_model"}}`))
+		case "/responses":
+			responsesReqs++
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello world\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.4-mini\",\"created_at\":1,\"usage\":{\"input_tokens\":7,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":0}},\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello world\"}]}]}}\n\n")
+		default:
+			t.Fatalf("path = %s, want /models or /responses", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	models, err := cp.Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models() error = %v, want nil", err)
+	}
+	if len(models) != 1 || models[0].ID != "gpt-5.4-mini" {
+		t.Fatalf("Models() = %v, want one gpt-5.4-mini model", models)
+	}
+	if models[0].EndpointKind != EndpointResponses {
+		t.Fatalf("Models()[0].EndpointKind = %q, want %q", models[0].EndpointKind, EndpointResponses)
+	}
+
+	s, err := cp.Stream(context.Background(), Request{Model: "gpt-5.4-mini", Messages: []Message{{Role: RoleUser, Content: "hello"}}})
+	if err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	if _, err := drainOne(s); err != nil {
+		t.Fatalf("responses stream: %v", err)
+	}
+	if modelsReqs != 1 || chatReqs != 0 || responsesReqs != 1 {
+		t.Fatalf("path counts models=%d chat=%d responses=%d, want 1/0/1", modelsReqs, chatReqs, responsesReqs)
+	}
+}
+
 func TestCopilotRetriesResponsesForResponsesOnlyModel(t *testing.T) {
 	chatReqs := 0
 	responsesReqs := 0

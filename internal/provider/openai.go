@@ -28,11 +28,12 @@ func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 }
 
 // Models implements ModelLister: it GETs the provider's /models endpoint and
-// returns the list of available model IDs. The models URL
-// is derived from the Chat-Completions endpoint by stripping the
-// /chat/completions suffix; the response
-// shape being the OpenAI-standard {"data":[{"id":...}]}.
-func (o *OpenAICompatible) Models(ctx context.Context) ([]string, error) {
+// returns the discovered model catalog. The models URL is derived from the
+// Chat-Completions endpoint by stripping the /chat/completions suffix; the
+// response shape is the OpenAI-standard {"data":[{"id":...}]}. OpenAI-
+// compatible providers stream only Chat-Completions here, so every discovered
+// model defaults to that endpoint kind unless richer metadata says otherwise.
+func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	base := strings.TrimSuffix(o.url, "/chat/completions")
 	modelsURL := strings.TrimSuffix(base, "/") + "/models"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
@@ -56,19 +57,64 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(out.Data))
+	models := make([]ModelInfo, 0, len(out.Data))
 	for _, m := range out.Data {
-		ids = append(ids, m.ID)
+		kind := inferEndpointKind(m)
+		if kind == EndpointUnknown {
+			kind = EndpointChatCompletions
+		}
+		models = append(models, ModelInfo{ID: m.ID, EndpointKind: kind})
 	}
-	return ids, nil
+	return models, nil
 }
 
-// modelList is the OpenAI-standard model-discovery response shape; only the id
-// fields are surfaced today.
+// modelList is the OpenAI-standard model-discovery response shape plus optional
+// endpoint metadata some providers may surface.
 type modelList struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
+	Data []modelListEntry `json:"data"`
+}
+
+type modelListEntry struct {
+	ID                 string          `json:"id"`
+	Endpoints          []string        `json:"endpoints,omitempty"`
+	SupportedEndpoints []string        `json:"supported_endpoints,omitempty"`
+	Capabilities       map[string]bool `json:"capabilities,omitempty"`
+}
+
+func inferEndpointKind(m modelListEntry) EndpointKind {
+	for _, endpoints := range [][]string{m.Endpoints, m.SupportedEndpoints} {
+		for _, e := range endpoints {
+			switch normalizeEndpoint(e) {
+			case EndpointResponses:
+				return EndpointResponses
+			case EndpointChatCompletions:
+				return EndpointChatCompletions
+			}
+		}
+	}
+	if m.Capabilities["responses"] {
+		return EndpointResponses
+	}
+	if m.Capabilities["chat_completions"] || m.Capabilities["chat/completions"] {
+		return EndpointChatCompletions
+	}
+	return EndpointUnknown
+}
+
+func normalizeEndpoint(s string) EndpointKind {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.TrimPrefix(s, "/")
+	s = strings.TrimPrefix(s, "v1/")
+	s = strings.TrimPrefix(s, "openai/")
+	s = strings.TrimSpace(s)
+	switch s {
+	case "responses":
+		return EndpointResponses
+	case "chat/completions", "chat_completions", "chat-completions":
+		return EndpointChatCompletions
+	default:
+		return EndpointUnknown
+	}
 }
 
 // Stream implements Provider with an HTTP Chat-Completions request.

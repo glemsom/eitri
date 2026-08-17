@@ -407,13 +407,45 @@ type Provider interface {
 	Stream(ctx context.Context, req Request) (Stream, error)
 }
 
+// EndpointKind is discovered per-model transport routing: which provider wire
+// a model should use on first contact.
+type EndpointKind string
+
+const (
+	// EndpointUnknown means discovery surfaced no endpoint metadata; callers may
+	// probe/fallback at runtime.
+	EndpointUnknown EndpointKind = "unknown"
+	// EndpointChatCompletions means the model accepts the Chat-Completions wire.
+	EndpointChatCompletions EndpointKind = "chat_completions"
+	// EndpointResponses means the model requires the Responses wire.
+	EndpointResponses EndpointKind = "responses"
+)
+
+// ModelInfo is one discovered model plus any routing metadata the provider
+// surfaced. Today Settings needs the ID list, and Copilot uses EndpointKind to
+// skip a known-bad first call to /chat/completions.
+type ModelInfo struct {
+	ID           string
+	EndpointKind EndpointKind
+}
+
+// ModelIDs projects a discovered catalog to its ordered model-id list.
+func ModelIDs(models []ModelInfo) []string {
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	return ids
+}
+
 // ModelLister is an optional capability a Provider may expose: discovering the
-// available model IDs from the configured provider so the Settings surface can
-// offer a picker without hand-editing config. It is a
-// separate interface so minimal/test providers (Scripted) need not implement
-// it; callers type-assert and treat absence as "no discovery" rather than error.
+// available models from the configured provider so the Settings surface can
+// offer a picker without hand-editing config, and the runtime can learn model-
+// specific routing metadata. It is a separate interface so minimal/test
+// providers (Scripted) need not implement it; callers type-assert and treat
+// absence as "no discovery" rather than error.
 type ModelLister interface {
-	Models(ctx context.Context) ([]string, error)
+	Models(ctx context.Context) ([]ModelInfo, error)
 }
 
 // consume reads a Stream to completion, returning the concatenated assistant

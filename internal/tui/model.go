@@ -162,12 +162,14 @@ type loginDoneMsg struct {
 	err error
 }
 
-// discoverDoneMsg reports the outcome of an on-demand provider model discovery
-// started when the Settings surface opened (issue #89 AC2). models is the
-// discovered list on success; err carries the failure otherwise.
+// discoverDoneMsg reports the outcome of one on-demand provider model
+// discovery started from Settings (issue #89 AC2). provider tags the draft
+// provider the request was issued for so stale results from an earlier draft
+// switch can be dropped.
 type discoverDoneMsg struct {
-	models []string
-	err    error
+	provider string
+	models   []string
+	err      error
 }
 
 // SkillItem is one detected skill surfaced to the TUI's slash-command surface:
@@ -208,11 +210,12 @@ type Dependencies struct {
 	// Models is the provider-discovered model list surfaced in Settings.
 	Models []string
 	// DiscoverModels, when non-nil, is an on-demand provider model-discovery
-	// seam (issue #89 AC2): it is invoked when the Settings surface opens with
-	// no pre-seeded Models list, and the panel reports loading/error states
-	// rather than failing silently. Nil disables on-demand discovery (the
-	// pre-seeded list, or the configured model alone, is shown).
-	DiscoverModels func(ctx context.Context) ([]string, error)
+	// seam (issue #89 AC2): it is invoked for the current Settings draft when
+	// the panel opens with no pre-seeded Models list, and again when the draft
+	// provider changes, so provider selection re-discovers that provider's
+	// model lineup before Save. Nil disables on-demand discovery (the pre-
+	// seeded list, or the configured model alone, is shown).
+	DiscoverModels func(ctx context.Context, cfg config.Config) ([]string, error)
 	// Config is the loaded config seeded into the Settings draft.
 	Config config.Config
 	// Save persists a Settings edit to the config layer. When nil, Settings can
@@ -864,11 +867,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings == nil {
 			return m, nil
 		}
+		if m.settings.cfg.Provider != msgi.provider {
+			return m, nil
+		}
 		m.settings.models = msgi.models
+		m.deps.Models = append([]string(nil), msgi.models...)
 		m.settings.discoverState = discoverIdle
+		m.settings.discoverErr = ""
 		if msgi.err != nil {
 			m.settings.discoverErr = msgi.err.Error()
 			m.settings.discoverState = discoverError
+			return m, nil
+		}
+		if len(msgi.models) != 0 && indexOf(msgi.models, m.settings.cfg.Model) < 0 {
+			m.settings.cfg.Model = msgi.models[0]
 		}
 		return m, nil
 
@@ -956,7 +968,7 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	sf.discoverState = discoverLoading
-	return m, discoverCmd(m.deps.DiscoverModels)
+	return m, discoverCmd(m.deps.DiscoverModels, sf.cfg)
 }
 
 // updateSettings drives the Settings surface from key input.
@@ -981,9 +993,19 @@ func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		s.next()
 	case "up", "shift+up", "left":
+		before := s.cfg.Provider
 		s.adjust(-1)
+		if s.cfg.Provider != before {
+			m.settings = s
+			return m, m.maybeDiscoverSettingsModels(s)
+		}
 	case "down", "shift+down", "right":
+		before := s.cfg.Provider
 		s.adjust(1)
+		if s.cfg.Provider != before {
+			m.settings = s
+			return m, m.maybeDiscoverSettingsModels(s)
+		}
 	default:
 		// Free-form editing on the paths field: type to append, backspace to
 		// delete the trailing char. msgi.Text (not String) is appended so a
@@ -999,6 +1021,16 @@ func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	m.settings = s
 	return m, nil
+}
+
+func (m *Model) maybeDiscoverSettingsModels(s *settingsForm) tea.Cmd {
+	if m.deps.DiscoverModels == nil || s == nil {
+		return nil
+	}
+	s.discoverState = discoverLoading
+	s.discoverErr = ""
+	s.models = []string{s.cfg.Model}
+	return discoverCmd(m.deps.DiscoverModels, s.cfg)
 }
 
 // save persists the Settings draft via the Save seam and closes the surface.
@@ -1207,12 +1239,12 @@ func (m Model) startLogin() (tea.Model, tea.Cmd) {
 // discoverCmd runs one on-demand provider model discovery off the main loop and
 // reports its result (issue #89 AC2). It keeps the provider seam (Models) off
 // the UI goroutine so discovery latency never blocks rendering.
-func discoverCmd(discover func(ctx context.Context) ([]string, error)) tea.Cmd {
+func discoverCmd(discover func(ctx context.Context, cfg config.Config) ([]string, error), cfg config.Config) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		models, err := discover(ctx)
-		return discoverDoneMsg{models: models, err: err}
+		models, err := discover(ctx, cfg)
+		return discoverDoneMsg{provider: cfg.Provider, models: models, err: err}
 	})
 }
 

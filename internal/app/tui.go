@@ -85,7 +85,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// On-demand provider model discovery for the Settings panel (issue #89
 		// AC2): the provider's GET /v1/models list is fetched when the panel
 		// opens, with loading/error states surfaced instead of failing silently.
-		DiscoverModels: discoveredModels(p),
+		DiscoverModels: discoveredModels(cfgPath),
 		// The workspace directory is surfaced as read-only project state (issue
 		// #82 AC1): the run operates here, shown as a header above the transcript.
 		WorkspacePath: workspace,
@@ -100,9 +100,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			}
 		},
 		Telemetry: te,
-		Stream:        stream,
-		Tools:         tools,
-		Rail:          rail,
+		Stream:    stream,
+		Tools:     tools,
+		Rail:      rail,
 		// The run's provider thinking-suppression capability (issue #265 AC-3):
 		// the Settings panel warns when thinking is off but the provider cannot
 		// actually silence reasoning on the wire. The seam is derived here from
@@ -246,21 +246,27 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	}
 }
 
-// discoveredModels surfaces the provider's available model ids via the
+// discoveredModels surfaces the draft config's provider model ids via the
 // optional ModelLister capability, as an on-demand seam for the Settings panel
-// (issue #89 AC2). A provider without the capability (or nil) returns a clean
-// ErrNoDiscovery rather than failing the TUI boot; the panel renders it as the
-// discovery error state.
-func discoveredModels(p provider.Provider) func(ctx context.Context) ([]string, error) {
-	return func(ctx context.Context) ([]string, error) {
-		if p == nil {
-			return nil, provider.ErrNoDiscovery
+// (issue #89 AC2). It builds the draft's provider so switching provider inside
+// Settings re-discovers against that provider before Save. A provider without
+// the capability returns a clean ErrNoDiscovery rather than failing TUI boot;
+// the panel renders it as discovery error state.
+func discoveredModels(cfgPath string) func(ctx context.Context, cfg config.Config) ([]string, error) {
+	return func(ctx context.Context, cfg config.Config) ([]string, error) {
+		p, err := buildProvider(cfg, cfgPath)
+		if err != nil {
+			return nil, err
 		}
 		lister, ok := p.(provider.ModelLister)
 		if !ok {
 			return nil, provider.ErrNoDiscovery
 		}
-		return lister.Models(ctx)
+		models, err := lister.Models(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return provider.ModelIDs(models), nil
 	}
 }
 

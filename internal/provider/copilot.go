@@ -212,8 +212,10 @@ func retryResponses(err error) bool {
 // Models implements the optional ModelLister capability so the TUI Settings
 // surface can surface the Copilot model lineup. The models URL is derived from
 // the Chat-Completions url by stripping the /chat/completions suffix, mirroring
-// the primary provider's derivation.
-func (cp *CopilotProvider) Models(ctx context.Context) ([]string, error) {
+// the primary provider's derivation. Any discovered Responses-only model is
+// cached into the runtime routing map so first contact skips the known-bad chat
+// endpoint.
+func (cp *CopilotProvider) Models(ctx context.Context) ([]ModelInfo, error) {
 	tok, err := cp.bearer(ctx)
 	if err != nil {
 		return nil, err
@@ -241,9 +243,13 @@ func (cp *CopilotProvider) Models(ctx context.Context) ([]string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(out.Data))
+	models := make([]ModelInfo, 0, len(out.Data))
 	for _, m := range out.Data {
-		ids = append(ids, m.ID)
+		kind := inferEndpointKind(m)
+		if kind == EndpointResponses {
+			cp.rememberResponsesModel(m.ID)
+		}
+		models = append(models, ModelInfo{ID: m.ID, EndpointKind: kind})
 	}
-	return ids, nil
+	return models, nil
 }

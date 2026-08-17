@@ -55,7 +55,7 @@ func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
 
 type namedProvider struct {
 	name     string
-	models   []string
+	models   []provider.ModelInfo
 	controls []provider.GenerationControl
 	calls    *[]string
 }
@@ -65,7 +65,7 @@ func (p *namedProvider) Stream(context.Context, provider.Request) (provider.Stre
 	return provider.StreamFunc(provider.Chunk{Done: true, FinishReason: "stop"}), nil
 }
 
-func (p *namedProvider) Models(context.Context) ([]string, error) { return p.models, nil }
+func (p *namedProvider) Models(context.Context) ([]provider.ModelInfo, error) { return p.models, nil }
 
 func (p *namedProvider) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
 	return p.controls, nil
@@ -78,7 +78,7 @@ func TestHotProviderSwapsCapabilities(t *testing.T) {
 	var calls []string
 	h := newHotProvider(&namedProvider{
 		name:     "first",
-		models:   []string{"m1"},
+		models:   []provider.ModelInfo{{ID: "m1", EndpointKind: provider.EndpointChatCompletions}},
 		controls: []provider.GenerationControl{provider.GenerationControlGenerationBudget},
 		calls:    &calls,
 	})
@@ -90,7 +90,7 @@ func TestHotProviderSwapsCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Models() error = %v, want nil", err)
 	}
-	if len(models) != 1 || models[0] != "m1" {
+	if len(models) != 1 || models[0].ID != "m1" {
 		t.Fatalf("first Models() = %v, want [m1]", models)
 	}
 	honored, err := provider.NegotiateGenerationControls(context.Background(), h, []provider.ControlRequirement{{
@@ -105,7 +105,7 @@ func TestHotProviderSwapsCapabilities(t *testing.T) {
 
 	h.Set(&namedProvider{
 		name:     "second",
-		models:   []string{"m2"},
+		models:   []provider.ModelInfo{{ID: "m2", EndpointKind: provider.EndpointChatCompletions}},
 		controls: []provider.GenerationControl{provider.GenerationControlThinkingSuppression},
 		calls:    &calls,
 	})
@@ -116,7 +116,7 @@ func TestHotProviderSwapsCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Models() error = %v, want nil", err)
 	}
-	if len(models) != 1 || models[0] != "m2" {
+	if len(models) != 1 || models[0].ID != "m2" {
 		t.Fatalf("second Models() = %v, want [m2]", models)
 	}
 	honored, err = provider.NegotiateGenerationControls(context.Background(), h, []provider.ControlRequirement{{
