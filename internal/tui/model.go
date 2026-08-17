@@ -295,11 +295,6 @@ type Model struct {
 	// place and never keeps a second transcript state copy. See transcript.go.
 	tx Transcript
 
-	// vimNormal is the composer's vim normal mode (benchmark §4.4): esc toggles
-	// it, and while active h/j/k/l navigate the draft instead of inserting
-	// text (see vimKey).
-	vimNormal bool
-
 	// settings state: non-nil means the Settings surface is open.
 	settings *settingsForm
 	savedMsg string
@@ -620,23 +615,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Review overlay is gone (issue #276): ctrl+d is deliberately released,
 		// not re-mapped, so there is no dedicated key routing before the composer.
-		// Vim normal mode (benchmark §4.4 table stakes): while active, the
-		// composer accepts no text — h/j/k/l and w/b/0/$ move the caret through
-		// the textarea's own movement handlers, i/a/enter/esc return to insert
-		// mode. Routed before the composer switch so submit/edit keys never
-		// fire from normal mode.
-		if m.vimNormal {
-			return m.vimKey(msgi)
-		}
 		switch msgi.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "esc":
-			// No overlay open: esc toggles vim normal mode in the composer.
-			// Overlays (settings/prompt) close on esc before this case.
-			m.vimNormal = true
-			m.syncComposerRail()
-			return m, nil
 		case "ctrl+s":
 			return m.startSettings()
 		case "pgup", "home":
@@ -1503,60 +1484,15 @@ type transcriptLayout struct {
 	builds int
 }
 
-// vimKey routes a keypress while the composer is in vim normal mode: motion
-// keys map onto the textarea's own movement handlers (so caret geometry stays
-// consistent), i/a/enter/esc return to insert mode without inserting or
-// submitting, and every other printable key is ignored — normal mode never
-// types. ctrl+c still quits.
-func (m Model) vimKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	var mapped *tea.KeyPressMsg
-	switch msg.String() {
-	case "h":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyLeft}
-	case "l":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyRight}
-	case "j":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyDown}
-	case "k":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyUp}
-	case "w":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModAlt} // word forward
-	case "b":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModAlt} // word backward
-	case "0":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyHome}
-	case "$":
-		mapped = &tea.KeyPressMsg{Code: tea.KeyEnd}
-	case "i", "a", "enter", "esc":
-		// Return to insert mode: the key is consumed (never inserted, never
-		// submitted) so the draft is untouched by the mode switch.
-		m.vimNormal = false
-		m.syncComposerRail()
-		return m, nil
-	case "ctrl+c":
-		return m, tea.Quit
-	default:
-		return m, nil // normal mode ignores everything else
-	}
-	nm, cmd := m.composer.Update(*mapped)
-	m.composer = nm
-	return m, cmd
-}
-
 // syncComposerRail recolors the composer's prompt rail by editing state: the
 // accent rail signals an editable composer, while a running turn makes the
 // composer inert, so the rail dims to a muted accent
 // (state-as-color — the mode-colored composer border pattern, benchmark
-// §4.3/§4.4). The rail's glyph and width never change, so the caret geometry
+// §4.3). The rail's glyph and width never change, so the caret geometry
 // is untouched.
 func (m *Model) syncComposerRail() {
 	c := m.tx.theme.accent
-	switch {
-	case m.vimNormal:
-		// Vim normal mode: the rail sits between accent (insert) and the busy
-		// dim — a distinct, calmer shade signals "navigating, not typing".
-		c = dimmed(m.tx.theme.accent, 0.6)
-	case m.tx.busy:
+	if m.tx.busy {
 		c = dimmed(m.tx.theme.accent, 0.45)
 	}
 	st := m.composer.Styles()
@@ -1588,7 +1524,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		if m.tx.busy {
 			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
 		}
-		statusRow += m.tx.theme.statusStyle.Render(bandHints(m.vimNormal))
+		statusRow += m.tx.theme.statusStyle.Render(bandHints())
 		// The status strip is edge-to-edge with the rest of the band (issue
 		// #232 AC1): pad it to the full band width so it runs under the rail's
 		// right column instead of stopping short. The separator and composer

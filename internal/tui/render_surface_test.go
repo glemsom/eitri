@@ -126,37 +126,18 @@ func TestRender_thinkingHeader(t *testing.T) {
 	}
 }
 
-// TestRender_bandHints table-tests the status-strip keybinding hint sets by the
-// value input it takes — vim-normal — proving bandHints is a value-only
-// (vimNormal bool) → string function that never reads a live *Model (issue
-// #210). The review-open hint set (enter diff / o browser / ctrl+d close) went
-// with the modal review panel (issue #276), and the released Ctrl+D key is
-// deliberately never advertised.
+// TestRender_bandHints pins the status-strip keybinding hint set: only the
+// regular bindings are advertised — ctrl+s settings, ctrl+o copy, ctrl+e
+// expand, shift+enter newline. The vim-normal hint set went with vim mode
+// (issue #309). The review-open hint set (enter diff / o browser / ctrl+d
+// close) went with the modal review panel (issue #276), and the released
+// Ctrl+D key is deliberately never advertised.
 func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
-	cases := []struct {
-		name      string
-		vimNormal bool
-		want      string
-	}{
-		{
-			name:      "normal",
-			vimNormal: false,
-			want:      "ctrl+s settings . ctrl+o copy . ctrl+e expand . shift+enter newline",
-		},
-		{
-			name:      "vim-normal",
-			vimNormal: true,
-			want:      "h j k l move . w b word . 0 $ line . i insert . esc exit",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := bandHints(c.vimNormal)
-			if got != c.want {
-				t.Errorf("bandHints(%v) = %q, want %q", c.vimNormal, got, c.want)
-			}
-		})
+	got := bandHints()
+	want := "ctrl+s settings . ctrl+o copy . ctrl+e expand . shift+enter newline"
+	if got != want {
+		t.Errorf("bandHints() = %q, want %q", got, want)
 	}
 }

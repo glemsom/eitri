@@ -140,16 +140,12 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 // bandHints returns the keybinding hint strip for the status row (benchmark
 // §4.4: one consistent hint system from the central keymap). Hints are the
 // real, wired bindings — never advertised keys that no-op. It sits on the
-// value-only render surface (issue #208) with a single bool input rather than
-// taking the Model, so the hint sets stay table-testable without a live model
-// (issue #210); model.go's renderBand is the only taken*Model-free site.
+// value-only render surface (issue #208) so the hint set stays table-testable
+// without a live model (issue #210); model.go's renderBand is the only
+// *Model-free site.
 // The modal review panel's hints (ctrl+d review / enter diff / o browser) went
 // with the panel (issue #276); Ctrl+D itself is deliberately unbound and so
-// never advertised.
-
-func bandHints(vimNormal bool) string {
-	if vimNormal {
-		return strings.Join([]string{"h j k l move", "w b word", "0 $ line", "i insert", "esc exit"}, g(" · ", " . "))
-	}
+// never advertised. The vim-normal hint set went with vim mode (issue #309).
+func bandHints() string {
 	return strings.Join([]string{"ctrl+s settings", "ctrl+o copy", "ctrl+e expand", "shift+enter newline"}, g(" · ", " . "))
 }
