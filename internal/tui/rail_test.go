@@ -640,3 +640,58 @@ func TestRailWideAlignment(t *testing.T) {
 		t.Errorf("values not aligned at wide width: cache value starts at %d, cost value starts at %d\n  cache: %q\n  cost:  %q", cacheValIdx, costValIdx, cachePlain, costPlain)
 	}
 }
+
+// TestRailRenderWideNoOverflow asserts no rail line exceeds the rail width at
+// wide widths (issue #307 AC1 — no content overflow or wrap).
+func TestRailRenderWideNoOverflow(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	for _, w := range []int{40, 50, 60, 80} {
+		view := r.render(te, defaultTheme, w)
+		for _, ln := range strings.Split(strings.TrimRight(view, "\n"), "\n") {
+			stripped := plain(ln)
+			if lw := lipgloss.Width(stripped); lw > w {
+				t.Errorf("wide rail line %d columns wide at width %d, max %d: %q", lw, w, w, stripped)
+			}
+		}
+	}
+}
+
+// TestRailWideValuesFuller asserts that values at wider widths show more content
+// than at default width — the rail actually pays off the extra columns
+// (issue #307 AC1).
+func TestRailWideValuesFuller(t *testing.T) {
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+
+	// Default width: provider/model truncated.
+	defView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
+	// Wide width: provider/model should NOT be truncated.
+	wideView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, 55)
+
+	// At default, provider/model is truncated with ellipsis.
+	if !strings.Contains(defView, "opencode-go/deepseek-v4-f…") {
+		t.Errorf("default width should truncate provider/model, got: %q", defView)
+	}
+	// At wide, provider/model fits fully.
+	if !strings.Contains(wideView, "opencode-go/deepseek-v4-flash") {
+		t.Errorf("wide width should show full provider/model, got: %q", wideView)
+	}
+	// The tokens line at wide width should show more than at default.
+	defTokens := lineContaining(defView, "tokens")
+	wideTokens := lineContaining(wideView, "tokens")
+	if defTokens == "" || wideTokens == "" {
+		t.Fatalf("missing tokens line: default=%q wide=%q", defTokens, wideTokens)
+	}
+	defPlain := plain(defTokens)
+	widePlain := plain(wideTokens)
+	if len(widePlain) < len(defPlain) {
+		t.Errorf("wide tokens line shorter than default: %d vs %d\n  default: %q\n  wide:    %q", len(widePlain), len(defPlain), defPlain, widePlain)
+	}
+}

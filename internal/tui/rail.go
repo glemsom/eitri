@@ -96,15 +96,15 @@ func railKeyWidth(railWidth int) int {
 }
 
 // minWidthRail is the rail width at which aligned key-value rendering kicks in.
-// Below this threshold the default unpadded layout (issue #307) is preserved:
-// values are space-separated after the key and truncated to the content width.
+// Below this threshold the default unpadded layout is preserved: values are
+// space-separated after the key and truncated to the content width.
 const minWidthRail = 36
 
 // lineAligned appends one indented rail entry with the key padded to keyWidth
 // columns, aligning values at a consistent column for readability at wider
-// widths (issue #307). When keyWidth is 0 it falls back to the unpadded line().
-// The usable row width is railWidth minus 2 (border + indent). Values that
-// would overflow are truncated with a trailing ellipsis.
+// widths. When keyWidth is 0 it falls back to the unpadded line(). The usable
+// row width is railWidth minus 2 (border + indent). Values that would overflow
+// are truncated with a trailing ellipsis.
 func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWidth int) {
 	if keyWidth == 0 {
 		r.line(b, key, val, railWidth)
@@ -138,8 +138,8 @@ func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWi
 }
 
 // keyColWidth returns the actual column width for a padded key column. The
-// keyWidth parameter is a target; the function ensures a minimum of 8 columns
-// so short keys still have breathing room.
+// keyWidth parameter is a target; the function ensures a minimum so short keys
+// still have breathing room.
 func keyColWidth(keyWidth int) int {
 	if keyWidth < 8 {
 		return 8
