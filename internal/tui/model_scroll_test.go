@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// This file covers the T2 scroll-navigation seam (issue #120): the history
+// This file covers the T2 scroll-navigation seam : the history
 // viewport is user-navigable (mouse wheel + PgUp/PgDn/Home/End), scrolling up
 // breaks the follow position so reading stays put, and a new submit re-follows
 // the newest output. Navigation drives the persisted bubbletea/viewport seam
@@ -39,7 +39,7 @@ func scrollOffset(m Model) int {
 
 // TestScroll_pagingKeysNavigateTranscript asserts PgUp/PgDn move the transcript
 // by a viewport's worth of lines, and Home/End jump to the top/bottom — the
-// keyed navigation seam (issue #120 AC2).
+// keyed navigation seam .
 func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 	m := scrollOverflowModel(t)
 	// Fresh model follows the newest output: starting offset is at the bottom.
@@ -81,7 +81,7 @@ func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 // TestScroll_scrollUpBreaksFollow asserts scrolling up breaks the follow
 // position: after a PgUp/Home the persisted viewport stops re-anchoring to the
 // newest output, so a re-render holds the earlier reading offset instead of
-// being yanked back down to the newest (issue #120 AC3).
+// being yanked back down to the newest .
 func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
@@ -104,8 +104,8 @@ func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 }
 
 // wheelMsg builds a mouse-wheel scroll event so the T2 wheel seam can be
-// driven through the model's Update (issue #120 AC1). bubbletea v2 delivers
-// the wheel as its own tea.MouseWheelMsg (pass 2, issue #146).
+// driven through the model's Update . bubbletea v2 delivers
+// the wheel as its own tea.MouseWheelMsg (pass 2, ).
 func wheelMsg(up bool) tea.Msg {
 	btn := tea.MouseWheelDown
 	if up {
@@ -115,7 +115,7 @@ func wheelMsg(up bool) tea.Msg {
 }
 
 // TestScroll_mouseWheelNavigatesTranscript asserts the mouse wheel scrolls the
-// transcript and breaks follow when scrolling up (issue #120 AC1/AC3): wheel-up
+// transcript and breaks follow when scrolling up : wheel-up
 // moves the viewport toward older output and stops re-anchoring to the newest;
 // wheel-down reaches the bottom re-engages follow.
 func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
@@ -146,7 +146,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 }
 
 // TestScroll_newSubmitRefollowsNewest asserts a new submitted turn re-engages
-// the follow position (issue #120 AC3 "a new message appends, then re-follows"):
+// the follow position :
 // after scrolling up, submitting a new prompt returns the viewport to the newest
 // output instead of holding the stale reading offset.
 func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
@@ -178,7 +178,7 @@ func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 }
 
 // TestScroll_navigationDoesNotStealComposerFocus asserts T2 navigation does not
-// corrupt composer input focus (issue #120 AC4): arrow keys still edit the
+// corrupt composer input focus : arrow keys still edit the
 // composer, and paging keys that navigate the transcript leave the composer's
 // focused value untouched.
 func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {

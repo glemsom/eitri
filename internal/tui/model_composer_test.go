@@ -10,7 +10,7 @@ import (
 
 // TestModel_enterSubmitsAndClearsComposer asserts the plain Enter key submits
 // the current prompt and clears the composer back to a single empty row —
-// never inserting a newline into the draft (issue #121 AC1). The submit path
+// never inserting a newline into the draft . The submit path
 // (turn command + busy flag) is the existing behaviour and must be preserved.
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	var got []string
@@ -36,7 +36,7 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 
 // TestModel_shiftEnterInsertsNewlineWithoutSubmitting asserts Shift+Enter
 // (surfaced by Bubble Tea as the line-feed key, KeyCtrlJ) inserts a line
-// break into the draft instead of submitting it (issue #121 AC2): after the
+// break into the draft instead of submitting it : after the
 // key the turn seam has seen nothing and the composer holds the two-line
 // draft.
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
@@ -64,7 +64,7 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 // TestModel_shiftEnterCsiUInsertsNewline asserts Shift+Enter delivered through
 // the enhanced (CSI u / kitty) keyboard protocol — decoded by Bubble Tea v2 as
 // Code KeyEnter with ModShift, String() "shift+enter" — inserts a line break
-// instead of submitting (issue #121 AC2). Terminals with keyboard
+// instead of submitting . Terminals with keyboard
 // enhancements enabled (kitty, WezTerm, ghostty, Windows Terminal) send CSI u
 // for Shift+Enter rather than the legacy line-feed byte, so the plain "ctrl+j"
 // case never sees it and the key currently falls through as a no-op.
@@ -99,7 +99,7 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 }
 
 // TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
-// composer cycle (issue #126 AC3 / #121 AC2): Shift+Enter builds a two-line
+// composer cycle : Shift+Enter builds a two-line
 // draft, plain Enter submits it verbatim to the engine seam, and the composer
 // clears back to one row. The newlines the user typed must reach the turn
 // seam, not be flattened or dropped.
@@ -137,7 +137,7 @@ func newlineShiftEnter(t *testing.T, m Model) Model {
 
 // TestModel_composerGrowsWithDraftLines asserts the composer grows within the
 // bottom band as the draft gains lines, one row per hard newline, up to the
-// maxComposerRows bound (issue #121 AC5): a short draft stays compact instead
+// maxComposerRows bound : a short draft stays compact instead
 // of the fixed-height composer of the pre-pivot TUI, and an over-long draft
 // caps at the bound rather than growing without limit.
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
@@ -170,7 +170,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 // TestModel_composerGrowsForSoftWrappedLines asserts the composer also grows
 // for soft-wrapped rows: a single hard line wider than the composer wraps
 // across several terminal rows, and the composer tracks them so the draft is
-// visible without clipping (issue #121 AC5).
+// visible without clipping .
 func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
@@ -185,7 +185,7 @@ func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 }
 
 // TestModel_composerLongDraftBandPinned asserts an over-bound draft never
-// pushes the transcript or band off-screen (issue #121 AC5/AC6): the composer
+// pushes the transcript or band off-screen : the composer
 // caps at maxComposerRows and scrolls internally (its rendered rows never
 // exceed the cap), the band stays the bottom-pinned last region, and the total
 // view never exceeds the terminal height — the history viewport yields rows
@@ -227,7 +227,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 
 // TestModel_statusAndSlashPinnedAboveComposer asserts the status strip and the
 // slash-completion list stay pinned above the composer regardless of composer
-// height (issue #121 AC6): with a telemetry strip, a `/...` partial, and a
+// height : with a telemetry strip, a `/...` partial, and a
 // soft-wrapped grown composer all present, the content order is status strip,
 // slash completion, then the composer as the final region.
 func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
@@ -264,7 +264,7 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 	}
 
 	// Find the status strip row (the keybinding hints — the bottom band's
-	// status line is hints-only now, issue #228) and the slash
+	// status line is hints-only now, ) and the slash
 	// completion row (the ▸ marker of the candidate list); both above the
 	// composer block.
 	statusIdx, slashIdx := -1, -1

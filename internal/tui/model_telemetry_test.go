@@ -25,7 +25,7 @@ func newTelemetryModel(t *testing.T, te *Telemetry, rail *Rail) Model {
 
 // TestModelStatusStripHintsOnly asserts the bottom status strip renders the
 // keybinding hints and the busy spinner only — no telemetry numbers — while
-// session stats live in the right rail's STATS section (issue #228).
+// session stats live in the right rail's STATS section .
 func TestModelStatusStripHintsOnly(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -45,7 +45,7 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 		t.Errorf("right rail missing cost, got: %q", content)
 	}
 
-	// The bottom band is hints-only (issue #228): it renders the keybinding
+	// The bottom band is hints-only : it renders the keybinding
 	// hints and no telemetry readouts (those live solely in the rail).
 	var band strings.Builder
 	m.renderBand(&band)
@@ -62,7 +62,7 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 
 // TestModelTelemetryDrainsLiveUpdates asserts feeding an update into the
 // telemetry channel and running Update folds it into the telemetry surface,
-// which the right rail then renders (issue #227/#228).
+// which the right rail then renders .
 func TestModelTelemetryDrainsLiveUpdates(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")

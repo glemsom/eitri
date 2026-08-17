@@ -12,7 +12,7 @@ import (
 // TestBusySpinner_animatesAndStops asserts the busy indicator is an animated
 // braille spinner that advances on spinnerTickMsg while a turn runs, re-issues
 // the tick, and stops (no re-tick, frame reset) once the turn completes
-// (issue #211).
+// .
 func TestBusySpinner_animatesAndStops(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -54,7 +54,7 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 }
 
 // TestBusySpinner_reducedMotionFallsBack asserts the EITRI_NO_MOTION opt-out
-// switches the busy indicator to the static "… thinking" line (issue #211:
+// switches the busy indicator to the static "… thinking" line (:
 // reduced-motion gate; the locale/UTF-8 fallback shares the same line).
 func TestBusySpinner_reducedMotionFallsBack(t *testing.T) {
 	t.Setenv("EITRI_NO_MOTION", "1")
@@ -93,7 +93,7 @@ func newestBusyLine(m Model) string {
 
 // TestToolElapsed_timerRenders asserts a completed tool whose execution took a
 // second or more carries the elapsed-time readout on its entry head, while
-// sub-second tools stay silent (issue #211 / benchmark §4.1).
+// sub-second tools stay silent .
 func TestToolElapsed_timerRenders(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -170,7 +170,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 // TestIdleWelcome_showsOnEmptyHidesAfterTurn asserts the empty transcript
 // renders the designed welcome block (brand mark + hints) and it disappears
 // once the first turn lands — the idle surface reads as designed, not blank,
-// and never competes with real content (issue #212).
+// and never competes with real content .
 func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

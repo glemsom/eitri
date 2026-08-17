@@ -125,7 +125,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 
 // TestModel_thinkingHintReportsTokensAndEffort asserts the collapsed thinking
 // hint is a one-line summary carrying a reason-token estimate and the
-// reasoning-effort tier (issue #85 AC2: "🤔 1.4k tok · medium").
+// reasoning-effort tier .
 func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -163,7 +163,7 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	// First reasoning delta creates the block, then tab expands it (issue #85
+	// First reasoning delta creates the block, then tab expands it (
 	// AC3: the user can watch reasoning on demand).
 	m = applyReasoningDelta(t, m, "hidden reasoning")
 	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -182,7 +182,7 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 // TestModel_railRendersNoSkillsSection asserts the right context rail renders
 // STATS / CONTEXT / MODEL only — no SKILLS section, no skill listing, no
 // activation state — even on a wide window where the rail auto-shows with a
-// detected skills surface wired (issue #188). Skills still activate via the
+// detected skills surface wired . Skills still activate via the
 // slash-command surface, just not in the rail.
 func TestModel_railRendersNoSkillsSection(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -310,7 +310,7 @@ func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	nm, next := m.Update(msg)
 	m = asModel(t, nm)
 	// Thread the returned command through so a follow-up turn (e.g. a skill-
-	// args turn queued by a skillDoneMsg handler, issue #239) chains: the next
+	// args turn queued by a skillDoneMsg handler, ) chains: the next
 	// command runs and its message is delivered in order. Plain turns return
 	// nil here so this is a no-op for them.
 	return runSubmitted(t, m, next)
@@ -357,7 +357,7 @@ func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 // TestModel_workspaceStateSurfaced asserts the TUI surfaces the project's
 // read-only state — the workspace path — as a header line above the transcript
 // when supplied, so the user always sees which directory they're operating in
-// (issue #82 AC1). The line is informational/read-only: opening the model with
+// . The line is informational/read-only: opening the model with
 // no workspace (the plain chat default) renders no such line.
 func TestModel_workspaceStateSurfaced(t *testing.T) {
 	m := NewModelCfg(Dependencies{

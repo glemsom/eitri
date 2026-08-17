@@ -15,7 +15,7 @@ import (
 
 // TestModel_ctrlOCopiesTranscript drives a one-turn conversation, presses
 // Ctrl+O, and asserts the full plain-text transcript reaches the clipboard seam
-// and the band reports the copy (issue #123 AC1): the user prompt, the
+// and the band reports the copy : the user prompt, the
 // assistant answer, and the per-turn reasoning block are all copied, with no
 // ANSI styling leaking into the pasted text.
 func TestModel_ctrlOCopiesTranscript(t *testing.T) {
@@ -53,7 +53,7 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 
 // TestModel_ctrlOHidesReasoningWhenThinkingOff drives a thinking-off turn whose
 // backend still returns reasoning, presses Ctrl+O, and asserts the reasoning
-// block is NOT copied (issue #264): the display-layer gate hides chain-of-thought
+// block is NOT copied : the display-layer gate hides chain-of-thought
 // for a turn that didn't request thinking, regardless of what the backend sent.
 func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 	var copied string
@@ -81,7 +81,7 @@ func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 
 // TestModel_copySlashCopiesTranscript drives `/copy` through the slash-command
 // surface: the transcript is copied and the command never reaches the engine
-// seam as a prompt (issue #123 AC2).
+// seam as a prompt .
 func TestModel_copySlashCopiesTranscript(t *testing.T) {
 	var copied string
 	var prompted []string
@@ -113,7 +113,7 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 }
 
 // TestModel_copyFailureReportsNote asserts a clipboard failure surfaces as a
-// visible status note instead of failing silently (issue #123 AC3).
+// visible status note instead of failing silently .
 func TestModel_copyFailureReportsNote(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -135,7 +135,7 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 // TestModel_copyFallsBackToOSC52 drives Ctrl+O with a failing injected
 // clipboard and a captured fallback output: the copy succeeds through the OSC
 // 52 terminal-clipboard sequence, the transcript text lands in the captured
-// writer, and the band reports "copied" (issue #201 AC1, AC6). The injected
+// writer, and the band reports "copied" . The injected
 // OSC52Out stands in for os.Stdout so no real terminal is needed.
 func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	var out bytes.Buffer
@@ -159,7 +159,7 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	if !strings.HasSuffix(seq, "\x07") {
 		t.Errorf("fallback output must end with the BEL terminator, got: %q", seq)
 	}
-	// The payload is base64-encoded UTF-8 (issue #200); decode it to assert the
+	// The payload is base64-encoded UTF-8 ; decode it to assert the
 	// full transcript text reached the fallback writer.
 	payload := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b]52;c;"), "\x07")
 	decoded, err := base64.StdEncoding.DecodeString(payload)
@@ -176,7 +176,7 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 
 // TestModel_copyDoesNotMutateConversation asserts copying never touches the
 // transcript or the agent loop: no message is added/removed/altered and the
-// model stays out of the busy state (issue #123 AC4).
+// model stays out of the busy state .
 func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -205,7 +205,7 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 }
 
 // TestModel_copySlashShowsInCompletion asserts a bare `/` lists the built-in
-// /copy command alongside /settings, and tab cycles to it (issue #123 AC2:
+// /copy command alongside /settings, and tab cycles to it (:
 // the copy command is discoverable from the command surface).
 func TestModel_copySlashShowsInCompletion(t *testing.T) {
 	m := NewModelCfg(Dependencies{

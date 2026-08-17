@@ -62,7 +62,7 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 // TestModel_toolEntryCollapsedThenExpandable asserts a tool result collapses to
 // a summary by default (never dumping the raw output into the scroll) and
 // expands on demand to the full inline result — the lossless-recovery path
-// (issue #84 AC2, AC4).
+// .
 func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
@@ -108,7 +108,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 }
 
 // TestModel_toolFeedDrainsLiveUpdates asserts feeding a start then a result
-// into the feed channel pairs into a single complete entry (issue #84).
+// into the feed channel pairs into a single complete entry .
 func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
@@ -223,7 +223,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 }
 
 // TestModel_ctrlETogglesExpandedViewMode asserts Ctrl+E toggles the persistent
-// expanded-view mode on the Model's owned Transcript (issue #273 AC1): the key
+// expanded-view mode on the Model's owned Transcript : the key
 // flips the single expandAll flag on→off→on, each press sticky until the next.
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 	feed := NewToolFeed()
@@ -262,7 +262,7 @@ func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 
 // TestModel_expandedViewModeAppliesToNewlyDeliveredEntries asserts the Ctrl+E
 // expanded-view mode applies to entries delivered AFTER the mode is enabled
-// (issue #273 AC: mode applies to newly delivered entries): a tool result that
+// : a tool result that
 // lands while the mode is ON renders its full result, past
 // entries too, because render reads the live flag over the whole log.
 func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {

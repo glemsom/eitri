@@ -33,7 +33,7 @@ func TestRenderMarkdown_representativeBlocks(t *testing.T) {
 }
 
 // TestRenderMarkdown_allSupportedThemes renders a representative Markdown
-// sample with each of the 7 supported themes (issue #129) and asserts the
+// sample with each of the 7 supported themes and asserts the
 // renderer never errors, so a user-selected theme always renders. "ascii" is
 // deliberately excluded from the supported set.
 func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
 }
 
 // TestRenderMarkdown_emptyThemeIsDark verifies an empty theme renders exactly
-// as the default dark theme (issue #129): an unset config key must not change
+// as the default dark theme : an unset config key must not change
 // rendering.
 func TestRenderMarkdown_emptyThemeIsDark(t *testing.T) {
 	in := "# Heading\n\nSome **bold** text.\n"

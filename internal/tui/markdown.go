@@ -1,7 +1,7 @@
 // Package tui provides the interactive fullscreen TUI a developer drives a
 // session in. It is built on the Charm stack (Bubble Tea v2 + Lip Gloss v2 +
 // Bubbles v2) with Glamour v2 over goldmark for Markdown→ANSI, and renders
-// through the alternate screen (T1 pivot, issue #119) so every frame is a
+// through the alternate screen (T1 pivot, ) so every frame is a
 // clean full-surface repaint into the alt buffer.
 //
 // The TUI sits on the same run engine as batch mode: it reads and writes the
@@ -37,7 +37,7 @@ var supportedThemes = []string{
 // Tea + Glamour over goldmark, custom-renderer allowed): a nil error is always
 // returned unless the renderer cannot be constructed. An empty or unknown
 // theme (including the excluded "ascii") falls back to "dark" and never
-// errors (issue #129).
+// errors .
 func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if width <= 0 {
 		width = 100
@@ -45,11 +45,11 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if !isSupportedTheme(theme) {
 		theme = config.DefaultTheme
 	}
-	// The "auto" theme (issue #129) resolves to dark/light by the terminal
+	// The "auto" theme resolves to dark/light by the terminal
 	// background, mirroring glamour v1's WithAutoStyle. glamour v2 is pure — it
 	// always renders the same output for the same style — and Bubble Tea v2
 	// downsamples colors at the output layer, so the v1 WithColorProfile forcing
-	// (termenv.ANSI256) is dropped (pass 4, issue #148). The TUI is the only
+	// (termenv.ANSI256) is dropped (pass 4, ). The TUI is the only
 	// caller and always runs on a color-capable TTY (the boot guard refuses
 	// non-interactive contexts), so no notty fallback is needed here.
 	if theme == "auto" {
@@ -86,7 +86,7 @@ func glamourStyleFor(theme string) string {
 
 // markdownRemapFor builds the per-theme remap from glamour's fixed 256-color
 // semantic indices (per styles/{dark,light}.json) onto the active chrome
-// palette's truecolor hues (issue #212): glamour renders with its own ANSI-256
+// palette's truecolor hues : glamour renders with its own ANSI-256
 // indices (heading blue 38;5;39 = #00afff), which clash with the chrome
 // palette's truecolor tokens — two blue families on one surface. Remapping the
 // semantic indices (heading, link, code, image, …) to the matching chrome hues

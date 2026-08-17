@@ -16,7 +16,7 @@ func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 }
 
 // ctrlD delivers the previously-review-bound ctrl+d keypress (released in
-// issue #276) to the model and returns the resulting view.
+// ) to the model and returns the resulting view.
 func ctrlD(t *testing.T, m Model) Model {
 	t.Helper()
 	return mustUpdate(t, m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
@@ -43,12 +43,12 @@ func fileEditModel(t *testing.T) Model {
 }
 
 // TestCtrlD_unbound asserts the released Ctrl+D keybinding does nothing at
-// all (issue #276): it neither opens a review surface nor disturbs the
+// all : it neither opens a review surface nor disturbs the
 // transcript or composer, whether or not the session has changed files. The
-// regression the panel's empty-state guard used to cover (issue #90's
+// regression the panel's empty-state guard used to cover ('s
 // "no changes" surface) is subsumed: there is no surface to open. In-flow
 // file-change inspection is covered by the expanded-card tests in
-// toolcard_diff_test.go and render_regions_test.go (Ctrl+E path, issue #275).
+// toolcard_diff_test.go and render_regions_test.go (Ctrl+E path, ).
 func TestCtrlD_unbound(t *testing.T) {
 	t.Run("no-changed-files", func(t *testing.T) {
 		m := NewModelCfg(Dependencies{

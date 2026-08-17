@@ -10,7 +10,7 @@ import (
 
 // railBandModel builds a sized chat model wired with both a telemetry strip
 // (so the band carries a status row) and the right context rail, at the given
-// terminal dimensions. It is the fixture for the issue #232 edge-to-edge bottom
+// terminal dimensions. It is the fixture for the edge-to-edge bottom
 // band tests.
 func railBandModel(t *testing.T, w, h int) Model {
 	t.Helper()
@@ -43,7 +43,7 @@ func bandRowsFrom(plain string) (sep int, rows []string) {
 	return sep, lines[sep:]
 }
 
-// TestModelBandSpansFullTerminalWidthTall pins issue #232 AC1/AC3/AC5 on a tall
+// TestModelBandSpansFullTerminalWidthTall pins /AC3/AC5 on a tall
 // rail-visible terminal: the band now spans the full terminal width (minus the
 // 2-col gutter) all the way under the right rail. Previously the band stopped
 // at the transcript width, leaving a dead railWidth x bandHeight blank corner to
@@ -83,7 +83,7 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	}
 }
 
-// TestModelHistoryWrapsAtTranscriptWidthWithRail pins issue #232 AC4: the
+// TestModelHistoryWrapsAtTranscriptWidthWithRail pins : the
 // history pane must keep wrapping to leave room for the rail (unchanged wrap
 // width) even though the bottom band now spans full width. renderHistory must
 // set its wrap/pane width from transcriptWidth() (rail-shrunk), not from the
@@ -114,7 +114,7 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 	}
 }
 
-// TestModelRailEndsOneRowAboveBand pins issue #232 AC4: the rail is height-bound
+// TestModelRailEndsOneRowAboveBand pins : the rail is height-bound
 // by railClampHeight() = height - bandHeight(), so even when the rail content is
 // taller than the room above the band, it clamps to end exactly one row above
 // the band's top and never overlaps it. On a short window the rail content
@@ -150,7 +150,7 @@ func TestModelRailEndsOneRowAboveBand(t *testing.T) {
 	}
 }
 
-// TestModelRailEndsOneRowAboveBandTall pins issue #232 AC2 at a TALL rail-visible
+// TestModelRailEndsOneRowAboveBandTall pins at a TALL rail-visible
 // terminal: the right rail must extend to exactly one row above the band top at
 // every terminal height, never overlapping it. On a tall window the ~14-row
 // STATS/CONTEXT/MODEL block is shorter than the room above the band, so styledRail
@@ -189,7 +189,7 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 	}
 }
 
-// TestModelComposerCaretStaysCorrectWithRail pins issue #232 AC6: widening the
+// TestModelComposerCaretStaysCorrectWithRail pins : widening the
 // band to the full terminal width leaves the composer at column 0 (band
 // bottom-pinned), so the hardware caret geometry is unchanged with the rail
 // visible at a tall height — the caret stays at the prompt column and follows
@@ -213,7 +213,7 @@ func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
 	}
 }
 
-// TestModelComposerCaretStaysCorrectWithRailWrapped pins issue #232 AC6 for a
+// TestModelComposerCaretStaysCorrectWithRailWrapped pins for a
 // soft-wrapped draft: the composer box grew with bandWidth to the full terminal
 // width, so a draft that wraps to multiple composer rows still places the caret
 // at the end of the true visible edit row under the rail.
@@ -226,7 +226,7 @@ func TestModelComposerCaretStaysCorrectWithRailWrapped(t *testing.T) {
 	caretAtEndOfVisibleRow(t, m, "a")
 }
 
-// tallBandHeights is the issue #233 regression-lock size sweep: tall rail-visible
+// tallBandHeights is the regression-lock size sweep: tall rail-visible
 // windows (height > 25 rows) where the rail's ~14-row content is shorter than the
 // room above the band, so the pre-#232 layout left a dead railWidth x bandHeight
 // blank corner under the rail (the band stopped at the rail-shrunk transcript
@@ -271,7 +271,7 @@ func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
 	return sep, rows
 }
 
-// TestModelBandSpansFullWidthUnderRailTallSweep pins issue #233 AC1/AC3 across
+// TestModelBandSpansFullWidthUnderRailTallSweep pins /AC3 across
 // ALL tall rail-visible window sizes, not just the single 120x40 case the #232
 // tests use. Pre-#232 the bandWidth seam was rail-shrunk, so at every tall
 // height the band stopped at transcriptWidth and left a dead railWidth x
@@ -309,7 +309,7 @@ func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
 	}
 }
 
-// TestModelRailEndsOneRowAboveBandTallSweep pins issue #233 AC2 across ALL tall
+// TestModelRailEndsOneRowAboveBandTallSweep pins across ALL tall
 // rail-visible window sizes: the rail's content must fill down to exactly one
 // row above the band top — never overlapping it and never stopping early above
 // it — at every height in the sweep. Pre-#232 styledRail trimmed long content
