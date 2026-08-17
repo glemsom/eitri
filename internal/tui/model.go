@@ -665,6 +665,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// not re-mapped, so there is no dedicated key routing before the composer.
 		switch msgi.String() {
 		case "ctrl+c":
+			// Ctrl+C stops a running turn or quits when idle: a natural
+			// dual binding where the action matches the current state.
+			if m.tx.busy {
+				m.stopTurn()
+				return m, nil
+			}
 			return m, tea.Quit
 		case "esc":
 			// esc while a turn runs stops it: the cancel handle aborts the
@@ -1639,9 +1645,9 @@ func (m Model) renderBand(b *strings.Builder) {
 		}
 		hints := bandHints()
 		if m.tx.busy {
-			// esc stops the running turn; it is a real binding only while a turn
-			// runs, so the idle hint set stays unchanged.
-			hints += g(" · ", " . ") + "esc stop"
+			// ctrl+C stops the running turn; it is a real binding only while a
+			// turn runs, so the idle hint set stays unchanged.
+			hints += g(" · ", " . ") + "ctrl+c stop"
 		}
 		statusRow += m.tx.theme.statusStyle.Render(hints)
 		// The status strip is edge-to-edge with the rest of the band (issue
