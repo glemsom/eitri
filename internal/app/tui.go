@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -30,6 +31,13 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 		}
 		res, err := runAgent(e, cur, reg, sessionKey, prompt, skillInject, canContinue)
 		if err != nil {
+			// The engine's stop sentinel means the user stopped the turn (esc in
+			// the TUI): the run's partial answer/reasoning ride the result, and
+			// the TUI keeps them on screen marked stopped instead of rendering
+			// the cancellation as an error. Any other error fails the turn.
+			if errors.Is(err, engine.ErrStopped) {
+				return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning, Stopped: true}, nil
+			}
 			return tui.TurnResult{}, err
 		}
 		// Reasoning rides the same turn seam as the answer so the TUI can render

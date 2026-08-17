@@ -25,3 +25,9 @@ func g(utf8, ascii string) string {
 // ASCII "! " fallback. The engine writes it, and the pane-border check in
 // renderHistory matches it, so both sides must agree.
 func failurePrefix() string { return g("⚠ ", "! ") }
+
+// stoppedMarker returns the suffix marking a user-stopped turn's partial
+// output ("⏹ stopped"), with its ASCII "! stopped" fallback. renderHistory
+// appends it under the stopped message's pane so the aborted turn reads as
+// deliberately stopped, never as an error.
+func stoppedMarker() string { return g("⏹ stopped", "! stopped") }

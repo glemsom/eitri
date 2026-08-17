@@ -343,11 +343,19 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		} else {
 			md, _ := RenderMarkdown(msg.content, w-2, t.configTheme)
 			pane := t.theme.agentPaneStyle
-			if strings.HasPrefix(msg.content, failurePrefix()) {
+			if msg.stopped {
+				// A user-stopped turn keeps its partial output in a distinct
+				// pane (accent-dimmed, not error red) with the stopped marker
+				// underneath, so it reads as deliberately aborted.
+				pane = t.theme.stoppedPaneStyle
+			} else if strings.HasPrefix(msg.content, failurePrefix()) {
 				pane = t.theme.errorPaneStyle
 			}
 			pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 			emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
+			if msg.stopped {
+				emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
+			}
 		}
 		// Interleave the turn's tool-call entries right after its prompting
 		// "you" message (issue #84). Rendering and content-row accounting share
