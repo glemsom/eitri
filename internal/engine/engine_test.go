@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -219,5 +220,47 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != provider.GenerationControlGenerationBudget {
 		t.Fatalf("NegotiateGenerationControls() = %v, want [generation_budget]", got)
+	}
+}
+
+// TestRunAgentWritesStoppedTranscriptBetweenToolCalls verifies that a stop
+// landing between tool calls (after the stream completes but before the next
+// turn opens) still writes a [stopped] transcript record with the partial
+// content accumulated so far, so the on-disk trail never silently omits it.
+func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
+	tr := &mockTranscript{}
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(
+			provider.Chunk{Content: "partial", FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "call_1", Type: "function", Name: "bash", Arguments: `{"command":"ls"}`},
+			}, Done: true},
+		), nil
+	}), tr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	_, err := e.RunAgent(ctx, RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash", Parameters: map[string]any{
+			"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []any{"command"},
+		}}}},
+		Executor: ExecutorFunc(func(_ context.Context, _, _ string) (ToolExecResult, error) {
+			cancel() // cancel after tool exec so the between-turns boundary sees stopped
+			return ToolExecResult{Text: "ok"}, nil
+		}),
+		MaxTurns: 5,
+	})
+
+	if !errors.Is(err, ErrStopped) {
+		t.Fatalf("error = %v, want ErrStopped", err)
+	}
+	// There must be exactly one transcript write with the stopped marker.
+	if len(tr.lines) != 1 {
+		t.Fatalf("transcript writes = %d, want 1; lines = %v", len(tr.lines), tr.lines)
+	}
+	if !contains(tr.lines[0], "[stopped]") {
+		t.Errorf("transcript = %q, want [stopped] marker", tr.lines[0])
+	}
+	if !contains(tr.lines[0], "partial") {
+		t.Errorf("transcript = %q, want partial content", tr.lines[0])
 	}
 }

@@ -411,15 +411,16 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 
 	for turn := 0; ; turn++ {
+		var content, reasoning string
 		// The cancellation boundary between turns: once the caller's context is
 		// canceled the loop must not open another provider stream or run another
 		// tool; the output accumulated so far becomes the stopped result.
 		if ctx.Err() != nil {
 			final.Answer = stopContent
 			final.Reasoning = stopReasoning
+			e.finishStopped(final, req.Prompt, turn)
 			return final, ErrStopped
 		}
-		var content, reasoning string
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
 			// The cap is reached. Batch/headless (no hook) auto-denies: stop.
 			// Interactive callers may grant another budget via CanContinue.
@@ -533,6 +534,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				stopReasoning += reasoning
 				final.Answer = stopContent
 				final.Reasoning = stopReasoning
+				e.finishStopped(final, req.Prompt, turn)
 				return final, ErrStopped
 			}
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
@@ -554,6 +556,11 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				Content:    delivered,
 			})
 		}
+		// Accumulate the turn's content into the stop accumulator so a
+		// cancellation that lands between this turn and the next preserves
+		// all partial output in the transcript record.
+		stopContent += content
+		stopReasoning += reasoning
 	}
 }
 
