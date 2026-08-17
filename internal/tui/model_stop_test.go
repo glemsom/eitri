@@ -287,3 +287,109 @@ func TestRender_stoppedMarkerPin(t *testing.T) {
 		t.Errorf("stoppedMarker = %q, want %q", stoppedMarker(), "! stopped")
 	}
 }
+
+// TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial asserts pressing Ctrl+C
+// during a running turn cancels it (same outcome as esc): the partial content
+// stays, the turn is marked stopped, and busy clears. Ctrl+C is the natural
+// stop binding — a second Ctrl+C after the stop quits because busy is false.
+func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
+	var canceled atomic.Bool
+	var enteredOnce sync.Once
+	entered := make(chan struct{})
+	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+		enteredOnce.Do(func() { close(entered) })
+		<-ctx.Done()
+		canceled.Store(true)
+		return TurnResult{Answer: "partial via ctrl+c"}, ctx.Err()
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, cmd := submitBusy(t, m)
+
+	doneCh := make(chan tea.Msg, 1)
+	go func() { doneCh <- cmd() }()
+	<-entered
+
+	// Ctrl+C while busy must cancel the running turn.
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	m = asModel(t, nm)
+
+	var done tea.Msg
+	select {
+	case done = <-doneCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("turn goroutine never returned after ctrl+c")
+	}
+	if !canceled.Load() {
+		t.Error("ctrl+c did not cancel the in-flight turn context")
+	}
+	nm, _ = m.Update(done)
+	m = asModel(t, nm)
+
+	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "partial via ctrl+c" {
+		t.Errorf("partial content = %q, want %q (kept after ctrl+c stop)", got, "partial via ctrl+c")
+	}
+	if !m.tx.messages[len(m.tx.messages)-1].stopped {
+		t.Error("stopped turn message not marked stopped")
+	}
+	if m.tx.busy {
+		t.Error("busy state must clear after ctrl+c stop")
+	}
+	content := view(m)
+	if strings.Contains(content, failurePrefix()) {
+		t.Errorf("stopped turn rendered as an error, got: %q", content)
+	}
+	if !strings.Contains(content, stoppedMarker()) {
+		t.Errorf("stopped turn must render the stopped marker, got: %q", content)
+	}
+}
+
+// TestModel_ctrlCWhenIdleQuits asserts Ctrl+C with no running turn issues
+// tea.Quit — the natural exit binding when the model is idle.
+func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
+	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+		return TurnResult{Answer: "never"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	m = asModel(t, nm)
+
+	if cmd == nil {
+		t.Fatal("idle ctrl+c must emit a quit command")
+	}
+	// Execute the command; it should return a tea.QuitMsg.
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Errorf("idle ctrl+c command returned %T, want QuitMsg", msg)
+	}
+}
+
+// TestModel_ctrlCAfterStopQuits asserts Ctrl+C after a stopped turn quits
+// (busy is false post-stop, so ctrl+c falls through to quit).
+func TestModel_ctrlCAfterStopQuits(t *testing.T) {
+	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+		return TurnResult{Stopped: true, Answer: "partial"}, nil
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, cmd := submitBusy(t, m)
+	m = runSubmitted(t, m, cmd)
+
+	if m.tx.busy {
+		t.Fatal("busy must clear after the stopped turn")
+	}
+
+	// Ctrl+C after a stop must quit (busy is false).
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	m = asModel(t, nm)
+
+	if cmd == nil {
+		t.Fatal("ctrl+c after stop must emit a quit command")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Errorf("ctrl+c after stop returned %T, want QuitMsg", msg)
+	}
+}
