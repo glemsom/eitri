@@ -4,7 +4,10 @@
 // routes through.
 package tools
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // GUID identifies one run's session temp namespace. It is the internal host
 // detail that must never surface to the model.
@@ -18,7 +21,7 @@ func hostTempPrefix(g GUID) string {
 // PathTranslator is the single, shared seam that maps the two halves of the
 // path namespace: sandbox /tmp <=> host /tmp/eitri-<GUID>. Workspace host
 // paths are canonical and need no translation. All path-taking
-// tools (bash, write, edit, and later open_in_browser) and their validation
+// tools (bash, read, write, edit, and open_in_browser) and their validation
 // share one translator so every component resolves the same /tmp namespace.
 type PathTranslator struct {
 	g GUID
@@ -58,6 +61,18 @@ func (t *PathTranslator) SandboxToHost(p string) (string, bool) {
 		return ht + p[len("/tmp"):], true
 	}
 	return p, false
+}
+
+// Resolve translates a model-supplied path to its host form: sandbox /tmp
+// maps to the session temp host root and a workspace-relative path resolves
+// against the workspace root (bash's cwd). It never validates writable roots:
+// read-only tools use it directly to reach anything the sandbox can read.
+func (t *PathTranslator) Resolve(p, workspace string) string {
+	host, _ := t.SandboxToHost(p)
+	if !filepath.IsAbs(host) {
+		host = filepath.Join(workspace, host)
+	}
+	return host
 }
 
 // HostToSandbox is the reverse of SandboxToHost: it maps a host temp path back

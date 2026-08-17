@@ -162,7 +162,7 @@ func TestReadLineRange(t *testing.T) {
 // TestReadResolvesRelativeWorkspacePath verifies read accepts a path relative
 // to the workspace (bash's cwd), not only host-absolute paths. The model
 // commonly emits "AGENTS.md" after a `ls`; it must resolve against the
-// workspace root rather than be rejected as outside every writable root.
+// workspace root via the translator.
 func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
 	r, ws := newTestRegistry(t, nil)
 	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"), []byte("hello\nworld\n"), 0o600); err != nil {
@@ -202,6 +202,32 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 	}
 	if !strings.Contains(got, "tmp-content") {
 		t.Fatalf("read output = %q, want tmp-content", got)
+	}
+}
+
+// TestReadOutsideWritableRoots verifies read is not gated by the writable
+// roots: a host file outside the workspace, extra writable paths, and session
+// temp reads fine (the sandbox already exposes it via bash), and a missing
+// file fails only on the genuine I/O error.
+func TestReadOutsideWritableRoots(t *testing.T) {
+	r, ws := newTestRegistry(t, nil)
+	// Fixture lives outside the workspace and outside session temp: a sibling
+	// dir of the workspace root under the test top dir, so it is outside every
+	// writable root yet still host-readable.
+	top := filepath.Dir(ws)
+	outside := filepath.Join(top, "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside-root-content\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	res, err := r.Run(context.Background(), "read", argMap("path", outside))
+	if err != nil {
+		t.Fatalf("read outside writable root error = %v, want nil", err)
+	}
+	if !strings.Contains(res.Text, "outside-root-content") {
+		t.Fatalf("read output = %q, want file contents", res.Text)
+	}
+	if _, err := r.Run(context.Background(), "read", argMap("path", filepath.Join(top, "no_such_ghost_file"))); err == nil {
+		t.Fatal("read of missing file error = nil, want I/O error")
 	}
 }
 
@@ -245,5 +271,15 @@ func TestWriteRejectsOutsideRoots(t *testing.T) {
 	r, _ := newTestRegistry(t, nil)
 	if _, err := r.Run(context.Background(), "write", argMap("path", "/etc/pwned", "content", "x")); err == nil {
 		t.Fatal("write to /etc/pwned error = nil, want hard error")
+	}
+}
+
+// TestEditRejectsOutsideRoots verifies edit keeps the writable-root guard:
+// a host path outside every writable root is a hard error, never a genuine
+// read/write attempt.
+func TestEditRejectsOutsideRoots(t *testing.T) {
+	r, _ := newTestRegistry(t, nil)
+	if _, err := r.Run(context.Background(), "edit", argMap("path", "/etc/passwd", "old_string", "root", "new_string", "root")); err == nil {
+		t.Fatal("edit to /etc/passwd error = nil, want hard error")
 	}
 }

@@ -9,9 +9,11 @@ import (
 
 // readTool reads a file by explicit line range so the agent need not dump
 // whole files into context. It is host-side (outside the cage) but resolves
-// the shared path namespace via the validator.
+// the shared path namespace via the translator only: read applies no writable
+// root gate, so it can reach any host file the sandbox exposes to bash.
 type readTool struct {
-	val *Validator
+	tr        *PathTranslator
+	workspace string
 }
 
 func (r *readTool) Name() string {
@@ -26,7 +28,7 @@ func (r *readTool) Schema() map[string]any {
 	return strictSchema(map[string]any{
 		"path": map[string]any{
 			"type":        "string",
-			"description": "The file path, in the shared path namespace (workspace or sandbox /tmp).",
+			"description": "The file path to read: a workspace path, a sandbox /tmp path, or any host path the sandbox can read (read is not restricted to writable roots).",
 		},
 		// Strict-shaped (all-required) with optionals expressed as nullable
 		// unions: a model omits an optional by sending null.
@@ -51,10 +53,7 @@ func (r *readTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	if err != nil {
 		return ToolResult{}, err
 	}
-	host, err := r.val.Resolve(path)
-	if err != nil {
-		return ToolResult{}, err
-	}
+	host := r.tr.Resolve(path, r.workspace)
 	data, err := os.ReadFile(host)
 	if err != nil {
 		return ToolResult{}, fmt.Errorf("read %s: %w", path, err)

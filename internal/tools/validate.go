@@ -7,10 +7,10 @@ import (
 )
 
 // Validator checks a model-supplied path against the writable roots on the
-// translated (host) form. It is the shared seam used
-// by write and edit (and later open_in_browser): every target resolves to a
-// host path and is rejected with a hard error unless it lands inside the
-// workspace, a configured extra writable path, or the session temp.
+// translated (host) form. It is the write-side seam used
+// by write and edit: every target resolves to a host path and is rejected with
+// a hard error unless it lands inside the workspace, a configured extra
+// writable path, or the session temp.
 type Validator struct {
 	workspace string
 	extra     []string
@@ -30,13 +30,7 @@ func NewValidator(workspace string, extra []string, tr *PathTranslator) *Validat
 // paths are canonical (no rewrite); sandbox /tmp targets resolve to the
 // session temp host root, which is itself a writable root.
 func (v *Validator) Resolve(p string) (string, error) {
-	host, _ := v.tr.SandboxToHost(p)
-	// A path the model gives relative to bash's cwd (the workspace) resolves
-	// against the workspace root before root-checking; without this, a plain
-	// "AGENTS.md" is rejected as outside every writable root.
-	if !filepath.IsAbs(host) {
-		host = filepath.Join(v.workspace, host)
-	}
+	host := v.tr.Resolve(p, v.workspace)
 	if _, ok := v.inside(host); ok {
 		return host, nil
 	}
