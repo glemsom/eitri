@@ -342,6 +342,11 @@ type Model struct {
 	// the OSC 52 fallback (issue #201) so a failing system-clipboard path still
 	// copies through an OSC 52-capable terminal.
 	clipboard func(text string) error
+	// railDrag tracks an in-progress right-rail width drag (issue #306):
+	// non-nil only while the left-button press that started it is held. It
+	// lives on the Model because it is pointer-button state; the Transcript
+	// only sees the resulting setRailWidth writes.
+	railDrag *railDrag
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
