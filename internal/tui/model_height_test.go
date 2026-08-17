@@ -9,7 +9,7 @@ import (
 )
 
 // TestModel_heightAwareClampsHistory asserts the history region is a
-// Height-aware viewport : the terminal Height is captured from
+// Height-aware viewport: the terminal Height is captured from
 // WindowSizeMsg and the history clamps to it, so a long
 // session never overflows the terminal — the composer + status band stay on
 // screen and only the history scrolls.
@@ -40,7 +40,7 @@ func TestModel_heightAwareClampsHistory(t *testing.T) {
 }
 
 // TestModel_bandPinnedOnResize asserts the composer + status band stay pinned
-// at the bottom across a window shrink and grow : resizing never
+// at the bottom across a window shrink and grow: resizing never
 // lets the band trail off-screen and the band remains the final region of the
 // content at any height.
 func TestModel_bandPinnedOnResize(t *testing.T) {
@@ -70,7 +70,7 @@ func TestModel_bandPinnedOnResize(t *testing.T) {
 // window it is impossible to show every committed message, so the visible
 // region drops lines that exist in the full unclamped history — proving the
 // history clamps rather than the band yielding. The follow-to-bottom behaviour
-// that keeps the newest output visible is the separate T04 seam (#108).
+// that keeps the newest output visible is the separate T04 seam .
 func TestModel_historyClipHoldsNewestFollowSeam(t *testing.T) {
 	m := newTallHistoryModel(t)
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})

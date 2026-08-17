@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// This file covers the T2 scroll-navigation seam : the history
+// This file covers the T2 scroll-navigation seam: the history
 // viewport is user-navigable (mouse wheel + PgUp/PgDn/Home/End), scrolling up
 // breaks the follow position so reading stays put, and a new submit re-follows
 // the newest output. Navigation drives the persisted bubbletea/viewport seam
@@ -115,7 +115,7 @@ func wheelMsg(up bool) tea.Msg {
 }
 
 // TestScroll_mouseWheelNavigatesTranscript asserts the mouse wheel scrolls the
-// transcript and breaks follow when scrolling up : wheel-up
+// transcript and breaks follow when scrolling up: wheel-up
 // moves the viewport toward older output and stops re-anchoring to the newest;
 // wheel-down reaches the bottom re-engages follow.
 func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
@@ -146,7 +146,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 }
 
 // TestScroll_newSubmitRefollowsNewest asserts a new submitted turn re-engages
-// the follow position :
+// the follow position:
 // after scrolling up, submitting a new prompt returns the viewport to the newest
 // output instead of holding the stale reading offset.
 func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
@@ -178,7 +178,7 @@ func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 }
 
 // TestScroll_navigationDoesNotStealComposerFocus asserts T2 navigation does not
-// corrupt composer input focus : arrow keys still edit the
+// corrupt composer input focus: arrow keys still edit the
 // composer, and paging keys that navigate the transcript leave the composer's
 // focused value untouched.
 func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {

@@ -43,7 +43,7 @@ func fileEditModel(t *testing.T) Model {
 }
 
 // TestCtrlD_unbound asserts the released Ctrl+D keybinding does nothing at
-// all : it neither opens a review surface nor disturbs the
+// all: it neither opens a review surface nor disturbs the
 // transcript or composer, whether or not the session has changed files. The
 // regression the panel's empty-state guard used to cover ('s
 // "no changes" surface) is subsumed: there is no surface to open. In-flow

@@ -12,7 +12,7 @@ import (
 
 // TestModel_unknownThemeStartupWarning asserts a config holding an unknown
 // theme value surfaces a one-time status-strip warning on startup naming the
-// fallback : the very first rendered frame warns "unknown theme
+// fallback: the very first rendered frame warns "unknown theme
 // \"bogus\", using dark", and the warning never repeats on later frames so a
 // long-lived session isn't spammed. The first frame is the initial View the
 // Bubble Tea runtime renders before any message is processed, so the test
@@ -42,7 +42,7 @@ func TestModel_unknownThemeStartupWarning(t *testing.T) {
 }
 
 // TestModel_validThemeNoWarning asserts a supported theme never triggers the
-// unknown-theme startup warning : valid themes print nothing.
+// unknown-theme startup warning: valid themes print nothing.
 func TestModel_validThemeNoWarning(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.Theme = "dracula"
@@ -55,7 +55,7 @@ func TestModel_validThemeNoWarning(t *testing.T) {
 }
 
 // TestModel_configThemeSkinsChromeAtStartup asserts a theme set in config
-// skins the chrome from the first frame : choosing dracula in
+// skins the chrome from the first frame: choosing dracula in
 // config re-skins the whole surface, not just the Markdown body, with no
 // interaction needed.
 func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
@@ -77,7 +77,7 @@ func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
 }
 
 // TestModel_settingsThemeSaveReskinsChrome asserts saving a theme selection in
-// the panel re-skins the transcript chrome immediately :
+// the panel re-skins the transcript chrome immediately:
 // the model's theme and its render config both follow the saved value, so the
 // agent pane border and the Markdown body pick up the new palette without a
 // restart.

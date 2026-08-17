@@ -19,7 +19,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Busy-state motion : the static "… thinking" line is the
+// Busy-state motion: the static "… thinking" line is the
 // reduced-motion fallback; the default is an animated braille spinner advanced
 // every busySpinnerTick while a turn runs. Braille spinners read calmer than
 // bar spinners and are the modern agent-TUI default (benchmark §4.3).
@@ -78,7 +78,7 @@ func motionEnabled() bool {
 // (internal/engine) and tests implement it, so conversation behavior is testable
 // without a terminal or a live provider.
 //
-// payload carries a slash-activated skill payload : when non-empty,
+// payload carries a slash-activated skill payload: when non-empty,
 // the args turn reaches the engine with the skill body in context so the model
 // acts on the args with the skill instructions loaded.
 type Turn func(ctx context.Context, prompt string, payload string) (TurnResult, error)
@@ -118,7 +118,7 @@ type message struct {
 	// a thinking-off turn.
 	thinkingRequested bool
 	// thinkingExpanded is true while this turn's reasoning block is expanded
-	// : it defaults false (auto-collapsed) so reasoning never clogs
+	//: it defaults false (auto-collapsed) so reasoning never clogs
 	// the final reply, and collapses back when the turn's answer lands.
 	thinkingExpanded bool
 	// thinkingCollapsed is a per-turn collapse override that keeps this turn's
@@ -218,13 +218,13 @@ type Dependencies struct {
 	// Turn drives one conversation turn (engine). Required for chat.
 	Turn Turn
 	// WorkspacePath is the project/read-only state surfaced above the
-	// transcript : the workspace directory the run operates in.
+	// transcript: the workspace directory the run operates in.
 	// Empty means no workspace header is rendered (the plain chat default).
 	WorkspacePath string
 	// Models is the provider-discovered model list surfaced in Settings.
 	Models []string
 	// DiscoverModels, when non-nil, is an on-demand provider model-discovery
-	// seam : it is invoked for the current Settings draft when
+	// seam: it is invoked for the current Settings draft when
 	// the panel opens with no pre-seeded Models list, and again when the draft
 	// provider changes, so provider selection re-discovers that provider's
 	// model lineup before Save. Nil disables on-demand discovery (the pre-
@@ -247,7 +247,7 @@ type Dependencies struct {
 	// activation and the `/` completion list. Nil disables `/skillname`
 	// commands (no skills). The right rail never renders skills .
 	Skills *SkillsSurface
-	// Telemetry, when non-nil, renders the live bottom status strip :
+	// Telemetry, when non-nil, renders the live bottom status strip:
 	// model, effort, thinking, turns/max, cost, and the cache hit-ratio gauge,
 	// fed live from the engine seam. Nil disables the strip.
 	Telemetry *Telemetry
@@ -257,7 +257,7 @@ type Dependencies struct {
 	// one full-reply dump on completion. Nil falls back to the historical
 	// blocking answer-on-completion behaviour.
 	Stream *Streamer
-	// Tools, when non-nil, feeds the live tool-call stream : each
+	// Tools, when non-nil, feeds the live tool-call stream: each
 	// ToolCallEvent/ToolResultEvent arrives here and renders as a compact,
 	// collapsed `⊕ tool args` one-liner that expands to the full result.
 	// Nil disables tool entries (the pre-seam default).
@@ -273,12 +273,12 @@ type Dependencies struct {
 	// the declared capability warning-free). The Settings panel shows a warning
 	// when thinking is off and this seam reports false.
 	ThinkingSuppression func() bool
-	// Clipboard writes text to the system clipboard : Ctrl+O and
+	// Clipboard writes text to the system clipboard: Ctrl+O and
 	// /copy copy the full transcript through it. Nil falls back to the
 	// atotto/clipboard package default.
 	Clipboard func(text string) error
 	// OSC52Out, when non-nil, is the terminal output the copy fallback writes
-	// its OSC 52 sequence to : when the Clipboard path fails (e.g.
+	// its OSC 52 sequence to: when the Clipboard path fails (e.g.
 	// no xclip/wl-clipboard), the copy emits the OSC 52 clipboard sequence to
 	// this writer and the terminal puts the text on the system clipboard. Nil
 	// defaults to os.Stdout, so the fallback works out of the box in the
@@ -287,13 +287,13 @@ type Dependencies struct {
 }
 
 // Model is the Bubble Tea state backing the TUI. Since the expand-contract
-// refactor , it owns ONLY its own regions and wires: the
+// refactor, it owns ONLY its own regions and wires: the
 // single textarea composer, the Settings surface (ctrl+s), the interactive
 // max-turns continuation prompt, and the detected-skills slash completion, plus
 // the composable seams it depends on (turn, deps, theme, telemetry, stream,
 // toolFeed, clipboard). EVERY transcript concern (history, tool log, rail,
 // width/height, follow, drag-select) lives on the owned value
-// Transcript field tx : the transcript is a genuinely owned,
+// Transcript field tx: the transcript is a genuinely owned,
 // mutating surface rather than a per-frame value rebuilt from duplicated Model
 // fields. It renders through the alternate screen (T1 pivot, ), so
 // every frame is a clean full-surface repaint and the history scroll/clip lives
@@ -303,7 +303,7 @@ type Model struct {
 	turn     Turn
 	deps     Dependencies
 
-	// tx is the owned transcript surface : the single owner of the
+	// tx is the owned transcript surface: the single owner of the
 	// history, tool log, right rail, width/height, follow position,
 	// drag-select, and their render/navigation. Model mutates it in
 	// place and never keeps a second transcript state copy. See transcript.go.
@@ -367,7 +367,7 @@ type Model struct {
 	// the OSC 52 fallback so a failing system-clipboard path still
 	// copies through an OSC 52-capable terminal.
 	clipboard func(text string) error
-	// railDrag tracks an in-progress right-rail width drag :
+	// railDrag tracks an in-progress right-rail width drag:
 	// non-nil only while the left-button press that started it is held. It
 	// lives on the Model because it is pointer-button state; the Transcript
 	// only sees the resulting setRailWidth writes.
@@ -375,7 +375,7 @@ type Model struct {
 
 	// borderClick is the timestamp of a border press that is the first click
 	// of a potential double-click pair. Paired with now, it recognizes the
-	// rail's double-click reset : a second border press within
+	// rail's double-click reset: a second border press within
 	// doubleClickWindow of the first resets the rail to the default width. The
 	// arm is cleared by motion (drag), by an off-border press, and by the
 	// reset itself, so only two clean border presses can pair.
@@ -391,7 +391,7 @@ func NewModel(t Turn) Model {
 	return NewModelCfg(Dependencies{Turn: t})
 }
 
-// Composer caret style policy : the composer's hardware caret is
+// Composer caret style policy: the composer's hardware caret is
 // deliberately a steady (non-blinking) block rather than whatever the textarea
 // or terminal defaults would draw.
 //
@@ -405,7 +405,7 @@ func NewModel(t Turn) Model {
 // active editing surface and hidden otherwise — so blinking adds
 // noise without carrying information.
 //
-// Color is not forced : the textarea default paints a fixed white
+// Color is not forced: the textarea default paints a fixed white
 // caret (lipgloss.Color("7")), and since the composer's caret is the terminal's
 // hardware caret that non-nil color propagates into the reported
 // tea.Cursor and the renderer emits a SetCursorColor sequence every frame,
@@ -430,9 +430,9 @@ func NewModelCfg(d Dependencies) Model {
 	comp.CharLimit = 0
 	comp.ShowLineNumbers = false
 	// Start compact: the composer grows with the draft up to maxComposerRows
-	// , so an empty composer sits at a single row.
+	//, so an empty composer sits at a single row.
 	comp.SetHeight(1)
-	// The composer's caret is the terminal's hardware cursor : the
+	// The composer's caret is the terminal's hardware cursor: the
 	// textarea's software reverse-video caret cell is disabled so the terminal
 	// itself draws the caret at the edit position.
 	comp.SetVirtualCursor(false)
@@ -444,14 +444,14 @@ func NewModelCfg(d Dependencies) Model {
 	st := comp.Styles()
 	st.Cursor.Shape = composerCaretShape
 	st.Cursor.Blink = composerCaretBlink
-	// No caret color is forced : leave Color nil so the renderer
+	// No caret color is forced: leave Color nil so the renderer
 	// emits no SetCursorColor and the hardware caret uses the terminal's
 	// configured cursor color instead of the textarea default white.
 	st.Cursor.Color = nil
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(th.accent)
 	comp.SetStyles(st)
 
-	// The owned transcript surface : the single owner of the
+	// The owned transcript surface: the single owner of the
 	// history, tool log, rail, width/height, follow, and drag-select. Model
 	// mutates it in place; there is no duplicate transcript state elsewhere.
 	transcript := Transcript{
@@ -496,10 +496,10 @@ func NewModelCfg(d Dependencies) Model {
 	return m
 }
 
-// newClipboard returns the clipboard write seam : the injected
+// newClipboard returns the clipboard write seam: the injected
 // Dependencies.Clipboard when set, else the atotto/clipboard package default so
 // Ctrl+O and /copy work out of the box. The returned seam is wrapped in the
-// OSC 52 fallback : when the primary path fails, the copy re-routes
+// OSC 52 fallback: when the primary path fails, the copy re-routes
 // through the OSC 52 terminal-clipboard sequence to Dependencies.OSC52Out
 // (os.Stdout by default), so a machine without xclip/wl-clipboard still copies
 // through any OSC 52-capable terminal. Every copy path — Ctrl+O, /copy, and
@@ -524,7 +524,7 @@ func newClipboard(d Dependencies) func(text string) error {
 // survive across render cycles. It starts unsized (0x0) until the first
 // WindowSizeMsg lands.
 //
-// Mouse-wheel and keyed navigation live on the Transcript , not the
+// Mouse-wheel and keyed navigation live on the Transcript, not the
 // component's own Update: Transcript.navigateMouse / navigateHistory call
 // ScrollUp/ScrollDown directly so the follow position (histFollow) can break on
 // scroll-up and re-engage on reaching the bottom. The wheel delta of 3 matches
@@ -567,7 +567,7 @@ func clockTick() tea.Cmd {
 // Init returns any startup commands. None are needed; input drives everything.
 // Init returns any startup commands. It schedules the live telemetry waiter so
 // the status strip starts refreshing from the engine seam immediately, even
-// with no keyboard input , plus the one-second clock that keeps the
+// with no keyboard input, plus the one-second clock that keeps the
 // session-elapsed timer live.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
@@ -608,7 +608,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case telemetryUpdateMsg:
 		// A live telemetry update arrived through the waiting command: fold it
 		// into the strip and immediately re-issue the waiter so the strip keeps
-		// refreshing live , with no keyboard input required.
+		// refreshing live, with no keyboard input required.
 		if m.telemetry == nil {
 			return m, nil
 		}
@@ -661,7 +661,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.prompting {
 			return m.updatePrompt(msgi)
 		}
-		// Review overlay is gone : ctrl+d is deliberately released,
+		// Review overlay is gone: ctrl+d is deliberately released,
 		// not re-mapped, so there is no dedicated key routing before the composer.
 		switch msgi.String() {
 		case "ctrl+c":
@@ -679,7 +679,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			return m.startSettings()
 		case "pgup", "home":
-			// History scroll navigation : PgUp pages up and
+			// History scroll navigation: PgUp pages up and
 			// Home jumps to the oldest output. Scrolling up breaks the follow
 			// position so the transcript stays put instead of being yanked to
 			// the newest; navigation never steals composer focus (the composer
@@ -700,30 +700,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the composer's caret/selection editing untouched.
 			return m, nil
 		case "ctrl+d":
-			// Deliberately UNBOUND : Ctrl+D was the modal review
+			// Deliberately UNBOUND: Ctrl+D was the modal review
 			// panel's toggle and reads as
 			// "exit" in other tools, so the key is released rather than
 			// re-mapped. File-change inspection now lives in-flow on the
-			// Ctrl+E expanded cards (#275); nothing consumes this key.
+			// Ctrl+E expanded cards ; nothing consumes this key.
 			m.syncComposerRail()
 			return m, nil
 		case "ctrl+o":
-			// Copy the full transcript to the system clipboard ,
+			// Copy the full transcript to the system clipboard,
 			// reporting success/failure as a band status note. Never mutates the
 			// transcript or the agent loop.
 			m.copyTranscript()
 			return m, nil
 		case "ctrl+e":
 			// Toggle the persistent Ctrl+E expanded-view mode over the whole
-			// transcript : one global flag that switches every tool
+			// transcript: one global flag that switches every tool
 			// entry between its collapsed delta summary and the fully expanded
 			// framed result. Sticky until toggled off; per-entry click-to-expand
-			// (#245) stays orthogonal and independent of the mode. The flag lives
+			// stays orthogonal and independent of the mode. The flag lives
 			// on the owned Transcript, which mutates in place.
 			m.tx.toggleExpandAll()
 			return m, nil
 		case "ctrl+j", "shift+enter":
-			// Shift+Enter newline : terminals deliver Shift+Enter
+			// Shift+Enter newline: terminals deliver Shift+Enter
 			// two ways. Legacy terminals send the line-feed byte, which Bubble Tea
 			// surfaces as KeyCtrlJ; terminals with the enhanced (CSI u / kitty)
 			// keyboard protocol send an explicit Shift+Enter key, decoded as
@@ -835,7 +835,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		// History mouse-wheel scroll plus click-drag selection
-		// : wheel up/down over the transcript scrolls it (Up
+		//: wheel up/down over the transcript scrolls it (Up
 		// breaks follow, Down reaching the bottom re-engages it); a left-button
 		// drag over the history highlights a cell range and release copies it to
 		// the clipboard. Requires the Bubble Tea program enabled mouse events.
@@ -887,7 +887,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.messages[m.curStream].reasoning = msgi.reasoning
 			m.tx.messages[m.curStream].streaming = false
 			// Auto-collapse the thinking block once the turn's final answer lands
-			// : if the user expanded it mid-reasoning to watch, it
+			//: if the user expanded it mid-reasoning to watch, it
 			// settles back to the one-line hint so the styled answer takes focus.
 			// The Ctrl+E expanded-view mode overrides this (issue
 			// #274): while the mode is ON the reasoning block stays expanded;
@@ -920,7 +920,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, spinnerTick()
 
 	case discoverDoneMsg:
-		// A provider model-discovery command finished : fold the
+		// A provider model-discovery command finished: fold the
 		// result into the open settings panel, or drop it if the panel has since
 		// closed (Save/esc while discovery was in flight).
 		if m.settings == nil {
@@ -1005,7 +1005,7 @@ func (m *Model) openSettings() *settingsForm {
 	sf := newSettingsForm(cfg, m.deps.Models)
 	sf.theme = m.tx.theme
 	sf.telemetry = m.telemetry
-	// The run's provider thinking-suppression capability : nil
+	// The run's provider thinking-suppression capability: nil
 	// assumes support, matching the settingsForm default.
 	sf.thinkingSuppression = m.deps.ThinkingSuppression
 	m.settings = &sf
@@ -1020,7 +1020,7 @@ func (m *Model) openSettings() *settingsForm {
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	sf := m.openSettings()
 	// On-demand discovery only when the panel was opened with no pre-seeded
-	// model list : a seeded list is already loaded, so nothing
+	// model list: a seeded list is already loaded, so nothing
 	// to fetch. deps.Models (not sf.models) is the seed source; sf.models holds
 	// the configured-model fallback newSettingsForm installs.
 	if len(m.deps.Models) != 0 || m.deps.DiscoverModels == nil {
@@ -1107,7 +1107,7 @@ func (s *settingsForm) save(m *Model) {
 	if m.deps.SaveBack != nil {
 		m.deps.SaveBack(cfg)
 	}
-	// The theme selection re-skins the surface live : the
+	// The theme selection re-skins the surface live: the
 	// Transcript is the single owner of the palette, so the chrome (which reads
 	// m.tx.theme) and the Markdown body (tx.configTheme) both follow the saved
 	// value immediately instead of waiting for the next run.
@@ -1229,7 +1229,7 @@ func skillSnapshot(d Dependencies) []SkillItem {
 }
 
 // copyTranscript copies the plain-text transcript to the system clipboard
-// through the injected seam : Ctrl+O and /copy both route here. The
+// through the injected seam: Ctrl+O and /copy both route here. The
 // outcome is surfaced as a band status note ("copied" or "copy failed: …");
 // the transcript and the agent loop are never touched.
 func (m *Model) copyTranscript() {
@@ -1245,7 +1245,7 @@ func (m *Model) copyTranscript() {
 }
 
 // transcriptText renders the conversation log as plain text for clipboard copy
-// : role-marked user prompts and assistant answers, per-turn
+//: role-marked user prompts and assistant answers, per-turn
 // reasoning blocks, and the interleaved tool-call entries (compact one-liner
 // plus full result when complete) — all ANSI-free so the pasted session is
 // clean. It never mutates the transcript or the agent loop.
@@ -1253,7 +1253,7 @@ func (m Model) transcriptText() string {
 	var b strings.Builder
 	for i, msg := range m.tx.messages {
 		// The clipboard honors the same thinking-requested gate as the transcript
-		// : a reasoning block is transcribed only for a turn that
+		//: a reasoning block is transcribed only for a turn that
 		// requested thinking. A backend sneaking reasoning through a thinking-off
 		// turn never reaches the clipboard.
 		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
@@ -1265,7 +1265,7 @@ func (m Model) transcriptText() string {
 			b.WriteString("eitri: " + msg.content + "\n")
 		}
 		// The turn's tool entries transcribe through the tool log's plain-text
-		// surface , so the clipboard and transcript never disagree
+		// surface, so the clipboard and transcript never disagree
 		// on an entry.
 		b.WriteString(m.tx.log.PlainText(i))
 		b.WriteString("\n")
@@ -1387,7 +1387,7 @@ func loginWait(ch <-chan tea.Msg) tea.Cmd {
 }
 
 // slashCandidates returns the ordered slash-command completion candidates for
-// the current composer value : the built-in `/settings`,
+// the current composer value: the built-in `/settings`,
 // `/copy`, and `/login` commands first, then every detected skill whose name
 // starts with the `/...` partial. A partial of "" means a bare `/`, listing
 // every command & skill. It returns nil when the value does not start with `/`.
@@ -1452,7 +1452,7 @@ func (m Model) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	// The composer's caret is the terminal's hardware cursor : the
+	// The composer's caret is the terminal's hardware cursor: the
 	// textarea's software caret cell is disabled, so the frame attaches the
 	// caret at the composer's true edit cell instead.
 	v.Cursor = m.composerCursor(content)
@@ -1472,24 +1472,24 @@ func (m Model) viewString() string {
 		return promptView(m.tx.theme)
 	}
 
-	// The right context rail : the rendered transcript pane
+	// The right context rail: the rendered transcript pane
 	// and the state rail sit side by side — one pane for time (transcript), one
 	// for state (rail). Since the rail surface — its visibility, band/
 	// transcript width accounting, clamp height, and render — resolves entirely
 	// on the owned Transcript (viewWithRail); the band stays a Model-owned
 	// concern, so Model passes its rendered row count down. The band spans the
-	// full terminal width under the rail , which floats above it.
+	// full terminal width under the rail, which floats above it.
 	return m.tx.viewWithRail(m.renderPane(), m.bandHeight())
 }
 
 // maxComposerRows is how tall the composer may grow inside the fixed bottom
-// band before it scrolls internally : a long draft never
+// band before it scrolls internally: a long draft never
 // spills into the transcript — the textarea's own viewport scrolls past this
 // bound, and the band stays pinned while the history viewport yields rows.
 const maxComposerRows = 8
 
 // syncComposerHeight grows the composer with its draft up to maxComposerRows,
-// then lets the textarea scroll internally : a one-line draft
+// then lets the textarea scroll internally: a one-line draft
 // keeps a compact single-row composer, each new line adds a row up to the
 // bound, and beyond it the composer's internal viewport scrolls so the band
 // never grows past the bound. It also clamps to the terminal height when a
@@ -1557,7 +1557,7 @@ func (m Model) bandHeight() int {
 // It is used by the alternate-screen renderer, so every frame is a clean
 // repaint. The band (status strip + composer) is a Model-owned composer
 // concern; the transcript region's render delegates to the owned Transcript
-// , which composes the scroll region + band and passes
+//, which composes the scroll region + band and passes
 // the band in below them (see Transcript.renderPane).
 func (m Model) renderPane() string {
 	var band strings.Builder
@@ -1579,7 +1579,7 @@ type msgRowRange struct {
 }
 
 // transcriptLayout is the persistent layout cache for the history region
-// : one batched renderHistory pass captures the row->tool-entry
+//: one batched renderHistory pass captures the row->tool-entry
 // mapping (rows), the row->message mapping (msgs), both in content-line
 // coordinates, and the ANSI-stripped history rows (plain, the drag-select copy
 // space) so the mouse hit-test reads the recorded index instead of re-deriving
@@ -1592,7 +1592,7 @@ type transcriptLayout struct {
 	plain []string       // ANSI-stripped history rows (the drag-select space)
 	dirty bool
 	// builds counts the batched layout passes run. It is a read-only test hook
-	// : a regression test asserts a drag's repeated hit-tests
+	//: a regression test asserts a drag's repeated hit-tests
 	// build the layout exactly once. Production never inspects it.
 	builds int
 }
@@ -1620,8 +1620,8 @@ func (m *Model) syncComposerRail() {
 // is the region T02+ pins at the bottom so it never scrolls away on resize.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	// Status row : the bottom band is now the only
-	// home of the keybinding hints, since the right rail (#227) is the sole,
+	// Status row: the bottom band is now the only
+	// home of the keybinding hints, since the right rail is the sole,
 	// permanent stats surface. The strip renders no telemetry numbers
 	// (turns/max, cache gauge, cost, elapsed all live in the rail's STATS
 	// section); it is a clean single line of keybinding hints, with the busy
@@ -1682,7 +1682,7 @@ func (m Model) renderBand(b *strings.Builder) {
 // frame's rendered content, whose line count is the frame height.
 func (m Model) composerCursor(content string) *tea.Cursor {
 	if m.settings != nil || m.prompting || m.tx.busy {
-		// The composer is not the active editing surface, so no caret :
+		// The composer is not the active editing surface, so no caret:
 		// Settings and the continuation prompt are full-surface overlays (no
 		// composer on screen), and a running turn makes the composer inert;
 		// composer, and while a turn is running the composer is inert (keys are
@@ -1718,7 +1718,7 @@ func (m Model) composerPreRows() int {
 }
 
 // renderSlashCompletion appends the slash-command completion list to the view
-// above the composer : the built-in slash commands plus any
+// above the composer: the built-in slash commands plus any
 // matching detected skills. It marks the candidate currently in the composer
 // (tab-filled or typed) as selected; on a bare prefix it points at the next
 // tab-cycling candidate (slashIdx) as a forward hint. It renders nothing for a
@@ -1758,7 +1758,7 @@ func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur strin
 // telemetryWait returns a command that blocks until the next live telemetry
 // update arrives on the engine seam channel, then delivers it to the UI loop as
 // a telemetryUpdateMsg. The model re-issues it after each update so the strip
-// keeps refreshing live , even with no keyboard input. When the
+// keeps refreshing live, even with no keyboard input. When the
 // channel closes it returns nil so the polling stops.
 func telemetryWait(te *Telemetry) tea.Cmd {
 	return func() tea.Msg {

@@ -45,7 +45,7 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 		t.Errorf("right rail missing cost, got: %q", content)
 	}
 
-	// The bottom band is hints-only : it renders the keybinding
+	// The bottom band is hints-only: it renders the keybinding
 	// hints and no telemetry readouts (those live solely in the rail).
 	var band strings.Builder
 	m.renderBand(&band)

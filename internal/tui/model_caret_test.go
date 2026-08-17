@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// Hardware caret policy : the composer's caret is the terminal's
+// Hardware caret policy: the composer's caret is the terminal's
 // hardware cursor — not the reverse-video software cell bubbles v2 paints by
 // default — and it must track the true edit position across every composer
 // state. Its shape and blink follow the explicit caret style policy (issue
@@ -66,12 +66,12 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 }
 
 // TestComposer_CaretStylePolicy asserts the explicit caret style policy
-// : the composer's hardware caret is a steady (non-blinking) block,
+//: the composer's hardware caret is a steady (non-blinking) block,
 // requested deliberately rather than inherited from the textarea default or the
 // terminal's own settings. A terminal that ignores the shape request falls back
 // to its own default block caret — still visible, never hidden.
 //
-// The policy does not force a caret color : the caret renders in the
+// The policy does not force a caret color: the caret renders in the
 // terminal's configured cursor color, so Eitri never overwrites it with a fixed
 // white. Color stays nil so the renderer emits no SetCursorColor sequence.
 func TestComposer_CaretStylePolicy(t *testing.T) {
@@ -118,7 +118,7 @@ func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
 }
 
 // TestComposer_CaretTracksMultiLineDraft asserts the caret follows the edit
-// line as the composer grows within the band : each new line
+// line as the composer grows within the band: each new line
 // pushes the band up a row, the caret sits on the new line's visible row, and
 // cursor navigation moves it within the grown composer.
 func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
@@ -137,7 +137,7 @@ func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
 
 // TestComposer_CaretTracksInternalScroll asserts the caret never goes stale
 // when the draft exceeds the composer's bound and the band scrolls internally
-// : with more draft rows than maxComposerRows, the caret stays
+//: with more draft rows than maxComposerRows, the caret stays
 // on the visible row that renders the edit line, at the correct column,
 // instead of drifting above the band.
 func TestComposer_CaretTracksInternalScroll(t *testing.T) {

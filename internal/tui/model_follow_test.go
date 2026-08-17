@@ -70,7 +70,7 @@ func newestNonBlank(render string) string {
 }
 
 // TestModel_liveFollowKeepsNewestOutput asserts the history viewport stays at
-// the newest output while a stream/tool run is live : the run
+// the newest output while a stream/tool run is live: the run
 // is busy and its answer overflows the viewport, yet the newest content line
 // (the busy thinking footer) is the last non-blank row — the viewport follows,
 // it does not stare at a stale head.
@@ -95,7 +95,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 }
 
 // TestModel_liveFollowPersistsThroughResize asserts a resize mid-stream keeps
-// the newest output in view : while busy, re-sizing the window
+// the newest output in view: while busy, re-sizing the window
 // (grow then shrink) must re-anchor the viewport to the newest streamed output
 // rather than leaving it staring at a stale head.
 func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
@@ -118,7 +118,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 
 // TestModel_liveFollowTracksAppends asserts the follow seam re-anchors the
 // viewport to the newest output after a committed (idle) append, not just while
-// the run is streaming : the
+// the run is streaming: the
 // persisted viewport is the scroll-state owner and GotoBottoms after content is
 // appended so new output never leaves the user staring at a stale head.
 func TestModel_liveFollowTracksAppends(t *testing.T) {
@@ -142,9 +142,8 @@ func TestModel_liveFollowTracksAppends(t *testing.T) {
 }
 
 // TestModel_followViewportPersisted asserts the history viewport is backed by a
-// persisted bubbletea/viewport component carrying real scroll state
-// decision 6's seam, not the stateless always-bottom string slice it
-// replaces.
+// persisted bubbletea/viewport component carrying real scroll state,
+// not the stateless always-bottom string slice it replaces.
 func TestModel_followViewportPersisted(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

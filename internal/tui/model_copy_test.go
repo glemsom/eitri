@@ -15,7 +15,7 @@ import (
 
 // TestModel_ctrlOCopiesTranscript drives a one-turn conversation, presses
 // Ctrl+O, and asserts the full plain-text transcript reaches the clipboard seam
-// and the band reports the copy : the user prompt, the
+// and the band reports the copy: the user prompt, the
 // assistant answer, and the per-turn reasoning block are all copied, with no
 // ANSI styling leaking into the pasted text.
 func TestModel_ctrlOCopiesTranscript(t *testing.T) {
@@ -53,7 +53,7 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 
 // TestModel_ctrlOHidesReasoningWhenThinkingOff drives a thinking-off turn whose
 // backend still returns reasoning, presses Ctrl+O, and asserts the reasoning
-// block is NOT copied : the display-layer gate hides chain-of-thought
+// block is NOT copied: the display-layer gate hides chain-of-thought
 // for a turn that didn't request thinking, regardless of what the backend sent.
 func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 	var copied string

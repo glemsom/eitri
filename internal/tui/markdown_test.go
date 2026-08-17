@@ -50,7 +50,7 @@ func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
 }
 
 // TestRenderMarkdown_emptyThemeIsDark verifies an empty theme renders exactly
-// as the default dark theme : an unset config key must not change
+// as the default dark theme: an unset config key must not change
 // rendering.
 func TestRenderMarkdown_emptyThemeIsDark(t *testing.T) {
 	in := "# Heading\n\nSome **bold** text.\n"

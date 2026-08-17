@@ -12,12 +12,12 @@ import (
 
 // Transcript is the single owner of the transcript region: the
 // layout/scroll/follow/render concerns that used to live in the TUI Model
-// god-object , and since the contract step (#248) the ONLY home of
+// god-object, and the only home of
 // the transcript state. It owns the height/width, the messages, the tool log,
 // the right context rail, the follow position, the drag-select, and the
 // render of the agent-history scroll region.
 //
-// Model holds a live Transcript value as its owned tx field : the
+// Model holds a live Transcript value as its owned tx field: the
 // Transcript is a genuinely owned, mutating surface rather than a per-frame
 // value rebuilt from duplicated Model fields. NewModelCfg constructs it once;
 // Model mutates it in place (appends messages, applies tool updates, drives
@@ -30,7 +30,7 @@ import (
 // (dragSel) is likewise a heap-allocated pointer so its state survives those
 // value copies.
 //
-// Since the Transcript also owns the transcript's navigation: the
+// The Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
 // and mutate the follow flag in place.
 //
@@ -64,7 +64,7 @@ type Transcript struct {
 	// start/result pairing (apply), per-entry and all-entry expansion (toggle, the
 	// click-to-expand hit-test), and the persistent row->entry layout index surface.
 	log toolLog
-	// expandAll is the persistent Ctrl+E "expanded view" mode : one
+	// expandAll is the persistent Ctrl+E "expanded view" mode: one
 	// global flag that switches every tool entry — past and future turns —
 	// between the collapsed (default, noise-reduced) delta summary and the fully
 	// expanded framed result card. It is sticky until toggled off. It evolves the
@@ -72,7 +72,7 @@ type Transcript struct {
 	// Ctrl+E-bound mode; Ctrl+E routes through toggleExpandAll so the render
 	// reads Transcript state directly.
 	expandAll bool
-	// layout is the persistent transcript layout cache , shared with
+	// layout is the persistent transcript layout cache, shared with
 	// Model through a pointer (like histViewport): one batched renderHistory pass
 	// records the row->tool-entry index, the row->message index, and the
 	// ANSI-stripped plain-row space the hit-tests read back instead of re-deriving
@@ -85,7 +85,7 @@ type Transcript struct {
 	// telemetry is the live status-strip surface ; nil disables the
 	// busy footer fallback row.
 	telemetry *Telemetry
-	// dragSel tracks an in-progress click-drag selection , whose
+	// dragSel tracks an in-progress click-drag selection, whose
 	// range the scroll region highlights.
 	dragSel *dragSelect
 	// width is the terminal width; 0 until the first resize lands.
@@ -95,7 +95,7 @@ type Transcript struct {
 	// histFollow is true while the viewport re-anchors to the newest output
 	// ; T2 navigation breaks it on scroll-up.
 	histFollow bool
-	// histViewport is the persisted history scroll component ,
+	// histViewport is the persisted history scroll component,
 	// shared across Model's value copies so scroll state survives render cycles.
 	histViewport *viewport.Model
 
@@ -113,7 +113,7 @@ type Transcript struct {
 }
 
 // railVisible reports whether the right context rail should render now. The
-// rail is the sole, permanent stats surface : it is always on
+// rail is the sole, permanent stats surface: it is always on
 // whenever it is wired — no auto-hide on small windows and no ctrl+b toggle.
 // The transcript keeps a hard floor via transcriptWidth, so on an
 // extreme-minimum terminal the rail yields width so the transcript stays
@@ -142,13 +142,13 @@ func (t Transcript) transcriptWidth() int {
 
 // bandWidth returns the column width the bottom band renders at: the terminal
 // width (or a sane non-composer default before the first resize lands) minus the
-// 2-col gutter. The band is the edge-to-edge bottom region : it
+// 2-col gutter. The band is the edge-to-edge bottom region: it
 // spans the full terminal width all the way under the right rail, so its
 // separator row, status strip, and composer run to the width's edge — no
 // railWidth x bandHeight dead corner (the rail yields the transcript its
 // columns). It is independent of transcriptWidth() in
 // the call graph (it never calls transcriptWidth and never reads the composer's
-// width). bandWidth is the SEAM for : it is the single width source
+// width). bandWidth is the SEAM for: it is the single width source
 // for the bottom band, independent of transcriptWidth(). Since it is
 // owned by the Transcript (the band asks the Transcript for its width).
 func (t Transcript) bandWidth() int {
@@ -160,7 +160,7 @@ func (t Transcript) bandWidth() int {
 }
 
 // railClampHeight returns the maximum number of rows the right context rail may
-// occupy so it matches the history region's visible height :
+// occupy so it matches the history region's visible height:
 // both panes clamp to the rows left over by the fixed bottom band, so the two
 // form one coherent row. It is -1 before the first resize lands, leaving the
 // rail unclamped — mirroring renderHistoryViewport; a non-negative result is
@@ -183,7 +183,7 @@ func (t Transcript) railClampHeight(bandHeight int) int {
 }
 
 // surfaceWithRail merges the rendered right rail into a full-width pane so the
-// bottom band stays edge-to-edge : the band is a
+// bottom band stays edge-to-edge: the band is a
 // bottom-anchored region spanning the whole terminal width, so the rail cannot
 // sit to its right the way it sits beside the transcript. Instead the rail
 // floats ABOVE the band — its rows land in the top railClampHeight() rows of the
@@ -265,7 +265,7 @@ func (t *Transcript) setRailWidth(w int) {
 // band is the already-rendered bottom band (status strip + composer), which the
 // Transcript does not own.
 //
-// Render is split into explicit, ordered regions : the scroll
+// Render is split into explicit, ordered regions: the scroll
 // region (history), then the fixed bottom band. Each region renders
 // independently; renderPane concatenates them in order. The scroll region is
 // Height-aware: its content clamps to the terminal height, so the band stays
@@ -323,7 +323,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		msgStart := nl // content row where this message's block begins
 		// Reasoning renders as a distinct, collapsible per-turn block .
 		// A reasoning block renders only when the turn requested thinking AND the
-		// backend actually streamed reasoning : a misbehaving
+		// backend actually streamed reasoning: a misbehaving
 		// backend sneaking chain-of-thought through a thinking-off turn must be
 		// hidden at the display layer. thinkingRequested is folded into message
 		// state at request time, never re-sniffed from config here.
@@ -512,7 +512,7 @@ func (t Transcript) highlightSelection(content string) string {
 		}
 		// Intermediate rows extend to their last rune. highlightRange counts
 		// RUNES (skipping escape sequences), and selection columns are
-		// rune-indexed , so the bound must be the plain line's rune
+		// rune-indexed, so the bound must be the plain line's rune
 		// count minus 1 — not the display width, which would over- or
 		// under-shoot for wide/multibyte characters.
 		if i < endLine {
@@ -550,7 +550,7 @@ func (t *Transcript) layoutPtr() *transcriptLayout {
 }
 
 // recordLayout performs the one batched layout pass behind the persistent cache
-// : it renders the history into a scratch builder, captures the
+//: it renders the history into a scratch builder, captures the
 // toolRows and msgRows out-params, and derives the ANSI-stripped plain rows from
 // the same builder, storing both indexes and clearing dirty. The builds count
 // incremented here backs the test hook, which asserts a repeated
@@ -574,7 +574,7 @@ func (t *Transcript) recordLayout() {
 // content line, and whether that entry currently renders collapsed under the
 // Ctrl+E expanded-view mode — a click on a collapsed head toggles
 // it open; on an open entry it toggles closed. It reads the persistent layout
-// cache owned by the Transcript : it lazily builds the
+// cache owned by the Transcript: it lazily builds the
 // row->tool-entry index once per transcript change (via recordLayout, the
 // shared renderHistory pass the viewport and mouse coordinates use), so it
 // never drifts from what the user sees and a drag reuses the recorded index
@@ -613,7 +613,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	}
 }
 
-// toggleCollapse flips one entry's per-entry collapse-override : it
+// toggleCollapse flips one entry's per-entry collapse-override: it
 // keeps a single entry collapsed even while the global expanded-view mode is ON,
 // and flips back to let the mode show it. It is the single delegation path for
 // the expandAll-mode click and for tests, and it is a thin wrapper over the tool
@@ -633,10 +633,10 @@ func (t *Transcript) apply(u ToolUpdate) {
 	t.layoutPtr().dirty = true // an entry changed the tool log's rendered rows
 }
 
-// toggleExpandAll flips the persistent Ctrl+E expanded-view mode :
-// Ctrl+E on the Model routes here , and it marks the shared layout
+// toggleExpandAll flips the persistent Ctrl+E expanded-view mode:
+// Ctrl+E on the Model routes here, and it marks the shared layout
 // dirty because showing or hiding all tool results re-wraps the log. It is the
-// single global mode; per-entry click-to-expand (#245) stays orthogonal.
+// single global mode; per-entry click-to-expand stays orthogonal.
 func (t *Transcript) toggleExpandAll() bool {
 	t.expandAll = !t.expandAll
 	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
@@ -644,7 +644,7 @@ func (t *Transcript) toggleExpandAll() bool {
 }
 
 // thinkingExpandedFor returns whether msg's reasoning block renders expanded
-// given the persistent Ctrl+E expanded-view mode : a per-turn
+// given the persistent Ctrl+E expanded-view mode: a per-turn
 // thinkingCollapsed override (tab while the mode is ON) forces this single
 // block collapsed, and otherwise the block reflects the global mode (issue
 // #274). It mirrors the tool log's expandedFor so the reasoning block and the
@@ -685,7 +685,7 @@ func (t *Transcript) toggleThinking(i int) {
 // (ANSI stripped) — the coordinate space drag selection maps into. The split
 // matches the persisted viewport's own line split exactly, so content line
 // indexes agree between selection and the rendered transcript. It is lazy +
-// cached : it reads the persistent layout cache, rebuilding it once
+// cached: it reads the persistent layout cache, rebuilding it once
 // per transcript change via recordLayout so a drag's motion events reuse the
 // recorded plain-row space instead of re-rendering each one. It is owned by the
 // Transcript .

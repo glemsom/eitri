@@ -376,7 +376,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 
 // TestSettingsView_ThinkingSuppressionWarning verifies the settings panel warns
 // when thinking is off AND the run's provider cannot actually suppress
-// reasoning on the wire : the warning renders only when the
+// reasoning on the wire: the warning renders only when the
 // seam is wired, reports false, and thinking is off. A nil seam (unknown
 // provider) assumes support and renders nothing; a supporting provider or a
 // thinking-on run never warns.
@@ -414,7 +414,7 @@ func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 
 // TestModel_SettingsWiringSurfacesThinkingSuppression verifies the Model wires
 // the run's provider thinking-suppression seam into the settings form when the
-// panel opens , so the warning reflects the real capability.
+// panel opens, so the warning reflects the real capability.
 func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.ThinkingEnabled = false

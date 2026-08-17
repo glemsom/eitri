@@ -83,7 +83,7 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	}
 }
 
-// TestModelHistoryWrapsAtTranscriptWidthWithRail pins : the
+// TestModelHistoryWrapsAtTranscriptWidthWithRail pins: the
 // history pane must keep wrapping to leave room for the rail (unchanged wrap
 // width) even though the bottom band now spans full width. renderHistory must
 // set its wrap/pane width from transcriptWidth() (rail-shrunk), not from the
@@ -114,7 +114,7 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 	}
 }
 
-// TestModelRailEndsOneRowAboveBand pins : the rail is height-bound
+// TestModelRailEndsOneRowAboveBand pins: the rail is height-bound
 // by railClampHeight() = height - bandHeight(), so even when the rail content is
 // taller than the room above the band, it clamps to end exactly one row above
 // the band's top and never overlaps it. On a short window the rail content
@@ -189,7 +189,7 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 	}
 }
 
-// TestModelComposerCaretStaysCorrectWithRail pins : widening the
+// TestModelComposerCaretStaysCorrectWithRail pins: widening the
 // band to the full terminal width leaves the composer at column 0 (band
 // bottom-pinned), so the hardware caret geometry is unchanged with the rail
 // visible at a tall height — the caret stays at the prompt column and follows

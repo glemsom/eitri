@@ -75,7 +75,7 @@ func TestModel_readWholeFileHasNoRange(t *testing.T) {
 
 // TestModel_readMalformedArgsFallBackToPath asserts malformed or unexpected
 // argument shapes fall back to the current path-only rendering without a crash
-// : a single explicit limit, string-typed limits, and invalid
+//: a single explicit limit, string-typed limits, and invalid
 // JSON all render the plain path hint.
 func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 	feed := NewToolFeed()

@@ -137,7 +137,7 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 }
 
 // TestModel_stylingToolCategoryColors asserts tool entries render with the
-// per-category hue from the theme palette : shell tools in the
+// per-category hue from the theme palette: shell tools in the
 // shell color, file tools in the file color, web tools in the web color and
 // skill activations in the skill color, while an unknown tool keeps the
 // generic faint line. The ⊕ glyph stays on every entry — meaning never rides
@@ -426,11 +426,11 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	}
 
 	// Color downsampling on a non-truecolor terminal moved to the output layer
-	// in lipgloss v2 / bubbletea v2 : Render() always emits
+	// in lipgloss v2 / bubbletea v2: Render() always emits
 	// full-fidelity ANSI, and Bubble Tea v2 downsamples to the terminal's color
 	// profile at render time — so the model's view content carries truecolor
 	// sequences by design. The 256-color downsampling parity check is part of
-	// the v2 migration audit , not a
+	// the v2 migration audit, not a
 	// Render()-level assertion.
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

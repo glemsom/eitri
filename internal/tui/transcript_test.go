@@ -53,7 +53,7 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 }
 
 // TestTranscript_thinkingGateScopesReasoningBlock asserts a reasoning block
-// renders only for a turn that requested thinking : a message whose
+// renders only for a turn that requested thinking: a message whose
 // thinkingRequested flag is false shows no reasoning block even when the
 // backend streamed chain-of-thought content, while a true flag renders the
 // collapsible hint as before.
@@ -99,7 +99,7 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 
 // TestTranscript_expandAllOverridesThinkingExpansion asserts the Ctrl+E
 // expanded-view mode drives the reasoning block's effective
-// expansion at the render seam : with the mode ON the reasoning body
+// expansion at the render seam: with the mode ON the reasoning body
 // renders even when the per-turn thinkingExpanded flag is false (the default
 // auto-collapse), a per-turn collapse override (tab while mode ON) still
 // collapses it, and with the mode OFF only the per-turn flag decides.
@@ -149,7 +149,7 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 
 // TestTranscript_ownsRailSurface proves the right-context rail surface — its
 // visibility, band/transcript width accounting, clamp height, and render — now
-// lives on the Transcript value : a Transcript constructed directly
+// lives on the Transcript value: a Transcript constructed directly
 // with a wired rail exposes railVisible / bandWidth / transcriptWidth /
 // railClampHeight and surfaces the rail into a pane through its own render
 // seam, without reaching through Model.
@@ -193,7 +193,7 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 }
 
 // TestTranscript_dynamicRailWidth proves the rail width is mutable state on the
-// Transcript : setting the width re-derives the rail-shrunk
+// Transcript: setting the width re-derives the rail-shrunk
 // transcript width, re-renders the rail at the new width, and marks the layout
 // cache dirty so the next render pass re-wraps the history, so a future
 // drag-resize lands as one state write plus the normal render pass. The default
@@ -249,7 +249,7 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 }
 
 // TestTranscript_matchesModelRender asserts the Model renders the scroll region
-// through its OWNED Transcript : the Model's tx field produces the
+// through its OWNED Transcript: the Model's tx field produces the
 // same history content an independently-constructed Transcript with the same
 // transcript state does, so the contract step left one transcript renderer with
 // no per-frame rebuild from duplicated Model fields.
@@ -308,7 +308,7 @@ func transcriptScrollModel(t *testing.T) Transcript {
 }
 
 // TestTranscript_navigateScrollsSharedViewport asserts the navigation seam now
-// lives on the Transcript value : PgUp/Home/PgDn/End drive the
+// lives on the Transcript value: PgUp/Home/PgDn/End drive the
 // shared persisted viewport through the Transcript, moving the reading offset
 // and mutating the transcript's follow flag.
 func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
@@ -378,7 +378,7 @@ func transcriptWithTool(t *testing.T) Transcript {
 }
 
 // TestTranscript_toolEntryAtLineReadsPersistentIndex asserts the click-to-expand
-// hit-test now lives on the Transcript : toolEntryAtLine
+// hit-test now lives on the Transcript: toolEntryAtLine
 // maps a content row back to the owning entry through the Transcript's
 // persistent row->entry index — the collapsed head and its summary row both
 // resolve to entry 0, and the first call builds the layout exactly once while
@@ -411,7 +411,7 @@ func TestTranscript_toolEntryAtLineReadsPersistentIndex(t *testing.T) {
 }
 
 // TestTranscript_toggleToolEntryFlipsExpansion asserts the per-entry expansion
-// toggle now lives on the Transcript : toggling entry 0 expands
+// toggle now lives on the Transcript: toggling entry 0 expands
 // it open and a second toggle collapses it, exactly like the tool-log Toggle the
 // click path maps to.
 func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
@@ -428,7 +428,7 @@ func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
 }
 
 // TestTranscript_applyFoldsToolUpdate asserts tool updates now route through the
-// Transcript : apply folds a Start/Result pair into the
+// Transcript: apply folds a Start/Result pair into the
 // transcript's own log — the same entries renderPane reads — so the live
 // transcript never drifts from what the tools accomplished.
 func TestTranscript_applyFoldsToolUpdate(t *testing.T) {
@@ -473,7 +473,7 @@ func TestTranscript_toggleExpandAllFlipsGlobalMode(t *testing.T) {
 
 // TestTranscript_toggleExpandAllEmptyLogIsNoOp asserts toggling the Ctrl+E
 // expanded-view mode on a transcript with no tool entries must not panic or
-// break : the flag flips but the
+// break: the flag flips but the
 // empty log renders nothing and stays coherent.
 func TestTranscript_toggleExpandAllEmptyLogIsNoOp(t *testing.T) {
 	tx := transcriptWithTool(t)
@@ -528,7 +528,7 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 
 // TestTranscript_toolEntryAtLineEffectiveCollapse asserts the click-to-collapse
 // hit-test reports the EFFECTIVE rendered state under the Ctrl+E expanded-view
-// mode , not the raw per-entry flag: with the mode ON an entry the
+// mode, not the raw per-entry flag: with the mode ON an entry the
 // user collapses via the per-entry override reports collapsed=true (a click
 // would re-expand it), and when the override is released the mode re-shows it
 // as expanded. toolEntryAtLine reads the same expandedFor computation as Render,
@@ -558,7 +558,7 @@ func TestTranscript_toolEntryAtLineEffectiveCollapse(t *testing.T) {
 }
 
 // TestTranscript_expandAllOffDoesNotWipePerEntry asserts turning the global
-// expanded-view mode OFF does not wipe per-entry expansion : an
+// expanded-view mode OFF does not wipe per-entry expansion: an
 // entry the user opened individually stays open, and toggling back on shows
 // everything again.
 func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {

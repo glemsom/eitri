@@ -86,7 +86,7 @@ func glamourStyleFor(theme string) string {
 
 // markdownRemapFor builds the per-theme remap from glamour's fixed 256-color
 // semantic indices (per styles/{dark,light}.json) onto the active chrome
-// palette's truecolor hues : glamour renders with its own ANSI-256
+// palette's truecolor hues: glamour renders with its own ANSI-256
 // indices (heading blue 38;5;39 = #00afff), which clash with the chrome
 // palette's truecolor tokens — two blue families on one surface. Remapping the
 // semantic indices (heading, link, code, image, …) to the matching chrome hues

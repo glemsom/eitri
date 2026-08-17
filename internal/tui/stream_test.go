@@ -44,7 +44,7 @@ func applyDelta(t *testing.T, m Model, delta string) Model {
 	return asModel(t, nm)
 }
 
-// newStreamingModel builds a model wired to a live answer Streamer ,
+// newStreamingModel builds a model wired to a live answer Streamer,
 // the configuration the app uses for streaming; the test feeds deltas into the
 // in-progress reply by hand through the Update seam.
 func newStreamingModel() Model {
@@ -76,7 +76,7 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 		t.Errorf("first delta content = %q, want %q", got, "Hello **glad**")
 	}
 	// Partial markdown is styled through Glamour, not shown as raw syntax
-	// : bold "glad" must carry SGR emphasis in the content.
+	//: bold "glad" must carry SGR emphasis in the content.
 	if !hasSGRBold(content) {
 		t.Errorf("expected partial markdown bold to render, got: %q", content)
 	}
@@ -94,7 +94,7 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 
 // TestModel_streamFinalizeDropsRawDeltas asserts the turn's completion replaces
 // the incremental buffer with the full, single-markdown-rendered answer — a
-// no-op visual diff when the stream was complete , and a
+// no-op visual diff when the stream was complete, and a
 // guaranteed-correct final render when the last delta raced past completion.
 func TestModel_streamFinalize(t *testing.T) {
 	m := newStreamingModel()
@@ -271,7 +271,7 @@ func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
 }
 
 // TestModel_expandAllOffCollapsesThinking asserts toggling the Ctrl+E mode OFF
-// collapses reasoning blocks back to the one-line hint : a
+// collapses reasoning blocks back to the one-line hint: a
 // block held expanded only by the mode renders collapsed once the mode is off.
 func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 	m := newStreamingModel()
@@ -331,7 +331,7 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	}
 	// With the mode OFF the answer landing still auto-collapses the human-
 	// (tab-)expanded block back to a hint, exactly as before the Ctrl+E mode
-	// existed : the answer-land reset must fire whenever the
+	// existed: the answer-land reset must fire whenever the
 	// global mode is collapsed, not only when a block was streamed collapsed.
 	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
 	if strings.Contains(view(m2), "hidden reasoning") {

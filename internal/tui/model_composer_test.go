@@ -36,7 +36,7 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 
 // TestModel_shiftEnterInsertsNewlineWithoutSubmitting asserts Shift+Enter
 // (surfaced by Bubble Tea as the line-feed key, KeyCtrlJ) inserts a line
-// break into the draft instead of submitting it : after the
+// break into the draft instead of submitting it: after the
 // key the turn seam has seen nothing and the composer holds the two-line
 // draft.
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
@@ -99,7 +99,7 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 }
 
 // TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
-// composer cycle : Shift+Enter builds a two-line
+// composer cycle: Shift+Enter builds a two-line
 // draft, plain Enter submits it verbatim to the engine seam, and the composer
 // clears back to one row. The newlines the user typed must reach the turn
 // seam, not be flattened or dropped.
@@ -137,7 +137,7 @@ func newlineShiftEnter(t *testing.T, m Model) Model {
 
 // TestModel_composerGrowsWithDraftLines asserts the composer grows within the
 // bottom band as the draft gains lines, one row per hard newline, up to the
-// maxComposerRows bound : a short draft stays compact instead
+// maxComposerRows bound: a short draft stays compact instead
 // of the fixed-height composer of the pre-pivot TUI, and an over-long draft
 // caps at the bound rather than growing without limit.
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
@@ -185,7 +185,7 @@ func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 }
 
 // TestModel_composerLongDraftBandPinned asserts an over-bound draft never
-// pushes the transcript or band off-screen : the composer
+// pushes the transcript or band off-screen: the composer
 // caps at maxComposerRows and scrolls internally (its rendered rows never
 // exceed the cap), the band stays the bottom-pinned last region, and the total
 // view never exceeds the terminal height — the history viewport yields rows
@@ -227,7 +227,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 
 // TestModel_statusAndSlashPinnedAboveComposer asserts the status strip and the
 // slash-completion list stay pinned above the composer regardless of composer
-// height : with a telemetry strip, a `/...` partial, and a
+// height: with a telemetry strip, a `/...` partial, and a
 // soft-wrapped grown composer all present, the content order is status strip,
 // slash completion, then the composer as the final region.
 func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {

@@ -223,7 +223,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 }
 
 // TestModel_ctrlETogglesExpandedViewMode asserts Ctrl+E toggles the persistent
-// expanded-view mode on the Model's owned Transcript : the key
+// expanded-view mode on the Model's owned Transcript: the key
 // flips the single expandAll flag on→off→on, each press sticky until the next.
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 	feed := NewToolFeed()
@@ -262,7 +262,7 @@ func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 
 // TestModel_expandedViewModeAppliesToNewlyDeliveredEntries asserts the Ctrl+E
 // expanded-view mode applies to entries delivered AFTER the mode is enabled
-// : a tool result that
+//: a tool result that
 // lands while the mode is ON renders its full result, past
 // entries too, because render reads the live flag over the whole log.
 func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
