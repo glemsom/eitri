@@ -239,14 +239,23 @@ func (t Transcript) viewWithRail(pane string, bandHeight int) string {
 }
 
 // railWidthOrDefault returns the rail width in effect: the mutable field when
-// set, else the default (issue #305). The 0 fallback mirrors how width/height
-// read 0 until the first resize lands, so a hand-built Transcript renders like
-// the pre-#305 const-width rail without setting the field.
+// set, else the default. The 0 fallback mirrors how width/height read 0 until
+// the first resize lands, so a hand-built Transcript renders like the
+// pre-#305 const-width rail without setting the field.
 func (t Transcript) railWidthOrDefault() int {
 	if t.railWidth == 0 {
 		return defaultRailWidth
 	}
 	return t.railWidth
+}
+
+// setRailWidth stores the rail width and marks the shared layout cache dirty, so
+// the next render pass re-wraps the history at the new transcript width and
+// re-records the row layout (issue #305 AC4). scroll/follow survive because the
+// persisted viewport keeps its position; it is only re-sized, never re-created.
+func (t *Transcript) setRailWidth(w int) {
+	t.railWidth = w
+	t.layoutPtr().dirty = true
 }
 
 // renderPane renders the transcript + composer surface into the left pane. It

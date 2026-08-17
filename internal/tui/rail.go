@@ -52,9 +52,10 @@ const presizeTerminalWidth = 80
 
 // line appends one indented rail entry, truncating an over-long row with a
 // trailing ellipsis so the rail stays single-line. The usable row width is the
-// rail's width minus the left border and padding (railWidth-2): long session
-// GUIDs / temp paths / provider.model names would otherwise fold and break the
-// section alignment.
+// rail's width minus 2 columns — the left border and the row's leading
+// padding — so a row never wraps onto a second line: long session GUIDs / temp
+// paths / provider.model names would otherwise fold and break the section
+// alignment.
 func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	s := "  " + key
 	if val != "" {
@@ -217,11 +218,10 @@ func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 // quality ~150k+ tokens into a window.
 const liveContextWarnThreshold = 150000
 
-// defaultRailWidth is the rail's default column width (issue #305): the
-// zero-state value of the Transcript's mutable railWidth field, applied until a
-// resize sets one. Width consumers (transcript width, the band seam, the rail
-// render, value truncation) read the Transcript field directly; this constant
-// is only that default, not a width any consumer computes from.
+// defaultRailWidth is the rail width applied while the Transcript's mutable
+// railWidth field is unset (0): consumers read the field through
+// railWidthOrDefault, so this constant is only the zero-state default, never a
+// width any consumer computes from.
 const defaultRailWidth = 30
 
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
