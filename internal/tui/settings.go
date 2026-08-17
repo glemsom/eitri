@@ -35,8 +35,8 @@ var (
 )
 
 // discoverState is the on-demand model-discovery lifecycle of the Settings
-// surface (issue #89 AC2). It lets the panel show where discovery stands
-// instead of failing silently when a provider has no cached model list.
+// surface. It lets the panel show where discovery stands instead of failing
+// silently when a provider has no cached model list.
 type discoverState int
 
 const (
@@ -49,15 +49,15 @@ const (
 	discoverError
 )
 
-// settingsForm is the pure state behind the TUI Settings surface (T12). It
+// settingsForm is the pure state behind the TUI Settings surface. It
 // edits a draft copy of config.Config and yields a saved config; navigation
 // and value stepping are deterministic so the panel is unit-testable without a
 // terminal. It is deliberately config-only: the model list is surfaced from
 // provider discovery but owned by the caller, and the live telemetry readout
-// (issue #89 AC4) is borrowed from the status strip.
+// is borrowed from the status strip.
 type settingsForm struct {
-	// theme is the styling surface for the Settings chrome (issue #178); the
-	// model seeds it from its own theme when the panel opens.
+	// theme is the styling surface for the Settings chrome; the model seeds it
+	// from its own theme when the panel opens.
 	theme  Theme
 	cfg    config.Config
 	models []string
@@ -65,18 +65,18 @@ type settingsForm struct {
 	// pathBuf holds the free-form extra_writable_paths draft while focused.
 	pathBuf string
 	// telemetry, when non-nil, backs the live cache hit-ratio + cost readout
-	// rendered in the panel (issue #89 AC4). It is the same read-only surface
-	// the status strip uses and is never mutated from the panel.
+	// rendered in the panel. It is the same read-only surface the status strip
+	// uses and is never mutated from the panel.
 	telemetry *Telemetry
-	// discoverState tracks on-demand provider model discovery (issue #89 AC2).
+	// discoverState tracks on-demand provider model discovery.
 	discoverState discoverState
 	// discoverErr is the surfaced failure when discoverState == discoverError.
 	discoverErr string
 	// thinkingSuppression reports whether the run's provider can actually
-	// suppress reasoning on the wire when thinking is off (issue #265). Nil
-	// assumes support (the pre-seam default), so a provider without a declared
-	// capability never spurs the warning. The seam is provider-owned and the
-	// TUI stays decoupled from internal/provider.
+	// suppress reasoning on the wire when thinking is off. Nil assumes support
+	// (the pre-seam default), so a provider without a declared capability never
+	// spurs the warning. The seam is provider-owned and the TUI stays decoupled
+	// from internal/provider.
 	thinkingSuppression func() bool
 }
 
@@ -135,11 +135,11 @@ func (f *settingsForm) adjust(d int) {
 		f.cfg.CompactionFraction = stepFrac(f.cfg.CompactionFraction, d)
 	case fieldTheme:
 		// Unknown themes cycle to the first valid one on the first press, same
-		// as a hand-edited bad model value (issue #130 AC3).
+		// as a hand-edited bad model value.
 		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
-		// The chrome palette follows the selection live (issue #179 AC5): the
-		// panel's own chrome re-skins as the arrow cycle moves through themes,
-		// proving the mechanism end-to-end before Save.
+		// The chrome palette follows the selection live: the panel's own chrome
+		// re-skins as the arrow cycle moves through themes, proving the mechanism
+		// end-to-end before Save.
 		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
 		// Free-form edit is handled by the caller via SetPathBuf; adjust nudges
@@ -167,7 +167,7 @@ func (f *settingsForm) draft() config.Config {
 func (f settingsForm) onSave() bool { return f.field == fieldSave }
 
 // thinkingModeLabel renders the reasoning mode value (on/off) for the Settings
-// panel, reflecting the thinking_enabled config (issue #56).
+// panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
 		return "on"
@@ -262,12 +262,11 @@ func settingsView(f settingsForm) string {
 		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
 	}
 
-	// Thinking-suppression warning (issue #265 AC-3): when thinking is off and
-	// the run's provider cannot actually silence reasoning on the wire, the
-	// panel says so instead of silently letting the toggle no-op. The
-	// capability seam defaults to supported when unset (nil), so view-only
-	// panels and providers without the declaration never warn. Deterministic
-	// for render-testing.
+	// Thinking-suppression warning: when thinking is off and the run's provider
+	// cannot actually silence reasoning on the wire, the panel says so instead
+	// of silently letting the toggle no-op. The capability seam defaults to
+	// supported when unset (nil), so view-only panels and providers without the
+	// declaration never warn. Deterministic for render-testing.
 	if !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
 		b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " reasoning cannot be disabled on this provider"))
 		b.WriteString("\n")
@@ -282,9 +281,8 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n")
 
-	// Provider model-discovery status (issue #89 AC2): loading/error/summary
-	// reflects what the list behind the Model row shows. Deterministic for
-	// render-testing.
+	// Provider model-discovery status: loading/error/summary reflects what the
+	// list behind the Model row shows. Deterministic for render-testing.
 	switch f.discoverState {
 	case discoverLoading:
 		b.WriteString(th.statusStyle.Render("   discovering models" + g("…", "...")))
@@ -296,9 +294,9 @@ func settingsView(f settingsForm) string {
 		// Idle: already-loaded or unwired, so no status line is needed.
 	}
 
-	// Live telemetry readout (issue #89 AC4): the same cache hit-ratio + cost
-	// the status strip tracks, borrowed read-only so switching provider/model
-	// and watching cost happen in one pane.
+	// Live telemetry readout: the same cache hit-ratio + cost the status strip
+	// tracks, borrowed read-only so switching provider/model and watching cost
+	// happen in one pane.
 	if f.telemetry != nil {
 		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
 			"   cache:%.0f%% "+g("·", ".")+" cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),

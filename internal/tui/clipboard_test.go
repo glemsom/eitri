@@ -8,16 +8,16 @@ import (
 )
 
 // A failing primary clipboard stands in for the atotto/clipboard package on a
-// machine without xclip/wl-clipboard (issue #201): its WriteAll error is what
-// triggers the OSC 52 fallback.
+// machine without xclip/wl-clipboard: its WriteAll error is what triggers the
+// OSC 52 fallback.
 func failingClipboard(text string) error {
 	return errors.New("Unsupported platform")
 }
 
 // When the primary clipboard path fails, the seam falls back to the OSC 52
-// terminal-clipboard sequence (T1, issue #200) on the captured output writer —
-// the exact bytes a terminal like Ghostty turns into a system-clipboard write,
-// verified against a hand-computed literal (issue #201 AC1, AC6).
+// terminal-clipboard sequence on the captured output writer — the exact bytes
+// a terminal like Ghostty turns into a system-clipboard write, verified against
+// a hand-computed literal.
 func TestClipboardWithOSCFallbackFallsBackToOSC52(t *testing.T) {
 	var out bytes.Buffer
 	seam := clipboardWithOSCFallback(failingClipboard, &out)
@@ -32,7 +32,7 @@ func TestClipboardWithOSCFallbackFallsBackToOSC52(t *testing.T) {
 
 // A successful primary copy short-circuits the chain: the text reaches the
 // clipboard and no OSC 52 sequence is ever written, so a working system
-// clipboard keeps its exact pre-fallback behaviour (issue #201 AC1).
+// clipboard keeps its exact pre-fallback behaviour.
 func TestClipboardWithOSCFallbackPrimarySuccessSkipsFallback(t *testing.T) {
 	var copied string
 	primary := func(text string) error { copied = text; return nil }
@@ -57,7 +57,7 @@ func (errWriter) Write([]byte) (int, error) { return 0, errors.New("write error"
 
 // notTerminal is a writer that exposes an Fd like a real terminal-backed file
 // but is not a terminal, standing in for stdout piped to a file or another
-// process: the OSC 52 writer's own guard refuses it (issue #200 AC3).
+// process: the OSC 52 writer's own guard refuses it.
 type notTerminal struct {
 	bytes.Buffer
 }
@@ -66,8 +66,7 @@ func (*notTerminal) Fd() uintptr { return 12345 }
 
 // When the primary path and the OSC 52 fallback both fail, the chain surfaces
 // the fallback error so the existing "copy failed: …" status note still
-// reports the failure instead of claiming a copy that never happened (issue
-// #201 AC5).
+// reports the failure instead of claiming a copy that never happened.
 func TestClipboardWithOSCFallbackBothFail(t *testing.T) {
 	seam := clipboardWithOSCFallback(failingClipboard, errWriter{})
 	err := seam("hello")
@@ -80,8 +79,8 @@ func TestClipboardWithOSCFallbackBothFail(t *testing.T) {
 }
 
 // A non-terminal fallback output is refused by the OSC 52 writer's own guard
-// (issue #200 AC3): the seam returns osc52.ErrNotTerminal and emits nothing,
-// so piped/non-terminal output never receives escape garbage (issue #201 AC2).
+// the seam returns osc52.ErrNotTerminal and emits nothing, so piped/
+// non-terminal output never receives escape garbage.
 func TestClipboardWithOSCFallbackRefusesNonTerminalOutput(t *testing.T) {
 	var out notTerminal
 	seam := clipboardWithOSCFallback(failingClipboard, &out)
