@@ -88,6 +88,15 @@ func (m Model) railDragFor(x, y int) (railDrag, bool) {
 	return railDrag{startWidth: m.tx.railWidthOrDefault(), startX: x}, true
 }
 
+// disarmBorderClick clears any armed border double-click window. Called when
+// a gesture proves the two border presses were not a double-click: the reset
+// consumed it, the press ended in a drag, or an unrelated press landed
+// elsewhere. A zero value is the "no arm" state, so the next border press
+// starts a fresh pair.
+func (m *Model) disarmBorderClick() {
+	m.borderClick = time.Time{}
+}
+
 // inScrollRegion reports whether a screen row y falls inside the history scroll
 // region: the rows above the fixed bottom band. Both the rail-drag hit test and
 // the drag-select coordinate mapping guard against events that land on the
@@ -170,26 +179,20 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		}
 		if d, ok := m.railDragFor(msg.X, msg.Y); ok {
 			// A border press whose predecessor is still inside the window is the
-			// second click of a double-click: snap the rail back to its default
-			// width through the same setRailWidth path a drag uses, so the
-			// transcript re-wraps and scroll/follow survive. The press still
-			// starts a drag anchored at the default width, so a hold-and-drag
-			// after the reset resizes from home; the reset consumes the window
-			// (borderClick cleared) so a third press starts a fresh pair. Any
-			// press elsewhere — on the transcript or off the border — is an
-			// unrelated gesture and disarms the window first (issue #308).
+			// second click of a double-click: snap the rail to the default width
+			// and consume the window, so a third press starts a fresh pair. The
+			// press still starts a drag anchored at the default width, so a
+			// hold-and-drag after the reset resizes from home (issue #308).
 			if !m.borderClick.IsZero() && m.now().Sub(m.borderClick) <= doubleClickWindow {
 				m.tx.setRailWidth(clampRailWidth(defaultRailWidth, m.tx.width))
 				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X}
 				m.tx.dragSel = nil
-				m.borderClick = time.Time{}
+				m.disarmBorderClick()
 				return
 			}
-			// First press of a pair (or a stale one outside the window): arm the
-			// double-click window now. The window is measured press-to-press,
-			// the standard double-click interval; motion between press and
-			// release clears the arm below, so only a press+release with no
-			// drag can complete the pair.
+			// First press of a pair (or a stale one): arm the window now. Motion
+			// between press and release clears the arm, so only a clean
+			// press+release can complete the pair.
 			m.borderClick = m.now()
 			m.railDrag = &d
 			m.tx.dragSel = nil
@@ -199,7 +202,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// (history drag-select); it disarms any armed border double-click
 		// window so an intervening transcript interaction can never pair with
 		// a later border click into an accidental reset (issue #308 AC2).
-		m.borderClick = time.Time{}
+		m.disarmBorderClick()
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			m.tx.dragSel = nil
@@ -217,9 +220,9 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// holding button is not a border press.
 		if m.railDrag != nil {
 			// Motion between press and release means this border gesture is a
-			// drag, not a click — clear the armed double-click window so the
-			// drag's press can never pair with a later press into a reset.
-			m.borderClick = time.Time{}
+			// drag, not a click — disarm the window so the drag's press can
+			// never pair with a later press into a reset.
+			m.disarmBorderClick()
 			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth+(msg.X-m.railDrag.startX), m.tx.width))
 			return
 		}
