@@ -420,6 +420,7 @@ func NewModelCfg(d Dependencies) Model {
 		reasoningEffort: d.Config.ReasoningEffort,
 		telemetry:       d.Telemetry,
 		rail:            d.Rail,
+		railWidth:       defaultRailWidth,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		layout:          &transcriptLayout{dirty: true},
